@@ -20,6 +20,16 @@ Initialize project folder:
 backlog init <project-name>
 ```
 
+If no git repository exists in the current folder, the command will ask whether
+to initialize one before continuing. Choose `y` to create a new repository or
+`n` to abort so you can run the command in the correct project directory.
+
+Run the command locally using Bun:
+
+```bash
+bun run src/cli.ts init <project-name>
+```
+
 This will create the required files under `.backlog` folder.  
 Task files are named `task-<id> - <title>.md`.  
 Subtasks use decimal numbers, e.g., `task-4.1`.
