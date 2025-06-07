@@ -1,25 +1,5 @@
-project: "Backlog.md"
-
-# Settings related to task properties and workflow
-tasks:
-  default_statuses:
-    - "To Do"
-    - "In Progress"
-    - "In Review"
-    - "Done"
-
-  # This is be the default status written into a draft task file's frontmatter
-  default_draft_status: "Draft"
-
-# Settings related to Git integration
-git:
-  # we recommend keeping this true for most use-cases
-  # if you want to stage changes without committing, set this to false
-  auto_commit: true 
-
-# cli:
-#   default_date_format: "YYYY-MM-DD"
-#   show_welcome_message: true
-
-# editor: # For project-specific editor override (global might be just 'core.editor')
-#   command: "nano"
+project_name: "Test Project"
+default_status: "Draft"
+statuses: ["Draft", "To Do", "In Progress", "Done"]
+labels: []
+milestones: []

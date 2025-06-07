@@ -1,8 +1,8 @@
 ---
 id: task-3
 title: "CLI: Implement `backlog init` Command"
-status: "To Do"
-assignee: ""
+status: "In Progress"
+assignee: "@MrLesk"
 reporter: "@MrLesk"
 created_date: 2025-06-04
 labels: ["cli", "command"]
