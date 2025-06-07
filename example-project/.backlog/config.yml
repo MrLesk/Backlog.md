@@ -1,0 +1,5 @@
+project_name: "Example Project"
+default_status: "Draft"
+statuses: ["Draft", "To Do", "In Progress", "Done"]
+labels: []
+milestones: []

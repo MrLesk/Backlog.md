@@ -3,6 +3,9 @@
 	"module": "src/index.ts",
 	"type": "module",
 	"private": true,
+	"bin": {
+		"backlog": "./cli/index.js"
+	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
 		"@types/bun": "1.2.15",
@@ -17,13 +20,16 @@
 		"format": "biome format --write .",
 		"lint": "biome lint --write .",
 		"check": "biome check .",
-		"prepare": "husky"
+		"prepare": "husky",
+		"build": "bun build src/cli.ts --outdir cli --target node && echo '#!/usr/bin/env node\nimport(\"./cli.js\");' > cli/index.js && chmod +x cli/index.js",
+		"cli": "bun src/cli.ts"
 	},
 	"lint-staged": {
 		"*.{ts,js,json}": ["biome check --write --files-ignore-unknown=true"],
 		"src/**/*.{ts,js}": ["biome check --write --files-ignore-unknown=true"]
 	},
 	"dependencies": {
-		"gray-matter": "^4.0.3"
+		"commander": "14.0.0",
+		"gray-matter": "4.0.3"
 	}
 }
