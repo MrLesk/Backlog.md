@@ -98,6 +98,34 @@ describe("FileSystem", () => {
 		});
 	});
 
+	describe("draft operations", () => {
+		const sampleDraft: Task = {
+			id: "task-draft",
+			title: "Draft Task",
+			status: "Draft",
+			createdDate: "2025-06-07",
+			labels: [],
+			dependencies: [],
+			description: "Draft description",
+		};
+
+		it("should save and load a draft", async () => {
+			await filesystem.saveDraft(sampleDraft);
+
+			const loaded = await filesystem.loadDraft("task-draft");
+			expect(loaded?.id).toBe(sampleDraft.id);
+			expect(loaded?.title).toBe(sampleDraft.title);
+		});
+
+		it("should list all drafts", async () => {
+			await filesystem.saveDraft(sampleDraft);
+			await filesystem.saveDraft({ ...sampleDraft, id: "task-draft2", title: "Second" });
+
+			const drafts = await filesystem.listDrafts();
+			expect(drafts.map((d) => d.id)).toEqual(["task-draft", "task-draft2"]);
+		});
+	});
+
 	describe("config operations", () => {
 		const sampleConfig: BacklogConfig = {
 			projectName: "Test Project",

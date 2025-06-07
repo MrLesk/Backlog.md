@@ -154,6 +154,40 @@ describe("Core", () => {
 		});
 	});
 
+	describe("draft operations", () => {
+		const sampleDraft: Task = {
+			id: "task-draft",
+			title: "Draft Task",
+			status: "Draft",
+			createdDate: "2025-06-07",
+			labels: [],
+			dependencies: [],
+			description: "Draft task",
+		};
+
+		beforeEach(async () => {
+			await core.initializeProject("Draft Project");
+		});
+
+		it("should create draft without auto-commit", async () => {
+			await core.createDraft(sampleDraft, false);
+
+			const loaded = await core.filesystem.loadDraft("task-draft");
+			expect(loaded?.id).toBe("task-draft");
+		});
+
+		it("should create draft with auto-commit", async () => {
+			await core.createDraft(sampleDraft, true);
+
+			const loaded = await core.filesystem.loadDraft("task-draft");
+			expect(loaded?.id).toBe("task-draft");
+
+			const lastCommit = await core.gitOps.getLastCommitMessage();
+			expect(lastCommit).toBeDefined();
+			expect(lastCommit.length).toBeGreaterThan(0);
+		});
+	});
+
 	describe("integration with config", () => {
 		it("should use custom default status from config", async () => {
 			// Initialize with custom config

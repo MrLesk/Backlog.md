@@ -25,21 +25,40 @@ export class Core {
 
 	// High-level operations that combine filesystem and git
 	async createTask(task: Task, autoCommit = true): Promise<void> {
-		// If no status is provided, use the default from config
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
+
 		await this.fs.saveTask(task);
 
 		if (autoCommit) {
 			const tasksDir = this.fs.tasksDir;
 			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
 			const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
-
 			if (taskFile) {
 				const filePath = join(tasksDir, taskFile);
 				await this.git.addAndCommitTaskFile(task.id, filePath, "create");
+			}
+		}
+	}
+
+	async createDraft(task: Task, autoCommit = true): Promise<void> {
+		if (!task.status) {
+			const config = await this.fs.loadConfig();
+			task.status = config?.defaultStatus || FALLBACK_STATUS;
+		}
+
+		await this.fs.saveDraft(task);
+
+		if (autoCommit) {
+			const draftsDir = this.fs.draftsDir;
+			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
+			const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
+			if (taskFile) {
+				const filePath = join(draftsDir, taskFile);
+				await this.git.addFile(filePath);
+				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`);
 			}
 		}
 	}

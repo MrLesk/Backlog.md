@@ -17,8 +17,16 @@ export class FileSystem {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.TASKS);
 	}
 
+	get draftsDir(): string {
+		return join(this.backlogDir, DEFAULT_DIRECTORIES.DRAFTS);
+	}
+
 	get archiveTasksDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
+	}
+
+	get archiveDraftsDir(): string {
+		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
 	}
 
 	get decisionsDir(): string {
@@ -127,6 +135,62 @@ export class FileSystem {
 			return true;
 		} catch (error) {
 			return false;
+		}
+	}
+
+	// Draft operations
+	async saveDraft(task: Task): Promise<void> {
+		const taskId = task.id.startsWith("task-") ? task.id : `task-${task.id}`;
+		const filename = `${taskId} - ${this.sanitizeFilename(task.title)}.md`;
+		const filepath = join(this.draftsDir, filename);
+		const content = serializeTask(task);
+
+		try {
+			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
+			const existingFiles = files.filter((file) => file.startsWith(`${taskId} -`) && file !== filename);
+
+			for (const existingFile of existingFiles) {
+				const existingPath = join(this.draftsDir, existingFile);
+				await unlink(existingPath);
+			}
+		} catch {
+			// Ignore errors if no existing files found
+		}
+
+		await this.ensureDirectoryExists(dirname(filepath));
+		await Bun.write(filepath, content);
+	}
+
+	async loadDraft(taskId: string): Promise<Task | null> {
+		try {
+			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
+			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+			const taskFile = files.find((file) => file.startsWith(`${normalizedTaskId} -`));
+
+			if (!taskFile) return null;
+
+			const filepath = join(this.draftsDir, taskFile);
+			const content = await Bun.file(filepath).text();
+			return parseTask(content);
+		} catch {
+			return null;
+		}
+	}
+
+	async listDrafts(): Promise<Task[]> {
+		try {
+			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: this.draftsDir }));
+
+			const tasks: Task[] = [];
+			for (const file of taskFiles) {
+				const filepath = join(this.draftsDir, file);
+				const content = await Bun.file(filepath).text();
+				tasks.push(parseTask(content));
+			}
+
+			return tasks.sort((a, b) => a.id.localeCompare(b.id));
+		} catch {
+			return [];
 		}
 	}
 
