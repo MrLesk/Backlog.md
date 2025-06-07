@@ -20,7 +20,7 @@ Implement commands for creating tasks, drafts, and subtasks:
 
 ## Acceptance Criteria
 
-- [ ] Commands create Markdown files in the correct directories.
-- [ ] Required metadata is captured from flags or prompts.
-- [ ] Subtasks are saved using decimal IDs under `.backlog/tasks/`.
-- [ ] Changes are committed with a descriptive message.
+- [x] Commands create Markdown files in the correct directories.
+- [x] Required metadata is captured from flags or prompts.
+- [x] Subtasks are saved using decimal IDs under `.backlog/tasks/`.
+- [x] Changes are committed with a descriptive message.
