@@ -62,13 +62,17 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
 
     ```shell
     backlog task list
+    # or
+    backlog tasks list
     ```
 
 4. Detail:
 
     ```shell
     backlog task view <task-id>
-    #or
+    # or
+    backlog tasks view <task-id>
+    # or
     backlog task <task-id>
     ```
 

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
@@ -87,7 +88,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 	};
 }
 
-const taskCmd = program.command("task");
+const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
 	.command("create <title>")
@@ -104,6 +105,77 @@ taskCmd
 		await core.createTask(task, true);
 		console.log(`Created task ${id}`);
 	});
+
+taskCmd
+	.command("list")
+	.description("list tasks grouped by status")
+	.action(async () => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const tasks = await core.filesystem.listTasks();
+		const config = await core.filesystem.loadConfig();
+
+		if (tasks.length === 0) {
+			console.log("No tasks found.");
+			return;
+		}
+
+		const groups = new Map<string, Task[]>();
+		for (const task of tasks) {
+			const status = task.status || "";
+			const list = groups.get(status) || [];
+			list.push(task);
+			groups.set(status, list);
+		}
+
+		const statuses = config?.statuses || [];
+		const ordered = [
+			...statuses.filter((s) => groups.has(s)),
+			...Array.from(groups.keys()).filter((s) => !statuses.includes(s)),
+		];
+
+		for (const status of ordered) {
+			const list = groups.get(status);
+			if (!list) continue;
+			console.log(`${status || "No Status"}:`);
+			for (const t of list) {
+				console.log(`  ${t.id} - ${t.title}`);
+			}
+			console.log();
+		}
+	});
+
+async function outputTask(taskId: string): Promise<void> {
+	const cwd = process.cwd();
+	const core = new Core(cwd);
+	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+	const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+	const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+
+	if (!taskFile) {
+		console.error(`Task ${taskId} not found.`);
+		return;
+	}
+
+	const filePath = join(core.filesystem.tasksDir, taskFile);
+	const content = await Bun.file(filePath).text();
+	console.log(content);
+}
+
+taskCmd
+	.command("view <taskId>")
+	.description("display task details")
+	.action(async (taskId: string) => {
+		await outputTask(taskId);
+	});
+
+taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
+	if (!taskId) {
+		taskCmd.help();
+		return;
+	}
+	await outputTask(taskId);
+});
 
 const draftCmd = program.command("draft");
 
