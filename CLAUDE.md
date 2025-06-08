@@ -45,3 +45,11 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 - **Pre-commit**: Husky + lint-staged automatically runs Biome checks before commits
 
 The pre-commit hook automatically runs `biome check --write` on staged files to ensure code quality. If linting errors are found, the commit will be blocked until fixed.
+
+## Definition of Done
+
+- Confirm that all acceptance criteria for the task are met.
+- Implement tests when necessary and ensure they pass.
+- Update documentation and related guides.
+- Add "## Implementation Notes" section to the task with key technical details, architectural decisions, and important changes made during implementation.
+- Mark the task as done using the Backlog CLI.

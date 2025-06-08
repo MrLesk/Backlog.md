@@ -17,8 +17,9 @@
 13. Version Control and Releases
 14. Emergency Procedures
 15. Project-Specific Rules
-16. Glossary
-17. Templates and Examples
+16. Definition of Done
+17. Glossary
+18. Templates and Examples
 
 ---
 
@@ -143,13 +144,19 @@
 - Use proper task prioritization
 - Maintain task dependencies
 - Follow project branching strategy
-- Add a line referencing subtask conventions and referencing
 
-## 16. Glossary
+## 16. Definition of Done
+- Ensure all acceptance criteria are satisfied.
+- Implement necessary tests and verify they pass.
+- Update relevant documentation.
+- Add "## Implementation Notes" section to the task with key technical details, architectural decisions, and important changes made during implementation.
+- Mark the task as done with the Backlog CLI.
+
+## 17. Glossary
 - Add a glossary of project-specific terms and acronyms
 - Add "Subtask" entry: decimal numbering, CLI creation, referencing, and storage
 
-## 17. Templates and Examples
+## 18. Templates and Examples
 - Add a `docs/` directory for guides (onboarding, semantic search, coding style, etc.)
 - Automate rule enforcement where possible (e.g., with pre-commit hooks, CI checks)
 - Regularly review and update rules to reflect project evolution and lessons learned

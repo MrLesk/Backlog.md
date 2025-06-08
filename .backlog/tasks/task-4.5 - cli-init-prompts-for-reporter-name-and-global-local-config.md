@@ -1,10 +1,11 @@
 ---
 id: task-4.5
 title: "CLI: Init prompts for reporter name and global/local config"
-status: "To Do"
+status: "Done"
 assignee: ""
 reporter: "@MrLesk"
 created_date: 2025-06-08
+updated_date: 2025-06-08
 labels: ["cli", "config"]
 milestone: "M1 - CLI"
 dependencies: ["task-3"]
@@ -21,7 +22,7 @@ Enhance `backlog init` with interactive prompts:
 
 ## Acceptance Criteria
 
-- [ ] Running `backlog init` asks for a default reporter name.
-- [ ] User can choose between storing the reporter setting globally or locally.
-- [ ] Choosing the local option creates a `.user` settings file and appends it to `.gitignore`.
-- [ ] Reporter name saved based on the chosen scope.
+- [x] Running `backlog init` asks for a default reporter name.
+- [x] User can choose between storing the reporter setting globally or locally.
+- [x] Choosing the local option creates a `.user` settings file and appends it to `.gitignore`.
+- [x] Reporter name saved based on the chosen scope.

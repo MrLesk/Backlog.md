@@ -2,7 +2,7 @@ export interface Task {
 	id: string;
 	title: string;
 	status: string;
-	assignee?: string;
+	assignee: string[];
 	reporter?: string;
 	createdDate: string;
 	updatedDate?: string;
@@ -39,6 +39,7 @@ export interface Document {
 export interface BacklogConfig {
 	projectName: string;
 	defaultAssignee?: string;
+	defaultReporter?: string;
 	statuses: string[];
 	labels: string[];
 	milestones: string[];

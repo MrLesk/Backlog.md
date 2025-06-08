@@ -24,6 +24,11 @@ If no git repository exists in the current folder, the command will ask whether
 to initialize one before continuing. Choose `y` to create a new repository or
 `n` to abort so you can run the command in the correct project directory.
 
+During initialization you will also be prompted for a default **reporter** name
+to use when creating tasks. You can choose to save this setting globally in your
+home directory or locally in a hidden `.user` file (which is automatically
+ignored by Git).
+
 Run the command locally using Bun:
 
 ```bash
@@ -83,6 +88,7 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
     ```
 
      Options:
+    - `-t, --title "<new title>"`
     - `-d, --description "<text>"`: Multi-line description.
     - `-a, --assignee "<username_or_email>"`
     - `-s, --status "<status_name>"`
@@ -94,6 +100,9 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
 
     ```shell
     backlog task archive <task-id>
+    backlog draft archive <task-id>
+    backlog draft promote <task-id>
+    backlog task demote <task-id>
     ```
 
 ## Drafts
@@ -104,6 +113,18 @@ To create a draft you can use:
 
 ```shell
 backlog draft create "<title>"
+```
+
+To promote a draft to the tasks list:
+
+```shell
+backlog draft promote <task-id>
+```
+
+To move a task back to drafts:
+
+```shell
+backlog task demote <task-id>
 ```
 
 ## Configuration
@@ -123,6 +144,29 @@ Example:
 ```shell
 backlog config set default_assignee @aiSupervisor
 ```
+
+## Migration: Assignee Field
+
+The `assignee` frontmatter key is now an array. New tasks are created with:
+
+```yaml
+assignee: []
+```
+
+For existing tasks using a single string, update:
+
+```yaml
+assignee: "@user"
+```
+
+to:
+
+```yaml
+assignee:
+  - "@user"
+```
+
+See `.backlog/docs/assignee-field-migration.md` for more details.
 
 ## Development
 
