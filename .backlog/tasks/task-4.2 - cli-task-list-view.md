@@ -1,8 +1,8 @@
 ---
 id: task-4.2
 title: "CLI: Task Listing and Viewing"
-status: "To Do"
-assignee: ""
+status: "Done"
+assignee: "@MrLesk"
 reporter: "@MrLesk"
 created_date: 2025-06-04
 labels: ["cli", "command"]
@@ -19,6 +19,6 @@ Add commands to browse tasks:
 
 ## Acceptance Criteria
 
-- [ ] Listing shows tasks grouped by status.
-- [ ] Viewing displays task details with Markdown formatting.
-- [ ] Commands do not modify task files.
+- [x] Listing shows tasks grouped by status.
+- [x] Viewing displays task details with Markdown formatting.
+- [x] Commands do not modify task files.
