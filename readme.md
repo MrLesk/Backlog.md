@@ -124,6 +124,29 @@ Example:
 backlog config set default_assignee @aiSupervisor
 ```
 
+## Migration: Assignee Field
+
+The `assignee` frontmatter key is now an array. New tasks are created with:
+
+```yaml
+assignee: []
+```
+
+For existing tasks using a single string, update:
+
+```yaml
+assignee: "@user"
+```
+
+to:
+
+```yaml
+assignee:
+  - "@user"
+```
+
+See `.backlog/docs/assignee-field-migration.md` for more details.
+
 ## Development
 
 Run these commands to bootstrap the project:

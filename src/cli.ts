@@ -74,7 +74,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 		id,
 		title,
 		status: options.status || "",
-		assignee: options.assignee,
+		assignee: options.assignee ? [String(options.assignee)] : [],
 		createdDate: new Date().toISOString().split("T")[0],
 		labels: options.labels
 			? String(options.labels)

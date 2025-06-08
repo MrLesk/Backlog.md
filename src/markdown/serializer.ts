@@ -6,7 +6,7 @@ export function serializeTask(task: Task): string {
 		id: task.id,
 		title: task.title,
 		status: task.status,
-		...(task.assignee && { assignee: task.assignee }),
+		assignee: task.assignee,
 		...(task.reporter && { reporter: task.reporter }),
 		created_date: task.createdDate,
 		...(task.updatedDate && { updated_date: task.updatedDate }),

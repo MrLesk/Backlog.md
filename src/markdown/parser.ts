@@ -16,7 +16,11 @@ export function parseTask(content: string): Task {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),
-		assignee: frontmatter.assignee ? String(frontmatter.assignee) : undefined,
+		assignee: Array.isArray(frontmatter.assignee)
+			? frontmatter.assignee.map(String)
+			: frontmatter.assignee
+				? [String(frontmatter.assignee)]
+				: [],
 		reporter: frontmatter.reporter ? String(frontmatter.reporter) : undefined,
 		createdDate: String(frontmatter.created_date || ""),
 		updatedDate: frontmatter.updated_date ? String(frontmatter.updated_date) : undefined,
