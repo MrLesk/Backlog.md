@@ -79,7 +79,7 @@ Fix the login bug that prevents users from signing in.
 			expect(task.id).toBe("task-1");
 			expect(task.title).toBe("Fix login bug");
 			expect(task.status).toBe("In Progress");
-			expect(task.assignee).toBe("@developer");
+			expect(task.assignee).toEqual(["@developer"]);
 			expect(task.reporter).toBe("@manager");
 			expect(task.createdDate).toBe("2025-06-03");
 			expect(task.labels).toEqual(["bug", "frontend"]);
@@ -106,7 +106,7 @@ Just a basic task.`;
 			expect(task.id).toBe("task-2");
 			expect(task.title).toBe("Simple task");
 			expect(task.status).toBe("");
-			expect(task.assignee).toBeUndefined();
+			expect(task.assignee).toEqual([]);
 			expect(task.reporter).toBeUndefined();
 			expect(task.labels).toEqual([]);
 			expect(task.dependencies).toEqual([]);
@@ -145,6 +145,20 @@ title: "Test with mixed criteria"
 			const task = parseTask(content);
 
 			expect(task.acceptanceCriteria).toEqual(["Todo item", "Done item", "Another todo"]);
+		});
+
+		it("should parse unquoted assignee names starting with @", () => {
+			const content = `---
+id: task-5
+title: "Assignee Test"
+assignee: @MrLesk
+---
+
+Test task.`;
+
+			const task = parseTask(content);
+
+			expect(task.assignee).toEqual(["@MrLesk"]);
 		});
 	});
 
@@ -237,7 +251,7 @@ describe("Markdown Serializer", () => {
 				id: "task-1",
 				title: "Test Task",
 				status: "To Do",
-				assignee: "@developer",
+				assignee: ["@developer"],
 				reporter: "@manager",
 				createdDate: "2025-06-03",
 				labels: ["bug", "frontend"],

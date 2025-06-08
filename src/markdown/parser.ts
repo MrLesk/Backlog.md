@@ -1,8 +1,41 @@
 import matter from "gray-matter";
 import type { DecisionLog, Document, ParsedMarkdown, Task } from "../types/index.ts";
 
+function preprocessFrontmatter(frontmatter: string): string {
+	return frontmatter
+		.split("\n")
+		.map((line) => {
+			const match = line.match(/^(\s*assignee:\s*)(.*)$/);
+			if (!match) return line;
+
+			const [, prefix, raw] = match;
+			const value = raw.trim();
+
+			if (
+				value &&
+				!value.startsWith("[") &&
+				!value.startsWith("'") &&
+				!value.startsWith('"') &&
+				!value.startsWith("-")
+			) {
+				return `${prefix}"${value.replace(/"/g, '\\"')}"`;
+			}
+			return line;
+		})
+		.join("\n");
+}
+
 export function parseMarkdown(content: string): ParsedMarkdown {
-	const parsed = matter(content);
+	const fmRegex = /^---\n([\s\S]*?)\n---/;
+	const match = content.match(fmRegex);
+	let toParse = content;
+
+	if (match) {
+		const processed = preprocessFrontmatter(match[1]);
+		toParse = content.replace(fmRegex, `---\n${processed}\n---`);
+	}
+
+	const parsed = matter(toParse);
 	return {
 		frontmatter: parsed.data,
 		content: parsed.content.trim(),
@@ -16,7 +49,11 @@ export function parseTask(content: string): Task {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),
-		assignee: frontmatter.assignee ? String(frontmatter.assignee) : undefined,
+		assignee: Array.isArray(frontmatter.assignee)
+			? frontmatter.assignee.map(String)
+			: frontmatter.assignee
+				? [String(frontmatter.assignee)]
+				: [],
 		reporter: frontmatter.reporter ? String(frontmatter.reporter) : undefined,
 		createdDate: String(frontmatter.created_date || ""),
 		updatedDate: frontmatter.updated_date ? String(frontmatter.updated_date) : undefined,

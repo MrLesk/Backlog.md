@@ -105,7 +105,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 		id,
 		title,
 		status: options.status || "",
-		assignee: options.assignee,
+		assignee: options.assignee ? [String(options.assignee)] : [],
 		createdDate: new Date().toISOString().split("T")[0],
 		labels: options.labels
 			? String(options.labels)
@@ -203,7 +203,7 @@ taskCmd
 			task.description = String(options.description);
 		}
 		if (typeof options.assignee !== "undefined") {
-			task.assignee = String(options.assignee);
+			task.assignee = [String(options.assignee)];
 		}
 		if (options.status) {
 			task.status = String(options.status);

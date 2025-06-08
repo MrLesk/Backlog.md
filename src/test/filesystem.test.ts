@@ -46,7 +46,7 @@ describe("FileSystem", () => {
 			id: "task-1",
 			title: "Test Task",
 			status: "To Do",
-			assignee: "@developer",
+			assignee: ["@developer"],
 			reporter: "@manager",
 			createdDate: "2025-06-03",
 			labels: ["test"],
