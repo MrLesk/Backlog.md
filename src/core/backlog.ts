@@ -30,6 +30,13 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
+		// Normalize assignee to array if it's a string (YAML allows both string and array)
+		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
+		if (typeof (task as any).assignee === "string") {
+			// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
+			(task as any).assignee = [(task as any).assignee];
+		}
+
 		await this.fs.saveTask(task);
 
 		if (autoCommit) {
@@ -49,6 +56,13 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
+		// Normalize assignee to array if it's a string (YAML allows both string and array)
+		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
+		if (typeof (task as any).assignee === "string") {
+			// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
+			(task as any).assignee = [(task as any).assignee];
+		}
+
 		await this.fs.saveDraft(task);
 
 		if (autoCommit) {
@@ -64,6 +78,13 @@ export class Core {
 	}
 
 	async updateTask(task: Task, autoCommit = true): Promise<void> {
+		// Normalize assignee to array if it's a string (YAML allows both string and array)
+		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
+		if (typeof (task as any).assignee === "string") {
+			// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
+			(task as any).assignee = [(task as any).assignee];
+		}
+
 		await this.fs.saveTask(task);
 
 		if (autoCommit) {

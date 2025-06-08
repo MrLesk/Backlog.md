@@ -203,7 +203,7 @@ taskCmd
 			task.description = String(options.description);
 		}
 		if (typeof options.assignee !== "undefined") {
-			task.assignee = String(options.assignee);
+			task.assignee = [String(options.assignee)];
 		}
 		if (options.status) {
 			task.status = String(options.status);

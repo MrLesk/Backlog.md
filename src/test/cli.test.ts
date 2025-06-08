@@ -159,6 +159,7 @@ describe("CLI Integration", () => {
 					id: "task-1",
 					title: "First Task",
 					status: "To Do",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -172,6 +173,7 @@ describe("CLI Integration", () => {
 					id: "task-2",
 					title: "Second Task",
 					status: "Done",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -185,6 +187,7 @@ describe("CLI Integration", () => {
 					id: "task-3",
 					title: "Third Task",
 					status: "To Do",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -234,7 +237,7 @@ describe("CLI Integration", () => {
 				id: "task-1",
 				title: "Test View Task",
 				status: "To Do",
-				assignee: "testuser",
+				assignee: ["testuser"],
 				createdDate: "2025-06-08",
 				labels: ["test", "cli"],
 				dependencies: [],
@@ -249,7 +252,7 @@ describe("CLI Integration", () => {
 			expect(loadedTask?.id).toBe("task-1");
 			expect(loadedTask?.title).toBe("Test View Task");
 			expect(loadedTask?.status).toBe("To Do");
-			expect(loadedTask?.assignee).toBe("testuser");
+			expect(loadedTask?.assignee).toEqual(["testuser"]);
 			expect(loadedTask?.labels).toEqual(["test", "cli"]);
 			expect(loadedTask?.description).toBe("This is a test task for view command");
 		});
@@ -263,6 +266,7 @@ describe("CLI Integration", () => {
 					id: "task-5",
 					title: "Prefix Test Task",
 					status: "Draft",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -296,6 +300,7 @@ describe("CLI Integration", () => {
 				id: "task-1",
 				title: "Read Only Test",
 				status: "To Do",
+				assignee: [],
 				createdDate: "2025-06-08",
 				labels: ["readonly"],
 				dependencies: [],
@@ -336,6 +341,7 @@ describe("CLI Integration", () => {
 					id: "task-1",
 					title: "Original Title",
 					status: "Draft",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -374,6 +380,7 @@ describe("CLI Integration", () => {
 					id: "task-2",
 					title: "Assignee Test",
 					status: "To Do",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -385,14 +392,14 @@ describe("CLI Integration", () => {
 			// Update assignee
 			const task = await core.filesystem.loadTask("task-2");
 			if (task) {
-				task.assignee = "newuser@example.com";
+				task.assignee = ["newuser@example.com"];
 				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, false);
 			}
 
 			// Verify assignee was updated
 			const updatedTask = await core.filesystem.loadTask("task-2");
-			expect(updatedTask?.assignee).toBe("newuser@example.com");
+			expect(updatedTask?.assignee).toEqual(["newuser@example.com"]);
 		});
 
 		it("should replace all labels with new labels", async () => {
@@ -404,6 +411,7 @@ describe("CLI Integration", () => {
 					id: "task-3",
 					title: "Label Replace Test",
 					status: "To Do",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["old1", "old2"],
 					dependencies: [],
@@ -434,6 +442,7 @@ describe("CLI Integration", () => {
 					id: "task-4",
 					title: "Label Add Test",
 					status: "To Do",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["existing"],
 					dependencies: [],
@@ -471,6 +480,7 @@ describe("CLI Integration", () => {
 					id: "task-5",
 					title: "Label Remove Test",
 					status: "To Do",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["keep1", "remove", "keep2"],
 					dependencies: [],
@@ -509,6 +519,7 @@ describe("CLI Integration", () => {
 					id: "task-6",
 					title: "Updated Date Test",
 					status: "Draft",
+					assignee: [],
 					createdDate: "2025-06-07",
 					labels: [],
 					dependencies: [],
@@ -540,6 +551,7 @@ describe("CLI Integration", () => {
 					id: "task-7",
 					title: "Commit Test",
 					status: "Draft",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -573,7 +585,7 @@ describe("CLI Integration", () => {
 					id: "task-8",
 					title: "YAML Test",
 					status: "Draft",
-					assignee: "testuser",
+					assignee: ["testuser"],
 					createdDate: "2025-06-08",
 					labels: ["yaml", "test"],
 					dependencies: ["task-1"],
@@ -596,7 +608,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.id).toBe("task-8");
 			expect(updatedTask?.title).toBe("Updated YAML Test");
 			expect(updatedTask?.status).toBe("In Progress");
-			expect(updatedTask?.assignee).toBe("testuser");
+			expect(updatedTask?.assignee).toEqual(["testuser"]);
 			expect(updatedTask?.createdDate).toBe("2025-06-08");
 			expect(updatedTask?.updatedDate).toBe("2025-06-08");
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
@@ -625,6 +637,7 @@ describe("CLI Integration", () => {
 					id: "task-1",
 					title: "Archive Test Task",
 					status: "Done",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["completed"],
 					dependencies: [],
@@ -663,6 +676,7 @@ describe("CLI Integration", () => {
 					id: "task-2",
 					title: "Demote Test Task",
 					status: "To Do",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["needs-revision"],
 					dependencies: [],
@@ -694,6 +708,7 @@ describe("CLI Integration", () => {
 					id: "task-3",
 					title: "Promote Test Draft",
 					status: "Draft",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["ready"],
 					dependencies: [],
@@ -725,6 +740,7 @@ describe("CLI Integration", () => {
 					id: "task-4",
 					title: "Archive Test Draft",
 					status: "Draft",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["cancelled"],
 					dependencies: [],
@@ -777,6 +793,7 @@ describe("CLI Integration", () => {
 					id: "task-5",
 					title: "Commit Archive Test",
 					status: "Done",
+					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
@@ -801,7 +818,7 @@ describe("CLI Integration", () => {
 				id: "task-6",
 				title: "Content Preservation Test",
 				status: "In Progress",
-				assignee: "testuser",
+				assignee: ["testuser"],
 				createdDate: "2025-06-08",
 				labels: ["important", "preservation-test"],
 				dependencies: ["task-1", "task-2"],
@@ -815,7 +832,7 @@ describe("CLI Integration", () => {
 			const asDraft = await core.filesystem.loadDraft("task-6");
 
 			expect(asDraft?.title).toBe(originalTask.title);
-			expect(asDraft?.assignee).toBe(originalTask.assignee);
+			expect(asDraft?.assignee).toEqual(originalTask.assignee);
 			expect(asDraft?.labels).toEqual(originalTask.labels);
 			expect(asDraft?.dependencies).toEqual(originalTask.dependencies);
 			expect(asDraft?.description).toBe(originalTask.description);
@@ -825,7 +842,7 @@ describe("CLI Integration", () => {
 			const backToTask = await core.filesystem.loadTask("task-6");
 
 			expect(backToTask?.title).toBe(originalTask.title);
-			expect(backToTask?.assignee).toBe(originalTask.assignee);
+			expect(backToTask?.assignee).toEqual(originalTask.assignee);
 			expect(backToTask?.labels).toEqual(originalTask.labels);
 			expect(backToTask?.dependencies).toEqual(originalTask.dependencies);
 			expect(backToTask?.description).toBe(originalTask.description);
