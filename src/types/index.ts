@@ -44,7 +44,6 @@ export interface BacklogConfig {
 	labels: string[];
 	milestones: string[];
 	defaultStatus?: string;
-	/** Date format used for created_date fields */
 	dateFormat: string;
 }
 
