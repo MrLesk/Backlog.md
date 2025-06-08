@@ -176,6 +176,69 @@ taskCmd
 		}
 	});
 
+taskCmd
+	.command("edit <taskId>")
+	.description("edit an existing task")
+	.option("-t, --title <title>")
+	.option("-d, --description <text>")
+	.option("-a, --assignee <assignee>")
+	.option("-s, --status <status>")
+	.option("-l, --label <labels>")
+	.option("--add-label <label>")
+	.option("--remove-label <label>")
+	.action(async (taskId: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const task = await core.filesystem.loadTask(taskId);
+
+		if (!task) {
+			console.error(`Task ${taskId} not found.`);
+			return;
+		}
+
+		if (options.title) {
+			task.title = String(options.title);
+		}
+		if (options.description) {
+			task.description = String(options.description);
+		}
+		if (typeof options.assignee !== "undefined") {
+			task.assignee = String(options.assignee);
+		}
+		if (options.status) {
+			task.status = String(options.status);
+		}
+
+		const labels = [...task.labels];
+		if (options.label) {
+			const newLabels = String(options.label)
+				.split(",")
+				.map((l: string) => l.trim())
+				.filter(Boolean);
+			labels.splice(0, labels.length, ...newLabels);
+		}
+		if (options.addLabel) {
+			const adds = Array.isArray(options.addLabel) ? options.addLabel : [options.addLabel];
+			for (const l of adds) {
+				const trimmed = String(l).trim();
+				if (trimmed && !labels.includes(trimmed)) labels.push(trimmed);
+			}
+		}
+		if (options.removeLabel) {
+			const removes = Array.isArray(options.removeLabel) ? options.removeLabel : [options.removeLabel];
+			for (const l of removes) {
+				const trimmed = String(l).trim();
+				const idx = labels.indexOf(trimmed);
+				if (idx !== -1) labels.splice(idx, 1);
+			}
+		}
+		task.labels = labels;
+		task.updatedDate = new Date().toISOString().split("T")[0];
+
+		await core.updateTask(task, true);
+		console.log(`Updated task ${task.id}`);
+	});
+
 async function outputTask(taskId: string): Promise<void> {
 	const cwd = process.cwd();
 	const core = new Core(cwd);
@@ -198,6 +261,34 @@ taskCmd
 	.description("display task details")
 	.action(async (taskId: string) => {
 		await outputTask(taskId);
+	});
+
+taskCmd
+	.command("archive <taskId>")
+	.description("archive a task")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.archiveTask(taskId, true);
+		if (success) {
+			console.log(`Archived task ${taskId}`);
+		} else {
+			console.error(`Task ${taskId} not found.`);
+		}
+	});
+
+taskCmd
+	.command("demote <taskId>")
+	.description("move task back to drafts")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.demoteTask(taskId, true);
+		if (success) {
+			console.log(`Demoted task ${taskId}`);
+		} else {
+			console.error(`Task ${taskId} not found.`);
+		}
 	});
 
 taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
@@ -223,6 +314,34 @@ draftCmd
 		const task = buildTaskFromOptions(id, title, options);
 		await core.createDraft(task, true);
 		console.log(`Created draft ${id}`);
+	});
+
+draftCmd
+	.command("archive <taskId>")
+	.description("archive a draft")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.archiveDraft(taskId, true);
+		if (success) {
+			console.log(`Archived draft ${taskId}`);
+		} else {
+			console.error(`Draft ${taskId} not found.`);
+		}
+	});
+
+draftCmd
+	.command("promote <taskId>")
+	.description("promote draft to task")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.promoteDraft(taskId, true);
+		if (success) {
+			console.log(`Promoted draft ${taskId}`);
+		} else {
+			console.error(`Draft ${taskId} not found.`);
+		}
 	});
 
 program.parseAsync(process.argv);

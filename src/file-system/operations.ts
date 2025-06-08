@@ -138,6 +138,75 @@ export class FileSystem {
 		}
 	}
 
+	async archiveDraft(taskId: string): Promise<boolean> {
+		try {
+			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
+			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+
+			if (!taskFile) return false;
+
+			const sourcePath = join(this.draftsDir, taskFile);
+			const targetPath = join(this.archiveDraftsDir, taskFile);
+
+			const content = await Bun.file(sourcePath).text();
+			await this.ensureDirectoryExists(dirname(targetPath));
+			await Bun.write(targetPath, content);
+
+			await unlink(sourcePath);
+
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	async promoteDraft(taskId: string): Promise<boolean> {
+		try {
+			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
+			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+
+			if (!taskFile) return false;
+
+			const sourcePath = join(this.draftsDir, taskFile);
+			const targetPath = join(this.tasksDir, taskFile);
+
+			const content = await Bun.file(sourcePath).text();
+			await this.ensureDirectoryExists(dirname(targetPath));
+			await Bun.write(targetPath, content);
+
+			await unlink(sourcePath);
+
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	async demoteTask(taskId: string): Promise<boolean> {
+		try {
+			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.tasksDir }));
+			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+
+			if (!taskFile) return false;
+
+			const sourcePath = join(this.tasksDir, taskFile);
+			const targetPath = join(this.draftsDir, taskFile);
+
+			const content = await Bun.file(sourcePath).text();
+			await this.ensureDirectoryExists(dirname(targetPath));
+			await Bun.write(targetPath, content);
+
+			await unlink(sourcePath);
+
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	// Draft operations
 	async saveDraft(task: Task): Promise<void> {
 		const taskId = task.id.startsWith("task-") ? task.id : `task-${task.id}`;
