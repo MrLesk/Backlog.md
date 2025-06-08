@@ -145,6 +145,69 @@ taskCmd
 		}
 	});
 
+taskCmd
+	.command("edit <taskId>")
+	.description("edit an existing task")
+	.option("-t, --title <title>")
+	.option("-d, --description <text>")
+	.option("-a, --assignee <assignee>")
+	.option("-s, --status <status>")
+	.option("-l, --label <labels>")
+	.option("--add-label <label>")
+	.option("--remove-label <label>")
+	.action(async (taskId: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const task = await core.filesystem.loadTask(taskId);
+
+		if (!task) {
+			console.error(`Task ${taskId} not found.`);
+			return;
+		}
+
+		if (options.title) {
+			task.title = String(options.title);
+		}
+		if (options.description) {
+			task.description = String(options.description);
+		}
+		if (typeof options.assignee !== "undefined") {
+			task.assignee = String(options.assignee);
+		}
+		if (options.status) {
+			task.status = String(options.status);
+		}
+
+		const labels = [...task.labels];
+		if (options.label) {
+			const newLabels = String(options.label)
+				.split(",")
+				.map((l: string) => l.trim())
+				.filter(Boolean);
+			labels.splice(0, labels.length, ...newLabels);
+		}
+		if (options.addLabel) {
+			const adds = Array.isArray(options.addLabel) ? options.addLabel : [options.addLabel];
+			for (const l of adds) {
+				const trimmed = String(l).trim();
+				if (trimmed && !labels.includes(trimmed)) labels.push(trimmed);
+			}
+		}
+		if (options.removeLabel) {
+			const removes = Array.isArray(options.removeLabel) ? options.removeLabel : [options.removeLabel];
+			for (const l of removes) {
+				const trimmed = String(l).trim();
+				const idx = labels.indexOf(trimmed);
+				if (idx !== -1) labels.splice(idx, 1);
+			}
+		}
+		task.labels = labels;
+		task.updatedDate = new Date().toISOString().split("T")[0];
+
+		await core.updateTask(task, true);
+		console.log(`Updated task ${task.id}`);
+	});
+
 async function outputTask(taskId: string): Promise<void> {
 	const cwd = process.cwd();
 	const core = new Core(cwd);
