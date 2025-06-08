@@ -97,6 +97,7 @@ export class Core {
 			labels: [],
 			milestones: [],
 			defaultStatus: DEFAULT_STATUSES[0], // Use first status as default
+			dateFormat: "yyyy-mm-dd",
 		};
 
 		await this.fs.saveConfig(config);

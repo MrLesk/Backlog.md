@@ -297,6 +297,9 @@ export class FileSystem {
 							.filter(Boolean);
 					}
 					break;
+				case "date_format":
+					config.dateFormat = value.replace(/['"]/g, "");
+					break;
 			}
 		}
 
@@ -307,6 +310,7 @@ export class FileSystem {
 			labels: config.labels || [],
 			milestones: config.milestones || [],
 			defaultStatus: config.defaultStatus,
+			dateFormat: config.dateFormat || "yyyy-mm-dd",
 		};
 	}
 
@@ -318,6 +322,7 @@ export class FileSystem {
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			`milestones: [${config.milestones.map((m) => `"${m}"`).join(", ")}]`,
+			`date_format: ${config.dateFormat}`,
 		];
 
 		return lines.join("\n");

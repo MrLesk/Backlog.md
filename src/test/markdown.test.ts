@@ -130,6 +130,30 @@ Task without status.`;
 			expect(task.createdDate).toBe("2025-06-07");
 		});
 
+		it("should parse unquoted created_date", () => {
+			const content = `---
+id: task-5
+title: "Unquoted"
+created_date: 2025-06-08
+---`;
+
+			const task = parseTask(content);
+
+			expect(task.createdDate).toBe("2025-06-08");
+		});
+
+		it("should parse created_date in short format", () => {
+			const content = `---
+id: task-6
+title: "Short"
+created_date: 08-06-25
+---`;
+
+			const task = parseTask(content);
+
+			expect(task.createdDate).toBe("2025-06-08");
+		});
+
 		it("should extract acceptance criteria with checked items", () => {
 			const content = `---
 id: task-4
