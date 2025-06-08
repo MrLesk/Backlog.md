@@ -1,5 +1,5 @@
 ---
-id: task-4.5
+id: task-4.6
 title: "CLI: Add empty assignee array field for new tasks"
 status: "To Do"
 assignee: []
