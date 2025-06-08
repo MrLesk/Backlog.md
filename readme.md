@@ -83,6 +83,7 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
     ```
 
      Options:
+    - `-t, --title "<new title>"`
     - `-d, --description "<text>"`: Multi-line description.
     - `-a, --assignee "<username_or_email>"`
     - `-s, --status "<status_name>"`
