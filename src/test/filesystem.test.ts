@@ -96,6 +96,16 @@ describe("FileSystem", () => {
 			const archiveFiles = await readdir(join(TEST_DIR, ".backlog", "archive", "tasks"));
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
+
+		it("should demote a task to drafts", async () => {
+			await filesystem.saveTask(sampleTask);
+
+			const demoted = await filesystem.demoteTask("task-1");
+			expect(demoted).toBe(true);
+
+			const draft = await filesystem.loadDraft("task-1");
+			expect(draft?.id).toBe("task-1");
+		});
 	});
 
 	describe("draft operations", () => {
@@ -125,6 +135,29 @@ describe("FileSystem", () => {
 			const drafts = await filesystem.listDrafts();
 			expect(drafts.map((d) => d.id)).toEqual(["task-draft", "task-draft2"]);
 		});
+
+		it("should promote a draft to tasks", async () => {
+			await filesystem.saveDraft(sampleDraft);
+
+			const promoted = await filesystem.promoteDraft("task-draft");
+			expect(promoted).toBe(true);
+
+			const task = await filesystem.loadTask("task-draft");
+			expect(task?.id).toBe("task-draft");
+		});
+
+		it("should archive a draft", async () => {
+			await filesystem.saveDraft(sampleDraft);
+
+			const archived = await filesystem.archiveDraft("task-draft");
+			expect(archived).toBe(true);
+
+			const draft = await filesystem.loadDraft("task-draft");
+			expect(draft).toBeNull();
+
+			const files = await readdir(join(TEST_DIR, ".backlog", "archive", "drafts"));
+			expect(files.some((f) => f.startsWith("task-draft"))).toBe(true);
+		});
 	});
 
 	describe("config operations", () => {
@@ -132,6 +165,7 @@ describe("FileSystem", () => {
 			projectName: "Test Project",
 			defaultAssignee: "@admin",
 			defaultStatus: "Draft",
+			defaultReporter: undefined,
 			statuses: ["Draft", "To Do", "In Progress", "Done"],
 			labels: ["bug", "feature"],
 			milestones: ["v1.0", "v2.0"],
@@ -151,6 +185,20 @@ describe("FileSystem", () => {
 
 			const config = await freshFilesystem.loadConfig();
 			expect(config).toBeNull();
+		});
+
+		it("should handle defaultReporter field", async () => {
+			const cfg: BacklogConfig = {
+				projectName: "Reporter",
+				defaultReporter: "@author",
+				statuses: ["To Do"],
+				labels: [],
+				milestones: [],
+			};
+
+			await filesystem.saveConfig(cfg);
+			const loaded = await filesystem.loadConfig();
+			expect(loaded?.defaultReporter).toBe("@author");
 		});
 	});
 
@@ -290,6 +338,7 @@ describe("FileSystem", () => {
 				projectName: "Full Project",
 				defaultAssignee: "@admin",
 				defaultStatus: "Draft",
+				defaultReporter: undefined,
 				statuses: ["Draft", "To Do", "In Progress", "Done"],
 				labels: ["bug", "feature", "enhancement"],
 				milestones: ["v1.0", "v1.1", "v2.0"],

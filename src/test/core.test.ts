@@ -113,6 +113,16 @@ describe("Core", () => {
 			expect(lastCommit).toContain("backlog: Archive task task-1");
 		});
 
+		it("should demote task with auto-commit", async () => {
+			await core.createTask(sampleTask, true);
+
+			const demoted = await core.demoteTask("task-1", true);
+			expect(demoted).toBe(true);
+
+			const lastCommit = await core.gitOps.getLastCommitMessage();
+			expect(lastCommit).toContain("backlog: Demote task task-1");
+		});
+
 		it("should return false when archiving non-existent task", async () => {
 			const archived = await core.archiveTask("non-existent", true);
 			expect(archived).toBe(false);
@@ -187,6 +197,26 @@ describe("Core", () => {
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toBeDefined();
 			expect(lastCommit.length).toBeGreaterThan(0);
+		});
+
+		it("should promote draft with auto-commit", async () => {
+			await core.createDraft(sampleDraft, true);
+
+			const promoted = await core.promoteDraft("task-draft", true);
+			expect(promoted).toBe(true);
+
+			const lastCommit = await core.gitOps.getLastCommitMessage();
+			expect(lastCommit).toContain("backlog: Promote draft task-draft");
+		});
+
+		it("should archive draft with auto-commit", async () => {
+			await core.createDraft(sampleDraft, true);
+
+			const archived = await core.archiveDraft("task-draft", true);
+			expect(archived).toBe(true);
+
+			const lastCommit = await core.gitOps.getLastCommitMessage();
+			expect(lastCommit).toContain("backlog: Archive draft task-draft");
 		});
 	});
 

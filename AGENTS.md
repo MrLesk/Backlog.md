@@ -23,3 +23,10 @@ Each folder contains a `readme.md` file with instructions on how to use the Back
 - Keep all project documentation in Markdown format and update the related `readme.md` files when necessary.
 - Ensure the working tree is clean (`git status`) before committing changes.
 - The branch name should reflect the task being worked on, e.g., `<task-id> feature description`.
+
+## Definition of Done
+
+- All acceptance criteria for the task are satisfied.
+- Required tests are implemented and pass.
+- Documentation and related `readme.md` files are updated.
+- The task is marked as done using the Backlog CLI.

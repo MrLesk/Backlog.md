@@ -26,6 +26,8 @@ export const DEFAULT_DIRECTORIES = {
 export const DEFAULT_FILES = {
 	/** Main configuration file */
 	CONFIG: "config.yml",
+	/** Local user settings file */
+	USER: ".user",
 } as const;
 
 /**
