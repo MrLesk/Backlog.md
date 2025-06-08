@@ -16,4 +16,4 @@ Update agent guidelines so that after implementing and testing a task, they use 
 
 ## Acceptance Criteria
 - [ ] Documentation instructs agents to run `backlog task edit <task-id> --status Done` after testing.
-- [ ] Example usage included in AGENTS.md or related docs.
+- [ ] Example usage included in AGENTS.md, CLAUDE.md and .cursorrules files
