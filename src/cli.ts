@@ -169,6 +169,34 @@ taskCmd
 		await outputTask(taskId);
 	});
 
+taskCmd
+	.command("archive <taskId>")
+	.description("archive a task")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.archiveTask(taskId, true);
+		if (success) {
+			console.log(`Archived task ${taskId}`);
+		} else {
+			console.error(`Task ${taskId} not found.`);
+		}
+	});
+
+taskCmd
+	.command("demote <taskId>")
+	.description("move task back to drafts")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.demoteTask(taskId, true);
+		if (success) {
+			console.log(`Demoted task ${taskId}`);
+		} else {
+			console.error(`Task ${taskId} not found.`);
+		}
+	});
+
 taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
 	if (!taskId) {
 		taskCmd.help();
@@ -192,6 +220,34 @@ draftCmd
 		const task = buildTaskFromOptions(id, title, options);
 		await core.createDraft(task, true);
 		console.log(`Created draft ${id}`);
+	});
+
+draftCmd
+	.command("archive <taskId>")
+	.description("archive a draft")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.archiveDraft(taskId, true);
+		if (success) {
+			console.log(`Archived draft ${taskId}`);
+		} else {
+			console.error(`Draft ${taskId} not found.`);
+		}
+	});
+
+draftCmd
+	.command("promote <taskId>")
+	.description("promote draft to task")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.promoteDraft(taskId, true);
+		if (success) {
+			console.log(`Promoted draft ${taskId}`);
+		} else {
+			console.error(`Draft ${taskId} not found.`);
+		}
 	});
 
 program.parseAsync(process.argv);

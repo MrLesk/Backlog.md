@@ -88,6 +88,36 @@ export class Core {
 		return success;
 	}
 
+	async archiveDraft(taskId: string, autoCommit = true): Promise<boolean> {
+		const success = await this.fs.archiveDraft(taskId);
+
+		if (success && autoCommit) {
+			await this.git.commitBacklogChanges(`Archive draft ${taskId}`);
+		}
+
+		return success;
+	}
+
+	async promoteDraft(taskId: string, autoCommit = true): Promise<boolean> {
+		const success = await this.fs.promoteDraft(taskId);
+
+		if (success && autoCommit) {
+			await this.git.commitBacklogChanges(`Promote draft ${taskId}`);
+		}
+
+		return success;
+	}
+
+	async demoteTask(taskId: string, autoCommit = true): Promise<boolean> {
+		const success = await this.fs.demoteTask(taskId);
+
+		if (success && autoCommit) {
+			await this.git.commitBacklogChanges(`Demote task ${taskId}`);
+		}
+
+		return success;
+	}
+
 	async initializeProject(projectName: string): Promise<void> {
 		await this.fs.ensureBacklogStructure();
 

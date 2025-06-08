@@ -94,6 +94,9 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
 
     ```shell
     backlog task archive <task-id>
+    backlog draft archive <task-id>
+    backlog draft promote <task-id>
+    backlog task demote <task-id>
     ```
 
 ## Drafts
@@ -104,6 +107,18 @@ To create a draft you can use:
 
 ```shell
 backlog draft create "<title>"
+```
+
+To promote a draft to the tasks list:
+
+```shell
+backlog draft promote <task-id>
+```
+
+To move a task back to drafts:
+
+```shell
+backlog task demote <task-id>
 ```
 
 ## Configuration
