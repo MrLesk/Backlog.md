@@ -24,6 +24,11 @@ If no git repository exists in the current folder, the command will ask whether
 to initialize one before continuing. Choose `y` to create a new repository or
 `n` to abort so you can run the command in the correct project directory.
 
+During initialization you will also be prompted for a default **reporter** name
+to use when creating tasks. You can choose to save this setting globally in your
+home directory or locally in a hidden `.user` file (which is automatically
+ignored by Git).
+
 Run the command locally using Bun:
 
 ```bash

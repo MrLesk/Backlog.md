@@ -1,4 +1,6 @@
-import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
@@ -31,9 +33,38 @@ program
 				}
 			}
 
+			const rl = createInterface({ input, output });
+			const reporter = (await rl.question("Default reporter name (leave blank to skip): ")).trim();
+			let storeGlobal = false;
+			if (reporter) {
+				const scope = (await rl.question("Store reporter name globally? [y/N] ")).trim().toLowerCase();
+				storeGlobal = scope.startsWith("y");
+			}
+			rl.close();
+
 			const core = new Core(cwd);
 			await core.initializeProject(projectName);
 			console.log(`Initialized backlog project: ${projectName}`);
+
+			if (reporter) {
+				if (storeGlobal) {
+					const globalPath = join(homedir(), ".backlog", "user");
+					await mkdir(dirname(globalPath), { recursive: true });
+					await Bun.write(globalPath, `default_reporter: "${reporter}"\n`);
+				} else {
+					const userPath = join(cwd, ".user");
+					await Bun.write(userPath, `default_reporter: "${reporter}"\n`);
+					const gitignorePath = join(cwd, ".gitignore");
+					let gitignore = "";
+					try {
+						gitignore = await Bun.file(gitignorePath).text();
+					} catch {}
+					if (!gitignore.split(/\r?\n/).includes(".user")) {
+						gitignore += `${gitignore.endsWith("\n") ? "" : "\n"}.user\n`;
+						await Bun.write(gitignorePath, gitignore);
+					}
+				}
+			}
 		} catch (err) {
 			console.error("Failed to initialize project", err);
 			process.exitCode = 1;

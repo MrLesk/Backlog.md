@@ -283,6 +283,9 @@ export class FileSystem {
 				case "default_assignee":
 					config.defaultAssignee = value.replace(/['"]/g, "");
 					break;
+				case "default_reporter":
+					config.defaultReporter = value.replace(/['"]/g, "");
+					break;
 				case "default_status":
 					config.defaultStatus = value.replace(/['"]/g, "");
 					break;
@@ -303,6 +306,7 @@ export class FileSystem {
 		return {
 			projectName: config.projectName || "",
 			defaultAssignee: config.defaultAssignee,
+			defaultReporter: config.defaultReporter,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
 			labels: config.labels || [],
 			milestones: config.milestones || [],
@@ -314,6 +318,7 @@ export class FileSystem {
 		const lines = [
 			`project_name: "${config.projectName}"`,
 			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
+			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
