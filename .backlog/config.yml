@@ -3,3 +3,4 @@ default_status: "Draft"
 statuses: ["Draft", "To Do", "In Progress", "Done"]
 labels: []
 milestones: []
+date_format: yyyy-mm-dd
