@@ -2,8 +2,8 @@
 id: task-12
 title: "GUI: Implement GUI for Drafts, Docs, Decisions"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["gui", "feature"]
 milestone: "M5 - Advanced GUI Features"

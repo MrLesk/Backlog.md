@@ -1,9 +1,9 @@
 ---
 id: task-4.6
 title: "CLI: Add empty assignee array field for new tasks"
-status: "Done"
-assignee: []
-reporter: "@MrLesk"
+status: Done
+assignee: @MrLesk
+reporter: @MrLesk
 created_date: 2025-06-08
 updated_date: 2025-06-08
 labels: ["cli", "command"]

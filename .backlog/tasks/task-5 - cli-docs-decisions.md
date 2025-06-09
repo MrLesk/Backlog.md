@@ -2,8 +2,8 @@
 id: task-5
 title: "CLI: Implement Docs & Decisions CLI Commands (Basic)"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["cli", "command"]
 milestone: "M1 - CLI"

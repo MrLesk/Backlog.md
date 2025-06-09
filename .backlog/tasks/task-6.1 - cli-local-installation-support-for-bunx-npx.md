@@ -2,11 +2,10 @@
 id: task-6.1
 title: 'CLI: Local installation support for bunx/npx'
 status: "To Do"
-created_date: '2025-06-08'
-labels:
-  - cli
+created_date: 2025-06-08
+labels: [cli]
 dependencies: []
-parent_task_id: 'task-6'
+parent_task_id: task-6
 ---
 
 ## Description

@@ -2,8 +2,8 @@
 id: task-4.5
 title: "CLI: Init prompts for reporter name and global/local config"
 status: "Done"
-assignee: ""
-reporter: "@MrLesk"
+assignee: @MrLesk
+reporter: @MrLesk
 created_date: 2025-06-08
 updated_date: 2025-06-08
 labels: ["cli", "config"]

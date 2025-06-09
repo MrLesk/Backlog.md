@@ -54,7 +54,7 @@ export function parseTask(content: string): Task {
 				: [],
 		reporter: frontmatter.reporter ? String(frontmatter.reporter) : undefined,
 		createdDate: normalizeDate(frontmatter.created_date),
-		updatedDate: frontmatter.updated_date ? String(frontmatter.updated_date) : undefined,
+		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],

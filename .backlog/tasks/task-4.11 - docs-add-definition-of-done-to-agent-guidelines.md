@@ -2,8 +2,8 @@
 id: task-4.11
 title: 'Docs: add definition of done to agent guidelines'
 status: Done
-created_date: '2025-06-08'
-updated_date: '2025-06-08'
+created_date: 2025-06-08
+updated_date: 2025-06-08
 labels:
   - docs
   - agents

@@ -2,8 +2,8 @@
 id: task-7
 title: "Kanban Board: Implement CLI Text-Based Kanban Board View"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["cli", "command"]
 milestone: "M2 - CLI Kanban Board"
