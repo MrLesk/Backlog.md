@@ -1,4 +1,4 @@
-project_name: "Test Project"
+project_name: "Backlog.md"
 default_status: "Draft"
 statuses: ["Draft", "To Do", "In Progress", "Done"]
 labels: []
