@@ -5,6 +5,7 @@ status: Done
 assignee: []
 created_date: '2025-06-09'
 updated_date: '2025-06-09'
+completed_date: '2025-06-09'
 labels: []
 dependencies: []
 ---
@@ -27,3 +28,6 @@ Display subtasks indented with pipes | and em dashes — under their parent task
   indentation.
 * Added new unit test `nests subtasks under their parent when statuses match`
   in `src/test/board.test.ts`.
+* Successfully integrated subtask functionality with ID sorting (task 23), vertical layout (task 21), and export features (task 25).
+* Enhanced sorting to use `compareIds` for both parent tasks and subtasks, ensuring proper numeric ordering.
+* Subtask functionality works seamlessly across all board layouts (horizontal/vertical) and export operations.
