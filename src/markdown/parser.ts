@@ -113,6 +113,20 @@ export function parseDecisionLog(content: string): DecisionLog {
 	};
 }
 
+export function parseDocument(content: string): Document {
+	const { frontmatter, content: body } = parseMarkdown(content);
+
+	return {
+		id: String(frontmatter.id || ""),
+		title: String(frontmatter.title || ""),
+		type: String(frontmatter.type || "other") as Document["type"],
+		createdDate: normalizeDate(frontmatter.created_date),
+		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
+		content: body,
+		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+	};
+}
+
 function extractAcceptanceCriteria(content: string): string[] {
 	const criteriaSection = extractSection(content, "Acceptance Criteria");
 	if (!criteriaSection) return [];

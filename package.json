@@ -21,7 +21,7 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"prepare": "husky",
-		"build": "bun build src/cli.ts --outdir cli --target node && echo '#!/usr/bin/env node\nimport(\"./cli.js\");' > cli/index.js && chmod +x cli/index.js",
+		"build": "bun build src/cli.ts --outdir cli --target node && echo '#!/usr/bin/env node\nimport(\"./cli.js\");' > cli/index.js && chmod +x cli/index.js && bun build src/cli.ts --compile --outfile cli/backlog && chmod +x cli/backlog",
 		"cli": "bun src/cli.ts"
 	},
 	"lint-staged": {

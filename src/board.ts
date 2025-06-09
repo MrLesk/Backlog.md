@@ -13,10 +13,11 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 		groups.set(status, list);
 	}
 
-	const ordered = [
-		...statuses.filter((s) => groups.has(s)),
-		...Array.from(groups.keys()).filter((s) => !statuses.includes(s)),
-	];
+	// If no tasks, still show the configured statuses
+	const ordered =
+		tasks.length > 0
+			? [...statuses.filter((s) => groups.has(s)), ...Array.from(groups.keys()).filter((s) => !statuses.includes(s))]
+			: statuses;
 
 	const columns = ordered.map((status) => groups.get(status) || []);
 
