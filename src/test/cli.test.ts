@@ -1057,5 +1057,44 @@ describe("CLI Integration", () => {
 			const final = tasksById.get("task-1");
 			expect(final?.status).toBe("Done");
 		});
+
+		it("should export kanban board to file", async () => {
+			const core = new Core(TEST_DIR);
+
+			// Create test tasks
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Export Test Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-09",
+					labels: [],
+					dependencies: [],
+					description: "Testing board export",
+				},
+				false,
+			);
+
+			const { exportKanbanBoardToFile } = await import("../index.ts");
+			const outputPath = join(TEST_DIR, "test-export.md");
+			const tasks = await core.filesystem.listTasks();
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			await exportKanbanBoardToFile(tasks, statuses, outputPath);
+
+			// Verify file was created and contains expected content
+			const content = await Bun.file(outputPath).text();
+			expect(content).toContain("To Do");
+			expect(content).toContain("task-1");
+			expect(content).toContain("Export Test Task");
+
+			// Test appending behavior
+			await exportKanbanBoardToFile(tasks, statuses, outputPath);
+			const appendedContent = await Bun.file(outputPath).text();
+			const occurrences = appendedContent.split("task-1").length - 1;
+			expect(occurrences).toBe(2); // Should appear twice after appending
+		});
 	});
 });
