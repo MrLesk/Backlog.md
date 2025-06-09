@@ -1,10 +1,11 @@
 ---
 id: task-13.1
-title: "CLI: Agent Instruction File Selection"
-status: "To Do"
+title: 'CLI: Agent Instruction File Selection'
+status: Done
 assignee: []
-reporter: @MrLesk
+reporter: '@MrLesk'
 created_date: '2025-06-09'
+updated_date: '2025-06-09'
 labels:
   - cli
   - agents

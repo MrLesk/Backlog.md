@@ -23,4 +23,4 @@ export { Core } from "./core/backlog.ts";
 
 // Kanban board utilities
 export { generateKanbanBoard, exportKanbanBoardToFile } from "./board.ts";
-export { addAgentInstructions } from "./agent-instructions.ts";
+export { addAgentInstructions, type AgentInstructionFile } from "./agent-instructions.ts";
