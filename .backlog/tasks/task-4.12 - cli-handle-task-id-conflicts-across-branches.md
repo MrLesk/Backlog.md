@@ -1,7 +1,7 @@
 ---
 id: task-4.12
 title: 'CLI: Handle task ID conflicts across branches'
-status: To Do
+status: Done
 assignee: []
 reporter: @MrLesk
 created_date: '2025-06-09'
@@ -13,5 +13,10 @@ parent_task_id: task-4
 Implement detection of the latest task ID across all remote branches when creating a new task. The CLI should fetch branch references and inspect task files, similar to the kanban board remote status check, to determine the highest available ID before assigning the next one.
 
 ## Acceptance Criteria
-- [ ] `backlog task create` checks all remote branches for task files and chooses the next sequential ID.
-- [ ] New tasks always use an ID higher than any found across branches to avoid conflicts.
+ - [x] `backlog task create` checks all remote branches for task files and chooses the next sequential ID.
+ - [x] New tasks always use an ID higher than any found across branches to avoid conflicts.
+
+## Implementation Notes
+- Added git helpers `fetch`, `listRemoteBranches`, and `listFilesInRemoteBranch`.
+- `generateNextId` now scans remote branches for task files before assigning the next ID.
+- Created test `remote-id-conflict.test.ts` verifying new task IDs respect remote branches.
