@@ -32,6 +32,7 @@ describe("CLI parent task id normalization", () => {
 			id: "task-4",
 			title: "Parent",
 			status: "To Do",
+			assignee: [],
 			createdDate: "2025-06-08",
 			labels: [],
 			dependencies: [],
