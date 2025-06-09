@@ -38,6 +38,11 @@
 - Subtasks are created using the CLI with the --parent <task-id> flag; the next decimal ID is assigned automatically.
 - Always reference subtasks by their full decimal ID in commit messages, PR titles, and documentation.
 - Subtasks are stored in the same .backlog/tasks/ directory as main tasks.
+- After completing and testing a task, set its status to Done via CLI:
+
+```bash
+backlog task edit <task-id> --status Done
+```
 
 ## 3. Documentation
 3.1 All documentation must be in Markdown format

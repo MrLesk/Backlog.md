@@ -36,6 +36,11 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 - Follow decimal numbering for subtasks
 - Maintain clean git status before commits
 - Use task-descriptive branch names: `<task-id> feature description`
+- After testing a task, mark it **Done** with:
+
+```bash
+backlog task edit <task-id> --status Done
+```
 
 ### Code Standards
 - **Runtime**: Bun with TypeScript 5
