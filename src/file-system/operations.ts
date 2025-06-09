@@ -391,7 +391,7 @@ export class FileSystem {
 			: join(this.projectRoot, DEFAULT_FILES.USER);
 		await this.ensureDirectoryExists(dirname(filePath));
 		const lines = Object.entries(settings).map(([k, v]) => `${k}: ${v}`);
-		await Bun.write(filePath, lines.join("\n"));
+		await Bun.write(filePath, `${lines.join("\n")}\n`);
 	}
 
 	// Utility methods
@@ -478,6 +478,6 @@ export class FileSystem {
 			`date_format: ${config.dateFormat}`,
 		];
 
-		return lines.join("\n");
+		return `${lines.join("\n")}\n`;
 	}
 }
