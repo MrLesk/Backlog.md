@@ -60,10 +60,8 @@ export class Core {
 	}
 
 	async createDraft(task: Task, autoCommit = true): Promise<void> {
-		if (!task.status) {
-			const config = await this.fs.loadConfig();
-			task.status = config?.defaultStatus || FALLBACK_STATUS;
-		}
+		// Drafts always have status "Draft", regardless of config default
+		task.status = "Draft";
 
 		// Normalize assignee to array if it's a string (YAML allows both string and array)
 		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
