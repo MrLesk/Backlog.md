@@ -1001,5 +1001,62 @@ describe("CLI Integration", () => {
 			const lines = board.split("\n");
 			expect(lines).toHaveLength(2); // Header + separator only
 		});
+
+		it("should merge task status from remote branches", async () => {
+			const core = new Core(TEST_DIR);
+
+			const task = {
+				id: "task-1",
+				title: "Remote Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-09",
+				labels: [],
+				dependencies: [],
+				description: "from remote",
+			} as Task;
+
+			await core.createTask(task, true);
+
+			// set up remote repository
+			const remoteDir = join(TEST_DIR, "remote.git");
+			await Bun.spawn(["git", "init", "--bare", remoteDir]).exited;
+			await Bun.spawn(["git", "remote", "add", "origin", remoteDir], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "push", "-u", "origin", "master"], { cwd: TEST_DIR }).exited;
+
+			// create branch with updated status
+			await Bun.spawn(["git", "checkout", "-b", "feature"], { cwd: TEST_DIR }).exited;
+			await core.updateTask({ ...task, status: "Done" }, true);
+			await Bun.spawn(["git", "push", "-u", "origin", "feature"], { cwd: TEST_DIR }).exited;
+
+			// switch back to master where status is still To Do
+			await Bun.spawn(["git", "checkout", "master"], { cwd: TEST_DIR }).exited;
+
+			await core.gitOps.fetchRemote();
+			const branches = await core.gitOps.listRemoteBranches();
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			const localTasks = await core.filesystem.listTasks();
+			const tasksById = new Map(localTasks.map((t) => [t.id, t]));
+
+			for (const branch of branches) {
+				const ref = `origin/${branch}`;
+				const files = await core.gitOps.listFilesInTree(ref, ".backlog/tasks");
+				for (const file of files) {
+					const content = await core.gitOps.showFile(ref, file);
+					const remoteTask = parseTask(content);
+					const existing = tasksById.get(remoteTask.id);
+					const currentIdx = existing ? statuses.indexOf(existing.status) : -1;
+					const newIdx = statuses.indexOf(remoteTask.status);
+					if (!existing || newIdx > currentIdx || currentIdx === -1 || newIdx === currentIdx) {
+						tasksById.set(remoteTask.id, remoteTask);
+					}
+				}
+			}
+
+			const final = tasksById.get("task-1");
+			expect(final?.status).toBe("Done");
+		});
 	});
 });
