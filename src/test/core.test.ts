@@ -38,8 +38,8 @@ describe("Core", () => {
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Test Project");
-			expect(config?.statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
-			expect(config?.defaultStatus).toBe("Draft");
+			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
+			expect(config?.defaultStatus).toBe("To Do");
 		});
 	});
 
@@ -137,7 +137,7 @@ describe("Core", () => {
 			await core.createTask(taskWithoutStatus, false);
 
 			const loadedTask = await core.filesystem.loadTask("task-1");
-			expect(loadedTask?.status).toBe("Draft"); // Should use default from config
+			expect(loadedTask?.status).toBe("To Do"); // Should use default from config
 		});
 
 		it("should not override existing status", async () => {

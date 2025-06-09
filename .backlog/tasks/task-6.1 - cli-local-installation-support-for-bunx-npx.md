@@ -11,6 +11,7 @@ labels:
 dependencies: []
 parent_task_id: task-6
 ---
+
 ## Description
 
 Allow installing Backlog.md locally in JS projects so agents can run bunx/npx backlog create when global install isn't available.

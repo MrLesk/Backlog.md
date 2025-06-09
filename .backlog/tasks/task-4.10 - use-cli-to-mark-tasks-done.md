@@ -12,6 +12,7 @@ labels:
 dependencies: []
 parent_task_id: task-4
 ---
+
 ## Description
 
 Update agent guidelines so that after implementing and testing a task, they use the backlog CLI to set the task status to **Done**.

@@ -41,8 +41,8 @@ describe("CLI Integration", () => {
 			// Verify config content
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("CLI Test Project");
-			expect(config?.statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
-			expect(config?.defaultStatus).toBe("Draft");
+			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
+			expect(config?.defaultStatus).toBe("To Do");
 
 			// Verify git commit was created
 			const lastCommit = await core.gitOps.getLastCommitMessage();
@@ -214,7 +214,7 @@ describe("CLI Integration", () => {
 
 			// Load and verify default config status order
 			const config = await core.filesystem.loadConfig();
-			expect(config?.statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
+			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
 		});
 	});
 
@@ -265,7 +265,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-5",
 					title: "Prefix Test Task",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -340,7 +340,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-1",
 					title: "Original Title",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -518,7 +518,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-6",
 					title: "Updated Date Test",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-07",
 					labels: [],
@@ -550,7 +550,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-7",
 					title: "Commit Test",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -584,7 +584,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-8",
 					title: "YAML Test",
-					status: "Draft",
+					status: "To Do",
 					assignee: ["testuser"],
 					createdDate: "2025-06-08",
 					labels: ["yaml", "test"],
@@ -954,7 +954,7 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			const statuses = config?.statuses || [];
-			expect(statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
+			expect(statuses).toEqual(["To Do", "In Progress", "Done"]);
 
 			// Test the kanban board generation
 			const { generateKanbanBoard } = await import("../board.ts");
@@ -993,13 +993,69 @@ describe("CLI Integration", () => {
 			const board = generateKanbanBoard(tasks, statuses);
 
 			// Should still show status columns even with no tasks
-			expect(board).toContain("Draft");
 			expect(board).toContain("To Do");
 			expect(board).toContain("In Progress");
 			expect(board).toContain("Done");
 
 			const lines = board.split("\n");
 			expect(lines).toHaveLength(2); // Header + separator only
+		});
+
+		it("should merge task status from remote branches", async () => {
+			const core = new Core(TEST_DIR);
+
+			const task = {
+				id: "task-1",
+				title: "Remote Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-09",
+				labels: [],
+				dependencies: [],
+				description: "from remote",
+			} as Task;
+
+			await core.createTask(task, true);
+
+			// set up remote repository
+			const remoteDir = join(TEST_DIR, "remote.git");
+			await Bun.spawn(["git", "init", "--bare", remoteDir]).exited;
+			await Bun.spawn(["git", "remote", "add", "origin", remoteDir], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "push", "-u", "origin", "master"], { cwd: TEST_DIR }).exited;
+
+			// create branch with updated status
+			await Bun.spawn(["git", "checkout", "-b", "feature"], { cwd: TEST_DIR }).exited;
+			await core.updateTask({ ...task, status: "Done" }, true);
+			await Bun.spawn(["git", "push", "-u", "origin", "feature"], { cwd: TEST_DIR }).exited;
+
+			// switch back to master where status is still To Do
+			await Bun.spawn(["git", "checkout", "master"], { cwd: TEST_DIR }).exited;
+
+			await core.gitOps.fetch();
+			const branches = await core.gitOps.listRemoteBranches();
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			const localTasks = await core.filesystem.listTasks();
+			const tasksById = new Map(localTasks.map((t) => [t.id, t]));
+
+			for (const branch of branches) {
+				const ref = `origin/${branch}`;
+				const files = await core.gitOps.listFilesInTree(ref, ".backlog/tasks");
+				for (const file of files) {
+					const content = await core.gitOps.showFile(ref, file);
+					const remoteTask = parseTask(content);
+					const existing = tasksById.get(remoteTask.id);
+					const currentIdx = existing ? statuses.indexOf(existing.status) : -1;
+					const newIdx = statuses.indexOf(remoteTask.status);
+					if (!existing || newIdx > currentIdx || currentIdx === -1 || newIdx === currentIdx) {
+						tasksById.set(remoteTask.id, remoteTask);
+					}
+				}
+			}
+
+			const final = tasksById.get("task-1");
+			expect(final?.status).toBe("Done");
 		});
 	});
 });

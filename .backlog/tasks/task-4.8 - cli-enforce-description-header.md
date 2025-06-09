@@ -9,6 +9,7 @@ labels: []
 dependencies: []
 parent_task_id: task-4
 ---
+
 ## Description
 
 Ensure new tasks have a Description header. Update docs to require acceptance criteria and tests.
