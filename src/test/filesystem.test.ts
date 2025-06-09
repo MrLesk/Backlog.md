@@ -412,5 +412,24 @@ describe("FileSystem", () => {
 
 			expect(loaded?.title).toBe("Task/with\\special:chars?");
 		});
+
+		it("should avoid double dashes in filenames", async () => {
+			const weirdTask: Task = {
+				id: "task-dashes",
+				title: "Task -- with  -- multiple   dashes",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Check double dashes",
+			};
+
+			await filesystem.saveTask(weirdTask);
+			const files = await readdir(filesystem.tasksDir);
+			const filename = files.find((f) => f.startsWith("task-dashes -"));
+			expect(filename).toBeDefined();
+			expect(filename?.includes("--")).toBe(false);
+		});
 	});
 });
