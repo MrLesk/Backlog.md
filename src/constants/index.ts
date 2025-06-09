@@ -39,3 +39,5 @@ export const DEFAULT_STATUSES = ["Draft", "To Do", "In Progress", "Done"] as con
  * Fallback status when no default is configured
  */
 export const FALLBACK_STATUS = "To Do";
+
+export * from "../guidelines/index.ts";
