@@ -160,14 +160,20 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
+	.option("--draft")
 	.option("--parent <taskId>")
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const id = await generateNextId(core, options.parent);
 		const task = buildTaskFromOptions(id, title, options);
-		await core.createTask(task, true);
-		console.log(`Created task ${id}`);
+		if (options.draft) {
+			await core.createDraft(task, true);
+			console.log(`Created draft ${id}`);
+		} else {
+			await core.createTask(task, true);
+			console.log(`Created task ${id}`);
+		}
 	});
 
 taskCmd

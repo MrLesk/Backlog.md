@@ -41,8 +41,8 @@ describe("CLI Integration", () => {
 			// Verify config content
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("CLI Test Project");
-			expect(config?.statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
-			expect(config?.defaultStatus).toBe("Draft");
+			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
+			expect(config?.defaultStatus).toBe("To Do");
 
 			// Verify git commit was created
 			const lastCommit = await core.gitOps.getLastCommitMessage();
@@ -214,7 +214,7 @@ describe("CLI Integration", () => {
 
 			// Load and verify default config status order
 			const config = await core.filesystem.loadConfig();
-			expect(config?.statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
+			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
 		});
 	});
 
@@ -265,7 +265,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-5",
 					title: "Prefix Test Task",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -340,7 +340,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-1",
 					title: "Original Title",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -518,7 +518,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-6",
 					title: "Updated Date Test",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-07",
 					labels: [],
@@ -550,7 +550,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-7",
 					title: "Commit Test",
-					status: "Draft",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -584,7 +584,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-8",
 					title: "YAML Test",
-					status: "Draft",
+					status: "To Do",
 					assignee: ["testuser"],
 					createdDate: "2025-06-08",
 					labels: ["yaml", "test"],
@@ -954,7 +954,7 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			const statuses = config?.statuses || [];
-			expect(statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
+			expect(statuses).toEqual(["To Do", "In Progress", "Done"]);
 
 			// Test the kanban board generation
 			const { generateKanbanBoard } = await import("../board.ts");
@@ -993,7 +993,6 @@ describe("CLI Integration", () => {
 			const board = generateKanbanBoard(tasks, statuses);
 
 			// Should still show status columns even with no tasks
-			expect(board).toContain("Draft");
 			expect(board).toContain("To Do");
 			expect(board).toContain("In Progress");
 			expect(board).toContain("Done");

@@ -164,9 +164,9 @@ describe("FileSystem", () => {
 		const sampleConfig: BacklogConfig = {
 			projectName: "Test Project",
 			defaultAssignee: "@admin",
-			defaultStatus: "Draft",
+			defaultStatus: "To Do",
 			defaultReporter: undefined,
-			statuses: ["Draft", "To Do", "In Progress", "Done"],
+			statuses: ["To Do", "In Progress", "Done"],
 			labels: ["bug", "feature"],
 			milestones: ["v1.0", "v2.0"],
 			dateFormat: "yyyy-mm-dd",
@@ -351,9 +351,9 @@ describe("FileSystem", () => {
 			const fullConfig: BacklogConfig = {
 				projectName: "Full Project",
 				defaultAssignee: "@admin",
-				defaultStatus: "Draft",
+				defaultStatus: "To Do",
 				defaultReporter: undefined,
-				statuses: ["Draft", "To Do", "In Progress", "Done"],
+				statuses: ["To Do", "In Progress", "Done"],
 				labels: ["bug", "feature", "enhancement"],
 				milestones: ["v1.0", "v1.1", "v2.0"],
 				dateFormat: "yyyy-mm-dd",

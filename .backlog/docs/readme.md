@@ -16,3 +16,5 @@ List all documents with `backlog doc list`.
 - `labels`: List of available labels
 - `milestones`: Project milestones
 - `date_format`: Format for `created_date` values (default `yyyy-mm-dd`)
+
+Default statuses are `To Do`, `In Progress`, and `Done`. Draft tasks live in `.backlog/drafts`.
