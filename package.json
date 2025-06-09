@@ -1,8 +1,8 @@
 {
 	"name": "backlog.md",
+	"version": "0.1.0",
 	"module": "src/index.ts",
 	"type": "module",
-	"private": true,
 	"bin": {
 		"backlog": "./cli/index.js"
 	},

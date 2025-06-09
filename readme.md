@@ -1,7 +1,7 @@
 <h1 align="center">Backlog.md</h1>
 <p align="center">Lightweight git + markdown project management tool</p>
 
-<p align="center"><code>npm i -g @backlog.md</code></p>
+<p align="center"><code>npm i -g backlog.md</code></p>
 
 ## Overview
 
@@ -11,6 +11,23 @@ Backlog.md is a tool for managing project collaboration between humans and AI Ag
 
 1. Git repository
 2. Backlog.md CLI
+
+### Local Installation
+
+Install as a project dependency and run using `npx` or `bunx`:
+
+```bash
+npm install backlog.md --save-dev
+# or
+bun add -d backlog.md
+```
+
+Run the CLI from any directory within the project:
+
+```bash
+npx backlog --help
+bunx backlog --help
+```
 
 ## Instructions
 
