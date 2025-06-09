@@ -28,6 +28,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
+# bun build artifacts
+*.bun-build
+.*.bun-build
+
 # IntelliJ based IDEs
 .idea
 

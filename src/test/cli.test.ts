@@ -892,4 +892,114 @@ describe("CLI Integration", () => {
 			expect(decisions[0].title).toBe("Choose Stack");
 		});
 	});
+
+	describe("board view command", () => {
+		beforeEach(async () => {
+			await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+
+			const core = new Core(TEST_DIR);
+			await core.initializeProject("Board Test Project");
+		});
+
+		it("should display kanban board with tasks grouped by status", async () => {
+			const core = new Core(TEST_DIR);
+
+			// Create test tasks with different statuses
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Todo Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "A task in todo",
+				},
+				false,
+			);
+
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Progress Task",
+					status: "In Progress",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "A task in progress",
+				},
+				false,
+			);
+
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Done Task",
+					status: "Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "A completed task",
+				},
+				false,
+			);
+
+			const tasks = await core.filesystem.listTasks();
+			expect(tasks).toHaveLength(3);
+
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+			expect(statuses).toEqual(["Draft", "To Do", "In Progress", "Done"]);
+
+			// Test the kanban board generation
+			const { generateKanbanBoard } = await import("../board.ts");
+			const board = generateKanbanBoard(tasks, statuses);
+
+			// Verify board contains all statuses and tasks (now on separate lines)
+			expect(board).toContain("To Do");
+			expect(board).toContain("In Progress");
+			expect(board).toContain("Done");
+			expect(board).toContain("task-1");
+			expect(board).toContain("Todo Task");
+			expect(board).toContain("task-2");
+			expect(board).toContain("Progress Task");
+			expect(board).toContain("task-3");
+			expect(board).toContain("Done Task");
+
+			// Verify board structure
+			const lines = board.split("\n");
+			expect(lines[0]).toContain("To Do"); // Header should contain statuses with tasks
+			expect(lines[0]).toContain("In Progress");
+			expect(lines[0]).toContain("Done");
+			expect(lines[1]).toContain("-"); // Separator line
+			expect(lines.length).toBeGreaterThan(2); // Should have content rows
+		});
+
+		it("should handle empty project with default statuses", async () => {
+			const core = new Core(TEST_DIR);
+
+			const tasks = await core.filesystem.listTasks();
+			expect(tasks).toHaveLength(0);
+
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			const { generateKanbanBoard } = await import("../board.ts");
+			const board = generateKanbanBoard(tasks, statuses);
+
+			// Should still show status columns even with no tasks
+			expect(board).toContain("Draft");
+			expect(board).toContain("To Do");
+			expect(board).toContain("In Progress");
+			expect(board).toContain("Done");
+
+			const lines = board.split("\n");
+			expect(lines).toHaveLength(2); // Header + separator only
+		});
+	});
 });

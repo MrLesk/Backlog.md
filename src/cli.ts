@@ -5,7 +5,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
 import { Command } from "commander";
-import { Core, initializeGitRepository, isGitRepository } from "./index.ts";
+import { Core, generateKanbanBoard, initializeGitRepository, isGitRepository } from "./index.ts";
 import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
 
 const program = new Command();
@@ -375,6 +375,27 @@ draftCmd
 		} else {
 			console.error(`Draft ${taskId} not found.`);
 		}
+	});
+
+const boardCmd = program.command("board");
+
+boardCmd
+	.command("view")
+	.description("display tasks in a Kanban board")
+	.action(async () => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const tasks = await core.filesystem.listTasks();
+
+		if (tasks.length === 0) {
+			console.log("No tasks found.");
+			return;
+		}
+
+		const config = await core.filesystem.loadConfig();
+		const statuses = config?.statuses || [];
+		const board = generateKanbanBoard(tasks, statuses);
+		console.log(board);
 	});
 
 const docCmd = program.command("doc");

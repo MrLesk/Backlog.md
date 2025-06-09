@@ -122,6 +122,12 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
 backlog task demote <task-id>
 ```
 
+7. Kanban board
+
+    ```shell
+    backlog board view
+    ```
+
 ## Drafts
 
 In some cases we have tasks that are not ready to be started. Either because they are missing some required information or some dependencies are not ready. For these cases we can still create the tasks in "Draft mode".
