@@ -174,6 +174,11 @@ backlog config get <key>
 backlog config set <key>
 ```
 
+Add `--local` (default) to update `.backlog/config.yml` for the current
+project or `--global` to update your user settings in `~/.backlog/user`.
+`backlog config get <key>` checks the local config first, then the global
+user config, and finally falls back to built-in defaults.
+
 Example:
 
 ```shell
