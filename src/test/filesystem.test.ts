@@ -113,6 +113,7 @@ describe("FileSystem", () => {
 			id: "task-draft",
 			title: "Draft Task",
 			status: "Draft",
+			assignee: [],
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
@@ -168,6 +169,7 @@ describe("FileSystem", () => {
 			statuses: ["Draft", "To Do", "In Progress", "Done"],
 			labels: ["bug", "feature"],
 			milestones: ["v1.0", "v2.0"],
+			dateFormat: "yyyy-mm-dd",
 		};
 
 		it("should save and load config", async () => {
@@ -291,6 +293,7 @@ describe("FileSystem", () => {
 				id: "task-prefixed",
 				title: "Already Prefixed",
 				status: "To Do",
+				assignee: [],
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
@@ -308,6 +311,7 @@ describe("FileSystem", () => {
 				id: "no-prefix",
 				title: "No Prefix",
 				status: "To Do",
+				assignee: [],
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
@@ -339,6 +343,7 @@ describe("FileSystem", () => {
 				statuses: ["Draft", "To Do", "In Progress", "Done"],
 				labels: ["bug", "feature", "enhancement"],
 				milestones: ["v1.0", "v1.1", "v2.0"],
+				dateFormat: "yyyy-mm-dd",
 			};
 
 			await filesystem.saveConfig(fullConfig);
@@ -353,6 +358,7 @@ describe("FileSystem", () => {
 				statuses: ["To Do", "Done"],
 				labels: [],
 				milestones: [],
+				dateFormat: "yyyy-mm-dd",
 			};
 
 			await filesystem.saveConfig(minimalConfig);
@@ -368,6 +374,7 @@ describe("FileSystem", () => {
 				id: "task-special",
 				title: "Task/with\\special:chars?",
 				status: "To Do",
+				assignee: [],
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],

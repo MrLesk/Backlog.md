@@ -2,7 +2,7 @@ export interface Task {
 	id: string;
 	title: string;
 	status: string;
-	assignee?: string[];
+	assignee: string[];
 	reporter?: string;
 	createdDate: string;
 	updatedDate?: string;
@@ -44,6 +44,7 @@ export interface BacklogConfig {
 	labels: string[];
 	milestones: string[];
 	defaultStatus?: string;
+	dateFormat: string;
 }
 
 export interface ParsedMarkdown {

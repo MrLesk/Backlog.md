@@ -51,4 +51,5 @@ The pre-commit hook automatically runs `biome check --write` on staged files to 
 - Confirm that all acceptance criteria for the task are met.
 - Implement tests when necessary and ensure they pass.
 - Update documentation and related guides.
+- Add "## Implementation Notes" section to the task with key technical details, architectural decisions, and important changes made during implementation.
 - Mark the task as done using the Backlog CLI.

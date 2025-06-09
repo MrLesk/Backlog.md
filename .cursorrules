@@ -149,8 +149,8 @@
 - Ensure all acceptance criteria are satisfied.
 - Implement necessary tests and verify they pass.
 - Update relevant documentation.
+- Add "## Implementation Notes" section to the task with key technical details, architectural decisions, and important changes made during implementation.
 - Mark the task as done with the Backlog CLI.
-- Add a line referencing subtask conventions and referencing
 
 ## 17. Glossary
 - Add a glossary of project-specific terms and acronyms

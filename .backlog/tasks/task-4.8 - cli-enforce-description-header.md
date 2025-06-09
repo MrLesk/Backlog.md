@@ -2,10 +2,10 @@
 id: task-4.8
 title: 'CLI: enforce description header'
 status: Draft
-created_date: '2025-06-08'
+created_date: 2025-06-08
 labels: []
 dependencies: []
-parent_task_id: 'task-4'
+parent_task_id: task-4
 ---
 ## Description
 

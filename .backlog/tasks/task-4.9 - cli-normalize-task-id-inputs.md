@@ -1,8 +1,8 @@
 ---
 id: task-4.9
 title: 'CLI: Normalize task-id inputs'
-status: To Do
-created_date: '2025-06-08'
+status: "To Do"
+created_date: 2025-06-08
 labels:
   - cli
   - bug

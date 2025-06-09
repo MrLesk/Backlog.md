@@ -29,4 +29,5 @@ Each folder contains a `readme.md` file with instructions on how to use the Back
 - All acceptance criteria for the task are satisfied.
 - Required tests are implemented and pass.
 - Documentation and related `readme.md` files are updated.
+- Add "## Implementation Notes" section to the task with key technical details, architectural decisions, and important changes made during implementation.
 - The task is marked as done using the Backlog CLI.

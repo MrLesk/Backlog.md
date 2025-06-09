@@ -1,16 +1,14 @@
 ---
 id: task-4.3
-title: 'CLI: Task Editing'
+title: "CLI: Task Editing"
 status: Done
-reporter: '@MrLesk'
+assignee: @MrLesk
+reporter: @MrLesk
 created_date: 2025-06-04
-updated_date: '2025-06-08'
-labels:
-  - cli
-  - command
-milestone: M1 - CLI
-dependencies:
-  - task-4.2
+updated_date: 2025-06-08
+labels: [cli, command]
+milestone: "M1 - CLI"
+dependencies: [task-4.2]
 parent_task_id: task-4
 ---
 ## Description

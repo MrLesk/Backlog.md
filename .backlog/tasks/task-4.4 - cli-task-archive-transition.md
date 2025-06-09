@@ -1,9 +1,9 @@
 ---
 id: task-4.4
 title: "CLI: Task Archiving and State Transitions"
-status: "Done"
-assignee: ""
-reporter: "@MrLesk"
+status: Done
+assignee: @MrLesk
+reporter: @MrLesk
 created_date: 2025-06-04
 updated_date: 2025-06-08
 labels: ["cli", "command"]

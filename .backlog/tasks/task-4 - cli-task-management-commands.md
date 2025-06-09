@@ -2,8 +2,8 @@
 id: task-4
 title: "CLI: Task Management Commands"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["cli", "command"]
 milestone: "M1 - CLI"

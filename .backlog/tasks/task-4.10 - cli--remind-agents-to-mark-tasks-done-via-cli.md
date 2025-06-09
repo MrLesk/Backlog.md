@@ -1,8 +1,8 @@
 ---
 id: task-4.10
 title: 'CLI: enforce using backlog CLI to mark tasks Done'
-status: To Do
-created_date: '2025-06-08'
+status: "To Do"
+created_date: 2025-06-08
 labels:
   - cli
   - agents
