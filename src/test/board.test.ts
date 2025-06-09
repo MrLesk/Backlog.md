@@ -137,4 +137,36 @@ describe("generateKanbanBoard", () => {
 		expect(taskIdLine).toContain("task-1");
 		expect(taskTitleLine).toContain("This is a very long task title");
 	});
+
+	it("sorts tasks by numeric id within each status", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-10",
+				title: "T10",
+				status: "To Do",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+			{
+				id: "task-2",
+				title: "T2",
+				status: "To Do",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+		];
+
+		const board = generateKanbanBoard(tasks, ["To Do"]);
+		const lines = board.split("\n");
+		const firstIdLine = lines[2];
+		const secondIdLine = lines[5];
+		expect(firstIdLine.trim().startsWith("task-2")).toBe(true);
+		expect(secondIdLine.trim().startsWith("task-10")).toBe(true);
+	});
 });
