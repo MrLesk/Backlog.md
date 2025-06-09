@@ -848,4 +848,48 @@ describe("CLI Integration", () => {
 			expect(backToTask?.description).toBe(originalTask.description);
 		});
 	});
+
+	describe("doc and decision commands", () => {
+		beforeEach(async () => {
+			await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+
+			const core = new Core(TEST_DIR);
+			await core.initializeProject("Doc Test Project");
+		});
+
+		it("should create and list documents", async () => {
+			const core = new Core(TEST_DIR);
+			const doc: DocType = {
+				id: "doc-1",
+				title: "Guide",
+				type: "guide",
+				createdDate: "2025-06-08",
+				content: "Content",
+			};
+			await core.createDocument(doc, false);
+
+			const docs = await core.filesystem.listDocuments();
+			expect(docs).toHaveLength(1);
+			expect(docs[0].title).toBe("Guide");
+		});
+
+		it("should create and list decisions", async () => {
+			const core = new Core(TEST_DIR);
+			const decision: DecisionLog = {
+				id: "decision-1",
+				title: "Choose Stack",
+				date: "2025-06-08",
+				status: "accepted",
+				context: "context",
+				decision: "decide",
+				consequences: "conseq",
+			};
+			await core.createDecisionLog(decision, false);
+			const decisions = await core.filesystem.listDecisionLogs();
+			expect(decisions).toHaveLength(1);
+			expect(decisions[0].title).toBe("Choose Stack");
+		});
+	});
 });

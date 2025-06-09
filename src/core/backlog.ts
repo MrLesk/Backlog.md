@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
-import type { BacklogConfig, Task } from "../types/index.ts";
+import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
 
 function ensureDescriptionHeader(description: string): string {
 	const trimmed = description.trim();
@@ -148,6 +148,22 @@ export class Core {
 		}
 
 		return success;
+	}
+
+	async createDecisionLog(decision: DecisionLog, autoCommit = true): Promise<void> {
+		await this.fs.saveDecisionLog(decision);
+
+		if (autoCommit) {
+			await this.git.commitBacklogChanges(`Add decision ${decision.id}`);
+		}
+	}
+
+	async createDocument(doc: Document, autoCommit = true, subPath = ""): Promise<void> {
+		await this.fs.saveDocument(doc, subPath);
+
+		if (autoCommit) {
+			await this.git.commitBacklogChanges(`Add document ${doc.id}`);
+		}
 	}
 
 	async initializeProject(projectName: string): Promise<void> {

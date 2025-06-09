@@ -102,8 +102,8 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
     backlog task archive <task-id>
     backlog draft archive <task-id>
     backlog draft promote <task-id>
-    backlog task demote <task-id>
-    ```
+backlog task demote <task-id>
+```
 
 ## Drafts
 
@@ -125,6 +125,17 @@ To move a task back to drafts:
 
 ```shell
 backlog task demote <task-id>
+```
+
+## Documentation & Decisions
+
+Use the following commands to manage project documentation files and decision logs:
+
+```shell
+backlog doc create "<title>" -p optional/subfolder
+backlog doc list
+backlog decision create "<title>"
+backlog decision list
 ```
 
 ## Configuration

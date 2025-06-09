@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseDecisionLog, parseMarkdown, parseTask } from "../markdown/parser.ts";
+import { parseDecisionLog, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
 import {
 	serializeDecisionLog,
 	serializeDocument,
@@ -264,6 +264,29 @@ Some context.`;
 			expect(decision.decision).toBe("");
 			expect(decision.consequences).toBe("");
 			expect(decision.alternatives).toBeUndefined();
+		});
+	});
+
+	describe("parseDocument", () => {
+		it("should parse a document", () => {
+			const content = `---
+id: doc-1
+title: "API Guide"
+type: "guide"
+created_date: 2025-06-07
+tags: [api]
+---
+
+Document body.`;
+
+			const doc = parseDocument(content);
+
+			expect(doc.id).toBe("doc-1");
+			expect(doc.title).toBe("API Guide");
+			expect(doc.type).toBe("guide");
+			expect(doc.createdDate).toBe("2025-06-07");
+			expect(doc.tags).toEqual(["api"]);
+			expect(doc.content).toBe("Document body.");
 		});
 	});
 });

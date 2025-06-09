@@ -1,7 +1,7 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
-import { parseDecisionLog, parseTask } from "../markdown/parser.ts";
+import { parseDecisionLog, parseDocument, parseTask } from "../markdown/parser.ts";
 import { serializeDecisionLog, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
 
@@ -289,13 +289,44 @@ export class FileSystem {
 	}
 
 	// Document operations
-	async saveDocument(document: Document): Promise<void> {
+	async saveDocument(document: Document, subPath = ""): Promise<void> {
+		const dir = join(this.docsDir, subPath);
 		const filename = `${this.sanitizeFilename(document.title)}.md`;
-		const filepath = join(this.docsDir, filename);
+		const filepath = join(dir, filename);
 		const content = serializeDocument(document);
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
+	}
+
+	async listDecisionLogs(): Promise<DecisionLog[]> {
+		try {
+			const decisionFiles = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: this.decisionsDir }));
+			const decisions: DecisionLog[] = [];
+			for (const file of decisionFiles) {
+				const filepath = join(this.decisionsDir, file);
+				const content = await Bun.file(filepath).text();
+				decisions.push(parseDecisionLog(content));
+			}
+			return decisions.sort((a, b) => a.id.localeCompare(b.id));
+		} catch {
+			return [];
+		}
+	}
+
+	async listDocuments(): Promise<Document[]> {
+		try {
+			const docFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.docsDir }));
+			const docs: Document[] = [];
+			for (const file of docFiles) {
+				const filepath = join(this.docsDir, file);
+				const content = await Bun.file(filepath).text();
+				docs.push(parseDocument(content));
+			}
+			return docs.sort((a, b) => a.title.localeCompare(b.title));
+		} catch {
+			return [];
+		}
 	}
 
 	// Config operations
