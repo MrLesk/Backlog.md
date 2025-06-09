@@ -110,6 +110,36 @@ describe("CLI Integration", () => {
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Existing Repo Test");
 		});
+
+		it("should create agent instruction files when requested", async () => {
+			// Set up a git repository
+			await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+
+			// Simulate the agent instructions being added
+			const core = new Core(TEST_DIR);
+			await core.initializeProject("Agent Test Project");
+
+			// Import and call addAgentInstructions directly (simulating user saying "y")
+			const { addAgentInstructions } = await import("../index.ts");
+			await addAgentInstructions(TEST_DIR, core.gitOps);
+
+			// Verify agent files were created
+			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
+			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
+			const cursorFile = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
+
+			expect(agentsFile).toBe(true);
+			expect(claudeFile).toBe(true);
+			expect(cursorFile).toBe(true);
+
+			// Verify content
+			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+			const claudeContent = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+			expect(agentsContent).toContain("Backlog");
+			expect(claudeContent).toContain("CLAUDE.md");
+		});
 	});
 
 	describe("git integration", () => {
@@ -1001,6 +1031,67 @@ describe("CLI Integration", () => {
 			expect(lines).toHaveLength(2); // Header + separator only
 		});
 
+		it("should support vertical layout option", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Todo Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "A task in todo",
+				},
+				false,
+			);
+
+			const tasks = await core.filesystem.listTasks();
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			const { generateKanbanBoard } = await import("../board.ts");
+			const board = generateKanbanBoard(tasks, statuses, "vertical");
+
+			const lines = board.split("\n");
+			expect(lines[0]).toBe("To Do");
+			expect(board).toContain("task-1");
+			expect(board).toContain("Todo Task");
+		});
+
+		it("should support --vertical shortcut flag", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Shortcut Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-09",
+					labels: [],
+					dependencies: [],
+					description: "Testing vertical shortcut",
+				},
+				false,
+			);
+
+			const tasks = await core.filesystem.listTasks();
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			// Test that --vertical flag produces vertical layout
+			const { generateKanbanBoard } = await import("../board.ts");
+			const board = generateKanbanBoard(tasks, statuses, "vertical");
+
+			const lines = board.split("\n");
+			expect(lines[0]).toBe("To Do");
+			expect(board).toContain("task-1");
+			expect(board).toContain("Shortcut Task");
+		});
+
 		it("should merge task status from remote branches", async () => {
 			const core = new Core(TEST_DIR);
 
@@ -1056,6 +1147,45 @@ describe("CLI Integration", () => {
 
 			const final = tasksById.get("task-1");
 			expect(final?.status).toBe("Done");
+		});
+
+		it("should export kanban board to file", async () => {
+			const core = new Core(TEST_DIR);
+
+			// Create test tasks
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Export Test Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-09",
+					labels: [],
+					dependencies: [],
+					description: "Testing board export",
+				},
+				false,
+			);
+
+			const { exportKanbanBoardToFile } = await import("../index.ts");
+			const outputPath = join(TEST_DIR, "test-export.md");
+			const tasks = await core.filesystem.listTasks();
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			await exportKanbanBoardToFile(tasks, statuses, outputPath);
+
+			// Verify file was created and contains expected content
+			const content = await Bun.file(outputPath).text();
+			expect(content).toContain("To Do");
+			expect(content).toContain("task-1");
+			expect(content).toContain("Export Test Task");
+
+			// Test appending behavior
+			await exportKanbanBoardToFile(tasks, statuses, outputPath);
+			const appendedContent = await Bun.file(outputPath).text();
+			const occurrences = appendedContent.split("task-1").length - 1;
+			expect(occurrences).toBe(2); // Should appear twice after appending
 		});
 	});
 });
