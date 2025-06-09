@@ -128,10 +128,11 @@ backlog task demote <task-id>
     ```shell
     backlog board view
     backlog board view --layout vertical
+    backlog board view --vertical
     backlog board export --output <file>
     ```
     
-    View the board in horizontal (default) or vertical layout. Export the board to a file - by default it's appended to `readme.md` if it exists. Use `--output` to specify a different file.
+    View the board in horizontal (default) or vertical layout. Use `--layout vertical` or the shortcut `--vertical`. Export the board to a file - by default it's appended to `readme.md` if it exists. Use `--output` to specify a different file.
 
 ## Drafts
 
