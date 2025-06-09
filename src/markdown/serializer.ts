@@ -17,7 +17,9 @@ export function serializeTask(task: Task): string {
 		...(task.subtasks && task.subtasks.length > 0 && { subtasks: task.subtasks }),
 	};
 
-	return matter.stringify(task.description, frontmatter);
+	const serialized = matter.stringify(task.description, frontmatter);
+	// Ensure there's a blank line between frontmatter and content
+	return serialized.replace(/^(---\n(?:.*\n)*?---)\n(?!$)/, "$1\n\n");
 }
 
 export function serializeDecisionLog(decision: DecisionLog): string {

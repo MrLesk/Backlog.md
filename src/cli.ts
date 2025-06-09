@@ -5,6 +5,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
 import { Command } from "commander";
+import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
 import { Core, generateKanbanBoard, initializeGitRepository, isGitRepository, parseTask } from "./index.ts";
 import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
 
@@ -76,6 +77,19 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	const drafts = await core.filesystem.listDrafts();
 	const all = [...tasks, ...drafts];
 
+	const remoteIds: string[] = [];
+	try {
+		await core.gitOps.fetch();
+		const branches = await core.gitOps.listRemoteBranches();
+		for (const branch of branches) {
+			const files = await core.gitOps.listFilesInRemoteBranch(branch, ".backlog/tasks");
+			for (const file of files) {
+				const match = file.match(/task-([\d.]+)/);
+				if (match) remoteIds.push(`task-${match[1]}`);
+			}
+		}
+	} catch {}
+
 	if (parent) {
 		const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
 		let max = 0;
@@ -86,12 +100,26 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 				if (num > max) max = num;
 			}
 		}
+		for (const id of remoteIds) {
+			if (id.startsWith(`${prefix}.`)) {
+				const rest = id.slice(prefix.length + 1);
+				const num = Number.parseInt(rest.split(".")[0] || "0", 10);
+				if (num > max) max = num;
+			}
+		}
 		return `${prefix}.${max + 1}`;
 	}
 
 	let max = -1;
 	for (const t of all) {
 		const match = t.id.match(/^task-(\d+)/);
+		if (match) {
+			const num = Number.parseInt(match[1], 10);
+			if (num > max) max = num;
+		}
+	}
+	for (const id of remoteIds) {
+		const match = id.match(/^task-(\d+)/);
 		if (match) {
 			const num = Number.parseInt(match[1], 10);
 			if (num > max) max = num;
@@ -160,14 +188,20 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
+	.option("--draft")
 	.option("--parent <taskId>")
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const id = await generateNextId(core, options.parent);
 		const task = buildTaskFromOptions(id, title, options);
-		await core.createTask(task, true);
-		console.log(`Created task ${id}`);
+		if (options.draft) {
+			await core.createDraft(task, true);
+			console.log(`Created draft ${id}`);
+		} else {
+			await core.createTask(task, true);
+			console.log(`Created task ${id}`);
+		}
 	});
 
 taskCmd
@@ -392,7 +426,7 @@ boardCmd
 		const tasksById = new Map(localTasks.map((t) => [t.id, t]));
 
 		try {
-			await core.gitOps.fetchRemote();
+			await core.gitOps.fetch();
 			const branches = await core.gitOps.listRemoteBranches();
 
 			for (const branch of branches) {
@@ -497,5 +531,58 @@ decisionCmd.command("list").action(async () => {
 		console.log(`${d.id} - ${d.title}`);
 	}
 });
+
+const configCmd = program.command("config");
+
+configCmd
+	.command("get <key>")
+	.description("get configuration value")
+	.action(async (key: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const localCfg = await core.filesystem.loadConfig();
+		const localVal = localCfg ? (localCfg as Record<string, unknown>)[key] : undefined;
+		if (typeof localVal !== "undefined") {
+			console.log(localVal);
+			return;
+		}
+		const globalVal = await core.filesystem.getUserSetting(key, true);
+		if (typeof globalVal !== "undefined") {
+			console.log(globalVal);
+			return;
+		}
+		const defaults: Record<string, unknown> = {
+			statuses: DEFAULT_STATUSES,
+			defaultStatus: FALLBACK_STATUS,
+		};
+		if (key in defaults) {
+			console.log(defaults[key]);
+		}
+	});
+
+configCmd
+	.command("set <key> <value>")
+	.description("set configuration value")
+	.option("--global", "save to global user config")
+	.option("--local", "save to local project config")
+	.action(async (key: string, value: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		if (options.global) {
+			await core.filesystem.setUserSetting(key, value, true);
+			console.log(`Set ${key} in global config`);
+		} else {
+			const cfg = (await core.filesystem.loadConfig()) || {
+				projectName: "",
+				statuses: [...DEFAULT_STATUSES],
+				labels: [],
+				milestones: [],
+				defaultStatus: FALLBACK_STATUS,
+			};
+			(cfg as Record<string, unknown>)[key] = value;
+			await core.filesystem.saveConfig(cfg);
+			console.log(`Set ${key} in local config`);
+		}
+	});
 
 program.parseAsync(process.argv);

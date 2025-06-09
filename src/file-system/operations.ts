@@ -1,4 +1,5 @@
 import { mkdir, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecisionLog, parseDocument, parseTask } from "../markdown/parser.ts";
@@ -7,8 +8,10 @@ import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.
 
 export class FileSystem {
 	private backlogDir: string;
+	private projectRoot: string;
 
 	constructor(projectRoot: string) {
+		this.projectRoot = projectRoot;
 		this.backlogDir = join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 	}
 
@@ -346,6 +349,51 @@ export class FileSystem {
 		await Bun.write(configPath, content);
 	}
 
+	async getUserSetting(key: string, global = false): Promise<string | undefined> {
+		const settings = await this.loadUserSettings(global);
+		return settings ? settings[key] : undefined;
+	}
+
+	async setUserSetting(key: string, value: string, global = false): Promise<void> {
+		const settings = (await this.loadUserSettings(global)) || {};
+		settings[key] = value;
+		await this.saveUserSettings(settings, global);
+	}
+
+	private async loadUserSettings(global = false): Promise<Record<string, string> | null> {
+		const filePath = global
+			? join(homedir(), ".backlog", DEFAULT_FILES.USER)
+			: join(this.projectRoot, DEFAULT_FILES.USER);
+		try {
+			const content = await Bun.file(filePath).text();
+			const result: Record<string, string> = {};
+			for (const line of content.split(/\r?\n/)) {
+				const trimmed = line.trim();
+				if (!trimmed || trimmed.startsWith("#")) continue;
+				const idx = trimmed.indexOf(":");
+				if (idx === -1) continue;
+				const k = trimmed.substring(0, idx).trim();
+				const v = trimmed
+					.substring(idx + 1)
+					.trim()
+					.replace(/^['"]|['"]$/g, "");
+				result[k] = v;
+			}
+			return result;
+		} catch {
+			return null;
+		}
+	}
+
+	private async saveUserSettings(settings: Record<string, string>, global = false): Promise<void> {
+		const filePath = global
+			? join(homedir(), ".backlog", DEFAULT_FILES.USER)
+			: join(this.projectRoot, DEFAULT_FILES.USER);
+		await this.ensureDirectoryExists(dirname(filePath));
+		const lines = Object.entries(settings).map(([k, v]) => `${k}: ${v}`);
+		await Bun.write(filePath, `${lines.join("\n")}\n`);
+	}
+
 	// Utility methods
 	private sanitizeFilename(filename: string): string {
 		return filename
@@ -430,6 +478,6 @@ export class FileSystem {
 			`date_format: ${config.dateFormat}`,
 		];
 
-		return lines.join("\n");
+		return `${lines.join("\n")}\n`;
 	}
 }

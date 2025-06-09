@@ -164,9 +164,9 @@ describe("FileSystem", () => {
 		const sampleConfig: BacklogConfig = {
 			projectName: "Test Project",
 			defaultAssignee: "@admin",
-			defaultStatus: "Draft",
+			defaultStatus: "To Do",
 			defaultReporter: undefined,
-			statuses: ["Draft", "To Do", "In Progress", "Done"],
+			statuses: ["To Do", "In Progress", "Done"],
 			labels: ["bug", "feature"],
 			milestones: ["v1.0", "v2.0"],
 			dateFormat: "yyyy-mm-dd",
@@ -200,6 +200,19 @@ describe("FileSystem", () => {
 			await filesystem.saveConfig(cfg);
 			const loaded = await filesystem.loadConfig();
 			expect(loaded?.defaultReporter).toBe("@author");
+		});
+	});
+
+	describe("user config operations", () => {
+		it("should save and load local and global user settings", async () => {
+			await filesystem.setUserSetting("reporter", "local", false);
+			await filesystem.setUserSetting("reporter", "global", true);
+
+			const local = await filesystem.getUserSetting("reporter", false);
+			const global = await filesystem.getUserSetting("reporter", true);
+
+			expect(local).toBe("local");
+			expect(global).toBe("global");
 		});
 	});
 
@@ -351,9 +364,9 @@ describe("FileSystem", () => {
 			const fullConfig: BacklogConfig = {
 				projectName: "Full Project",
 				defaultAssignee: "@admin",
-				defaultStatus: "Draft",
+				defaultStatus: "To Do",
 				defaultReporter: undefined,
-				statuses: ["Draft", "To Do", "In Progress", "Done"],
+				statuses: ["To Do", "In Progress", "Done"],
 				labels: ["bug", "feature", "enhancement"],
 				milestones: ["v1.0", "v1.1", "v2.0"],
 				dateFormat: "yyyy-mm-dd",
