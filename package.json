@@ -12,9 +12,6 @@
 		"husky": "9.1.7",
 		"lint-staged": "16.1.0"
 	},
-	"peerDependencies": {
-		"typescript": "5"
-	},
 	"scripts": {
 		"test": "bun test",
 		"format": "biome format --write .",
