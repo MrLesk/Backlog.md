@@ -259,3 +259,8 @@ To publish a new version to npm:
    ```
 3. Push the tag to trigger the GitHub Actions workflow. It will build, test and
    publish the package to npm using the repository `NODE_AUTH_TOKEN` secret.
+
+## GitHub Issue and Pull Request Templates
+
+This repository includes templates under `.github/` for bug reports, feature requests, and pull requests.
+When opening a pull request, reference the Backlog task IDs being addressed.
