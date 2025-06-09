@@ -399,6 +399,8 @@ export class FileSystem {
 		return filename
 			.replace(/[<>:"/\\|?*]/g, "-")
 			.replace(/\s+/g, "-")
+			.replace(/-+/g, "-")
+			.replace(/^-|-$/g, "")
 			.toLowerCase();
 	}
 
