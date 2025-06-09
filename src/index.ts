@@ -20,3 +20,6 @@ export {
 
 // Core entry point
 export { Core } from "./core/backlog.ts";
+
+// Kanban board utilities
+export { generateKanbanBoard } from "./board.ts";
