@@ -1,7 +1,7 @@
 ---
 id: task-6
 title: "CLI: Argument Parsing, Help, and Packaging"
-status: "To Do"
+status: Done
 assignee: []
 reporter: @MrLesk
 created_date: 2025-06-04
@@ -19,7 +19,13 @@ Define `bin` script in `package.json` for npm distribution.
 
 ## Acceptance Criteria
 
-- [ ] All commands have clear help messages.
-- [ ] CLI arguments are parsed correctly.
-- [ ] `bun build --compile` produces a working executable.
-- [ ] `package.json` configured for CLI publishing.
+- [x] All commands have clear help messages.
+- [x] CLI arguments are parsed correctly.
+- [x] `bun build --compile` produces a working executable.
+- [x] `package.json` configured for CLI publishing.
+
+## Implementation Notes
+
+- Updated `package.json` build script to also compile a standalone executable using `bun build --compile`.
+- Added `src/test/build.test.ts` to verify the compiled binary runs and displays help text.
+- Existing `bin` entry points to the CLI script for npm distribution.
