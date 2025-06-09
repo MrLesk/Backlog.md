@@ -167,12 +167,12 @@ describe("generateKanbanBoard", () => {
 		];
 
 		const board = generateKanbanBoard(tasks, ["To Do"]);
-		expect(board).toContain("|— task-1.1");
-		expect(board).toContain("|— Child");
+		expect(board).toContain("  |— task-1.1");
+		expect(board).toContain("  Child");
 
 		const lines = board.split("\n");
 		const parentIdx = lines.findIndex((l) => l.includes("task-1") && !l.includes("task-1.1"));
-		const childIdx = lines.findIndex((l) => l.includes("|— task-1.1"));
+		const childIdx = lines.findIndex((l) => l.includes("  |— task-1.1"));
 		expect(parentIdx).toBeGreaterThan(-1);
 		expect(childIdx).toBeGreaterThan(parentIdx);
 	});

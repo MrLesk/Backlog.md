@@ -74,7 +74,7 @@ export function generateKanbanBoard(
 			const subs = children.get(t.id) || [];
 			subs.sort(compareIds);
 			for (const s of subs) {
-				result.push({ id: `|— ${s.id}`, title: `|— ${s.title}` });
+				result.push({ id: `  |— ${s.id}`, title: `  ${s.title}` });
 			}
 		}
 
