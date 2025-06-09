@@ -25,8 +25,11 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 		const header = status || "No Status";
 		let width = header.length;
 		for (const t of columns[idx]) {
-			const item = `${t.id} - ${t.title}`;
-			if (item.length > width) width = item.length;
+			// Check both task ID and title lengths separately
+			const idLength = t.id.length;
+			const titleLength = t.title.length;
+			const maxTaskWidth = Math.max(idLength, titleLength);
+			if (maxTaskWidth > width) width = maxTaskWidth;
 		}
 		return width;
 	});
@@ -36,18 +39,36 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 	const headerRow = ordered.map((status, i) => pad(status || "No Status", colWidths[i])).join(" | ");
 	const separatorRow = ordered.map((_, i) => "-".repeat(colWidths[i])).join("-|-");
 
-	const maxRows = Math.max(...columns.map((c) => c.length));
+	// Each task takes 2 rows (ID + title), plus 1 empty row between tasks
+	const maxTasks = Math.max(...columns.map((c) => c.length), 0);
 	const rows = [headerRow, separatorRow];
 
-	for (let r = 0; r < maxRows; r++) {
-		const row = ordered
+	for (let taskIdx = 0; taskIdx < maxTasks; taskIdx++) {
+		// First row: task IDs
+		const idRow = ordered
 			.map((_, cIdx) => {
-				const task = columns[cIdx][r];
-				const text = task ? `${task.id} - ${task.title}` : "";
+				const task = columns[cIdx][taskIdx];
+				const text = task ? task.id : "";
 				return pad(text, colWidths[cIdx]);
 			})
 			.join(" | ");
-		rows.push(row);
+		rows.push(idRow);
+
+		// Second row: task titles
+		const titleRow = ordered
+			.map((_, cIdx) => {
+				const task = columns[cIdx][taskIdx];
+				const text = task ? task.title : "";
+				return pad(text, colWidths[cIdx]);
+			})
+			.join(" | ");
+		rows.push(titleRow);
+
+		// Add empty row between tasks for better separation (except after last task)
+		if (taskIdx < maxTasks - 1) {
+			const emptyRow = ordered.map((_, cIdx) => pad("", colWidths[cIdx])).join(" | ");
+			rows.push(emptyRow);
+		}
 	}
 
 	return rows.join("\n");

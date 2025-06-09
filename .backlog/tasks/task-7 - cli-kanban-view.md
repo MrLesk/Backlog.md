@@ -43,7 +43,9 @@ Design and implement a CLI command (`backlog board view` or similar) that reads 
 - Maintains visual alignment with calculated column widths
 - Status ordering: configured statuses first, then any unrecognized statuses
 - Clean table format: header row, separator line, task rows
-- Task display format: `task-id - title`
+- Multi-line task display: task ID on first line, title on second line
+- Empty rows between tasks for improved readability
+- Screen-friendly format that accommodates long task titles
 
 **Test Coverage (src/test/board.test.ts + src/test/cli.test.ts):**
 - Unit tests for core board generation function (5 test cases)

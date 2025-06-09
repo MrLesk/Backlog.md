@@ -960,13 +960,16 @@ describe("CLI Integration", () => {
 			const { generateKanbanBoard } = await import("../board.ts");
 			const board = generateKanbanBoard(tasks, statuses);
 
-			// Verify board contains all statuses and tasks
+			// Verify board contains all statuses and tasks (now on separate lines)
 			expect(board).toContain("To Do");
 			expect(board).toContain("In Progress");
 			expect(board).toContain("Done");
-			expect(board).toContain("task-1 - Todo Task");
-			expect(board).toContain("task-2 - Progress Task");
-			expect(board).toContain("task-3 - Done Task");
+			expect(board).toContain("task-1");
+			expect(board).toContain("Todo Task");
+			expect(board).toContain("task-2");
+			expect(board).toContain("Progress Task");
+			expect(board).toContain("task-3");
+			expect(board).toContain("Done Task");
 
 			// Verify board structure
 			const lines = board.split("\n");

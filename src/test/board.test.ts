@@ -42,9 +42,13 @@ describe("generateKanbanBoard", () => {
 		expect(lines[0]).toContain("To Do");
 		expect(lines[0]).toContain("In Progress");
 		expect(lines[0]).toContain("Done");
-		expect(board).toContain("task-1 - First");
-		expect(board).toContain("task-2 - Second");
-		expect(board).toContain("task-3 - Third");
+		// Tasks are now on separate lines: ID first, then title
+		expect(board).toContain("task-1");
+		expect(board).toContain("First");
+		expect(board).toContain("task-2");
+		expect(board).toContain("Second");
+		expect(board).toContain("task-3");
+		expect(board).toContain("Third");
 	});
 
 	it("handles tasks with no status", () => {
@@ -63,7 +67,8 @@ describe("generateKanbanBoard", () => {
 
 		const board = generateKanbanBoard(tasks, ["To Do", "In Progress", "Done"]);
 		expect(board).toContain("No Status");
-		expect(board).toContain("task-1 - No Status Task");
+		expect(board).toContain("task-1");
+		expect(board).toContain("No Status Task");
 	});
 
 	it("handles empty task list", () => {
@@ -125,9 +130,11 @@ describe("generateKanbanBoard", () => {
 		const board = generateKanbanBoard(tasks, ["To Do"]);
 		const lines = board.split("\n");
 		const header = lines[0];
-		const taskLine = lines[2];
-		// Column should be wide enough for both header and task
+		const taskIdLine = lines[2]; // First task line (ID)
+		const taskTitleLine = lines[3]; // Second task line (title)
+		// Column should be wide enough for both header and long title
 		expect(header.length).toBeGreaterThan("To Do".length);
-		expect(taskLine).toContain("This is a very long task title");
+		expect(taskIdLine).toContain("task-1");
+		expect(taskTitleLine).toContain("This is a very long task title");
 	});
 });
