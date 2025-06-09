@@ -4,6 +4,11 @@ export interface BoardOptions {
 
 import type { Task } from "./types/index.ts";
 
+interface DisplayTask {
+	id: string;
+	title: string;
+}
+
 export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): string {
 	const groups = new Map<string, Task[]>();
 	for (const task of tasks) {
@@ -13,13 +18,43 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 		groups.set(status, list);
 	}
 
+	// Map for quick lookup by id
+	const byId = new Map<string, Task>(tasks.map((t) => [t.id, t]));
+
 	// If no tasks, still show the configured statuses
 	const ordered =
 		tasks.length > 0
 			? [...statuses.filter((s) => groups.has(s)), ...Array.from(groups.keys()).filter((s) => !statuses.includes(s))]
 			: statuses;
 
-	const columns = ordered.map((status) => groups.get(status) || []);
+	const columns: DisplayTask[][] = ordered.map((status) => {
+		const items = groups.get(status) || [];
+		const top: Task[] = [];
+		const children = new Map<string, Task[]>();
+
+		for (const t of items.sort((a, b) => a.id.localeCompare(b.id))) {
+			const parent = t.parentTaskId ? byId.get(t.parentTaskId) : undefined;
+			if (parent && parent.status === t.status) {
+				const list = children.get(parent.id) || [];
+				list.push(t);
+				children.set(parent.id, list);
+			} else {
+				top.push(t);
+			}
+		}
+
+		const result: DisplayTask[] = [];
+		for (const t of top) {
+			result.push({ id: t.id, title: t.title });
+			const subs = children.get(t.id) || [];
+			subs.sort((a, b) => a.id.localeCompare(b.id));
+			for (const s of subs) {
+				result.push({ id: `|— ${s.id}`, title: `|— ${s.title}` });
+			}
+		}
+
+		return result;
+	});
 
 	const colWidths = ordered.map((status, idx) => {
 		const header = status || "No Status";

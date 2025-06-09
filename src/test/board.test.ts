@@ -137,4 +137,40 @@ describe("generateKanbanBoard", () => {
 		expect(taskIdLine).toContain("task-1");
 		expect(taskTitleLine).toContain("This is a very long task title");
 	});
+
+	it("nests subtasks under their parent when statuses match", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Parent",
+				status: "To Do",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+			{
+				id: "task-1.1",
+				title: "Child",
+				status: "To Do",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+				parentTaskId: "task-1",
+			},
+		];
+
+		const board = generateKanbanBoard(tasks, ["To Do"]);
+		expect(board).toContain("|— task-1.1");
+		expect(board).toContain("|— Child");
+
+		const lines = board.split("\n");
+		const parentIdx = lines.findIndex((l) => l.includes("task-1") && !l.includes("task-1.1"));
+		const childIdx = lines.findIndex((l) => l.includes("|— task-1.1"));
+		expect(parentIdx).toBeGreaterThan(-1);
+		expect(childIdx).toBeGreaterThan(parentIdx);
+	});
 });
