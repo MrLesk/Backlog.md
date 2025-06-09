@@ -32,7 +32,8 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 
 ### AI Agent Integration
 - Reference task IDs in commit messages and PR titles when implementing features
-- Use `.backlog/tasks/` markdown files to understand implementation requirements  
+- Use `.backlog/tasks/` markdown files to understand implementation requirements
+- Include a `## Description` section and a `## Acceptance Criteria` checklist in every task file
 - Follow decimal numbering for subtasks
 - Maintain clean git status before commits
 - Use task-descriptive branch names: `<task-id> feature description`

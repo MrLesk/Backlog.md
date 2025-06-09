@@ -141,6 +141,31 @@ describe("Core", () => {
 			expect(loadedTask?.status).toBe("In Progress");
 		});
 
+		it("should add description header when missing", async () => {
+			const taskNoHeader: Task = {
+				...sampleTask,
+				id: "task-2",
+				description: "Just text",
+			};
+
+			await core.createTask(taskNoHeader, false);
+			const loaded = await core.filesystem.loadTask("task-2");
+			expect(loaded?.description.startsWith("## Description")).toBe(true);
+		});
+
+		it("should not duplicate description header", async () => {
+			const taskWithHeader: Task = {
+				...sampleTask,
+				id: "task-3",
+				description: "## Description\n\nExisting",
+			};
+
+			await core.createTask(taskWithHeader, false);
+			const loaded = await core.filesystem.loadTask("task-3");
+			const matches = loaded?.description.match(/## Description/g) || [];
+			expect(matches.length).toBe(1);
+		});
+
 		it("should handle task creation without auto-commit when git fails", async () => {
 			// Create task in directory without git
 			const nonGitCore = new Core(join(TEST_DIR, "no-git"));

@@ -139,6 +139,7 @@
 - Follow project naming conventions
 - Use appropriate labels for tasks
 - Keep task descriptions clear and complete
+- Include a `## Description` section and `## Acceptance Criteria` checklist in each task
 - Follow the established workflow
 - Use proper task prioritization
 - Maintain task dependencies

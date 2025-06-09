@@ -4,6 +4,14 @@ import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 
+function ensureDescriptionHeader(description: string): string {
+	const trimmed = description.trim();
+	if (trimmed === "") {
+		return "## Description";
+	}
+	return /^##\s+Description/i.test(trimmed) ? trimmed : `## Description\n\n${trimmed}`;
+}
+
 export class Core {
 	private fs: FileSystem;
 	private git: GitOperations;
@@ -30,6 +38,7 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
+		task.description = ensureDescriptionHeader(task.description);
 		await this.fs.saveTask(task);
 
 		if (autoCommit) {
@@ -49,6 +58,7 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
+		task.description = ensureDescriptionHeader(task.description);
 		await this.fs.saveDraft(task);
 
 		if (autoCommit) {
@@ -64,6 +74,7 @@ export class Core {
 	}
 
 	async updateTask(task: Task, autoCommit = true): Promise<void> {
+		task.description = ensureDescriptionHeader(task.description);
 		await this.fs.saveTask(task);
 
 		if (autoCommit) {
