@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { generateKanbanBoard } from "../board.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { exportKanbanBoardToFile, generateKanbanBoard } from "../board.ts";
 import type { Task } from "../types/index.ts";
 
 describe("generateKanbanBoard", () => {
@@ -136,5 +139,35 @@ describe("generateKanbanBoard", () => {
 		expect(header.length).toBeGreaterThan("To Do".length);
 		expect(taskIdLine).toContain("task-1");
 		expect(taskTitleLine).toContain("This is a very long task title");
+	});
+});
+
+describe("exportKanbanBoardToFile", () => {
+	it("creates file and appends board content", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "board-export-"));
+		const file = join(dir, "readme.md");
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "First",
+				status: "To Do",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+		];
+
+		await exportKanbanBoardToFile(tasks, ["To Do"], file);
+		const initial = await Bun.file(file).text();
+		expect(initial).toContain("task-1");
+
+		await exportKanbanBoardToFile(tasks, ["To Do"], file);
+		const second = await Bun.file(file).text();
+		const occurrences = second.split("task-1").length - 1;
+		expect(occurrences).toBe(2);
+
+		await rm(dir, { recursive: true, force: true });
 	});
 });

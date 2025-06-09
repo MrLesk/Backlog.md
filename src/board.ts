@@ -2,6 +2,8 @@ export interface BoardOptions {
 	statuses?: string[];
 }
 
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { Task } from "./types/index.ts";
 
 export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): string {
@@ -72,4 +74,19 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 	}
 
 	return rows.join("\n");
+}
+
+export async function exportKanbanBoardToFile(tasks: Task[], statuses: string[], filePath: string): Promise<void> {
+	const board = generateKanbanBoard(tasks, statuses);
+
+	let existing = "";
+	try {
+		existing = await Bun.file(filePath).text();
+	} catch {
+		await mkdir(dirname(filePath), { recursive: true });
+	}
+
+	const needsNewline = existing && !existing.endsWith("\n");
+	const content = `${existing}${needsNewline ? "\n" : ""}${board}\n`;
+	await Bun.write(filePath, content);
 }

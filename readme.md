@@ -127,7 +127,9 @@ backlog task demote <task-id>
 
     ```shell
     backlog board view
+    backlog board export --output <file>
     ```
+    By default the board is appended to `readme.md` if it exists. Use `--output` to specify a different file.
 
 ## Drafts
 
