@@ -2,7 +2,7 @@
 id: task-4.7
 title: "CLI: Parse unquoted created_date"
 status: Done
-assignee: []
+assignee: @MrLesk
 reporter: @MrLesk
 created_date: 2025-06-08
 updated_date: 2025-06-08
