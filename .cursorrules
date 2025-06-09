@@ -148,6 +148,7 @@ backlog task edit <task-id> --status Done
 - Include a `## Description` section and `## Acceptance Criteria` checklist in each task
 - Write relevant tests when implementing new functionality or fixing bugs
 - Follow the established workflow
+- When starting work on a task, set its status to `In Progress`, assign yourself, and push the change before continuing
 - Use proper task prioritization
 - Maintain task dependencies
 - Follow project branching strategy
