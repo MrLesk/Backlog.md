@@ -1,9 +1,9 @@
 ---
 id: task-2
 title: "CLI: Design & Implement Core Logic Library"
-status: "Done"
-assignee: "@MrLesk"
-reporter: "@MrLesk"
+status: Done
+assignee: @MrLesk
+reporter: @MrLesk
 created_date: 2025-06-03
 labels: ["cli", "core-logic", "architecture"]
 milestone: "M1 - CLI"

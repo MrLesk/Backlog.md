@@ -1,4 +1,6 @@
-import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
@@ -31,9 +33,38 @@ program
 				}
 			}
 
+			const rl = createInterface({ input, output });
+			const reporter = (await rl.question("Default reporter name (leave blank to skip): ")).trim();
+			let storeGlobal = false;
+			if (reporter) {
+				const scope = (await rl.question("Store reporter name globally? [y/N] ")).trim().toLowerCase();
+				storeGlobal = scope.startsWith("y");
+			}
+			rl.close();
+
 			const core = new Core(cwd);
 			await core.initializeProject(projectName);
 			console.log(`Initialized backlog project: ${projectName}`);
+
+			if (reporter) {
+				if (storeGlobal) {
+					const globalPath = join(homedir(), ".backlog", "user");
+					await mkdir(dirname(globalPath), { recursive: true });
+					await Bun.write(globalPath, `default_reporter: "${reporter}"\n`);
+				} else {
+					const userPath = join(cwd, ".user");
+					await Bun.write(userPath, `default_reporter: "${reporter}"\n`);
+					const gitignorePath = join(cwd, ".gitignore");
+					let gitignore = "";
+					try {
+						gitignore = await Bun.file(gitignorePath).text();
+					} catch {}
+					if (!gitignore.split(/\r?\n/).includes(".user")) {
+						gitignore += `${gitignore.endsWith("\n") ? "" : "\n"}.user\n`;
+						await Bun.write(gitignorePath, gitignore);
+					}
+				}
+			}
 		} catch (err) {
 			console.error("Failed to initialize project", err);
 			process.exitCode = 1;
@@ -70,11 +101,18 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 }
 
 function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
+	const parentInput = options.parent ? String(options.parent) : undefined;
+	const normalizedParent = parentInput
+		? parentInput.startsWith("task-")
+			? parentInput
+			: `task-${parentInput}`
+		: undefined;
+
 	return {
 		id,
 		title,
 		status: options.status || "",
-		assignee: options.assignee,
+		assignee: options.assignee ? [String(options.assignee)] : [],
 		createdDate: new Date().toISOString().split("T")[0],
 		labels: options.labels
 			? String(options.labels)
@@ -84,7 +122,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 			: [],
 		dependencies: [],
 		description: options.description || "",
-		...(options.parent && { parentTaskId: options.parent }),
+		...(normalizedParent && { parentTaskId: normalizedParent }),
 	};
 }
 
@@ -145,6 +183,69 @@ taskCmd
 		}
 	});
 
+taskCmd
+	.command("edit <taskId>")
+	.description("edit an existing task")
+	.option("-t, --title <title>")
+	.option("-d, --description <text>")
+	.option("-a, --assignee <assignee>")
+	.option("-s, --status <status>")
+	.option("-l, --label <labels>")
+	.option("--add-label <label>")
+	.option("--remove-label <label>")
+	.action(async (taskId: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const task = await core.filesystem.loadTask(taskId);
+
+		if (!task) {
+			console.error(`Task ${taskId} not found.`);
+			return;
+		}
+
+		if (options.title) {
+			task.title = String(options.title);
+		}
+		if (options.description) {
+			task.description = String(options.description);
+		}
+		if (typeof options.assignee !== "undefined") {
+			task.assignee = [String(options.assignee)];
+		}
+		if (options.status) {
+			task.status = String(options.status);
+		}
+
+		const labels = [...task.labels];
+		if (options.label) {
+			const newLabels = String(options.label)
+				.split(",")
+				.map((l: string) => l.trim())
+				.filter(Boolean);
+			labels.splice(0, labels.length, ...newLabels);
+		}
+		if (options.addLabel) {
+			const adds = Array.isArray(options.addLabel) ? options.addLabel : [options.addLabel];
+			for (const l of adds) {
+				const trimmed = String(l).trim();
+				if (trimmed && !labels.includes(trimmed)) labels.push(trimmed);
+			}
+		}
+		if (options.removeLabel) {
+			const removes = Array.isArray(options.removeLabel) ? options.removeLabel : [options.removeLabel];
+			for (const l of removes) {
+				const trimmed = String(l).trim();
+				const idx = labels.indexOf(trimmed);
+				if (idx !== -1) labels.splice(idx, 1);
+			}
+		}
+		task.labels = labels;
+		task.updatedDate = new Date().toISOString().split("T")[0];
+
+		await core.updateTask(task, true);
+		console.log(`Updated task ${task.id}`);
+	});
+
 async function outputTask(taskId: string): Promise<void> {
 	const cwd = process.cwd();
 	const core = new Core(cwd);
@@ -167,6 +268,34 @@ taskCmd
 	.description("display task details")
 	.action(async (taskId: string) => {
 		await outputTask(taskId);
+	});
+
+taskCmd
+	.command("archive <taskId>")
+	.description("archive a task")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.archiveTask(taskId, true);
+		if (success) {
+			console.log(`Archived task ${taskId}`);
+		} else {
+			console.error(`Task ${taskId} not found.`);
+		}
+	});
+
+taskCmd
+	.command("demote <taskId>")
+	.description("move task back to drafts")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.demoteTask(taskId, true);
+		if (success) {
+			console.log(`Demoted task ${taskId}`);
+		} else {
+			console.error(`Task ${taskId} not found.`);
+		}
 	});
 
 taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
@@ -192,6 +321,34 @@ draftCmd
 		const task = buildTaskFromOptions(id, title, options);
 		await core.createDraft(task, true);
 		console.log(`Created draft ${id}`);
+	});
+
+draftCmd
+	.command("archive <taskId>")
+	.description("archive a draft")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.archiveDraft(taskId, true);
+		if (success) {
+			console.log(`Archived draft ${taskId}`);
+		} else {
+			console.error(`Draft ${taskId} not found.`);
+		}
+	});
+
+draftCmd
+	.command("promote <taskId>")
+	.description("promote draft to task")
+	.action(async (taskId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const success = await core.promoteDraft(taskId, true);
+		if (success) {
+			console.log(`Promoted draft ${taskId}`);
+		} else {
+			console.error(`Draft ${taskId} not found.`);
+		}
 	});
 
 program.parseAsync(process.argv);

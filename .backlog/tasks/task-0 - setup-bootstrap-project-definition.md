@@ -1,9 +1,9 @@
 ---
 id: task-0
 title: "Bootstrap Backlog.md Project Definition with Initial Tasks"
-status: "Done"
-assignee: "@MrLesk"
-reporter: "@MrLesk"
+status: Done
+assignee: @MrLesk
+reporter: @MrLesk
 created_date: 2025-06-03
 completed_date: 2025-06-03
 labels: ["project-setup", "meta", "milestone-0"]

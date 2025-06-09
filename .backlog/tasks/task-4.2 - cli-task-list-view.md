@@ -1,9 +1,9 @@
 ---
 id: task-4.2
 title: "CLI: Task Listing and Viewing"
-status: "Done"
-assignee: "@MrLesk"
-reporter: "@MrLesk"
+status: Done
+assignee: @MrLesk
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["cli", "command"]
 milestone: "M1 - CLI"
