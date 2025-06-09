@@ -71,6 +71,7 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
     - `-a, --assignee "<username_or_email>"`
     - `-s, --status "<status_name>"` (Defaults to the first active status, e.g., "To Do").
     - `-l, --label "<label1>,<label2>"`
+    - `--draft` create the task as a draft in `.backlog/drafts`
 
 2. Add a subtask
 
@@ -173,6 +174,11 @@ backlog config get <key>
 backlog config set <key>
 ```
 
+Add `--local` (default) to update `.backlog/config.yml` for the current
+project or `--global` to update your user settings in `~/.backlog/user`.
+`backlog config get <key>` checks the local config first, then the global
+user config, and finally falls back to built-in defaults.
+
 Example:
 
 ```shell
@@ -190,6 +196,8 @@ backlog config set default_assignee @aiSupervisor
 - `labels`: List of available labels
 - `milestones`: Project milestones
 - `date_format`: Format for `created_date` values (default `yyyy-mm-dd`)
+
+The default configuration provides the statuses `To Do`, `In Progress`, and `Done`. Draft tasks are stored separately under `.backlog/drafts`.
 
 ## Migration: Assignee Field
 
