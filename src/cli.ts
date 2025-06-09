@@ -70,6 +70,13 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 }
 
 function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
+	const parentInput = options.parent ? String(options.parent) : undefined;
+	const normalizedParent = parentInput
+		? parentInput.startsWith("task-")
+			? parentInput
+			: `task-${parentInput}`
+		: undefined;
+
 	return {
 		id,
 		title,
@@ -84,7 +91,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 			: [],
 		dependencies: [],
 		description: options.description || "",
-		...(options.parent && { parentTaskId: options.parent }),
+		...(normalizedParent && { parentTaskId: normalizedParent }),
 	};
 }
 
