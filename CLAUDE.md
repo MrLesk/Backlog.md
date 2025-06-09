@@ -38,6 +38,7 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 - Follow decimal numbering for subtasks
 - Maintain clean git status before commits
 - Use task-descriptive branch names: `<task-id> feature description`
+- When you start working on a task, update its status to `In Progress`, assign yourself as the assignee, and push the change.
 - After testing a task, mark it **Done** with:
 
 ```bash

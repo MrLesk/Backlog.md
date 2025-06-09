@@ -1,11 +1,20 @@
 <h1 align="center">Backlog.md</h1>
 <p align="center">Lightweight git + markdown project management tool</p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/backlog.md">
+    <img src="https://badgen.net/npm/v/backlog.md?icon=npm&label=npm%20install" alt="npm version" />
+  </a>
+  <img src="https://badgen.net/badge/bun/add%20backlog.md/black?icon=bun" alt="bun install" />
+</p>
+
 <p align="center"><code>npm i -g backlog.md</code></p>
 
 ## Overview
 
 Backlog.md is a tool for managing project collaboration between humans and AI Agents in a git ecosystem.
+
+**License:** [MIT](LICENSE) · See our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to get involved.
 
 ## Requirements
 
@@ -27,6 +36,20 @@ Run the CLI from any directory within the project:
 ```bash
 npx backlog --help
 bunx backlog --help
+```
+
+### Quick Start
+
+Install globally and create a new project:
+
+```bash
+npm i -g backlog.md
+# or
+bun add -g backlog.md
+backlog init my-project
+cd my-project
+backlog task create "Hello world"
+backlog task list
 ```
 
 ## Instructions
@@ -247,6 +270,11 @@ Format and lint:
 npx biome check .
 ```
 
+## Contributing
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on opening issues
+and submitting pull requests.
+
 ## Release
 
 To publish a new version to npm:
@@ -259,8 +287,46 @@ To publish a new version to npm:
    ```
 3. Push the tag to trigger the GitHub Actions workflow. It will build, test and
    publish the package to npm using the repository `NODE_AUTH_TOKEN` secret.
-
 ## GitHub Issue and Pull Request Templates
 
 This repository includes templates under `.github/` for bug reports, feature requests, and pull requests.
 When opening a pull request, reference the Backlog task IDs being addressed.
+
+## Project Board
+
+| To Do | Done |
+| --- | --- |
+| task-4: CLI: Task Management Commands | task-1: CLI: Setup Core Project (Bun, TypeScript, Git, Linters) |
+| task-8: GUI: Setup GUI Project Structure | task-2: CLI: Design & Implement Core Logic Library |
+| task-9: GUI: Implement GUI Task Creation/Editing Forms | task-3: CLI: Implement `backlog init` Command |
+| task-10: GUI: Implement `backlog init` in GUI & GUI Packaging | task-4.1: CLI: Task Creation Commands |
+| task-11: GUI: Implement GUI Kanban Board Display & Interaction | task-4.2: CLI: Task Listing and Viewing |
+| task-12: GUI: Implement GUI for Drafts, Docs, Decisions | task-4.3: CLI: Task Editing |
+| task-13.1: CLI: Agent Instruction File Selection | task-4.4: CLI: Task Archiving and State Transitions |
+| task-14: GUI: introduction screens | task-4.5: CLI: Init prompts for reporter name and global/local config |
+| task-15: Improve tasks readme with generic example and CLI command reference | task-4.6: CLI: Add empty assignee array field for new tasks |
+| task-16: Improve docs readme with generic example and CLI command reference | task-4.7: CLI: Parse unquoted created_date |
+| task-17: Improve drafts readme with generic example and CLI command reference | task-4.8: CLI: enforce description header |
+| task-18: Improve decisions readme with generic example and CLI command reference | task-4.9: CLI: Normalize task-id inputs |
+| task-24.1: CLI: Kanban board milestone view | task-4.10: CLI: enforce Agents to use backlog CLI to mark tasks Done |
+| task-26: Agents: add board export step to agent DoD | task-4.11: Docs: add definition of done to agent guidelines |
+| task-28: Add CODE OF CONDUCT | task-4.12: CLI: Handle task ID conflicts across branches |
+| task-30: Create CHANGELOG | task-4.13: CLI: Fix config command local/global logic |
+|  | task-5: CLI: Implement Docs & Decisions CLI Commands (Basic) |
+|  | task-6: CLI: Argument Parsing, Help, and Packaging |
+|  |   |— task-6.1:       CLI: Local installation support for bunx/npx |
+|  |   |— task-6.2:       CLI: GitHub Actions for Build & Publish |
+|  | task-7: Kanban Board: Implement CLI Text-Based Kanban Board View |
+|  |   |— task-7.1:       CLI: Kanban board detect remote task status |
+|  | task-13: CLI: Add Agent Instruction Prompt |
+|  | task-19: CLI - fix default task status and remove Draft from statuses |
+|  | task-20: Add agent guideline to mark tasks In Progress on start |
+|  | task-21: Kanban board vertical layout |
+|  | task-22: CLI: Prevent double dash in task filenames |
+|  | task-23: CLI: Kanban board order tasks by ID ASC |
+|  | task-24: Handle subtasks in the Kanban view |
+|  | task-25: CLI: Export Kanban board to README |
+|  | task-27: Add CONTRIBUTING guidelines |
+|  | task-29: Add GitHub templates |
+|  | task-31: Update README for open source |
+|  | task-32: CLI: Hide empty 'No Status' column |
