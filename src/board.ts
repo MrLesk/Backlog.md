@@ -2,7 +2,11 @@ export interface BoardOptions {
 	statuses?: string[];
 }
 
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { Task } from "./types/index.ts";
+
+export type BoardLayout = "horizontal" | "vertical";
 
 function idSegments(id: string): number[] {
 	const normalized = id.startsWith("task-") ? id.slice(5) : id;
@@ -20,7 +24,11 @@ function compareIds(a: Task, b: Task): number {
 	return 0;
 }
 
-export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): string {
+export function generateKanbanBoard(
+	tasks: Task[],
+	statuses: string[] = [],
+	layout: BoardLayout = "horizontal",
+): string {
 	const groups = new Map<string, Task[]>();
 	for (const task of tasks) {
 		const status = task.status || "";
@@ -39,6 +47,25 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 		const list = groups.get(status) || [];
 		return list.slice().sort(compareIds);
 	});
+
+	if (layout === "vertical") {
+		const rows: string[] = [];
+		for (const [idx, status] of ordered.entries()) {
+			const header = status || "No Status";
+			rows.push(header);
+			rows.push("-".repeat(header.length));
+			const tasksInStatus = columns[idx];
+			for (const task of tasksInStatus) {
+				rows.push(task.id);
+				rows.push(task.title);
+				rows.push("");
+			}
+			if (tasksInStatus.length === 0) {
+				rows.push("");
+			}
+		}
+		return rows.join("\n").trimEnd();
+	}
 
 	const colWidths = ordered.map((status, idx) => {
 		const header = status || "No Status";
@@ -91,4 +118,19 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 	}
 
 	return rows.join("\n");
+}
+
+export async function exportKanbanBoardToFile(tasks: Task[], statuses: string[], filePath: string): Promise<void> {
+	const board = generateKanbanBoard(tasks, statuses);
+
+	let existing = "";
+	try {
+		existing = await Bun.file(filePath).text();
+	} catch {
+		await mkdir(dirname(filePath), { recursive: true });
+	}
+
+	const needsNewline = existing && !existing.endsWith("\n");
+	const content = `${existing}${needsNewline ? "\n" : ""}${board}\n`;
+	await Bun.write(filePath, content);
 }
