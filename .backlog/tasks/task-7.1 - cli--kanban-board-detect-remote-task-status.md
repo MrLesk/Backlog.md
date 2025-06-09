@@ -3,6 +3,7 @@ id: task-7.1
 title: 'CLI: Kanban board detect remote task status'
 status: "To Do"
 assignee: []
+reporter: @MrLesk
 created_date: '2025-06-09'
 labels: []
 dependencies: []

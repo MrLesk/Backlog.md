@@ -3,6 +3,7 @@ id: task-6.2
 title: 'CLI: GitHub Actions for Build & Publish'
 status: "To Do"
 assignee: []
+reporter: @MrLesk
 created_date: '2025-06-09'
 labels:
   - ci

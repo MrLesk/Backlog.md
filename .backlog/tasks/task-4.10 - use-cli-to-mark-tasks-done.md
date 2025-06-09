@@ -3,6 +3,7 @@ id: task-4.10
 title: 'CLI: enforce Agents to use backlog CLI to mark tasks Done'
 status: Done
 assignee: []
+reporter: @MrLesk
 created_date: '2025-06-08'
 updated_date: '2025-06-09'
 labels:

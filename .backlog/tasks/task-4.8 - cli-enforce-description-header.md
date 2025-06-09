@@ -2,6 +2,8 @@
 id: task-4.8
 title: 'CLI: enforce description header'
 status: Done
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-08
 labels: []
 dependencies: []

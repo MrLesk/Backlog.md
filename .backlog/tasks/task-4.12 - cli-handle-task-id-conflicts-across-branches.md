@@ -1,8 +1,9 @@
 ---
 id: task-4.12
 title: 'CLI: Handle task ID conflicts across branches'
-status: Draft
+status: To Do
 assignee: []
+reporter: @MrLesk
 created_date: '2025-06-09'
 labels: []
 dependencies: []

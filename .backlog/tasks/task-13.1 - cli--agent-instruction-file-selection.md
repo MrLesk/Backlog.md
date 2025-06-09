@@ -3,6 +3,7 @@ id: task-13.1
 title: "CLI: Agent Instruction File Selection"
 status: "To Do"
 assignee: []
+reporter: @MrLesk
 created_date: '2025-06-09'
 labels:
   - cli

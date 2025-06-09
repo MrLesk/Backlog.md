@@ -2,6 +2,8 @@
 id: task-4.9
 title: 'CLI: Normalize task-id inputs'
 status: Done
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-08
 labels:
   - cli

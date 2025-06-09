@@ -1,8 +1,9 @@
 ---
 id: task-17
 title: "Improve drafts readme with generic example and CLI command reference"
-status: Draft
+status: To Do
 assignee: []
+reporter: @MrLesk
 created_date: 2025-06-09
 labels: []
 dependencies: []

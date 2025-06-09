@@ -1,7 +1,7 @@
 ---
 id: task-14
 title: 'GUI: introduction screens'
-status: Draft
+status: To Do
 assignee: []
 reporter: @MrLesk
 created_date: '2025-06-09'

@@ -1,8 +1,9 @@
 ---
 id: task-18
 title: "Improve decisions readme with generic example and CLI command reference"
-status: Draft
+status: To Do
 assignee: []
+reporter: @MrLesk
 created_date: 2025-06-09
 labels: []
 dependencies: []

@@ -3,6 +3,7 @@ id: task-6.1
 title: 'CLI: Local installation support for bunx/npx'
 status: Done
 assignee: []
+reporter: @MrLesk
 created_date: '2025-06-08'
 updated_date: '2025-06-09'
 labels:

@@ -2,8 +2,7 @@
 id: task-19
 title: CLI - fix default task status and remove Draft from statuses
 status: To Do
-assignee:
-  - '@MrLesk'
+reporter: @MrLesk
 created_date: '2025-06-09'
 labels: []
 dependencies: []
