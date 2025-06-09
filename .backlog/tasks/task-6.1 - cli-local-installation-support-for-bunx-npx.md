@@ -23,6 +23,25 @@ Allow installing Backlog.md locally in JS projects so agents can run bunx/npx ba
 
 ## Implementation Notes
 
-- `package.json` now includes a version and is publishable
-- `readme.md` documents local installation using `npm install backlog.md`
-- Added `local-install.test.ts` to verify execution via `npx` and `bun x`
+**Package Configuration:**
+- `package.json` configured for npm publishing with proper `name`, `version` (0.1.0), and `bin` entry
+- `bin` field points to `./cli/index.js` enabling global CLI access after installation
+- Build script creates both Node.js bundle and compiled binary for distribution flexibility
+
+**Local Installation Support:**
+- Package installable via `npm install backlog.md --save-dev` or `bun add -d backlog.md`
+- CLI accessible through `npx backlog` and `bunx backlog` commands
+- Works from any directory within the project after local installation
+
+**Documentation:**
+- `readme.md` includes comprehensive local installation section (lines 15-30)
+- Documents both npm and bun installation methods
+- Provides clear usage examples for npx/bunx execution
+
+**Test Coverage:**
+- `local-install.test.ts` automatically tests both execution methods
+- Creates temporary project, builds tarball, installs locally, and verifies CLI functionality
+- Tests confirm `--help` output contains expected "Backlog project management CLI" text
+- Both npx and bunx execution paths validated in isolated environment
+
+The implementation ensures seamless local installation for projects where global CLI installation isn't available, particularly useful for AI agents working in constrained environments.
