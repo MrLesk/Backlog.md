@@ -2,10 +2,8 @@
 id: task-13
 title: 'CLI: Add Agent Instruction Prompt'
 status: "To Do"
-created_date: '2025-06-08'
-labels:
-  - cli
-  - agents
+created_date: 2025-06-08
+labels: [cli, agents]
 dependencies: []
 ---
 

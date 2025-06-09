@@ -2,8 +2,8 @@
 id: task-9
 title: "GUI: Implement GUI Task Creation/Editing Forms"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["gui"]
 milestone: "M3 - GUI"
