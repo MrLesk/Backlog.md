@@ -1001,6 +1001,36 @@ describe("CLI Integration", () => {
 			expect(lines).toHaveLength(2); // Header + separator only
 		});
 
+		it("should support vertical layout option", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Todo Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "A task in todo",
+				},
+				false,
+			);
+
+			const tasks = await core.filesystem.listTasks();
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+
+			const { generateKanbanBoard } = await import("../board.ts");
+			const board = generateKanbanBoard(tasks, statuses, "vertical");
+
+			const lines = board.split("\n");
+			expect(lines[0]).toBe("To Do");
+			expect(board).toContain("task-1");
+			expect(board).toContain("Todo Task");
+		});
+
 		it("should merge task status from remote branches", async () => {
 			const core = new Core(TEST_DIR);
 

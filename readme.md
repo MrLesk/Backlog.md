@@ -127,6 +127,7 @@ backlog task demote <task-id>
 
     ```shell
     backlog board view
+    backlog board view --layout vertical
     ```
 
 ## Drafts

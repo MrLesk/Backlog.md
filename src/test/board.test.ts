@@ -137,4 +137,38 @@ describe("generateKanbanBoard", () => {
 		expect(taskIdLine).toContain("task-1");
 		expect(taskTitleLine).toContain("This is a very long task title");
 	});
+
+	it("creates vertical board layout", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "First",
+				status: "To Do",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+			{
+				id: "task-2",
+				title: "Second",
+				status: "In Progress",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+		];
+
+		const board = generateKanbanBoard(tasks, ["To Do", "In Progress", "Done"], "vertical");
+		const lines = board.split("\n");
+		expect(lines[0]).toBe("To Do");
+		expect(lines).toContain("In Progress");
+		expect(board).toContain("task-1");
+		expect(board).toContain("First");
+		expect(board).toContain("task-2");
+		expect(board).toContain("Second");
+	});
 });

@@ -4,7 +4,13 @@ export interface BoardOptions {
 
 import type { Task } from "./types/index.ts";
 
-export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): string {
+export type BoardLayout = "horizontal" | "vertical";
+
+export function generateKanbanBoard(
+	tasks: Task[],
+	statuses: string[] = [],
+	layout: BoardLayout = "horizontal",
+): string {
 	const groups = new Map<string, Task[]>();
 	for (const task of tasks) {
 		const status = task.status || "";
@@ -20,6 +26,25 @@ export function generateKanbanBoard(tasks: Task[], statuses: string[] = []): str
 			: statuses;
 
 	const columns = ordered.map((status) => groups.get(status) || []);
+
+	if (layout === "vertical") {
+		const rows: string[] = [];
+		for (const [idx, status] of ordered.entries()) {
+			const header = status || "No Status";
+			rows.push(header);
+			rows.push("-".repeat(header.length));
+			const tasksInStatus = columns[idx];
+			for (const task of tasksInStatus) {
+				rows.push(task.id);
+				rows.push(task.title);
+				rows.push("");
+			}
+			if (tasksInStatus.length === 0) {
+				rows.push("");
+			}
+		}
+		return rows.join("\n").trimEnd();
+	}
 
 	const colWidths = ordered.map((status, idx) => {
 		const header = status || "No Status";

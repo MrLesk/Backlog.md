@@ -1,10 +1,12 @@
 ---
 id: task-21
 title: Kanban board vertical layout
-status: To Do
+status: Done
 assignee: []
+reporter: '@MrLesk'
 created_date: '2025-06-09'
-reporter: @MrLesk
+updated_date: '2025-06-09'
+completed_date: '2025-06-09'
 labels: []
 dependencies: []
 ---
@@ -15,5 +17,11 @@ Add a visualization to the Kanban board where all status columns are displayed v
 
 ## Acceptance Criteria
 
-- [ ] Vertical Kanban view with all statuses in a single column
-- [ ] Documentation updated if necessary
+- [x] Vertical Kanban view with all statuses in a single column
+- [x] Documentation updated if necessary
+
+## Implementation Notes
+
+- Added `BoardLayout` type and support for `vertical` layout in `generateKanbanBoard`.
+- Introduced `--layout` option for `backlog board view` command.
+- Updated tests and documentation to cover the new layout option.
