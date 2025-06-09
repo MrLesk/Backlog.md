@@ -254,7 +254,7 @@ describe("CLI Integration", () => {
 			expect(loadedTask?.status).toBe("To Do");
 			expect(loadedTask?.assignee).toEqual(["testuser"]);
 			expect(loadedTask?.labels).toEqual(["test", "cli"]);
-			expect(loadedTask?.description).toBe("This is a test task for view command");
+			expect(loadedTask?.description).toBe("## Description\n\nThis is a test task for view command");
 		});
 
 		it("should handle task IDs with and without 'task-' prefix", async () => {
@@ -317,7 +317,7 @@ describe("CLI Integration", () => {
 
 			expect(viewedTask).toEqual(secondView);
 			expect(viewedTask?.title).toBe("Read Only Test");
-			expect(viewedTask?.description).toBe("Original description");
+			expect(viewedTask?.description).toBe("## Description\n\nOriginal description");
 		});
 	});
 
@@ -366,7 +366,7 @@ describe("CLI Integration", () => {
 			// Verify changes were persisted
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask?.title).toBe("Updated Title");
-			expect(updatedTask?.description).toBe("Updated description");
+			expect(updatedTask?.description).toBe("## Description\n\nUpdated description");
 			expect(updatedTask?.status).toBe("In Progress");
 			expect(updatedTask?.updatedDate).toBe("2025-06-08");
 		});
@@ -613,7 +613,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.updatedDate).toBe("2025-06-08");
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);
-			expect(updatedTask?.description).toBe("Testing YAML preservation");
+			expect(updatedTask?.description).toBe("## Description\n\nTesting YAML preservation");
 		});
 	});
 

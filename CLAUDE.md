@@ -34,6 +34,7 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 - Reference task IDs in commit messages and PR titles when implementing features
 - Use `.backlog/tasks/` markdown files to understand implementation requirements
 - Include a `## Description` section and a `## Acceptance Criteria` checklist in every task file
+- Write relevant tests when implementing new functionality or fixing bugs
 - Follow decimal numbering for subtasks
 - Maintain clean git status before commits
 - Use task-descriptive branch names: `<task-id> feature description`
