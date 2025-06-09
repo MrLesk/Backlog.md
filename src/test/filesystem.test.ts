@@ -250,6 +250,13 @@ describe("FileSystem", () => {
 
 			expect(loaded?.alternatives).toBe("Considered JavaScript");
 		});
+
+		it("should list decision logs", async () => {
+			await filesystem.saveDecisionLog(sampleDecision);
+			const list = await filesystem.listDecisionLogs();
+			expect(list).toHaveLength(1);
+			expect(list[0].id).toBe(sampleDecision.id);
+		});
 	});
 
 	describe("document operations", () => {
@@ -284,6 +291,12 @@ describe("FileSystem", () => {
 
 			const docsFiles = await readdir(filesystem.docsDir);
 			expect(docsFiles.some((f) => f.includes("simple-doc"))).toBe(true);
+		});
+
+		it("should list documents", async () => {
+			await filesystem.saveDocument(sampleDocument);
+			const list = await filesystem.listDocuments();
+			expect(list.some((d) => d.id === sampleDocument.id)).toBe(true);
 		});
 	});
 

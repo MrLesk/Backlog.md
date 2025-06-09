@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 
 import { Command } from "commander";
 import { Core, initializeGitRepository, isGitRepository } from "./index.ts";
-import type { Task } from "./types/index.ts";
+import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
 
 const program = new Command();
 program.name("backlog").description("Backlog project management CLI");
@@ -98,6 +98,32 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 		}
 	}
 	return `task-${max + 1}`;
+}
+
+async function generateNextDecisionId(core: Core): Promise<string> {
+	const files = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: core.filesystem.decisionsDir }));
+	let max = 0;
+	for (const file of files) {
+		const match = file.match(/^decision-(\d+)/);
+		if (match) {
+			const num = Number.parseInt(match[1], 10);
+			if (num > max) max = num;
+		}
+	}
+	return `decision-${max + 1}`;
+}
+
+async function generateNextDocId(core: Core): Promise<string> {
+	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
+	let max = 0;
+	for (const file of files) {
+		const match = file.match(/^doc-(\d+)/);
+		if (match) {
+			const num = Number.parseInt(match[1], 10);
+			if (num > max) max = num;
+		}
+	}
+	return `doc-${max + 1}`;
 }
 
 function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
@@ -350,5 +376,74 @@ draftCmd
 			console.error(`Draft ${taskId} not found.`);
 		}
 	});
+
+const docCmd = program.command("doc");
+
+docCmd
+	.command("create <title>")
+	.option("-p, --path <path>")
+	.option("-t, --type <type>")
+	.action(async (title: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const id = await generateNextDocId(core);
+		const document: DocType = {
+			id,
+			title,
+			type: (options.type || "other") as DocType["type"],
+			createdDate: new Date().toISOString().split("T")[0],
+			content: "",
+		};
+		await core.createDocument(document, true, options.path || "");
+		console.log(`Created document ${id}`);
+	});
+
+docCmd.command("list").action(async () => {
+	const cwd = process.cwd();
+	const core = new Core(cwd);
+	const docs = await core.filesystem.listDocuments();
+	if (docs.length === 0) {
+		console.log("No docs found.");
+		return;
+	}
+	for (const d of docs) {
+		console.log(`${d.id} - ${d.title}`);
+	}
+});
+
+const decisionCmd = program.command("decision");
+
+decisionCmd
+	.command("create <title>")
+	.option("-s, --status <status>")
+	.action(async (title: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const id = await generateNextDecisionId(core);
+		const decision: DecisionLog = {
+			id,
+			title,
+			date: new Date().toISOString().split("T")[0],
+			status: (options.status || "proposed") as DecisionLog["status"],
+			context: "",
+			decision: "",
+			consequences: "",
+		};
+		await core.createDecisionLog(decision, true);
+		console.log(`Created decision ${id}`);
+	});
+
+decisionCmd.command("list").action(async () => {
+	const cwd = process.cwd();
+	const core = new Core(cwd);
+	const decisions = await core.filesystem.listDecisionLogs();
+	if (decisions.length === 0) {
+		console.log("No decisions found.");
+		return;
+	}
+	for (const d of decisions) {
+		console.log(`${d.id} - ${d.title}`);
+	}
+});
 
 program.parseAsync(process.argv);
