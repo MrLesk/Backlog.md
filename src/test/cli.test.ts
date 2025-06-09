@@ -1022,13 +1022,8 @@ describe("CLI Integration", () => {
 			const { generateKanbanBoard } = await import("../board.ts");
 			const board = generateKanbanBoard(tasks, statuses);
 
-			// Should still show status columns even with no tasks
-			expect(board).toContain("To Do");
-			expect(board).toContain("In Progress");
-			expect(board).toContain("Done");
-
-			const lines = board.split("\n");
-			expect(lines).toHaveLength(2); // Header + separator only
+			// Should return empty board when no tasks exist
+			expect(board).toBe("");
 		});
 
 		it("should support vertical layout option", async () => {

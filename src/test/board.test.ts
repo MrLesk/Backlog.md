@@ -76,11 +76,7 @@ describe("generateKanbanBoard", () => {
 
 	it("handles empty task list", () => {
 		const board = generateKanbanBoard([], ["To Do", "In Progress", "Done"]);
-		const lines = board.split("\n");
-		expect(lines[0]).toContain("To Do");
-		expect(lines[0]).toContain("In Progress");
-		expect(lines[0]).toContain("Done");
-		expect(lines.length).toBe(2); // header + separator only
+		expect(board).toBe(""); // No columns when no tasks
 	});
 
 	it("respects status order from config", () => {

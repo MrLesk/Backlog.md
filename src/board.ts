@@ -45,11 +45,11 @@ export function generateKanbanBoard(
 	// Map for quick lookup by id
 	const byId = new Map<string, Task>(tasks.map((t) => [t.id, t]));
 
-	// If no tasks, still show the configured statuses
+	// Only show statuses that have tasks
 	const ordered =
 		tasks.length > 0
 			? [...statuses.filter((s) => groups.has(s)), ...Array.from(groups.keys()).filter((s) => !statuses.includes(s))]
-			: statuses;
+			: [];
 
 	const columns: DisplayTask[][] = ordered.map((status) => {
 		const items = groups.get(status) || [];
@@ -98,6 +98,11 @@ export function generateKanbanBoard(
 			}
 		}
 		return rows.join("\n").trimEnd();
+	}
+
+	// Return empty string if no columns to show
+	if (ordered.length === 0) {
+		return "";
 	}
 
 	const colWidths = ordered.map((status, idx) => {
