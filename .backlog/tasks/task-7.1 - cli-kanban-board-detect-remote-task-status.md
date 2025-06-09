@@ -29,13 +29,9 @@ chosen status.
 
 ## Acceptance Criteria
 
-- [x] `backlog board view` fetches and scans every branch under `origin` for task
-      files.
-- [x] The displayed status for each task reflects the most recent entry across
-      all branches.
-- [x] Status columns follow the configured order and fall back to the last seen
-      status on conflicts, copying the full frontmatter from the task that
-      provided the displayed status.
+- [x] `backlog board view` fetches and scans every branch under `origin` for task files.
+- [x] The displayed status for each task reflects the most recent entry across all branches.
+- [x] Status columns follow the configured order and fall back to the last seen status on conflicts, copying the full frontmatter from the task that provided the displayed status.
 
 ## Implementation Notes
 
