@@ -48,6 +48,7 @@ describe("Core", () => {
 			id: "task-1",
 			title: "Test Task",
 			status: "To Do",
+			assignee: [],
 			createdDate: "2025-06-07",
 			labels: ["test"],
 			dependencies: [],
@@ -112,6 +113,16 @@ describe("Core", () => {
 			expect(lastCommit).toContain("backlog: Archive task task-1");
 		});
 
+		it("should demote task with auto-commit", async () => {
+			await core.createTask(sampleTask, true);
+
+			const demoted = await core.demoteTask("task-1", true);
+			expect(demoted).toBe(true);
+
+			const lastCommit = await core.gitOps.getLastCommitMessage();
+			expect(lastCommit).toContain("backlog: Demote task task-1");
+		});
+
 		it("should return false when archiving non-existent task", async () => {
 			const archived = await core.archiveTask("non-existent", true);
 			expect(archived).toBe(false);
@@ -141,6 +152,31 @@ describe("Core", () => {
 			expect(loadedTask?.status).toBe("In Progress");
 		});
 
+		it("should add description header when missing", async () => {
+			const taskNoHeader: Task = {
+				...sampleTask,
+				id: "task-2",
+				description: "Just text",
+			};
+
+			await core.createTask(taskNoHeader, false);
+			const loaded = await core.filesystem.loadTask("task-2");
+			expect(loaded?.description.startsWith("## Description")).toBe(true);
+		});
+
+		it("should not duplicate description header", async () => {
+			const taskWithHeader: Task = {
+				...sampleTask,
+				id: "task-3",
+				description: "## Description\n\nExisting",
+			};
+
+			await core.createTask(taskWithHeader, false);
+			const loaded = await core.filesystem.loadTask("task-3");
+			const matches = loaded?.description.match(/## Description/g) || [];
+			expect(matches.length).toBe(1);
+		});
+
 		it("should handle task creation without auto-commit when git fails", async () => {
 			// Create task in directory without git
 			const nonGitCore = new Core(join(TEST_DIR, "no-git"));
@@ -159,6 +195,7 @@ describe("Core", () => {
 			id: "task-draft",
 			title: "Draft Task",
 			status: "Draft",
+			assignee: [],
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
@@ -186,6 +223,26 @@ describe("Core", () => {
 			expect(lastCommit).toBeDefined();
 			expect(lastCommit.length).toBeGreaterThan(0);
 		});
+
+		it("should promote draft with auto-commit", async () => {
+			await core.createDraft(sampleDraft, true);
+
+			const promoted = await core.promoteDraft("task-draft", true);
+			expect(promoted).toBe(true);
+
+			const lastCommit = await core.gitOps.getLastCommitMessage();
+			expect(lastCommit).toContain("backlog: Promote draft task-draft");
+		});
+
+		it("should archive draft with auto-commit", async () => {
+			await core.createDraft(sampleDraft, true);
+
+			const archived = await core.archiveDraft("task-draft", true);
+			expect(archived).toBe(true);
+
+			const lastCommit = await core.gitOps.getLastCommitMessage();
+			expect(lastCommit).toContain("backlog: Archive draft task-draft");
+		});
 	});
 
 	describe("integration with config", () => {
@@ -204,6 +261,7 @@ describe("Core", () => {
 				id: "task-custom",
 				title: "Custom Task",
 				status: "",
+				assignee: [],
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
@@ -231,6 +289,7 @@ describe("Core", () => {
 				id: "task-fallback",
 				title: "Fallback Task",
 				status: "",
+				assignee: [],
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
@@ -252,6 +311,7 @@ describe("Core", () => {
 				id: "task-accessor",
 				title: "Accessor Test Task",
 				status: "To Do",
+				assignee: [],
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],

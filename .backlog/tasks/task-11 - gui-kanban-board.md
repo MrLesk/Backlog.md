@@ -2,8 +2,8 @@
 id: task-11
 title: "GUI: Implement GUI Kanban Board Display & Interaction"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["gui", "kanban", "feature"]
 milestone: "M4 - GUI-Kanban Board"

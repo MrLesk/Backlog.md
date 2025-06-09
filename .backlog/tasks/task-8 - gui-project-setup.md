@@ -2,8 +2,8 @@
 id: task-8
 title: "GUI: Setup GUI Project Structure"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["gui", "setup"]
 milestone: "M3 - GUI"

@@ -2,8 +2,8 @@
 id: task-10
 title: "GUI: Implement `backlog init` in GUI & GUI Packaging"
 status: "To Do"
-assignee: ""
-reporter: "@MrLesk"
+assignee: []
+reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["gui", "feature"]
 milestone: "M3 - GUI"

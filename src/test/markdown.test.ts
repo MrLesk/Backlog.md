@@ -79,7 +79,7 @@ Fix the login bug that prevents users from signing in.
 			expect(task.id).toBe("task-1");
 			expect(task.title).toBe("Fix login bug");
 			expect(task.status).toBe("In Progress");
-			expect(task.assignee).toBe("@developer");
+			expect(task.assignee).toEqual(["@developer"]);
 			expect(task.reporter).toBe("@manager");
 			expect(task.createdDate).toBe("2025-06-03");
 			expect(task.labels).toEqual(["bug", "frontend"]);
@@ -106,7 +106,7 @@ Just a basic task.`;
 			expect(task.id).toBe("task-2");
 			expect(task.title).toBe("Simple task");
 			expect(task.status).toBe("");
-			expect(task.assignee).toBeUndefined();
+			expect(task.assignee).toEqual([]);
 			expect(task.reporter).toBeUndefined();
 			expect(task.labels).toEqual([]);
 			expect(task.dependencies).toEqual([]);
@@ -130,6 +130,30 @@ Task without status.`;
 			expect(task.createdDate).toBe("2025-06-07");
 		});
 
+		it("should parse unquoted created_date", () => {
+			const content = `---
+id: task-5
+title: "Unquoted"
+created_date: 2025-06-08
+---`;
+
+			const task = parseTask(content);
+
+			expect(task.createdDate).toBe("2025-06-08");
+		});
+
+		it("should parse created_date in short format", () => {
+			const content = `---
+id: task-6
+title: "Short"
+created_date: 08-06-25
+---`;
+
+			const task = parseTask(content);
+
+			expect(task.createdDate).toBe("2025-06-08");
+		});
+
 		it("should extract acceptance criteria with checked items", () => {
 			const content = `---
 id: task-4
@@ -145,6 +169,20 @@ title: "Test with mixed criteria"
 			const task = parseTask(content);
 
 			expect(task.acceptanceCriteria).toEqual(["Todo item", "Done item", "Another todo"]);
+		});
+
+		it("should parse unquoted assignee names starting with @", () => {
+			const content = `---
+id: task-5
+title: "Assignee Test"
+assignee: @MrLesk
+---
+
+Test task.`;
+
+			const task = parseTask(content);
+
+			expect(task.assignee).toEqual(["@MrLesk"]);
 		});
 	});
 
@@ -237,7 +275,7 @@ describe("Markdown Serializer", () => {
 				id: "task-1",
 				title: "Test Task",
 				status: "To Do",
-				assignee: "@developer",
+				assignee: ["@developer"],
 				reporter: "@manager",
 				createdDate: "2025-06-03",
 				labels: ["bug", "frontend"],
@@ -263,6 +301,7 @@ describe("Markdown Serializer", () => {
 				id: "task-parent",
 				title: "Parent Task",
 				status: "In Progress",
+				assignee: [],
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
@@ -282,6 +321,7 @@ describe("Markdown Serializer", () => {
 				id: "task-1.1",
 				title: "Subtask",
 				status: "To Do",
+				assignee: [],
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
@@ -299,6 +339,7 @@ describe("Markdown Serializer", () => {
 				id: "task-minimal",
 				title: "Minimal Task",
 				status: "Draft",
+				assignee: [],
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
@@ -309,7 +350,7 @@ describe("Markdown Serializer", () => {
 
 			expect(result).toContain("id: task-minimal");
 			expect(result).toContain("title: Minimal Task");
-			expect(result).not.toContain("assignee:");
+			expect(result).toContain("assignee: []");
 			expect(result).not.toContain("reporter:");
 			expect(result).not.toContain("updated_date:");
 		});
