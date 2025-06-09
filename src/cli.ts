@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
 import {
+	type AgentInstructionFile,
 	Core,
 	addAgentInstructions,
 	exportKanbanBoardToFile,
@@ -49,15 +50,27 @@ program
 				const scope = (await rl.question("Store reporter name globally? [y/N] ")).trim().toLowerCase();
 				storeGlobal = scope.startsWith("y");
 			}
-			const addAgents = (await rl.question("Add instructions for AI agents? [y/N] ")).trim().toLowerCase();
+			const options = [".cursorrules", "CLAUDE.md", "AGENTS.md", "readme.md"] as const;
+			const menu = options.map((n, i) => `${i + 1}) ${n}`).join("\n");
+			const selection = (
+				await rl.question(
+					`Select agent instruction files to update (comma separated numbers, blank to skip):\n${menu}\n> `,
+				)
+			).trim();
 			rl.close();
+
+			const indices = selection
+				.split(/[,\s]+/)
+				.map((v) => Number.parseInt(v, 10))
+				.filter((n) => n >= 1 && n <= options.length);
+			const files: AgentInstructionFile[] = indices.map((i) => options[i - 1]);
 
 			const core = new Core(cwd);
 			await core.initializeProject(projectName);
 			console.log(`Initialized backlog project: ${projectName}`);
 
-			if (addAgents.startsWith("y")) {
-				await addAgentInstructions(cwd, core.gitOps);
+			if (files.length > 0) {
+				await addAgentInstructions(cwd, core.gitOps, files);
 			}
 
 			if (reporter) {

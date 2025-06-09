@@ -74,6 +74,24 @@ describe("generateKanbanBoard", () => {
 		expect(board).toContain("No Status Task");
 	});
 
+	it("omits 'No Status' column when all tasks have status", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Status Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+		];
+
+		const board = generateKanbanBoard(tasks, ["To Do", "In Progress", "Done"]);
+		expect(board).not.toContain("No Status");
+	});
+
 	it("handles empty task list", () => {
 		const board = generateKanbanBoard([], ["To Do", "In Progress", "Done"]);
 		expect(board).toBe(""); // No columns when no tasks
