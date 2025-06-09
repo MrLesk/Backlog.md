@@ -5,6 +5,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
 import { Command } from "commander";
+import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
 import { Core, generateKanbanBoard, initializeGitRepository, isGitRepository } from "./index.ts";
 import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
 
@@ -466,5 +467,58 @@ decisionCmd.command("list").action(async () => {
 		console.log(`${d.id} - ${d.title}`);
 	}
 });
+
+const configCmd = program.command("config");
+
+configCmd
+	.command("get <key>")
+	.description("get configuration value")
+	.action(async (key: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const localCfg = await core.filesystem.loadConfig();
+		const localVal = localCfg ? (localCfg as Record<string, unknown>)[key] : undefined;
+		if (typeof localVal !== "undefined") {
+			console.log(localVal);
+			return;
+		}
+		const globalVal = await core.filesystem.getUserSetting(key, true);
+		if (typeof globalVal !== "undefined") {
+			console.log(globalVal);
+			return;
+		}
+		const defaults: Record<string, unknown> = {
+			statuses: DEFAULT_STATUSES,
+			defaultStatus: FALLBACK_STATUS,
+		};
+		if (key in defaults) {
+			console.log(defaults[key]);
+		}
+	});
+
+configCmd
+	.command("set <key> <value>")
+	.description("set configuration value")
+	.option("--global", "save to global user config")
+	.option("--local", "save to local project config")
+	.action(async (key: string, value: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		if (options.global) {
+			await core.filesystem.setUserSetting(key, value, true);
+			console.log(`Set ${key} in global config`);
+		} else {
+			const cfg = (await core.filesystem.loadConfig()) || {
+				projectName: "",
+				statuses: [...DEFAULT_STATUSES],
+				labels: [],
+				milestones: [],
+				defaultStatus: FALLBACK_STATUS,
+			};
+			(cfg as Record<string, unknown>)[key] = value;
+			await core.filesystem.saveConfig(cfg);
+			console.log(`Set ${key} in local config`);
+		}
+	});
 
 program.parseAsync(process.argv);

@@ -203,6 +203,19 @@ describe("FileSystem", () => {
 		});
 	});
 
+	describe("user config operations", () => {
+		it("should save and load local and global user settings", async () => {
+			await filesystem.setUserSetting("reporter", "local", false);
+			await filesystem.setUserSetting("reporter", "global", true);
+
+			const local = await filesystem.getUserSetting("reporter", false);
+			const global = await filesystem.getUserSetting("reporter", true);
+
+			expect(local).toBe("local");
+			expect(global).toBe("global");
+		});
+	});
+
 	describe("directory accessors", () => {
 		it("should provide correct directory paths", () => {
 			expect(filesystem.tasksDir).toBe(join(TEST_DIR, ".backlog", "tasks"));
