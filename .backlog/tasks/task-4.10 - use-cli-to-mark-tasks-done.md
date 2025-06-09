@@ -1,15 +1,16 @@
 ---
 id: task-4.10
-title: 'CLI: enforce using backlog CLI to mark tasks Done'
+title: 'CLI: enforce Agents to use backlog CLI to mark tasks Done'
 status: Done
-created_date: 2025-06-08
+assignee: []
+created_date: '2025-06-08'
+updated_date: '2025-06-09'
 labels:
   - cli
   - agents
 dependencies: []
 parent_task_id: task-4
 ---
-
 ## Description
 
 Update agent guidelines so that after implementing and testing a task, they use the backlog CLI to set the task status to **Done**.
