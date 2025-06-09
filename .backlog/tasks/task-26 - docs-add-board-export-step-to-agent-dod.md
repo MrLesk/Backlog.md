@@ -1,12 +1,11 @@
 ---
 id: task-26
-title: 'Docs: add board export step to agent DoD'
+title: 'Agents: add board export step to agent DoD'
 status: To Do
 assignee: []
 created_date: '2025-06-09'
 updated_date: '2025-06-09'
 labels:
-  - docs
   - agents
 dependencies: []
 ---
