@@ -23,6 +23,10 @@ Update the AI agent guideline files to ensure that whenever an agent starts work
 - [x] Task committed to repository.
 
 ## Implementation Notes
-- Added new guideline bullet in `AGENTS.md` instructing agents to set the task to `In Progress`, assign themselves, and push when beginning work.
-- Mirrored the same instruction in `CLAUDE.md` under **AI Agent Integration**.
-- Updated `.cursorrules` within the Project-Specific Rules section to include the requirement.
+
+* Added new guideline bullet in `AGENTS.md` instructing agents to set the task to `In Progress`, assign themselves, and push when beginning work.
+* Mirrored the same instruction in `CLAUDE.md:41` under **AI Agent Integration** section.
+* Updated `.cursorrules` within the Project-Specific Rules section to include the requirement.
+* All three files now consistently instruct agents to mark tasks as "In Progress" and assign themselves when starting work.
+* This ensures proper task tracking and prevents multiple agents from working on the same task simultaneously.
+* Implementation follows the established pattern of maintaining consistency across all agent instruction files.
