@@ -5,7 +5,8 @@ function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
 		.split("\n")
 		.map((line) => {
-			const match = line.match(/^(\s*assignee:\s*)(.*)$/);
+			// Handle both assignee and reporter fields that start with @
+			const match = line.match(/^(\s*(?:assignee|reporter):\s*)(.*)$/);
 			if (!match) return line;
 
 			const [, prefix, raw] = match;

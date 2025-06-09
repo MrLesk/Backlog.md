@@ -184,6 +184,22 @@ Test task.`;
 
 			expect(task.assignee).toEqual(["@MrLesk"]);
 		});
+
+		it("should parse unquoted reporter names starting with @", () => {
+			const content = `---
+id: task-6
+title: "Reporter Test"
+assignee: []
+reporter: @MrLesk
+created_date: 2025-06-08
+---
+
+Test task with reporter.`;
+
+			const task = parseTask(content);
+
+			expect(task.reporter).toBe("@MrLesk");
+		});
 	});
 
 	describe("parseDecisionLog", () => {
