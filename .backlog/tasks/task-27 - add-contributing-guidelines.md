@@ -16,9 +16,9 @@ dependencies: []
 Create CONTRIBUTING.md with guidelines for contributing to Backlog.md.
 
 ## Acceptance Criteria
-- [ ] CONTRIBUTING.md explains how to open issues and PRs
-- [ ] Describes running tests and linting
-- [ ] Task committed to repository
+- [x] CONTRIBUTING.md explains how to open issues and PRs
+- [x] Describes running tests and linting
+- [x] Task committed to repository
 
 ## Implementation Notes
 - Added `CONTRIBUTING.md` with sections on opening issues and submitting
