@@ -1,9 +1,10 @@
 ---
 id: task-31
 title: Update README for open source
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-09'
+updated_date: '2025-06-09'
 labels:
   - docs
 dependencies: []
@@ -14,7 +15,12 @@ dependencies: []
 Add installation badges, link to license and contributing guide. Document global install and example usage.
 
 ## Acceptance Criteria
-- [ ] README highlights MIT license and contribution guidelines
-- [ ] Includes npm and bun install badges
-- [ ] Provides quick start example
-- [ ] Task committed to repository
+- [x] README highlights MIT license and contribution guidelines
+- [x] Includes npm and bun install badges
+- [x] Provides quick start example
+- [x] Task committed to repository
+
+## Implementation Notes
+- Added npm and bun badge images with links in `readme.md`.
+- Inserted license and contribution links near the top of the README.
+- Added new Quick Start section showing global install and example commands.
