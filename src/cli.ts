@@ -77,6 +77,19 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	const drafts = await core.filesystem.listDrafts();
 	const all = [...tasks, ...drafts];
 
+	const remoteIds: string[] = [];
+	try {
+		await core.gitOps.fetch();
+		const branches = await core.gitOps.listRemoteBranches();
+		for (const branch of branches) {
+			const files = await core.gitOps.listFilesInRemoteBranch(branch, ".backlog/tasks");
+			for (const file of files) {
+				const match = file.match(/task-([\d.]+)/);
+				if (match) remoteIds.push(`task-${match[1]}`);
+			}
+		}
+	} catch {}
+
 	if (parent) {
 		const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
 		let max = 0;
@@ -87,12 +100,26 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 				if (num > max) max = num;
 			}
 		}
+		for (const id of remoteIds) {
+			if (id.startsWith(`${prefix}.`)) {
+				const rest = id.slice(prefix.length + 1);
+				const num = Number.parseInt(rest.split(".")[0] || "0", 10);
+				if (num > max) max = num;
+			}
+		}
 		return `${prefix}.${max + 1}`;
 	}
 
 	let max = -1;
 	for (const t of all) {
 		const match = t.id.match(/^task-(\d+)/);
+		if (match) {
+			const num = Number.parseInt(match[1], 10);
+			if (num > max) max = num;
+		}
+	}
+	for (const id of remoteIds) {
+		const match = id.match(/^task-(\d+)/);
 		if (match) {
 			const num = Number.parseInt(match[1], 10);
 			if (num > max) max = num;
