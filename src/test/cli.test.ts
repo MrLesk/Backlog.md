@@ -110,6 +110,36 @@ describe("CLI Integration", () => {
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Existing Repo Test");
 		});
+
+		it("should create agent instruction files when requested", async () => {
+			// Set up a git repository
+			await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+
+			// Simulate the agent instructions being added
+			const core = new Core(TEST_DIR);
+			await core.initializeProject("Agent Test Project");
+
+			// Import and call addAgentInstructions directly (simulating user saying "y")
+			const { addAgentInstructions } = await import("../index.ts");
+			await addAgentInstructions(TEST_DIR, core.gitOps);
+
+			// Verify agent files were created
+			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
+			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
+			const cursorFile = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
+
+			expect(agentsFile).toBe(true);
+			expect(claudeFile).toBe(true);
+			expect(cursorFile).toBe(true);
+
+			// Verify content
+			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+			const claudeContent = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+			expect(agentsContent).toContain("Backlog");
+			expect(claudeContent).toContain("CLAUDE.md");
+		});
 	});
 
 	describe("git integration", () => {

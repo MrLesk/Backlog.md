@@ -8,6 +8,7 @@ import { Command } from "commander";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
 import {
 	Core,
+	addAgentInstructions,
 	exportKanbanBoardToFile,
 	generateKanbanBoard,
 	initializeGitRepository,
@@ -48,11 +49,16 @@ program
 				const scope = (await rl.question("Store reporter name globally? [y/N] ")).trim().toLowerCase();
 				storeGlobal = scope.startsWith("y");
 			}
+			const addAgents = (await rl.question("Add instructions for AI agents? [y/N] ")).trim().toLowerCase();
 			rl.close();
 
 			const core = new Core(cwd);
 			await core.initializeProject(projectName);
 			console.log(`Initialized backlog project: ${projectName}`);
+
+			if (addAgents.startsWith("y")) {
+				await addAgentInstructions(cwd, core.gitOps);
+			}
 
 			if (reporter) {
 				if (storeGlobal) {
