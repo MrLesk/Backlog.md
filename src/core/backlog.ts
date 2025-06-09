@@ -174,6 +174,7 @@ export class Core {
 			milestones: [],
 			defaultStatus: DEFAULT_STATUSES[0], // Use first status as default
 			dateFormat: "yyyy-mm-dd",
+			maxColumnWidth: 20, // Default for terminal display
 		};
 
 		await this.fs.saveConfig(config);

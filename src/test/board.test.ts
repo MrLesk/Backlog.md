@@ -112,7 +112,7 @@ describe("generateKanbanBoard", () => {
 		expect(todoIndex).toBeLessThan(doneIndex);
 	});
 
-	it("handles long task titles by adjusting column width", () => {
+	it("handles long task titles by wrapping text within max column width", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-1",
@@ -130,11 +130,13 @@ describe("generateKanbanBoard", () => {
 		const lines = board.split("\n");
 		const header = lines[0];
 		const taskIdLine = lines[2]; // First task line (ID)
-		const taskTitleLine = lines[3]; // Second task line (title)
-		// Column should be wide enough for both header and long title
-		expect(header.length).toBeGreaterThan("To Do".length);
+		const firstTitleLine = lines[3]; // First wrapped title line
+		// Column width should be constrained by default maxColumnWidth (20)
+		expect(header.length).toBe(20);
 		expect(taskIdLine).toContain("task-1");
-		expect(taskTitleLine).toContain("This is a very long task title");
+		expect(firstTitleLine).toContain("This is a very long");
+		// Should have multiple lines for the wrapped title
+		expect(lines.length).toBeGreaterThan(4);
 	});
 
 	it("nests subtasks under their parent when statuses match", () => {
@@ -164,7 +166,7 @@ describe("generateKanbanBoard", () => {
 
 		const board = generateKanbanBoard(tasks, ["To Do"]);
 		expect(board).toContain("  |— task-1.1");
-		expect(board).toContain("  Child");
+		expect(board).toContain("      Child");
 
 		const lines = board.split("\n");
 		const parentIdx = lines.findIndex((l) => l.includes("task-1") && !l.includes("task-1.1"));

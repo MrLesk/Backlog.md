@@ -45,6 +45,7 @@ export interface BacklogConfig {
 	milestones: string[];
 	defaultStatus?: string;
 	dateFormat: string;
+	maxColumnWidth?: number;
 }
 
 export interface ParsedMarkdown {

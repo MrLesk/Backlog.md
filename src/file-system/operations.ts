@@ -453,6 +453,9 @@ export class FileSystem {
 				case "date_format":
 					config.dateFormat = value.replace(/['"]/g, "");
 					break;
+				case "max_column_width":
+					config.maxColumnWidth = Number.parseInt(value, 10);
+					break;
 			}
 		}
 
@@ -465,6 +468,7 @@ export class FileSystem {
 			milestones: config.milestones || [],
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
+			maxColumnWidth: config.maxColumnWidth,
 		};
 	}
 
@@ -478,6 +482,7 @@ export class FileSystem {
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			`milestones: [${config.milestones.map((m) => `"${m}"`).join(", ")}]`,
 			`date_format: ${config.dateFormat}`,
+			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

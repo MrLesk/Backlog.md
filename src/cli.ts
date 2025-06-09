@@ -475,15 +475,16 @@ boardCmd
 		}
 
 		const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
-		const board = generateKanbanBoard(allTasks, statuses, layout);
+		const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
+		const board = generateKanbanBoard(allTasks, statuses, layout, maxColumnWidth);
 		console.log(board);
 	});
 
 boardCmd
-	.command("export")
+	.command("export [filename]")
 	.description("append kanban board to readme or output file")
-	.option("-o, --output <path>")
-	.action(async (options) => {
+	.option("-o, --output <path>", "output file (deprecated, use filename argument instead)")
+	.action(async (filename, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const config = await core.filesystem.loadConfig();
@@ -520,8 +521,12 @@ boardCmd
 		}
 
 		const allTasks = Array.from(tasksById.values());
-		const outputPath = options.output ? join(cwd, options.output) : join(cwd, "readme.md");
-		await exportKanbanBoardToFile(allTasks, statuses, outputPath);
+		// Priority: filename argument > --output option > default readme.md
+		const outputFile = filename || options.output || "readme.md";
+		const outputPath = join(cwd, outputFile);
+		const maxColumnWidth = config?.maxColumnWidth || 30; // Default for export
+		const addTitle = !filename && !options.output; // Add title only for default readme export
+		await exportKanbanBoardToFile(allTasks, statuses, outputPath, maxColumnWidth, addTitle);
 		console.log(`Exported board to ${outputPath}`);
 	});
 

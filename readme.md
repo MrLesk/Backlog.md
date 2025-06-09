@@ -129,10 +129,14 @@ backlog task demote <task-id>
     backlog board view
     backlog board view --layout vertical
     backlog board view --vertical
-    backlog board export --output <file>
+    backlog board export
+    backlog board export board.md
+    backlog board export path/to/output.md
     ```
     
-    View the board in horizontal (default) or vertical layout. Use `--layout vertical` or the shortcut `--vertical`. Export the board to a file - by default it's appended to `readme.md` if it exists. Use `--output` to specify a different file.
+    View the board in horizontal (default) or vertical layout. Use `--layout vertical` or the shortcut `--vertical`. 
+    
+    Export the board to a file with `backlog board export [filename]`. If no filename is provided, the board is appended to `readme.md` with a "Project Board" title. When exporting to a specific file, no title is added.
 
 ## Drafts
 
@@ -258,4 +262,4 @@ To publish a new version to npm:
    git push origin v<version>
    ```
 3. Push the tag to trigger the GitHub Actions workflow. It will build, test and
-   publish the package to npm using the repository `NODE_AUTH_TOKEN` secret.
+   publish the package to npm using the repository `NODE_AUTH_TOKEN` secret.          

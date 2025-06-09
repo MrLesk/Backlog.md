@@ -4,3 +4,4 @@ statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones: []
 date_format: yyyy-mm-dd
+max_column_width: 80
