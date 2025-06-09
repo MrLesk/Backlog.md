@@ -1,11 +1,20 @@
 <h1 align="center">Backlog.md</h1>
 <p align="center">Lightweight git + markdown project management tool</p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/backlog.md">
+    <img src="https://badgen.net/npm/v/backlog.md?icon=npm&label=npm%20install" alt="npm version" />
+  </a>
+  <img src="https://badgen.net/badge/bun/add%20backlog.md/black?icon=bun" alt="bun install" />
+</p>
+
 <p align="center"><code>npm i -g backlog.md</code></p>
 
 ## Overview
 
 Backlog.md is a tool for managing project collaboration between humans and AI Agents in a git ecosystem.
+
+**License:** [MIT](LICENSE) · See our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to get involved.
 
 ## Requirements
 
@@ -27,6 +36,20 @@ Run the CLI from any directory within the project:
 ```bash
 npx backlog --help
 bunx backlog --help
+```
+
+### Quick Start
+
+Install globally and create a new project:
+
+```bash
+npm i -g backlog.md
+# or
+bun add -g backlog.md
+backlog init my-project
+cd my-project
+backlog task create "Hello world"
+backlog task list
 ```
 
 ## Instructions
