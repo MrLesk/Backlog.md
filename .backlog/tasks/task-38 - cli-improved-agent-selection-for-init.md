@@ -1,5 +1,5 @@
 ---
-id: task-33
+id: task-38
 title: 'CLI: Improved Agent Selection for Init'
 status: To Do
 assignee: []
