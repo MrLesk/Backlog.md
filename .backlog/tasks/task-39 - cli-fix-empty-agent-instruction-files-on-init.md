@@ -1,5 +1,5 @@
 ---
-id: task-33
+id: task-39
 title: 'CLI: fix empty agent instruction files on init'
 status: To Do
 assignee: []

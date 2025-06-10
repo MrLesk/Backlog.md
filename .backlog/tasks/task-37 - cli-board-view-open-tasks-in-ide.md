@@ -1,5 +1,5 @@
 ---
-id: task-33
+id: task-37
 title: 'CLI: Board view open tasks in IDE'
 status: To Do
 assignee:
