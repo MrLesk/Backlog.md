@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
+import prompts from "prompts";
 
 import { Command } from "commander";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
@@ -51,19 +52,16 @@ program
 				storeGlobal = scope.startsWith("y");
 			}
 			const options = [".cursorrules", "CLAUDE.md", "AGENTS.md", "readme.md"] as const;
-			const menu = options.map((n, i) => `${i + 1}) ${n}`).join("\n");
-			const selection = (
-				await rl.question(
-					`Select agent instruction files to update (comma separated numbers, blank to skip):\n${menu}\n> `,
-				)
-			).trim();
 			rl.close();
 
-			const indices = selection
-				.split(/[,\s]+/)
-				.map((v) => Number.parseInt(v, 10))
-				.filter((n) => n >= 1 && n <= options.length);
-			const files: AgentInstructionFile[] = indices.map((i) => options[i - 1]);
+			const { files: selected } = await prompts({
+				type: "multiselect",
+				name: "files",
+				message: "Select agent instruction files to update",
+				choices: options.map((name) => ({ title: name, value: name })),
+				hint: "- Space to select. Enter to confirm",
+			});
+			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			const core = new Core(cwd);
 			await core.initializeProject(projectName);
