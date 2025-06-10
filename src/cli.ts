@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
+import prompts from "prompts";
 
 import { Command } from "commander";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
@@ -22,9 +23,9 @@ const program = new Command();
 program.name("backlog").description("Backlog project management CLI");
 
 program
-	.command("init <projectName>")
+	.command("init [projectName]")
 	.description("initialize backlog project in the current repository")
-	.action(async (projectName: string) => {
+	.action(async (projectName?: string) => {
 		try {
 			const cwd = process.cwd();
 			const isRepo = await isGitRepository(cwd);
@@ -43,6 +44,18 @@ program
 				}
 			}
 
+			let name = projectName;
+			if (!name) {
+				const rlName = createInterface({ input, output });
+				name = (await rlName.question("Project name: ")).trim();
+				rlName.close();
+				if (!name) {
+					console.log("Aborting initialization.");
+					process.exit(1);
+					return;
+				}
+			}
+
 			const rl = createInterface({ input, output });
 			const reporter = (await rl.question("Default reporter name (leave blank to skip): ")).trim();
 			let storeGlobal = false;
@@ -51,23 +64,20 @@ program
 				storeGlobal = scope.startsWith("y");
 			}
 			const options = [".cursorrules", "CLAUDE.md", "AGENTS.md", "readme.md"] as const;
-			const menu = options.map((n, i) => `${i + 1}) ${n}`).join("\n");
-			const selection = (
-				await rl.question(
-					`Select agent instruction files to update (comma separated numbers, blank to skip):\n${menu}\n> `,
-				)
-			).trim();
 			rl.close();
 
-			const indices = selection
-				.split(/[,\s]+/)
-				.map((v) => Number.parseInt(v, 10))
-				.filter((n) => n >= 1 && n <= options.length);
-			const files: AgentInstructionFile[] = indices.map((i) => options[i - 1]);
+			const { files: selected } = await prompts({
+				type: "multiselect",
+				name: "files",
+				message: "Select agent instruction files to update",
+				choices: options.map((name) => ({ title: name, value: name })),
+				hint: "- Space to select. Enter to confirm",
+			});
+			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			const core = new Core(cwd);
-			await core.initializeProject(projectName);
-			console.log(`Initialized backlog project: ${projectName}`);
+			await core.initializeProject(name);
+			console.log(`Initialized backlog project: ${name}`);
 
 			if (files.length > 0) {
 				await addAgentInstructions(cwd, core.gitOps, files);
@@ -439,59 +449,64 @@ draftCmd
 
 const boardCmd = program.command("board");
 
-boardCmd
-	.command("view")
-	.description("display tasks in a Kanban board")
-	.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
-	.option("--vertical", "use vertical layout (shortcut for --layout vertical)")
-	.action(async (options) => {
-		const cwd = process.cwd();
-		const core = new Core(cwd);
-		const config = await core.filesystem.loadConfig();
-		const statuses = config?.statuses || [];
+function addBoardOptions(cmd: Command) {
+	return cmd
+		.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
+		.option("--vertical", "use vertical layout (shortcut for --layout vertical)");
+}
 
-		const localTasks = await core.filesystem.listTasks();
-		const tasksById = new Map(localTasks.map((t) => [t.id, t]));
+async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
+	const cwd = process.cwd();
+	const core = new Core(cwd);
+	const config = await core.filesystem.loadConfig();
+	const statuses = config?.statuses || [];
 
-		try {
-			await core.gitOps.fetch();
-			const branches = await core.gitOps.listRemoteBranches();
+	const localTasks = await core.filesystem.listTasks();
+	const tasksById = new Map(localTasks.map((t) => [t.id, t]));
 
-			for (const branch of branches) {
-				const ref = `origin/${branch}`;
-				const files = await core.gitOps.listFilesInTree(ref, ".backlog/tasks");
-				for (const file of files) {
-					const content = await core.gitOps.showFile(ref, file);
-					const task = parseTask(content);
-					const existing = tasksById.get(task.id);
-					if (!existing) {
-						tasksById.set(task.id, task);
-						continue;
-					}
+	try {
+		await core.gitOps.fetch();
+		const branches = await core.gitOps.listRemoteBranches();
 
-					const currentIdx = statuses.indexOf(existing.status);
-					const newIdx = statuses.indexOf(task.status);
-					if (newIdx > currentIdx || currentIdx === -1 || newIdx === currentIdx) {
-						tasksById.set(task.id, task);
-					}
+		for (const branch of branches) {
+			const ref = `origin/${branch}`;
+			const files = await core.gitOps.listFilesInTree(ref, ".backlog/tasks");
+			for (const file of files) {
+				const content = await core.gitOps.showFile(ref, file);
+				const task = parseTask(content);
+				const existing = tasksById.get(task.id);
+				if (!existing) {
+					tasksById.set(task.id, task);
+					continue;
+				}
+
+				const currentIdx = statuses.indexOf(existing.status);
+				const newIdx = statuses.indexOf(task.status);
+				if (newIdx > currentIdx || currentIdx === -1 || newIdx === currentIdx) {
+					tasksById.set(task.id, task);
 				}
 			}
-		} catch {
-			// Ignore remote errors
 		}
+	} catch {
+		// Ignore remote errors
+	}
 
-		const allTasks = Array.from(tasksById.values());
+	const allTasks = Array.from(tasksById.values());
 
-		if (allTasks.length === 0) {
-			console.log("No tasks found.");
-			return;
-		}
+	if (allTasks.length === 0) {
+		console.log("No tasks found.");
+		return;
+	}
 
-		const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
-		const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
-		const board = generateKanbanBoard(allTasks, statuses, layout, maxColumnWidth);
-		console.log(board);
-	});
+	const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
+	const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
+	const board = generateKanbanBoard(allTasks, statuses, layout, maxColumnWidth);
+	console.log(board);
+}
+
+addBoardOptions(boardCmd).description("display tasks in a Kanban board").action(handleBoardView);
+
+addBoardOptions(boardCmd.command("view").description("display tasks in a Kanban board")).action(handleBoardView);
 
 boardCmd
 	.command("export [filename]")

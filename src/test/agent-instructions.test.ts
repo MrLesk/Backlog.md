@@ -8,6 +8,7 @@ import {
 	README_GUIDELINES,
 	addAgentInstructions,
 } from "../index.ts";
+import { _loadAgentGuideline } from "../index.ts";
 
 const TEST_DIR = join(process.cwd(), "test-agents");
 
@@ -26,9 +27,9 @@ describe("addAgentInstructions", () => {
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		const claude = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 		const cursor = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
-		expect(agents).toBe(AGENT_GUIDELINES);
-		expect(claude).toBe(CLAUDE_GUIDELINES);
-		expect(cursor).toBe(CURSOR_GUIDELINES);
+		expect(agents).toBe(await _loadAgentGuideline(AGENT_GUIDELINES));
+		expect(claude).toBe(await _loadAgentGuideline(CLAUDE_GUIDELINES));
+		expect(cursor).toBe(await _loadAgentGuideline(CURSOR_GUIDELINES));
 	});
 
 	it("appends guideline files when they already exist", async () => {
@@ -36,7 +37,7 @@ describe("addAgentInstructions", () => {
 		await addAgentInstructions(TEST_DIR);
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		expect(agents.startsWith("Existing\n")).toBe(true);
-		expect(agents.trimEnd()).toBe(`Existing\n${AGENT_GUIDELINES}`.trimEnd());
+		expect(agents.trimEnd()).toBe(`Existing\n${await _loadAgentGuideline(AGENT_GUIDELINES)}`.trimEnd());
 	});
 
 	it("creates only selected files", async () => {
@@ -50,6 +51,12 @@ describe("addAgentInstructions", () => {
 		expect(agentsExists).toBe(true);
 		expect(claudeExists).toBe(false);
 		expect(cursorExists).toBe(false);
-		expect(readme.trim()).toBe(README_GUIDELINES.trim());
+		expect(readme.trim()).toBe((await _loadAgentGuideline(README_GUIDELINES)).trim());
+	});
+
+	it("loads guideline content from file paths", async () => {
+		const pathGuideline = join(__dirname, "../guidelines/AGENTS.md");
+		const content = await _loadAgentGuideline(pathGuideline);
+		expect(content).toContain("AI Agent Guidelines");
 	});
 });
