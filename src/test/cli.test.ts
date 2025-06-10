@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Core, isGitRepository } from "../index.ts";
 
 const TEST_DIR = join(process.cwd(), "test-cli");
+const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("CLI Integration", () => {
 	beforeEach(async () => {
@@ -109,6 +110,23 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Existing Repo Test");
+		});
+
+		it("should prompt for project name when omitted", async () => {
+			await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+
+			const input = "Prompted Project\n\n\n";
+			const result = Bun.spawnSync(["bun", "run", CLI_PATH, "init"], {
+				cwd: TEST_DIR,
+				stdin: input,
+				stdout: "pipe",
+			});
+			expect(result.stdout.toString()).toContain("Initialized backlog project: Prompted Project");
+			const core = new Core(TEST_DIR);
+			const config = await core.filesystem.loadConfig();
+			expect(config?.projectName).toBe("Prompted Project");
 		});
 
 		it("should create agent instruction files when requested", async () => {
