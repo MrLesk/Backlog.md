@@ -1,5 +1,5 @@
 ---
-id: task-33
+id: task-36
 title: 'CLI: Prompt for project name in init'
 status: To Do
 assignee: []
