@@ -4,7 +4,7 @@
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
-		"backlog": "./cli/index.js"
+		"backlog": "cli/index.js"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
@@ -29,6 +29,18 @@
 	},
 	"dependencies": {
 		"commander": "14.0.0",
-		"gray-matter": "4.0.3"
-	}
+		"gray-matter": "4.0.3",
+		"prompts": "2.4.2"
+	},
+	"author": "Alex Gavrilescu (https://github.com/MrLesk)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/MrLesk/Backlog.md.git"
+	},
+	"bugs": {
+		"url": "https://github.com/MrLesk/Backlog.md/issues"
+	},
+	"homepage": "https://backlog.md",
+	"keywords": ["cli", "markdown", "kanban", "task", "project-management", "backlog", "agents"],
+	"license": "MIT"
 }

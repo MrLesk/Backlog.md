@@ -1,8 +1,21 @@
-import { join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AGENT_GUIDELINES, CLAUDE_GUIDELINES, CURSOR_GUIDELINES, README_GUIDELINES } from "./constants/index.ts";
 import type { GitOperations } from "./git/operations.ts";
 
 export type AgentInstructionFile = "AGENTS.md" | "CLAUDE.md" | ".cursorrules" | "readme.md";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+async function loadContent(textOrPath: string): Promise<string> {
+	if (textOrPath.includes("\n")) return textOrPath;
+	try {
+		const path = isAbsolute(textOrPath) ? textOrPath : join(__dirname, textOrPath);
+		return await Bun.file(path).text();
+	} catch {
+		return textOrPath;
+	}
+}
 
 export async function addAgentInstructions(
 	projectRoot: string,
@@ -18,7 +31,7 @@ export async function addAgentInstructions(
 
 	const paths: string[] = [];
 	for (const name of files) {
-		const content = mapping[name];
+		const content = await loadContent(mapping[name]);
 		const filePath = join(projectRoot, name);
 		let existing = "";
 		try {
@@ -37,3 +50,5 @@ export async function addAgentInstructions(
 		await git.commitChanges("Add AI agent instructions");
 	}
 }
+
+export { loadContent as _loadAgentGuideline };
