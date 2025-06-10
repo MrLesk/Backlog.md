@@ -99,8 +99,11 @@ export function generateKanbanBoard(
 			result.push({ id: t.id, title: t.title });
 			const subs = children.get(t.id) || [];
 			subs.sort(compareIds);
-			for (const s of subs) {
-				result.push({ id: `  |— ${s.id}`, title: `      ${s.title}` });
+
+			for (const [subIdx, s] of subs.entries()) {
+				const isLastSub = subIdx === subs.length - 1;
+				const prefix = isLastSub ? "  └─" : "  |—";
+				result.push({ id: `${prefix} ${s.id}`, title: `     ${s.title}` });
 			}
 		}
 
@@ -229,7 +232,7 @@ export function generateKanbanBoard(
 			// Check if any column has a subtask as the next item
 			for (let cIdx = 0; cIdx < ordered.length; cIdx++) {
 				const nextTask = columns[cIdx][taskIdx + 1];
-				if (nextTask?.id.startsWith("  |—")) {
+				if (nextTask?.id.startsWith("  |—") || nextTask?.id.startsWith("  └─")) {
 					shouldAddEmptyRow = false;
 					break;
 				}
