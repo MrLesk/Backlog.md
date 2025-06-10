@@ -1,6 +1,6 @@
+import CURSOR_GUIDELINES from "./.cursorrules.md";
 import AGENT_GUIDELINES from "./AGENTS.md";
 import CLAUDE_GUIDELINES from "./CLAUDE.md";
-import CURSOR_GUIDELINES from "./cursorrules.md";
 
 const README_GUIDELINES = `## AI Agent Guidelines\n\n${AGENT_GUIDELINES.replace(/^#.*\n/, "")}`;
 
