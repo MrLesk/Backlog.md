@@ -1,9 +1,11 @@
 ---
 id: task-40
 title: 'CLI: Board command defaults to view'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2025-06-10'
+updated_date: '2025-06-10'
 labels:
   - cli
 dependencies: []

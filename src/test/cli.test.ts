@@ -1144,6 +1144,29 @@ describe("CLI Integration", () => {
 			expect(final?.status).toBe("Done");
 		});
 
+		it("should default to view when no subcommand is provided", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-99",
+					title: "Default Cmd Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-10",
+					labels: [],
+					dependencies: [],
+					description: "test",
+				},
+				false,
+			);
+
+			const resultDefault = Bun.spawnSync(["bun", "src/cli.ts", "board"], { cwd: TEST_DIR });
+			const resultView = Bun.spawnSync(["bun", "src/cli.ts", "board", "view"], { cwd: TEST_DIR });
+
+			expect(resultDefault.stdout.toString()).toBe(resultView.stdout.toString());
+		});
+
 		it("should export kanban board to file", async () => {
 			const core = new Core(TEST_DIR);
 
