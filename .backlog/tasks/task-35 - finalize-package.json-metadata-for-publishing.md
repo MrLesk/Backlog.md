@@ -1,5 +1,5 @@
 ---
-id: task-33
+id: task-35
 title: Finalize package.json metadata for publishing
 status: To Do
 assignee: []
