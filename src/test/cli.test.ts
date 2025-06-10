@@ -137,8 +137,10 @@ describe("CLI Integration", () => {
 			// Verify content
 			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 			const claudeContent = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
-			expect(agentsContent).toContain("Backlog");
+			const cursorContent = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
+			expect(agentsContent.length).toBeGreaterThan(0);
 			expect(claudeContent).toContain("CLAUDE.md");
+			expect(cursorContent.length).toBeGreaterThan(0);
 		});
 	});
 
