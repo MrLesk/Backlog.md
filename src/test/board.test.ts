@@ -258,6 +258,39 @@ describe("generateKanbanBoard", () => {
 		expect(board).toContain("task-2");
 		expect(board).toContain("Second");
 	});
+
+	it("groups tasks by milestone", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "First",
+				status: "To Do",
+				assignee: [],
+				milestone: "M1",
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+			{
+				id: "task-2",
+				title: "Second",
+				status: "In Progress",
+				assignee: [],
+				milestone: "M2",
+				createdDate: "",
+				labels: [],
+				dependencies: [],
+				description: "",
+			},
+		];
+
+		const board = generateKanbanBoard(tasks, ["M1", "M2"], "horizontal", 20, "terminal", "milestone");
+		expect(board).toContain("M1");
+		expect(board).toContain("M2");
+		expect(board).toContain("task-1");
+		expect(board).toContain("task-2");
+	});
 });
 
 describe("exportKanbanBoardToFile", () => {

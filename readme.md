@@ -152,10 +152,11 @@ Subtasks use decimal numbers, e.g., `task-4.1`.
     backlog board view
     backlog board view --layout vertical
     backlog board view --vertical
+    backlog board view --milestones
     backlog board export --output <file>
     ```
-    
-    View the board in horizontal (default) or vertical layout. Use `--layout vertical` or the shortcut `--vertical`. Export the board to a file - by default it's appended to `readme.md` if it exists. Use `--output` to specify a different file.
+
+    View the board in horizontal (default) or vertical layout. Use `--layout vertical` or the shortcut `--vertical`. Use `--milestones` to group tasks by milestone. Export the board to a file - by default it's appended to `readme.md` if it exists. Use `--output` to specify a different file.
 
 ## Drafts
 

@@ -56,13 +56,14 @@ export function generateKanbanBoard(
 	layout: BoardLayout = "horizontal",
 	maxColumnWidth = 20,
 	format: BoardFormat = "terminal",
+	groupBy: "status" | "milestone" = "status",
 ): string {
 	const groups = new Map<string, Task[]>();
 	for (const task of tasks) {
-		const status = task.status || "";
-		const list = groups.get(status) || [];
+		const key = groupBy === "milestone" ? task.milestone || "" : task.status || "";
+		const list = groups.get(key) || [];
 		list.push(task);
-		groups.set(status, list);
+		groups.set(key, list);
 	}
 
 	// Map for quick lookup by id
@@ -242,7 +243,7 @@ export async function exportKanbanBoardToFile(
 	maxColumnWidth = 20,
 	addTitle = false,
 ): Promise<void> {
-	const board = generateKanbanBoard(tasks, statuses, "horizontal", maxColumnWidth, "markdown");
+	const board = generateKanbanBoard(tasks, statuses, "horizontal", maxColumnWidth, "markdown", "status");
 
 	let existing = "";
 	try {

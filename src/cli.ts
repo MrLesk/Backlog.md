@@ -444,6 +444,7 @@ boardCmd
 	.description("display tasks in a Kanban board")
 	.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
 	.option("--vertical", "use vertical layout (shortcut for --layout vertical)")
+	.option("-m, --milestones", "group tasks by milestone")
 	.action(async (options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -489,7 +490,9 @@ boardCmd
 
 		const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 		const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
-		const board = generateKanbanBoard(allTasks, statuses, layout, maxColumnWidth);
+		const board = options.milestones
+			? generateKanbanBoard(allTasks, config?.milestones || [], layout, maxColumnWidth, "terminal", "milestone")
+			: generateKanbanBoard(allTasks, statuses, layout, maxColumnWidth);
 		console.log(board);
 	});
 

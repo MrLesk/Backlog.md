@@ -1087,6 +1087,59 @@ describe("CLI Integration", () => {
 			expect(board).toContain("Shortcut Task");
 		});
 
+		it("should group tasks by milestone", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "M1 Task",
+					status: "To Do",
+					assignee: [],
+					milestone: "M1",
+					createdDate: "2025-06-09",
+					labels: [],
+					dependencies: [],
+					description: "Milestone task",
+				},
+				false,
+			);
+
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "M2 Task",
+					status: "In Progress",
+					assignee: [],
+					milestone: "M2",
+					createdDate: "2025-06-09",
+					labels: [],
+					dependencies: [],
+					description: "Milestone task",
+				},
+				false,
+			);
+
+			const cfg = (await core.filesystem.loadConfig()) || {
+				projectName: "",
+				statuses: ["To Do", "In Progress", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "yyyy-mm-dd",
+			};
+			cfg.milestones = ["M1", "M2"];
+			await core.filesystem.saveConfig(cfg);
+
+			const tasks = await core.filesystem.listTasks();
+			const { generateKanbanBoard } = await import("../board.ts");
+			const board = generateKanbanBoard(tasks, cfg.milestones, "horizontal", 20, "terminal", "milestone");
+
+			expect(board).toContain("M1");
+			expect(board).toContain("M2");
+			expect(board).toContain("task-1");
+			expect(board).toContain("task-2");
+		});
+
 		it("should merge task status from remote branches", async () => {
 			const core = new Core(TEST_DIR);
 
