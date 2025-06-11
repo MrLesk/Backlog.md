@@ -6,6 +6,11 @@
 	"bin": {
 		"backlog": "cli/index.js"
 	},
+	"dependencies": {
+		"commander": "14.0.0",
+		"gray-matter": "4.0.3",
+		"blessed": "0.1.81"
+	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
 		"@types/bun": "1.2.15",
@@ -26,11 +31,6 @@
 	"lint-staged": {
 		"*.{ts,js,json}": ["biome check --write --files-ignore-unknown=true"],
 		"src/**/*.{ts,js}": ["biome check --write --files-ignore-unknown=true"]
-	},
-	"dependencies": {
-		"commander": "14.0.0",
-		"gray-matter": "4.0.3",
-		"blessed": "0.1.81"
 	},
 	"author": "Alex Gavrilescu (https://github.com/MrLesk)",
 	"repository": {
