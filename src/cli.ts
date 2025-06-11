@@ -3,7 +3,11 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
-import prompts from "prompts";
+// Interactive TUI helpers (bblessed based)
+import { multiSelect, promptText, scrollableViewer, selectList } from "./ui/tui.ts";
+
+// Kanban TUI renderer
+import { renderBoardTui } from "./ui/board.ts";
 
 import { Command } from "commander";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
@@ -12,7 +16,6 @@ import {
 	Core,
 	addAgentInstructions,
 	exportKanbanBoardToFile,
-	generateKanbanBoard,
 	initializeGitRepository,
 	isGitRepository,
 	parseTask,
@@ -40,39 +43,27 @@ program
 				} else {
 					console.log("Aborting initialization.");
 					process.exit(1);
-					return;
 				}
 			}
 
 			let name = projectName;
 			if (!name) {
-				const rlName = createInterface({ input, output });
-				name = (await rlName.question("Project name: ")).trim();
-				rlName.close();
+				name = await promptText("Project name:");
 				if (!name) {
 					console.log("Aborting initialization.");
 					process.exit(1);
-					return;
 				}
 			}
 
-			const rl = createInterface({ input, output });
-			const reporter = (await rl.question("Default reporter name (leave blank to skip): ")).trim();
+			const reporter = (await promptText("Default reporter name (leave blank to skip):")) || "";
 			let storeGlobal = false;
 			if (reporter) {
-				const scope = (await rl.question("Store reporter name globally? [y/N] ")).trim().toLowerCase();
-				storeGlobal = scope.startsWith("y");
+				const store = (await promptText("Store reporter name globally? [y/N]", "N")).toLowerCase();
+				storeGlobal = store.startsWith("y");
 			}
-			const options = [".cursorrules", "CLAUDE.md", "AGENTS.md", "readme.md"] as const;
-			rl.close();
 
-			const { files: selected } = await prompts({
-				type: "multiselect",
-				name: "files",
-				message: "Select agent instruction files to update",
-				choices: options.map((name) => ({ title: name, value: name })),
-				hint: "- Space to select. Enter to confirm",
-			});
+			const options = [".cursorrules", "CLAUDE.md", "AGENTS.md", "readme.md"] as const;
+			const selected = await multiSelect("Select agent instruction files to update", options as unknown as string[]);
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			const core = new Core(cwd);
@@ -243,7 +234,8 @@ taskCmd
 taskCmd
 	.command("list")
 	.description("list tasks grouped by status")
-	.action(async () => {
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const tasks = await core.filesystem.listTasks();
@@ -254,28 +246,45 @@ taskCmd
 			return;
 		}
 
-		const groups = new Map<string, Task[]>();
-		for (const task of tasks) {
-			const status = task.status || "";
-			const list = groups.get(status) || [];
-			list.push(task);
-			groups.set(status, list);
+		// Plain text output
+		if (options.plain) {
+			const groups = new Map<string, Task[]>();
+			for (const task of tasks) {
+				const status = task.status || "";
+				const list = groups.get(status) || [];
+				list.push(task);
+				groups.set(status, list);
+			}
+
+			const statuses = config?.statuses || [];
+			const ordered = [
+				...statuses.filter((s) => groups.has(s)),
+				...Array.from(groups.keys()).filter((s) => !statuses.includes(s)),
+			];
+
+			for (const status of ordered) {
+				const list = groups.get(status);
+				if (!list) continue;
+				console.log(`${status || "No Status"}:`);
+				for (const t of list) {
+					console.log(`  ${t.id} - ${t.title}`);
+				}
+				console.log();
+			}
+			return;
 		}
 
-		const statuses = config?.statuses || [];
-		const ordered = [
-			...statuses.filter((s) => groups.has(s)),
-			...Array.from(groups.keys()).filter((s) => !statuses.includes(s)),
-		];
-
-		for (const status of ordered) {
-			const list = groups.get(status);
-			if (!list) continue;
-			console.log(`${status || "No Status"}:`);
-			for (const t of list) {
-				console.log(`  ${t.id} - ${t.title}`);
+		// Interactive UI
+		const selected = await selectList("Select a task", tasks, (task) => task.status || "No Status");
+		if (selected) {
+			// Show task details
+			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+			const taskFile = files.find((f) => f.startsWith(`${selected.id} -`));
+			if (taskFile) {
+				const filePath = join(core.filesystem.tasksDir, taskFile);
+				const content = await Bun.file(filePath).text();
+				await scrollableViewer(content);
 			}
-			console.log();
 		}
 	});
 
@@ -342,28 +351,26 @@ taskCmd
 		console.log(`Updated task ${task.id}`);
 	});
 
-async function outputTask(taskId: string): Promise<void> {
-	const cwd = process.cwd();
-	const core = new Core(cwd);
-	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-	const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-	const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
-
-	if (!taskFile) {
-		console.error(`Task ${taskId} not found.`);
-		return;
-	}
-
-	const filePath = join(core.filesystem.tasksDir, taskFile);
-	const content = await Bun.file(filePath).text();
-	console.log(content);
-}
-
 taskCmd
 	.command("view <taskId>")
 	.description("display task details")
 	.action(async (taskId: string) => {
-		await outputTask(taskId);
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+		const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+
+		if (!taskFile) {
+			console.error(`Task ${taskId} not found.`);
+			return;
+		}
+
+		const filePath = join(core.filesystem.tasksDir, taskFile);
+		const content = await Bun.file(filePath).text();
+
+		// Use scrollableViewer which falls back to console.log if blessed is not available
+		await scrollableViewer(content);
 	});
 
 taskCmd
@@ -399,7 +406,21 @@ taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
 		taskCmd.help();
 		return;
 	}
-	await outputTask(taskId);
+	// Use the view command directly
+	const cwd = process.cwd();
+	const core = new Core(cwd);
+	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+	const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+	const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+
+	if (!taskFile) {
+		console.error(`Task ${taskId} not found.`);
+		return;
+	}
+
+	const filePath = join(core.filesystem.tasksDir, taskFile);
+	const content = await Bun.file(filePath).text();
+	await scrollableViewer(content);
 });
 
 const draftCmd = program.command("draft");
@@ -500,8 +521,8 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 	const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
-	const board = generateKanbanBoard(allTasks, statuses, layout, maxColumnWidth);
-	console.log(board);
+	// Always use renderBoardTui which falls back to plain text if blessed is not available
+	await renderBoardTui(allTasks, statuses, layout, maxColumnWidth);
 }
 
 addBoardOptions(boardCmd).description("display tasks in a Kanban board").action(handleBoardView);
@@ -551,7 +572,7 @@ boardCmd
 		const allTasks = Array.from(tasksById.values());
 		// Priority: filename argument > --output option > default readme.md
 		const outputFile = filename || options.output || "readme.md";
-		const outputPath = join(cwd, outputFile);
+		const outputPath = join(cwd, outputFile as string);
 		const maxColumnWidth = config?.maxColumnWidth || 30; // Default for export
 		const addTitle = !filename && !options.output; // Add title only for default readme export
 		await exportKanbanBoardToFile(allTasks, statuses, outputPath, maxColumnWidth, addTitle);
@@ -579,18 +600,62 @@ docCmd
 		console.log(`Created document ${id}`);
 	});
 
-docCmd.command("list").action(async () => {
-	const cwd = process.cwd();
-	const core = new Core(cwd);
-	const docs = await core.filesystem.listDocuments();
-	if (docs.length === 0) {
-		console.log("No docs found.");
-		return;
-	}
-	for (const d of docs) {
-		console.log(`${d.id} - ${d.title}`);
-	}
-});
+docCmd
+	.command("list")
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const docs = await core.filesystem.listDocuments();
+		if (docs.length === 0) {
+			console.log("No docs found.");
+			return;
+		}
+
+		// Plain text output
+		if (options.plain) {
+			for (const d of docs) {
+				console.log(`${d.id} - ${d.title}`);
+			}
+			return;
+		}
+
+		// Interactive UI
+		const selected = await selectList("Select a document", docs);
+		if (selected) {
+			// Show document details
+			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
+			const docFile = files.find((f) => f.startsWith(`${selected.id} -`) || f === `${selected.id}.md`);
+			if (docFile) {
+				const filePath = join(core.filesystem.docsDir, docFile);
+				const content = await Bun.file(filePath).text();
+				await scrollableViewer(content);
+			}
+		}
+	});
+
+// Document view command
+docCmd
+	.command("view <docId>")
+	.description("view a document")
+	.action(async (docId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
+		const normalizedId = docId.startsWith("doc-") ? docId : `doc-${docId}`;
+		const docFile = files.find((f) => f.startsWith(`${normalizedId} -`) || f === `${normalizedId}.md`);
+
+		if (!docFile) {
+			console.error(`Document ${docId} not found.`);
+			return;
+		}
+
+		const filePath = join(core.filesystem.docsDir, docFile);
+		const content = await Bun.file(filePath).text();
+
+		// Use scrollableViewer which falls back to console.log if blessed is not available
+		await scrollableViewer(content);
+	});
 
 const decisionCmd = program.command("decision");
 
@@ -614,18 +679,39 @@ decisionCmd
 		console.log(`Created decision ${id}`);
 	});
 
-decisionCmd.command("list").action(async () => {
-	const cwd = process.cwd();
-	const core = new Core(cwd);
-	const decisions = await core.filesystem.listDecisionLogs();
-	if (decisions.length === 0) {
-		console.log("No decisions found.");
-		return;
-	}
-	for (const d of decisions) {
-		console.log(`${d.id} - ${d.title}`);
-	}
-});
+decisionCmd
+	.command("list")
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const decisions = await core.filesystem.listDecisionLogs();
+		if (decisions.length === 0) {
+			console.log("No decisions found.");
+			return;
+		}
+
+		// Plain text output
+		if (options.plain) {
+			for (const d of decisions) {
+				console.log(`${d.id} - ${d.title}`);
+			}
+			return;
+		}
+
+		// Interactive UI
+		const selected = await selectList("Select a decision", decisions);
+		if (selected) {
+			// Show decision details
+			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.decisionsDir }));
+			const decisionFile = files.find((f) => f.startsWith(`${selected.id} -`) || f === `${selected.id}.md`);
+			if (decisionFile) {
+				const filePath = join(core.filesystem.decisionsDir, decisionFile);
+				const content = await Bun.file(filePath).text();
+				await scrollableViewer(content);
+			}
+		}
+	});
 
 const configCmd = program.command("config");
 
@@ -636,13 +722,13 @@ configCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const localCfg = await core.filesystem.loadConfig();
-		const localVal = localCfg ? (localCfg as Record<string, unknown>)[key] : undefined;
-		if (typeof localVal !== "undefined") {
+		const localVal = localCfg ? (localCfg as unknown as Record<string, unknown>)[key] : undefined;
+		if (localVal !== undefined) {
 			console.log(localVal);
 			return;
 		}
 		const globalVal = await core.filesystem.getUserSetting(key, true);
-		if (typeof globalVal !== "undefined") {
+		if (globalVal !== undefined) {
 			console.log(globalVal);
 			return;
 		}
@@ -673,8 +759,9 @@ configCmd
 				labels: [],
 				milestones: [],
 				defaultStatus: FALLBACK_STATUS,
+				dateFormat: "YYYY-MM-DD",
 			};
-			(cfg as Record<string, unknown>)[key] = value;
+			(cfg as unknown as Record<string, unknown>)[key] = value;
 			await core.filesystem.saveConfig(cfg);
 			console.log(`Set ${key} in local config`);
 		}

@@ -30,7 +30,7 @@
 	"dependencies": {
 		"commander": "14.0.0",
 		"gray-matter": "4.0.3",
-		"prompts": "2.4.2"
+		"blessed": "0.1.81"
 	},
 	"author": "Alex Gavrilescu (https://github.com/MrLesk)",
 	"repository": {
@@ -42,5 +42,6 @@
 	},
 	"homepage": "https://backlog.md",
 	"keywords": ["cli", "markdown", "kanban", "task", "project-management", "backlog", "agents"],
-	"license": "MIT"
+	"license": "MIT",
+	"trustedDependencies": ["@biomejs/biome"]
 }
