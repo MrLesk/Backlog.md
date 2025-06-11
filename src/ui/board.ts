@@ -1,10 +1,13 @@
 /* Kanban board renderer for the bblessed TUI. */
 
 import { createRequire } from "node:module";
+import { join } from "node:path";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { stdin as input, stdout as output } from "node:process";
 import { type BoardLayout, generateKanbanBoard } from "../board.ts";
+import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { createTaskPopup } from "./task-viewer.ts";
 
 // Load blessed dynamically
 // biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
@@ -221,7 +224,7 @@ export async function renderBoardTui(
 		});
 
 		// Show task details on enter
-		screen.key(["enter"], () => {
+		screen.key(["enter"], async () => {
 			// Don't allow opening multiple popups
 			if (isPopupOpen) return;
 
@@ -231,75 +234,35 @@ export async function renderBoardTui(
 				const task = column.tasks[selected];
 				isPopupOpen = true;
 
-				// Create background box for visual separation
-				const background = blessed.box({
-					parent: screen,
-					top: "center",
-					left: "center",
-					width: "84%", // 2 chars wider on each side than 80%
-					height: "84%", // 2 chars taller on each side than 80%
-					style: {
-						bg: "black",
-					},
-				});
+				// Load task content
+				let content = "";
+				try {
+					const core = new Core(process.cwd());
+					const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+					const taskFile = files.find((f) => f.startsWith(`${task.id} -`));
+					if (taskFile) {
+						const filePath = join(core.filesystem.tasksDir, taskFile);
+						content = await Bun.file(filePath).text();
+					}
+				} catch (error) {
+					// Use task data if file cannot be loaded
+					content = "";
+				}
 
-				// Create detail popup on top of background
-				const popup = blessed.box({
-					parent: screen,
-					top: "center",
-					left: "center",
-					width: "80%",
-					height: "80%",
-					border: "line",
-					label: ` ${task.id} - ${task.title} `,
-					padding: 1,
-					scrollable: true,
-					alwaysScroll: true,
-					keys: true,
-					vi: true,
-					mouse: true,
-					// Grab focus to prevent parent key handlers
-					grabKeys: true,
-				});
-
-				// Add escape indicator to top right
-				const escIndicator = blessed.box({
-					parent: popup,
-					content: " Esc ",
-					top: -1,
-					right: 1,
-					width: 5,
-					height: 1,
-					style: {
-						fg: "white",
-						bg: "blue",
-					},
-				});
-
-				const content = [
-					`ID: ${task.id}`,
-					`Title: ${task.title}`,
-					`Status: ${task.status || "No status"}`,
-					`Assignee: ${task.assignee?.join(", ") || "Unassigned"}`,
-					`Created: ${task.createdDate}`,
-					task.labels?.length ? `Labels: ${task.labels.join(", ")}` : "",
-					task.parentTaskId ? `Parent: ${task.parentTaskId}` : "",
-					"",
-					"Description:",
-					task.description || "No description",
-				]
-					.filter(Boolean)
-					.join("\n");
-
-				popup.setContent(content);
-				popup.focus();
-
-				popup.key(["escape", "q"], () => {
+				// Create enhanced popup
+				const popupData = await createTaskPopup(screen, task, content);
+				if (!popupData) {
 					isPopupOpen = false;
-					background.destroy();
-					popup.destroy();
+					return;
+				}
+
+				const { popup, contentArea, close } = popupData;
+
+				// Add escape handler directly to the focused content area
+				contentArea.key(["escape", "q"], () => {
+					isPopupOpen = false;
+					close();
 					columns[currentColumn].list.focus();
-					screen.render();
 				});
 
 				screen.render();

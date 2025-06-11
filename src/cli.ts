@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
+import { viewTaskEnhanced } from "./ui/task-viewer.ts";
 // Interactive TUI helpers (bblessed based)
 import { multiSelect, promptText, scrollableViewer, selectList } from "./ui/tui.ts";
 
@@ -283,7 +284,7 @@ taskCmd
 			if (taskFile) {
 				const filePath = join(core.filesystem.tasksDir, taskFile);
 				const content = await Bun.file(filePath).text();
-				await scrollableViewer(content);
+				await viewTaskEnhanced(selected, content);
 			}
 		}
 	});
@@ -368,9 +369,15 @@ taskCmd
 
 		const filePath = join(core.filesystem.tasksDir, taskFile);
 		const content = await Bun.file(filePath).text();
+		const task = await core.filesystem.loadTask(taskId);
 
-		// Use scrollableViewer which falls back to console.log if blessed is not available
-		await scrollableViewer(content);
+		if (!task) {
+			console.error(`Task ${taskId} not found.`);
+			return;
+		}
+
+		// Use enhanced task viewer
+		await viewTaskEnhanced(task, content);
 	});
 
 taskCmd
