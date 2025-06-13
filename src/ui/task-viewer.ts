@@ -60,33 +60,36 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 		parent: screen,
 		width: "100%",
 		height: "100%",
+		autoPadding: true,
 	});
 
-	// Task list pane (left 30%)
+	// Task list pane (left 40%)
 	const taskListPane = blessed.box({
 		parent: container,
 		top: 0,
 		left: 0,
-		width: "30%",
+		width: "40%",
 		height: "100%-1", // Leave space for help bar
 	});
 
-	// Detail pane (right 70%) with border and padding
+	// Detail pane (right 60%) with border and padding
 	const detailPane = blessed.box({
 		parent: container,
 		top: 0,
-		left: "30%",
-		width: "70%",
+		left: "40%",
+		// left: taskListPane.width,
+		// left : "0%",
+		width: "60%",
 		height: "100%-1", // Leave space for help bar
-		border: {
-			type: "line",
-		},
-		padding: {
-			left: 1,
-		},
-		style: {
-			border: { fg: "gray" },
-		},
+		// border: {
+		// 	type: "line",
+		// },
+		// padding: {
+		// 	left: 1,
+		// },
+		// style: {
+		// 	border: { fg: "gray" },
+		// },
 	});
 
 	// Create task list
@@ -167,7 +170,8 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 		statusLine.push(`{gray-fg}${currentSelectedTask.createdDate}{/}`);
 
 		if (currentSelectedTask.assignee?.length) {
-			statusLine.push(`{cyan-fg}@${currentSelectedTask.assignee.join(", @")}{/}`);
+			const assigneeList = currentSelectedTask.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+			statusLine.push(`{cyan-fg}${assigneeList}{/}`);
 		}
 
 		// Add labels to header if they exist
@@ -211,7 +215,10 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 
 			const metadata = [];
 			if (currentSelectedTask.reporter) {
-				metadata.push(`{bold}Reporter:{/bold} {cyan-fg}@${currentSelectedTask.reporter}{/}`);
+				const reporterText = currentSelectedTask.reporter.startsWith("@")
+					? currentSelectedTask.reporter
+					: `@${currentSelectedTask.reporter}`;
+				metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
 			}
 
 			if (currentSelectedTask.updatedDate) {
@@ -270,6 +277,8 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 		parent: taskListPane,
 		tasks: allTasks,
 		selectedIndex: Math.max(0, initialIndex),
+		width: "100%",
+		height: "100%",
 	});
 
 	// Initial render of detail pane
@@ -387,7 +396,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		width: "100%",
 		height: 1,
 		tags: true,
-		content: `{${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} ${task.assignee?.length ? `• {cyan-fg}@${task.assignee.join(", @")}{/}` : ""} • {gray-fg}${task.createdDate}{/}`,
+		content: `{${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} ${task.assignee?.length ? `• {cyan-fg}${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}{/}` : ""} • {gray-fg}${task.createdDate}{/}`,
 		wrap: true,
 	});
 
@@ -500,8 +509,9 @@ function formatTaskPlainText(task: Task, content: string): string {
 	lines.push("=".repeat(50));
 	lines.push("");
 	lines.push(`Status: ${formatStatusWithIcon(task.status)}`);
-	if (task.assignee?.length) lines.push(`Assignee: @${task.assignee.join(", @")}`);
-	if (task.reporter) lines.push(`Reporter: @${task.reporter}`);
+	if (task.assignee?.length)
+		lines.push(`Assignee: ${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}`);
+	if (task.reporter) lines.push(`Reporter: ${task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`}`);
 	lines.push(`Created: ${task.createdDate}`);
 	if (task.updatedDate) lines.push(`Updated: ${task.updatedDate}`);
 	if (task.labels?.length) lines.push(`Labels: ${task.labels.join(", ")}`);

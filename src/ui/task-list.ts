@@ -75,7 +75,7 @@ export class TaskList {
 			vi: true,
 			mouse: true,
 			scrollable: true,
-			alwaysScroll: true,
+			alwaysScroll: false,
 		});
 
 		this.refreshList();
@@ -94,7 +94,9 @@ export class TaskList {
 		const items = this.tasks.map((task) => {
 			const statusIcon = formatStatusWithIcon(task.status);
 			const statusColor = getStatusColor(task.status);
-			const assigneeText = task.assignee?.length ? ` {cyan-fg}@${task.assignee[0]}{/}` : "";
+			const assigneeText = task.assignee?.length
+				? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
+				: "";
 			const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
 
 			return `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${assigneeText}${labelsText}`;
@@ -113,22 +115,7 @@ export class TaskList {
 			this.triggerSelection();
 		});
 
-		// Handle key events
-		this.listBox.key(["up", "k"], () => {
-			if (this.selectedIndex > 0) {
-				this.selectedIndex--;
-				this.listBox.up();
-				this.triggerSelection();
-			}
-		});
-
-		this.listBox.key(["down", "j"], () => {
-			if (this.selectedIndex < this.tasks.length - 1) {
-				this.selectedIndex++;
-				this.listBox.down();
-				this.triggerSelection();
-			}
-		});
+		// Let blessed handle navigation automatically through the 'select' event above
 
 		// Handle mouse clicks
 		this.listBox.on("click", () => {
