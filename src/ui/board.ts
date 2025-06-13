@@ -7,6 +7,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { type BoardLayout, generateKanbanBoard } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { formatStatusWithIcon, getStatusIcon } from "./status-icon.ts";
 import { createTaskPopup } from "./task-viewer.ts";
 
 // Load blessed dynamically
@@ -112,7 +113,7 @@ export async function renderBoardTui(
 				width,
 				height: "100%",
 				border: "line",
-				label: ` ${status || "No Status"} (${tasksByStatus.get(status)?.length || 0}) `,
+				label: ` ${getStatusIcon(status)} ${status || "No Status"} (${tasksByStatus.get(status)?.length || 0}) `,
 				padding: { left: 1, right: 1, top: 1 },
 			});
 

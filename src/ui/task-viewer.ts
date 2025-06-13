@@ -4,6 +4,8 @@ import { createRequire } from "node:module";
 import { stdin as input, stdout as output } from "node:process";
 import { parseMarkdown } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
+import { formatHeading } from "./heading.ts";
+import { formatStatusWithIcon, getStatusColor, getStatusIcon } from "./status-icon.ts";
 
 // Load blessed dynamically
 // biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
@@ -61,24 +63,43 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 			},
 			content: ` {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 			tags: true,
+			wrap: true,
+		});
+
+		// Fixed tag box
+		const tagBox = blessed.box({
+			parent: container,
+			top: 3,
+			left: 0,
+			width: "100%",
+			height: 1,
+			border: "line",
+			style: {
+				border: { fg: "gray" },
+				fg: "magenta",
+			},
+			content: task.labels?.length ? task.labels.map((l) => `[${l}]`).join(" ") : "{gray-fg}No labels{/}",
+			tags: true,
+			wrap: true,
 		});
 
 		// Metadata box (left side)
 		const metadataBox = blessed.box({
 			parent: container,
-			top: 3,
+			top: 4,
 			left: 0,
 			width: "40%",
-			height: "50%-3",
+			height: "50%-4",
 			border: "line",
-			label: " {bold}Details{/bold} ",
+			label: ` ${formatHeading("Details", 3)} `,
 			tags: true,
 			padding: { left: 1, right: 1, top: 1 },
+			wrap: true,
 		});
 
 		// Format metadata
 		const metadata = [];
-		metadata.push(`{bold}Status:{/bold} {${getStatusColor(task.status)}-fg}${task.status}{/}`);
+		metadata.push(`{bold}Status:{/bold} {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/}`);
 
 		if (task.assignee?.length) {
 			metadata.push(`{bold}Assignee:{/bold} ${task.assignee.map((a) => `{cyan-fg}@${a}{/}`).join(", ")}`);
@@ -119,18 +140,19 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 		// Description box (right side)
 		const descriptionBox = blessed.box({
 			parent: container,
-			top: 3,
+			top: 4,
 			left: "40%",
 			width: "60%",
-			height: "50%-3",
+			height: "50%-4",
 			border: "line",
-			label: " {bold}Description{/bold} ",
+			label: ` ${formatHeading("Description", 3)} `,
 			tags: true,
 			padding: { left: 1, right: 1, top: 1 },
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
 			mouse: true,
+			wrap: true,
 		});
 
 		descriptionBox.setContent(task.description || "{gray-fg}No description provided{/}");
@@ -143,22 +165,19 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 			width: "100%",
 			height: "50%-1",
 			border: "line",
-			label: " {bold}Acceptance Criteria{/bold} ",
+			label: ` ${formatHeading("Acceptance Criteria", 3)} `,
 			tags: true,
 			padding: { left: 1, right: 1, top: 1 },
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
 			mouse: true,
+			wrap: true,
 		});
 
 		// Parse the markdown content to extract sections
 		if (task.acceptanceCriteria?.length) {
-			const criteriaContent = [
-				"{bold}{green-fg}Acceptance Criteria:{/green-fg}{/bold}",
-				"",
-				...task.acceptanceCriteria.map((c, i) => `  ${i + 1}. ${c}`),
-			].join("\n");
+			const criteriaContent = task.acceptanceCriteria.join("\n");
 			bottomBox.setContent(criteriaContent);
 		} else {
 			bottomBox.setContent("{gray-fg}No acceptance criteria defined{/}");
@@ -274,24 +293,31 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		width: "100%",
 		height: 1,
 		tags: true,
-		content: `{${getStatusColor(task.status)}-fg}● ${task.status}{/} ${task.assignee?.length ? `• {cyan-fg}@${task.assignee.join(", @")}{/}` : ""} • {gray-fg}${task.createdDate}{/}`,
+		content: `{${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} ${task.assignee?.length ? `• {cyan-fg}@${task.assignee.join(", @")}{/}` : ""} • {gray-fg}${task.createdDate}{/}`,
+		wrap: true,
 	});
 
-	// Labels and metadata
+	// Labels in styled box
 	const metadataLine = blessed.box({
 		parent: innerContainer,
 		top: 2,
 		left: 0,
 		width: "100%",
 		height: 1,
+		border: "line",
+		style: {
+			border: { fg: "gray" },
+			fg: "magenta",
+		},
 		tags: true,
-		content: task.labels?.length ? task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ") : "",
+		content: task.labels?.length ? task.labels.map((l) => `[${l}]`).join(" ") : "{gray-fg}No labels{/}",
+		wrap: true,
 	});
 
 	// Divider
 	const divider = blessed.line({
 		parent: innerContainer,
-		top: 4,
+		top: 5,
 		left: 0,
 		width: "100%",
 		orientation: "horizontal",
@@ -303,16 +329,17 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	// Content area
 	const contentArea = blessed.box({
 		parent: innerContainer,
-		top: 5,
+		top: 6,
 		left: 0,
 		width: "100%",
-		height: "100%-5",
+		height: "100%-6",
 		scrollable: true,
 		alwaysScroll: true,
 		keys: true,
 		mouse: true,
 		tags: true,
 		content: formatTaskContent(task, content),
+		wrap: true,
 	});
 
 	// Set up close handler
@@ -333,43 +360,35 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	};
 }
 
-function getStatusColor(status: string): string {
-	const statusColors: Record<string, string> = {
-		"To Do": "red",
-		"In Progress": "yellow",
-		Done: "green",
-		Blocked: "red",
-		Review: "blue",
-		Testing: "cyan",
-	};
-	return statusColors[status] || "white";
-}
-
 function formatTaskContent(task: Task, rawContent: string): string {
 	const sections = [];
 
 	if (task.description) {
-		sections.push("{bold}Description:{/bold}");
+		sections.push("");
+		sections.push(formatHeading("Description", 2));
 		sections.push(task.description);
 		sections.push("");
 	}
 
 	if (task.acceptanceCriteria?.length) {
-		sections.push("{bold}{green-fg}Acceptance Criteria:{/green-fg}{/bold}");
-		task.acceptanceCriteria.forEach((criterion, i) => {
-			sections.push(`  ${i + 1}. ${criterion}`);
-		});
+		sections.push("");
+		sections.push(formatHeading("Acceptance Criteria", 2));
+		for (const criterion of task.acceptanceCriteria) {
+			sections.push(criterion);
+		}
 		sections.push("");
 	}
 
 	if (task.dependencies?.length) {
-		sections.push("{bold}Dependencies:{/bold}");
+		sections.push("");
+		sections.push(formatHeading("Dependencies", 2));
 		sections.push(`  ${task.dependencies.join(", ")}`);
 		sections.push("");
 	}
 
 	if (task.subtasks?.length) {
-		sections.push("{bold}Subtasks:{/bold}");
+		sections.push("");
+		sections.push(formatHeading("Subtasks", 2));
 		for (const subtask of task.subtasks) {
 			sections.push(`  • ${subtask}`);
 		}
@@ -386,7 +405,7 @@ function formatTaskPlainText(task: Task, content: string): string {
 	lines.push(`Task ${task.id} - ${task.title}`);
 	lines.push("=".repeat(50));
 	lines.push("");
-	lines.push(`Status: ${task.status}`);
+	lines.push(`Status: ${formatStatusWithIcon(task.status)}`);
 	if (task.assignee?.length) lines.push(`Assignee: @${task.assignee.join(", @")}`);
 	if (task.reporter) lines.push(`Reporter: @${task.reporter}`);
 	lines.push(`Created: ${task.createdDate}`);
@@ -404,9 +423,9 @@ function formatTaskPlainText(task: Task, content: string): string {
 	if (task.acceptanceCriteria?.length) {
 		lines.push("Acceptance Criteria:");
 		lines.push("-".repeat(50));
-		task.acceptanceCriteria.forEach((c, i) => {
-			lines.push(`${i + 1}. ${c}`);
-		});
+		for (const c of task.acceptanceCriteria) {
+			lines.push(c);
+		}
 		lines.push("");
 	}
 	lines.push("Content:");
