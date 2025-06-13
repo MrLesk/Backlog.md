@@ -5,10 +5,40 @@ import { stdin as input, stdout as output } from "node:process";
 import { Core } from "../core/backlog.ts";
 import { parseMarkdown } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
+import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
 import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
 import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon } from "./status-icon.ts";
 import { TaskList } from "./task-list.ts";
+
+/**
+ * Extract only the Description section content from markdown, avoiding duplication
+ */
+function extractDescriptionSection(content: string): string | null {
+	if (!content) return null;
+
+	// Look for ## Description section
+	const regex = /## Description\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = content.match(regex);
+	return match?.[1]?.trim() || null;
+}
+
+/**
+ * Extract checkbox lines from Acceptance Criteria section for display
+ */
+function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
+	if (!content) return [];
+
+	// Look for ## Acceptance Criteria section
+	const regex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = content.match(regex);
+	if (!match) return [];
+
+	return match[1]
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.startsWith("- [ ]") || line.startsWith("- [x]"));
+}
 
 // Load blessed dynamically
 // biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
@@ -329,7 +359,117 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 }
 
 /**
- * Display task details in a popup (for board view)
+ * Generate enhanced detail content structure (reusable)
+ */
+function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
+	// Format header content with key metadata
+	const headerContent = [];
+	headerContent.push(` {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`);
+
+	// Second line with status, date, and assignee
+	const statusLine = [];
+	statusLine.push(`{${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/}`);
+	statusLine.push(`{gray-fg}${task.createdDate}{/}`);
+
+	if (task.assignee?.length) {
+		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+		statusLine.push(`{cyan-fg}${assigneeList}{/}`);
+	}
+
+	// Add labels to header if they exist
+	if (task.labels?.length) {
+		statusLine.push(`${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+	}
+
+	headerContent.push(` ${statusLine.join(" • ")}`);
+
+	// Build the scrollable body content
+	const bodyContent = [];
+
+	// Add additional metadata section
+	if (
+		task.reporter ||
+		task.updatedDate ||
+		task.milestone ||
+		task.parentTaskId ||
+		task.subtasks?.length ||
+		task.dependencies?.length
+	) {
+		bodyContent.push(formatHeading("Details", 2));
+
+		const metadata = [];
+		if (task.reporter) {
+			const reporterText = task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`;
+			metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
+		}
+
+		if (task.updatedDate) {
+			metadata.push(`{bold}Updated:{/bold} ${task.updatedDate}`);
+		}
+
+		if (task.milestone) {
+			metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${task.milestone}{/}`);
+		}
+
+		if (task.parentTaskId) {
+			metadata.push(`{bold}Parent:{/bold} {blue-fg}${task.parentTaskId}{/}`);
+		}
+
+		if (task.subtasks?.length) {
+			metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
+		}
+
+		if (task.dependencies?.length) {
+			metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
+		}
+
+		bodyContent.push(metadata.join("\n"));
+		bodyContent.push("");
+	}
+
+	// Description section
+	bodyContent.push(formatHeading("Description", 2));
+	// Extract only the Description section content, not the full markdown
+	const extractedDescription = extractDescriptionSection(task.description);
+	const descriptionContent = extractedDescription
+		? transformCodePaths(extractedDescription)
+		: "{gray-fg}No description provided{/}";
+	bodyContent.push(descriptionContent);
+	bodyContent.push("");
+
+	// Acceptance criteria section
+	bodyContent.push(formatHeading("Acceptance Criteria", 2));
+	// Extract checkbox lines from raw content to preserve checkbox state
+	const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(rawContent);
+	if (checkboxLines.length > 0) {
+		const formattedCriteria = checkboxLines.map((line) => {
+			const checkboxItem = parseCheckboxLine(line);
+			if (checkboxItem) {
+				// Use nice Unicode symbols for checkboxes in TUI
+				return formatChecklistItem(checkboxItem, {
+					padding: " ",
+					checkedSymbol: "{green-fg}✓{/}",
+					uncheckedSymbol: "{gray-fg}○{/}",
+				});
+			}
+			// Handle non-checkbox lines
+			return ` ${line}`;
+		});
+		const criteriaContent = styleCodePaths(formattedCriteria.join("\n"));
+		bodyContent.push(criteriaContent);
+	} else if (task.acceptanceCriteria?.length) {
+		// Fallback to parsed criteria if no checkboxes found in raw content
+		const criteriaContent = styleCodePaths(task.acceptanceCriteria.map((text) => ` • ${text}`).join("\n"));
+		bodyContent.push(criteriaContent);
+	} else {
+		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
+	}
+
+	return { headerContent, bodyContent };
+}
+
+/**
+ * Display task details in a popup (for board view) using enhanced detail structure
  */
 // biome-ignore lint/suspicious/noExplicitAny: blessed types
 export async function createTaskPopup(screen: any, task: Task, content: string): Promise<any> {
@@ -354,14 +494,34 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		top: "center",
 		left: "center",
 		width: "85%",
-		height: "85%",
+		height: "80%",
+		border: "line",
+		style: {
+			border: { fg: "gray" },
+		},
+		keys: true,
+		tags: true,
+		autoPadding: true,
+	});
+
+	// Generate enhanced detail content
+	const { headerContent, bodyContent } = generateDetailContent(task, content);
+
+	// Fixed header section with task ID, title, status, date, and tags
+	const headerBox = blessed.box({
+		parent: popup,
+		top: 0,
+		left: 0,
+		width: "100%-2", // Account for border
+		height: 3,
 		border: "line",
 		style: {
 			border: { fg: "blue" },
 		},
-		keys: true,
 		tags: true,
-		label: ` {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title} `,
+		wrap: true,
+		scrollable: false, // Header should never scroll
+		content: headerContent.join("\n"),
 	});
 
 	// Escape indicator
@@ -378,71 +538,21 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		},
 	});
 
-	// Create inner container for content
-	const innerContainer = blessed.box({
-		parent: popup,
-		top: 0,
-		left: 0,
-		width: "100%-2",
-		height: "100%-2",
-		padding: 1,
-	});
-
-	// Status and assignee line
-	const statusLine = blessed.box({
-		parent: innerContainer,
-		top: 0,
-		left: 0,
-		width: "100%",
-		height: 1,
-		tags: true,
-		content: `{${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} ${task.assignee?.length ? `• {cyan-fg}${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}{/}` : ""} • {gray-fg}${task.createdDate}{/}`,
-		wrap: true,
-	});
-
-	// Labels in styled box
-	const metadataLine = blessed.box({
-		parent: innerContainer,
-		top: 2,
-		left: 0,
-		width: "100%",
-		height: 1,
-		border: "line",
-		style: {
-			border: { fg: "gray" },
-			fg: "magenta",
-		},
-		tags: true,
-		content: task.labels?.length ? task.labels.map((l) => `[${l}]`).join(" ") : "{gray-fg}No labels{/}",
-		wrap: true,
-	});
-
-	// Divider
-	const divider = blessed.line({
-		parent: innerContainer,
-		top: 5,
-		left: 0,
-		width: "100%",
-		orientation: "horizontal",
-		style: {
-			fg: "gray",
-		},
-	});
-
-	// Content area
+	// Scrollable body container beneath the header
 	const contentArea = blessed.box({
-		parent: innerContainer,
-		top: 6,
+		parent: popup,
+		top: 3, // Start below the fixed header
 		left: 0,
-		width: "100%",
-		height: "100%-6",
+		width: "100%-2", // Account for border
+		height: "100%-4", // Reset to normal height since popup is smaller
 		scrollable: true,
-		alwaysScroll: true,
+		alwaysScroll: false,
 		keys: true,
 		mouse: true,
 		tags: true,
-		content: formatTaskContent(task, content),
 		wrap: true,
+		padding: { left: 1, right: 1, top: 1 },
+		content: bodyContent.join("\n"),
 	});
 
 	// Set up close handler
@@ -461,46 +571,6 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		contentArea,
 		close: closePopup,
 	};
-}
-
-function formatTaskContent(task: Task, rawContent: string): string {
-	const sections = [];
-
-	if (task.description) {
-		sections.push("");
-		sections.push(formatHeading("Description", 2));
-		sections.push(transformCodePaths(task.description));
-		sections.push("");
-	}
-
-	if (task.acceptanceCriteria?.length) {
-		sections.push("");
-		sections.push(formatHeading("Acceptance Criteria", 2));
-		for (const criterion of task.acceptanceCriteria) {
-			sections.push(transformCodePaths(criterion));
-		}
-		sections.push("");
-	}
-
-	if (task.dependencies?.length) {
-		sections.push("");
-		sections.push(formatHeading("Dependencies", 2));
-		sections.push(`  ${task.dependencies.join(", ")}`);
-		sections.push("");
-	}
-
-	if (task.subtasks?.length) {
-		sections.push("");
-		sections.push(formatHeading("Subtasks", 2));
-		for (const subtask of task.subtasks) {
-			sections.push(`  • ${subtask}`);
-		}
-		sections.push("");
-	}
-
-	// No raw content needed - all information is already displayed
-
-	return styleCodePaths(sections.join("\n"));
 }
 
 function formatTaskPlainText(task: Task, content: string): string {

@@ -14,12 +14,12 @@ interface DisplayTask {
 	title: string;
 }
 
-function idSegments(id: string): number[] {
+export function idSegments(id: string): number[] {
 	const normalized = id.startsWith("task-") ? id.slice(5) : id;
 	return normalized.split(".").map((part) => Number.parseInt(part, 10));
 }
 
-function compareIds(a: Task, b: Task): number {
+export function compareIds(a: Task, b: Task): number {
 	const segA = idSegments(a.id);
 	const segB = idSegments(b.id);
 	const len = Math.max(segA.length, segB.length);

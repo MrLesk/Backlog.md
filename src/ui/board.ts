@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { stdin as input, stdout as output } from "node:process";
-import { type BoardLayout, generateKanbanBoard } from "../board.ts";
+import { type BoardLayout, compareIds, generateKanbanBoard } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { formatStatusWithIcon, getStatusIcon } from "./status-icon.ts";
@@ -129,7 +129,7 @@ export async function renderBoardTui(
 				vi: false,
 				mouse: true,
 				scrollable: true,
-				alwaysScroll: true,
+				alwaysScroll: false,
 				selectedBg: undefined, // Don't show selection by default
 				style: {
 					selected: {
@@ -140,9 +140,11 @@ export async function renderBoardTui(
 			});
 
 			// Populate tasks
-			const tasksInStatus = tasksByStatus.get(status) || [];
+			const tasksInStatus = (tasksByStatus.get(status) || []).sort(compareIds);
 			const items = tasksInStatus.map((task) => {
-				const assignee = task.assignee?.length ? ` @${task.assignee[0]}` : "";
+				const assignee = task.assignee?.length
+					? ` ${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}`
+					: "";
 				return `${task.id} - ${task.title}${assignee}`;
 			});
 			taskList.setItems(items);
