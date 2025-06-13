@@ -39,11 +39,11 @@ async function build() {
 
 		// Build JavaScript bundle
 		console.log("Building JavaScript bundle...");
-		await runCommand("bun", ["build", "src/cli.ts", "--outdir", outDir, "--target", "node"]);
+		await runCommand("bun", ["build", "src/cli.ts", "--outdir", outDir, "--target", "bun"]);
 
 		// Create index.js wrapper
 		console.log("Creating index.js wrapper...");
-		const indexContent = isWindows ? 'import("./cli.js");' : '#!/usr/bin/env node\nimport("./cli.js");';
+		const indexContent = isWindows ? 'import("./cli.js");' : '#!/usr/bin/env bun\nimport("./cli.js");';
 
 		await writeFile(indexFile, indexContent);
 

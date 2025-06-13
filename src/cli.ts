@@ -28,9 +28,13 @@ import {
 	parseTask,
 } from "./index.ts";
 import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
+import { getVersion } from "./utils/version.ts";
+
+// Get version from package.json
+const version = await getVersion();
 
 const program = new Command();
-program.name("backlog").description("Backlog project management CLI");
+program.name("backlog").description("Backlog.md - Project management CLI").version(version);
 
 program
 	.command("init [projectName]")
