@@ -52,7 +52,10 @@ export async function promptText(message: string, defaultValue = ""): Promise<st
 	}
 
 	return new Promise<string>((resolve) => {
-		const screen = blessed.screen({ smartCSR: true });
+		const screen = blessed.screen({
+			smartCSR: true,
+			style: { fg: "white", bg: "black" },
+		});
 
 		const form = blessed.form({
 			parent: screen,
@@ -63,6 +66,7 @@ export async function promptText(message: string, defaultValue = ""): Promise<st
 			height: 5,
 			border: "line",
 			label: ` ${message} `,
+			style: { fg: "white", bg: "black", border: { fg: "white" } },
 		});
 
 		const textbox = blessed.textbox({
@@ -75,6 +79,7 @@ export async function promptText(message: string, defaultValue = ""): Promise<st
 			height: 1,
 			padding: { left: 1, right: 1 },
 			border: "line",
+			style: { fg: "white", bg: "black", border: { fg: "white" } },
 			value: defaultValue,
 		});
 
@@ -107,7 +112,10 @@ export async function multiSelect<T extends string>(message: string, options: T[
 	}
 
 	return new Promise<T[]>((resolve) => {
-		const screen = blessed.screen({ smartCSR: true });
+		const screen = blessed.screen({
+			smartCSR: true,
+			style: { fg: "white", bg: "black" },
+		});
 
 		const list = blessed.list({
 			parent: screen,
@@ -121,6 +129,11 @@ export async function multiSelect<T extends string>(message: string, options: T[
 			keys: true,
 			vi: true,
 			mouse: true,
+			style: {
+				item: { fg: "white", bg: "black" },
+				selected: { bg: "blue", fg: "white" },
+				border: { fg: "white" },
+			},
 		});
 
 		const selected = new Set<number>();
@@ -169,7 +182,10 @@ export async function scrollableViewer(content: string): Promise<void> {
 	}
 
 	return new Promise<void>((resolve) => {
-		const screen = blessed.screen({ smartCSR: true });
+		const screen = blessed.screen({
+			smartCSR: true,
+			style: { fg: "white", bg: "black" },
+		});
 
 		const box = blessed.box({
 			parent: screen,
@@ -207,7 +223,10 @@ export async function selectList<T extends { id: string; title: string }>(
 	}
 
 	return new Promise<T | null>((resolve) => {
-		const screen = blessed.screen({ smartCSR: true });
+		const screen = blessed.screen({
+			smartCSR: true,
+			style: { fg: "white", bg: "black" },
+		});
 
 		// Group items if groupBy is provided
 		const groups = new Map<string, T[]>();
@@ -261,10 +280,9 @@ export async function selectList<T extends { id: string; title: string }>(
 			alwaysScroll: true,
 			tags: true,
 			style: {
-				selected: {
-					bg: "blue",
-					fg: "white",
-				},
+				item: { fg: "white", bg: "black" },
+				selected: { bg: "blue", fg: "white" },
+				border: { fg: "white" },
 			},
 		});
 
