@@ -15,8 +15,8 @@ dependencies: []
 Add filtering options to task list command
 
 ## Acceptance Criteria
-- [ ] `backlog task list --status "To Do"` filters by status
-- [ ] `backlog task list --assignee user` filters by assignee
+- [x] `backlog task list --status "To Do"` filters by status
+- [x] `backlog task list --assignee user` filters by assignee
 
 ## Implementation Notes
 Implemented filtering options in src/cli.ts and added tests.
