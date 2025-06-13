@@ -476,19 +476,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	const blessed = await loadBlessed();
 	if (!blessed) return null;
 
-	// Create background overlay
-	const background = blessed.box({
-		parent: screen,
-		top: "center",
-		left: "center",
-		width: "88%",
-		height: "88%",
-		style: {
-			bg: "black",
-		},
-	});
-
-	// Create main popup
+	// Create main popup first
 	const popup = blessed.box({
 		parent: screen,
 		top: "center",
@@ -503,6 +491,22 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		tags: true,
 		autoPadding: true,
 	});
+
+	// Create background overlay positioned relative to popup
+	// Using offset positioning: -2 chars left/right, -1 char top/bottom
+	const background = blessed.box({
+		parent: screen,
+		top: popup.top - 1,
+		left: popup.left - 2,
+		width: popup.width + 4,
+		height: popup.height + 2,
+		style: {
+			bg: "black",
+		},
+	});
+
+	// Move popup to front
+	popup.setFront();
 
 	// Generate enhanced detail content
 	const { headerContent, bodyContent } = generateDetailContent(task, content);
