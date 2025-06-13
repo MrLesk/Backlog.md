@@ -41,66 +41,12 @@ async function loadBlessed(): Promise<any | null> {
 
 // Ask the user for a single line of input.  Falls back to readline.
 export async function promptText(message: string, defaultValue = ""): Promise<string> {
-	const blessed = await loadBlessed();
-	if (!blessed) {
-		// Fallback to readline prompt
-		const { createInterface } = await import("node:readline/promises");
-		const rl = createInterface({ input, output });
-		const answer = (await rl.question(`${message} `)).trim();
-		rl.close();
-		return answer || defaultValue;
-	}
-
-	return new Promise<string>((resolve) => {
-		const screen = blessed.screen({
-			smartCSR: true,
-			style: { fg: "white", bg: "black" },
-		});
-
-		const form = blessed.form({
-			parent: screen,
-			keys: true,
-			left: "center",
-			top: "center",
-			width: "50%",
-			height: 5,
-			border: "line",
-			label: ` ${message} `,
-			style: { fg: "white", bg: "black", border: { fg: "white" } },
-		});
-
-		const textbox = blessed.textbox({
-			parent: form,
-			name: "input",
-			inputOnFocus: true,
-			top: 1,
-			left: 1,
-			width: "95%",
-			height: 1,
-			padding: { left: 1, right: 1 },
-			border: "line",
-			style: { fg: "white", bg: "black", border: { fg: "white" } },
-			value: defaultValue,
-		});
-
-		textbox.focus();
-
-		form.on("submit", (data: { input: string }) => {
-			screen.destroy();
-			resolve(data.input.trim());
-		});
-
-		screen.key(["enter"], () => {
-			form.submit();
-		});
-
-		screen.key(["escape", "C-c"], () => {
-			screen.destroy();
-			resolve("");
-		});
-
-		screen.render();
-	});
+	// Always use readline for simple text input to avoid blessed rendering quirks
+	const { createInterface } = await import("node:readline/promises");
+	const rl = createInterface({ input, output });
+	const answer = (await rl.question(`${message} `)).trim();
+	rl.close();
+	return answer || defaultValue;
 }
 
 // Multi-select check-box style prompt.  Returns the values selected by the user.
