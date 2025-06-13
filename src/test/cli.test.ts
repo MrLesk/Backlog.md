@@ -262,6 +262,81 @@ describe("CLI Integration", () => {
 			const config = await core.filesystem.loadConfig();
 			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
 		});
+
+		it("should filter tasks by status", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "First Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "First test task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Second Task",
+					status: "Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "Second test task",
+				},
+				false,
+			);
+
+			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "Done"], { cwd: TEST_DIR });
+			const out = result.stdout.toString();
+			expect(out).toContain("Done:");
+			expect(out).toContain("task-2 - Second Task");
+			expect(out).not.toContain("task-1");
+		});
+
+		it("should filter tasks by assignee", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Assigned Task",
+					status: "To Do",
+					assignee: ["alice"],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "Assigned task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Unassigned Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "Other task",
+				},
+				false,
+			);
+
+			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--assignee", "alice"], {
+				cwd: TEST_DIR,
+			});
+			const out = result.stdout.toString();
+			expect(out).toContain("task-1 - Assigned Task");
+			expect(out).not.toContain("task-2 - Unassigned Task");
+		});
 	});
 
 	describe("task view command", () => {

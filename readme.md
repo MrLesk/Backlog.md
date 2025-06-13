@@ -58,7 +58,7 @@ All data is saved under `.backlog` folder as human‑readable Markdown (`task‑
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
 | Create task | `backlog task create "Add OAuth"`                    |
-| List tasks  | `backlog task list`                                  |
+| List tasks  | `backlog task list [-s <status>] [-a <assignee>]`     |
 | View detail | `backlog task 7`                                     |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |

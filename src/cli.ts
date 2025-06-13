@@ -250,6 +250,8 @@ taskCmd
 taskCmd
 	.command("list")
 	.description("list tasks grouped by status")
+	.option("-s, --status <status>", "filter tasks by status")
+	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = process.cwd();
@@ -257,7 +259,15 @@ taskCmd
 		const tasks = await core.filesystem.listTasks();
 		const config = await core.filesystem.loadConfig();
 
-		if (tasks.length === 0) {
+		let filtered = tasks;
+		if (options.status) {
+			filtered = filtered.filter((t) => t.status === options.status);
+		}
+		if (options.assignee) {
+			filtered = filtered.filter((t) => t.assignee.includes(options.assignee));
+		}
+
+		if (filtered.length === 0) {
 			console.log("No tasks found.");
 			return;
 		}
@@ -265,7 +275,7 @@ taskCmd
 		// Plain text output
 		if (options.plain) {
 			const groups = new Map<string, Task[]>();
-			for (const task of tasks) {
+			for (const task of filtered) {
 				const status = task.status || "";
 				const list = groups.get(status) || [];
 				list.push(task);
@@ -291,7 +301,7 @@ taskCmd
 		}
 
 		// Interactive UI
-		const selected = await selectList("Select a task", tasks, (task) => task.status || "No Status");
+		const selected = await selectList("Select a task", filtered, (task) => task.status || "No Status");
 		if (selected) {
 			// Show task details
 			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
