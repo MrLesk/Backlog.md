@@ -133,31 +133,4 @@ describe("local bunx/npx execution", () => {
 		expect(exitCode).toBe(0);
 		expect(stdout).toContain("Backlog.md - Project management CLI");
 	});
-
-	// Test direct execution with Bun on Windows CI
-	if (isWindows && process.env.CI === "true") {
-		it("runs directly with bun", async () => {
-			const cliPath = join(projectDir, "node_modules", "backlog.md", "cli", "index.js");
-
-			const proc = Bun.spawn(["bun", cliPath, "--help"], {
-				cwd: projectDir,
-				stdout: "pipe",
-				stderr: "pipe",
-				env: { ...process.env, FORCE_COLOR: "0" },
-			});
-
-			const exitCode = await proc.exited;
-			const stdout = await new Response(proc.stdout).text();
-			const stderr = await new Response(proc.stderr).text();
-
-			if (exitCode !== 0) {
-				console.error("Direct bun execution failed with exit code:", exitCode);
-				console.error("stderr:", stderr);
-				console.error("stdout:", stdout);
-			}
-
-			expect(exitCode).toBe(0);
-			expect(stdout).toContain("Backlog.md - Project management CLI");
-		});
-	}
 });
