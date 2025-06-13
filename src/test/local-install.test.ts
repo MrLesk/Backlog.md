@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 
 let projectDir: string;
 let tarball: string;
 
 describe("local bunx/npx execution", () => {
+	const isWindows = platform() === "win32";
 	beforeAll(async () => {
 		projectDir = await mkdtemp(join(tmpdir(), "backlog-local-"));
 
@@ -47,41 +48,71 @@ describe("local bunx/npx execution", () => {
 	});
 
 	afterAll(async () => {
-		await rm(projectDir, { recursive: true, force: true });
-		await rm(tarball, { force: true }).catch(() => {});
+		// Wait a bit on Windows to avoid file locking issues
+		if (platform() === "win32") {
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		}
+
+		try {
+			await rm(projectDir, { recursive: true, force: true });
+		} catch (error) {
+			console.warn("Failed to remove project dir:", error);
+		}
+
+		try {
+			await rm(tarball, { force: true });
+		} catch (error) {
+			// Ignore tarball removal errors
+		}
 	});
 
-	it("runs via npx", () => {
-		const result = Bun.spawnSync(["npx", "backlog", "--help"], {
+	it("runs via npx", async () => {
+		// On Windows, use cmd.exe to run npx
+		const command = isWindows ? ["cmd", "/c", "npx", "backlog", "--help"] : ["npx", "backlog", "--help"];
+
+		const proc = Bun.spawn(command, {
 			cwd: projectDir,
 			stdout: "pipe",
 			stderr: "pipe",
+			env: { ...process.env, FORCE_COLOR: "0" }, // Disable color output
 		});
 
-		if (result.exitCode !== 0) {
-			console.error("npx command failed with exit code:", result.exitCode);
-			console.error("stderr:", result.stderr.toString());
-			console.error("stdout:", result.stdout.toString());
+		const exitCode = await proc.exited;
+		const stdout = await new Response(proc.stdout).text();
+		const stderr = await new Response(proc.stderr).text();
+
+		if (exitCode !== 0) {
+			console.error("npx command failed with exit code:", exitCode);
+			console.error("stderr:", stderr);
+			console.error("stdout:", stdout);
 		}
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stdout.toString()).toContain("Backlog.md - Project management CLI");
+		expect(exitCode).toBe(0);
+		expect(stdout).toContain("Backlog.md - Project management CLI");
 	});
 
-	it("runs via bunx", () => {
-		const result = Bun.spawnSync(["bun", "x", "backlog", "--help"], {
+	it("runs via bunx", async () => {
+		// On Windows, use cmd.exe to run bunx
+		const command = isWindows ? ["cmd", "/c", "bun", "x", "backlog", "--help"] : ["bun", "x", "backlog", "--help"];
+
+		const proc = Bun.spawn(command, {
 			cwd: projectDir,
 			stdout: "pipe",
 			stderr: "pipe",
+			env: { ...process.env, FORCE_COLOR: "0" }, // Disable color output
 		});
 
-		if (result.exitCode !== 0) {
-			console.error("bunx command failed with exit code:", result.exitCode);
-			console.error("stderr:", result.stderr.toString());
-			console.error("stdout:", result.stdout.toString());
+		const exitCode = await proc.exited;
+		const stdout = await new Response(proc.stdout).text();
+		const stderr = await new Response(proc.stderr).text();
+
+		if (exitCode !== 0) {
+			console.error("bunx command failed with exit code:", exitCode);
+			console.error("stderr:", stderr);
+			console.error("stdout:", stdout);
 		}
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stdout.toString()).toContain("Backlog.md - Project management CLI");
+		expect(exitCode).toBe(0);
+		expect(stdout).toContain("Backlog.md - Project management CLI");
 	});
 });
