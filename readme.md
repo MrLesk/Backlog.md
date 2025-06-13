@@ -58,14 +58,16 @@ All data is saved under `.backlog` folder as human‑readable Markdown (`task‑
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
 | Create task | `backlog task create "Add OAuth"`                    |
+| Create sub task | `backlog task create --parent 14 "Add Google auth"`                    |
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>]`     |
 | View detail | `backlog task 7`                                     |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
-| Kanban      | `backlog board export --output README.md`            |
+| Demote to draft| `backlog task demote <id>` |
+| Kanban      | `backlog board view`            |
 
-Full help: `backlog --help` or see [`/docs`](./docs).
+Full help: `backlog --help`
 
 ---
 
