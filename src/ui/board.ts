@@ -270,17 +270,18 @@ export async function renderBoardTui(
 			}
 		});
 
-		// Help text at bottom
+		// Footer hint line
 		const helpText = blessed.box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
 			width: "100%",
 			height: 1,
-			content: " ←/→: Navigate columns | ↑/↓: Navigate tasks | Enter: View details | q/Esc: Exit ",
+			border: "line",
+			content: " ←/→ columns · ↑/↓ tasks · Enter view details · q/Esc quit ",
 			style: {
-				fg: "white",
-				bg: "blue",
+				fg: "gray",
+				border: { fg: "gray" },
 			},
 		});
 

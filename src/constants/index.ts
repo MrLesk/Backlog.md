@@ -40,4 +40,9 @@ export const DEFAULT_STATUSES = ["To Do", "In Progress", "Done"] as const;
  */
 export const FALLBACK_STATUS = "To Do";
 
+/**
+ * Maximum width for wrapped text lines in UI components
+ */
+export const WRAP_LIMIT = 72;
+
 export * from "../guidelines/index.ts";

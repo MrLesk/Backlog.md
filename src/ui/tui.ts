@@ -12,6 +12,7 @@
 import { createRequire } from "node:module";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { stdin as input, stdout as output } from "node:process";
+import { formatHeading } from "./heading.ts";
 
 // Utility: load blessed at runtime if present.
 // biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
@@ -180,6 +181,7 @@ export async function scrollableViewer(content: string): Promise<void> {
 			width: "100%",
 			height: "100%",
 			padding: { left: 1, right: 1 },
+			wrap: true,
 		});
 
 		screen.key(["escape", "q", "C-c"], () => {
@@ -228,7 +230,7 @@ export async function selectList<T extends { id: string; title: string }>(
 
 		if (groupBy) {
 			for (const [group, groupItems] of groups) {
-				displayItems.push(`{bold}${group || "No Status"}{/bold}`);
+				displayItems.push(formatHeading(group || "No Status", 2));
 				itemMap.set(index++, null); // Group header
 				for (const item of groupItems) {
 					displayItems.push(`  ${item.id} - ${item.title}`);
