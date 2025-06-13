@@ -34,8 +34,32 @@ backlog task edit <task-id> --status Done
 
 ## Definition of Done
 
-- All acceptance criteria for the task are satisfied.
-- Required tests are implemented and pass.
-- Documentation and related `readme.md` files are updated.
-- Add "## Implementation Notes" section to the task with key technical details, architectural decisions, and important changes made during implementation.
-- The task is marked as done using the Backlog CLI: `backlog task edit <task-id> --status Done`
+A task is **Done** only when **all** of the following hold:
+
+1. **Acceptance criteria** checklist in the task file is fully checked.  
+2. **Automated tests** (unit + integration) cover new logic and CI passes.  
+3. **Static analysis**: linter & formatter succeed (when available).  
+4. **Documentation**:  
+   - Docs updated.  
+   - Task file appended with a `## Implementation Notes` section summarising approach, trade‑offs and follow‑ups.  
+5. **Review**: code reviewed.  
+6. **Task hygiene**: status set to **Done** via CLI.  
+7. **No regressions**: performance, security and licence checks green.
+
+## Backlog.md Tool - CLI usage
+| Purpose | Command |
+|---------|---------|
+| Create task | `backlog task create "Add OAuth"`                    |
+| Create sub task | `backlog task create --parent 14 "Add Google auth"`                    |
+| List tasks  | `backlog task list`                                  |
+| View detail | `backlog task 7`                                     |
+| Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
+| Archive     | `backlog task archive 7`                             |
+| Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
+| Demote to draft| `backlog task demote <id>` |
+
+## Backlog.md Tool - Tips for AI Agents
+- Keep tasks **small, atomic, and testable**; create subtasks liberally.  
+- Prefer **idempotent** changes so reruns remain safe.  
+- Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
+- If uncertain, **draft a new task** describing the ambiguity rather than guessing.  
