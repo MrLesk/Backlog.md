@@ -6,13 +6,14 @@ import { WRAP_LIMIT } from "../constants/index.ts";
 // biome-ignore lint/suspicious/noExplicitAny: blessed is a third-party library without types
 async function loadBlessed(): Promise<any | null> {
 	try {
-		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
-		return blessed;
+		// biome-ignore lint/suspicious/noExplicitAny: blessed is a third-party library without types
+		const mod: any = await import("blessed");
+		return mod.default ?? mod;
 	} catch {
 		try {
-			const mod = await import("blessed");
-			return mod.default ?? mod;
+			const require = createRequire(import.meta.url);
+			const blessed = require("blessed");
+			return blessed;
 		} catch {
 			return null;
 		}

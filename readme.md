@@ -29,8 +29,11 @@
 npm i -g backlog.md
 
 # global – Bun
-bun add -g backlog.md
+bun add -g backlog.md    # Bun 1.0+
 ```
+
+> Bun global installs prior to `v0.1.4` triggered a `blessed.screen` error.
+> The issue has been fixed – ensure you update to the latest version.
 
 > Prefer per‑project installs? `npm i -D backlog.md` → `npx backlog …`
 

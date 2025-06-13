@@ -21,17 +21,18 @@ async function loadBlessed(): Promise<any | null> {
 	if (output.isTTY === false) return null;
 
 	try {
-		// Try using createRequire for better compatibility
-		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
-		return blessed;
+		// Dynamic import works with both Node and Bun
+		// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+		// @ts-ignore — module may not exist at runtime.
+		// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
+		const mod: any = await import("blessed");
+		return mod.default ?? mod;
 	} catch {
 		try {
-			// Fallback to dynamic import
-			// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-			// @ts-ignore — module may not exist at runtime.
-			const mod = await import("blessed");
-			return mod.default ?? mod;
+			// Fallback to createRequire for older Node versions
+			const require = createRequire(import.meta.url);
+			const blessed = require("blessed");
+			return blessed;
 		} catch {
 			return null;
 		}
