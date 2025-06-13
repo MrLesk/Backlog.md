@@ -18,4 +18,4 @@ Detailed work:
 - Add single-line box, bottom:0, fg:grey, text: ↑/↓ scroll · q quit · space toggle checkbox (adjust to actual bindings).
 
 ## Acceptance Criteria
-- [ ] Footer always visible; listed shortcuts all work.
+- [x] Footer always visible; listed shortcuts all work.

@@ -20,5 +20,5 @@ Detailed work:
 - Arrow keys change list selection and refresh detail pane.
 
 ## Acceptance Criteria
-- [ ] Down-arrow changes highlight and updates detail.
-- [ ] Resizing keeps the 30/70 ratio within ±2 columns.
+- [x] Down-arrow changes highlight and updates detail.
+- [x] Resizing keeps the 30/70 ratio within ±2 columns.

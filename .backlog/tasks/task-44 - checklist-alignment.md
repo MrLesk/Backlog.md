@@ -20,5 +20,5 @@ Detailed work:
 
 ## Acceptance Criteria
 
-- [ ] All checklist lines start at the same column (snapshot diff)
-- [ ] Regex unit test passes for both checked and unchecked cases
+- [x] All checklist lines start at the same column (snapshot diff)
+- [x] Regex unit test passes for both checked and unchecked cases

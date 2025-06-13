@@ -19,5 +19,5 @@ Detailed work:
 - Introduce a global config wrapLimit = 72.
 
 ## Acceptance Criteria
-- [ ] Automated test shows no rendered line exceeds 72 chars.
-- [ ] Manual resize to 60 cols shows clean wrapping, no split words.
+- [x] Automated test shows no rendered line exceeds 72 chars.
+- [x] Manual resize to 60 cols shows clean wrapping, no split words.

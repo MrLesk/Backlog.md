@@ -18,5 +18,5 @@ Detailed work:
 - Wrap the entire detail pane in a box with border.type:\line\ and padding.left = 1.
 
 ## Acceptance Criteria
-- [ ] Snapshot shows 1-char margin at left.
-- [ ] Border stays inside the right pane (not full-width).
+- [x] Snapshot shows 1-char margin at left.
+- [x] Border stays inside the right pane (not full-width).

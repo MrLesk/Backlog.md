@@ -19,5 +19,5 @@ Detailed work:
 - Render them dim grey and place each on its own line if not already isolated.
 
 ## Acceptance Criteria
-- [ ] Regex captures 100% of code paths in test fixture.
-- [ ] Visual diff shows dim-grey paths, separated from surrounding prose.
+- [x] Regex captures 100% of code paths in test fixture.
+- [x] Visual diff shows dim-grey paths, separated from surrounding prose.
