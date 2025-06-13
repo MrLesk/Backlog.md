@@ -24,11 +24,11 @@ describe("local bunx/npx execution", () => {
 
 	it("runs via npx", () => {
 		const result = Bun.spawnSync(["npx", "backlog", "--help"], { cwd: projectDir });
-		expect(result.stdout.toString()).toContain("Backlog project management CLI");
+		expect(result.stdout.toString()).toContain("Backlog.md - Project management CLI");
 	});
 
 	it("runs via bunx", () => {
 		const result = Bun.spawnSync(["bun", "x", "backlog", "--help"], { cwd: projectDir });
-		expect(result.stdout.toString()).toContain("Backlog project management CLI");
+		expect(result.stdout.toString()).toContain("Backlog.md - Project management CLI");
 	});
 });
