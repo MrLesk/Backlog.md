@@ -10,21 +10,21 @@ import type { Task } from "../types/index.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon } from "./status-icon.ts";
 import { createTaskPopup } from "./task-viewer.ts";
 
-// Load blessed dynamically
-// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
+// Load bblessed dynamically
+// biome-ignore lint/suspicious/noExplicitAny: bblessed is dynamically loaded
 async function loadBlessed(): Promise<any | null> {
-	// Don't check TTY in Bun - let blessed handle it
+	// Don't check TTY in Bun - let bblessed handle it
 	try {
 		// Try using createRequire for better compatibility
 		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
+		const blessed = require("bblessed");
 		return blessed;
 	} catch {
 		try {
 			// Fallback to dynamic import
 			// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 			// @ts-ignore — module may not exist at runtime.
-			const mod = await import("blessed");
+			const mod = await import("bblessed");
 			return mod.default ?? mod;
 		} catch {
 			// Blessed may not work in bundled executables

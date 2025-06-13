@@ -5,18 +5,18 @@ import { stdout as output } from "node:process";
 import type { Task } from "../types/index.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 
-// Load blessed dynamically
-// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
+// Load bblessed dynamically
+// biome-ignore lint/suspicious/noExplicitAny: bblessed is dynamically loaded
 async function loadBlessed(): Promise<any | null> {
 	if (output.isTTY === false) return null;
 	try {
 		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
+		const blessed = require("bblessed");
 		return blessed;
 	} catch {
 		try {
 			// biome-ignore lint/suspicious/noExplicitAny: dynamic import
-			const mod = (await import("blessed")) as any;
+			const mod = (await import("bblessed")) as any;
 			return mod.default ?? mod;
 		} catch {
 			return null;

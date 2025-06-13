@@ -9,7 +9,7 @@
 	"dependencies": {
 		"commander": "14.0.0",
 		"gray-matter": "4.0.3",
-		"blessed": "0.1.81"
+		"bblessed": "npm:blessed@0.1.81"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

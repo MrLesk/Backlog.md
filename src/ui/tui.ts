@@ -1,10 +1,10 @@
 /*
- * Lightweight wrapper around the `blessed` terminal UI library.
+ * Lightweight wrapper around the `bblessed` terminal UI library.
  *
  * The real dependency may not always be available in the runtime
  * (for example, in CI or when the user purposefully installs Backlog.md
  * without optional TUI support).  All exported helper functions therefore
- * attempt to load `blessed` dynamically and will transparently fall back
+ * attempt to load `bblessed` dynamically and will transparently fall back
  * to a simple non-interactive implementation when the import fails or
  * when the current process is not attached to a TTY.
  */
@@ -14,8 +14,8 @@ import { createRequire } from "node:module";
 import { stdin as input, stdout as output } from "node:process";
 import { formatHeading } from "./heading.ts";
 
-// Utility: load blessed at runtime if present.
-// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
+// Utility: load bblessed at runtime if present.
+// biome-ignore lint/suspicious/noExplicitAny: bblessed is dynamically loaded
 async function loadBlessed(): Promise<any | null> {
 	// In Bun, isTTY might be undefined instead of false
 	if (output.isTTY === false) return null;
@@ -23,14 +23,14 @@ async function loadBlessed(): Promise<any | null> {
 	try {
 		// Try using createRequire for better compatibility
 		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
+		const blessed = require("bblessed");
 		return blessed;
 	} catch {
 		try {
 			// Fallback to dynamic import
 			// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 			// @ts-ignore — module may not exist at runtime.
-			const mod = await import("blessed");
+			const mod = await import("bblessed");
 			return mod.default ?? mod;
 		} catch {
 			return null;

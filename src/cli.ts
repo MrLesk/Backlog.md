@@ -539,7 +539,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 	const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
-	// Always use renderBoardTui which falls back to plain text if blessed is not available
+	// Always use renderBoardTui which falls back to plain text if bblessed is not available
 	await renderBoardTui(allTasks, statuses, layout, maxColumnWidth);
 }
 
@@ -679,7 +679,7 @@ docCmd
 		const filePath = join(core.filesystem.docsDir, docFile);
 		const content = await Bun.file(filePath).text();
 
-		// Use scrollableViewer which falls back to console.log if blessed is not available
+		// Use scrollableViewer which falls back to console.log if bblessed is not available
 		await scrollableViewer(content);
 	});
 

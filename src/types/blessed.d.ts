@@ -4,7 +4,7 @@
 // present during type checking.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare module "blessed" {
+declare module "bblessed" {
 	// We intentionally use the most permissive type to keep the shim minimal.
 	// Downstream code performs runtime feature detection and falls back to a
 	// non-TUI implementation when the real library cannot be resolved.

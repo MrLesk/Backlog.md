@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
 import { WRAP_LIMIT } from "../constants/index.ts";
 
-// Helper to load blessed dynamically
-// biome-ignore lint/suspicious/noExplicitAny: blessed is a third-party library without types
+// Helper to load bblessed dynamically
+// biome-ignore lint/suspicious/noExplicitAny: bblessed is a third-party library without types
 async function loadBlessed(): Promise<any | null> {
 	try {
 		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
+		const blessed = require("bblessed");
 		return blessed;
 	} catch {
 		try {
-			const mod = await import("blessed");
+			const mod = await import("bblessed");
 			return mod.default ?? mod;
 		} catch {
 			return null;
