@@ -51,71 +51,85 @@ export async function promptText(message: string, defaultValue = ""): Promise<st
 
 // Multi-select check-box style prompt.  Returns the values selected by the user.
 export async function multiSelect<T extends string>(message: string, options: T[]): Promise<T[]> {
-	const blessed = await loadBlessed();
-	if (!blessed) {
-		// Non-interactive fallback: nothing selected.
-		return [];
-	}
+	// Use simple console-based interface for reliability
+	console.log(`\n${message}`);
+	console.log("Use ↑/↓ to navigate, SPACE to select/deselect, ENTER to confirm\n");
+
+	const selected = new Set<number>();
+	let currentIndex = 0;
+
+	const renderOptions = () => {
+		// Clear previous output
+		process.stdout.write("\x1B[2J\x1B[0f");
+		console.log(`\n${message}`);
+		console.log("Use ↑/↓ to navigate, SPACE to select/deselect, ENTER to confirm\n");
+
+		options.forEach((option, index) => {
+			const isSelected = selected.has(index);
+			const isCurrent = index === currentIndex;
+			const checkbox = isSelected ? "[✓]" : "[ ]";
+			const pointer = isCurrent ? "❯" : " ";
+			const highlight = isCurrent ? "\x1b[36m" : ""; // cyan for current
+			const reset = isCurrent ? "\x1b[0m" : "";
+
+			console.log(`${pointer} ${highlight}${checkbox} ${option}${reset}`);
+		});
+
+		console.log("\nPress ENTER to continue...");
+	};
 
 	return new Promise<T[]>((resolve) => {
-		const screen = blessed.screen({
-			smartCSR: true,
-			style: { fg: "white", bg: "black" },
-		});
-
-		const list = blessed.list({
-			parent: screen,
-			label: ` ${message} `,
-			width: "50%",
-			height: "60%",
-			top: "center",
-			left: "center",
-			border: "line",
-			items: options.map((o) => `[ ] ${o}`),
-			keys: true,
-			vi: true,
-			mouse: true,
-			style: {
-				item: { fg: "white", bg: "black" },
-				selected: { bg: "blue", fg: "white" },
-				border: { fg: "white" },
-			},
-		});
-
-		const selected = new Set<number>();
-
-		// biome-ignore lint/suspicious/noExplicitAny: blessed event handler
-		list.on("select", (item: any, idx: number) => {
-			if (selected.has(idx)) {
-				selected.delete(idx);
-			} else {
-				selected.add(idx);
-			}
-			// Toggle indicator
-			const prefix = selected.has(idx) ? "[x]" : "[ ]";
-			list.setItem(idx, `${prefix} ${options[idx]}`);
-			screen.render();
-		});
-
-		screen.key(["space"], () => {
-			// emulate select event for current item
-			const idx = list.selected ?? 0;
-			list.emit("select", null, idx);
-		});
-
-		screen.key(["enter"], () => {
-			const values = Array.from(selected).map((i) => options[i]);
-			screen.destroy();
-			resolve(values);
-		});
-
-		screen.key(["escape", "C-c"], () => {
-			screen.destroy();
+		if (options.length === 0) {
 			resolve([]);
-		});
+			return;
+		}
 
-		list.focus();
-		screen.render();
+		renderOptions();
+
+		process.stdin.setRawMode(true);
+		process.stdin.resume();
+		process.stdin.setEncoding("utf8");
+
+		const onKeyPress = (key: string) => {
+			switch (key) {
+				case "\u001b[A": // Up arrow
+					currentIndex = currentIndex > 0 ? currentIndex - 1 : options.length - 1;
+					renderOptions();
+					break;
+				case "\u001b[B": // Down arrow
+					currentIndex = currentIndex < options.length - 1 ? currentIndex + 1 : 0;
+					renderOptions();
+					break;
+				case " ": // Space
+					if (selected.has(currentIndex)) {
+						selected.delete(currentIndex);
+					} else {
+						selected.add(currentIndex);
+					}
+					renderOptions();
+					break;
+				case "\r": // Enter
+				case "\n": {
+					process.stdin.setRawMode(false);
+					process.stdin.pause();
+					process.stdin.removeListener("data", onKeyPress);
+					const selectedOptions = Array.from(selected).map((i) => options[i]);
+					console.log(`\nSelected: ${selectedOptions.length > 0 ? selectedOptions.join(", ") : "none"}\n`);
+					resolve(selectedOptions);
+					break;
+				}
+				case "\u0003": // Ctrl+C
+				case "\u001b": // Escape
+					process.stdin.setRawMode(false);
+					process.stdin.pause();
+					process.stdin.removeListener("data", onKeyPress);
+					console.log("\nCancelled.\n");
+					resolve([]);
+					break;
+			}
+		};
+
+		process.stdin.on("data", onKeyPress);
 	});
 }
 
