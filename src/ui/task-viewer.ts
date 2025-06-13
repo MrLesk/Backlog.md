@@ -139,7 +139,7 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 		// Update screen title
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		// Header section with task ID and title
+		// Fixed header section with task ID, title, status, date, and tags
 		headerBox = blessed.box({
 			parent: detailPane,
 			top: 0,
@@ -150,126 +150,118 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 			style: {
 				border: { fg: "blue" },
 			},
-			content: ` {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`,
 			tags: true,
 			wrap: true,
+			scrollable: false, // Header should never scroll
 		});
 
-		// Metadata box (top section)
-		metadataBox = blessed.box({
-			parent: detailPane,
-			top: 3,
-			left: 0,
-			width: "100%-2", // Account for border
-			height: 8,
-			border: "line",
-			label: ` ${formatHeading("Details", 3)} `,
-			tags: true,
-			padding: { left: 1, right: 1, top: 1 },
-			wrap: true,
-		});
+		// Format header content with key metadata
+		const headerContent = [];
+		headerContent.push(` {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`);
 
-		// Format metadata
-		const metadata = [];
-		metadata.push(
-			`{bold}Status:{/bold} {${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/}`,
+		// Second line with status, date, and assignee
+		const statusLine = [];
+		statusLine.push(
+			`{${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/}`,
 		);
+		statusLine.push(`{gray-fg}${currentSelectedTask.createdDate}{/}`);
 
 		if (currentSelectedTask.assignee?.length) {
-			metadata.push(
-				`{bold}Assignee:{/bold} ${currentSelectedTask.assignee.map((a) => `{cyan-fg}@${a}{/}`).join(", ")}`,
-			);
+			statusLine.push(`{cyan-fg}@${currentSelectedTask.assignee.join(", @")}{/}`);
 		}
 
-		if (currentSelectedTask.reporter) {
-			metadata.push(`{bold}Reporter:{/bold} {cyan-fg}@${currentSelectedTask.reporter}{/}`);
-		}
-
-		metadata.push(`{bold}Created:{/bold} ${currentSelectedTask.createdDate}`);
-
-		if (currentSelectedTask.updatedDate) {
-			metadata.push(`{bold}Updated:{/bold} ${currentSelectedTask.updatedDate}`);
-		}
-
-		const metadataLine2 = [];
+		// Add labels to header if they exist
 		if (currentSelectedTask.labels?.length) {
-			metadataLine2.push(
-				`{bold}Labels:{/bold} ${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`,
-			);
+			statusLine.push(`${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
 		}
 
-		if (currentSelectedTask.milestone) {
-			metadataLine2.push(`{bold}Milestone:{/bold} {magenta-fg}${currentSelectedTask.milestone}{/}`);
-		}
+		headerContent.push(` ${statusLine.join(" • ")}`);
 
-		if (currentSelectedTask.parentTaskId) {
-			metadataLine2.push(`{bold}Parent:{/bold} {blue-fg}${currentSelectedTask.parentTaskId}{/}`);
-		}
+		headerBox.setContent(headerContent.join("\n"));
 
-		if (currentSelectedTask.subtasks?.length) {
-			metadataLine2.push(
-				`{bold}Subtasks:{/bold} ${currentSelectedTask.subtasks.length} task${currentSelectedTask.subtasks.length > 1 ? "s" : ""}`,
-			);
-		}
-
-		if (currentSelectedTask.dependencies?.length) {
-			metadataLine2.push(`{bold}Dependencies:{/bold} ${currentSelectedTask.dependencies.join(", ")}`);
-		}
-
-		if (metadataLine2.length > 0) {
-			metadata.push(metadataLine2.join(" | "));
-		}
-
-		metadataBox.setContent(metadata.join("\n"));
-
-		// Description box
-		descriptionBox = blessed.box({
+		// Scrollable body container beneath the header
+		const bodyContainer = blessed.box({
 			parent: detailPane,
-			top: 11,
+			top: 3, // Start below the fixed header
 			left: 0,
 			width: "100%-2", // Account for border
-			height: "45%-11",
-			border: "line",
-			label: ` ${formatHeading("Description", 3)} `,
-			tags: true,
-			padding: { left: 1, right: 1, top: 1 },
+			height: "100%-4", // Fill remaining space below header
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
 			mouse: true,
+			tags: true,
 			wrap: true,
+			padding: { left: 1, right: 1, top: 1 },
 		});
 
+		// Build the scrollable body content
+		const bodyContent = [];
+
+		// Add additional metadata section
+		if (
+			currentSelectedTask.reporter ||
+			currentSelectedTask.updatedDate ||
+			currentSelectedTask.milestone ||
+			currentSelectedTask.parentTaskId ||
+			currentSelectedTask.subtasks?.length ||
+			currentSelectedTask.dependencies?.length
+		) {
+			bodyContent.push(formatHeading("Details", 2));
+
+			const metadata = [];
+			if (currentSelectedTask.reporter) {
+				metadata.push(`{bold}Reporter:{/bold} {cyan-fg}@${currentSelectedTask.reporter}{/}`);
+			}
+
+			if (currentSelectedTask.updatedDate) {
+				metadata.push(`{bold}Updated:{/bold} ${currentSelectedTask.updatedDate}`);
+			}
+
+			if (currentSelectedTask.milestone) {
+				metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${currentSelectedTask.milestone}{/}`);
+			}
+
+			if (currentSelectedTask.parentTaskId) {
+				metadata.push(`{bold}Parent:{/bold} {blue-fg}${currentSelectedTask.parentTaskId}{/}`);
+			}
+
+			if (currentSelectedTask.subtasks?.length) {
+				metadata.push(
+					`{bold}Subtasks:{/bold} ${currentSelectedTask.subtasks.length} task${currentSelectedTask.subtasks.length > 1 ? "s" : ""}`,
+				);
+			}
+
+			if (currentSelectedTask.dependencies?.length) {
+				metadata.push(`{bold}Dependencies:{/bold} ${currentSelectedTask.dependencies.join(", ")}`);
+			}
+
+			bodyContent.push(metadata.join("\n"));
+			bodyContent.push("");
+		}
+
+		// Description section
+		bodyContent.push(formatHeading("Description", 2));
 		const descriptionContent = currentSelectedTask.description
 			? transformCodePaths(currentSelectedTask.description)
 			: "{gray-fg}No description provided{/}";
-		descriptionBox.setContent(descriptionContent);
+		bodyContent.push(descriptionContent);
+		bodyContent.push("");
 
-		// Acceptance criteria box (bottom)
-		bottomBox = blessed.box({
-			parent: detailPane,
-			top: "45%",
-			left: 0,
-			width: "100%-2", // Account for border
-			height: "55%-1",
-			border: "line",
-			label: ` ${formatHeading("Acceptance Criteria", 3)} `,
-			tags: true,
-			padding: { left: 1, right: 1, top: 1 },
-			scrollable: true,
-			alwaysScroll: true,
-			keys: true,
-			mouse: true,
-			wrap: true,
-		});
-
-		// Parse the markdown content to extract sections
+		// Acceptance criteria section
+		bodyContent.push(formatHeading("Acceptance Criteria", 2));
 		if (currentSelectedTask.acceptanceCriteria?.length) {
 			const criteriaContent = styleCodePaths(currentSelectedTask.acceptanceCriteria.join("\n"));
-			bottomBox.setContent(criteriaContent);
+			bodyContent.push(criteriaContent);
 		} else {
-			bottomBox.setContent("{gray-fg}No acceptance criteria defined{/}");
+			bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
 		}
+
+		// Set the complete body content
+		bodyContainer.setContent(bodyContent.join("\n"));
+
+		// Store reference to body container for focus management
+		descriptionBox = bodyContainer;
 
 		screen.render();
 	}
@@ -284,22 +276,23 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 	refreshDetailPane();
 
 	return new Promise<void>((resolve) => {
-		// Help bar at bottom
+		// Footer hint line
 		const helpBar = blessed.box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
 			width: "100%",
 			height: 1,
-			content: " ↑/↓: Navigate tasks | Tab: Switch pane | ←/→: Scroll detail | q/Esc: Exit ",
+			border: "line",
+			content: " ↑/↓ navigate · Tab switch pane · ←/→ scroll · q/Esc quit ",
 			style: {
-				fg: "white",
-				bg: "blue",
+				fg: "gray",
+				border: { fg: "gray" },
 			},
 		});
 
 		// Focus management
-		const focusableElements = [taskList.getListBox(), descriptionBox, bottomBox];
+		const focusableElements = [taskList.getListBox(), descriptionBox];
 		let focusIndex = 0; // Start with task list
 		focusableElements[focusIndex].focus();
 
