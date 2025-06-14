@@ -45,7 +45,17 @@ async function buildForPlatform(targetPlatform) {
 		await mkdir(dirname(outputPath), { recursive: true });
 
 		// Build standalone executable
-		const buildArgs = ["build", "--compile", "--target", bunTarget, "--outfile", outputPath, "src/cli.ts"];
+		const buildArgs = [
+			"build",
+			"--compile",
+			"--external",
+			"blessed",
+			"--target",
+			bunTarget,
+			"--outfile",
+			outputPath,
+			"src/cli.ts",
+		];
 
 		// Add Windows-specific flags
 		if (os === "win32") {

@@ -19,7 +19,7 @@ describe("CLI packaging", () => {
 	});
 
 	it("should build and run compiled executable", async () => {
-		await Bun.spawn(["bun", "build", "src/cli.ts", "--compile", "--outfile", OUTFILE]).exited;
+		await Bun.spawn(["bun", "build", "src/cli.ts", "--compile", "--external", "blessed", "--outfile", OUTFILE]).exited;
 
 		const result = Bun.spawnSync({ cmd: [OUTFILE, "--help"] });
 		const output = result.stdout.toString();

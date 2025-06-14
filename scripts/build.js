@@ -39,7 +39,7 @@ async function build() {
 
 		// Build JavaScript bundle
 		console.log("Building JavaScript bundle...");
-		await runCommand("bun", ["build", "src/cli.ts", "--outdir", outDir, "--target", "bun"]);
+		await runCommand("bun", ["build", "src/cli.ts", "--external", "blessed", "--outdir", outDir, "--target", "bun"]);
 
 		// Create index.js wrapper
 		console.log("Creating index.js wrapper...");
@@ -54,7 +54,7 @@ async function build() {
 
 		// Build compiled executable
 		console.log("Building compiled executable...");
-		await runCommand("bun", ["build", "src/cli.ts", "--compile", "--outfile", executablePath]);
+		await runCommand("bun", ["build", "src/cli.ts", "--compile", "--external", "blessed", "--outfile", executablePath]);
 
 		// Make executable on Unix systems
 		if (!isWindows) {
