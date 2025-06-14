@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
-import { viewTaskEnhanced, viewTaskEnhancedWithFilteredTasks } from "./ui/task-viewer.ts";
+import { viewTaskEnhanced } from "./ui/task-viewer.ts";
 // Interactive TUI helpers (bblessed based)
 import { multiSelect, promptText, scrollableViewer, selectList } from "./ui/tui.ts";
 
@@ -328,8 +328,23 @@ taskCmd
 				initialContent = await Bun.file(filePath).text();
 			}
 
-			// Create a custom viewTaskEnhanced that uses filtered tasks instead of all tasks
-			await viewTaskEnhancedWithFilteredTasks(firstTask, initialContent, filtered, core);
+			// Build filter description for the footer
+			let filterDescription = "";
+			if (options.status && options.assignee) {
+				filterDescription = `Status: ${options.status}, Assignee: ${options.assignee}`;
+			} else if (options.status) {
+				filterDescription = `Status: ${options.status}`;
+			} else if (options.assignee) {
+				filterDescription = `Assignee: ${options.assignee}`;
+			}
+
+			// Use enhanced viewer with filtered tasks and custom title
+			await viewTaskEnhanced(firstTask, initialContent, {
+				tasks: filtered,
+				core,
+				title: "Filtered Tasks",
+				filterDescription,
+			});
 		}
 	});
 

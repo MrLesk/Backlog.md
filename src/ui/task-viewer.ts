@@ -1,14 +1,13 @@
 /* Enhanced task viewer for displaying task details in a structured format */
 
-import { stdin as input, stdout as output } from "node:process";
+import { stdout as output } from "node:process";
 import blessed from "blessed";
 import { Core } from "../core/backlog.ts";
-import { parseMarkdown } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
 import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
 import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
 import { formatHeading } from "./heading.ts";
-import { formatStatusWithIcon, getStatusColor, getStatusIcon } from "./status-icon.ts";
+import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 import { TaskList } from "./task-list.ts";
 
 /**
@@ -43,16 +42,25 @@ function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
 /**
  * Display task details in a split-pane UI with task list on left and detail on right
  */
-export async function viewTaskEnhanced(task: Task, content: string): Promise<void> {
+export async function viewTaskEnhanced(
+	task: Task,
+	content: string,
+	options: {
+		tasks?: Task[];
+		core?: Core;
+		title?: string;
+		filterDescription?: string;
+	} = {},
+): Promise<void> {
 	if (output.isTTY === false) {
 		console.log(formatTaskPlainText(task, content));
 		return;
 	}
 
-	// Get project root and load all tasks
+	// Get project root and load tasks
 	const cwd = process.cwd();
-	const core = new Core(cwd);
-	const allTasks = await core.filesystem.listTasks();
+	const core = options.core || new Core(cwd);
+	const allTasks = options.tasks || (await core.filesystem.listTasks());
 
 	// Find the initial selected task index
 	const initialIndex = allTasks.findIndex((t) => t.id === task.id);
@@ -61,7 +69,7 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 
 	const screen = blessed.screen({
 		smartCSR: true,
-		title: "Backlog Tasks",
+		title: options.title || "Backlog Tasks",
 	});
 
 	// Main container using grid layout
@@ -325,7 +333,9 @@ export async function viewTaskEnhanced(task: Task, content: string): Promise<voi
 			width: "100%",
 			height: 1,
 			border: "line",
-			content: " ↑/↓ navigate · Tab switch pane · ←/→ scroll · q/Esc quit ",
+			content: options.filterDescription
+				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · Tab switch · q/Esc quit `
+				: " ↑/↓ navigate · Tab switch pane · ←/→ scroll · q/Esc quit ",
 			style: {
 				fg: "gray",
 				border: { fg: "gray" },
@@ -615,203 +625,4 @@ function formatTaskPlainText(task: Task, content: string): string {
 
 function styleCodePaths(content: string): string {
 	return transformCodePaths(content);
-}
-
-/**
- * Display task details in a split-pane UI with a filtered list of tasks instead of all tasks
- * This is used by the task list command to show only filtered tasks in the left pane
- */
-export async function viewTaskEnhancedWithFilteredTasks(
-	task: Task,
-	content: string,
-	filteredTasks: Task[],
-	core: Core,
-): Promise<void> {
-	if (output.isTTY === false) {
-		console.log(formatTaskPlainText(task, content));
-		return;
-	}
-
-	// Find the initial selected task index in the filtered list
-	const initialIndex = filteredTasks.findIndex((t) => t.id === task.id);
-	let currentSelectedTask = task;
-	let currentSelectedContent = content;
-
-	const screen = blessed.screen({
-		smartCSR: true,
-		title: "Backlog Tasks",
-	});
-
-	// Main container using grid layout
-	const container = blessed.box({
-		parent: screen,
-		width: "100%",
-		height: "100%",
-		autoPadding: true,
-	});
-
-	// Task list pane (left 40%)
-	const taskListPane = blessed.box({
-		parent: container,
-		top: 0,
-		left: 0,
-		width: "40%",
-		height: "100%-1", // Leave space for help bar
-	});
-
-	// Detail pane (right 60%) with border and padding
-	const detailPane = blessed.box({
-		parent: container,
-		top: 0,
-		left: "40%",
-		width: "60%",
-		height: "100%-1", // Leave space for help bar
-	});
-
-	// Create task list with filtered tasks
-	const taskList = new TaskList({
-		parent: taskListPane,
-		tasks: filteredTasks,
-		selectedIndex: Math.max(0, initialIndex),
-		onSelect: (selectedTask: Task, index: number) => {
-			currentSelectedTask = selectedTask;
-			// Load the content for the selected task asynchronously
-			(async () => {
-				try {
-					const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-					const normalizedId = selectedTask.id.startsWith("task-") ? selectedTask.id : `task-${selectedTask.id}`;
-					const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
-
-					if (taskFile) {
-						const filePath = `${core.filesystem.tasksDir}/${taskFile}`;
-						currentSelectedContent = await Bun.file(filePath).text();
-					} else {
-						currentSelectedContent = "";
-					}
-				} catch (error) {
-					currentSelectedContent = "";
-				}
-
-				// Refresh the detail pane
-				refreshDetailPane();
-			})();
-		},
-	});
-
-	// Detail pane components
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let headerBox: any;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let metadataBox: any;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let descriptionBox: any;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let bottomBox: any;
-
-	function refreshDetailPane() {
-		// Clear existing detail pane content
-		if (headerBox) headerBox.destroy();
-		if (metadataBox) metadataBox.destroy();
-		if (descriptionBox) descriptionBox.destroy();
-		if (bottomBox) bottomBox.destroy();
-
-		// Update screen title
-		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
-
-		// Generate enhanced detail content using the reusable function
-		const { headerContent, bodyContent } = generateDetailContent(currentSelectedTask, currentSelectedContent);
-
-		// Fixed header section with task ID, title, status, date, and tags
-		headerBox = blessed.box({
-			parent: detailPane,
-			top: 0,
-			left: 0,
-			width: "100%-2", // Account for border
-			height: 3,
-			border: "line",
-			style: {
-				border: { fg: "blue" },
-			},
-			tags: true,
-			wrap: true,
-			scrollable: false, // Header should never scroll
-			content: headerContent.join("\n"),
-		});
-
-		// Scrollable body container beneath the header
-		const bodyContainer = blessed.box({
-			parent: detailPane,
-			top: 3, // Start below the fixed header
-			left: 0,
-			width: "100%-2", // Account for border
-			height: "100%-4", // Fill remaining space below header
-			scrollable: true,
-			alwaysScroll: true,
-			keys: true,
-			mouse: true,
-			tags: true,
-			wrap: true,
-			padding: { left: 1, right: 1, top: 1 },
-			content: bodyContent.join("\n"),
-		});
-
-		// Store reference to body container for focus management
-		descriptionBox = bodyContainer;
-
-		screen.render();
-	}
-
-	await taskList.create({
-		parent: taskListPane,
-		tasks: filteredTasks,
-		selectedIndex: Math.max(0, initialIndex),
-		width: "100%",
-		height: "100%",
-	});
-
-	// Initial render of detail pane
-	refreshDetailPane();
-
-	return new Promise<void>((resolve) => {
-		// Footer hint line
-		const helpBar = blessed.box({
-			parent: screen,
-			bottom: 0,
-			left: 0,
-			width: "100%",
-			height: 1,
-			border: "line",
-			content: " ↑/↓ navigate · Tab switch pane · ←/→ scroll · q/Esc quit ",
-			style: {
-				fg: "gray",
-				border: { fg: "gray" },
-			},
-		});
-
-		// Focus management
-		const focusableElements = [taskList.getListBox(), descriptionBox];
-		let focusIndex = 0; // Start with task list
-		focusableElements[focusIndex].focus();
-
-		// Tab navigation between panes
-		screen.key(["tab"], () => {
-			focusIndex = (focusIndex + 1) % focusableElements.length;
-			focusableElements[focusIndex].focus();
-			screen.render();
-		});
-
-		screen.key(["S-tab"], () => {
-			focusIndex = (focusIndex - 1 + focusableElements.length) % focusableElements.length;
-			focusableElements[focusIndex].focus();
-			screen.render();
-		});
-
-		// Exit keys
-		screen.key(["escape", "q", "C-c"], () => {
-			screen.destroy();
-			resolve();
-		});
-
-		screen.render();
-	});
 }
