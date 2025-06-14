@@ -6,9 +6,9 @@ import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
 import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
+import { createGenericList } from "./components/generic-list.ts";
 import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
-import { TaskList } from "./task-list.ts";
 
 /**
  * Extract only the Description section content from markdown, avoiding duplication
@@ -109,12 +109,25 @@ export async function viewTaskEnhanced(
 		// },
 	});
 
-	// Create task list
-	const taskList = new TaskList({
+	// Create task list using generic list component
+	const taskList = createGenericList<Task>({
 		parent: taskListPane,
-		tasks: allTasks,
+		title: options.title || "Tasks",
+		items: allTasks,
 		selectedIndex: Math.max(0, initialIndex),
-		onSelect: (selectedTask: Task, index: number) => {
+		itemRenderer: (task: Task) => {
+			const statusIcon = formatStatusWithIcon(task.status);
+			const statusColor = getStatusColor(task.status);
+			const assigneeText = task.assignee?.length
+				? ` {cyan-fg}${task.assignee[0]?.startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
+				: "";
+			const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+
+			return `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${assigneeText}${labelsText}`;
+		},
+		onSelect: (selected: Task | Task[]) => {
+			const selectedTask = Array.isArray(selected) ? selected[0] : selected;
+			if (!selectedTask) return;
 			currentSelectedTask = selectedTask;
 			// Load the content for the selected task asynchronously
 			(async () => {
@@ -137,6 +150,9 @@ export async function viewTaskEnhanced(
 				refreshDetailPane();
 			})();
 		},
+		width: "100%",
+		height: "100%",
+		showHelp: false, // We'll show help in the footer
 	});
 
 	// Detail pane components
@@ -313,13 +329,7 @@ export async function viewTaskEnhanced(
 		screen.render();
 	}
 
-	await taskList.create({
-		parent: taskListPane,
-		tasks: allTasks,
-		selectedIndex: Math.max(0, initialIndex),
-		width: "100%",
-		height: "100%",
-	});
+	// Generic list is already created and initialized above
 
 	// Initial render of detail pane
 	refreshDetailPane();
