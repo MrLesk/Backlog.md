@@ -24,7 +24,7 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"prepare": "husky",
-		"build": "bun build --compile --external blessed --outfile=backlog src/cli.ts",
+		"build": "bun build --compile --outfile=backlog src/cli.ts",
 		"build:standalone": "node scripts/build-standalone.js",
 		"build:npm": "node scripts/build.js",
 		"cli": "bun src/cli.ts"

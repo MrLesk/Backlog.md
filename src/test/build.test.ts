@@ -28,8 +28,6 @@ describe("CLI packaging", () => {
 			"build",
 			"src/cli.ts",
 			"--compile",
-			"--external",
-			"blessed",
 			"--define",
 			`__EMBEDDED_VERSION__="${version}"`,
 			"--outfile",

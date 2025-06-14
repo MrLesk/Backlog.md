@@ -44,7 +44,7 @@ async function build() {
 
 		// Build JavaScript bundle
 		console.log("Building JavaScript bundle...");
-		await runCommand("bun", ["build", "src/cli.ts", "--external", "blessed", "--outdir", outDir, "--target", "bun"]);
+		await runCommand("bun", ["build", "src/cli.ts", "--outdir", outDir, "--target", "bun"]);
 
 		// Create index.js wrapper
 		console.log("Creating index.js wrapper...");
@@ -63,8 +63,6 @@ async function build() {
 			"build",
 			"src/cli.ts",
 			"--compile",
-			"--external",
-			"blessed",
 			"--define",
 			`__EMBEDDED_VERSION__="${version}"`,
 			"--outfile",

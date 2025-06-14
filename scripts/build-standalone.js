@@ -52,8 +52,6 @@ async function buildForPlatform(targetPlatform) {
 		const buildArgs = [
 			"build",
 			"--compile",
-			"--external",
-			"blessed",
 			"--target",
 			bunTarget,
 			"--define",
