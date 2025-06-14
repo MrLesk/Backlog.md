@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
-import { viewTaskEnhanced } from "./ui/task-viewer.ts";
+import { viewTaskEnhanced, viewTaskEnhancedWithFilteredTasks } from "./ui/task-viewer.ts";
 // Interactive TUI helpers (bblessed based)
 import { multiSelect, promptText, scrollableViewer, selectList } from "./ui/tui.ts";
 
@@ -310,17 +310,26 @@ taskCmd
 			return;
 		}
 
-		// Interactive UI
-		const selected = await selectList("Select a task", filtered, (task) => task.status || "No Status");
-		if (selected) {
-			// Show task details
+		// Interactive UI - use enhanced viewer directly for unified presentation
+		if (filtered.length > 0) {
+			// Use the first task as the initial selection and load its content
+			const firstTask = filtered[0];
+			if (!firstTask) {
+				console.log("No tasks found.");
+				return;
+			}
+
 			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-			const taskFile = files.find((f) => f.startsWith(`${selected.id} -`));
+			const taskFile = files.find((f) => f.startsWith(`${firstTask.id} -`));
+
+			let initialContent = "";
 			if (taskFile) {
 				const filePath = join(core.filesystem.tasksDir, taskFile);
-				const content = await Bun.file(filePath).text();
-				await viewTaskEnhanced(selected, content);
+				initialContent = await Bun.file(filePath).text();
 			}
+
+			// Create a custom viewTaskEnhanced that uses filtered tasks instead of all tasks
+			await viewTaskEnhancedWithFilteredTasks(firstTask, initialContent, filtered, core);
 		}
 	});
 
