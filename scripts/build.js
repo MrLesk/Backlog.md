@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -34,6 +34,11 @@ async function build() {
 	try {
 		console.log("Building CLI...");
 
+		// Read package.json to get version
+		const packageJson = JSON.parse(await readFile("package.json", "utf-8"));
+		const version = packageJson.version;
+		console.log(`Building version ${version}...`);
+
 		// Ensure output directory exists
 		await mkdir(dirname(indexFile), { recursive: true });
 
@@ -52,9 +57,19 @@ async function build() {
 			await chmod(indexFile, "755");
 		}
 
-		// Build compiled executable
+		// Build compiled executable with version injection
 		console.log("Building compiled executable...");
-		await runCommand("bun", ["build", "src/cli.ts", "--compile", "--external", "blessed", "--outfile", executablePath]);
+		await runCommand("bun", [
+			"build",
+			"src/cli.ts",
+			"--compile",
+			"--external",
+			"blessed",
+			"--define",
+			`__EMBEDDED_VERSION__="${version}"`,
+			"--outfile",
+			executablePath,
+		]);
 
 		// Make executable on Unix systems
 		if (!isWindows) {
