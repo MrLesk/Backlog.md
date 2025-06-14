@@ -84,7 +84,8 @@ program
 				name: "files",
 				message: "Select agent instruction files to update",
 				choices: agentOptions.map((name) => ({ title: name, value: name })),
-				hint: "- Space to select · Enter to confirm",
+				hint: "Space to select, Enter to confirm",
+				instructions: false,
 			});
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 

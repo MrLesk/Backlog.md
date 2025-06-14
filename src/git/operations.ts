@@ -86,8 +86,13 @@ export class GitOperations {
 	async commitBacklogChanges(message: string): Promise<void> {
 		await this.stageBacklogDirectory();
 
-		const hasChanges = !(await this.isClean());
-		if (hasChanges) {
+		// Check if there are staged changes specifically
+		const { stdout: status } = await this.execGit(["status", "--porcelain"]);
+		const hasStagedChanges = status
+			.split("\n")
+			.some((line) => line.startsWith("A ") || line.startsWith("M ") || line.startsWith("D "));
+
+		if (hasStagedChanges) {
 			try {
 				await this.commitChanges(`backlog: ${message}`);
 			} catch (error) {
