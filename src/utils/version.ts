@@ -14,6 +14,7 @@ export async function getVersion(): Promise<string> {
 	} catch {
 		// Fallback version if package.json cannot be read
 		// This might happen in compiled executables or unusual environments
-		return "0.1.0";
+		// Update this when the package version changes!
+		return "0.1.4";
 	}
 }

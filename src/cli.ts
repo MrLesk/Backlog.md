@@ -36,6 +36,12 @@ const version = await getVersion();
 const program = new Command();
 program.name("backlog").description("Backlog.md - Project management CLI").version(version);
 
+// Add -v as an alias for version
+program.option("-v, --ver", "display version number", () => {
+	console.log(version);
+	process.exit(0);
+});
+
 program
 	.command("init [projectName]")
 	.description("initialize backlog project in the current repository")
