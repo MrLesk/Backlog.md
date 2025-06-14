@@ -42,7 +42,7 @@ jobs:
         run: bun install
       
       - name: Build executable
-        run: bun build --compile --target=bun-${{ matrix.platform }}-${{ matrix.arch }} --outfile=dist/backlog-${{ matrix.platform }}-${{ matrix.arch }}/backlog${{ matrix.platform == 'win32' && '.exe' || '' }} src/cli.ts
+        run: bun build --compile --external blessed --target=bun-${{ matrix.platform }}-${{ matrix.arch }} --outfile=dist/backlog-${{ matrix.platform }}-${{ matrix.arch }}/backlog${{ matrix.platform == 'win32' && '.exe' || '' }} src/cli.ts
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4

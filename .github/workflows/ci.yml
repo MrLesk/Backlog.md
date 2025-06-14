@@ -29,7 +29,7 @@ jobs:
       - uses: oven-sh/setup-bun@v1
       - run: bun install
       - name: Build standalone executable
-        run: bun build --compile --outfile=backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }} src/cli.ts
+        run: bun build --compile --external blessed --outfile=backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }} src/cli.ts
       - name: Test executable (Unix)
         if: matrix.os != 'windows-latest'
         run: |
