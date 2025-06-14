@@ -41,12 +41,13 @@ jobs:
       - name: Install dependencies
         run: bun install
       
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+      
       - name: Build executable
-        run: |
-          # Extract version from package.json
-          VERSION=$(node -p "require('./package.json').version")
-          # Build with version injection
-          bun build --compile --external blessed --target=bun-${{ matrix.platform }}-${{ matrix.arch }} --define __EMBEDDED_VERSION__="\"$VERSION\"" --outfile=dist/backlog-${{ matrix.platform }}-${{ matrix.arch }}/backlog${{ matrix.platform == 'win32' && '.exe' || '' }} src/cli.ts
+        run: bun build --compile --external blessed --target=bun-${{ matrix.platform }}-${{ matrix.arch }} --define __EMBEDDED_VERSION__='"${{ steps.version.outputs.version }}"' --outfile=dist/backlog-${{ matrix.platform }}-${{ matrix.arch }}/backlog${{ matrix.platform == 'win32' && '.exe' || '' }} src/cli.ts
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4

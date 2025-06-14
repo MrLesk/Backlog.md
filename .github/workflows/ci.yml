@@ -28,12 +28,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
       - run: bun install
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
       - name: Build standalone executable
-        run: |
-          # Extract version from package.json
-          VERSION=$(node -p "require('./package.json').version")
-          # Build with version injection
-          bun build --compile --external blessed --define __EMBEDDED_VERSION__="\"$VERSION\"" --outfile=backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }} src/cli.ts
+        run: bun build --compile --external blessed --define __EMBEDDED_VERSION__='"${{ steps.version.outputs.version }}"' --outfile=backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }} src/cli.ts
       - name: Test executable (Unix)
         if: matrix.os != 'windows-latest'
         run: |
