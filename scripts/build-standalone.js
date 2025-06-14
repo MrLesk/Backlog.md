@@ -44,6 +44,10 @@ async function buildForPlatform(targetPlatform) {
 	try {
 		await mkdir(dirname(outputPath), { recursive: true });
 
+		// Read version from package.json
+		const packageJson = JSON.parse(await readFile("package.json", "utf-8"));
+		const version = packageJson.version;
+
 		// Build standalone executable
 		const buildArgs = [
 			"build",
@@ -52,6 +56,8 @@ async function buildForPlatform(targetPlatform) {
 			"blessed",
 			"--target",
 			bunTarget,
+			"--define",
+			`__EMBEDDED_VERSION__="${version}"`,
 			"--outfile",
 			outputPath,
 			"src/cli.ts",

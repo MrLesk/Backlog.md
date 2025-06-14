@@ -19,10 +19,30 @@ describe("CLI packaging", () => {
 	});
 
 	it("should build and run compiled executable", async () => {
-		await Bun.spawn(["bun", "build", "src/cli.ts", "--compile", "--external", "blessed", "--outfile", OUTFILE]).exited;
+		// Read version from package.json
+		const packageJson = await Bun.file("package.json").json();
+		const version = packageJson.version;
 
-		const result = Bun.spawnSync({ cmd: [OUTFILE, "--help"] });
-		const output = result.stdout.toString();
-		expect(output).toContain("Backlog.md - Project management CLI");
+		await Bun.spawn([
+			"bun",
+			"build",
+			"src/cli.ts",
+			"--compile",
+			"--external",
+			"blessed",
+			"--define",
+			`__EMBEDDED_VERSION__="${version}"`,
+			"--outfile",
+			OUTFILE,
+		]).exited;
+
+		const helpResult = Bun.spawnSync({ cmd: [OUTFILE, "--help"] });
+		const helpOutput = helpResult.stdout.toString();
+		expect(helpOutput).toContain("Backlog.md - Project management CLI");
+
+		// Also test version command
+		const versionResult = Bun.spawnSync({ cmd: [OUTFILE, "--version"] });
+		const versionOutput = versionResult.stdout.toString().trim();
+		expect(versionOutput).toBe(version);
 	});
 });
