@@ -1,7 +1,7 @@
 /* Enhanced task viewer for displaying task details in a structured format */
 
-import { createRequire } from "node:module";
 import { stdin as input, stdout as output } from "node:process";
+import blessed from "blessed";
 import { Core } from "../core/backlog.ts";
 import { parseMarkdown } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
@@ -40,32 +40,11 @@ function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
 		.filter((line) => line.startsWith("- [ ]") || line.startsWith("- [x]"));
 }
 
-// Load blessed dynamically
-// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
-async function loadBlessed(): Promise<any | null> {
-	if (output.isTTY === false) return null;
-	try {
-		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
-		return blessed;
-	} catch {
-		try {
-			// biome-ignore lint/suspicious/noExplicitAny: dynamic import
-			const mod = (await import("blessed")) as any;
-			return mod.default ?? mod;
-		} catch {
-			return null;
-		}
-	}
-}
-
 /**
  * Display task details in a split-pane UI with task list on left and detail on right
  */
 export async function viewTaskEnhanced(task: Task, content: string): Promise<void> {
-	const blessed = await loadBlessed();
-	if (!blessed) {
-		// Fallback to formatted plain text
+	if (output.isTTY === false) {
 		console.log(formatTaskPlainText(task, content));
 		return;
 	}
@@ -496,8 +475,7 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
  */
 // biome-ignore lint/suspicious/noExplicitAny: blessed types
 export async function createTaskPopup(screen: any, task: Task, content: string): Promise<any> {
-	const blessed = await loadBlessed();
-	if (!blessed) return null;
+	if (output.isTTY === false) return null;
 
 	// Create main popup first
 	const popup = blessed.box({

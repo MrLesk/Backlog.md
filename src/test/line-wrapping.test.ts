@@ -1,43 +1,13 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createRequire } from "node:module";
+import { describe, expect, test } from "bun:test";
+import blessed from "blessed";
 import { WRAP_LIMIT } from "../constants/index.ts";
 
-// Helper to load blessed dynamically
-// biome-ignore lint/suspicious/noExplicitAny: blessed is a third-party library without types
-async function loadBlessed(): Promise<any | null> {
-	try {
-		// biome-ignore lint/suspicious/noExplicitAny: blessed is a third-party library without types
-		const mod: any = await import("blessed");
-		return mod.default ?? mod;
-	} catch {
-		try {
-			const require = createRequire(import.meta.url);
-			const blessed = require("blessed");
-			return blessed;
-		} catch {
-			return null;
-		}
-	}
-}
-
 describe("Line Wrapping", () => {
-	// biome-ignore lint/suspicious/noExplicitAny: blessed is a third-party library without types
-	let blessed: any;
-
-	beforeEach(async () => {
-		blessed = await loadBlessed();
-	});
-
 	test("WRAP_LIMIT constant is set to 72", () => {
 		expect(WRAP_LIMIT).toBe(72);
 	});
 
 	test("blessed box with wrap:true enables text wrapping", async () => {
-		if (!blessed) {
-			console.log("Skipping blessed test - blessed not available");
-			return;
-		}
-
 		const screen = blessed.screen({ smartCSR: false });
 
 		// Create a long text that should wrap
@@ -60,11 +30,6 @@ describe("Line Wrapping", () => {
 	});
 
 	test("blessed box without wrap:false does not break mid-word", async () => {
-		if (!blessed) {
-			console.log("Skipping blessed test - blessed not available");
-			return;
-		}
-
 		const screen = blessed.screen({ smartCSR: false });
 
 		// Create text with long words
@@ -110,11 +75,6 @@ describe("Line Wrapping", () => {
 	});
 
 	test("task viewer boxes have wrap enabled", async () => {
-		if (!blessed) {
-			console.log("Skipping blessed test - blessed not available");
-			return;
-		}
-
 		const screen = blessed.screen({ smartCSR: false });
 
 		// Simulate task viewer boxes
@@ -163,11 +123,6 @@ describe("Line Wrapping", () => {
 	});
 
 	test("board view content respects width constraints", async () => {
-		if (!blessed) {
-			console.log("Skipping blessed test - blessed not available");
-			return;
-		}
-
 		const screen = blessed.screen({ smartCSR: false });
 
 		// Simulate board column
@@ -198,11 +153,6 @@ describe("Line Wrapping", () => {
 	});
 
 	test("popup content boxes have wrap enabled", async () => {
-		if (!blessed) {
-			console.log("Skipping blessed test - blessed not available");
-			return;
-		}
-
 		const screen = blessed.screen({ smartCSR: false });
 
 		// Simulate popup boxes

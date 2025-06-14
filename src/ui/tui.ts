@@ -1,43 +1,14 @@
 /*
  * Lightweight wrapper around the `blessed` terminal UI library.
  *
- * The real dependency may not always be available in the runtime
- * (for example, in CI or when the user purposefully installs Backlog.md
- * without optional TUI support).  All exported helper functions therefore
- * attempt to load `blessed` dynamically and will transparently fall back
- * to a simple non-interactive implementation when the import fails or
- * when the current process is not attached to a TTY.
+ * With Bun's `--compile` the dependency is bundled, so we import it
+ * directly and only fall back to plain text when not running in a TTY.
  */
 
-import { createRequire } from "node:module";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { stdin as input, stdout as output } from "node:process";
+import blessed from "blessed";
 import { formatHeading } from "./heading.ts";
-
-// Utility: load blessed at runtime if present.
-// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
-async function loadBlessed(): Promise<any | null> {
-	// In Bun, isTTY might be undefined instead of false
-	if (output.isTTY === false) return null;
-
-	try {
-		// Dynamic import works with both Node and Bun
-		// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-		// @ts-ignore — module may not exist at runtime.
-		// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
-		const mod: any = await import("blessed");
-		return mod.default ?? mod;
-	} catch {
-		try {
-			// Fallback to createRequire for older Node versions
-			const require = createRequire(import.meta.url);
-			const blessed = require("blessed");
-			return blessed;
-		} catch {
-			return null;
-		}
-	}
-}
 
 // Ask the user for a single line of input.  Falls back to readline.
 export async function promptText(message: string, defaultValue = ""): Promise<string> {
@@ -135,8 +106,7 @@ export async function multiSelect<T extends string>(message: string, options: T[
 
 // Display long content in a scrollable viewer.
 export async function scrollableViewer(content: string): Promise<void> {
-	const blessed = await loadBlessed();
-	if (!blessed) {
+	if (output.isTTY === false) {
 		console.log(content);
 		return;
 	}
@@ -177,8 +147,7 @@ export async function selectList<T extends { id: string; title: string }>(
 	items: T[],
 	groupBy?: (item: T) => string,
 ): Promise<T | null> {
-	const blessed = await loadBlessed();
-	if (!blessed || items.length === 0) {
+	if (output.isTTY === false || items.length === 0) {
 		return null;
 	}
 

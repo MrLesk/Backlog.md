@@ -1,28 +1,9 @@
 /* Task list component for displaying a list of tasks in the left pane */
 
-import { createRequire } from "node:module";
 import { stdout as output } from "node:process";
+import blessed from "blessed";
 import type { Task } from "../types/index.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
-
-// Load blessed dynamically
-// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
-async function loadBlessed(): Promise<any | null> {
-	if (output.isTTY === false) return null;
-	try {
-		const require = createRequire(import.meta.url);
-		const blessed = require("blessed");
-		return blessed;
-	} catch {
-		try {
-			// biome-ignore lint/suspicious/noExplicitAny: dynamic import
-			const mod = (await import("blessed")) as any;
-			return mod.default ?? mod;
-		} catch {
-			return null;
-		}
-	}
-}
 
 export interface TaskListOptions {
 	// biome-ignore lint/suspicious/noExplicitAny: blessed parent element
@@ -52,8 +33,8 @@ export class TaskList {
 	}
 
 	async create(options: TaskListOptions): Promise<void> {
-		this.blessed = await loadBlessed();
-		if (!this.blessed) return;
+		if (output.isTTY === false) return;
+		this.blessed = blessed;
 
 		// Create the list box
 		this.listBox = this.blessed.list({
