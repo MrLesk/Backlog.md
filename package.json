@@ -7,9 +7,10 @@
 		"backlog": "cli/index.js"
 	},
 	"dependencies": {
+		"blessed": "0.1.81",
 		"commander": "14.0.0",
 		"gray-matter": "4.0.3",
-		"blessed": "0.1.81"
+		"prompts": "2.4.2"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

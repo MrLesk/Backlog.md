@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
-import { genericMultiSelect, genericSelectList } from "./ui/components/generic-list.ts";
+import prompts from "prompts";
+import { genericSelectList } from "./ui/components/generic-list.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer.ts";
 // Interactive TUI helpers (bblessed based)
 import { promptText, scrollableViewer } from "./ui/tui.ts";
@@ -77,9 +78,15 @@ program
 				storeGlobal = store.startsWith("y");
 			}
 
-			const options = [".cursorrules", "CLAUDE.md", "AGENTS.md", "readme.md"].map((name) => ({ id: name }));
-			const selected = await genericMultiSelect("Select agent instruction files to update", options);
-			const files: AgentInstructionFile[] = selected.map((item) => item.id) as AgentInstructionFile[];
+			const agentOptions = [".cursorrules", "CLAUDE.md", "AGENTS.md", "readme.md"] as const;
+			const { files: selected } = await prompts({
+				type: "multiselect",
+				name: "files",
+				message: "Select agent instruction files to update",
+				choices: agentOptions.map((name) => ({ title: name, value: name })),
+				hint: "- Space to select · Enter to confirm",
+			});
+			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			const core = new Core(cwd);
 			await core.initializeProject(name);
