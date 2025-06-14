@@ -1,6 +1,6 @@
 {
 	"name": "backlog.md",
-	"version": "0.1.6",
+	"version": "0.1.9",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
