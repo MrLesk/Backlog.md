@@ -475,7 +475,7 @@ taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
 		taskCmd.help();
 		return;
 	}
-	// Use the view command directly
+
 	const cwd = process.cwd();
 	const core = new Core(cwd);
 	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
@@ -489,7 +489,15 @@ taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
 
 	const filePath = join(core.filesystem.tasksDir, taskFile);
 	const content = await Bun.file(filePath).text();
-	await scrollableViewer(content);
+	const task = await core.filesystem.loadTask(taskId);
+
+	if (!task) {
+		console.error(`Task ${taskId} not found.`);
+		return;
+	}
+
+	// Use enhanced task viewer
+	await viewTaskEnhanced(task, content);
 });
 
 const draftCmd = program.command("draft");

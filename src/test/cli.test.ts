@@ -442,6 +442,44 @@ describe("CLI Integration", () => {
 		});
 	});
 
+	describe("task shortcut command", () => {
+		beforeEach(async () => {
+			await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+
+			const core = new Core(TEST_DIR);
+			await core.initializeProject("Shortcut Test Project");
+		});
+
+		it("should display formatted task details like the view command", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Shortcut Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "Shortcut description",
+				},
+				false,
+			);
+
+			const resultShortcut = Bun.spawnSync(["bun", CLI_PATH, "task", "1"], { cwd: TEST_DIR });
+			const resultView = Bun.spawnSync(["bun", CLI_PATH, "task", "view", "1"], { cwd: TEST_DIR });
+
+			const outShortcut = resultShortcut.stdout.toString();
+			const outView = resultView.stdout.toString();
+
+			expect(outShortcut).toBe(outView);
+			expect(outShortcut).toContain("Task task-1 - Shortcut Task");
+		});
+	});
+
 	describe("task edit command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
