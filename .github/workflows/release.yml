@@ -68,8 +68,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp scripts/cli-download.cjs dist/cli.js
-          cp scripts/getBinaryName.cjs dist/getBinaryName.cjs
+          cp scripts/cli.cjs dist/cli.js
           chmod +x dist/cli.js
       - name: Create npm-ready package.json
         shell: bash
@@ -78,7 +77,7 @@ jobs:
           jq 'del(.devDependencies,.scripts.prepare,.scripts.preinstall,.scripts.postinstall,.type) |
               .version = "'$TAG'" |
               .bin = {backlog:"cli.js"} |
-              .files = ["cli.js","getBinaryName.cjs","package.json","README.md","LICENSE"]' package.json > dist/package.json
+              .files = ["cli.js","package.json","README.md","LICENSE"]' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v4
         with:
@@ -87,6 +86,64 @@ jobs:
       - name: Publish to npm
         run: |
           cd dist
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+
+  publish-binaries:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - target: bun-linux-x64
+            package: backlog.md-linux-x64
+            os: linux
+            cpu: x64
+          - target: bun-linux-arm64
+            package: backlog.md-linux-arm64
+            os: linux
+            cpu: arm64
+          - target: bun-darwin-x64
+            package: backlog.md-darwin-x64
+            os: darwin
+            cpu: x64
+          - target: bun-darwin-arm64
+            package: backlog.md-darwin-arm64
+            os: darwin
+            cpu: arm64
+          - target: bun-windows-x64
+            package: backlog.md-windows-x64
+            os: win32
+            cpu: x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: backlog-${{ matrix.target }}
+      - name: Prepare package
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##refs/tags/v}"
+          mkdir -p pkg
+          mv backlog* pkg/
+          cp LICENSE README.md pkg/ 2>/dev/null || true
+          cat <<EOF > pkg/package.json
+          {
+            "name": "${{ matrix.package }}",
+            "version": "${TAG}",
+            "os": ["${{ matrix.os }}"],
+            "cpu": ["${{ matrix.cpu }}"],
+            "bin": {"backlog": "backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}"},
+            "files": ["backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}","package.json","LICENSE"]
+          }
+          EOF
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Publish platform package
+        run: |
+          cd pkg
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}

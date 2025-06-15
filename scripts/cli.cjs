@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 
 const { spawn } = require("node:child_process");
-const { join } = require("node:path");
 
-const { getBinaryName } = require("./getBinaryName.cjs");
-
-// Get the binary path
-const binaryName = getBinaryName();
-const binaryPath = join(__dirname, "bin", binaryName);
+// Resolve binary from platform-specific package
+const platform = process.platform;
+const arch = process.arch;
+const packageName = `backlog.md-${platform}-${arch}`;
+let binaryPath;
+try {
+        binaryPath = require.resolve(`${packageName}/backlog${platform === "win32" ? ".exe" : ""}`);
+} catch {
+        console.error(`Binary package not installed for ${platform}-${arch}.`);
+        process.exit(1);
+}
 
 // Spawn the binary with all arguments
 const child = spawn(binaryPath, process.argv.slice(2), {
