@@ -41,9 +41,9 @@ jobs:
         run: |
           VER="$(jq -r .version package.json)"
           OUT="backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          # Let bun auto-detect the target architecture for the current platform
           bun build src/cli.ts \
             --compile --minify --sourcemap \
-            --target=bun-${{ contains(matrix.os,'windows') && 'windows-x64' || contains(matrix.os,'macos') && 'darwin-x64' || 'linux-x64' }} \
             --define __EMBEDDED_VERSION__='"${VER}"' \
             --outfile="$OUT"
       - name: Smoke-test binary
