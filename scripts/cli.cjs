@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 
 const { spawn } = require("node:child_process");
+const { resolveBinaryPath } = require("./resolveBinary.cjs");
 
-// Resolve binary from platform-specific package
-const platform = process.platform;
-const arch = process.arch;
-const packageName = `backlog.md-${platform}-${arch}`;
 let binaryPath;
 try {
-	binaryPath = require.resolve(`${packageName}/backlog${platform === "win32" ? ".exe" : ""}`);
+	binaryPath = resolveBinaryPath();
 } catch {
-	console.error(`Binary package not installed for ${platform}-${arch}.`);
+	console.error(`Binary package not installed for ${process.platform}-${process.arch}.`);
 	process.exit(1);
 }
 

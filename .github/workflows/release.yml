@@ -69,6 +69,7 @@ jobs:
         run: |
           mkdir -p dist
           cp scripts/cli.cjs dist/cli.js
+          cp scripts/resolveBinary.cjs dist/resolveBinary.cjs
           chmod +x dist/cli.js
       - name: Create npm-ready package.json
         shell: bash
@@ -77,7 +78,7 @@ jobs:
           jq 'del(.devDependencies,.scripts.prepare,.scripts.preinstall,.scripts.postinstall,.type) |
               .version = "'$TAG'" |
               .bin = {backlog:"cli.js"} |
-              .files = ["cli.js","package.json","README.md","LICENSE"]' package.json > dist/package.json
+              .files = ["cli.js","resolveBinary.cjs","package.json","README.md","LICENSE"]' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v4
         with:
