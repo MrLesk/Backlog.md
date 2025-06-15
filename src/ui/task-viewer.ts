@@ -69,6 +69,7 @@ export async function viewTaskEnhanced(
 
 	const screen = blessed.screen({
 		smartCSR: true,
+		tput: false,
 		title: options.title || "Backlog Tasks",
 	});
 

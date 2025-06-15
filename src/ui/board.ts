@@ -40,7 +40,7 @@ export async function renderBoardTui(
      Blessed screen + columns
      ------------------------------------------------------------------ */
 	await new Promise<void>((resolve) => {
-		const screen = blessed.screen({ smartCSR: true, title: "Backlog Board" });
+		const screen = blessed.screen({ smartCSR: true, tput: false, title: "Backlog Board" });
 
 		const container = blessed.box({
 			parent: screen,
