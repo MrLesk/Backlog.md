@@ -17,9 +17,9 @@ dependencies: []
 Windows builds fail when board view tries to load built-in terminfo. Initialize blessed program with tput:false
 
 ## Acceptance Criteria
-- [ ] All TUI screens create a program with `{ tput: false }` and pass it to `blessed.screen()`
-- [ ] Windows binary runs `backlog board view` without ENOENT or isAlt errors
-- [ ] Tests updated to reflect new initialization
+- [x] All TUI screens create a program with `{ tput: false }` and pass it to `blessed.screen()`
+- [x] Windows binary runs `backlog board view` without ENOENT or isAlt errors
+- [x] Tests updated to reflect new initialization
 
 ## Implementation Notes
 - Wrap screen initialization in helper to reuse across modules
