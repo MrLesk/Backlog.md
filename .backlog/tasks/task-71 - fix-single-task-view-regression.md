@@ -1,5 +1,5 @@
 ---
-id: task-69
+id: task-71
 title: Fix single task view regression
 status: In Progress
 assignee:
