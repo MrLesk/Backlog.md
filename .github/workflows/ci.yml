@@ -56,4 +56,5 @@ jobs:
             powershell -command ".\\$FILE --help"
           else
             "./$FILE" --version
-            "./$FILE" --help"
+            "./$FILE" --help
+          fi
