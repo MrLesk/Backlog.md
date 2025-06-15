@@ -34,6 +34,3 @@ The task was successfully completed. The build configuration already had the `--
 - Built a standalone binary using `bun build src/cli.ts --compile`
 - Ran the binary in a directory without node_modules or blessed installed
 - Successfully executed commands that depend on blessed UI components
-
-### Note:
-The previous migration from blessed to Ink (task-60) may have already resolved some of the bundling issues with blessed, making this task's implementation straightforward.
