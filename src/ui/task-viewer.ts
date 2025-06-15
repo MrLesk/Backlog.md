@@ -342,13 +342,12 @@ export async function viewTaskEnhanced(
 			left: 0,
 			width: "100%",
 			height: 1,
-			border: "line",
 			content: options.filterDescription
 				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · Tab switch · q/Esc quit `
 				: " ↑/↓ navigate · Tab switch pane · ←/→ scroll · q/Esc quit ",
 			style: {
 				fg: "gray",
-				border: { fg: "gray" },
+				bg: "black",
 			},
 		});
 

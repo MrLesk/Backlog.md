@@ -82,11 +82,11 @@ export async function renderBoardTui(
 			});
 
 			const items = [...(tasksByStatus.get(status) ?? [])].sort(compareIds).map((task) => {
-				const assignee =
-					task.assignee?.[0] &&
-					` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`;
-				const labels = task.labels?.length && ` {yellow-fg}[${task.labels.join(", ")}]{/}`;
-				return `{bold}${task.id}{/bold} - ${task.title}${assignee ?? ""}${labels ?? ""}`;
+				const assignee = task.assignee?.[0]
+					? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
+					: "";
+				const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+				return `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}`;
 			});
 
 			taskList.setItems(items);
@@ -177,9 +177,8 @@ export async function renderBoardTui(
 			left: 0,
 			height: 1,
 			width: "100%",
-			border: "line",
 			content: " ←/→ columns · ↑/↓ tasks · Enter view · q/Esc quit ",
-			style: { fg: "gray", border: { fg: "gray" } },
+			style: { fg: "gray", bg: "black" },
 		});
 
 		screen.key(["q", "C-c"], () => {
