@@ -9,7 +9,7 @@ Example of a task definition in Markdown format:
 
 ```markdown
 ---
-id: task-0
+id: task-1
 title: "Bootstrap Backlog.md Project Definition with Initial Tasks"
 status: "Done"
 assignee: "@MrLesk"
