@@ -2,18 +2,16 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "dependencies": {
-        "@types/prompts": "^2.4.9",
-        "blessed": "0.1.81",
-        "commander": "14.0.0",
-        "gray-matter": "4.0.3",
-        "prompts": "2.4.2",
-      },
       "devDependencies": {
         "@biomejs/biome": "1.9.4",
         "@types/bun": "1.2.15",
+        "@types/prompts": "2.4.9",
+        "blessed": "0.1.81",
+        "commander": "14.0.0",
+        "gray-matter": "4.0.3",
         "husky": "9.1.7",
         "lint-staged": "16.1.0",
+        "prompts": "2.4.2",
       },
     },
   },
