@@ -24,6 +24,7 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"prepare": "husky",
+		"postinstall": "node scripts/patch-blessed.js",
 		"build": "bun build --compile --minify --sourcemap --outfile=backlog src/cli.ts",
 		"cli": "bun src/cli.ts"
 	},

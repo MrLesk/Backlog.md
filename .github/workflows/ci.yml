@@ -41,7 +41,6 @@ jobs:
         run: |
           VER="$(jq -r .version package.json)"
           OUT="backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
-          # Let bun auto-detect the target architecture for the current platform
           bun build src/cli.ts \
             --compile --minify --sourcemap \
             --define __EMBEDDED_VERSION__='"${VER}"' \
