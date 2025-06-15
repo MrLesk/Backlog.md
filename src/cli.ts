@@ -240,7 +240,7 @@ taskCmd
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.option("--draft")
-	.option("--parent <taskId>")
+	.option("-p, --parent <taskId>", "specify parent task ID")
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);

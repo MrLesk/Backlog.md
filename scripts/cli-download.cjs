@@ -77,7 +77,7 @@ async function downloadBinary(binaryName, binaryPath) {
 							file.on("finish", () => {
 								file.close();
 								// Make executable on Unix
-								if (process.platform !== 'win32') {
+								if (process.platform !== "win32") {
 									chmodSync(binaryPath, 0o755);
 								}
 								console.log("Download complete!");
@@ -94,7 +94,7 @@ async function downloadBinary(binaryName, binaryPath) {
 					file.on("finish", () => {
 						file.close();
 						// Make executable on Unix
-						if (process.platform !== 'win32') {
+						if (process.platform !== "win32") {
 							chmodSync(binaryPath, 0o755);
 						}
 						console.log("Download complete!");
