@@ -1,5 +1,5 @@
 ---
-id: task-69
+id: task-70
 title: "CI: eliminate extra binary download"
 status: In Progress
 assignee:
