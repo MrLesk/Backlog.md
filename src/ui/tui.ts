@@ -29,6 +29,7 @@ export async function scrollableViewer(content: string): Promise<void> {
 	return new Promise<void>((resolve) => {
 		const screen = blessed.screen({
 			smartCSR: true,
+			tput: false,
 			style: { fg: "white", bg: "black" },
 		});
 

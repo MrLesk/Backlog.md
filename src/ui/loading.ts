@@ -18,6 +18,7 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
 
 	const screen = blessed.screen({
 		smartCSR: true,
+		tput: false,
 		title: "Loading...",
 	});
 
@@ -110,6 +111,7 @@ export async function createLoadingScreen(initialMessage: string): Promise<Loadi
 
 	const screen = blessed.screen({
 		smartCSR: true,
+		tput: false,
 		title: "Loading...",
 	});
 
