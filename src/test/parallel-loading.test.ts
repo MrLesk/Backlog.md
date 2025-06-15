@@ -105,6 +105,10 @@ describe("Parallel remote task loading", () => {
 	});
 
 	it("should handle errors gracefully", async () => {
+		// Mock console.error to suppress expected error output
+		const originalConsoleError = console.error;
+		console.error = () => {};
+
 		// Create a mock that throws an error
 		const errorGitOps = {
 			fetch: async () => {
@@ -115,6 +119,9 @@ describe("Parallel remote task loading", () => {
 		// Should return empty array on error
 		const remoteTasks = await loadRemoteTasks(errorGitOps);
 		expect(remoteTasks).toEqual([]);
+
+		// Restore console.error
+		console.error = originalConsoleError;
 	});
 
 	it("should resolve task conflicts correctly", async () => {
