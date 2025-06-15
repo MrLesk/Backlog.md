@@ -4,7 +4,7 @@ import blessed from "blessed";
 export type HeadingLevel = 1 | 2 | 3;
 
 /** Map heading level → colour + bold flag */
-function getHeadingStyle(level: HeadingLevel): { color: string; bold: boolean } {
+export function getHeadingStyle(level: HeadingLevel): { color: string; bold: boolean } {
 	switch (level) {
 		case 1:
 			return { color: "bright-white", bold: true };
