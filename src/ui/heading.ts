@@ -16,7 +16,7 @@ function getHeadingStyle(level: HeadingLevel): { color: string; bold: boolean } 
 }
 
 /** Wrap plain text with blessed colour / bold tags */
-function formatHeading(text: string, level: HeadingLevel): string {
+export function formatHeading(text: string, level: HeadingLevel): string {
 	const { color, bold } = getHeadingStyle(level);
 	const tagColour = color.replace("-", "");
 	return bold

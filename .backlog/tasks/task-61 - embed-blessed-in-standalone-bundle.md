@@ -2,7 +2,7 @@
 id: task-61
 title: Embed blessed in standalone binary
 status: In Progress
-assignee: ["@ai-bot"]
+assignee: @codex
 created_date: '2025-06-14'
 labels:
   - cli
