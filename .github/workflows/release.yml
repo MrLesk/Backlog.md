@@ -91,7 +91,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
 
   publish-binaries:
-    needs: build
+    needs: [build, npm-publish]
     strategy:
       matrix:
         include:
@@ -117,6 +117,7 @@ jobs:
             cpu: x64
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: backlog-${{ matrix.target }}
