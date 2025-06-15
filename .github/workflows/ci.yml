@@ -18,8 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
+      - uses: actions/cache@v4
+        id: cache
         with:
-          cache: true
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.os }}-bun-
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bun test
@@ -33,8 +38,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
+      - uses: actions/cache@v4
+        id: cache
         with:
-          cache: true
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.os }}-bun-
       - run: bun install --frozen-lockfile
       - name: Build standalone binary
         shell: bash
