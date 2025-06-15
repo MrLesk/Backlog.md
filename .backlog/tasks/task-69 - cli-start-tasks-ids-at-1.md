@@ -26,5 +26,3 @@ first task which can be confusing.
 ## Implementation Notes
 
 The task ID generation was already correctly implemented to start at 1. The `generateNextId()` function in `src/cli.ts` initializes the maximum ID to 0 and returns `task-${max + 1}`, ensuring the first task gets ID `task-1`.
-
-Additionally fixed a critical npm packaging issue where the `getBinaryName.cjs` file was missing from the published package, causing the CLI to fail with "Cannot find module './getBinaryName.cjs'" error. Updated the release workflow to include this dependency in the npm package.
