@@ -159,7 +159,7 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 		return `${prefix}.${max + 1}`;
 	}
 
-	let max = -1;
+	let max = 0;
 	for (const t of all) {
 		const match = t.id.match(/^task-(\d+)/);
 		if (match) {
