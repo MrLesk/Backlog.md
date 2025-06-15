@@ -1,4 +1,5 @@
 import blessed from "blessed";
+import { createScreen } from "./tui.ts";
 
 export interface LoadingScreen {
 	update: (message: string) => void;
@@ -16,11 +17,7 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
 		return operation();
 	}
 
-	const screen = blessed.screen({
-		smartCSR: true,
-		tput: false,
-		title: "Loading...",
-	});
+	const screen = createScreen({ title: "Loading..." });
 
 	// Create loading box
 	const loadingBox = blessed.box({
@@ -109,11 +106,7 @@ export async function createLoadingScreen(initialMessage: string): Promise<Loadi
 		};
 	}
 
-	const screen = blessed.screen({
-		smartCSR: true,
-		tput: false,
-		title: "Loading...",
-	});
+	const screen = createScreen({ title: "Loading..." });
 
 	const loadingBox = blessed.box({
 		parent: screen,

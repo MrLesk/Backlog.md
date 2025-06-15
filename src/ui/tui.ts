@@ -9,6 +9,15 @@
 import { stdin as input, stdout as output } from "node:process";
 import blessed from "blessed";
 
+// Helper to create a blessed screen with Tput disabled.
+// This avoids looking up terminfo files which are not
+// bundled with the compiled Windows binary.
+// biome-ignore lint/suspicious/noExplicitAny: blessed types are loosely defined
+export function createScreen(options: any = {}): any {
+	const program = blessed.program({ tput: false });
+	return blessed.screen({ smartCSR: true, program, ...options });
+}
+
 // Ask the user for a single line of input.  Falls back to readline.
 export async function promptText(message: string, defaultValue = ""): Promise<string> {
 	// Always use readline for simple text input to avoid blessed rendering quirks
@@ -27,9 +36,7 @@ export async function scrollableViewer(content: string): Promise<void> {
 	}
 
 	return new Promise<void>((resolve) => {
-		const screen = blessed.screen({
-			smartCSR: true,
-			tput: false,
+		const screen = createScreen({
 			style: { fg: "white", bg: "black" },
 		});
 

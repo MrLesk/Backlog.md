@@ -5,6 +5,7 @@ import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createTaskPopup } from "./task-viewer.ts";
+import { createScreen } from "./tui.ts";
 
 /**
  * Render tasks in an interactive TUI when stdout is a TTY.
@@ -40,7 +41,7 @@ export async function renderBoardTui(
      Blessed screen + columns
      ------------------------------------------------------------------ */
 	await new Promise<void>((resolve) => {
-		const screen = blessed.screen({ smartCSR: true, tput: false, title: "Backlog Board" });
+		const screen = createScreen({ title: "Backlog Board" });
 
 		const container = blessed.box({
 			parent: screen,

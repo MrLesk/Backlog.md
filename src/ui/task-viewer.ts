@@ -9,6 +9,7 @@ import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
 import { createGenericList } from "./components/generic-list.ts";
 import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
+import { createScreen } from "./tui.ts";
 
 /**
  * Extract only the Description section content from markdown, avoiding duplication
@@ -67,11 +68,7 @@ export async function viewTaskEnhanced(
 	let currentSelectedTask = task;
 	let currentSelectedContent = content;
 
-	const screen = blessed.screen({
-		smartCSR: true,
-		tput: false,
-		title: options.title || "Backlog Tasks",
-	});
+	const screen = createScreen({ title: options.title || "Backlog Tasks" });
 
 	// Main container using grid layout
 	const container = blessed.box({

@@ -6,6 +6,7 @@
 import { stdout as output } from "node:process";
 import blessed from "blessed";
 import { formatHeading } from "../heading.ts";
+import { createScreen } from "../tui.ts";
 
 export interface GenericListItem {
 	id: string;
@@ -114,9 +115,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private createListComponent(): void {
 		// Create screen if not provided
 		if (!this.options.parent) {
-			this.screen = blessed.screen({
-				smartCSR: true,
-				tput: false,
+			this.screen = createScreen({
 				style: { fg: "white", bg: "black" },
 			});
 		}

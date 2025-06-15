@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import blessed from "blessed";
 import { WRAP_LIMIT } from "../constants/index.ts";
+import { createScreen } from "../ui/tui.ts";
 
 describe("Line Wrapping", () => {
 	test("WRAP_LIMIT constant is set to 72", () => {
@@ -8,7 +9,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("blessed box with wrap:true enables text wrapping", async () => {
-		const screen = blessed.screen({ smartCSR: false, tput: false });
+		const screen = createScreen({ smartCSR: false });
 
 		// Create a long text that should wrap
 		const longText =
@@ -30,7 +31,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("blessed box without wrap:false does not break mid-word", async () => {
-		const screen = blessed.screen({ smartCSR: false, tput: false });
+		const screen = createScreen({ smartCSR: false });
 
 		// Create text with long words
 		const textWithLongWords =
@@ -75,7 +76,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("task viewer boxes have wrap enabled", async () => {
-		const screen = blessed.screen({ smartCSR: false, tput: false });
+		const screen = createScreen({ smartCSR: false });
 
 		// Simulate task viewer boxes
 		const testBoxes = [
@@ -123,7 +124,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("board view content respects width constraints", async () => {
-		const screen = blessed.screen({ smartCSR: false, tput: false });
+		const screen = createScreen({ smartCSR: false });
 
 		// Simulate board column
 		const column = blessed.box({
@@ -153,7 +154,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("popup content boxes have wrap enabled", async () => {
-		const screen = blessed.screen({ smartCSR: false, tput: false });
+		const screen = createScreen({ smartCSR: false });
 
 		// Simulate popup boxes
 		const statusLine = blessed.box({
