@@ -1,5 +1,5 @@
 ---
-id: task-69
+id: task-72
 title: Fix board view on Windows without terminfo
 status: To Do
 assignee: []
