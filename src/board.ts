@@ -116,7 +116,7 @@ export function generateKanbanBoard(
 			const header = status || "No Status";
 			rows.push(header);
 			rows.push("-".repeat(header.length));
-			const tasksInStatus = columns[idx];
+			const tasksInStatus = columns[idx] || [];
 			for (const task of tasksInStatus) {
 				rows.push(task.id);
 				rows.push(task.title);
@@ -137,7 +137,7 @@ export function generateKanbanBoard(
 	const colWidths = ordered.map((status, idx) => {
 		const header = status || "No Status";
 		let width = Math.min(Math.max(header.length, 8), maxColumnWidth); // Minimum 8, max maxColumnWidth
-		for (const t of columns[idx]) {
+		for (const t of columns[idx] || []) {
 			// Check both task ID and title lengths separately
 			const idLength = t.id.length;
 			const titleLength = t.title.length;
@@ -159,7 +159,7 @@ export function generateKanbanBoard(
 
 		for (let taskIdx = 0; taskIdx < maxTasks; taskIdx++) {
 			const row = ordered.map((_, cIdx) => {
-				const task = columns[cIdx][taskIdx];
+				const task = columns[cIdx]?.[taskIdx];
 				if (!task) return "";
 				// For markdown, combine ID and title in one cell
 				return `${task.id}: ${task.title}`;
@@ -173,14 +173,14 @@ export function generateKanbanBoard(
 	// Terminal format with text wrapping
 	const pad = (text: string, width: number): string => text.padEnd(width, " ");
 
-	const headerRow = ordered.map((status, i) => pad(status || "No Status", colWidths[i])).join(" | ");
-	const separatorRow = ordered.map((_, i) => "-".repeat(colWidths[i])).join("-|-");
+	const headerRow = ordered.map((status, i) => pad(status || "No Status", colWidths[i] || 0)).join(" | ");
+	const separatorRow = ordered.map((_, i) => "-".repeat(colWidths[i] || 0)).join("-|-");
 
 	// Prepare wrapped tasks for each column
 	const wrappedTasks = ordered.map((_, cIdx) => {
-		return columns[cIdx].map((task) => ({
-			idLines: wrapText(task.id, colWidths[cIdx]),
-			titleLines: wrapText(task.title, colWidths[cIdx]),
+		return (columns[cIdx] || []).map((task) => ({
+			idLines: wrapText(task.id, colWidths[cIdx] || 0),
+			titleLines: wrapText(task.title, colWidths[cIdx] || 0),
 		}));
 	});
 
@@ -191,8 +191,9 @@ export function generateKanbanBoard(
 		// Get the maximum number of lines needed for this task across all columns
 		let maxTaskLines = 0;
 		for (let cIdx = 0; cIdx < ordered.length; cIdx++) {
-			if (wrappedTasks[cIdx][taskIdx]) {
-				const taskLines = wrappedTasks[cIdx][taskIdx].idLines.length + wrappedTasks[cIdx][taskIdx].titleLines.length;
+			const wrappedTask = wrappedTasks[cIdx]?.[taskIdx];
+			if (wrappedTask) {
+				const taskLines = wrappedTask.idLines.length + wrappedTask.titleLines.length;
 				maxTaskLines = Math.max(maxTaskLines, taskLines);
 			}
 		}
@@ -201,24 +202,24 @@ export function generateKanbanBoard(
 		for (let lineIdx = 0; lineIdx < maxTaskLines; lineIdx++) {
 			const lineRow = ordered
 				.map((_, cIdx) => {
-					const wrappedTask = wrappedTasks[cIdx][taskIdx];
-					if (!wrappedTask) return pad("", colWidths[cIdx]);
+					const wrappedTask = wrappedTasks[cIdx]?.[taskIdx];
+					if (!wrappedTask) return pad("", colWidths[cIdx] || 0);
 
 					const idLineCount = wrappedTask.idLines.length;
 					let text = "";
 
 					if (lineIdx < idLineCount) {
 						// Show ID lines first
-						text = wrappedTask.idLines[lineIdx];
+						text = wrappedTask.idLines[lineIdx] || "";
 					} else {
 						// Then show title lines
 						const titleLineIdx = lineIdx - idLineCount;
 						if (titleLineIdx < wrappedTask.titleLines.length) {
-							text = wrappedTask.titleLines[titleLineIdx];
+							text = wrappedTask.titleLines[titleLineIdx] || "";
 						}
 					}
 
-					return pad(text, colWidths[cIdx]);
+					return pad(text, colWidths[cIdx] || 0);
 				})
 				.join(" | ");
 			rows.push(lineRow);
@@ -227,7 +228,7 @@ export function generateKanbanBoard(
 		// Add empty row between tasks for better separation (except after last task)
 		// Skip empty row if next task is a subtask (to keep parent and child together)
 		if (taskIdx < maxTasks - 1) {
-			const emptyRow = ordered.map((_, cIdx) => pad("", colWidths[cIdx])).join(" | ");
+			const emptyRow = ordered.map((_, cIdx) => pad("", colWidths[cIdx] || 0)).join(" | ");
 			rows.push(emptyRow);
 		}
 	}

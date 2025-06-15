@@ -5,8 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: lint-and-unit-test
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -14,12 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
-      - run: bun install
-      - name: Build npm package
-        run: bun run build:npm
+        with:
+          cache: true
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
       - run: bun test
-      
+
   build-test:
+    name: compile-and-smoke-test
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -27,20 +33,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
-      - run: bun install
-      - name: Get version
-        id: version
+        with:
+          cache: true
+      - run: bun install --frozen-lockfile
+      - name: Build standalone binary
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-      - name: Build standalone executable
-        run: bun build --compile --define __EMBEDDED_VERSION__='"${{ steps.version.outputs.version }}"' --outfile=backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }} src/cli.ts
-      - name: Test executable (Unix)
-        if: matrix.os != 'windows-latest'
         run: |
-          ./backlog-test --version
-          ./backlog-test --help
-      - name: Test executable (Windows)
-        if: matrix.os == 'windows-latest'
+          VER="$(jq -r .version package.json)"
+          OUT="backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          bun build src/cli.ts \
+            --compile --minify --sourcemap \
+            --target=bun-${{ contains(matrix.os,'windows') && 'windows-x64' || contains(matrix.os,'macos') && 'darwin-x64' || 'linux-x64' }} \
+            --define __EMBEDDED_VERSION__='"${VER}"' \
+            --outfile="$OUT"
+      - name: Smoke-test binary
+        shell: bash
         run: |
-          .\backlog-test.exe --version
-          .\backlog-test.exe --help
+          FILE="backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          chmod +x "$FILE"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            powershell -command ".\\$FILE --version"
+            powershell -command ".\\$FILE --help"
+          else
+            "./$FILE" --version
+            "./$FILE" --help"

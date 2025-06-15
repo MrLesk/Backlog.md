@@ -31,7 +31,7 @@ function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
 	// Look for ## Acceptance Criteria section
 	const regex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/i;
 	const match = content.match(regex);
-	if (!match) return [];
+	if (!match || !match[1]) return [];
 
 	return match[1]
 		.split("\n")

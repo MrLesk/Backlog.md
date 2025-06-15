@@ -1,12 +1,12 @@
 {
 	"name": "backlog.md",
-	"version": "0.1.9",
-	"module": "src/index.ts",
+	"version": "0.0.0",
 	"type": "module",
 	"bin": {
 		"backlog": "cli/index.js"
 	},
 	"dependencies": {
+		"@types/prompts": "^2.4.9",
 		"blessed": "0.1.81",
 		"commander": "14.0.0",
 		"gray-matter": "4.0.3",
@@ -24,9 +24,7 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"prepare": "husky",
-		"build": "bun build --compile --outfile=backlog src/cli.ts",
-		"build:standalone": "node scripts/build-standalone.js",
-		"build:npm": "node scripts/build.js",
+		"build": "bun build --compile --minify --sourcemap --outfile=backlog src/cli.ts",
 		"cli": "bun src/cli.ts"
 	},
 	"lint-staged": {

@@ -4,19 +4,12 @@ import { dirname, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import prompts from "prompts";
-import { genericSelectList } from "./ui/components/generic-list.ts";
-import { viewTaskEnhanced } from "./ui/task-viewer.ts";
-// Interactive TUI helpers (bblessed based)
-import { promptText, scrollableViewer } from "./ui/tui.ts";
-
-// Kanban TUI renderer
-import { renderBoardTui } from "./ui/board.ts";
-
-// Loading screen utilities
-import { createLoadingScreen, withLoadingScreen } from "./ui/loading.ts";
-
-// Remote task loading utilities
 import { type TaskWithMetadata, loadRemoteTasks, resolveTaskConflict } from "./core/remote-tasks.ts";
+import { renderBoardTui } from "./ui/board.ts";
+import { genericSelectList } from "./ui/components/generic-list.ts";
+import { createLoadingScreen, withLoadingScreen } from "./ui/loading.ts";
+import { viewTaskEnhanced } from "./ui/task-viewer.ts";
+import { promptText, scrollableViewer } from "./ui/tui.ts";
 
 import { Command } from "commander";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
@@ -27,7 +20,6 @@ import {
 	exportKanbanBoardToFile,
 	initializeGitRepository,
 	isGitRepository,
-	parseTask,
 } from "./index.ts";
 import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
 import { getVersion } from "./utils/version.ts";
@@ -71,12 +63,12 @@ program
 				}
 			}
 
-			const reporter = (await promptText("Default reporter name (leave blank to skip):")) || "";
-			let storeGlobal = false;
-			if (reporter) {
-				const store = (await promptText("Store reporter name globally? [y/N]", "N")).toLowerCase();
-				storeGlobal = store.startsWith("y");
-			}
+			// const reporter = (await promptText("Default reporter name (leave blank to skip):")) || "";
+			// let storeGlobal = false;
+			// if (reporter) {
+			// 	const store = (await promptText("Store reporter name globally? [y/N]", "N")).toLowerCase();
+			// 	storeGlobal = store.startsWith("y");
+			// }
 
 			const agentOptions = [".cursorrules", "CLAUDE.md", "AGENTS.md"] as const;
 			const { files: selected } = await prompts({
@@ -97,25 +89,25 @@ program
 				await addAgentInstructions(cwd, core.gitOps, files);
 			}
 
-			if (reporter) {
-				if (storeGlobal) {
-					const globalPath = join(homedir(), ".backlog", "user");
-					await mkdir(dirname(globalPath), { recursive: true });
-					await Bun.write(globalPath, `default_reporter: "${reporter}"\n`);
-				} else {
-					const userPath = join(cwd, ".user");
-					await Bun.write(userPath, `default_reporter: "${reporter}"\n`);
-					const gitignorePath = join(cwd, ".gitignore");
-					let gitignore = "";
-					try {
-						gitignore = await Bun.file(gitignorePath).text();
-					} catch {}
-					if (!gitignore.split(/\r?\n/).includes(".user")) {
-						gitignore += `${gitignore.endsWith("\n") ? "" : "\n"}.user\n`;
-						await Bun.write(gitignorePath, gitignore);
-					}
-				}
-			}
+			// if (reporter) {
+			// 	if (storeGlobal) {
+			// 		const globalPath = join(homedir(), ".backlog", "user");
+			// 		await mkdir(dirname(globalPath), { recursive: true });
+			// 		await Bun.write(globalPath, `default_reporter: "${reporter}"\n`);
+			// 	} else {
+			// 		const userPath = join(cwd, ".user");
+			// 		await Bun.write(userPath, `default_reporter: "${reporter}"\n`);
+			// 		const gitignorePath = join(cwd, ".gitignore");
+			// 		let gitignore = "";
+			// 		try {
+			// 			gitignore = await Bun.file(gitignorePath).text();
+			// 		} catch {}
+			// 		if (!gitignore.split(/\r?\n/).includes(".user")) {
+			// 			gitignore += `${gitignore.endsWith("\n") ? "" : "\n"}.user\n`;
+			// 			await Bun.write(gitignorePath, gitignore);
+			// 		}
+			// 	}
+			// }
 		} catch (err) {
 			console.error("Failed to initialize project", err);
 			process.exitCode = 1;
@@ -173,14 +165,14 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	for (const t of all) {
 		const match = t.id.match(/^task-(\d+)/);
 		if (match) {
-			const num = Number.parseInt(match[1], 10);
+			const num = Number.parseInt(match[1] || "0", 10);
 			if (num > max) max = num;
 		}
 	}
 	for (const id of remoteIds) {
 		const match = id.match(/^task-(\d+)/);
 		if (match) {
-			const num = Number.parseInt(match[1], 10);
+			const num = Number.parseInt(match[1] || "0", 10);
 			if (num > max) max = num;
 		}
 	}
@@ -193,7 +185,7 @@ async function generateNextDecisionId(core: Core): Promise<string> {
 	for (const file of files) {
 		const match = file.match(/^decision-(\d+)/);
 		if (match) {
-			const num = Number.parseInt(match[1], 10);
+			const num = Number.parseInt(match[1] || "0", 10);
 			if (num > max) max = num;
 		}
 	}
@@ -206,7 +198,7 @@ async function generateNextDocId(core: Core): Promise<string> {
 	for (const file of files) {
 		const match = file.match(/^doc-(\d+)/);
 		if (match) {
-			const num = Number.parseInt(match[1], 10);
+			const num = Number.parseInt(match[1] || "0", 10);
 			if (num > max) max = num;
 		}
 	}
@@ -221,12 +213,14 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 			: `task-${parentInput}`
 		: undefined;
 
+	const createdDate = new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10);
+
 	return {
 		id,
 		title,
-		status: options.status || "",
+		status: options.status ? String(options.status) : "",
 		assignee: options.assignee ? [String(options.assignee)] : [],
-		createdDate: new Date().toISOString().split("T")[0],
+		createdDate,
 		labels: options.labels
 			? String(options.labels)
 					.split(",")
@@ -234,7 +228,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 					.filter(Boolean)
 			: [],
 		dependencies: [],
-		description: options.description || "",
+		description: options.description ? String(options.description) : "",
 		...(normalizedParent && { parentTaskId: normalizedParent }),
 	};
 }
@@ -674,7 +668,7 @@ docCmd
 			id,
 			title: title as string,
 			type: (options.type || "other") as DocType["type"],
-			createdDate: new Date().toISOString().split("T")[0],
+			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
 			content: "",
 		};
 		await core.createDocument(document, true, options.path || "");
@@ -750,7 +744,7 @@ decisionCmd
 		const decision: DecisionLog = {
 			id,
 			title: title as string,
-			date: new Date().toISOString().split("T")[0],
+			date: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
 			status: (options.status || "proposed") as DecisionLog["status"],
 			context: "",
 			decision: "",

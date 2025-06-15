@@ -1,24 +1,4 @@
-/**
- * Loading screen utilities for blessed-based terminal UI
- */
-
-import { createRequire } from "node:module";
-
-// biome-ignore lint/suspicious/noExplicitAny: blessed is dynamically loaded
-async function loadBlessed(): Promise<any | null> {
-	try {
-		const require = createRequire(import.meta.url);
-		return require("blessed");
-	} catch {
-		try {
-			// biome-ignore lint/suspicious/noExplicitAny: dynamic import
-			const mod = await import("blessed" as any);
-			return mod.default ?? mod;
-		} catch {
-			return null;
-		}
-	}
-}
+import blessed from "blessed";
 
 export interface LoadingScreen {
 	update: (message: string) => void;
@@ -30,9 +10,7 @@ export interface LoadingScreen {
  * Falls back to console.log if blessed is not available.
  */
 export async function withLoadingScreen<T>(message: string, operation: () => Promise<T>): Promise<T> {
-	const blessed = await loadBlessed();
-
-	if (!blessed) {
+	if (!process.stdout.isTTY) {
 		// Fallback: just log the message
 		console.log(`${message}...`);
 		return operation();
@@ -121,9 +99,7 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
  * Useful for multi-step operations.
  */
 export async function createLoadingScreen(initialMessage: string): Promise<LoadingScreen | null> {
-	const blessed = await loadBlessed();
-
-	if (!blessed) {
+	if (!process.stdout.isTTY) {
 		// Fallback: return a simple console logger
 		console.log(`${initialMessage}...`);
 		return {

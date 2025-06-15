@@ -1,227 +1,112 @@
-name: Release Multi-Platform Executables
+name: Release multi-platform executables
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ['v*.*.*']
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
-  build-executables:
+  build:
+    name: build-${{ matrix.target }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
-            platform: linux
-            arch: x64
+            target: bun-linux-x64
           - os: ubuntu-latest
-            platform: linux
-            arch: arm64
+            target: bun-linux-arm64
           - os: macos-latest
-            platform: darwin
-            arch: x64
+            target: bun-darwin-x64
           - os: macos-latest
-            platform: darwin
-            arch: arm64
+            target: bun-darwin-arm64
           - os: windows-latest
-            platform: win32
-            arch: x64
-    
+            target: bun-windows-x64
     runs-on: ${{ matrix.os }}
-    
+    env:
+      BIN: backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v4
-      
       - uses: oven-sh/setup-bun@v1
         with:
-          bun-version: latest
-      
-      - name: Install dependencies
-        run: bun install
-      
-      - name: Get version
-        id: version
+          cache: true
+      - run: bun install --frozen-lockfile
+      - name: Sync version to tag
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-      
-      - name: Build executable
-        run: bun build --compile --target=bun-${{ matrix.platform }}-${{ matrix.arch }} --define __EMBEDDED_VERSION__='"${{ steps.version.outputs.version }}"' --outfile=dist/backlog-${{ matrix.platform }}-${{ matrix.arch }}/backlog${{ matrix.platform == 'win32' && '.exe' || '' }} src/cli.ts
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        run: |
+          TAG="${GITHUB_REF##refs/tags/v}"
+          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
+      - name: Compile standalone binary
+        shell: bash
+        run: |
+          bun build src/cli.ts \
+            --compile --minify --sourcemap \
+            --target=${{ matrix.target }} \
+            --define __EMBEDDED_VERSION__='"${GITHUB_REF##refs/tags/v}"' \
+            --outfile=${{ env.BIN }}
+      - name: Smoke-test binary (non-Windows)
+        if: ${{ !contains(matrix.target,'windows') }}
+        run: |
+          chmod +x "${{ env.BIN }}"
+          "./${{ env.BIN }}" --version
+      - name: Package artifact
+        shell: bash
+        run: |
+          mkdir pkg
+          mv "${{ env.BIN }}" pkg/
+          tar -czf backlog-${{ matrix.target }}.tar.gz -C pkg .
+          zip -r backlog-${{ matrix.target }}.zip pkg
+      - uses: actions/upload-artifact@v4
         with:
-          name: backlog-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/backlog-${{ matrix.platform }}-${{ matrix.arch }}/
-  
-  create-npm-package:
-    needs: build-executables
+          name: backlog-${{ matrix.target }}
+          path: |
+            backlog-${{ matrix.target }}.tar.gz
+            backlog-${{ matrix.target }}.zip
+
+  npm-publish:
+    needs: build
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v4
-      
-      - uses: oven-sh/setup-bun@v1
-      
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: dist/bin/
-      
-      - name: Create npm wrapper
+          path: dist/bin
+      - name: Prepare wrapper & dist dir
+        shell: bash
         run: |
-          # Create the wrapper script
-          cat > dist/cli.js << 'EOF'
-          #!/usr/bin/env node
-          import { spawn } from 'child_process';
-          import { fileURLToPath } from 'url';
-          import { dirname, join } from 'path';
-          import { platform, arch } from 'os';
-          import { accessSync, constants } from 'fs';
-          
-          const __dirname = dirname(fileURLToPath(import.meta.url));
-          
-          function getBinaryPath() {
-            const os = platform();
-            const architecture = arch();
-            
-            const platformMap = {
-              'darwin': 'darwin',
-              'linux': 'linux',
-              'win32': 'win32'
-            };
-            
-            const archMap = {
-              'x64': 'x64',
-              'arm64': 'arm64'
-            };
-            
-            const mappedOs = platformMap[os];
-            const mappedArch = archMap[architecture];
-            
-            if (!mappedOs || !mappedArch) {
-              throw new Error(`Unsupported platform: ${os}-${architecture}`);
-            }
-            
-            const binaryName = os === 'win32' ? 'backlog.exe' : 'backlog';
-            const binaryPath = join(__dirname, 'bin', `backlog-${mappedOs}-${mappedArch}`, binaryName);
-            
-            try {
-              accessSync(binaryPath, constants.X_OK);
-              return binaryPath;
-            } catch (error) {
-              throw new Error(`Binary not found for platform ${mappedOs}-${mappedArch} at ${binaryPath}`);
-            }
-          }
-          
-          try {
-            const binaryPath = getBinaryPath();
-            const child = spawn(binaryPath, process.argv.slice(2), {
-              stdio: 'inherit',
-              env: process.env
-            });
-            
-            child.on('exit', (code) => {
-              process.exit(code || 0);
-            });
-            
-            child.on('error', (err) => {
-              console.error('Failed to run backlog:', err.message);
-              process.exit(1);
-            });
-          } catch (error) {
-            console.error(error.message);
-            console.error('\nPlease report this issue at: https://github.com/MrLesk/Backlog.md/issues');
-            process.exit(1);
-          }
-          EOF
-          
+          mkdir -p dist
+          cp scripts/cli.js dist/cli.js
           chmod +x dist/cli.js
-      
-      - name: Prepare package
+      - name: Create npm-ready package.json
+        shell: bash
         run: |
-          # Update package.json
-          node -e "
-          const fs = require('fs');
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          pkg.bin = { backlog: 'cli.js' };
-          pkg.files = ['bin/', 'cli.js'];
-          // Remove scripts that shouldn't run during install
-          delete pkg.scripts.prepare;
-          delete pkg.scripts.postinstall;
-          delete pkg.scripts.preinstall;
-          // Remove dev dependencies
-          delete pkg.devDependencies;
-          fs.writeFileSync('dist/package.json', JSON.stringify(pkg, null, 2));
-          "
-          
-          # Copy necessary files
-          cp readme.md LICENSE dist/ 2>/dev/null || true
-          
-          # Make all binaries executable
-          find dist/bin -name "backlog*" -type f -exec chmod +x {} \;
-      
+          TAG="${GITHUB_REF##refs/tags/v}"
+          jq 'del(.devDependencies,.scripts.prepare,.scripts.preinstall,.scripts.postinstall) |
+              .version = "'$TAG'" |
+              .bin = {backlog:"cli.js"} |
+              .files = ["bin/","cli.js"]'               package.json > dist/package.json
+          cp LICENSE README.md dist/ 2>/dev/null || true
+          find dist/bin -type f -name "backlog*" -exec chmod +x {} +
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-      
+          node-version: 20
+          registry-url: https://registry.npmjs.org
       - name: Publish to npm
         run: |
           cd dist
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-  
-  create-github-release:
-    needs: build-executables
+
+  github-release:
+    needs: build
     runs-on: ubuntu-latest
-    
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: artifacts/
-      
-      - name: Create release archives
-        run: |
-          cd artifacts
-          for dir in backlog-*; do
-            if [ -d "$dir" ]; then
-              tar -czf "$dir.tar.gz" -C "$dir" .
-              zip -r "$dir.zip" "$dir"
-            fi
-          done
-      
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+          path: release-assets
+      - uses: softprops/action-gh-release@v1
         with:
-          files: |
-            artifacts/*.tar.gz
-            artifacts/*.zip
-          body: |
-            ## Installation
-            
-            ### Using npm/bun/yarn
-            ```bash
-            npm install -g backlog.md
-            # or
-            bun add -g backlog.md
-            # or 
-            yarn global add backlog.md
-            ```
-            
-            ### Direct download
-            Download the appropriate executable for your platform from the assets below.
-            
-            ### Supported platforms
-            - Linux x64
-            - Linux ARM64
-            - macOS x64 (Intel)
-            - macOS ARM64 (Apple Silicon)
-            - Windows x64
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: release-assets/**/*
