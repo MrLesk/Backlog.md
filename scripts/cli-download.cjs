@@ -6,49 +6,7 @@ const fs = require("node:fs");
 const https = require("node:https");
 const { createWriteStream, chmodSync } = require("node:fs");
 
-// Determine the correct binary based on platform and architecture
-function getBinaryName() {
-	const platform = process.platform;
-	const arch = process.arch;
-
-	let binaryName = "backlog-";
-
-	// Map Node.js platform names to Bun target names
-	switch (platform) {
-		case "linux":
-			binaryName += "bun-linux-";
-			break;
-		case "darwin":
-			binaryName += "bun-darwin-";
-			break;
-		case "win32":
-			binaryName += "bun-windows-";
-			break;
-		default:
-			console.error(`Unsupported platform: ${platform}`);
-			process.exit(1);
-	}
-
-	// Map Node.js arch names to Bun target names
-	switch (arch) {
-		case "x64":
-			binaryName += "x64";
-			break;
-		case "arm64":
-			binaryName += "arm64";
-			break;
-		default:
-			console.error(`Unsupported architecture: ${arch}`);
-			process.exit(1);
-	}
-
-	// Windows executables have .exe extension
-	if (platform === "win32") {
-		binaryName += ".exe";
-	}
-
-	return binaryName;
-}
+const { getBinaryName } = require("./getBinaryName.cjs");
 
 // Download binary from GitHub releases
 async function downloadBinary(binaryName, binaryPath) {
