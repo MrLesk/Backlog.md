@@ -8,7 +8,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("blessed box with wrap:true enables text wrapping", async () => {
-		const screen = blessed.screen({ smartCSR: false });
+		const screen = blessed.screen({ smartCSR: false, tput: false });
 
 		// Create a long text that should wrap
 		const longText =
@@ -30,7 +30,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("blessed box without wrap:false does not break mid-word", async () => {
-		const screen = blessed.screen({ smartCSR: false });
+		const screen = blessed.screen({ smartCSR: false, tput: false });
 
 		// Create text with long words
 		const textWithLongWords =
@@ -75,7 +75,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("task viewer boxes have wrap enabled", async () => {
-		const screen = blessed.screen({ smartCSR: false });
+		const screen = blessed.screen({ smartCSR: false, tput: false });
 
 		// Simulate task viewer boxes
 		const testBoxes = [
@@ -123,7 +123,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("board view content respects width constraints", async () => {
-		const screen = blessed.screen({ smartCSR: false });
+		const screen = blessed.screen({ smartCSR: false, tput: false });
 
 		// Simulate board column
 		const column = blessed.box({
@@ -153,7 +153,7 @@ describe("Line Wrapping", () => {
 	});
 
 	test("popup content boxes have wrap enabled", async () => {
-		const screen = blessed.screen({ smartCSR: false });
+		const screen = blessed.screen({ smartCSR: false, tput: false });
 
 		// Simulate popup boxes
 		const statusLine = blessed.box({

@@ -116,6 +116,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		if (!this.options.parent) {
 			this.screen = blessed.screen({
 				smartCSR: true,
+				tput: false,
 				style: { fg: "white", bg: "black" },
 			});
 		}
