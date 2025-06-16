@@ -1,7 +1,7 @@
 ---
 id: task-76.5
 title: Test and verify all TUI functionality
-status: To Do
+status: Won't Do
 assignee: []
 created_date: '2025-06-16'
 labels:
@@ -38,3 +38,7 @@ Testing should cover:
 - [ ] Ensure no visual artifacts or rendering issues
 - [ ] Run existing UI tests and ensure they pass
 - [ ] Document any behavioral differences found
+
+## Migration Cancellation Note
+
+This task has been cancelled. After assessment (task 76.1), it was determined that neo-neo-blessed does not support ESM modules, which contradicts its main selling point. The migration to neo-neo-blessed has been abandoned in favor of continuing with the current blessed implementation.

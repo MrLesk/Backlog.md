@@ -1,7 +1,7 @@
 ---
 id: task-76.4
 title: Update build system and remove CJS workarounds
-status: To Do
+status: Won't Do
 assignee: []
 created_date: '2025-06-16'
 labels:
@@ -35,3 +35,7 @@ This includes:
 - [ ] Update any import resolution configurations
 - [ ] Clean up scripts/cli.cjs if using CJS workarounds
 - [ ] Document build process changes
+
+## Migration Cancellation Note
+
+This task has been cancelled. After assessment (task 76.1), it was determined that neo-neo-blessed does not support ESM modules, which contradicts its main selling point. The migration to neo-neo-blessed has been abandoned in favor of continuing with the current blessed implementation.

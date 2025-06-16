@@ -1,7 +1,7 @@
 ---
 id: task-76.3
 title: Migrate UI components to use neo-neo-blessed
-status: To Do
+status: Won't Do
 assignee: []
 created_date: '2025-06-16'
 labels:
@@ -41,3 +41,7 @@ This involves:
 - [ ] Verify screen rendering and layout remain consistent
 - [ ] Update any custom blessed extensions or patches
 - [ ] Remove any CJS-specific import workarounds
+
+## Migration Cancellation Note
+
+This task has been cancelled. After assessment (task 76.1), it was determined that neo-neo-blessed does not support ESM modules, which contradicts its main selling point. The migration to neo-neo-blessed has been abandoned in favor of continuing with the current blessed implementation.

@@ -1,7 +1,7 @@
 ---
 id: task-76
 title: Migrate from blessed to neo-neo-blessed for ESM support and tree shaking
-status: To Do
+status: Won't Do
 assignee:
   - '@ai-agent'
 created_date: '2025-06-16'
@@ -82,3 +82,29 @@ The migration involves:
 - ESM compatibility with current tooling
 - Binary packaging with ESM modules
 - Ensuring backward compatibility for users
+
+## Migration Decision: CANCELLED
+
+### Critical Finding from Assessment (Task 76.1)
+
+After thorough investigation, we discovered that **neo-neo-blessed does NOT provide ESM support**. The library still uses CommonJS modules, which means the primary goal of this migration cannot be achieved.
+
+### Key Findings:
+- neo-neo-blessed uses CommonJS (`require`/`module.exports`)
+- No `"type": "module"` in package.json
+- No tree shaking benefits
+- Installation issues with native dependencies on modern Node.js
+
+### Decision Rationale:
+Since neo-neo-blessed does not provide the ESM support that was the primary motivation for this migration, we are cancelling this effort. The library offers no significant benefits over the current blessed implementation while potentially introducing stability issues.
+
+### Alternative Approaches:
+If ESM support remains a priority, consider:
+1. Researching other TUI libraries with genuine ESM support (e.g., ink, terminal-kit)
+2. Creating an ESM wrapper around blessed
+3. Building a custom TUI implementation using ANSI escape codes
+4. Continuing with current blessed + existing workarounds
+
+### Subtasks Status:
+- Task 76.1: ✅ Done (Assessment completed - found no ESM support)
+- Task 76.2-76.6: Cancelled (not proceeding due to assessment findings)
