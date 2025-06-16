@@ -6,22 +6,22 @@
 		"backlog": "cli/index.js"
 	},
 	"optionalDependencies": {
-		"backlog.md-linux-x64": "*",
-		"backlog.md-linux-arm64": "*",
-		"backlog.md-darwin-x64": "*",
 		"backlog.md-darwin-arm64": "*",
+		"backlog.md-darwin-x64": "*",
+		"backlog.md-linux-arm64": "*",
+		"backlog.md-linux-x64": "*",
 		"backlog.md-windows-x64": "*"
 	},
 	"devDependencies": {
-		"@types/prompts": "2.4.9",
-		"blessed": "0.1.81",
-		"commander": "14.0.0",
-		"gray-matter": "4.0.3",
-		"prompts": "2.4.2",
 		"@biomejs/biome": "1.9.4",
 		"@types/bun": "1.2.15",
+		"@types/prompts": "2.4.9",
+		"blessed": "github:context-labs/bblessed",
+		"commander": "14.0.0",
+		"gray-matter": "4.0.3",
 		"husky": "9.1.7",
-		"lint-staged": "16.1.0"
+		"lint-staged": "16.1.0",
+		"prompts": "2.4.2"
 	},
 	"scripts": {
 		"test": "bun test",
@@ -29,7 +29,6 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"prepare": "husky",
-		"postinstall": "node scripts/patch-blessed.js",
 		"build": "bun build --compile --minify --sourcemap --outfile=backlog src/cli.ts",
 		"cli": "bun src/cli.ts"
 	},

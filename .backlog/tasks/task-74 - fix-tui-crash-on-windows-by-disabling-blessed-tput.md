@@ -23,3 +23,4 @@ Windows builds fail when board view tries to load built-in terminfo. Initialize 
 
 ## Implementation Notes
 - Wrap screen initialization in helper to reuse across modules
+- UPDATE: With the migration to bblessed (github:context-labs/bblessed), this issue is better handled as bblessed is optimized for Bun and cross-platform compatibility

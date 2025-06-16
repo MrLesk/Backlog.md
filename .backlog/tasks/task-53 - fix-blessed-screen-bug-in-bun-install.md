@@ -27,3 +27,6 @@ CLI is executed with Bun.
 Fixed loadBlessed() to prefer dynamic import which works under Bun.
 Updated README with note about Bun global install.
 Added regression test for blessed prompt (line-wrapping).
+
+### Update:
+The migration to bblessed (github:context-labs/bblessed) further improves Bun compatibility as it's specifically designed for Bun's runtime and module system.

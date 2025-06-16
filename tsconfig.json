@@ -15,6 +15,7 @@
 		// Best practices
 		"strict": true,
 		"skipLibCheck": true,
+		"typeRoots": ["./src/types", "./node_modules/@types"],
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedIndexedAccess": true,
 		"noImplicitOverride": true,

@@ -6,7 +6,7 @@
         "@biomejs/biome": "1.9.4",
         "@types/bun": "1.2.15",
         "@types/prompts": "2.4.9",
-        "blessed": "0.1.81",
+        "blessed": "github:context-labs/bblessed",
         "commander": "14.0.0",
         "gray-matter": "4.0.3",
         "husky": "9.1.7",
@@ -68,7 +68,7 @@
 
     "backlog.md-windows-x64": ["backlog.md-windows-x64@0.1.25", "", { "os": "win32", "cpu": "x64", "bin": { "backlog": "backlog.exe" } }, "sha512-xlfc9kiK45CqrVnR5W0ERUvSBmYk5fG7DOvp4Wuz6FV38mtQHJ7Hb/5Kv1y1xolu40ZjaJq97oETNvcoi9rWJQ=="],
 
-    "blessed": ["blessed@0.1.81", "", { "bin": { "blessed": "./bin/tput.js" } }, "sha512-LoF5gae+hlmfORcG1M5+5XZi4LBmvlXTzwJWzUlPryN/SJdSflZvROM2TwkT0GMpq7oqT48NRd4GS7BiVBc5OQ=="],
+    "blessed": ["blessed@github:context-labs/bblessed#8ff9821", { "bin": "./bin/tput.js" }, "context-labs-bblessed-8ff9821"],
 
     "braces": ["braces@3.0.3", "", { "dependencies": { "fill-range": "^7.1.1" } }, "sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA=="],
 

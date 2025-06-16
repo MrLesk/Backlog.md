@@ -24,7 +24,7 @@ Migrate all CLI interfaces to bblessed for a consistent terminal experience.
 
 ## Implementation Notes
 
-Successfully migrated all terminal UI elements to use the `blessed` library (originally referenced as `bblessed` which was a typo). The implementation follows a graceful degradation approach that ensures the CLI remains functional in all environments.
+Successfully migrated all terminal UI elements to use the `bblessed` library from GitHub (context-labs/bblessed), which is a Bun-optimized fork of blessed. This migration eliminated the need for the Windows terminfo patch script that was previously required.
 
 ### Key Design Decisions:
 
@@ -70,7 +70,9 @@ Successfully migrated all terminal UI elements to use the `blessed` library (ori
 
 **Package Updates:**
 - Removed: `prompts` package (no longer needed)
-- Added: `blessed@0.1.81` (corrected from typo `bblessed@0.1.1`)
+- Added: `blessed` from `github:context-labs/bblessed` (Bun-optimized fork)
+- Removed: `scripts/patch-blessed.js` (no longer needed with bblessed)
+- Removed: `resources/terminfo/` directory (bundled terminfo no longer required)
 - Updated: `bun.lock` and `package.json` accordingly
 
 ### Technical Implementation:

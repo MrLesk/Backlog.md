@@ -34,3 +34,6 @@ The task was successfully completed. The build configuration already had the `--
 - Built a standalone binary using `bun build src/cli.ts --compile`
 - Ran the binary in a directory without node_modules or blessed installed
 - Successfully executed commands that depend on blessed UI components
+
+### Update:
+With the migration to bblessed (github:context-labs/bblessed), the bundling is even more reliable as bblessed is specifically designed for Bun's compilation and bundling process.

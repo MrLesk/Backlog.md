@@ -1,12 +1,14 @@
 ---
 id: task-72
 title: Fix board view on Windows without terminfo
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-15'
+updated_date: '2025-06-16'
 labels:
   - bug
   - windows
+dependencies: []
 ---
 
 ## Description
@@ -25,3 +27,4 @@ The compiled CLI looks for blessed's terminfo files relative to the build path. 
 - Disabled `Tput` in every screen creation to avoid missing terminfo files on Windows.
 - Updated `line-wrapping.test.ts` to pass `{ tput: false }` when creating screens.
 - Verified the board view works on Windows without ENOENT errors.
+- UPDATE: The migration to bblessed (github:context-labs/bblessed) provides better cross-platform support and eliminates the need for terminfo patches entirely.
