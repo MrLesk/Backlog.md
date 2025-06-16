@@ -82,7 +82,8 @@ export async function renderBoardTui(
 				style: { selected: { fg: "white" } },
 			});
 
-			const items = [...(tasksByStatus.get(status) ?? [])].sort(compareIds).map((task) => {
+			const sortedTasks = [...(tasksByStatus.get(status) ?? [])].sort(compareIds);
+			const items = sortedTasks.map((task) => {
 				const assignee = task.assignee?.[0]
 					? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 					: "";
@@ -91,7 +92,7 @@ export async function renderBoardTui(
 			});
 
 			taskList.setItems(items);
-			columns.push({ list: taskList, tasks: tasksByStatus.get(status) ?? [] });
+			columns.push({ list: taskList, tasks: sortedTasks });
 		});
 
 		/* -------------------- navigation & interactions -------------------- */
