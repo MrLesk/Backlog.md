@@ -52,7 +52,7 @@ backlog task create "Render markdown as kanban"
 backlog board view
 ```
 
-All data is saved under `.backlog` folder as human‑readable Markdown (`task‑12 - Fix typo.md`).
+All data is saved under `.backlog` folder as human‑readable Markdown with the following format `task-<task-id> - <task-title>.md` (e.g. `task-12 - Fix typo.md`).
 
 ---
 

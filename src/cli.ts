@@ -241,7 +241,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 	};
 }
 
-const taskCmd = program.command("task").aliases(["tasks"]);
+const taskCmd = program.command("task").aliases(["tasks"]).option("--plain", "use plain text output for task view");
 
 taskCmd
 	.command("create <title>")
@@ -427,7 +427,8 @@ taskCmd
 taskCmd
 	.command("view <taskId>")
 	.description("display task details")
-	.action(async (taskId: string) => {
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
@@ -445,6 +446,19 @@ taskCmd
 
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
+			return;
+		}
+
+		// Plain text output for AI agents
+		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
+			console.log(`Task: ${task.id} - ${task.title}`);
+			console.log(`Status: ${task.status}`);
+			console.log(`Assignee: ${task.assignee?.join(", ") || "None"}`);
+			console.log(`Labels: ${task.labels?.join(", ") || "None"}`);
+			console.log(`Created: ${task.createdDate}`);
+			console.log(`Updated: ${task.updatedDate || task.createdDate}`);
+			console.log("\n---\n");
+			console.log(content);
 			return;
 		}
 
@@ -480,7 +494,7 @@ taskCmd
 		}
 	});
 
-taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
+taskCmd.argument("[taskId]").action(async (taskId: string | undefined, options: { plain?: boolean }) => {
 	if (!taskId) {
 		taskCmd.help();
 		return;
@@ -503,6 +517,19 @@ taskCmd.argument("[taskId]").action(async (taskId: string | undefined) => {
 
 	if (!task) {
 		console.error(`Task ${taskId} not found.`);
+		return;
+	}
+
+	// Plain text output for AI agents
+	if (options && (options.plain || process.argv.includes("--plain"))) {
+		console.log(`Task: ${task.id} - ${task.title}`);
+		console.log(`Status: ${task.status}`);
+		console.log(`Assignee: ${task.assignee?.join(", ") || "None"}`);
+		console.log(`Labels: ${task.labels?.join(", ") || "None"}`);
+		console.log(`Created: ${task.createdDate}`);
+		console.log(`Updated: ${task.updatedDate || task.createdDate}`);
+		console.log("\n---\n");
+		console.log(content);
 		return;
 	}
 

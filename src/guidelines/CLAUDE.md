@@ -8,10 +8,10 @@
 
 ```bash
 # 1 Identify work
-backlog task list --status "To Do"
+backlog task list --status "To Do" --plain
 
 # 2 Read details
-backlog task 42
+backlog task 42 --plain
 
 # 3 Start work: assign yourself & move column
 backlog task edit 42 -a @Claude -s "In Progress" -d "Implementation Plan"
@@ -62,8 +62,8 @@ Short, imperative explanation of the work.
 |---------|---------|
 | Create task | `backlog task create "Add OAuth System"`                    |
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`                    |
-| List tasks  | `backlog task list`                                  |
-| View detail | `backlog task 7`                                     |
+| List tasks  | `backlog task list --plain`                                  |
+| View detail | `backlog task 7 --plain`                                     |
 | Edit        | `backlog task edit 7 -a @Claude -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
@@ -73,4 +73,5 @@ Short, imperative explanation of the work.
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  
 - Prefer **idempotent** changes so reruns remain safe.  
 - Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
-- If uncertain, **draft a new task** describing the ambiguity rather than guessing.  
+- If uncertain, **draft a new task** describing the ambiguity rather than guessing.
+- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.  
