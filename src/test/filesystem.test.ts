@@ -83,6 +83,36 @@ describe("FileSystem", () => {
 			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2"]);
 		});
 
+		it("should sort tasks numerically by ID", async () => {
+			// Create tasks with IDs that would sort incorrectly with string comparison
+			const taskIds = ["task-2", "task-10", "task-1", "task-20", "task-3"];
+			for (const id of taskIds) {
+				await filesystem.saveTask({
+					...sampleTask,
+					id,
+					title: `Task ${id}`,
+				});
+			}
+
+			const tasks = await filesystem.listTasks();
+			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3", "task-10", "task-20"]);
+		});
+
+		it("should sort tasks with decimal IDs correctly", async () => {
+			// Create tasks with decimal IDs
+			const taskIds = ["task-2.10", "task-2.2", "task-2", "task-1", "task-2.1"];
+			for (const id of taskIds) {
+				await filesystem.saveTask({
+					...sampleTask,
+					id,
+					title: `Task ${id}`,
+				});
+			}
+
+			const tasks = await filesystem.listTasks();
+			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-2.1", "task-2.2", "task-2.10"]);
+		});
+
 		it("should archive a task", async () => {
 			await filesystem.saveTask(sampleTask);
 

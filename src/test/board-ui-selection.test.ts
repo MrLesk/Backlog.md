@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { compareIds } from "../board.ts";
 import type { Task } from "../types/index.ts";
+import { compareTaskIds } from "../utils/task-sorting.ts";
 
 describe("board UI task selection", () => {
-	it("compareIds sorts tasks numerically by ID", () => {
+	it("compareTaskIds sorts tasks numerically by ID", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-10",
@@ -47,14 +47,14 @@ describe("board UI task selection", () => {
 			},
 		];
 
-		const sorted = [...tasks].sort(compareIds);
+		const sorted = [...tasks].sort((a, b) => compareTaskIds(a.id, b.id));
 		expect(sorted[0].id).toBe("task-1");
 		expect(sorted[1].id).toBe("task-2");
 		expect(sorted[2].id).toBe("task-10");
 		expect(sorted[3].id).toBe("task-20");
 	});
 
-	it("compareIds handles decimal task IDs correctly", () => {
+	it("compareTaskIds handles decimal task IDs correctly", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-1.10",
@@ -88,7 +88,7 @@ describe("board UI task selection", () => {
 			},
 		];
 
-		const sorted = [...tasks].sort(compareIds);
+		const sorted = [...tasks].sort((a, b) => compareTaskIds(a.id, b.id));
 		expect(sorted[0].id).toBe("task-1.1");
 		expect(sorted[1].id).toBe("task-1.2");
 		expect(sorted[2].id).toBe("task-1.10");
@@ -131,7 +131,7 @@ describe("board UI task selection", () => {
 		];
 
 		// Simulate the display order (sorted)
-		const sortedTasks = [...unsortedTasks].sort(compareIds);
+		const sortedTasks = [...unsortedTasks].sort((a, b) => compareTaskIds(a.id, b.id));
 		const displayItems = sortedTasks.map((t) => `${t.id} - ${t.title}`);
 
 		// User clicks on index 0 (expects task-1)
@@ -201,7 +201,7 @@ describe("board UI task selection", () => {
 		];
 
 		// Both display and selection should use the same sorted array
-		const sortedTasks = [...tasks].sort(compareIds);
+		const sortedTasks = [...tasks].sort((a, b) => compareTaskIds(a.id, b.id));
 
 		// Verify each index maps to the correct task
 		for (let i = 0; i < sortedTasks.length; i++) {

@@ -5,6 +5,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constan
 import { parseDecisionLog, parseDocument, parseTask } from "../markdown/parser.ts";
 import { serializeDecisionLog, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import { sortByTaskId } from "../utils/task-sorting.ts";
 
 export class FileSystem {
 	private backlogDir: string;
@@ -108,7 +109,7 @@ export class FileSystem {
 				tasks.push(parseTask(content));
 			}
 
-			return tasks.sort((a, b) => a.id.localeCompare(b.id));
+			return sortByTaskId(tasks);
 		} catch (error) {
 			return [];
 		}
@@ -133,7 +134,7 @@ export class FileSystem {
 				});
 			}
 
-			return tasks.sort((a, b) => a.id.localeCompare(b.id));
+			return sortByTaskId(tasks);
 		} catch (error) {
 			return [];
 		}
@@ -285,7 +286,7 @@ export class FileSystem {
 				tasks.push(parseTask(content));
 			}
 
-			return tasks.sort((a, b) => a.id.localeCompare(b.id));
+			return sortByTaskId(tasks);
 		} catch {
 			return [];
 		}
@@ -336,7 +337,7 @@ export class FileSystem {
 				const content = await Bun.file(filepath).text();
 				decisions.push(parseDecisionLog(content));
 			}
-			return decisions.sort((a, b) => a.id.localeCompare(b.id));
+			return sortByTaskId(decisions);
 		} catch {
 			return [];
 		}

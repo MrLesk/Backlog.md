@@ -5,6 +5,7 @@ export interface BoardOptions {
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Task } from "./types/index.ts";
+import { compareTaskIds } from "./utils/task-sorting.ts";
 
 export type BoardLayout = "horizontal" | "vertical";
 export type BoardFormat = "terminal" | "markdown";
@@ -12,22 +13,6 @@ export type BoardFormat = "terminal" | "markdown";
 interface DisplayTask {
 	id: string;
 	title: string;
-}
-
-export function idSegments(id: string): number[] {
-	const normalized = id.startsWith("task-") ? id.slice(5) : id;
-	return normalized.split(".").map((part) => Number.parseInt(part, 10));
-}
-
-export function compareIds(a: Task, b: Task): number {
-	const segA = idSegments(a.id);
-	const segB = idSegments(b.id);
-	const len = Math.max(segA.length, segB.length);
-	for (let i = 0; i < len; i++) {
-		const diff = (segA[i] ?? 0) - (segB[i] ?? 0);
-		if (diff !== 0) return diff;
-	}
-	return 0;
 }
 
 function wrapText(text: string, maxWidth: number): string[] {
@@ -82,8 +67,8 @@ export function generateKanbanBoard(
 		const top: Task[] = [];
 		const children = new Map<string, Task[]>();
 
-		// Use compareIds for sorting instead of localeCompare
-		for (const t of items.sort(compareIds)) {
+		// Use compareTaskIds for sorting instead of localeCompare
+		for (const t of items.sort((a, b) => compareTaskIds(a.id, b.id))) {
 			const parent = t.parentTaskId ? byId.get(t.parentTaskId) : undefined;
 			if (parent && parent.status === t.status) {
 				const list = children.get(parent.id) || [];
@@ -98,7 +83,7 @@ export function generateKanbanBoard(
 		for (const t of top) {
 			result.push({ id: t.id, title: t.title });
 			const subs = children.get(t.id) || [];
-			subs.sort(compareIds);
+			subs.sort((a, b) => compareTaskIds(a.id, b.id));
 
 			for (const [subIdx, s] of subs.entries()) {
 				const isLastSub = subIdx === subs.length - 1;
