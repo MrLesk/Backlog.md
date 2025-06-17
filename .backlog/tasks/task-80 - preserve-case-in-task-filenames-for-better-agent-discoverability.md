@@ -31,7 +31,7 @@ Remove the `.toLowerCase()` call from the `sanitizeFilename` method to preserve 
 - [x] Verify existing tasks with lowercase filenames can still be loaded
 - [x] Test creating, updating, and archiving tasks with mixed-case titles
 - [x] Ensure no breaking changes for existing projects
-- [ ] Update any affected documentation
+- [x] Update any affected documentation
 
 ## Implementation Notes
 
@@ -52,5 +52,5 @@ Remove the `.toLowerCase()` call from the `sanitizeFilename` method to preserve 
 - **No Breaking Changes**: File lookups remain case-sensitive as before
 
 ### Follow-up
-- Documentation updates may be needed to reflect this change in behavior
-- Consider adding a note in CLAUDE.md about the filename format
+- ✅ Added note in CLAUDE.md about preserved case in filenames
+- The filename format is now documented for AI agents
