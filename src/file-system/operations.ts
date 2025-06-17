@@ -426,8 +426,7 @@ export class FileSystem {
 			.replace(/[<>:"/\\|?*]/g, "-")
 			.replace(/\s+/g, "-")
 			.replace(/-+/g, "-")
-			.replace(/^-|-$/g, "")
-			.toLowerCase();
+			.replace(/^-|-$/g, "");
 	}
 
 	private async ensureDirectoryExists(dirPath: string): Promise<void> {

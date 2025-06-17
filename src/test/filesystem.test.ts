@@ -318,7 +318,7 @@ describe("FileSystem", () => {
 
 			// Check that file was created
 			const docsFiles = await readdir(filesystem.docsDir);
-			expect(docsFiles.some((f) => f.includes("api-guide"))).toBe(true);
+			expect(docsFiles.some((f) => f.includes("API-Guide"))).toBe(true);
 		});
 
 		it("should save document without optional fields", async () => {
@@ -333,7 +333,7 @@ describe("FileSystem", () => {
 			await filesystem.saveDocument(minimalDoc);
 
 			const docsFiles = await readdir(filesystem.docsDir);
-			expect(docsFiles.some((f) => f.includes("simple-doc"))).toBe(true);
+			expect(docsFiles.some((f) => f.includes("Simple-Doc"))).toBe(true);
 		});
 
 		it("should list documents", async () => {
@@ -441,6 +441,30 @@ describe("FileSystem", () => {
 			const loaded = await filesystem.loadTask("task-special");
 
 			expect(loaded?.title).toBe("Task/with\\special:chars?");
+		});
+
+		it("should preserve case in filenames", async () => {
+			const taskWithMixedCase: Task = {
+				id: "task-mixed",
+				title: "Fix Task List Ordering",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Task with mixed case title",
+			};
+
+			await filesystem.saveTask(taskWithMixedCase);
+
+			// Check that the file exists with preserved case
+			const files = await readdir(filesystem.tasksDir);
+			const taskFile = files.find((f) => f.startsWith("task-mixed -"));
+			expect(taskFile).toBe("task-mixed - Fix-Task-List-Ordering.md");
+
+			// Verify the task can be loaded
+			const loaded = await filesystem.loadTask("task-mixed");
+			expect(loaded?.title).toBe("Fix Task List Ordering");
 		});
 
 		it("should avoid double dashes in filenames", async () => {
