@@ -142,8 +142,8 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			border: "line",
 			style,
 			tags: true,
-			keys: true,
-			vi: true,
+			keys: false,
+			vi: false,
 			mouse: true,
 			scrollable: true,
 			alwaysScroll: false,
@@ -240,27 +240,27 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private setupEventHandlers(): void {
 		if (!this.listBox) return;
 
-		// Selection events
-		// biome-ignore lint/suspicious/noExplicitAny: blessed event handler parameter
-		this.listBox.on("select", (item: any, index: number) => {
-			if (this.isMultiSelect) {
-				this.toggleSelection(index);
-			} else {
-				this.selectedIndex = index;
-				this.triggerSelection();
-			}
-		});
+		// Don't use the select event for navigation - only for explicit selection
+		// This prevents conflicts between navigation and selection
 
 		// Custom key bindings
 		const keys = this.options.keys || {};
 
-		// Navigation
+		// Navigation - disable built-in keys and use manual control like board view
 		this.listBox.key(keys.up || ["up", "k"], () => {
-			this.listBox.up();
+			const current = this.listBox.selected ?? 0;
+			if (current > 0) {
+				this.listBox.select(current - 1);
+				this.selectedIndex = current - 1;
+			}
 		});
 
 		this.listBox.key(keys.down || ["down", "j"], () => {
-			this.listBox.down();
+			const current = this.listBox.selected ?? 0;
+			if (current < this.listBox.items.length - 1) {
+				this.listBox.select(current + 1);
+				this.selectedIndex = current + 1;
+			}
 		});
 
 		// Selection/Toggle
@@ -274,7 +274,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			});
 		} else {
 			this.listBox.key(keys.select || ["enter"], () => {
-				this.selectedIndex = this.listBox.selected;
+				this.selectedIndex = this.listBox.selected ?? 0;
 				this.triggerSelection();
 			});
 		}
