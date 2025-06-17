@@ -21,7 +21,15 @@ describe("parseTaskId", () => {
 
 	test("handles invalid numeric parts", () => {
 		expect(parseTaskId("task-abc")).toEqual([0]);
-		expect(parseTaskId("task-1.abc.2")).toEqual([1, 0, 2]);
+		expect(parseTaskId("task-1.abc.2")).toEqual([2]); // Mixed numeric/non-numeric extracts trailing number
+	});
+
+	test("handles IDs with trailing numbers", () => {
+		expect(parseTaskId("task-draft")).toEqual([0]);
+		expect(parseTaskId("task-draft2")).toEqual([2]);
+		expect(parseTaskId("task-draft10")).toEqual([10]);
+		expect(parseTaskId("draft2")).toEqual([2]);
+		expect(parseTaskId("abc123")).toEqual([123]);
 	});
 });
 
@@ -46,6 +54,12 @@ describe("compareTaskIds", () => {
 	test("handles different depth levels", () => {
 		expect(compareTaskIds("task-1.1.1", "task-1.2")).toBeLessThan(0);
 		expect(compareTaskIds("task-1.2", "task-1.1.1")).toBeGreaterThan(0);
+	});
+
+	test("sorts IDs with trailing numbers", () => {
+		expect(compareTaskIds("task-draft", "task-draft2")).toBeLessThan(0);
+		expect(compareTaskIds("task-draft2", "task-draft10")).toBeLessThan(0);
+		expect(compareTaskIds("task-draft10", "task-draft2")).toBeGreaterThan(0);
 	});
 });
 

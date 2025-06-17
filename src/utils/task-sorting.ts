@@ -6,14 +6,27 @@ export function parseTaskId(taskId: string): number[] {
 	// Remove the "task-" prefix if present
 	const numericPart = taskId.replace(/^task-/, "");
 
-	// Split by dots to handle decimal task IDs like 5.2.1
-	const parts = numericPart.split(".");
-
-	// Convert each part to a number, defaulting to 0 if invalid
-	return parts.map((part) => {
+	// Try to extract numeric parts from the ID
+	// First check if it's a standard numeric ID (e.g., "1", "1.2", etc.)
+	const dotParts = numericPart.split(".");
+	const numericParts = dotParts.map((part) => {
 		const num = Number.parseInt(part, 10);
-		return Number.isNaN(num) ? 0 : num;
+		return Number.isNaN(num) ? null : num;
 	});
+
+	// If all parts are numeric, return them
+	if (numericParts.every((n) => n !== null)) {
+		return numericParts as number[];
+	}
+
+	// Otherwise, try to extract trailing number (e.g., "draft2" -> 2)
+	const trailingNumberMatch = numericPart.match(/(\d+)$/);
+	if (trailingNumberMatch) {
+		return [Number.parseInt(trailingNumberMatch[1], 10)];
+	}
+
+	// No numeric parts found, return 0 for consistent sorting
+	return [0];
 }
 
 /**
