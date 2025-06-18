@@ -59,12 +59,11 @@ statuses:
 		});
 
 		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("Task: task-1 - Test task for plain output");
-		expect(result.stdout).toContain("Status:");
-		expect(result.stdout).toContain("Assignee:");
-		expect(result.stdout).toContain("Labels:");
-		expect(result.stdout).toContain("Created:");
+		// Should contain the raw markdown with frontmatter
 		expect(result.stdout).toContain("---");
+		expect(result.stdout).toContain("id: task-1");
+		expect(result.stdout).toContain("title: Test task for plain output");
+		expect(result.stdout).toContain("status:");
 		expect(result.stdout).toContain("## Description");
 		expect(result.stdout).toContain("Test description");
 		// Should not contain TUI escape codes
@@ -78,8 +77,10 @@ statuses:
 		});
 
 		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("Task: task-1 - Test task for plain output");
-		expect(result.stdout).toContain("Status:");
+		// Should contain the raw markdown with frontmatter
+		expect(result.stdout).toContain("---");
+		expect(result.stdout).toContain("id: task-1");
+		expect(result.stdout).toContain("title: Test task for plain output");
 		expect(result.stdout).toContain("## Description");
 		// Should not contain TUI escape codes
 		expect(result.stdout).not.toContain("[?1049h");

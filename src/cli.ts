@@ -241,7 +241,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 	};
 }
 
-const taskCmd = program.command("task").aliases(["tasks"]).option("--plain", "use plain text output for task view");
+const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
 	.command("create <title>")
@@ -291,7 +291,9 @@ taskCmd
 		}
 
 		// Plain text output
-		if (options.plain) {
+		// Workaround for bun compile issue with commander options
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		if (isPlainFlag) {
 			const groups = new Map<string, Task[]>();
 			for (const task of filtered) {
 				const status = task.status || "";
@@ -451,13 +453,6 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
-			console.log(`Task: ${task.id} - ${task.title}`);
-			console.log(`Status: ${task.status}`);
-			console.log(`Assignee: ${task.assignee?.join(", ") || "None"}`);
-			console.log(`Labels: ${task.labels?.join(", ") || "None"}`);
-			console.log(`Created: ${task.createdDate}`);
-			console.log(`Updated: ${task.updatedDate || task.createdDate}`);
-			console.log("\n---\n");
 			console.log(content);
 			return;
 		}
@@ -494,48 +489,44 @@ taskCmd
 		}
 	});
 
-taskCmd.argument("[taskId]").action(async (taskId: string | undefined, options: { plain?: boolean }) => {
-	if (!taskId) {
-		taskCmd.help();
-		return;
-	}
+taskCmd
+	.argument("[taskId]")
+	.option("--plain", "use plain text output")
+	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
+		if (!taskId) {
+			taskCmd.help();
+			return;
+		}
 
-	const cwd = process.cwd();
-	const core = new Core(cwd);
-	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-	const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-	const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+		const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
 
-	if (!taskFile) {
-		console.error(`Task ${taskId} not found.`);
-		return;
-	}
+		if (!taskFile) {
+			console.error(`Task ${taskId} not found.`);
+			return;
+		}
 
-	const filePath = join(core.filesystem.tasksDir, taskFile);
-	const content = await Bun.file(filePath).text();
-	const task = await core.filesystem.loadTask(taskId);
+		const filePath = join(core.filesystem.tasksDir, taskFile);
+		const content = await Bun.file(filePath).text();
+		const task = await core.filesystem.loadTask(taskId);
 
-	if (!task) {
-		console.error(`Task ${taskId} not found.`);
-		return;
-	}
+		if (!task) {
+			console.error(`Task ${taskId} not found.`);
+			return;
+		}
 
-	// Plain text output for AI agents
-	if (options && (options.plain || process.argv.includes("--plain"))) {
-		console.log(`Task: ${task.id} - ${task.title}`);
-		console.log(`Status: ${task.status}`);
-		console.log(`Assignee: ${task.assignee?.join(", ") || "None"}`);
-		console.log(`Labels: ${task.labels?.join(", ") || "None"}`);
-		console.log(`Created: ${task.createdDate}`);
-		console.log(`Updated: ${task.updatedDate || task.createdDate}`);
-		console.log("\n---\n");
-		console.log(content);
-		return;
-	}
+		// Plain text output for AI agents
+		if (options && (options.plain || process.argv.includes("--plain"))) {
+			console.log(content);
+			return;
+		}
 
-	// Use enhanced task viewer
-	await viewTaskEnhanced(task, content);
-});
+		// Use enhanced task viewer
+		await viewTaskEnhanced(task, content);
+	});
 
 const draftCmd = program.command("draft");
 
@@ -731,7 +722,9 @@ docCmd
 		}
 
 		// Plain text output
-		if (options.plain) {
+		// Workaround for bun compile issue with commander options
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		if (isPlainFlag) {
 			for (const d of docs) {
 				console.log(`${d.id} - ${d.title}`);
 			}
@@ -810,7 +803,9 @@ decisionCmd
 		}
 
 		// Plain text output
-		if (options.plain) {
+		// Workaround for bun compile issue with commander options
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		if (isPlainFlag) {
 			for (const d of decisions) {
 				console.log(`${d.id} - ${d.title}`);
 			}
