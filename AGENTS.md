@@ -2,6 +2,7 @@
 
 ## Project structure
 
+```
 backlog.md/ (Root folder for "Backlog.md" project)
 └── .backlog/ ("Backlog.md" folder for managing tasks and docs)
     ├── drafts/ (list of tasks that are not ready to be implemented)
@@ -12,6 +13,7 @@ backlog.md/ (Root folder for "Backlog.md" project)
     ├── docs/ (project documentation)
     ├── decisions/ (team decisions regarding architecture/technologies)
     └── config.yml ("Backlog.md" configuration file)
+```
 
 Instructions for using the Backlog.md tool are available in the `readme.md` file in the root folder.
 
@@ -24,19 +26,16 @@ Each folder contains a `readme.md` file with instructions on how to use the Back
 
 ## 2. Your Workflow
 ```bash
-# 1 Find something to work on
-backlog task list --status "To Do" --plain
-
-# 2 Read details (use --plain for AI-friendly output)
+# 1 Read details (use --plain for AI-friendly output)
 backlog task 42 --plain
 
-# 3 Start work: assign yourself & move column
+# 2 Start work: assign yourself & move column
 backlog task edit 42 -a @AI-Agent -s "In Progress" -d "Implementation Plan"
 
-# 4 Break work down if needed
+# 3 Break work down if needed
 backlog task create "Refactor DB layer" -p 42 -a @AI-Agent -d "Description + Acceptance Criteria"
 
-# 5 Complete and mark Done
+# 4 Complete and mark Done
 backlog task edit 42 -s Done
 ```
 

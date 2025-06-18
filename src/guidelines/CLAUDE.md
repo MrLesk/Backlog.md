@@ -67,7 +67,7 @@ Short, imperative explanation of the work.
 | Edit        | `backlog task edit 7 -a @Claude -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
-| Demote to draft| `backlog task demote <id>` |
+| Demote to draft| `backlog task demote <task-id>` |
 
 ## 6. Tips for AI Agents
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  

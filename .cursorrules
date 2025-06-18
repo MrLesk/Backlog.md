@@ -28,6 +28,23 @@
 - Never modify files outside the designated project directories
 - Always verify file locations before making changes
 
+```
+backlog.md/ (Root folder for "Backlog.md" project)
+└── .backlog/ ("Backlog.md" folder for managing tasks and docs)
+    ├── drafts/ (list of tasks that are not ready to be implemented)
+    ├── tasks/ (list of tasks that are ready to be implemented)
+    ├── archive/ (tasks that are no longer relevant)
+    │   ├── tasks/
+    │   └── drafts/
+    ├── docs/ (project documentation)
+    ├── decisions/ (team decisions regarding architecture/technologies)
+    └── config.yml ("Backlog.md" configuration file)
+```
+
+Instructions for using the Backlog.md tool are available in the `readme.md` file in the root folder.
+
+Each folder contains a `readme.md` file with instructions on how to use the Backlog.md tool for that specific folder.
+
 ## 2. Task Management
 ### 2.1 Source of Truth
 - Tasks live under **`.backlog/tasks/`** (drafts under **`.backlog/drafts/`**)
