@@ -25,10 +25,14 @@ Add --plain flag to task view command to output plain text format suitable for A
 
 ## Implementation Notes
 
-Added `--plain` flag support to both task view commands:
-- `backlog task view 81 --plain` - Works correctly
-- `backlog task 81 --plain` - Works correctly
+Added `--plain` flag support to task commands:
+- `backlog task view <id> --plain` - Outputs raw markdown content
+- `backlog task <id> --plain` - Outputs raw markdown content  
+- `backlog task list --plain` - Outputs plain text task list
 
-The implementation checks for the --plain option and outputs plain text instead of launching the TUI viewer. This makes the output suitable for AI agents to parse.
+The implementation simplifies the output to just show the raw markdown file content for task view commands, avoiding duplication of frontmatter data. For the list command, it shows a simple text-based list grouped by status.
 
-Note: There's a test failure in the existing CLI test suite where task list --plain doesn't work correctly when run through Bun's test runner due to TTY detection differences. This is an existing issue not caused by this change.
+### Technical Details
+- Added workaround for bun compile issue where commander options aren't properly passed through in compiled binaries by checking `process.argv.includes("--plain")`
+- Fixed Windows CI test failures by handling Bun.spawnSync stdout/stderr redirection issue
+- All commands now output plain text suitable for AI agents to parse without TUI escape codes
