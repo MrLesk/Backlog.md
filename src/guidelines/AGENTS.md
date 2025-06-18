@@ -8,16 +8,16 @@
 
 ```bash
 # 1 Identify work
-backlog task list --status "To Do"
+backlog task list -s "To Do" --plain
 
 # 2 Read details
-backlog task view 42
+backlog task 42 --plain
 
 # 3 Start work: assign yourself & move column
 backlog task edit 42 -a @codex -s "In Progress"
 
 # 4 Break work down if needed
-backlog task create "Refactor DB layer" --parent 42 -a @codex
+backlog task create "Refactor DB layer" -p 42 -a @codex
 
 # 5 Complete and mark Done
 backlog task edit 42 -s Done
@@ -63,16 +63,17 @@ Short, imperative explanation of the work.
 | Purpose | Command |
 |---------|---------|
 | Create task | `backlog task create "Add OAuth"`                    |
-| Create sub task | `backlog task create --parent 14 "Add Google auth"`                    |
-| List tasks  | `backlog task list`                                  |
-| View detail | `backlog task 7`                                     |
+| Create sub task | `backlog task create -p 14 "Add Google auth"`                    |
+| List tasks  | `backlog task list --plain`                                  |
+| View detail | `backlog task 7 --plain`                                     |
 | Edit        | `backlog task edit 7 -a @codex -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
-| Demote to draft| `backlog task demote <id>` |
+| Demote to draft| `backlog task demote <task-id>` |
 
 ## 6. Tips for AI Agents
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  
 - Prefer **idempotent** changes so reruns remain safe.  
 - Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
-- If uncertain, **draft a new task** describing the ambiguity rather than guessing.  
+- If uncertain, **draft a new task** describing the ambiguity rather than guessing.
+- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.  

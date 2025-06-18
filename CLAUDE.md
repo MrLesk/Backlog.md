@@ -15,6 +15,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `bun test` - Run all tests
 - `bun test <filename>` - Run specific test file
 
+## Project structure
+
+```
+backlog.md/ (Root folder for "Backlog.md" project)
+└── .backlog/ ("Backlog.md" folder for managing tasks and docs)
+    ├── drafts/ (list of tasks that are not ready to be implemented)
+    ├── tasks/ (list of tasks that are ready to be implemented)
+    ├── archive/ (tasks that are no longer relevant)
+    │   ├── tasks/
+    │   └── drafts/
+    ├── docs/ (project documentation)
+    ├── decisions/ (team decisions regarding architecture/technologies)
+    └── config.yml ("Backlog.md" configuration file)
+```
+
+Instructions for using the Backlog.md tool are available in the `readme.md` file in the root folder.
+
+Each folder contains a `readme.md` file with instructions on how to use the Backlog.md tool for that specific folder.
+
 ## Project Architecture
 
 This is the **Backlog.md** project - a lightweight git + markdown project management tool for human-AI collaboration.
@@ -24,6 +43,7 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 - **Source Code**: Located in `/src` directory with modular TypeScript structure
 - **Task Management**: Uses markdown files in `.backlog/` directory structure
 - **Workflow**: Git-integrated with task IDs referenced in commits and PRs
+
 
 ### Key Components
 - **Task System**: Tasks stored as `task-<id> - <title>.md` files with decimal subtasks (e.g., `task-4.1`)
@@ -37,7 +57,7 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 - Write relevant tests when implementing new functionality or fixing bugs
 - Follow decimal numbering for subtasks
 - Maintain clean git status before commits
-- Use task-descriptive branch names: `<task-id> feature description`
+- Use task-id branch names: `task/<task-id>`
 - When you start working on a task, update its status to `In Progress`, assign yourself as the assignee, and push the change.
 - After testing a task, mark it **Done** with:
 
@@ -73,9 +93,9 @@ A task is **Done** only when **all** of the following hold:
 |---------|---------|
 | Create task | `backlog task create "Add OAuth"`                    |
 | Create sub task | `backlog task create --parent 14 "Add Google auth"`                    |
-| List tasks  | `backlog task list`                                  |
-| View detail | `backlog task 7`                                     |
-| Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
+| List tasks  | `backlog task list --plain`                                  |
+| View detail | `backlog task 7 --plain`                                     |
+| Edit        | `backlog task edit 7 -a @claude -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
@@ -84,4 +104,5 @@ A task is **Done** only when **all** of the following hold:
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  
 - Prefer **idempotent** changes so reruns remain safe.  
 - Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
-- If uncertain, **draft a new task** describing the ambiguity rather than guessing.  
+- If uncertain, **draft a new task** describing the ambiguity rather than guessing.
+- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.  

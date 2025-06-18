@@ -28,6 +28,23 @@
 - Never modify files outside the designated project directories
 - Always verify file locations before making changes
 
+```
+backlog.md/ (Root folder for "Backlog.md" project)
+└── .backlog/ ("Backlog.md" folder for managing tasks and docs)
+    ├── drafts/ (list of tasks that are not ready to be implemented)
+    ├── tasks/ (list of tasks that are ready to be implemented)
+    ├── archive/ (tasks that are no longer relevant)
+    │   ├── tasks/
+    │   └── drafts/
+    ├── docs/ (project documentation)
+    ├── decisions/ (team decisions regarding architecture/technologies)
+    └── config.yml ("Backlog.md" configuration file)
+```
+
+Instructions for using the Backlog.md tool are available in the `readme.md` file in the root folder.
+
+Each folder contains a `readme.md` file with instructions on how to use the Backlog.md tool for that specific folder.
+
 ## 2. Task Management
 ### 2.1 Source of Truth
 - Tasks live under **`.backlog/tasks/`** (drafts under **`.backlog/drafts/`**)
@@ -37,10 +54,10 @@
 ### 2.2 Your Workflow
 ```bash
 # 1 Find something to work on
-backlog task list --status "To Do"
+backlog task list --status "To Do" --plain
 
-# 2 Read details
-backlog task 42
+# 2 Read details (use --plain for AI-friendly output)
+backlog task 42 --plain
 
 # 3 Start work: assign yourself & move column
 backlog task edit 42 -a @Cursor -s "In Progress" -d "Implementation Plan"
@@ -241,8 +258,8 @@ A task is **Done** only when **all** of the following hold:
 |---------|---------|
 | Create task | `backlog task create "Add OAuth System"`                    |
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`                    |
-| List tasks  | `backlog task list`                                  |
-| View detail | `backlog task 7`                                     |
+| List tasks  | `backlog task list --plain`                                  |
+| View detail | `backlog task 7 --plain`                                     |
 | Edit        | `backlog task edit 7 -a @Cursor -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
@@ -252,4 +269,5 @@ A task is **Done** only when **all** of the following hold:
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  
 - Prefer **idempotent** changes so reruns remain safe.  
 - Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
-- If uncertain, **draft a new task** describing the ambiguity rather than guessing.  
+- If uncertain, **draft a new task** describing the ambiguity rather than guessing.
+- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.  

@@ -2,6 +2,7 @@
 
 ## Project structure
 
+```
 backlog.md/ (Root folder for "Backlog.md" project)
 └── .backlog/ ("Backlog.md" folder for managing tasks and docs)
     ├── drafts/ (list of tasks that are not ready to be implemented)
@@ -12,6 +13,7 @@ backlog.md/ (Root folder for "Backlog.md" project)
     ├── docs/ (project documentation)
     ├── decisions/ (team decisions regarding architecture/technologies)
     └── config.yml ("Backlog.md" configuration file)
+```
 
 Instructions for using the Backlog.md tool are available in the `README.md` file in the root folder.
 
@@ -24,19 +26,16 @@ Each folder contains a `README.md` file with instructions on how to use the Back
 
 ## 2. Your Workflow
 ```bash
-# 1 Find something to work on
-backlog task list --status "To Do"
+# 1 Read details (use --plain for AI-friendly output)
+backlog task 42 --plain
 
-# 2 Read details
-backlog task 42
-
-# 3 Start work: assign yourself & move column
+# 2 Start work: assign yourself & move column
 backlog task edit 42 -a @AI-Agent -s "In Progress" -d "Implementation Plan"
 
-# 4 Break work down if needed
+# 3 Break work down if needed
 backlog task create "Refactor DB layer" -p 42 -a @AI-Agent -d "Description + Acceptance Criteria"
 
-# 5 Complete and mark Done
+# 4 Complete and mark Done
 backlog task edit 42 -s Done
 ```
 
@@ -90,8 +89,8 @@ A task is **Done** only when **all** of the following hold:
 |---------|---------|
 | Create task | `backlog task create "Add OAuth System"`                    |
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`                    |
-| List tasks  | `backlog task list`                                  |
-| View detail | `backlog task 7`                                     |
+| List tasks  | `backlog task list --plain`                                  |
+| View detail | `backlog task 7 --plain`                                     |
 | Edit        | `backlog task edit 7 -a @AI-Agent -l auth,backend`       |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
@@ -101,4 +100,5 @@ A task is **Done** only when **all** of the following hold:
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  
 - Prefer **idempotent** changes so reruns remain safe.  
 - Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
-- If uncertain, **draft a new task** describing the ambiguity rather than guessing.  
+- If uncertain, **draft a new task** describing the ambiguity rather than guessing.
+- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.  
