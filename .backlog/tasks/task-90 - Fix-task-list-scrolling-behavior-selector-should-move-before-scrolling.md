@@ -1,9 +1,11 @@
 ---
 id: task-90
 title: Fix task list scrolling behavior - selector should move before scrolling
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-06-19'
+updated_date: '2025-06-19'
 labels:
   - bug
   - ui
