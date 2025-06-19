@@ -181,64 +181,64 @@ export async function viewTaskEnhanced(
 	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
 	let headerBox: any;
 	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let metadataBox: any;
+	let divider: any;
 	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
 	let descriptionBox: any;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let bottomBox: any;
 
 	function refreshDetailPane() {
 		// Clear existing detail pane content
 		if (headerBox) headerBox.destroy();
-		if (metadataBox) metadataBox.destroy();
+		if (divider) divider.destroy();
 		if (descriptionBox) descriptionBox.destroy();
-		if (bottomBox) bottomBox.destroy();
 
 		// Update screen title
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		// Dynamic header section with task ID, title, status, date, and tags
+		// Header section with task ID, title, and status
 		headerBox = blessed.box({
 			parent: detailPane,
 			top: 0,
 			left: 0,
-			width: "100%-2", // Account for border
-			height: "shrink", // Dynamic height based on content
-			border: "line",
-			style: {
-				border: { fg: "blue" },
-			},
+			width: "100%",
+			height: "shrink",
 			tags: true,
 			wrap: true,
-			scrollable: false, // Header should never scroll
-			padding: { bottom: 1 }, // Add padding for better spacing
+			scrollable: false,
+			padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		});
 
 		// Format header content - just status and title
-		const headerContent = ` {${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`;
+		const headerContent = `{${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`;
 
 		headerBox.setContent(headerContent);
 
-		// Render to calculate header height
-		screen.render();
-
-		// Get the actual height of the header after content is set
-		const headerHeight = headerBox.height as number;
+		// Create a divider line
+		divider = blessed.line({
+			parent: detailPane,
+			top: headerBox.bottom,
+			left: 0,
+			width: "100%",
+			orientation: "horizontal",
+			style: {
+				fg: "gray",
+			},
+		});
 
 		// Scrollable body container beneath the header
 		const bodyContainer = blessed.box({
 			parent: detailPane,
-			top: headerHeight, // Start below the dynamic header
+			top: headerBox.bottom + 1,
 			left: 0,
-			width: "100%-2", // Account for border
-			height: `100%-${headerHeight + 1}`, // Fill remaining space below header
+			width: "100%",
+			bottom: 0,
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
+			vi: true,
 			mouse: true,
 			tags: true,
 			wrap: true,
-			padding: { left: 1, right: 1, top: 1 },
+			padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		});
 
 		// Build the scrollable body content
@@ -582,22 +582,30 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	// Generate enhanced detail content
 	const { headerContent, bodyContent } = generateDetailContent(task, content);
 
-	// Dynamic header section with task ID, title, status, date, and tags
+	// Header section with task info
 	const headerBox = blessed.box({
 		parent: popup,
 		top: 0,
 		left: 0,
-		width: "100%-2", // Account for border
+		width: "100%",
 		height: "shrink",
-		border: "line",
-		style: {
-			border: { fg: "blue" },
-		},
 		tags: true,
 		wrap: true,
-		scrollable: false, // Header should never scroll
-		padding: { bottom: 1 },
+		scrollable: false,
+		padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		content: headerContent.join("\n"),
+	});
+
+	// Divider line
+	const dividerLine = blessed.line({
+		parent: popup,
+		top: headerBox.bottom,
+		left: 0,
+		width: "100%",
+		orientation: "horizontal",
+		style: {
+			fg: "gray",
+		},
 	});
 
 	// Escape indicator
@@ -614,24 +622,21 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		},
 	});
 
-	// Render to calculate header height
-	screen.render();
-	const headerHeight = headerBox.height as number;
-
 	// Scrollable body container beneath the header
 	const contentArea = blessed.box({
 		parent: popup,
-		top: headerHeight, // Start below the dynamic header
+		top: headerBox.bottom + 1,
 		left: 0,
-		width: "100%-2", // Account for border
-		height: `100%-${headerHeight + 2}`, // Leave space for header and bottom border
+		width: "100%",
+		bottom: 0,
 		scrollable: true,
-		alwaysScroll: false,
+		alwaysScroll: true,
 		keys: true,
+		vi: true,
 		mouse: true,
 		tags: true,
 		wrap: true,
-		padding: { left: 1, right: 1, top: 1 },
+		padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		content: bodyContent.join("\n"),
 	});
 
