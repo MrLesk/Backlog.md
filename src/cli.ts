@@ -249,6 +249,8 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
+	.option("--ac <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
+	.option("--acceptance-criteria <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.action(async (title: string, options) => {
@@ -256,6 +258,19 @@ taskCmd
 		const core = new Core(cwd);
 		const id = await generateNextId(core, options.parent);
 		const task = buildTaskFromOptions(id, title, options);
+
+		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
+		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
+		if (acceptanceCriteria) {
+			const { updateTaskAcceptanceCriteria } = await import("./markdown/serializer.ts");
+			const criteria = Array.isArray(acceptanceCriteria)
+				? acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
+				: String(acceptanceCriteria)
+						.split(",")
+						.map((item: string) => item.trim());
+			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+		}
+
 		if (options.draft) {
 			await core.createDraft(task, true);
 			console.log(`Created draft ${id}`);
@@ -374,6 +389,8 @@ taskCmd
 	.option("-l, --label <labels>")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
+	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
+	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -422,6 +439,18 @@ taskCmd
 		}
 		task.labels = labels;
 		task.updatedDate = new Date().toISOString().split("T")[0];
+
+		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
+		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
+		if (acceptanceCriteria) {
+			const { updateTaskAcceptanceCriteria } = await import("./markdown/serializer.ts");
+			const criteria = Array.isArray(acceptanceCriteria)
+				? acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
+				: String(acceptanceCriteria)
+						.split(",")
+						.map((item: string) => item.trim());
+			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+		}
 
 		await core.updateTask(task, true);
 		console.log(`Updated task ${task.id}`);
