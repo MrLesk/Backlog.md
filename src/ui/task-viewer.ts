@@ -109,32 +109,35 @@ export async function viewTaskEnhanced(
 		left: 0,
 		width: "40%",
 		height: "100%-1", // Leave space for help bar
+		border: {
+			type: "line",
+		},
+		style: {
+			border: { fg: "gray" },
+		},
+		label: ` ${options.title || "Tasks"} `,
 	});
 
-	// Detail pane (right 60%) with border and padding
+	// Detail pane (right 60%) with border
 	const detailPane = blessed.box({
 		parent: container,
 		top: 0,
 		left: "40%",
-		// left: taskListPane.width,
-		// left : "0%",
 		width: "60%",
 		height: "100%-1", // Leave space for help bar
-		// border: {
-		// 	type: "line",
-		// },
-		// padding: {
-		// 	left: 1,
-		// },
-		// style: {
-		// 	border: { fg: "gray" },
-		// },
+		border: {
+			type: "line",
+		},
+		style: {
+			border: { fg: "gray" },
+		},
+		label: " Details ",
 	});
 
 	// Create task list using generic list component
 	const taskList = createGenericList<Task>({
 		parent: taskListPane,
-		title: options.title || "Tasks",
+		title: "", // Empty title since we'll use the pane's label
 		items: allTasks,
 		selectedIndex: Math.max(0, initialIndex),
 		itemRenderer: (task: Task) => {
@@ -361,6 +364,9 @@ export async function viewTaskEnhanced(
 		// Set the complete body content
 		bodyContainer.setContent(bodyContent.join("\n"));
 
+		// Reset scroll position to top
+		bodyContainer.setScrollPerc(0);
+
 		// Store reference to body container for focus management
 		descriptionBox = bodyContainer;
 
@@ -381,8 +387,8 @@ export async function viewTaskEnhanced(
 			width: "100%",
 			height: 1,
 			content: options.filterDescription
-				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · Tab switch · q/Esc quit `
-				: " ↑/↓ navigate · Tab switch pane · ←/→ scroll · q/Esc quit ",
+				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ←/→ switch pane · q/Esc quit `
+				: " ↑/↓ navigate · ←/→ or Tab switch pane · q/Esc quit ",
 			style: {
 				fg: "gray",
 				bg: "black",
@@ -390,21 +396,39 @@ export async function viewTaskEnhanced(
 		});
 
 		// Focus management
-		const focusableElements = [taskList.getListBox(), descriptionBox];
-		let focusIndex = 0; // Start with task list
-		focusableElements[focusIndex].focus();
+		let focusIndex = 0; // 0 = task list, 1 = detail pane
 
-		// Tab navigation between panes
-		screen.key(["tab"], () => {
-			focusIndex = (focusIndex + 1) % focusableElements.length;
-			focusableElements[focusIndex].focus();
+		const updateFocus = (newIndex: number) => {
+			if (newIndex < 0 || newIndex > 1) return;
+
+			focusIndex = newIndex;
+
+			// Update border colors
+			if (focusIndex === 0) {
+				taskListPane.style.border.fg = "blue";
+				detailPane.style.border.fg = "gray";
+				taskList.getListBox().focus();
+			} else {
+				taskListPane.style.border.fg = "gray";
+				detailPane.style.border.fg = "blue";
+				descriptionBox.focus();
+				// Ensure we start at the top when focusing detail pane
+				descriptionBox.setScrollPerc(0);
+			}
+
 			screen.render();
+		};
+
+		// Initialize focus on task list
+		updateFocus(0);
+
+		// Navigation between panes
+		screen.key(["tab", "right", "l"], () => {
+			updateFocus(focusIndex === 0 ? 1 : 0);
 		});
 
-		screen.key(["S-tab"], () => {
-			focusIndex = (focusIndex - 1 + focusableElements.length) % focusableElements.length;
-			focusableElements[focusIndex].focus();
-			screen.render();
+		screen.key(["S-tab", "left", "h"], () => {
+			updateFocus(focusIndex === 0 ? 1 : 0);
 		});
 
 		// Exit keys
