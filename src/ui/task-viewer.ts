@@ -201,7 +201,7 @@ export async function viewTaskEnhanced(
 			tags: true,
 			wrap: true,
 			scrollable: false,
-			padding: { left: 1, right: 1, top: 0, bottom: 0 },
+			padding: { left: 1, right: 1 },
 		});
 
 		// Format header content - just status and title
@@ -402,12 +402,12 @@ export async function viewTaskEnhanced(
 
 			// Update border colors
 			if (focusIndex === 0) {
-				listBox.style.border.fg = "blue";
+				listBox.style.border.fg = "yellow";
 				detailPane.style.border.fg = "gray";
 				listBox.focus();
 			} else {
 				listBox.style.border.fg = "gray";
-				detailPane.style.border.fg = "blue";
+				detailPane.style.border.fg = "yellow";
 				descriptionBox.focus();
 				// Ensure we start at the top when focusing detail pane
 				descriptionBox.setScrollPerc(0);
@@ -614,7 +614,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		tags: true,
 		wrap: true,
 		scrollable: false,
-		padding: { left: 1, right: 1, top: 0, bottom: 0 },
+		padding: { left: 1, right: 1 },
 		content: headerContent.join("\n"),
 	});
 

@@ -93,7 +93,7 @@ export async function renderBoardTui(
 			});
 
 			taskList.setItems(items);
-			columns.push({ list: taskList, tasks: sortedTasks });
+			columns.push({ list: taskList, tasks: sortedTasks, box: column });
 		});
 
 		/* -------------------- navigation & interactions -------------------- */
@@ -102,13 +102,15 @@ export async function renderBoardTui(
 
 		const focusColumn = (idx: number) => {
 			if (popupOpen || idx === currentCol || idx < 0 || idx >= columns.length) return;
-			const prev = columns[currentCol].list;
-			prev.style.selected.bg = undefined;
+			const prev = columns[currentCol];
+			prev.list.style.selected.bg = undefined;
+			prev.box.style.border.fg = "gray";
 
 			currentCol = idx;
-			const curr = columns[currentCol].list;
-			curr.focus();
-			curr.style.selected.bg = "blue";
+			const curr = columns[currentCol];
+			curr.list.focus();
+			curr.list.style.selected.bg = "blue";
+			curr.box.style.border.fg = "yellow";
 			screen.render();
 		};
 
@@ -116,6 +118,7 @@ export async function renderBoardTui(
 			columns[0].list.focus();
 			columns[0].list.select(0);
 			columns[0].list.style.selected.bg = "blue";
+			columns[0].box.style.border.fg = "yellow";
 		}
 
 		screen.key(["left", "h"], () => focusColumn(currentCol - 1));
