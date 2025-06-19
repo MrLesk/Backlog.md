@@ -215,11 +215,9 @@ export async function viewTaskEnhanced(
 
 		// Format header content with key metadata
 		const headerContent = [];
-		// First line: ID, title, and status icon
+		// First line: status icon, ID, and title
 		headerContent.push(
-			` {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title} {${getStatusColor(
-				currentSelectedTask.status,
-			)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/}`,
+			` {${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`,
 		);
 
 		// Second line with metadata
@@ -426,11 +424,9 @@ export async function viewTaskEnhanced(
 function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
 	// Format header content with key metadata
 	const headerContent = [];
-	// First line: ID, title, and status icon
+	// First line: status icon, ID, and title
 	headerContent.push(
-		` {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title} {${getStatusColor(
-			task.status,
-		)}-fg}${formatStatusWithIcon(task.status)}{/}`,
+		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	);
 
 	// Second line with metadata
