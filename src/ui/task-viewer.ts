@@ -410,18 +410,14 @@ export async function viewTaskEnhanced(
 			// Get the task list's actual list box
 			const listBox = taskList.getListBox();
 
-			// Update border colors and selection style
+			// Update border colors
 			if (focusIndex === 0) {
 				taskListPane.style.border.fg = "yellow";
 				detailPane.style.border.fg = "gray";
-				// Restore selection background when focused
-				listBox.style.selected.bg = "blue";
 				listBox.focus();
 			} else {
 				taskListPane.style.border.fg = "gray";
 				detailPane.style.border.fg = "yellow";
-				// Remove selection background when not focused
-				listBox.style.selected.bg = undefined;
 				descriptionBox.focus();
 				// Ensure we start at the top when focusing detail pane
 				descriptionBox.setScrollPerc(0);
