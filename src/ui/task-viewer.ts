@@ -142,6 +142,10 @@ export async function viewTaskEnhanced(
 		items: allTasks,
 		selectedIndex: Math.max(0, initialIndex),
 		border: false, // Disable border since pane has one
+		top: 0,
+		left: 0,
+		width: "100%-2", // Account for pane's left/right borders
+		height: "100%-2", // Account for pane's top/bottom borders
 		itemRenderer: (task: Task) => {
 			const statusIcon = formatStatusWithIcon(task.status);
 			const statusColor = getStatusColor(task.status);
@@ -177,8 +181,6 @@ export async function viewTaskEnhanced(
 				refreshDetailPane();
 			})();
 		},
-		width: "100%",
-		height: "100%",
 		showHelp: false, // We'll show help in the footer
 	});
 
