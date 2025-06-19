@@ -75,6 +75,7 @@ export async function viewTaskEnhanced(
 		core?: Core;
 		title?: string;
 		filterDescription?: string;
+		startWithDetailFocus?: boolean;
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
@@ -102,20 +103,13 @@ export async function viewTaskEnhanced(
 		autoPadding: true,
 	});
 
-	// Task list pane (left 40%)
+	// Task list pane (left 40%) - no border since task list has its own
 	const taskListPane = blessed.box({
 		parent: container,
 		top: 0,
 		left: 0,
 		width: "40%",
 		height: "100%-1", // Leave space for help bar
-		border: {
-			type: "line",
-		},
-		style: {
-			border: { fg: "gray" },
-		},
-		label: ` ${options.title || "Tasks"} `,
 	});
 
 	// Detail pane (right 60%) with border
@@ -137,7 +131,7 @@ export async function viewTaskEnhanced(
 	// Create task list using generic list component
 	const taskList = createGenericList<Task>({
 		parent: taskListPane,
-		title: "", // Empty title since we'll use the pane's label
+		title: options.title || "Tasks",
 		items: allTasks,
 		selectedIndex: Math.max(0, initialIndex),
 		itemRenderer: (task: Task) => {
@@ -202,7 +196,7 @@ export async function viewTaskEnhanced(
 			parent: detailPane,
 			top: 0,
 			left: 0,
-			width: "100%",
+			width: "100%-2", // Account for left and right borders
 			height: "shrink",
 			tags: true,
 			wrap: true,
@@ -220,7 +214,7 @@ export async function viewTaskEnhanced(
 			parent: detailPane,
 			top: headerBox.bottom,
 			left: 0,
-			width: "100%",
+			width: "100%-2", // Account for left and right borders
 			orientation: "horizontal",
 			style: {
 				fg: "gray",
@@ -232,8 +226,8 @@ export async function viewTaskEnhanced(
 			parent: detailPane,
 			top: headerBox.bottom + 1,
 			left: 0,
-			width: "100%",
-			bottom: 0,
+			width: "100%-2", // Account for left and right borders
+			bottom: 1, // Leave space for bottom border
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
@@ -403,13 +397,16 @@ export async function viewTaskEnhanced(
 
 			focusIndex = newIndex;
 
+			// Get the task list's actual list box
+			const listBox = taskList.getListBox();
+
 			// Update border colors
 			if (focusIndex === 0) {
-				taskListPane.style.border.fg = "blue";
+				listBox.style.border.fg = "blue";
 				detailPane.style.border.fg = "gray";
-				taskList.getListBox().focus();
+				listBox.focus();
 			} else {
-				taskListPane.style.border.fg = "gray";
+				listBox.style.border.fg = "gray";
 				detailPane.style.border.fg = "blue";
 				descriptionBox.focus();
 				// Ensure we start at the top when focusing detail pane
@@ -419,8 +416,9 @@ export async function viewTaskEnhanced(
 			screen.render();
 		};
 
-		// Initialize focus on task list
-		updateFocus(0);
+		// Initialize focus based on whether we're viewing a specific task or list
+		const initialFocus = options.startWithDetailFocus === true ? 1 : 0;
+		updateFocus(initialFocus);
 
 		// Navigation between panes
 		screen.key(["tab", "right", "l"], () => {

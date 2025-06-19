@@ -501,8 +501,8 @@ taskCmd
 			return;
 		}
 
-		// Use enhanced task viewer
-		await viewTaskEnhanced(task, content);
+		// Use enhanced task viewer with detail focus
+		await viewTaskEnhanced(task, content, { startWithDetailFocus: true });
 	});
 
 taskCmd
@@ -568,8 +568,8 @@ taskCmd
 			return;
 		}
 
-		// Use enhanced task viewer
-		await viewTaskEnhanced(task, content);
+		// Use enhanced task viewer with detail focus
+		await viewTaskEnhanced(task, content, { startWithDetailFocus: true });
 	});
 
 const draftCmd = program.command("draft");
