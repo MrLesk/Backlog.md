@@ -214,35 +214,10 @@ export async function viewTaskEnhanced(
 			padding: { bottom: 1 }, // Add padding for better spacing
 		});
 
-		// Format header content with key metadata
-		const headerContent = [];
-		// First line: status icon, ID, and title
-		headerContent.push(
-			` {${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`,
-		);
+		// Format header content - just status and title
+		const headerContent = ` {${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`;
 
-		// Second line with metadata
-		const metadataLine = [];
-
-		if (currentSelectedTask.assignee?.length) {
-			const assigneeList = currentSelectedTask.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
-			metadataLine.push(`{cyan-fg}${assigneeList}{/}`);
-		}
-
-		metadataLine.push(`{gray-fg}Created: ${currentSelectedTask.createdDate}{/}`);
-
-		if (currentSelectedTask.updatedDate && currentSelectedTask.updatedDate !== currentSelectedTask.createdDate) {
-			metadataLine.push(`{gray-fg}Updated: ${currentSelectedTask.updatedDate}{/}`);
-		}
-
-		// Add labels to header if they exist
-		if (currentSelectedTask.labels?.length) {
-			metadataLine.push(`${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
-		}
-
-		headerContent.push(` ${metadataLine.join(" • ")}`);
-
-		headerBox.setContent(headerContent.join("\n"));
+		headerBox.setContent(headerContent);
 
 		// Render to calculate header height
 		screen.render();
@@ -269,45 +244,62 @@ export async function viewTaskEnhanced(
 		// Build the scrollable body content
 		const bodyContent = [];
 
-		// Add additional metadata section
-		if (
-			currentSelectedTask.reporter ||
-			currentSelectedTask.milestone ||
-			currentSelectedTask.parentTaskId ||
-			currentSelectedTask.subtasks?.length ||
-			currentSelectedTask.dependencies?.length
-		) {
-			bodyContent.push(formatHeading("Details", 2));
+		// Add details section with all metadata
+		bodyContent.push(formatHeading("Details", 2));
 
-			const metadata = [];
-			if (currentSelectedTask.reporter) {
-				const reporterText = currentSelectedTask.reporter.startsWith("@")
-					? currentSelectedTask.reporter
-					: `@${currentSelectedTask.reporter}`;
-				metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
-			}
+		const metadata = [];
 
-			if (currentSelectedTask.milestone) {
-				metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${currentSelectedTask.milestone}{/}`);
-			}
+		// Always show created date
+		metadata.push(`{bold}Created:{/bold} ${currentSelectedTask.createdDate}`);
 
-			if (currentSelectedTask.parentTaskId) {
-				metadata.push(`{bold}Parent:{/bold} {blue-fg}${currentSelectedTask.parentTaskId}{/}`);
-			}
-
-			if (currentSelectedTask.subtasks?.length) {
-				metadata.push(
-					`{bold}Subtasks:{/bold} ${currentSelectedTask.subtasks.length} task${currentSelectedTask.subtasks.length > 1 ? "s" : ""}`,
-				);
-			}
-
-			if (currentSelectedTask.dependencies?.length) {
-				metadata.push(`{bold}Dependencies:{/bold} ${currentSelectedTask.dependencies.join(", ")}`);
-			}
-
-			bodyContent.push(metadata.join("\n"));
-			bodyContent.push("");
+		// Show updated date if different from created
+		if (currentSelectedTask.updatedDate && currentSelectedTask.updatedDate !== currentSelectedTask.createdDate) {
+			metadata.push(`{bold}Updated:{/bold} ${currentSelectedTask.updatedDate}`);
 		}
+
+		// Assignee
+		if (currentSelectedTask.assignee?.length) {
+			const assigneeList = currentSelectedTask.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+			metadata.push(`{bold}Assignee:{/bold} {cyan-fg}${assigneeList}{/}`);
+		}
+
+		// Labels
+		if (currentSelectedTask.labels?.length) {
+			metadata.push(`{bold}Labels:{/bold} ${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+		}
+
+		// Reporter
+		if (currentSelectedTask.reporter) {
+			const reporterText = currentSelectedTask.reporter.startsWith("@")
+				? currentSelectedTask.reporter
+				: `@${currentSelectedTask.reporter}`;
+			metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
+		}
+
+		// Milestone
+		if (currentSelectedTask.milestone) {
+			metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${currentSelectedTask.milestone}{/}`);
+		}
+
+		// Parent task
+		if (currentSelectedTask.parentTaskId) {
+			metadata.push(`{bold}Parent:{/bold} {blue-fg}${currentSelectedTask.parentTaskId}{/}`);
+		}
+
+		// Subtasks
+		if (currentSelectedTask.subtasks?.length) {
+			metadata.push(
+				`{bold}Subtasks:{/bold} ${currentSelectedTask.subtasks.length} task${currentSelectedTask.subtasks.length > 1 ? "s" : ""}`,
+			);
+		}
+
+		// Dependencies
+		if (currentSelectedTask.dependencies?.length) {
+			metadata.push(`{bold}Dependencies:{/bold} ${currentSelectedTask.dependencies.join(", ")}`);
+		}
+
+		bodyContent.push(metadata.join("\n"));
+		bodyContent.push("");
 
 		// Description section
 		bodyContent.push(formatHeading("Description", 2));
@@ -429,66 +421,66 @@ export async function viewTaskEnhanced(
  * Generate enhanced detail content structure (reusable)
  */
 function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
-	// Format header content with key metadata
-	const headerContent = [];
-	// First line: status icon, ID, and title
-	headerContent.push(
+	// Format header content - just status and title
+	const headerContent = [
 		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
-	);
-
-	// Second line with metadata
-	const metadataLine = [];
-
-	if (task.assignee?.length) {
-		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
-		metadataLine.push(`{cyan-fg}${assigneeList}{/}`);
-	}
-
-	metadataLine.push(`{gray-fg}Created: ${task.createdDate}{/}`);
-
-	if (task.updatedDate && task.updatedDate !== task.createdDate) {
-		metadataLine.push(`{gray-fg}Updated: ${task.updatedDate}{/}`);
-	}
-
-	// Add labels to header if they exist
-	if (task.labels?.length) {
-		metadataLine.push(`${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
-	}
-
-	headerContent.push(` ${metadataLine.join(" • ")}`);
+	];
 
 	// Build the scrollable body content
 	const bodyContent = [];
 
-	// Add additional metadata section
-	if (task.reporter || task.milestone || task.parentTaskId || task.subtasks?.length || task.dependencies?.length) {
-		bodyContent.push(formatHeading("Details", 2));
+	// Add details section with all metadata
+	bodyContent.push(formatHeading("Details", 2));
 
-		const metadata = [];
-		if (task.reporter) {
-			const reporterText = task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`;
-			metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
-		}
+	const metadata = [];
 
-		if (task.milestone) {
-			metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${task.milestone}{/}`);
-		}
+	// Always show created date
+	metadata.push(`{bold}Created:{/bold} ${task.createdDate}`);
 
-		if (task.parentTaskId) {
-			metadata.push(`{bold}Parent:{/bold} {blue-fg}${task.parentTaskId}{/}`);
-		}
-
-		if (task.subtasks?.length) {
-			metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
-		}
-
-		if (task.dependencies?.length) {
-			metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
-		}
-
-		bodyContent.push(metadata.join("\n"));
-		bodyContent.push("");
+	// Show updated date if different from created
+	if (task.updatedDate && task.updatedDate !== task.createdDate) {
+		metadata.push(`{bold}Updated:{/bold} ${task.updatedDate}`);
 	}
+
+	// Assignee
+	if (task.assignee?.length) {
+		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+		metadata.push(`{bold}Assignee:{/bold} {cyan-fg}${assigneeList}{/}`);
+	}
+
+	// Labels
+	if (task.labels?.length) {
+		metadata.push(`{bold}Labels:{/bold} ${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+	}
+
+	// Reporter
+	if (task.reporter) {
+		const reporterText = task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`;
+		metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
+	}
+
+	// Milestone
+	if (task.milestone) {
+		metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${task.milestone}{/}`);
+	}
+
+	// Parent task
+	if (task.parentTaskId) {
+		metadata.push(`{bold}Parent:{/bold} {blue-fg}${task.parentTaskId}{/}`);
+	}
+
+	// Subtasks
+	if (task.subtasks?.length) {
+		metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
+	}
+
+	// Dependencies
+	if (task.dependencies?.length) {
+		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
+	}
+
+	bodyContent.push(metadata.join("\n"));
+	bodyContent.push("");
 
 	// Description section
 	bodyContent.push(formatHeading("Description", 2));
