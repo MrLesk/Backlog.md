@@ -215,26 +215,33 @@ export async function viewTaskEnhanced(
 
 		// Format header content with key metadata
 		const headerContent = [];
-		headerContent.push(` {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`);
-
-		// Second line with status, date, and assignee
-		const statusLine = [];
-		statusLine.push(
-			`{${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/}`,
+		// First line: ID, title, and status icon
+		headerContent.push(
+			` {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title} {${getStatusColor(
+				currentSelectedTask.status,
+			)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/}`,
 		);
-		statusLine.push(`{gray-fg}${currentSelectedTask.createdDate}{/}`);
+
+		// Second line with metadata
+		const metadataLine = [];
 
 		if (currentSelectedTask.assignee?.length) {
 			const assigneeList = currentSelectedTask.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
-			statusLine.push(`{cyan-fg}${assigneeList}{/}`);
+			metadataLine.push(`{cyan-fg}${assigneeList}{/}`);
+		}
+
+		metadataLine.push(`{gray-fg}Created: ${currentSelectedTask.createdDate}{/}`);
+
+		if (currentSelectedTask.updatedDate && currentSelectedTask.updatedDate !== currentSelectedTask.createdDate) {
+			metadataLine.push(`{gray-fg}Updated: ${currentSelectedTask.updatedDate}{/}`);
 		}
 
 		// Add labels to header if they exist
 		if (currentSelectedTask.labels?.length) {
-			statusLine.push(`${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+			metadataLine.push(`${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
 		}
 
-		headerContent.push(` ${statusLine.join(" • ")}`);
+		headerContent.push(` ${metadataLine.join(" • ")}`);
 
 		headerBox.setContent(headerContent.join("\n"));
 
@@ -260,7 +267,6 @@ export async function viewTaskEnhanced(
 		// Add additional metadata section
 		if (
 			currentSelectedTask.reporter ||
-			currentSelectedTask.updatedDate ||
 			currentSelectedTask.milestone ||
 			currentSelectedTask.parentTaskId ||
 			currentSelectedTask.subtasks?.length ||
@@ -274,10 +280,6 @@ export async function viewTaskEnhanced(
 					? currentSelectedTask.reporter
 					: `@${currentSelectedTask.reporter}`;
 				metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
-			}
-
-			if (currentSelectedTask.updatedDate) {
-				metadata.push(`{bold}Updated:{/bold} ${currentSelectedTask.updatedDate}`);
 			}
 
 			if (currentSelectedTask.milestone) {
@@ -424,47 +426,45 @@ export async function viewTaskEnhanced(
 function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
 	// Format header content with key metadata
 	const headerContent = [];
-	headerContent.push(` {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`);
+	// First line: ID, title, and status icon
+	headerContent.push(
+		` {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title} {${getStatusColor(
+			task.status,
+		)}-fg}${formatStatusWithIcon(task.status)}{/}`,
+	);
 
-	// Second line with status, date, and assignee
-	const statusLine = [];
-	statusLine.push(`{${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/}`);
-	statusLine.push(`{gray-fg}${task.createdDate}{/}`);
+	// Second line with metadata
+	const metadataLine = [];
 
 	if (task.assignee?.length) {
 		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
-		statusLine.push(`{cyan-fg}${assigneeList}{/}`);
+		metadataLine.push(`{cyan-fg}${assigneeList}{/}`);
+	}
+
+	metadataLine.push(`{gray-fg}Created: ${task.createdDate}{/}`);
+
+	if (task.updatedDate && task.updatedDate !== task.createdDate) {
+		metadataLine.push(`{gray-fg}Updated: ${task.updatedDate}{/}`);
 	}
 
 	// Add labels to header if they exist
 	if (task.labels?.length) {
-		statusLine.push(`${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+		metadataLine.push(`${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
 	}
 
-	headerContent.push(` ${statusLine.join(" • ")}`);
+	headerContent.push(` ${metadataLine.join(" • ")}`);
 
 	// Build the scrollable body content
 	const bodyContent = [];
 
 	// Add additional metadata section
-	if (
-		task.reporter ||
-		task.updatedDate ||
-		task.milestone ||
-		task.parentTaskId ||
-		task.subtasks?.length ||
-		task.dependencies?.length
-	) {
+	if (task.reporter || task.milestone || task.parentTaskId || task.subtasks?.length || task.dependencies?.length) {
 		bodyContent.push(formatHeading("Details", 2));
 
 		const metadata = [];
 		if (task.reporter) {
 			const reporterText = task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`;
 			metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
-		}
-
-		if (task.updatedDate) {
-			metadata.push(`{bold}Updated:{/bold} ${task.updatedDate}`);
 		}
 
 		if (task.milestone) {

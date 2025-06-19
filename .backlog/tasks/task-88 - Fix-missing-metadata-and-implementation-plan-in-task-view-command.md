@@ -1,7 +1,7 @@
 ---
 id: task-88
 title: Fix missing metadata and implementation plan in task view command
-status: Done
+status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-06-19'
