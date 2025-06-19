@@ -30,6 +30,7 @@ export interface GenericListOptions<T extends GenericListItem> {
 	height?: string | number;
 	top?: string | number;
 	left?: string | number;
+	border?: boolean;
 	keys?: {
 		up?: string[];
 		down?: string[];
@@ -139,7 +140,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			left: this.options.left || 0,
 			width: this.options.width || (parent === this.screen ? "90%" : "100%"),
 			height: this.options.height || (parent === this.screen ? "80%" : "100%"),
-			border: "line",
+			border: this.options.border !== false ? "line" : undefined,
 			style,
 			tags: true,
 			keys: false,

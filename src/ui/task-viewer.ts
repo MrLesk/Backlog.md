@@ -103,13 +103,20 @@ export async function viewTaskEnhanced(
 		autoPadding: true,
 	});
 
-	// Task list pane (left 40%) - no border since task list has its own
+	// Task list pane (left 40%) with border
 	const taskListPane = blessed.box({
 		parent: container,
 		top: 0,
 		left: 0,
 		width: "40%",
 		height: "100%-1", // Leave space for help bar
+		border: {
+			type: "line",
+		},
+		style: {
+			border: { fg: "gray" },
+		},
+		label: ` ${options.title || "Tasks"} `,
 	});
 
 	// Detail pane (right 60%) with border
@@ -131,14 +138,10 @@ export async function viewTaskEnhanced(
 	// Create task list using generic list component
 	const taskList = createGenericList<Task>({
 		parent: taskListPane,
-		title: options.title || "Tasks",
+		title: "", // Empty title since pane has label
 		items: allTasks,
 		selectedIndex: Math.max(0, initialIndex),
-		style: {
-			border: { fg: "gray" },
-			focus: { border: { fg: "gray" } }, // Disable automatic focus style
-			selected: { fg: "white", bg: "blue" },
-		},
+		border: false, // Disable border since pane has one
 		itemRenderer: (task: Task) => {
 			const statusIcon = formatStatusWithIcon(task.status);
 			const statusColor = getStatusColor(task.status);
@@ -407,13 +410,13 @@ export async function viewTaskEnhanced(
 
 			// Update border colors and selection style
 			if (focusIndex === 0) {
-				listBox.style.border.fg = "yellow";
+				taskListPane.style.border.fg = "yellow";
 				detailPane.style.border.fg = "gray";
 				// Restore selection background when focused
 				listBox.style.selected.bg = "blue";
 				listBox.focus();
 			} else {
-				listBox.style.border.fg = "gray";
+				taskListPane.style.border.fg = "gray";
 				detailPane.style.border.fg = "yellow";
 				// Remove selection background when not focused
 				listBox.style.selected.bg = undefined;
