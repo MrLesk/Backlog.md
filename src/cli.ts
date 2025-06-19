@@ -268,7 +268,7 @@ taskCmd
 taskCmd
 	.command("list")
 	.description("list tasks grouped by status")
-	.option("-s, --status <status>", "filter tasks by status")
+	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
@@ -279,7 +279,8 @@ taskCmd
 
 		let filtered = tasks;
 		if (options.status) {
-			filtered = filtered.filter((t) => t.status === options.status);
+			const statusLower = options.status.toLowerCase();
+			filtered = filtered.filter((t) => t.status.toLowerCase() === statusLower);
 		}
 		if (options.assignee) {
 			filtered = filtered.filter((t) => t.assignee.includes(options.assignee));

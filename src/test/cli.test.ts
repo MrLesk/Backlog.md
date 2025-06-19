@@ -300,6 +300,71 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("task-1");
 		});
 
+		it("should filter tasks by status case-insensitively", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "First Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "First test task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Second Task",
+					status: "Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "Second test task",
+				},
+				false,
+			);
+
+			// Test lowercase
+			const resultLower = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "done"], {
+				cwd: TEST_DIR,
+			});
+			const outLower = resultLower.stdout.toString();
+			expect(outLower).toContain("Done:");
+			expect(outLower).toContain("task-2 - Second Task");
+			expect(outLower).not.toContain("task-1");
+
+			// Test uppercase
+			const resultUpper = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "DONE"], {
+				cwd: TEST_DIR,
+			});
+			const outUpper = resultUpper.stdout.toString();
+			expect(outUpper).toContain("Done:");
+			expect(outUpper).toContain("task-2 - Second Task");
+			expect(outUpper).not.toContain("task-1");
+
+			// Test mixed case
+			const resultMixed = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "DoNe"], {
+				cwd: TEST_DIR,
+			});
+			const outMixed = resultMixed.stdout.toString();
+			expect(outMixed).toContain("Done:");
+			expect(outMixed).toContain("task-2 - Second Task");
+			expect(outMixed).not.toContain("task-1");
+
+			// Test with -s flag
+			const resultShort = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "-s", "done"], { cwd: TEST_DIR });
+			const outShort = resultShort.stdout.toString();
+			expect(outShort).toContain("Done:");
+			expect(outShort).toContain("task-2 - Second Task");
+			expect(outShort).not.toContain("task-1");
+		});
+
 		it("should filter tasks by assignee", async () => {
 			const core = new Core(TEST_DIR);
 
