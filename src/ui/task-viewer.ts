@@ -136,7 +136,8 @@ export async function viewTaskEnhanced(
 		selectedIndex: Math.max(0, initialIndex),
 		style: {
 			border: { fg: "gray" },
-			focus: { border: { fg: "gray" } }, // Override the default focus style
+			focus: { border: { fg: "gray" } }, // Disable automatic focus style
+			selected: { fg: "white", bg: "blue" },
 		},
 		itemRenderer: (task: Task) => {
 			const statusIcon = formatStatusWithIcon(task.status);
@@ -427,17 +428,10 @@ export async function viewTaskEnhanced(
 		// Initialize focus based on whether we're viewing a specific task or list
 		const initialFocus = options.startWithDetailFocus === true ? 1 : 0;
 
-		// Set initial border colors before first focus update
-		const listBox = taskList.getListBox();
-		if (initialFocus === 0) {
-			listBox.style.border.fg = "yellow";
-			detailPane.style.border.fg = "gray";
-		} else {
-			listBox.style.border.fg = "gray";
-			detailPane.style.border.fg = "yellow";
-		}
-
-		updateFocus(initialFocus);
+		// Ensure the screen is rendered before setting initial focus
+		process.nextTick(() => {
+			updateFocus(initialFocus);
+		});
 
 		// Navigation between panes
 		screen.key(["tab", "right", "l"], () => {
