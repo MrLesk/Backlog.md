@@ -77,5 +77,35 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.stdout).not.toContain("\x1b");
 	});
 
+	it("should show metadata and implementation plan without --plain", () => {
+		const core = new Core(testDir);
+		core.createTask(
+			{
+				id: "task-2",
+				title: "Plan task",
+				status: "In Progress",
+				assignee: ["dev"],
+				createdDate: "2025-06-18",
+				labels: ["cli"],
+				dependencies: [],
+				description:
+					"## Description\n\nDesc\n\n## Acceptance Criteria\n- [ ] Do it\n\n## Implementation Plan\nPlan step\n\n## Implementation Notes\nSome notes",
+			},
+			false,
+		);
+
+		const result = spawnSync("bun", [cliPath, "task", "view", "2", "--plain"], {
+			cwd: testDir,
+			encoding: "utf8",
+		});
+
+		expect(result.status).toBe(0);
+		const out = result.stdout;
+		expect(out).toContain("status: In Progress");
+		expect(out).toContain("assignee:");
+		expect(out).toContain("Implementation Plan");
+		expect(out).toContain("Implementation Notes");
+	});
+
 	// Task list already has --plain support and works correctly
 });

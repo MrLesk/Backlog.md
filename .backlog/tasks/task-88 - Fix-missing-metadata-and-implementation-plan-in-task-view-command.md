@@ -1,9 +1,11 @@
 ---
 id: task-88
 title: Fix missing metadata and implementation plan in task view command
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-06-19'
+updated_date: '2025-06-19'
 labels:
   - bug
   - cli

@@ -40,6 +40,13 @@ function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
 		.filter((line) => line.startsWith("- [ ]") || line.startsWith("- [x]"));
 }
 
+function extractSection(content: string, heading: string): string | null {
+	if (!content) return null;
+	const regex = new RegExp(`## ${heading}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
+	const match = content.match(regex);
+	return match?.[1]?.trim() || null;
+}
+
 /**
  * Display task details in a split-pane UI with task list on left and detail on right
  */
@@ -196,18 +203,19 @@ export async function viewTaskEnhanced(
 		// Second line with status, date, and assignee
 		const statusLine = [];
 		statusLine.push(
-			`{${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/}`,
+			`{bold}status:{/bold} {${getStatusColor(currentSelectedTask.status)}-fg}${currentSelectedTask.status}{/}`,
 		);
-		statusLine.push(`{gray-fg}${currentSelectedTask.createdDate}{/}`);
+		statusLine.push(`{gray-fg}created: ${currentSelectedTask.createdDate}{/}`);
 
 		if (currentSelectedTask.assignee?.length) {
 			const assigneeList = currentSelectedTask.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
-			statusLine.push(`{cyan-fg}${assigneeList}{/}`);
+			statusLine.push(`{cyan-fg}assignee: ${assigneeList}{/}`);
 		}
 
 		// Add labels to header if they exist
 		if (currentSelectedTask.labels?.length) {
-			statusLine.push(`${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+			const labels = currentSelectedTask.labels.join(", ");
+			statusLine.push(`{yellow-fg}labels: [${labels}]{/}`);
 		}
 
 		headerContent.push(` ${statusLine.join(" • ")}`);
@@ -318,6 +326,22 @@ export async function viewTaskEnhanced(
 			bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
 		}
 
+		// Implementation Plan section
+		const planContent = extractSection(currentSelectedContent, "Implementation Plan");
+		if (planContent) {
+			bodyContent.push("");
+			bodyContent.push(formatHeading("Implementation Plan", 2));
+			bodyContent.push(styleCodePaths(planContent));
+		}
+
+		// Implementation Notes section
+		const notesContent = extractSection(currentSelectedContent, "Implementation Notes");
+		if (notesContent) {
+			bodyContent.push("");
+			bodyContent.push(formatHeading("Implementation Notes", 2));
+			bodyContent.push(styleCodePaths(notesContent));
+		}
+
 		// Set the complete body content
 		bodyContainer.setContent(bodyContent.join("\n"));
 
@@ -387,17 +411,18 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 
 	// Second line with status, date, and assignee
 	const statusLine = [];
-	statusLine.push(`{${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/}`);
-	statusLine.push(`{gray-fg}${task.createdDate}{/}`);
+	statusLine.push(`{bold}status:{/bold} {${getStatusColor(task.status)}-fg}${task.status}{/}`);
+	statusLine.push(`{gray-fg}created: ${task.createdDate}{/}`);
 
 	if (task.assignee?.length) {
 		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
-		statusLine.push(`{cyan-fg}${assigneeList}{/}`);
+		statusLine.push(`{cyan-fg}assignee: ${assigneeList}{/}`);
 	}
 
 	// Add labels to header if they exist
 	if (task.labels?.length) {
-		statusLine.push(`${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+		const labels = task.labels.join(", ");
+		statusLine.push(`{yellow-fg}labels: [${labels}]{/}`);
 	}
 
 	headerContent.push(` ${statusLine.join(" • ")}`);
@@ -482,6 +507,20 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 		bodyContent.push(criteriaContent);
 	} else {
 		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
+	}
+
+	const planContent = extractSection(rawContent, "Implementation Plan");
+	if (planContent) {
+		bodyContent.push("");
+		bodyContent.push(formatHeading("Implementation Plan", 2));
+		bodyContent.push(styleCodePaths(planContent));
+	}
+
+	const notesContent = extractSection(rawContent, "Implementation Notes");
+	if (notesContent) {
+		bodyContent.push("");
+		bodyContent.push(formatHeading("Implementation Notes", 2));
+		bodyContent.push(styleCodePaths(notesContent));
 	}
 
 	return { headerContent, bodyContent };
@@ -595,7 +634,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	};
 }
 
-function formatTaskPlainText(task: Task, content: string): string {
+export function formatTaskPlainText(task: Task, content: string): string {
 	const lines = [];
 	lines.push(`Task ${task.id} - ${task.title}`);
 	lines.push("=".repeat(50));
@@ -614,7 +653,8 @@ function formatTaskPlainText(task: Task, content: string): string {
 	lines.push("");
 	lines.push("Description:");
 	lines.push("-".repeat(50));
-	lines.push(transformCodePathsPlain(task.description || "No description provided"));
+	const descPlain = extractSection(task.description, "Description");
+	lines.push(transformCodePathsPlain(descPlain || "No description provided"));
 	lines.push("");
 	if (task.acceptanceCriteria?.length) {
 		lines.push("Acceptance Criteria:");
@@ -622,6 +662,20 @@ function formatTaskPlainText(task: Task, content: string): string {
 		for (const c of task.acceptanceCriteria) {
 			lines.push(transformCodePathsPlain(c));
 		}
+		lines.push("");
+	}
+	const planPlain = extractSection(task.description, "Implementation Plan");
+	if (planPlain) {
+		lines.push("Implementation Plan:");
+		lines.push("-".repeat(50));
+		lines.push(transformCodePathsPlain(planPlain));
+		lines.push("");
+	}
+	const notesPlain = extractSection(task.description, "Implementation Notes");
+	if (notesPlain) {
+		lines.push("Implementation Notes:");
+		lines.push("-".repeat(50));
+		lines.push(transformCodePathsPlain(notesPlain));
 		lines.push("");
 	}
 	lines.push("Content:");
