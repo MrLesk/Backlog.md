@@ -147,7 +147,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			vi: true,
 			mouse: true,
 			scrollable: true,
-			alwaysScroll: true,
+			alwaysScroll: false,
 		});
 
 		this.refreshList();
