@@ -41,6 +41,30 @@ function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
 }
 
 /**
+ * Extract Implementation Plan section content from markdown
+ */
+function extractImplementationPlanSection(content: string): string | null {
+	if (!content) return null;
+
+	// Look for ## Implementation Plan section
+	const regex = /## Implementation Plan\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = content.match(regex);
+	return match?.[1]?.trim() || null;
+}
+
+/**
+ * Extract Implementation Notes section content from markdown
+ */
+function extractImplementationNotesSection(content: string): string | null {
+	if (!content) return null;
+
+	// Look for ## Implementation Notes section
+	const regex = /## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = content.match(regex);
+	return match?.[1]?.trim() || null;
+}
+
+/**
  * Display task details in a split-pane UI with task list on left and detail on right
  */
 export async function viewTaskEnhanced(
@@ -317,6 +341,23 @@ export async function viewTaskEnhanced(
 		} else {
 			bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
 		}
+		bodyContent.push("");
+
+		// Implementation Plan section
+		const implementationPlan = extractImplementationPlanSection(currentSelectedContent);
+		if (implementationPlan) {
+			bodyContent.push(formatHeading("Implementation Plan", 2));
+			bodyContent.push(transformCodePaths(implementationPlan));
+			bodyContent.push("");
+		}
+
+		// Implementation Notes section
+		const implementationNotes = extractImplementationNotesSection(currentSelectedContent);
+		if (implementationNotes) {
+			bodyContent.push(formatHeading("Implementation Notes", 2));
+			bodyContent.push(transformCodePaths(implementationNotes));
+			bodyContent.push("");
+		}
 
 		// Set the complete body content
 		bodyContainer.setContent(bodyContent.join("\n"));
@@ -483,6 +524,23 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	} else {
 		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
 	}
+	bodyContent.push("");
+
+	// Implementation Plan section
+	const implementationPlan = extractImplementationPlanSection(rawContent);
+	if (implementationPlan) {
+		bodyContent.push(formatHeading("Implementation Plan", 2));
+		bodyContent.push(transformCodePaths(implementationPlan));
+		bodyContent.push("");
+	}
+
+	// Implementation Notes section
+	const implementationNotes = extractImplementationNotesSection(rawContent);
+	if (implementationNotes) {
+		bodyContent.push(formatHeading("Implementation Notes", 2));
+		bodyContent.push(transformCodePaths(implementationNotes));
+		bodyContent.push("");
+	}
 
 	return { headerContent, bodyContent };
 }
@@ -595,7 +653,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	};
 }
 
-function formatTaskPlainText(task: Task, content: string): string {
+export function formatTaskPlainText(task: Task, content: string): string {
 	const lines = [];
 	lines.push(`Task ${task.id} - ${task.title}`);
 	lines.push("=".repeat(50));
@@ -612,21 +670,50 @@ function formatTaskPlainText(task: Task, content: string): string {
 	if (task.subtasks?.length) lines.push(`Subtasks: ${task.subtasks.length}`);
 	if (task.dependencies?.length) lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
 	lines.push("");
+
+	// Description section
 	lines.push("Description:");
 	lines.push("-".repeat(50));
-	lines.push(transformCodePathsPlain(task.description || "No description provided"));
+	const description = extractDescriptionSection(content);
+	lines.push(transformCodePathsPlain(description || "No description provided"));
 	lines.push("");
-	if (task.acceptanceCriteria?.length) {
-		lines.push("Acceptance Criteria:");
-		lines.push("-".repeat(50));
-		for (const c of task.acceptanceCriteria) {
-			lines.push(transformCodePathsPlain(c));
+
+	// Acceptance Criteria section with checkboxes
+	lines.push("Acceptance Criteria:");
+	lines.push("-".repeat(50));
+	const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(content);
+	if (checkboxLines.length > 0) {
+		for (const line of checkboxLines) {
+			lines.push(line);
 		}
+	} else if (task.acceptanceCriteria?.length) {
+		// Fallback to parsed criteria if no checkboxes found
+		for (const c of task.acceptanceCriteria) {
+			lines.push(`• ${transformCodePathsPlain(c)}`);
+		}
+	} else {
+		lines.push("No acceptance criteria defined");
+	}
+	lines.push("");
+
+	// Implementation Plan section
+	const implementationPlan = extractImplementationPlanSection(content);
+	if (implementationPlan) {
+		lines.push("Implementation Plan:");
+		lines.push("-".repeat(50));
+		lines.push(transformCodePathsPlain(implementationPlan));
 		lines.push("");
 	}
-	lines.push("Content:");
-	lines.push("-".repeat(50));
-	lines.push(transformCodePathsPlain(content));
+
+	// Implementation Notes section
+	const implementationNotes = extractImplementationNotesSection(content);
+	if (implementationNotes) {
+		lines.push("Implementation Notes:");
+		lines.push("-".repeat(50));
+		lines.push(transformCodePathsPlain(implementationNotes));
+		lines.push("");
+	}
+
 	return lines.join("\n");
 }
 

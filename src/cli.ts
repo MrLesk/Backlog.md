@@ -8,7 +8,7 @@ import { type TaskWithMetadata, loadRemoteTasks, resolveTaskConflict } from "./c
 import { renderBoardTui } from "./ui/board.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen, withLoadingScreen } from "./ui/loading.ts";
-import { viewTaskEnhanced } from "./ui/task-viewer.ts";
+import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 
 import { Command } from "commander";
@@ -497,7 +497,7 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
-			console.log(content);
+			console.log(formatTaskPlainText(task, content));
 			return;
 		}
 
@@ -564,7 +564,7 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (options.plain || process.argv.includes("--plain"))) {
-			console.log(content);
+			console.log(formatTaskPlainText(task, content));
 			return;
 		}
 

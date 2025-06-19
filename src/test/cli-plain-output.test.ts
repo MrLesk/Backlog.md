@@ -48,13 +48,13 @@ describe("CLI plain output for AI agents", () => {
 		});
 
 		expect(result.status).toBe(0);
-		// Should contain the raw markdown with frontmatter
-		expect(result.stdout).toContain("---");
-		expect(result.stdout).toContain("id: task-1");
-		expect(result.stdout).toContain("title: Test task for plain output");
-		expect(result.stdout).toContain("status:");
-		expect(result.stdout).toContain("## Description");
+		// Should contain the formatted task output
+		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
+		expect(result.stdout).toContain("Status: ○ To Do");
+		expect(result.stdout).toContain("Created: 2025-06-18");
+		expect(result.stdout).toContain("Description:");
 		expect(result.stdout).toContain("Test description");
+		expect(result.stdout).toContain("Acceptance Criteria:");
 		// Should not contain TUI escape codes
 		expect(result.stdout).not.toContain("[?1049h");
 		expect(result.stdout).not.toContain("\x1b");
@@ -67,11 +67,12 @@ describe("CLI plain output for AI agents", () => {
 		});
 
 		expect(result.status).toBe(0);
-		// Should contain the raw markdown with frontmatter
-		expect(result.stdout).toContain("---");
-		expect(result.stdout).toContain("id: task-1");
-		expect(result.stdout).toContain("title: Test task for plain output");
-		expect(result.stdout).toContain("## Description");
+		// Should contain the formatted task output
+		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
+		expect(result.stdout).toContain("Status: ○ To Do");
+		expect(result.stdout).toContain("Created: 2025-06-18");
+		expect(result.stdout).toContain("Description:");
+		expect(result.stdout).toContain("Test description");
 		// Should not contain TUI escape codes
 		expect(result.stdout).not.toContain("[?1049h");
 		expect(result.stdout).not.toContain("\x1b");
