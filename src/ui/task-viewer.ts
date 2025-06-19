@@ -142,10 +142,10 @@ export async function viewTaskEnhanced(
 		items: allTasks,
 		selectedIndex: Math.max(0, initialIndex),
 		border: false, // Disable border since pane has one
-		top: 0,
-		left: 0,
-		width: "100%-2", // Account for pane's left/right borders
-		height: "100%-2", // Account for pane's top/bottom borders
+		top: 1,
+		left: 1,
+		width: "100%-4",
+		height: "100%-3",
 		itemRenderer: (task: Task) => {
 			const statusIcon = formatStatusWithIcon(task.status);
 			const statusColor = getStatusColor(task.status);
