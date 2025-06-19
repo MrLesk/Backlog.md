@@ -3,7 +3,7 @@ import type { DecisionLog, Document, ParsedMarkdown, Task } from "../types/index
 
 function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
-		.split("\n")
+		.split(/\r?\n/) // Handle both Windows (\r\n) and Unix (\n) line endings
 		.map((line) => {
 			// Handle both assignee and reporter fields that start with @
 			const match = line.match(/^(\s*(?:assignee|reporter):\s*)(.*)$/);
@@ -23,7 +23,7 @@ function preprocessFrontmatter(frontmatter: string): string {
 			}
 			return line;
 		})
-		.join("\n");
+		.join("\n"); // Always join with \n for consistent YAML parsing
 }
 
 function normalizeDate(value: unknown): string {
@@ -58,12 +58,14 @@ function normalizeDate(value: unknown): string {
 }
 
 export function parseMarkdown(content: string): ParsedMarkdown {
-	const fmRegex = /^---\n([\s\S]*?)\n---/;
+	// Updated regex to handle both Windows (\r\n) and Unix (\n) line endings
+	const fmRegex = /^---\r?\n([\s\S]*?)\r?\n---/;
 	const match = content.match(fmRegex);
 	let toParse = content;
 
 	if (match) {
 		const processed = preprocessFrontmatter(match[1]);
+		// Replace with consistent line endings
 		toParse = content.replace(fmRegex, `---\n${processed}\n---`);
 	}
 
