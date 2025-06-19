@@ -391,8 +391,8 @@ export async function viewTaskEnhanced(
 			width: "100%",
 			height: 1,
 			content: options.filterDescription
-				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ←/→ switch pane · q/Esc quit `
-				: " ↑/↓ navigate · ←/→ or Tab switch pane · q/Esc quit ",
+				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ← task list · → detail · Tab toggle · q/Esc quit `
+				: " ↑/↓ navigate · ← task list · → detail · Tab toggle · q/Esc quit ",
 			style: {
 				fg: "gray",
 				bg: "black",
@@ -435,12 +435,21 @@ export async function viewTaskEnhanced(
 		});
 
 		// Navigation between panes
-		screen.key(["tab", "right", "l"], () => {
+		screen.key(["tab"], () => {
 			updateFocus(focusIndex === 0 ? 1 : 0);
 		});
 
-		screen.key(["S-tab", "left", "h"], () => {
+		screen.key(["S-tab"], () => {
 			updateFocus(focusIndex === 0 ? 1 : 0);
+		});
+
+		// Direct pane navigation
+		screen.key(["left", "h"], () => {
+			updateFocus(0); // Always go to task list
+		});
+
+		screen.key(["right", "l"], () => {
+			updateFocus(1); // Always go to detail pane
 		});
 
 		// Exit keys
