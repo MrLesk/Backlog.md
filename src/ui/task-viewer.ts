@@ -197,13 +197,13 @@ export async function viewTaskEnhanced(
 		// Update screen title
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		// Fixed header section with task ID, title, status, date, and tags
+		// Dynamic header section with task ID, title, status, date, and tags
 		headerBox = blessed.box({
 			parent: detailPane,
 			top: 0,
 			left: 0,
 			width: "100%-2", // Account for border
-			height: 3,
+			height: "shrink", // Dynamic height based on content
 			border: "line",
 			style: {
 				border: { fg: "blue" },
@@ -211,6 +211,7 @@ export async function viewTaskEnhanced(
 			tags: true,
 			wrap: true,
 			scrollable: false, // Header should never scroll
+			padding: { bottom: 1 }, // Add padding for better spacing
 		});
 
 		// Format header content with key metadata
@@ -243,13 +244,19 @@ export async function viewTaskEnhanced(
 
 		headerBox.setContent(headerContent.join("\n"));
 
+		// Render to calculate header height
+		screen.render();
+
+		// Get the actual height of the header after content is set
+		const headerHeight = headerBox.height as number;
+
 		// Scrollable body container beneath the header
 		const bodyContainer = blessed.box({
 			parent: detailPane,
-			top: 3, // Start below the fixed header
+			top: headerHeight, // Start below the dynamic header
 			left: 0,
 			width: "100%-2", // Account for border
-			height: "100%-4", // Fill remaining space below header
+			height: `100%-${headerHeight + 1}`, // Fill remaining space below header
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
@@ -583,13 +590,13 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	// Generate enhanced detail content
 	const { headerContent, bodyContent } = generateDetailContent(task, content);
 
-	// Fixed header section with task ID, title, status, date, and tags
+	// Dynamic header section with task ID, title, status, date, and tags
 	const headerBox = blessed.box({
 		parent: popup,
 		top: 0,
 		left: 0,
 		width: "100%-2", // Account for border
-		height: 3,
+		height: "shrink",
 		border: "line",
 		style: {
 			border: { fg: "blue" },
@@ -597,6 +604,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		tags: true,
 		wrap: true,
 		scrollable: false, // Header should never scroll
+		padding: { bottom: 1 },
 		content: headerContent.join("\n"),
 	});
 
@@ -614,13 +622,17 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 		},
 	});
 
+	// Render to calculate header height
+	screen.render();
+	const headerHeight = headerBox.height as number;
+
 	// Scrollable body container beneath the header
 	const contentArea = blessed.box({
 		parent: popup,
-		top: 3, // Start below the fixed header
+		top: headerHeight, // Start below the dynamic header
 		left: 0,
 		width: "100%-2", // Account for border
-		height: "100%-5", // Leave more space for bottom border
+		height: `100%-${headerHeight + 2}`, // Leave space for header and bottom border
 		scrollable: true,
 		alwaysScroll: false,
 		keys: true,
