@@ -116,7 +116,7 @@ export async function viewTaskEnhanced(
 		style: {
 			border: { fg: "gray" },
 		},
-		label: ` ${options.title || "Tasks"} `,
+		label: `\u00A0${options.title || "Tasks"}\u00A0`,
 	});
 
 	// Detail pane (right 60%) with border
@@ -132,7 +132,7 @@ export async function viewTaskEnhanced(
 		style: {
 			border: { fg: "gray" },
 		},
-		label: " Details ",
+		label: "\u00A0Details\u00A0",
 	});
 
 	// Create task list using generic list component
