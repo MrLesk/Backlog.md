@@ -69,3 +69,44 @@ export function updateTaskAcceptanceCriteria(content: string, criteria: string[]
 	// Add new section at the end
 	return `${content}\n\n${newSection}`;
 }
+
+export function updateTaskImplementationPlan(content: string, plan: string): string {
+	// Don't add empty plan
+	if (!plan || !plan.trim()) {
+		return content;
+	}
+
+	// Find if there's already an Implementation Plan section
+	const planRegex = /## Implementation Plan\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = content.match(planRegex);
+
+	const newSection = `## Implementation Plan\n\n${plan}`;
+
+	if (match) {
+		// Replace existing section
+		return content.replace(planRegex, newSection);
+	}
+
+	// Find where to insert the new section
+	// It should come after Acceptance Criteria if it exists, otherwise after Description
+	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
+	const acceptanceMatch = content.match(acceptanceCriteriaRegex);
+
+	if (acceptanceMatch && acceptanceMatch.index !== undefined) {
+		// Insert after Acceptance Criteria
+		const insertIndex = acceptanceMatch.index + acceptanceMatch[0].length;
+		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+	}
+
+	// Otherwise insert after Description
+	const descriptionRegex = /## Description\s*\n[\s\S]*?(?=\n## |$)/i;
+	const descMatch = content.match(descriptionRegex);
+
+	if (descMatch && descMatch.index !== undefined) {
+		const insertIndex = descMatch.index + descMatch[0].length;
+		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+	}
+
+	// If no Description section found, add at the end
+	return `${content}\n\n${newSection}`;
+}

@@ -251,6 +251,7 @@ taskCmd
 	.option("-l, --labels <labels>")
 	.option("--ac <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
 	.option("--acceptance-criteria <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
+	.option("--plan <text>", "add implementation plan")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.action(async (title: string, options) => {
@@ -269,6 +270,12 @@ taskCmd
 						.split(",")
 						.map((item: string) => item.trim());
 			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+		}
+
+		// Handle implementation plan
+		if (options.plan) {
+			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
+			task.description = updateTaskImplementationPlan(task.description, String(options.plan));
 		}
 
 		if (options.draft) {
@@ -391,6 +398,7 @@ taskCmd
 	.option("--remove-label <label>")
 	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
+	.option("--plan <text>", "set implementation plan")
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -450,6 +458,12 @@ taskCmd
 						.split(",")
 						.map((item: string) => item.trim());
 			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+		}
+
+		// Handle implementation plan
+		if (options.plan) {
+			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
+			task.description = updateTaskImplementationPlan(task.description, String(options.plan));
 		}
 
 		await core.updateTask(task, true);

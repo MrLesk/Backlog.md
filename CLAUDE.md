@@ -54,16 +54,25 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 - Reference task IDs in commit messages and PR titles when implementing features
 - Use `.backlog/tasks/` markdown files to understand implementation requirements
 - Include a `## Description` section and a `## Acceptance Criteria` checklist in every task file
+- Add an `## Implementation Plan` section before starting work to outline your approach
+- Use `--ac` flag when creating tasks to set acceptance criteria directly
 - Write relevant tests when implementing new functionality or fixing bugs
 - Follow decimal numbering for subtasks
 - Maintain clean git status before commits
 - Use task-id branch names: `task/<task-id>`
 - When you start working on a task, update its status to `In Progress`, assign yourself as the assignee, and push the change.
-- After testing a task, mark it **Done** with:
+- After testing a task and completing all Definition of Done items, mark it **Done** with:
 
 ```bash
 backlog task edit <task-id> --status Done
 ```
+
+### Before Marking a Task as Done
+Always ensure you have:
+1. ✅ Marked all acceptance criteria as completed in the task file (change `- [ ]` to `- [x]`)
+2. ✅ Added an `## Implementation Notes` section documenting your approach
+3. ✅ Run all tests and linting checks (`bun test` and `bun run check`)
+4. ✅ Updated relevant documentation
 
 ### Code Standards
 - **Runtime**: Bun with TypeScript 5
@@ -76,26 +85,39 @@ The pre-commit hook automatically runs `biome check --write` on staged files to 
 
 ## Definition of Done
 
-A task is **Done** only when **all** of the following hold:
+A task is **Done** only when **ALL** of the following are complete:
 
-1. **Acceptance criteria** checklist in the task file is fully checked.  
-2. **Automated tests** (unit + integration) cover new logic and CI passes.  
-3. **Static analysis**: linter & formatter succeed (when available).  
-4. **Documentation**:  
-   - Docs updated.  
-   - Task file appended with a `## Implementation Notes` section summarising approach, trade‑offs and follow‑ups.  
-5. **Review**: code reviewed.  
-6. **Task hygiene**: status set to **Done** via CLI.  
-7. **No regressions**: performance, security and licence checks green.
+1. **Acceptance criteria** checklist in the task file is fully checked (all `- [ ]` changed to `- [x]`).  
+2. **Implementation plan** was followed or deviations were documented in Implementation Notes.  
+3. **Automated tests** (unit + integration) cover new logic and CI passes.  
+4. **Static analysis**: linter & formatter succeed (run `bun run check`).  
+5. **Documentation**:  
+   - All relevant docs updated (README, guidelines, etc.).  
+   - Task file **MUST** have an `## Implementation Notes` section added summarising:
+     - Approach taken
+     - Technical decisions and trade-offs
+     - Files modified
+     - Any follow-up tasks needed
+6. **Review**: code reviewed (when working with a team).  
+7. **Task hygiene**: status set to **Done** via CLI (`backlog task edit <id> -s Done`).  
+8. **No regressions**: performance, security and licence checks green.
+
+⚠️ **IMPORTANT**: Never mark a task as Done without completing ALL items above, especially:
+- Marking acceptance criteria checkboxes as complete
+- Adding comprehensive Implementation Notes
 
 ## Backlog.md Tool - CLI usage
 | Purpose | Command |
 |---------|---------|
 | Create task | `backlog task create "Add OAuth"`                    |
+| Create with plan | `backlog task create "Feature" --plan "1. Step one\n2. Step two"` |
+| Create with AC | `backlog task create "Feature" --ac "Must work,Must be tested"` |
 | Create sub task | `backlog task create --parent 14 "Add Google auth"`                    |
 | List tasks  | `backlog task list --plain`                                  |
 | View detail | `backlog task 7 --plain`                                     |
 | Edit        | `backlog task edit 7 -a @claude -l auth,backend`       |
+| Add plan    | `backlog task edit 7 --plan "Updated implementation approach"` |
+| Add AC      | `backlog task edit 7 --ac "New criterion,Another one"`    |
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
