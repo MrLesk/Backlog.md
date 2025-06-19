@@ -1,9 +1,11 @@
 ---
 id: task-84
 title: Add -ac flag for acceptance criteria in task create/edit
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-06-18'
+updated_date: '2025-06-19'
 labels:
   - enhancement
   - cli
