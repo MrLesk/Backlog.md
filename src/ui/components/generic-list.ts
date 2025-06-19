@@ -143,11 +143,11 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			border: this.options.border !== false ? "line" : undefined,
 			style,
 			tags: true,
-			keys: false,
-			vi: false,
+			keys: true,
+			vi: true,
 			mouse: true,
 			scrollable: true,
-			alwaysScroll: false,
+			alwaysScroll: true,
 		});
 
 		this.refreshList();
@@ -247,21 +247,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		// Custom key bindings
 		const keys = this.options.keys || {};
 
-		// Navigation - use select() method like board view for proper scrolling
-		this.listBox.key(keys.up || ["up", "k"], () => {
-			const current = this.listBox.selected ?? 0;
-			if (current > 0) {
-				this.listBox.select(current - 1);
-				this.selectedIndex = current - 1;
-			}
-		});
-
-		this.listBox.key(keys.down || ["down", "j"], () => {
-			const current = this.listBox.selected ?? 0;
-			if (current < this.listBox.items.length - 1) {
-				this.listBox.select(current + 1);
-				this.selectedIndex = current + 1;
-			}
+		// Let blessed handle navigation automatically with keys: true
+		// Add listener to track selection changes
+		this.listBox.on("select", () => {
+			this.selectedIndex = this.listBox.selected ?? 0;
 		});
 
 		// Selection/Toggle
