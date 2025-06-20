@@ -126,15 +126,15 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	// Load local tasks and drafts in parallel
 	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
 	const all = [...tasks, ...drafts];
+	const allIds: string[] = [];
 
-	const remoteIds: string[] = [];
 	try {
 		await core.gitOps.fetch();
-		const branches = await core.gitOps.listRemoteBranches();
+		const branches = await core.gitOps.listAllBranches();
 
 		// Load files from all branches in parallel
 		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInRemoteBranch(branch, ".backlog/tasks");
+			const files = await core.gitOps.listFilesInTree(branch, ".backlog/tasks");
 			return files
 				.map((file) => {
 					const match = file.match(/task-([\d.]+)/);
@@ -145,9 +145,14 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 
 		const branchResults = await Promise.all(branchFilePromises);
 		for (const branchIds of branchResults) {
-			remoteIds.push(...branchIds);
+			allIds.push(...branchIds);
 		}
-	} catch {}
+	} catch (error) {
+		// Suppress errors for offline mode or other git issues
+		if (process.env.DEBUG) {
+			console.error("Could not fetch remote task IDs:", error);
+		}
+	}
 
 	if (parent) {
 		const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
@@ -159,7 +164,7 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 				if (num > max) max = num;
 			}
 		}
-		for (const id of remoteIds) {
+		for (const id of allIds) {
 			if (id.startsWith(`${prefix}.`)) {
 				const rest = id.slice(prefix.length + 1);
 				const num = Number.parseInt(rest.split(".")[0] || "0", 10);
@@ -177,7 +182,7 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 			if (num > max) max = num;
 		}
 	}
-	for (const id of remoteIds) {
+	for (const id of allIds) {
 		const match = id.match(/^task-(\d+)/);
 		if (match) {
 			const num = Number.parseInt(match[1] || "0", 10);
@@ -318,11 +323,15 @@ taskCmd
 	.option(
 		"--depends-on <taskIds>",
 		"specify task dependencies (comma-separated or use multiple times)",
-		(value, previous) => (previous ? [...previous, value] : [value]),
+		(value, previous) => {
+			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			return [...soFar, value];
+		},
 	)
-	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)", (value, previous) =>
-		previous ? [...previous, value] : [value],
-	)
+	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)", (value, previous) => {
+		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+		return [...soFar, value];
+	})
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -486,11 +495,15 @@ taskCmd
 	.option(
 		"--depends-on <taskIds>",
 		"set task dependencies (comma-separated or use multiple times)",
-		(value, previous) => (previous ? [...previous, value] : [value]),
+		(value, previous) => {
+			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			return [...soFar, value];
+		},
 	)
-	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", (value, previous) =>
-		previous ? [...previous, value] : [value],
-	)
+	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", (value, previous) => {
+		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+		return [...soFar, value];
+	})
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -754,7 +767,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 	// Load tasks with loading screen
 	const allTasks = await withLoadingScreen("Loading tasks from local and remote branches", async () => {
 		// Load local tasks
-		const localTasks = await core.filesystem.listTasksWithMetadata();
+		const localTasks = await core.listTasksWithMetadata();
 		const tasksById = new Map<string, TaskWithMetadata>(
 			localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
 		);
@@ -808,7 +821,7 @@ boardCmd
 		try {
 			// Load local tasks
 			loadingScreen?.update("Loading local tasks...");
-			const localTasks = await core.filesystem.listTasksWithMetadata();
+			const localTasks = await core.listTasksWithMetadata();
 			const tasksById = new Map<string, TaskWithMetadata>(
 				localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
 			);

@@ -172,4 +172,29 @@ export class Core {
 		await this.fs.saveConfig(config);
 		await this.git.commitBacklogChanges(`Initialize backlog project: ${projectName}`);
 	}
+
+	async listTasksWithMetadata(): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
+		const tasks = await this.fs.listTasks();
+		const tasksWithMeta = await Promise.all(
+			tasks.map(async (task) => {
+				const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.fs.tasksDir }));
+				const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
+
+				if (taskFile) {
+					const filePath = join(this.fs.tasksDir, taskFile);
+					const bunFile = Bun.file(filePath);
+					const stats = await bunFile.stat();
+					const branch = await this.git.getFileLastModifiedBranch(filePath);
+					return {
+						...task,
+						lastModified: new Date(stats.mtime),
+						branch: branch || undefined,
+					};
+				}
+				return task;
+			}),
+		);
+
+		return tasksWithMeta;
+	}
 }

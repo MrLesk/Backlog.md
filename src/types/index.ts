@@ -14,6 +14,7 @@ export interface Task {
 	parentTaskId?: string;
 	subtasks?: string[];
 	priority?: "high" | "medium" | "low";
+	branch?: string;
 }
 
 export interface DecisionLog {

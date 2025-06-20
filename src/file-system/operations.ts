@@ -116,31 +116,6 @@ export class FileSystem {
 		}
 	}
 
-	async listTasksWithMetadata(): Promise<Array<Task & { lastModified?: Date }>> {
-		try {
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: this.tasksDir }));
-
-			const tasks: Array<Task & { lastModified?: Date }> = [];
-			for (const file of taskFiles) {
-				const filepath = join(this.tasksDir, file);
-				const bunFile = Bun.file(filepath);
-				const content = await bunFile.text();
-				const task = parseTask(content);
-
-				// Get file stats for modification time
-				const stats = await bunFile.stat();
-				tasks.push({
-					...task,
-					lastModified: new Date(stats.mtime),
-				});
-			}
-
-			return sortByTaskId(tasks);
-		} catch (error) {
-			return [];
-		}
-	}
-
 	async archiveTask(taskId: string): Promise<boolean> {
 		try {
 			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.tasksDir }));

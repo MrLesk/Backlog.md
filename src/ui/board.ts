@@ -89,7 +89,10 @@ export async function renderBoardTui(
 					? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 					: "";
 				const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
-				return `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}`;
+				const branch = (task as Task & { branch?: string }).branch
+					? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}`
+					: "";
+				return `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}${branch}`;
 			});
 
 			taskList.setItems(items);

@@ -109,13 +109,40 @@ export class GitOperations {
 	}
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
-		const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:strip=2)"]);
-		return stdout
-			.split("\n")
-			.map((l) => l.trim())
-			.filter((b) => b.startsWith(`${remote}/`))
-			.map((b) => b.replace(`${remote}/`, ""))
-			.filter(Boolean);
+		try {
+			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:strip=3)"]);
+			return stdout
+				.split("\n")
+				.map((l) => l.trim())
+				.filter(Boolean);
+		} catch {
+			// If remote doesn't exist or other error, return empty array
+			return [];
+		}
+	}
+
+	async listLocalBranches(): Promise<string[]> {
+		try {
+			const { stdout } = await this.execGit(["branch", "--format=%(refname:short)"]);
+			return stdout
+				.split("\n")
+				.map((l) => l.trim())
+				.filter(Boolean);
+		} catch {
+			return [];
+		}
+	}
+
+	async listAllBranches(remote = "origin"): Promise<string[]> {
+		try {
+			const { stdout } = await this.execGit(["branch", "-a", "--format=%(refname:short)"]);
+			return stdout
+				.split("\n")
+				.map((l) => l.trim())
+				.filter(Boolean);
+		} catch {
+			return [];
+		}
 	}
 
 	async listFilesInTree(ref: string, path: string): Promise<string[]> {
@@ -147,6 +174,38 @@ export class GitOperations {
 				return new Date(timestamp);
 			}
 			return null;
+		} catch {
+			return null;
+		}
+	}
+
+	async getFileLastModifiedBranch(filePath: string): Promise<string | null> {
+		try {
+			// Get the hash of the last commit that touched the file
+			const { stdout: commitHash } = await this.execGit(["log", "-1", "--format=%H", "--", filePath]);
+			if (!commitHash) return null;
+
+			// Find all branches that contain this commit
+			const { stdout: branches } = await this.execGit([
+				"branch",
+				"-a",
+				"--contains",
+				commitHash.trim(),
+				"--format=%(refname:short)",
+			]);
+
+			if (!branches) return "main"; // Default to main if no specific branch found
+
+			// Prefer non-remote branches and 'main' or 'master'
+			const branchList = branches
+				.split("\n")
+				.map((b) => b.trim())
+				.filter(Boolean);
+			const mainBranch = branchList.find((b) => b === "main" || b === "master");
+			if (mainBranch) return mainBranch;
+
+			const nonRemote = branchList.find((b) => !b.startsWith("remotes/"));
+			return nonRemote || branchList[0] || "main";
 		} catch {
 			return null;
 		}
