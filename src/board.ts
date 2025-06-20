@@ -82,7 +82,14 @@ export function generateKanbanBoard(
 		const children = new Map<string, Task[]>();
 
 		// Use compareTaskIds for sorting instead of localeCompare
-		for (const t of items.sort((a, b) => compareTaskIds(a.id, b.id))) {
+		const sortedItems = items.sort((a, b) => {
+			if (status === "Done") {
+				return compareTaskIds(b.id, a.id); // Descending for Done
+			}
+			return compareTaskIds(a.id, b.id); // Ascending for others
+		});
+
+		for (const t of sortedItems) {
 			const parent = t.parentTaskId ? byId.get(t.parentTaskId) : undefined;
 			if (parent && parent.status === t.status) {
 				const list = children.get(parent.id) || [];

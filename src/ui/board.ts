@@ -83,7 +83,12 @@ export async function renderBoardTui(
 				style: { selected: { fg: "white" } },
 			});
 
-			const sortedTasks = [...(tasksByStatus.get(status) ?? [])].sort((a, b) => compareTaskIds(a.id, b.id));
+			const sortedTasks = [...(tasksByStatus.get(status) ?? [])].sort((a, b) => {
+				if (status === "Done") {
+					return compareTaskIds(b.id, a.id); // Descending for Done
+				}
+				return compareTaskIds(a.id, b.id); // Ascending for others
+			});
 			const items = sortedTasks.map((task) => {
 				const assignee = task.assignee?.[0]
 					? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
