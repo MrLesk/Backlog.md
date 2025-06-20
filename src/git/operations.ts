@@ -88,9 +88,7 @@ export class GitOperations {
 
 		// Check if there are staged changes specifically
 		const { stdout: status } = await this.execGit(["status", "--porcelain"]);
-		const hasStagedChanges = status
-			.split("\n")
-			.some((line) => line.startsWith("A ") || line.startsWith("M ") || line.startsWith("D "));
+		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
 
 		if (hasStagedChanges) {
 			try {
