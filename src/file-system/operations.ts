@@ -58,7 +58,7 @@ export class FileSystem {
 	}
 
 	// Task operations
-	async saveTask(task: Task): Promise<void> {
+	async saveTask(task: Task): Promise<string> {
 		const taskId = task.id.startsWith("task-") ? task.id : `task-${task.id}`;
 		const filename = `${taskId} - ${this.sanitizeFilename(task.title)}.md`;
 		const filepath = join(this.tasksDir, filename);
@@ -80,6 +80,7 @@ export class FileSystem {
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
+		return filepath;
 	}
 
 	async loadTask(taskId: string): Promise<Task | null> {
@@ -237,7 +238,7 @@ export class FileSystem {
 	}
 
 	// Draft operations
-	async saveDraft(task: Task): Promise<void> {
+	async saveDraft(task: Task): Promise<string> {
 		const taskId = task.id.startsWith("task-") ? task.id : `task-${task.id}`;
 		const filename = `${taskId} - ${this.sanitizeFilename(task.title)}.md`;
 		const filepath = join(this.draftsDir, filename);
@@ -257,6 +258,7 @@ export class FileSystem {
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
+		return filepath;
 	}
 
 	async loadDraft(taskId: string): Promise<Task | null> {

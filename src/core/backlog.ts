@@ -32,7 +32,7 @@ export class Core {
 	}
 
 	// High-level operations that combine filesystem and git
-	async createTask(task: Task, autoCommit = true): Promise<void> {
+	async createTask(task: Task, autoCommit = true): Promise<string> {
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
@@ -46,20 +46,16 @@ export class Core {
 		}
 
 		task.description = ensureDescriptionHeader(task.description);
-		await this.fs.saveTask(task);
+		const filepath = await this.fs.saveTask(task);
 
 		if (autoCommit) {
-			const tasksDir = this.fs.tasksDir;
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
-			const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
-			if (taskFile) {
-				const filePath = join(tasksDir, taskFile);
-				await this.git.addAndCommitTaskFile(task.id, filePath, "create");
-			}
+			await this.git.addAndCommitTaskFile(task.id, filepath, "create");
 		}
+
+		return filepath;
 	}
 
-	async createDraft(task: Task, autoCommit = true): Promise<void> {
+	async createDraft(task: Task, autoCommit = true): Promise<string> {
 		// Drafts always have status "Draft", regardless of config default
 		task.status = "Draft";
 
@@ -71,18 +67,14 @@ export class Core {
 		}
 
 		task.description = ensureDescriptionHeader(task.description);
-		await this.fs.saveDraft(task);
+		const filepath = await this.fs.saveDraft(task);
 
 		if (autoCommit) {
-			const draftsDir = this.fs.draftsDir;
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
-			const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
-			if (taskFile) {
-				const filePath = join(draftsDir, taskFile);
-				await this.git.addFile(filePath);
-				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`);
-			}
+			await this.git.addFile(filepath);
+			await this.git.commitTaskChange(task.id, `Create draft ${task.id}`);
 		}
+
+		return filepath;
 	}
 
 	async updateTask(task: Task, autoCommit = true): Promise<void> {

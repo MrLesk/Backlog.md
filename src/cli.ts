@@ -276,6 +276,12 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 	// Handle dependencies - they will be validated separately
 	const dependencies = normalizeDependencies(options.dependsOn || options.dep);
 
+	// Validate priority option
+	const priority = options.priority ? String(options.priority).toLowerCase() : undefined;
+	const validPriorities = ["high", "medium", "low"];
+	const validatedPriority =
+		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
+
 	return {
 		id,
 		title,
@@ -291,6 +297,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 		dependencies,
 		description: options.description ? String(options.description) : "",
 		...(normalizedParent && { parentTaskId: normalizedParent }),
+		...(validatedPriority && { priority: validatedPriority }),
 	};
 }
 
@@ -302,6 +309,7 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
+	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--ac <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
 	.option("--acceptance-criteria <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "add implementation plan")
@@ -346,11 +354,13 @@ taskCmd
 		}
 
 		if (options.draft) {
-			await core.createDraft(task, true);
+			const filepath = await core.createDraft(task, true);
 			console.log(`Created draft ${id}`);
+			console.log(`File: ${filepath}`);
 		} else {
-			await core.createTask(task, true);
+			const filepath = await core.createTask(task, true);
 			console.log(`Created task ${id}`);
+			console.log(`File: ${filepath}`);
 		}
 	});
 
@@ -461,6 +471,7 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --label <labels>")
+	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
 	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
@@ -489,6 +500,17 @@ taskCmd
 		}
 		if (options.status) {
 			task.status = String(options.status);
+		}
+
+		if (options.priority) {
+			const priority = String(options.priority).toLowerCase();
+			const validPriorities = ["high", "medium", "low"];
+			if (validPriorities.includes(priority)) {
+				task.priority = priority as "high" | "medium" | "low";
+			} else {
+				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
+				return;
+			}
 		}
 
 		const labels = [...task.labels];
@@ -667,8 +689,9 @@ draftCmd
 		const core = new Core(cwd);
 		const id = await generateNextId(core);
 		const task = buildTaskFromOptions(id, title, options);
-		await core.createDraft(task, true);
+		const filepath = await core.createDraft(task, true);
 		console.log(`Created draft ${id}`);
+		console.log(`File: ${filepath}`);
 	});
 
 draftCmd

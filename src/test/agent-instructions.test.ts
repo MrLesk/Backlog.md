@@ -27,9 +27,19 @@ describe("addAgentInstructions", () => {
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		const claude = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 		const cursor = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
-		expect(agents).toBe(await _loadAgentGuideline(AGENT_GUIDELINES));
-		expect(claude).toBe(await _loadAgentGuideline(CLAUDE_GUIDELINES));
-		expect(cursor).toBe(await _loadAgentGuideline(CURSOR_GUIDELINES));
+
+		// Check that files contain the markers and content
+		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(agents).toContain(await _loadAgentGuideline(AGENT_GUIDELINES));
+
+		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(claude).toContain(await _loadAgentGuideline(CLAUDE_GUIDELINES));
+
+		expect(cursor).toContain("# === BACKLOG.MD GUIDELINES START ===");
+		expect(cursor).toContain("# === BACKLOG.MD GUIDELINES END ===");
+		expect(cursor).toContain(await _loadAgentGuideline(CURSOR_GUIDELINES));
 	});
 
 	it("appends guideline files when they already exist", async () => {
@@ -37,7 +47,9 @@ describe("addAgentInstructions", () => {
 		await addAgentInstructions(TEST_DIR);
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		expect(agents.startsWith("Existing\n")).toBe(true);
-		expect(agents.trimEnd()).toBe(`Existing\n${await _loadAgentGuideline(AGENT_GUIDELINES)}`.trimEnd());
+		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(agents).toContain(await _loadAgentGuideline(AGENT_GUIDELINES));
 	});
 
 	it("creates only selected files", async () => {
@@ -51,12 +63,68 @@ describe("addAgentInstructions", () => {
 		expect(agentsExists).toBe(true);
 		expect(claudeExists).toBe(false);
 		expect(cursorExists).toBe(false);
-		expect(readme.trim()).toBe((await _loadAgentGuideline(README_GUIDELINES)).trim());
+		expect(readme).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(readme).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(readme).toContain(await _loadAgentGuideline(README_GUIDELINES));
 	});
 
 	it("loads guideline content from file paths", async () => {
 		const pathGuideline = join(__dirname, "../guidelines/AGENTS.md");
 		const content = await _loadAgentGuideline(pathGuideline);
 		expect(content).toContain("# Instructions for the usage of Backlog.md CLI Tool");
+	});
+
+	it("does not duplicate content when run multiple times (idempotent)", async () => {
+		// First run
+		await addAgentInstructions(TEST_DIR);
+		const firstRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+
+		// Second run - should not duplicate content
+		await addAgentInstructions(TEST_DIR);
+		const secondRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+
+		expect(firstRun).toBe(secondRun);
+	});
+
+	it("preserves existing content and adds Backlog.md content only once", async () => {
+		const existingContent = "# My Existing Claude Instructions\n\nThis is my custom content.\n";
+		await Bun.write(join(TEST_DIR, "CLAUDE.md"), existingContent);
+
+		// First run
+		await addAgentInstructions(TEST_DIR, undefined, ["CLAUDE.md"]);
+		const firstRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+
+		// Second run - should not duplicate Backlog.md content
+		await addAgentInstructions(TEST_DIR, undefined, ["CLAUDE.md"]);
+		const secondRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+
+		expect(firstRun).toBe(secondRun);
+		expect(firstRun).toContain(existingContent);
+		expect(firstRun).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(firstRun).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+
+		// Count occurrences of the marker to ensure it's only there once
+		const startMarkerCount = (firstRun.match(/<!-- BACKLOG\.MD GUIDELINES START -->/g) || []).length;
+		const endMarkerCount = (firstRun.match(/<!-- BACKLOG\.MD GUIDELINES END -->/g) || []).length;
+		expect(startMarkerCount).toBe(1);
+		expect(endMarkerCount).toBe(1);
+	});
+
+	it("handles different file types with appropriate markers", async () => {
+		const existingContent = "existing content\n";
+
+		// Test .cursorrules (no HTML comments)
+		await Bun.write(join(TEST_DIR, ".cursorrules"), existingContent);
+		await addAgentInstructions(TEST_DIR, undefined, [".cursorrules"]);
+		const cursorContent = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
+		expect(cursorContent).toContain("# === BACKLOG.MD GUIDELINES START ===");
+		expect(cursorContent).toContain("# === BACKLOG.MD GUIDELINES END ===");
+
+		// Test AGENTS.md (markdown with HTML comments)
+		await Bun.write(join(TEST_DIR, "AGENTS.md"), existingContent);
+		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
 	});
 });

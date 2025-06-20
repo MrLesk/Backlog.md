@@ -13,6 +13,7 @@ export interface Task {
 	acceptanceCriteria?: string[];
 	parentTaskId?: string;
 	subtasks?: string[];
+	priority?: "high" | "medium" | "low";
 }
 
 export interface DecisionLog {
