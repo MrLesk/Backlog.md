@@ -35,6 +35,7 @@ This will improve workflow efficiency and make it easier to track which tasks ar
    - .cursorrules: Add dependency parameter to relevant sections
    - src/guidelines/: Update all agent instruction files with consistent information
 9. Update CLI help text in commander configuration
+
 ## Acceptance Criteria
 
 - [x] Add --depends-on/--dep parameter to task create command
