@@ -69,12 +69,21 @@ assignee: ['@AI-Agent']
 Short, imperative explanation of the work.
 
 ## Acceptance Criteria
+**Focus on outcomes, not implementation steps.** Good ACs are testable and verify *what* the system should do.
+- *Good Example:* `- [ ] User is redirected to the dashboard after successful login.`
+- *Good Example:* `- [ ] An error message is displayed if login fails due to incorrect password.`
+- *Bad Example (Implementation Step):* `- [ ] Modify the `loginUser` function in `authController.js`.`
+- *Bad Example (Too Vague):* `- [ ] Login works.`
+
+**Detailed steps on *how* to achieve the criteria belong in the `## Implementation Plan` section.** If your task involves a sequence of actions to build the feature, list them in the Implementation Plan. The Acceptance Criteria should validate that the feature behaves as expected once those steps are done.
+
 - [ ] OAuth flow triggers on `/auth`
 - [ ] Google & GitHub providers configured
 - [ ] Refresh tokens handled
 - [ ] P95 latency ≤ 50 ms under 100 RPS
 
 ## Implementation Plan
+**This section outlines *how* you will achieve the acceptance criteria.** It should be created *before* starting significant coding.
 1. Research OAuth 2.0 flow requirements
 2. Set up provider configurations
 3. Implement authentication middleware
@@ -133,4 +142,5 @@ A task is **Done** only when **ALL** of the following are complete:
 - If uncertain, **draft a new task** describing the ambiguity rather than guessing.
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.
 - **Draft an Implementation Plan** before starting work using `--plan` flag to outline your approach.
-- Update the plan if significant changes occur during implementation.  
+- Update the plan if significant changes occur during implementation.
+- **When to add an Implementation Plan:** Create this section if the task requires multiple steps, complex logic, or if outlining the approach upfront helps in understanding the path to achieving the acceptance criteria. Simple, single-step tasks might not require a detailed implementation plan.

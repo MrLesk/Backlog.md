@@ -67,6 +67,26 @@ This is the **Backlog.md** project - a lightweight git + markdown project manage
 backlog task edit <task-id> --status Done
 ```
 
+### Writing Effective Acceptance Criteria
+When defining `## Acceptance Criteria` for a task, focus on **outcomes, behaviors, and verifiable requirements** rather than step-by-step implementation details. Acceptance Criteria (AC) define *what* the system should do or *what* conditions must be met for the task to be considered complete. They should be testable and confirm that the core purpose of the task is achieved.
+
+**Distinguish ACs from Implementation Plans:**
+-   **Acceptance Criteria (What/Why):** Describe the desired result from a user's perspective or as a functional requirement. They verify the task's success.
+    -   *Good Example:* "- [ ] User can successfully log in with valid credentials."
+    -   *Good Example:* "- [ ] System processes 1000 requests per second without errors."
+    -   *Bad Example (Implementation Step):* "- [ ] Add a new function `handleLogin()` in `auth.ts`."
+-   **Implementation Plan (How):** This is a separate section (`## Implementation Plan`) where you outline the steps to achieve the ACs. This is where you detail *how* the work will be done.
+    -   *Example:* "1. Create `handleLogin()` function in `auth.ts`. 2. Add input validation. 3. Write unit tests for `handleLogin()`."
+
+**Key Principles for Good ACs:**
+-   **Outcome-Oriented:** Focus on the result, not the method.
+-   **Testable/Verifiable:** Each criterion should be something that can be objectively tested or verified.
+-   **Clear and Concise:** Unambiguous language.
+-   **Complete:** Collectively, ACs should cover the scope of the task.
+-   **User-Focused (where applicable):** Frame ACs from the perspective of the end-user or the system's external behavior.
+
+If a task requires a detailed breakdown of steps, use the `## Implementation Plan` section. The `## Acceptance Criteria` section should remain focused on the success conditions.
+
 ### Before Marking a Task as Done
 Always ensure you have:
 1. ✅ Marked all acceptance criteria as completed in the task file (change `- [ ]` to `- [x]`)

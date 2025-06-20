@@ -190,12 +190,27 @@ assignee: ['@Cursor']
 Short, imperative explanation of the work.
 
 ## Acceptance Criteria
-- [ ] OAuth flow triggers on `/auth`
-- [ ] Google & GitHub providers configured
-- [ ] Refresh tokens handled
-- [ ] P95 latency ≤ 50 ms under 100 RPS
+**Write outcome-focused Acceptance Criteria (ACs).** ACs define the specific, verifiable conditions that must be met for the task to be considered complete. They should describe *what* the system does or *what* the user can do, not *how* it's implemented.
+-   **Focus on Behavior & Outcomes:**
+    -   *Good Example:* `- [ ] System sends a confirmation email after successful registration.`
+    -   *Good Example:* `- [ ] Search results are displayed within 2 seconds.`
+-   **Avoid Implementation Steps:**
+    -   *Bad Example (Implementation):* `- [ ] Create a new `EmailService` class.` (This belongs in the Implementation Plan)
+-   **Make them Testable/Verifiable:**
+    -   *Good Example:* `- [ ] All API endpoints return a `200 OK` status for valid requests.`
+    -   *Bad Example (Not Testable):* `- [ ] The user interface is intuitive.`
+
+**Distinguish ACs from Implementation Plans:**
+-   **Acceptance Criteria (What/Why):** Verifiable statements about the task's success.
+-   **Implementation Plan (How):** Step-by-step guide on how to achieve the ACs. If the task is complex or involves multiple steps, create an `## Implementation Plan` section. For very simple tasks, this might not be needed, but ACs are always required.
+
+- [ ] OAuth flow triggers on `/auth` (Example of a good, verifiable AC)
+- [ ] Google & GitHub providers configured (Example of a good, verifiable AC)
+- [ ] Refresh tokens handled (Example of a good, verifiable AC)
+- [ ] P95 latency ≤ 50 ms under 100 RPS (Example of a good, measurable AC)
 
 ## Implementation Plan
+**This section details *how* the Acceptance Criteria will be met.** It should be drafted *before* starting code changes.
 1. Research OAuth 2.0 flow requirements
 2. Set up provider configurations
 3. Implement authentication middleware
@@ -306,4 +321,5 @@ A task is **Done** only when **ALL** of the following are complete:
 - If uncertain, **draft a new task** describing the ambiguity rather than guessing.
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.
 - **Draft an Implementation Plan** before starting work using `--plan` flag to outline your approach.
-- Update the plan if significant changes occur during implementation.  
+- Update the plan if significant changes occur during implementation.
+- **When to add an Implementation Plan:** Always add this section if the task involves more than a single, trivial step. It helps communicate your approach and allows for early feedback. For instance, if a task is "Fix typo in button text", an implementation plan is likely overkill. If it's "Implement password reset feature", a plan is crucial.
