@@ -286,11 +286,13 @@ taskCmd
 		}
 
 		if (options.draft) {
-			await core.createDraft(task, true);
+			const filepath = await core.createDraft(task, true);
 			console.log(`Created draft ${id}`);
+			console.log(`File: ${filepath}`);
 		} else {
-			await core.createTask(task, true);
+			const filepath = await core.createTask(task, true);
 			console.log(`Created task ${id}`);
+			console.log(`File: ${filepath}`);
 		}
 	});
 
@@ -604,8 +606,9 @@ draftCmd
 		const core = new Core(cwd);
 		const id = await generateNextId(core);
 		const task = buildTaskFromOptions(id, title, options);
-		await core.createDraft(task, true);
+		const filepath = await core.createDraft(task, true);
 		console.log(`Created draft ${id}`);
+		console.log(`File: ${filepath}`);
 	});
 
 draftCmd
