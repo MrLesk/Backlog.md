@@ -11,6 +11,19 @@ import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
 
+function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
+	switch (priority) {
+		case "high":
+			return " {red-fg}🔴{/}";
+		case "medium":
+			return " {yellow-fg}🟡{/}";
+		case "low":
+			return " {green-fg}🟢{/}";
+		default:
+			return "";
+	}
+}
+
 /**
  * Extract only the Description section content from markdown, avoiding duplication
  */
@@ -153,8 +166,9 @@ export async function viewTaskEnhanced(
 				? ` {cyan-fg}${task.assignee[0]?.startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 				: "";
 			const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+			const priorityText = getPriorityDisplay(task.priority);
 
-			return `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${assigneeText}${labelsText}`;
+			return `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}`;
 		},
 		onSelect: (selected: Task | Task[]) => {
 			const selectedTask = Array.isArray(selected) ? selected[0] : selected;
@@ -709,6 +723,7 @@ export function formatTaskPlainText(task: Task, content: string): string {
 	lines.push("=".repeat(50));
 	lines.push("");
 	lines.push(`Status: ${formatStatusWithIcon(task.status)}`);
+	if (task.priority) lines.push(`Priority: ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`);
 	if (task.assignee?.length)
 		lines.push(`Assignee: ${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}`);
 	if (task.reporter) lines.push(`Reporter: ${task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`}`);

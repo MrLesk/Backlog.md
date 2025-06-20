@@ -79,6 +79,12 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 export function parseTask(content: string): Task {
 	const { frontmatter, content: description } = parseMarkdown(content);
 
+	// Validate priority field
+	const priority = frontmatter.priority ? String(frontmatter.priority).toLowerCase() : undefined;
+	const validPriorities = ["high", "medium", "low"];
+	const validatedPriority =
+		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
+
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
@@ -98,6 +104,7 @@ export function parseTask(content: string): Task {
 		acceptanceCriteria: extractAcceptanceCriteria(description),
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
+		priority: validatedPriority,
 	};
 }
 
