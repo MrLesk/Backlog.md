@@ -213,6 +213,56 @@ async function generateNextDocId(core: Core): Promise<string> {
 	return `doc-${max + 1}`;
 }
 
+function normalizeDependencies(dependencies: unknown): string[] {
+	if (!dependencies) return [];
+
+	// Handle multiple flags: --dep task-1 --dep task-2
+	if (Array.isArray(dependencies)) {
+		return dependencies
+			.flatMap((dep) =>
+				String(dep)
+					.split(",")
+					.map((d) => d.trim()),
+			)
+			.filter(Boolean)
+			.map((dep) => (dep.startsWith("task-") ? dep : `task-${dep}`));
+	}
+
+	// Handle comma-separated: --dep task-1,task-2,task-3
+	return String(dependencies)
+		.split(",")
+		.map((dep) => dep.trim())
+		.filter(Boolean)
+		.map((dep) => (dep.startsWith("task-") ? dep : `task-${dep}`));
+}
+
+async function validateDependencies(
+	dependencies: string[],
+	core: Core,
+): Promise<{ valid: string[]; invalid: string[] }> {
+	const valid: string[] = [];
+	const invalid: string[] = [];
+
+	if (dependencies.length === 0) {
+		return { valid, invalid };
+	}
+
+	// Load both tasks and drafts to validate dependencies
+	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
+
+	const allTaskIds = new Set([...tasks.map((t) => t.id), ...drafts.map((d) => d.id)]);
+
+	for (const dep of dependencies) {
+		if (allTaskIds.has(dep)) {
+			valid.push(dep);
+		} else {
+			invalid.push(dep);
+		}
+	}
+
+	return { valid, invalid };
+}
+
 function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
 	const parentInput = options.parent ? String(options.parent) : undefined;
 	const normalizedParent = parentInput
@@ -222,6 +272,9 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 		: undefined;
 
 	const createdDate = new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10);
+
+	// Handle dependencies - they will be validated separately
+	const dependencies = normalizeDependencies(options.dependsOn || options.dep);
 
 	return {
 		id,
@@ -235,7 +288,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 					.map((l: string) => l.trim())
 					.filter(Boolean)
 			: [],
-		dependencies: [],
+		dependencies,
 		description: options.description ? String(options.description) : "",
 		...(normalizedParent && { parentTaskId: normalizedParent }),
 	};
@@ -254,11 +307,25 @@ taskCmd
 	.option("--plan <text>", "add implementation plan")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
+	.option("--depends-on <taskIds>", "specify task dependencies (comma-separated or use multiple times)")
+	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)")
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const id = await generateNextId(core, options.parent);
 		const task = buildTaskFromOptions(id, title, options);
+
+		// Validate dependencies if provided
+		if (task.dependencies.length > 0) {
+			const { valid, invalid } = await validateDependencies(task.dependencies, core);
+			if (invalid.length > 0) {
+				console.error(`Error: The following dependencies do not exist: ${invalid.join(", ")}`);
+				console.error("Please create these tasks first or check the task IDs.");
+				process.exitCode = 1;
+				return;
+			}
+			task.dependencies = valid;
+		}
 
 		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
 		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
@@ -399,6 +466,8 @@ taskCmd
 	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "set implementation plan")
+	.option("--depends-on <taskIds>", "set task dependencies (comma-separated or use multiple times)")
+	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)")
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -447,6 +516,19 @@ taskCmd
 		}
 		task.labels = labels;
 		task.updatedDate = new Date().toISOString().split("T")[0];
+
+		// Handle dependencies
+		if (options.dependsOn || options.dep) {
+			const dependencies = normalizeDependencies(options.dependsOn || options.dep);
+			const { valid, invalid } = await validateDependencies(dependencies, core);
+			if (invalid.length > 0) {
+				console.error(`Error: The following dependencies do not exist: ${invalid.join(", ")}`);
+				console.error("Please create these tasks first or check the task IDs.");
+				process.exitCode = 1;
+				return;
+			}
+			task.dependencies = valid;
+		}
 
 		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
 		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
