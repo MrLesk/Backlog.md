@@ -22,13 +22,13 @@ dependencies: []
 
 ## Implementation Plan
 
-1. Analyze current board display logic; 
-2. Implement cross-directory status checking (tasks, drafts, archive); 
-3. Add logic to check task status across all local git branches; 
-4. Add logic to check task status across all remote git branches; 
-5. Update board filtering to exclude demoted/archived tasks found in any branch; 
-6. Add tests for demoted task visibility; 
-7. Test branch-specific demotion scenarios; 
+1. Analyze current board display logic;
+2. Implement cross-directory status checking (tasks, drafts, archive);
+3. Add logic to check task status across all local git branches;
+4. Add logic to check task status across all remote git branches;
+5. Update board filtering to exclude demoted/archived tasks found in any branch;
+6. Add tests for demoted task visibility;
+7. Test branch-specific demotion scenarios;
 8. Test remote branch status checking
 
 ## Implementation Notes
