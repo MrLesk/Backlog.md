@@ -1,0 +1,6 @@
+[test]
+# Timeout for individual tests - increased for Windows compatibility
+timeout = "10s"
+
+# Reduce concurrency to help with Windows file system contention
+# Note: This is a future-proofing setting as Bun may add concurrency controls
