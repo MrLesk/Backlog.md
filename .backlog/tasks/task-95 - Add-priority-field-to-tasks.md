@@ -14,6 +14,7 @@ dependencies: []
 Add support for assigning a priority level to each task so that work can be
 ordered by importance. The CLI should allow setting the priority when creating
 or editing tasks, and the board view should display it.
+
 ## Acceptance Criteria
 
 - [ ] Tasks support priority metadata
