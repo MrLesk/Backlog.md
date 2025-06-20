@@ -223,6 +223,12 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 
 	const createdDate = new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10);
 
+	// Validate priority option
+	const priority = options.priority ? String(options.priority).toLowerCase() : undefined;
+	const validPriorities = ["high", "medium", "low"];
+	const validatedPriority =
+		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
+
 	return {
 		id,
 		title,
@@ -238,6 +244,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 		dependencies: [],
 		description: options.description ? String(options.description) : "",
 		...(normalizedParent && { parentTaskId: normalizedParent }),
+		...(validatedPriority && { priority: validatedPriority }),
 	};
 }
 
@@ -396,6 +403,7 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --label <labels>")
+	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
 	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
@@ -422,6 +430,17 @@ taskCmd
 		}
 		if (options.status) {
 			task.status = String(options.status);
+		}
+
+		if (options.priority) {
+			const priority = String(options.priority).toLowerCase();
+			const validPriorities = ["high", "medium", "low"];
+			if (validPriorities.includes(priority)) {
+				task.priority = priority as "high" | "medium" | "low";
+			} else {
+				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
+				return;
+			}
 		}
 
 		const labels = [...task.labels];

@@ -18,6 +18,40 @@ async function loadContent(textOrPath: string): Promise<string> {
 	}
 }
 
+/**
+ * Gets the appropriate markers for a given file type
+ */
+function getMarkers(fileName: string): { start: string; end: string } {
+	if (fileName === ".cursorrules") {
+		// .cursorrules doesn't support HTML comments, use markdown-style comments
+		return {
+			start: "# === BACKLOG.MD GUIDELINES START ===",
+			end: "# === BACKLOG.MD GUIDELINES END ===",
+		};
+	}
+	// All markdown files support HTML comments
+	return {
+		start: "<!-- BACKLOG.MD GUIDELINES START -->",
+		end: "<!-- BACKLOG.MD GUIDELINES END -->",
+	};
+}
+
+/**
+ * Checks if the Backlog.md guidelines are already present in the content
+ */
+function hasBacklogGuidelines(content: string, fileName: string): boolean {
+	const { start } = getMarkers(fileName);
+	return content.includes(start);
+}
+
+/**
+ * Wraps the Backlog.md guidelines with appropriate markers
+ */
+function wrapWithMarkers(content: string, fileName: string): string {
+	const { start, end } = getMarkers(fileName);
+	return `\n${start}\n${content}\n${end}\n`;
+}
+
 export async function addAgentInstructions(
 	projectRoot: string,
 	git?: GitOperations,
@@ -34,30 +68,39 @@ export async function addAgentInstructions(
 	for (const name of files) {
 		const content = await loadContent(mapping[name]);
 		const filePath = join(projectRoot, name);
-		let existing = "";
+		let finalContent = "";
 
 		// Check if file exists first to avoid Windows hanging issue
 		if (existsSync(filePath)) {
 			try {
 				// On Windows, use synchronous read to avoid hanging
+				let existing: string;
 				if (process.platform === "win32") {
 					existing = readFileSync(filePath, "utf-8");
 				} else {
 					existing = await Bun.file(filePath).text();
 				}
+
+				// Check if Backlog.md guidelines are already present
+				if (hasBacklogGuidelines(existing, name)) {
+					// Guidelines already exist, skip this file
+					continue;
+				}
+
+				// Append Backlog.md guidelines with markers
 				if (!existing.endsWith("\n")) existing += "\n";
-				existing += content;
+				finalContent = existing + wrapWithMarkers(content, name);
 			} catch (error) {
 				console.error(`Error reading existing file ${filePath}:`, error);
-				// If we can't read it, just use the new content
-				existing = content;
+				// If we can't read it, just use the new content with markers
+				finalContent = wrapWithMarkers(content, name);
 			}
 		} else {
-			// File doesn't exist, use content as is
-			existing = content;
+			// File doesn't exist, create with markers
+			finalContent = wrapWithMarkers(content, name);
 		}
 
-		await Bun.write(filePath, existing);
+		await Bun.write(filePath, finalContent);
 		paths.push(filePath);
 	}
 

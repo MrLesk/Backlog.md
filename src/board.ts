@@ -13,6 +13,20 @@ export type BoardFormat = "terminal" | "markdown";
 interface DisplayTask {
 	id: string;
 	title: string;
+	priority?: "high" | "medium" | "low";
+}
+
+function getPriorityIndicator(priority?: "high" | "medium" | "low"): string {
+	switch (priority) {
+		case "high":
+			return "🔴";
+		case "medium":
+			return "🟡";
+		case "low":
+			return "🟢";
+		default:
+			return "";
+	}
 }
 
 function wrapText(text: string, maxWidth: number): string[] {
@@ -81,14 +95,18 @@ export function generateKanbanBoard(
 
 		const result: DisplayTask[] = [];
 		for (const t of top) {
-			result.push({ id: t.id, title: t.title });
+			const priorityIndicator = getPriorityIndicator(t.priority);
+			const displayTitle = priorityIndicator ? `${priorityIndicator} ${t.title}` : t.title;
+			result.push({ id: t.id, title: displayTitle, priority: t.priority });
 			const subs = children.get(t.id) || [];
 			subs.sort((a, b) => compareTaskIds(a.id, b.id));
 
 			for (const [subIdx, s] of subs.entries()) {
 				const isLastSub = subIdx === subs.length - 1;
 				const prefix = isLastSub ? "  └─" : "  |—";
-				result.push({ id: `${prefix} ${s.id}`, title: `     ${s.title}` });
+				const subPriorityIndicator = getPriorityIndicator(s.priority);
+				const subDisplayTitle = subPriorityIndicator ? `     ${subPriorityIndicator} ${s.title}` : `     ${s.title}`;
+				result.push({ id: `${prefix} ${s.id}`, title: subDisplayTitle, priority: s.priority });
 			}
 		}
 
