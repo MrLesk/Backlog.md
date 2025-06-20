@@ -489,4 +489,21 @@ export class FileSystem {
 
 		return `${lines.join("\n")}\n`;
 	}
+
+	async listArchivedTasks(): Promise<Task[]> {
+		try {
+			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: this.archiveTasksDir }));
+
+			const tasks: Task[] = [];
+			for (const file of taskFiles) {
+				const filepath = join(this.archiveTasksDir, file);
+				const content = await Bun.file(filepath).text();
+				tasks.push(parseTask(content));
+			}
+
+			return sortByTaskId(tasks);
+		} catch (error) {
+			return [];
+		}
+	}
 }

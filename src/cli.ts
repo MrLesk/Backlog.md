@@ -786,7 +786,30 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			}
 		}
 
-		return Array.from(tasksById.values());
+		// Collect all draft and archived task IDs to filter them out from all branches
+		const branches = await core.gitOps.listAllBranches();
+		const invalidIdPromises = branches.map(async (branch) => {
+			const [draftFiles, archivedFiles] = await Promise.all([
+				core.gitOps.listFilesInTree(branch, ".backlog/drafts"),
+				core.gitOps.listFilesInTree(branch, ".backlog/archive/tasks"),
+			]);
+			const files = [...draftFiles, ...archivedFiles];
+			return files
+				.map((file) => {
+					const match = file.match(/task-([\\d.]+)/);
+					return match ? match[1] : null;
+				})
+				.filter((id): id is string => id !== null)
+				.map((id) => `task-${id}`);
+		});
+
+		const invalidIdArrays = await Promise.all(invalidIdPromises);
+		const invalidIds = new Set(invalidIdArrays.flat());
+
+		// Filter out tasks that are in drafts or archived
+		const finalTasks = Array.from(tasksById.values()).filter((task) => !invalidIds.has(task.id));
+
+		return finalTasks;
 	});
 
 	if (allTasks.length === 0) {
@@ -843,8 +866,30 @@ boardCmd
 				}
 			}
 
-			const allTasks = Array.from(tasksById.values());
-			loadingScreen?.update(`Total tasks: ${allTasks.length}`);
+			// Collect all draft and archived task IDs to filter them out from all branches
+			const branches = await core.gitOps.listAllBranches();
+			const invalidIdPromises = branches.map(async (branch) => {
+				const [draftFiles, archivedFiles] = await Promise.all([
+					core.gitOps.listFilesInTree(branch, ".backlog/drafts"),
+					core.gitOps.listFilesInTree(branch, ".backlog/archive/tasks"),
+				]);
+				const files = [...draftFiles, ...archivedFiles];
+				return files
+					.map((file) => {
+						const match = file.match(/task-([\\d.]+)/);
+						return match ? match[1] : null;
+					})
+					.filter((id): id is string => id !== null)
+					.map((id) => `task-${id}`);
+			});
+
+			const invalidIdArrays = await Promise.all(invalidIdPromises);
+			const invalidIds = new Set(invalidIdArrays.flat());
+
+			// Filter out tasks that are in drafts or archived
+			const finalTasks = Array.from(tasksById.values()).filter((task) => !invalidIds.has(task.id));
+
+			loadingScreen?.update(`Total tasks: ${finalTasks.length}`);
 
 			// Close loading screen before export
 			loadingScreen?.close();
@@ -854,7 +899,7 @@ boardCmd
 			const outputPath = join(cwd, outputFile as string);
 			const maxColumnWidth = config?.maxColumnWidth || 30; // Default for export
 			const addTitle = !filename && !options.output; // Add title only for default readme export
-			await exportKanbanBoardToFile(allTasks, statuses, outputPath, maxColumnWidth, addTitle);
+			await exportKanbanBoardToFile(finalTasks, statuses, outputPath, maxColumnWidth, addTitle);
 			console.log(`Exported board to ${outputPath}`);
 		} catch (error) {
 			loadingScreen?.close();
@@ -962,96 +1007,6 @@ decisionCmd
 		};
 		await core.createDecisionLog(decision, true);
 		console.log(`Created decision ${id}`);
-	});
-
-decisionCmd
-	.command("list")
-	.option("--plain", "use plain text output instead of interactive UI")
-	.action(async (options) => {
-		const cwd = process.cwd();
-		const core = new Core(cwd);
-		const decisions = await core.filesystem.listDecisionLogs();
-		if (decisions.length === 0) {
-			console.log("No decisions found.");
-			return;
-		}
-
-		// Plain text output
-		// Workaround for bun compile issue with commander options
-		const isPlainFlag = options.plain || process.argv.includes("--plain");
-		if (isPlainFlag) {
-			for (const d of decisions) {
-				console.log(`${d.id} - ${d.title}`);
-			}
-			return;
-		}
-
-		// Interactive UI
-		const selected = await genericSelectList("Select a decision", decisions);
-		if (selected) {
-			// Show decision details
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.decisionsDir }));
-			const decisionFile = files.find((f) => f.startsWith(`${selected.id} -`) || f === `${selected.id}.md`);
-			if (decisionFile) {
-				const filePath = join(core.filesystem.decisionsDir, decisionFile);
-				const content = await Bun.file(filePath).text();
-				await scrollableViewer(content);
-			}
-		}
-	});
-
-const configCmd = program.command("config");
-
-configCmd
-	.command("get <key>")
-	.description("get configuration value")
-	.action(async (key: string) => {
-		const cwd = process.cwd();
-		const core = new Core(cwd);
-		const localCfg = await core.filesystem.loadConfig();
-		const localVal = localCfg ? (localCfg as unknown as Record<string, unknown>)[key] : undefined;
-		if (localVal !== undefined) {
-			console.log(localVal);
-			return;
-		}
-		const globalVal = await core.filesystem.getUserSetting(key, true);
-		if (globalVal !== undefined) {
-			console.log(globalVal);
-			return;
-		}
-		const defaults: Record<string, unknown> = {
-			statuses: DEFAULT_STATUSES,
-			defaultStatus: FALLBACK_STATUS,
-		};
-		if (key in defaults) {
-			console.log(defaults[key]);
-		}
-	});
-
-configCmd
-	.command("set <key> <value>")
-	.description("set configuration value")
-	.option("--global", "save to global user config")
-	.option("--local", "save to local project config")
-	.action(async (key: string, value: string, options) => {
-		const cwd = process.cwd();
-		const core = new Core(cwd);
-		if (options.global) {
-			await core.filesystem.setUserSetting(key, value, true);
-			console.log(`Set ${key} in global config`);
-		} else {
-			const cfg = (await core.filesystem.loadConfig()) || {
-				projectName: "",
-				statuses: [...DEFAULT_STATUSES],
-				labels: [],
-				milestones: [],
-				defaultStatus: FALLBACK_STATUS,
-				dateFormat: "YYYY-MM-DD",
-			};
-			(cfg as unknown as Record<string, unknown>)[key] = value;
-			await core.filesystem.saveConfig(cfg);
-			console.log(`Set ${key} in local config`);
-		}
 	});
 
 program.parseAsync(process.argv);
