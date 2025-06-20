@@ -27,7 +27,16 @@ jobs:
             ${{ runner.os }}-${{ matrix.os }}-bun-
       - run: bun install --frozen-lockfile
       - run: bun run lint
-      - run: bun test
+      - name: Run tests
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            # Run tests with increased timeout on Windows to handle slower file operations
+            bun run test:windows
+          else
+            # Run tests normally on Unix systems
+            bun test
+          fi
+        shell: bash
 
   build-test:
     name: compile-and-smoke-test
