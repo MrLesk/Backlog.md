@@ -315,8 +315,14 @@ taskCmd
 	.option("--plan <text>", "add implementation plan")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
-	.option("--depends-on <taskIds>", "specify task dependencies (comma-separated or use multiple times)")
-	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)")
+	.option(
+		"--depends-on <taskIds>",
+		"specify task dependencies (comma-separated or use multiple times)",
+		(value, previous) => (previous ? [...previous, value] : [value]),
+	)
+	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)", (value, previous) =>
+		previous ? [...previous, value] : [value],
+	)
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -477,8 +483,14 @@ taskCmd
 	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "set implementation plan")
-	.option("--depends-on <taskIds>", "set task dependencies (comma-separated or use multiple times)")
-	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)")
+	.option(
+		"--depends-on <taskIds>",
+		"set task dependencies (comma-separated or use multiple times)",
+		(value, previous) => (previous ? [...previous, value] : [value]),
+	)
+	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", (value, previous) =>
+		previous ? [...previous, value] : [value],
+	)
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
