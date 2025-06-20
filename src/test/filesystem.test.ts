@@ -3,22 +3,24 @@ import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-backlog");
+let TEST_DIR: string;
 
 describe("FileSystem", () => {
 	let filesystem: FileSystem;
 
 	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-backlog");
 		filesystem = new FileSystem(TEST_DIR);
 		await filesystem.ensureBacklogStructure();
 	});
 
 	afterEach(async () => {
 		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
+			await safeCleanup(TEST_DIR);
 		} catch {
-			// Ignore cleanup errors
+			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
 	});
 
