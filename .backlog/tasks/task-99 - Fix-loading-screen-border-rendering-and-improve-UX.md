@@ -44,27 +44,13 @@ These issues were affecting the user experience across different platforms and m
 
 ## Implementation Notes
 
-### Root Cause Analysis
-The primary issue was content overlapping the right border due to improper width calculations. The blessed.js library renders borders, then content can overwrite them if not properly constrained.
+**Root cause**: Content was overlapping right border due to improper width calculations.
 
-### Technical Decisions
-- **Timing fix**: Changed `setImmediate(resolve)` to `setTimeout(resolve, 10)` in both `withLoadingScreen` and `createLoadingScreen` functions (lines 205, 275) to give terminals time to render before starting heavy async operations
-- **Content positioning**: Used `left: 2` and `width: "100%-6"` to create 2-character spacing from borders and account for border thickness plus padding
-- **Width increases**: Increased box widths from 40-50 to 60-70 characters to prevent text wrapping on longer messages
-- **Height reduction**: Reduced heights from 7 to 5-6 rows for more compact display
-- **Spinner placement**: Moved spinner from box content to title using `loadingBox.setLabel()` with spinner characters
+**Key changes**:
+- Changed `setImmediate` to `setTimeout(resolve, 10)` for Windows compatibility (lines 205, 275)
+- Fixed content positioning: `left: 2, width: "100%-6"` to prevent border overlap (lines 192-194, 261-263)
+- Increased box widths to 60-70 chars to prevent text wrapping
+- Reduced heights to 5-6 rows for compact display
+- Moved spinner to title bar using `loadingBox.setLabel()`
 
-### Files Modified
-- `/src/ui/loading.ts` (lines 85, 92, 123, 128, 176-177, 192-194, 205, 235-236, 261-263, 275)
-  - Fixed timing issues with `setTimeout` delays
-  - Adjusted box dimensions and content positioning
-  - Added title spinner animation
-  - Ensured proper border rendering with content constraints
-
-### Technical Trade-offs
-- Added 10ms delay for cross-platform compatibility vs immediate rendering
-- Fixed width calculations vs flexible responsive design for consistent border rendering
-- Slightly larger boxes vs minimal space usage to prevent text wrapping
-
-### Follow-up Tasks
-None required - all issues have been resolved and existing functionality maintained.
+**Files**: `/src/ui/loading.ts`
