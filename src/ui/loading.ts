@@ -80,46 +80,52 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 	const screen = createScreen({ title });
 	let closed = false;
 
-	// Create loading box
+	// Create loading box with proper border - ensure right border renders
+	const terminalWidth = process.stdout.columns || 80;
+	const boxWidth = Math.min(70, terminalWidth - 8); // Larger width to prevent text wrapping
+
 	const loadingBox = blessed.box({
 		parent: screen,
 		top: "center",
 		left: "center",
-		width,
-		height,
-		border: "line",
-		label: " Loading ",
-		padding: 1,
-		scrollable: allowScrolling,
-		alwaysScroll: allowScrolling,
+		width: boxWidth,
+		height: Math.min(height, 6), // Keep it compact
+		border: {
+			type: "line",
+		},
 		style: {
 			border: { fg: "cyan" },
 		},
+		label: " Loading ",
+		padding: {
+			left: 0,
+			right: 0,
+			top: 0,
+			bottom: 0,
+		},
+		scrollable: allowScrolling,
+		alwaysScroll: allowScrolling,
+		// Additional properties to ensure proper rendering
+		tags: false,
+		wrap: false,
+		autoPadding: false,
 	});
 
-	// Create spinner if requested
-	let spinner: blessed.Widgets.TextElement | null = null;
+	// Create spinner in the title if requested
 	let spinnerInterval: NodeJS.Timeout | null = null;
 	let spinnerIndex = 0;
 
 	if (showSpinner) {
-		spinner = blessed.text({
-			parent: spinnerPosition === "center" ? loadingBox : screen,
-			top: spinnerPosition === "center" ? 2 : undefined,
-			bottom: spinnerPosition === "bottom" ? 1 : undefined,
-			left: "center",
-			content: SPINNER_CHARS[0],
-			style: { fg: "cyan" },
-		});
-
-		// Start spinner animation
+		// Start spinner animation in the title
 		spinnerInterval = setInterval(() => {
 			spinnerIndex = (spinnerIndex + 1) % SPINNER_CHARS.length;
-			if (spinner) {
-				spinner.setContent(SPINNER_CHARS[spinnerIndex]);
-			}
+			const spinnerChar = SPINNER_CHARS[spinnerIndex];
+			loadingBox.setLabel(` ${spinnerChar} Loading `);
 			screen.render();
 		}, SPINNER_INTERVAL_MS);
+
+		// Set initial spinner in label
+		loadingBox.setLabel(` ${SPINNER_CHARS[0]} Loading `);
 	}
 
 	// Handle escape/Ctrl+C to close
@@ -143,7 +149,7 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 	return {
 		screen,
 		loadingBox,
-		spinner,
+		spinner: null, // No longer used - spinner is in the title
 		spinnerInterval,
 		closed,
 		update: () => {}, // Will be overridden by specific implementations
@@ -167,6 +173,8 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 export async function withLoadingScreen<T>(message: string, operation: () => Promise<T>): Promise<T> {
 	const base = createLoadingScreenBase({
 		message,
+		width: 60, // Larger width to prevent wrapping
+		height: 5, // Compact height
 		showSpinner: true,
 		spinnerPosition: "center",
 	});
@@ -176,18 +184,25 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
 		return operation();
 	}
 
-	// Add message text to loading box
+	// Add message text to loading box - ensure it doesn't overlap borders
 	if (base.loadingBox) {
 		blessed.text({
 			parent: base.loadingBox,
 			top: 0,
-			left: "center",
+			left: 2, // More space from left border
+			width: "100%-6", // Account for borders + padding (2 borders + 4 padding)
+			height: 1,
+			align: "center",
 			content: message,
 			style: { fg: "white" },
 		});
 	}
 
 	base.screen.render();
+
+	// Small delay to ensure loading screen renders before heavy async work starts
+	// This is especially important on Windows where the terminal might block
+	await new Promise((resolve) => setTimeout(resolve, 10));
 
 	try {
 		const result = await operation();
@@ -217,8 +232,8 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
 export async function createLoadingScreen(initialMessage: string): Promise<LoadingScreen | null> {
 	const base = createLoadingScreenBase({
 		message: initialMessage,
-		width: "60%",
-		height: 10,
+		width: 70, // Larger width to prevent wrapping
+		height: 6, // Smaller height for better proportions
 		showSpinner: true,
 		spinnerPosition: "bottom",
 		allowScrolling: true,
@@ -243,16 +258,21 @@ export async function createLoadingScreen(initialMessage: string): Promise<Loadi
 	const messages = blessed.log({
 		parent: base.loadingBox,
 		top: 0,
-		left: 0,
-		width: "100%-2",
-		height: "100%-2",
+		left: 2, // More space from left border
+		width: "100%-6", // Account for borders + padding (2 borders + 4 padding)
+		height: "100%-2", // Account for top and bottom borders
 		tags: true,
 		style: { fg: "white" },
+		wrap: true, // Ensure long lines wrap instead of extending beyond width
 	});
 
 	// Add initial message
 	messages.log(initialMessage);
 	base.screen.render();
+
+	// Small delay to ensure loading screen renders before returning control
+	// This is especially important on Windows where the terminal might block
+	await new Promise((resolve) => setTimeout(resolve, 10));
 
 	// Override update function to use the log widget
 	base.update = (message: string) => {

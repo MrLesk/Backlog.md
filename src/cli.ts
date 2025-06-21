@@ -765,40 +765,51 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 	const statuses = config?.statuses || [];
 	const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
-	// Load tasks (fast enough now that we don't need loading screen)
+	// Load tasks with loading screen for better user experience
 	const allTasks = await (async () => {
-		// Load local and remote tasks in parallel
-		const [localTasks, remoteTasks] = await Promise.all([core.listTasksWithMetadata(), loadRemoteTasks(core.gitOps)]);
+		const loadingScreen = await createLoadingScreen("Loading board");
 
-		// Create map with local tasks
-		const tasksById = new Map<string, TaskWithMetadata>(
-			localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
-		);
+		try {
+			// Load local and remote tasks in parallel
+			loadingScreen?.update("Loading tasks from local and remote branches...");
+			const [localTasks, remoteTasks] = await Promise.all([core.listTasksWithMetadata(), loadRemoteTasks(core.gitOps)]);
 
-		// Merge remote tasks with local tasks
-		for (const remoteTask of remoteTasks) {
-			const existing = tasksById.get(remoteTask.id);
-			if (!existing) {
-				tasksById.set(remoteTask.id, remoteTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
-				tasksById.set(remoteTask.id, resolved);
+			// Create map with local tasks
+			const tasksById = new Map<string, TaskWithMetadata>(
+				localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
+			);
+
+			// Merge remote tasks with local tasks
+			for (const remoteTask of remoteTasks) {
+				const existing = tasksById.get(remoteTask.id);
+				if (!existing) {
+					tasksById.set(remoteTask.id, remoteTask);
+				} else {
+					const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
+					tasksById.set(remoteTask.id, resolved);
+				}
 			}
+
+			// Get the latest directory location of each task across all branches
+			// Use optimized version that only checks the tasks we have
+			loadingScreen?.update("Resolving task states across branches...");
+			const tasks = Array.from(tasksById.values());
+			const taskIds = tasks.map((t) => t.id);
+			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) => {
+				loadingScreen?.update(msg);
+			});
+
+			// Filter tasks based on their latest directory location
+			// Only show tasks whose latest directory type is "task" (not draft or archived)
+			loadingScreen?.update("Filtering active tasks...");
+			const filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+
+			loadingScreen?.close();
+			return filteredTasks;
+		} catch (error) {
+			loadingScreen?.close();
+			throw error;
 		}
-
-		// Get the latest directory location of each task across all branches
-		// Use optimized version that only checks the tasks we have
-		const tasks = Array.from(tasksById.values());
-		const taskIds = tasks.map((t) => t.id);
-		const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) => {
-			// Progress updates are handled by the loading screen
-		});
-
-		// Filter tasks based on their latest directory location
-		// Only show tasks whose latest directory type is "task" (not draft or archived)
-		const filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
-
-		return filteredTasks;
 	})();
 
 	if (allTasks.length === 0) {
