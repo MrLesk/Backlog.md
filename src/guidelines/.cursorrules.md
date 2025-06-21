@@ -1,6 +1,7 @@
 # Instructions for the usage of Backlog.md CLI Tool
 
 ## 1. Source of Truth
+
 - Tasks live under **`.backlog/tasks/`** (drafts under **`.backlog/drafts/`**).
 - Every implementation decision starts with reading the corresponding Markdown task file.
 
@@ -27,7 +28,9 @@ backlog task edit 42 -s Done
 ```
 
 ### Before Marking a Task as Done
+
 Always ensure you have:
+
 1. ✅ Marked all acceptance criteria as completed (change `- [ ]` to `- [x]`)
 2. ✅ Added an `## Implementation Notes` section documenting your approach
 3. ✅ Run all tests and linting checks (`bun test` and `bun run check`)
@@ -53,6 +56,7 @@ A task is **Done** only when **ALL** of the following are complete:
 8. **No regressions**: performance, security and licence checks green.
 
 ⚠️ **IMPORTANT**: Never mark a task as Done without completing ALL items above, especially:
+
 - Marking acceptance criteria checkboxes as complete
 - Adding comprehensive Implementation Notes
 
@@ -102,9 +106,10 @@ Short, imperative explanation of the work.
 | Demote to draft| `backlog task demote <task-id>` |
 
 ## 6. Tips for AI Agents
+
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  
 - Prefer **idempotent** changes so reruns remain safe.  
-- Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
+- Leave brief **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
 - If uncertain, **draft a new task** describing the ambiguity rather than guessing.
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.
 - **Draft an Implementation Plan** before starting work using `--plan` flag to outline your approach.

@@ -1,6 +1,7 @@
 # Instructions for Cursor AI Using Backlog.md CLI Tool
 
 ## Table of Contents
+
 1. Project Structure and Navigation
 2. Task Management
 3. Documentation
@@ -23,12 +24,14 @@
 ---
 
 ## 1. Project Structure and Navigation
+
 1.1 Always check the project structure in `AGENTS.md` before making changes
 1.2 Follow the directory structure under `.backlog/` (see [Project Structure](./AGENTS.md#structure))
+
 - Never modify files outside the designated project directories
 - Always verify file locations before making changes
 
-```
+```markdown
 backlog.md/ (Root folder for "Backlog.md" project)
 └── .backlog/ ("Backlog.md" folder for managing tasks and docs)
     ├── drafts/ (list of tasks that are not ready to be implemented)
@@ -46,12 +49,15 @@ Instructions for using the Backlog.md tool are available in the `readme.md` file
 Each folder contains a `readme.md` file with instructions on how to use the Backlog.md tool for that specific folder.
 
 ## 2. Task Management
+
 ### 2.1 Source of Truth
+
 - Tasks live under **`.backlog/tasks/`** (drafts under **`.backlog/drafts/`**)
 - Each has YAML frontmatter & markdown content
 - The task **markdown file** defines what to implement
 
 ### 2.2 Your Workflow
+
 ```bash
 # 1 Find something to work on
 backlog task list --status "To Do" --plain
@@ -73,7 +79,9 @@ backlog task edit 42 -s Done
 ```
 
 ### Before Marking a Task as Done
+
 Always ensure you have:
+
 1. ✅ Marked all acceptance criteria as completed in the task file (change `- [ ]` to `- [x]`)
 2. ✅ Added an `## Implementation Notes` section documenting your approach
 3. ✅ Run all tests and linting checks (`bun test` and `bun run check`)
@@ -82,13 +90,15 @@ Always ensure you have:
 ### 2.3 Never modify task files directly - use the backlog CLI commands
 
 ## 3. Documentation
+
 3.1 All documentation must be in Markdown format
 3.2 Update relevant `README.md` files when making changes
 3.3 Document architectural decisions in `.backlog/decisions/`
 3.4 Maintain clear and concise documentation
-3.5 Include examples in documentation where appropriate 
+3.5 Include examples in documentation where appropriate
 
 ## 4. Code Quality and Testing
+
 - Ensure all code changes are properly tested
 - Follow the project's coding style and conventions
 - Write clear, self-documenting code
@@ -96,7 +106,9 @@ Always ensure you have:
 - Add comments for complex logic
 
 ## 5. Git Workflow
+
 ### 5.1 Commit Hygiene
+
 - Append task ID to every commit: "TASK-42 - Add OAuth provider"
 - For subtasks: "TASK-42.1 - Configure Google OAuth"
 - Branch names: `tasks/task-42-oauth-provider`
@@ -104,6 +116,7 @@ Always ensure you have:
 - Keep commits atomic and focused
 
 ## 6. AI Agent Guidelines
+
 6.1 Always verify task requirements before implementation
 6.2 Use semantic search to understand existing code
 6.3 Check for similar implementations before creating new features
@@ -111,12 +124,15 @@ Always ensure you have:
 6.5 Consider edge cases and error scenarios
 
 ## 7. Configuration Management
+
 - Never modify config.yml directly
+
 - Use backlog config commands for configuration changes
 - Maintain backward compatibility when possible
 - Document configuration changes in decisions/
 
 ## 8. Review and Communication
+
 - Ensure all changes are properly documented
 - Verify that changes don't break existing functionality
 - Check for potential security implications
@@ -128,12 +144,14 @@ Always ensure you have:
 - Reference relevant documentation when making changes
 
 ## 9. Error Handling and Logging
+
 - Implement proper error handling for all new features
 - Include appropriate logging
 - Consider user experience in error scenarios
 - Document error cases and recovery procedures
 
 ## 10. Performance and Security
+
 - Consider performance implications of changes
 - Optimize code when necessary
 - Document performance considerations
@@ -144,6 +162,7 @@ Always ensure you have:
 - Document security-related decisions
 
 ## 11. Maintenance and Dependencies
+
 - Keep dependencies up to date
 - Remove deprecated code
 - Maintain backward compatibility
@@ -154,6 +173,7 @@ Always ensure you have:
 - Check for license compatibility
 
 ## 12. Accessibility and Internationalization
+
 - Ensure all features are accessible
 - Follow accessibility guidelines
 - Test with accessibility tools
@@ -164,18 +184,21 @@ Always ensure you have:
 - Document internationalization requirements
 
 ## 13. Version Control and Releases
+
 - Follow semantic versioning
 - Document breaking changes
 - Maintain changelog
 - Tag releases appropriately
 
 ## 14. Emergency Procedures
+
 - Document emergency procedures
 - Know how to rollback changes
 - Have backup procedures
 - Document recovery steps
 
 ## 15. Project-Specific Rules
+
 ### 15.1 Task Files Must Have
 
 ```markdown
@@ -224,6 +247,7 @@ Short, imperative explanation of the work.
 ```
 
 ### 15.2 Other Rules
+
 - Follow Backlog.md CLI conventions
 - Use proper task status transitions
 - Maintain task history
@@ -254,20 +278,24 @@ A task is **Done** only when **ALL** of the following are complete:
 8. **No regressions**: performance, security and licence checks green.
 
 ⚠️ **IMPORTANT**: Never mark a task as Done without completing ALL items above, especially:
+
 - Marking acceptance criteria checkboxes as complete
 - Adding comprehensive Implementation Notes
 - Marking the task as Done
 
 ## 17. Glossary
+
 - Add a glossary of project-specific terms and acronyms
 - Add "Subtask" entry: decimal numbering, CLI creation, referencing, and storage
 
 ## 18. Templates and Examples
+
 - Add a `docs/` directory for guides (onboarding, semantic search, coding style, etc.)
 - Automate rule enforcement where possible (e.g., with pre-commit hooks, CI checks)
 - Regularly review and update rules to reflect project evolution and lessons learned
 
-# Code Review
+## Code Review
+
 - Review code for:
   - Functionality
   - Performance
@@ -278,13 +306,15 @@ A task is **Done** only when **ALL** of the following are complete:
   - Accessibility
   - Internationalization
 
-# Emergency Procedures
+## Emergency Procedures
+
 - Document emergency procedures
 - Know how to rollback changes
 - Have backup procedures
 - Document recovery steps
 
-# Project-Specific Rules
+## Project-Specific Rules
+
 - Follow Backlog.md CLI conventions
 - Use proper task status transitions
 - Maintain task history
@@ -294,9 +324,10 @@ A task is **Done** only when **ALL** of the following are complete:
 - Follow the established workflow
 - Use proper task prioritization
 - Maintain task dependencies
-- Follow project branching strategy 
+- Follow project branching strategy
 
 ## Backlog.md Tool - CLI usage
+
 | Purpose | Command |
 |---------|---------|
 | Create task | `backlog task create "Add OAuth System"`                    |
@@ -315,9 +346,10 @@ A task is **Done** only when **ALL** of the following are complete:
 | Demote to draft| `backlog task demote <id>` |
 
 ## Backlog.md Tool - Tips for AI Agents
+
 - Keep tasks **small, atomic, and testable**; create subtasks liberally.  
 - Prefer **idempotent** changes so reruns remain safe.  
-- Leave **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
+- Leave brief **breadcrumbs** in `## Implementation Notes`; humans may continue your thread.  
 - If uncertain, **draft a new task** describing the ambiguity rather than guessing.
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of interactive UI.
 - **Draft an Implementation Plan** before starting work using `--plan` flag to outline your approach.
