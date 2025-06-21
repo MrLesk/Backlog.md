@@ -34,9 +34,11 @@ dependencies: []
 ## Implementation Notes
 
 ### Previous Implementation Issues
+
 The initial implementation in commits 71fc0d7 and 6d7b0fd had a critical flaw - it was filtering tasks based on whether they existed in draft/archive folders in ANY branch, rather than checking which state was the most recent. This caused the board to not display any tasks at all.
 
 ### New Implementation (task/96 branch)
+
 Created a proper solution that correctly implements cross-branch task state resolution:
 
 1. **New Module**: Created `src/core/cross-branch-tasks.ts` with dedicated functions for:
