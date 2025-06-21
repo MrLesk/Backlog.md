@@ -50,11 +50,13 @@ The current agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules) need cl
 ## Implementation Notes
 
 ### Files Modified
+
 - **CLAUDE.md**: Added comprehensive "Writing Effective Acceptance Criteria" section (lines 70-88) with clear principles, examples, and distinction between ACs and implementation plans
 - **AGENTS.md**: Enhanced section 4 with good vs bad examples and clear guidance on outcome-focused criteria (lines 72-78)  
 - **.cursorrules**: Added detailed section 15.1 with extensive guidance, examples, and best practices for AI agents (lines 193-205)
 
 ### Approach Taken
+
 - Focused on outcome-oriented, testable, and verifiable acceptance criteria
 - Provided clear examples of good vs bad acceptance criteria in all files
 - Emphasized the distinction between "what" (acceptance criteria) and "how" (implementation plan)
@@ -62,12 +64,14 @@ The current agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules) need cl
 - Discouraged implementation steps in acceptance criteria sections
 
 ### Technical Decisions
+
 - Maintained consistency across all three agent instruction files
 - Used concrete examples to illustrate concepts rather than abstract guidelines
 - Structured guidance to be immediately actionable for AI agents
 - Preserved existing workflow and CLI command documentation while enhancing AC guidance
 
 ### Key Improvements
+
 - Clear separation of concerns between acceptance criteria and implementation plans
 - Emphasis on testable, verifiable, and outcome-focused criteria
 - Practical examples showing both good and bad patterns
