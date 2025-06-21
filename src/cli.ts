@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import prompts from "prompts";
+import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./core/cross-branch-tasks.ts";
 import { type TaskWithMetadata, loadRemoteTasks, resolveTaskConflict } from "./core/remote-tasks.ts";
 import { renderBoardTui } from "./ui/board.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
-import { createLoadingScreen, withLoadingScreen } from "./ui/loading.ts";
+import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 
@@ -764,16 +765,15 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 	const statuses = config?.statuses || [];
 	const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
-	// Load tasks with loading screen
-	const allTasks = await withLoadingScreen("Loading tasks from local and remote branches", async () => {
-		// Load local tasks
-		const localTasks = await core.listTasksWithMetadata();
+	// Load tasks (fast enough now that we don't need loading screen)
+	const allTasks = await (async () => {
+		// Load local and remote tasks in parallel
+		const [localTasks, remoteTasks] = await Promise.all([core.listTasksWithMetadata(), loadRemoteTasks(core.gitOps)]);
+
+		// Create map with local tasks
 		const tasksById = new Map<string, TaskWithMetadata>(
 			localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
 		);
-
-		// Load remote tasks in parallel
-		const remoteTasks = await loadRemoteTasks(core.gitOps);
 
 		// Merge remote tasks with local tasks
 		for (const remoteTask of remoteTasks) {
@@ -786,8 +786,20 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			}
 		}
 
-		return Array.from(tasksById.values());
-	});
+		// Get the latest directory location of each task across all branches
+		// Use optimized version that only checks the tasks we have
+		const tasks = Array.from(tasksById.values());
+		const taskIds = tasks.map((t) => t.id);
+		const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) => {
+			// Progress updates are handled by the loading screen
+		});
+
+		// Filter tasks based on their latest directory location
+		// Only show tasks whose latest directory type is "task" (not draft or archived)
+		const filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+
+		return filteredTasks;
+	})();
 
 	if (allTasks.length === 0) {
 		console.log("No tasks found.");
@@ -843,28 +855,17 @@ boardCmd
 				}
 			}
 
-			// Collect all draft and archived task IDs to filter them out from all branches
-			const branches = await core.gitOps.listAllBranches();
-			const invalidIdPromises = branches.map(async (branch) => {
-				const [draftFiles, archivedFiles] = await Promise.all([
-					core.gitOps.listFilesInTree(branch, ".backlog/drafts"),
-					core.gitOps.listFilesInTree(branch, ".backlog/archive/tasks"),
-				]);
-				const files = [...draftFiles, ...archivedFiles];
-				return files
-					.map((file) => {
-						const match = file.match(/task-([\\d.]+)/);
-						return match ? match[1] : null;
-					})
-					.filter((id): id is string => id !== null)
-					.map((id) => `task-${id}`);
-			});
+			// Get the latest state of each task across all branches
+			loadingScreen?.update("Checking task states across branches...");
+			const tasks = Array.from(tasksById.values());
+			const taskIds = tasks.map((t) => t.id);
+			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) =>
+				loadingScreen?.update(msg),
+			);
 
-			const invalidIdArrays = await Promise.all(invalidIdPromises);
-			const invalidIds = new Set(invalidIdArrays.flat());
-
-			// Filter out tasks that are in drafts or archived
-			const finalTasks = Array.from(tasksById.values()).filter((task) => !invalidIds.has(task.id));
+			// Filter tasks based on their latest directory location
+			// Only show tasks whose latest directory type is "task" (not draft or archived)
+			const finalTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
 
 			loadingScreen?.update(`Total tasks: ${finalTasks.length}`);
 

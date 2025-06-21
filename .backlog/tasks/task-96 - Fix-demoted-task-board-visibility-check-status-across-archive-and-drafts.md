@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Cursor'
 created_date: '2025-06-20'
-updated_date: '2025-06-20'
+updated_date: '2025-06-21'
 labels: []
 dependencies: []
 ---
@@ -33,9 +33,34 @@ dependencies: []
 
 ## Implementation Notes
 
-- **Correction:** The board filtering logic has been completely reworked to correctly handle demoted and archived tasks based on the last commit date.
-- The `handleBoardView` function in `src/cli.ts` now determines the definitive state of each task (task, draft, or archived) by finding the most recent version across all local and remote branches.
-- It iterates through all branches, finds all task files in the `tasks`, `drafts`, and `archive/tasks` directories, and uses `getFileLastModifiedTime` to get the last commit date for each file.
-- It then builds a map of the latest state for each task ID.
-- Finally, the board is rendered showing only the tasks whose latest state is 'task', ensuring that any task that has been more recently demoted or archived on any branch is correctly hidden.
-- This approach is more robust and correctly implements the intended behavior.
+### Previous Implementation Issues
+The initial implementation in commits 71fc0d7 and 6d7b0fd had a critical flaw - it was filtering tasks based on whether they existed in draft/archive folders in ANY branch, rather than checking which state was the most recent. This caused the board to not display any tasks at all.
+
+### New Implementation (task/96 branch)
+Created a proper solution that correctly implements cross-branch task state resolution:
+
+1. **New Module**: Created `src/core/cross-branch-tasks.ts` with dedicated functions for:
+   - `getLatestTaskStates()`: Fetches all branches and checks task files in tasks/drafts/archive directories
+   - `filterTasksByLatestState()`: Filters tasks to only show those whose latest state is "task"
+
+2. **Key Logic**:
+   - For each task ID, finds ALL occurrences across ALL branches in all three directories
+   - Uses `getFileLastModifiedTime()` to get the commit timestamp for each file
+   - Keeps only the state with the most recent modification time
+   - This ensures that if a task was demoted in branch A but is still active in branch B (and B is more recent), it will show as active
+
+3. **Integration**:
+   - Updated `handleBoardView()` in `src/cli.ts` to use the new cross-branch logic
+   - Updated board export function to use the same logic for consistency
+   - Maintains compatibility with existing remote task loading and conflict resolution
+
+4. **Files Modified**:
+   - Created: `src/core/cross-branch-tasks.ts`
+   - Modified: `src/cli.ts` (handleBoardView and board export functions)
+
+5. **Testing**:
+   - All existing tests pass
+   - Board displays correctly with proper cross-branch filtering
+   - Export functionality works as expected
+
+This implementation correctly handles the scenario where a task might be demoted in one branch but still active in another, showing the task's state based on the most recent modification across all branches.
