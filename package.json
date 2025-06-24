@@ -16,14 +16,36 @@
 		"backlog.md-windows-x64": "*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "1.9.4",
-		"@types/bun": "1.2.15",
+		"@biomejs/biome": "2.0.5",
+		"@dnd-kit/core": "6.3.1",
+		"@dnd-kit/sortable": "10.0.0",
+		"@dnd-kit/utilities": "3.2.2",
+		"@radix-ui/react-dialog": "1.1.14",
+		"@radix-ui/react-select": "2.2.5",
+		"@radix-ui/react-slot": "1.2.3",
+		"@radix-ui/react-tabs": "1.1.12",
+		"@types/bun": "1.2.17",
 		"@types/prompts": "2.4.9",
+		"@types/react": "18.3.23",
+		"@types/react-dom": "18.3.7",
+		"@vitejs/plugin-react": "4.6.0",
+		"autoprefixer": "10.4.21",
+		"class-variance-authority": "0.7.1",
+		"clsx": "2.1.1",
 		"commander": "14.0.0",
 		"gray-matter": "4.0.3",
 		"husky": "9.1.7",
-		"lint-staged": "16.1.0",
-		"prompts": "2.4.2"
+		"lint-staged": "16.1.2",
+		"lucide-react": "0.523.0",
+		"prompts": "2.4.2",
+		"react": "18.3.0",
+		"react-dom": "18.3.0",
+		"react-markdown": "10.1.0",
+		"tailwind-merge": "3.3.1",
+		"tailwindcss": "4.1.10",
+		"typescript": "5.8.3",
+		"vite": "7.0.0",
+		"zod": "3.25.67"
 	},
 	"scripts": {
 		"test": "bun test",
@@ -36,8 +58,12 @@
 		"cli": "bun src/cli.ts"
 	},
 	"lint-staged": {
-		"*.{ts,js,json}": ["biome check --write --files-ignore-unknown=true"],
-		"src/**/*.{ts,js}": ["biome check --write --files-ignore-unknown=true"]
+		"*.{ts,js,json}": [
+			"biome check --write --files-ignore-unknown=true"
+		],
+		"src/**/*.{ts,js}": [
+			"biome check --write --files-ignore-unknown=true"
+		]
 	},
 	"author": "Alex Gavrilescu (https://github.com/MrLesk)",
 	"repository": {
@@ -48,7 +74,18 @@
 		"url": "https://github.com/MrLesk/Backlog.md/issues"
 	},
 	"homepage": "https://backlog.md",
-	"keywords": ["cli", "markdown", "kanban", "task", "project-management", "backlog", "agents"],
+	"keywords": [
+		"cli",
+		"markdown",
+		"kanban",
+		"task",
+		"project-management",
+		"backlog",
+		"agents"
+	],
 	"license": "MIT",
-	"trustedDependencies": ["@biomejs/biome", "node-pty"]
+	"trustedDependencies": [
+		"@biomejs/biome",
+		"node-pty"
+	]
 }

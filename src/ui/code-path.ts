@@ -9,7 +9,7 @@ export const CODE_PATH_PATTERNS = {
 	// Matches file extensions
 	FILE_EXTENSION: /\.[a-zA-Z0-9]+$/,
 	// Matches path separators
-	PATH_SEPARATOR: /[\/\\]/,
+	PATH_SEPARATOR: /[/\\]/,
 } as const;
 
 /**
@@ -17,7 +17,10 @@ export const CODE_PATH_PATTERNS = {
  */
 export function isCodePath(content: string): boolean {
 	// Has file extension OR contains path separator
-	return CODE_PATH_PATTERNS.FILE_EXTENSION.test(content) || CODE_PATH_PATTERNS.PATH_SEPARATOR.test(content);
+	return (
+		CODE_PATH_PATTERNS.FILE_EXTENSION.test(content) ||
+		CODE_PATH_PATTERNS.PATH_SEPARATOR.test(content)
+	);
 }
 
 /**
@@ -61,12 +64,16 @@ export function transformCodePaths(text: string): string {
 
 		// Check if line contains only a code path (possibly with minimal surrounding text)
 		const lineWithoutPaths = line.replace(/`[^`]+`/g, "").trim();
-		const isIsolatedPath = codePaths.length === 1 && lineWithoutPaths.length < 10;
+		const isIsolatedPath =
+			codePaths.length === 1 && lineWithoutPaths.length < 10;
 
 		if (isIsolatedPath) {
 			// Style the code path in place
 			for (const path of codePaths) {
-				transformedLine = transformedLine.replace(`\`${path}\``, styleCodePath(path));
+				transformedLine = transformedLine.replace(
+					`\`${path}\``,
+					styleCodePath(path),
+				);
 			}
 			result.push(transformedLine);
 		} else {
@@ -78,7 +85,10 @@ export function transformCodePaths(text: string): string {
 				const backticked = `\`${path}\``;
 				if (workingLine.includes(backticked)) {
 					// Remove from line and collect for separate placement, clean up extra spaces
-					workingLine = workingLine.replace(backticked, " ").replace(/\s+/g, " ").trim();
+					workingLine = workingLine
+						.replace(backticked, " ")
+						.replace(/\s+/g, " ")
+						.trim();
 					pathsToExtract.push(path);
 				}
 			}
