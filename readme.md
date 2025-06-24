@@ -73,6 +73,68 @@ Full help: `backlog --help`
 
 ---
 
+## Web Interface
+
+Backlog.md includes a built-in web server that provides a modern React-based interface for managing your tasks visually through a drag-and-drop Kanban board.
+
+### Getting Started
+
+```bash
+# Start the web server (opens browser automatically)
+backlog serve
+
+# Customize port and options
+backlog serve --port 8080 --host 0.0.0.0 --no-open
+```
+
+### Features
+
+* 🎯 **Interactive Kanban Board** -- Drag and drop tasks between columns
+* 📋 **Task Management** -- Create, edit, and view tasks with rich forms
+* 🔍 **Smart Filtering** -- Filter tasks by status, assignee, or labels
+* 📱 **Responsive Design** -- Works on desktop, tablet, and mobile
+* 🚀 **Single Executable** -- Complete web UI embedded in CLI binary
+* 🔄 **Real-time Updates** -- Changes sync with your local `.backlog/` files
+
+### Command Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--port <port>` | Port to serve on | `3000` |
+| `--host <host>` | Host to bind to | `localhost` |
+| `--no-open` | Don't open browser automatically | Opens browser |
+
+### Web Interface Views
+
+**📊 Kanban Board**
+- Visual task management with drag-and-drop between status columns
+- Priority indicators and task metadata at a glance
+- Responsive layout adapts to screen size
+
+**📝 Task List**
+- Sortable table view with filtering capabilities
+- Click any task to view details in modal
+- Bulk operations and advanced filtering
+
+**✏️ Task Details & Forms**
+- Rich task editing with markdown support
+- Acceptance criteria and implementation plan sections
+- Label management and dependency tracking
+
+### Browser Support
+
+The web interface works in all modern browsers including Chrome, Firefox, Safari, and Edge.
+
+### Troubleshooting
+
+**Port already in use**: The server automatically tries the next available port (3001, 3002, etc.)
+
+**Browser doesn't open**: Use the URL shown in the terminal or manually navigate to `http://localhost:3000`
+
+**Web UI not loading**: Ensure you've built the project with `bun run build` to embed the web assets
+
+---
+
 ## Configuration
 
 Backlog.md merges the following layers (highest → lowest):

@@ -2,9 +2,9 @@
  * Helper functions for loading remote tasks in parallel
  */
 
+import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
-import type { GitOps } from "./git-ops.ts";
 
 export interface TaskWithMetadata extends Task {
 	lastModified?: Date;
@@ -30,7 +30,7 @@ type RemoteTaskResult = RemoteTaskLoadResult | RemoteTaskLoadError;
  * Load all remote tasks in parallel for better performance
  */
 export async function loadRemoteTasks(
-	gitOps: GitOps,
+	gitOps: GitOperations,
 	onProgress?: (message: string) => void,
 ): Promise<TaskWithMetadata[]> {
 	const tasks: TaskWithMetadata[] = [];
@@ -60,32 +60,34 @@ export async function loadRemoteTasks(
 				}
 
 				// Load all files in this branch in parallel
-				const filePromises = files.map(async (file): Promise<RemoteTaskResult> => {
-					try {
-						// Load file content and timestamp in parallel
-						const [content, lastModified] = await Promise.all([
-							gitOps.showFile(ref, file),
-							gitOps.getFileLastModifiedTime(ref, file),
-						]);
+				const filePromises = files.map(
+					async (file): Promise<RemoteTaskResult> => {
+						try {
+							// Load file content and timestamp in parallel
+							const [content, lastModified] = await Promise.all([
+								gitOps.showFile(ref, file),
+								gitOps.getFileLastModifiedTime(ref, file),
+							]);
 
-						const task = parseTask(content);
+							const task = parseTask(content);
 
-						return {
-							task: {
-								...task,
-								lastModified: lastModified || undefined,
-								source: "remote" as const,
+							return {
+								task: {
+									...task,
+									lastModified: lastModified || undefined,
+									source: "remote" as const,
+									branch,
+								},
+							};
+						} catch (error) {
+							return {
+								error: error as Error,
+								file,
 								branch,
-							},
-						};
-					} catch (error) {
-						return {
-							error: error as Error,
-							file,
-							branch,
-						};
-					}
-				});
+							};
+						}
+					},
+				);
 
 				const results = await Promise.all(filePromises);
 
@@ -96,7 +98,9 @@ export async function loadRemoteTasks(
 						branchTasks.push(result.task);
 					} else if (result.error) {
 						// Log error but continue processing
-						console.error(`Failed to load task from ${result.branch}:${result.file}: ${result.error.message}`);
+						console.error(
+							`Failed to load task from ${result.branch}:${result.file}: ${result.error.message}`,
+						);
 					}
 				}
 
@@ -136,8 +140,12 @@ export function resolveTaskConflict(
 ): TaskWithMetadata {
 	if (strategy === "most_recent") {
 		// First try to use updated_date from the task metadata
-		const existingDate = existing.updatedDate ? new Date(existing.updatedDate) : existing.lastModified;
-		const incomingDate = incoming.updatedDate ? new Date(incoming.updatedDate) : incoming.lastModified;
+		const existingDate = existing.updatedDate
+			? new Date(existing.updatedDate)
+			: existing.lastModified;
+		const incomingDate = incoming.updatedDate
+			? new Date(incoming.updatedDate)
+			: incoming.lastModified;
 
 		if (existingDate && incomingDate) {
 			return existingDate >= incomingDate ? existing : incoming;
@@ -156,8 +164,12 @@ export function resolveTaskConflict(
 
 	// If statuses are equal and we have dates, use the most recent
 	if (newIdx === currentIdx) {
-		const existingDate = existing.updatedDate ? new Date(existing.updatedDate) : existing.lastModified;
-		const incomingDate = incoming.updatedDate ? new Date(incoming.updatedDate) : incoming.lastModified;
+		const existingDate = existing.updatedDate
+			? new Date(existing.updatedDate)
+			: existing.lastModified;
+		const incomingDate = incoming.updatedDate
+			? new Date(incoming.updatedDate)
+			: incoming.lastModified;
 
 		if (existingDate && incomingDate) {
 			return existingDate >= incomingDate ? existing : incoming;

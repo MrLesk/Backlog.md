@@ -1,28 +1,36 @@
 #!/usr/bin/env node
 
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
+import { Command } from "commander";
 import prompts from "prompts";
-import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./core/cross-branch-tasks.ts";
-import { type TaskWithMetadata, loadRemoteTasks, resolveTaskConflict } from "./core/remote-tasks.ts";
+import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
+import {
+	filterTasksByLatestState,
+	getLatestTaskStatesForIds,
+} from "./core/cross-branch-tasks.ts";
+import {
+	loadRemoteTasks,
+	resolveTaskConflict,
+	type TaskWithMetadata,
+} from "./core/remote-tasks.ts";
+import {
+	type AgentInstructionFile,
+	addAgentInstructions,
+	Core,
+	exportKanbanBoardToFile,
+	initializeGitRepository,
+	isGitRepository,
+} from "./index.ts";
+import { BacklogServer } from "./server/index.ts";
+import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
 import { renderBoardTui } from "./ui/board.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
-
-import { Command } from "commander";
-import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
-import {
-	type AgentInstructionFile,
-	Core,
-	addAgentInstructions,
-	exportKanbanBoardToFile,
-	initializeGitRepository,
-	isGitRepository,
-} from "./index.ts";
-import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
 import { getVersion } from "./utils/version.ts";
 
 // Windows color fix
@@ -52,7 +60,13 @@ program
 
 			if (!isRepo) {
 				const rl = createInterface({ input, output });
-				const answer = (await rl.question("No git repository found. Initialize one here? [y/N] ")).trim().toLowerCase();
+				const answer = (
+					await rl.question(
+						"No git repository found. Initialize one here? [y/N] ",
+					)
+				)
+					.trim()
+					.toLowerCase();
 				rl.close();
 
 				if (answer.startsWith("y")) {
@@ -88,7 +102,8 @@ program
 				hint: "Space to select, Enter to confirm",
 				instructions: false,
 			});
-			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
+			const files: AgentInstructionFile[] = (selected ??
+				[]) as AgentInstructionFile[];
 
 			const core = new Core(cwd);
 			await core.initializeProject(name);
@@ -125,7 +140,10 @@ program
 
 async function generateNextId(core: Core, parent?: string): Promise<string> {
 	// Load local tasks and drafts in parallel
-	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
+	const [tasks, drafts] = await Promise.all([
+		core.filesystem.listTasks(),
+		core.filesystem.listDrafts(),
+	]);
 	const all = [...tasks, ...drafts];
 	const allIds: string[] = [];
 
@@ -194,7 +212,9 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 }
 
 async function generateNextDecisionId(core: Core): Promise<string> {
-	const files = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: core.filesystem.decisionsDir }));
+	const files = await Array.fromAsync(
+		new Bun.Glob("decision-*.md").scan({ cwd: core.filesystem.decisionsDir }),
+	);
 	let max = 0;
 	for (const file of files) {
 		const match = file.match(/^decision-(\d+)/);
@@ -207,7 +227,9 @@ async function generateNextDecisionId(core: Core): Promise<string> {
 }
 
 async function generateNextDocId(core: Core): Promise<string> {
-	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
+	const files = await Array.fromAsync(
+		new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }),
+	);
 	let max = 0;
 	for (const file of files) {
 		const match = file.match(/^doc-(\d+)/);
@@ -254,9 +276,15 @@ async function validateDependencies(
 	}
 
 	// Load both tasks and drafts to validate dependencies
-	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
+	const [tasks, drafts] = await Promise.all([
+		core.filesystem.listTasks(),
+		core.filesystem.listDrafts(),
+	]);
 
-	const allTaskIds = new Set([...tasks.map((t) => t.id), ...drafts.map((d) => d.id)]);
+	const allTaskIds = new Set([
+		...tasks.map((t) => t.id),
+		...drafts.map((d) => d.id),
+	]);
 
 	for (const dep of dependencies) {
 		if (allTaskIds.has(dep)) {
@@ -269,7 +297,11 @@ async function validateDependencies(
 	return { valid, invalid };
 }
 
-function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
+function buildTaskFromOptions(
+	id: string,
+	title: string,
+	options: Record<string, unknown>,
+): Task {
 	const parentInput = options.parent ? String(options.parent) : undefined;
 	const normalizedParent = parentInput
 		? parentInput.startsWith("task-")
@@ -277,16 +309,22 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 			: `task-${parentInput}`
 		: undefined;
 
-	const createdDate = new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10);
+	const createdDate =
+		new Date().toISOString().split("T")[0] ||
+		new Date().toISOString().slice(0, 10);
 
 	// Handle dependencies - they will be validated separately
 	const dependencies = normalizeDependencies(options.dependsOn || options.dep);
 
 	// Validate priority option
-	const priority = options.priority ? String(options.priority).toLowerCase() : undefined;
+	const priority = options.priority
+		? String(options.priority).toLowerCase()
+		: undefined;
 	const validPriorities = ["high", "medium", "low"];
 	const validatedPriority =
-		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
+		priority && validPriorities.includes(priority)
+			? (priority as "high" | "medium" | "low")
+			: undefined;
 
 	return {
 		id,
@@ -316,8 +354,14 @@ taskCmd
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
-	.option("--ac <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
-	.option("--acceptance-criteria <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
+	.option(
+		"--ac <criteria>",
+		"add acceptance criteria (comma-separated or use multiple times)",
+	)
+	.option(
+		"--acceptance-criteria <criteria>",
+		"add acceptance criteria (comma-separated or use multiple times)",
+	)
 	.option("--plan <text>", "add implementation plan")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
@@ -325,14 +369,26 @@ taskCmd
 		"--depends-on <taskIds>",
 		"specify task dependencies (comma-separated or use multiple times)",
 		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			const soFar = Array.isArray(previous)
+				? previous
+				: previous
+					? [previous]
+					: [];
 			return [...soFar, value];
 		},
 	)
-	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
+	.option(
+		"--dep <taskIds>",
+		"specify task dependencies (shortcut for --depends-on)",
+		(value, previous) => {
+			const soFar = Array.isArray(previous)
+				? previous
+				: previous
+					? [previous]
+					: [];
+			return [...soFar, value];
+		},
+	)
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -341,9 +397,14 @@ taskCmd
 
 		// Validate dependencies if provided
 		if (task.dependencies.length > 0) {
-			const { valid, invalid } = await validateDependencies(task.dependencies, core);
+			const { valid, invalid } = await validateDependencies(
+				task.dependencies,
+				core,
+			);
 			if (invalid.length > 0) {
-				console.error(`Error: The following dependencies do not exist: ${invalid.join(", ")}`);
+				console.error(
+					`Error: The following dependencies do not exist: ${invalid.join(", ")}`,
+				);
 				console.error("Please create these tasks first or check the task IDs.");
 				process.exitCode = 1;
 				return;
@@ -354,19 +415,31 @@ taskCmd
 		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
 		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
 		if (acceptanceCriteria) {
-			const { updateTaskAcceptanceCriteria } = await import("./markdown/serializer.ts");
+			const { updateTaskAcceptanceCriteria } = await import(
+				"./markdown/serializer.ts"
+			);
 			const criteria = Array.isArray(acceptanceCriteria)
-				? acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
+				? acceptanceCriteria.flatMap((c: string) =>
+						c.split(",").map((item: string) => item.trim()),
+					)
 				: String(acceptanceCriteria)
 						.split(",")
 						.map((item: string) => item.trim());
-			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+			task.description = updateTaskAcceptanceCriteria(
+				task.description,
+				criteria.filter(Boolean),
+			);
 		}
 
 		// Handle implementation plan
 		if (options.plan) {
-			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
-			task.description = updateTaskImplementationPlan(task.description, String(options.plan));
+			const { updateTaskImplementationPlan } = await import(
+				"./markdown/serializer.ts"
+			);
+			task.description = updateTaskImplementationPlan(
+				task.description,
+				String(options.plan),
+			);
 		}
 
 		if (options.draft) {
@@ -445,7 +518,9 @@ taskCmd
 				return;
 			}
 
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }),
+			);
 			const taskFile = files.find((f) => f.startsWith(`${firstTask.id} -`));
 
 			let initialContent = "";
@@ -490,21 +565,39 @@ taskCmd
 	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
-	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
-	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
+	.option(
+		"--ac <criteria>",
+		"set acceptance criteria (comma-separated or use multiple times)",
+	)
+	.option(
+		"--acceptance-criteria <criteria>",
+		"set acceptance criteria (comma-separated or use multiple times)",
+	)
 	.option("--plan <text>", "set implementation plan")
 	.option(
 		"--depends-on <taskIds>",
 		"set task dependencies (comma-separated or use multiple times)",
 		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			const soFar = Array.isArray(previous)
+				? previous
+				: previous
+					? [previous]
+					: [];
 			return [...soFar, value];
 		},
 	)
-	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
+	.option(
+		"--dep <taskIds>",
+		"set task dependencies (shortcut for --depends-on)",
+		(value, previous) => {
+			const soFar = Array.isArray(previous)
+				? previous
+				: previous
+					? [previous]
+					: [];
+			return [...soFar, value];
+		},
+	)
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -534,7 +627,9 @@ taskCmd
 			if (validPriorities.includes(priority)) {
 				task.priority = priority as "high" | "medium" | "low";
 			} else {
-				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
+				console.error(
+					`Invalid priority: ${priority}. Valid values are: high, medium, low`,
+				);
 				return;
 			}
 		}
@@ -548,14 +643,18 @@ taskCmd
 			labels.splice(0, labels.length, ...newLabels);
 		}
 		if (options.addLabel) {
-			const adds = Array.isArray(options.addLabel) ? options.addLabel : [options.addLabel];
+			const adds = Array.isArray(options.addLabel)
+				? options.addLabel
+				: [options.addLabel];
 			for (const l of adds) {
 				const trimmed = String(l).trim();
 				if (trimmed && !labels.includes(trimmed)) labels.push(trimmed);
 			}
 		}
 		if (options.removeLabel) {
-			const removes = Array.isArray(options.removeLabel) ? options.removeLabel : [options.removeLabel];
+			const removes = Array.isArray(options.removeLabel)
+				? options.removeLabel
+				: [options.removeLabel];
 			for (const l of removes) {
 				const trimmed = String(l).trim();
 				const idx = labels.indexOf(trimmed);
@@ -567,10 +666,14 @@ taskCmd
 
 		// Handle dependencies
 		if (options.dependsOn || options.dep) {
-			const dependencies = normalizeDependencies(options.dependsOn || options.dep);
+			const dependencies = normalizeDependencies(
+				options.dependsOn || options.dep,
+			);
 			const { valid, invalid } = await validateDependencies(dependencies, core);
 			if (invalid.length > 0) {
-				console.error(`Error: The following dependencies do not exist: ${invalid.join(", ")}`);
+				console.error(
+					`Error: The following dependencies do not exist: ${invalid.join(", ")}`,
+				);
 				console.error("Please create these tasks first or check the task IDs.");
 				process.exitCode = 1;
 				return;
@@ -581,19 +684,31 @@ taskCmd
 		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
 		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
 		if (acceptanceCriteria) {
-			const { updateTaskAcceptanceCriteria } = await import("./markdown/serializer.ts");
+			const { updateTaskAcceptanceCriteria } = await import(
+				"./markdown/serializer.ts"
+			);
 			const criteria = Array.isArray(acceptanceCriteria)
-				? acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
+				? acceptanceCriteria.flatMap((c: string) =>
+						c.split(",").map((item: string) => item.trim()),
+					)
 				: String(acceptanceCriteria)
 						.split(",")
 						.map((item: string) => item.trim());
-			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+			task.description = updateTaskAcceptanceCriteria(
+				task.description,
+				criteria.filter(Boolean),
+			);
 		}
 
 		// Handle implementation plan
 		if (options.plan) {
-			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
-			task.description = updateTaskImplementationPlan(task.description, String(options.plan));
+			const { updateTaskImplementationPlan } = await import(
+				"./markdown/serializer.ts"
+			);
+			task.description = updateTaskImplementationPlan(
+				task.description,
+				String(options.plan),
+			);
 		}
 
 		await core.updateTask(task, true);
@@ -607,7 +722,9 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+		const files = await Array.fromAsync(
+			new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }),
+		);
 		const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
 		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
 
@@ -626,7 +743,11 @@ taskCmd
 		}
 
 		// Plain text output for AI agents
-		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
+		if (
+			options &&
+			(("plain" in options && options.plain) ||
+				process.argv.includes("--plain"))
+		) {
 			console.log(formatTaskPlainText(task, content));
 			return;
 		}
@@ -674,7 +795,9 @@ taskCmd
 
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+		const files = await Array.fromAsync(
+			new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }),
+		);
 		const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
 		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
 
@@ -752,18 +875,31 @@ const boardCmd = program.command("board");
 
 function addBoardOptions(cmd: Command) {
 	return cmd
-		.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
-		.option("--vertical", "use vertical layout (shortcut for --layout vertical)");
+		.option(
+			"-l, --layout <layout>",
+			"board layout (horizontal|vertical)",
+			"horizontal",
+		)
+		.option(
+			"--vertical",
+			"use vertical layout (shortcut for --layout vertical)",
+		);
 }
 
 // TaskWithMetadata and resolveTaskConflict are now imported from remote-tasks.ts
 
-async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
+async function handleBoardView(options: {
+	layout?: string;
+	vertical?: boolean;
+}) {
+	console.log("embedded files", Bun.embeddedFiles.length);
+
 	const cwd = process.cwd();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
 	const statuses = config?.statuses || [];
-	const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
+	const resolutionStrategy =
+		config?.taskResolutionStrategy || "most_progressed";
 
 	// Load tasks with loading screen for better user experience
 	const allTasks = await (async () => {
@@ -772,11 +908,17 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 		try {
 			// Load local and remote tasks in parallel
 			loadingScreen?.update("Loading tasks from local and remote branches...");
-			const [localTasks, remoteTasks] = await Promise.all([core.listTasksWithMetadata(), loadRemoteTasks(core.gitOps)]);
+			const [localTasks, remoteTasks] = await Promise.all([
+				core.listTasksWithMetadata(),
+				loadRemoteTasks(core.gitOps),
+			]);
 
 			// Create map with local tasks
 			const tasksById = new Map<string, TaskWithMetadata>(
-				localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
+				localTasks.map((t) => [
+					t.id,
+					{ ...t, source: "local" } as TaskWithMetadata,
+				]),
 			);
 
 			// Merge remote tasks with local tasks
@@ -785,7 +927,12 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 				if (!existing) {
 					tasksById.set(remoteTask.id, remoteTask);
 				} else {
-					const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
+					const resolved = resolveTaskConflict(
+						existing,
+						remoteTask,
+						statuses,
+						resolutionStrategy,
+					);
 					tasksById.set(remoteTask.id, resolved);
 				}
 			}
@@ -795,14 +942,21 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			loadingScreen?.update("Resolving task states across branches...");
 			const tasks = Array.from(tasksById.values());
 			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) => {
-				loadingScreen?.update(msg);
-			});
+			const latestTaskDirectories = await getLatestTaskStatesForIds(
+				core.gitOps,
+				taskIds,
+				(msg) => {
+					loadingScreen?.update(msg);
+				},
+			);
 
 			// Filter tasks based on their latest directory location
 			// Only show tasks whose latest directory type is "task" (not draft or archived)
 			loadingScreen?.update("Filtering active tasks...");
-			const filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+			const filteredTasks = filterTasksByLatestState(
+				tasks,
+				latestTaskDirectories,
+			);
 
 			loadingScreen?.close();
 			return filteredTasks;
@@ -817,26 +971,36 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 		return;
 	}
 
-	const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
+	const layout = options.vertical
+		? "vertical"
+		: (options.layout as "horizontal" | "vertical") || "horizontal";
 	const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
 	// Always use renderBoardTui which falls back to plain text if blessed is not available
 	await renderBoardTui(allTasks, statuses, layout, maxColumnWidth);
 }
 
-addBoardOptions(boardCmd).description("display tasks in a Kanban board").action(handleBoardView);
+addBoardOptions(boardCmd)
+	.description("display tasks in a Kanban board")
+	.action(handleBoardView);
 
-addBoardOptions(boardCmd.command("view").description("display tasks in a Kanban board")).action(handleBoardView);
+addBoardOptions(
+	boardCmd.command("view").description("display tasks in a Kanban board"),
+).action(handleBoardView);
 
 boardCmd
 	.command("export [filename]")
 	.description("append kanban board to readme or output file")
-	.option("-o, --output <path>", "output file (deprecated, use filename argument instead)")
+	.option(
+		"-o, --output <path>",
+		"output file (deprecated, use filename argument instead)",
+	)
 	.action(async (filename, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
-		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
+		const resolutionStrategy =
+			config?.taskResolutionStrategy || "most_progressed";
 
 		// Load tasks with progress tracking
 		const loadingScreen = await createLoadingScreen("Loading tasks for export");
@@ -846,13 +1010,18 @@ boardCmd
 			loadingScreen?.update("Loading local tasks...");
 			const localTasks = await core.listTasksWithMetadata();
 			const tasksById = new Map<string, TaskWithMetadata>(
-				localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
+				localTasks.map((t) => [
+					t.id,
+					{ ...t, source: "local" } as TaskWithMetadata,
+				]),
 			);
 			loadingScreen?.update(`Found ${localTasks.length} local tasks`);
 
 			// Load remote tasks in parallel
 			loadingScreen?.update("Loading remote tasks...");
-			const remoteTasks = await loadRemoteTasks(core.gitOps, (msg) => loadingScreen?.update(msg));
+			const remoteTasks = await loadRemoteTasks(core.gitOps, (msg) =>
+				loadingScreen?.update(msg),
+			);
 
 			// Merge remote tasks with local tasks
 			loadingScreen?.update("Merging tasks...");
@@ -861,7 +1030,12 @@ boardCmd
 				if (!existing) {
 					tasksById.set(remoteTask.id, remoteTask);
 				} else {
-					const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
+					const resolved = resolveTaskConflict(
+						existing,
+						remoteTask,
+						statuses,
+						resolutionStrategy,
+					);
 					tasksById.set(remoteTask.id, resolved);
 				}
 			}
@@ -870,8 +1044,10 @@ boardCmd
 			loadingScreen?.update("Checking task states across branches...");
 			const tasks = Array.from(tasksById.values());
 			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) =>
-				loadingScreen?.update(msg),
+			const latestTaskDirectories = await getLatestTaskStatesForIds(
+				core.gitOps,
+				taskIds,
+				(msg) => loadingScreen?.update(msg),
 			);
 
 			// Filter tasks based on their latest directory location
@@ -888,7 +1064,13 @@ boardCmd
 			const outputPath = join(cwd, outputFile as string);
 			const maxColumnWidth = config?.maxColumnWidth || 30; // Default for export
 			const addTitle = !filename && !options.output; // Add title only for default readme export
-			await exportKanbanBoardToFile(finalTasks, statuses, outputPath, maxColumnWidth, addTitle);
+			await exportKanbanBoardToFile(
+				finalTasks,
+				statuses,
+				outputPath,
+				maxColumnWidth,
+				addTitle,
+			);
 			console.log(`Exported board to ${outputPath}`);
 		} catch (error) {
 			loadingScreen?.close();
@@ -910,7 +1092,9 @@ docCmd
 			id,
 			title: title as string,
 			type: (options.type || "other") as DocType["type"],
-			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			createdDate:
+				new Date().toISOString().split("T")[0] ||
+				new Date().toISOString().slice(0, 10),
 			content: "",
 		};
 		await core.createDocument(document, true, options.path || "");
@@ -943,8 +1127,12 @@ docCmd
 		const selected = await genericSelectList("Select a document", docs);
 		if (selected) {
 			// Show document details
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
-			const docFile = files.find((f) => f.startsWith(`${selected.id} -`) || f === `${selected.id}.md`);
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }),
+			);
+			const docFile = files.find(
+				(f) => f.startsWith(`${selected.id} -`) || f === `${selected.id}.md`,
+			);
 			if (docFile) {
 				const filePath = join(core.filesystem.docsDir, docFile);
 				const content = await Bun.file(filePath).text();
@@ -960,9 +1148,13 @@ docCmd
 	.action(async (docId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
+		const files = await Array.fromAsync(
+			new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }),
+		);
 		const normalizedId = docId.startsWith("doc-") ? docId : `doc-${docId}`;
-		const docFile = files.find((f) => f.startsWith(`${normalizedId} -`) || f === `${normalizedId}.md`);
+		const docFile = files.find(
+			(f) => f.startsWith(`${normalizedId} -`) || f === `${normalizedId}.md`,
+		);
 
 		if (!docFile) {
 			console.error(`Document ${docId} not found.`);
@@ -988,7 +1180,9 @@ decisionCmd
 		const decision: DecisionLog = {
 			id,
 			title: title as string,
-			date: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			date:
+				new Date().toISOString().split("T")[0] ||
+				new Date().toISOString().slice(0, 10),
 			status: (options.status || "proposed") as DecisionLog["status"],
 			context: "",
 			decision: "",
@@ -996,6 +1190,127 @@ decisionCmd
 		};
 		await core.createDecisionLog(decision, true);
 		console.log(`Created decision ${id}`);
+	});
+
+// Browser opening functionality
+function openBrowser(url: string): void {
+	const platform = process.platform;
+	let command: string;
+	let args: string[];
+
+	switch (platform) {
+		case "darwin": // macOS
+			command = "open";
+			args = [url];
+			break;
+		case "win32": // Windows
+			command = "cmd";
+			args = ["/c", "start", '""', url];
+			break;
+		default: // Linux and others
+			command = "xdg-open";
+			args = [url];
+			break;
+	}
+
+	const child = spawn(command, args, {
+		detached: true,
+		stdio: "ignore",
+	});
+
+	child.unref();
+}
+
+// Serve command
+program
+	.command("serve")
+	.description("start the web server for the Backlog.md interface")
+	.option("-p, --port <port>", "port to serve on", "3000")
+	.option("-h, --host <host>", "host to bind to", "localhost")
+	.option("--no-open", "don't open browser automatically")
+	.action(async (options) => {
+		try {
+			const cwd = process.cwd();
+			const core = new Core(cwd);
+
+			// Check if this is a valid Backlog project
+			try {
+				await core.filesystem.loadConfig();
+			} catch (error) {
+				console.error("❌ No Backlog project found in current directory.");
+				console.error("Run 'backlog init' to initialize a new project first.");
+				process.exit(1);
+			}
+
+			const port = Number.parseInt(options.port, 10);
+			if (Number.isNaN(port) || port < 1 || port > 65535) {
+				console.error(
+					`❌ Invalid port: ${options.port}. Port must be between 1 and 65535.`,
+				);
+				process.exit(1);
+			}
+
+			console.log("🚀 Starting Backlog.md server...");
+
+			const server = new BacklogServer(cwd, {
+				port,
+				host: options.host,
+				development: process.env.NODE_ENV === "development",
+			});
+
+			// Handle graceful shutdown
+			const shutdown = async () => {
+				console.log("\n🛑 Shutting down server...");
+				await server.stop();
+				process.exit(0);
+			};
+
+			process.on("SIGINT", shutdown);
+			process.on("SIGTERM", shutdown);
+
+			const serverInfo = await server.start();
+
+			console.log(`✅ Server running at ${serverInfo.url}`);
+			console.log("Press Ctrl+C to stop the server");
+
+			// Open browser if not disabled
+			if (options.open !== false) {
+				try {
+					console.log("🌐 Opening browser...");
+					openBrowser(serverInfo.url);
+				} catch (error) {
+					console.log(
+						`⚠️  Could not open browser automatically: ${error instanceof Error ? error.message : "Unknown error"}`,
+					);
+					console.log(
+						`Please open ${serverInfo.url} manually in your browser.`,
+					);
+				}
+			}
+
+			// Keep the process alive
+			const keepAlive = () => {
+				setTimeout(keepAlive, 1000);
+			};
+			keepAlive();
+		} catch (error) {
+			console.error("❌ Failed to start server:");
+			if (error instanceof Error) {
+				console.error(error.message);
+
+				// Check for common errors and provide helpful messages
+				if (error.message.includes("Permission denied")) {
+					console.error("💡 Try using a port number greater than 1024.");
+				} else if (error.message.includes("No available ports")) {
+					console.error(
+						"💡 Try specifying a different starting port with --port <port>.",
+					);
+				}
+			} else {
+				console.error("Unknown error occurred");
+			}
+			process.exit(1);
+		}
 	});
 
 program.parseAsync(process.argv);

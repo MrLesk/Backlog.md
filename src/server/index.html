@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Backlog.md - Task Management</title>
+		<style>
+			body { 
+				font-family: system-ui, -apple-system, sans-serif; 
+				margin: 0; 
+				padding: 2rem; 
+				background: #f8fafc;
+				color: #1e293b;
+			}
+			.container { 
+				max-width: 1200px; 
+				margin: 0 auto; 
+			}
+			.header {
+				text-align: center;
+				margin-bottom: 3rem;
+			}
+			.header h1 {
+				color: #0f172a;
+				margin-bottom: 0.5rem;
+			}
+			.header p {
+				color: #64748b;
+				font-size: 1.1rem;
+			}
+			.board {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+				gap: 2rem;
+				margin-top: 2rem;
+			}
+			.column {
+				background: white;
+				border-radius: 8px;
+				padding: 1.5rem;
+				box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+			}
+			.column h3 {
+				margin: 0 0 1rem 0;
+				color: #374151;
+				font-size: 1.1rem;
+				font-weight: 600;
+			}
+			.task {
+				background: #f1f5f9;
+				border: 1px solid #e2e8f0;
+				border-radius: 6px;
+				padding: 1rem;
+				margin-bottom: 0.75rem;
+			}
+			.task h4 {
+				margin: 0 0 0.5rem 0;
+				color: #1e293b;
+				font-size: 0.95rem;
+				font-weight: 500;
+			}
+			.task p {
+				margin: 0;
+				color: #64748b;
+				font-size: 0.85rem;
+			}
+			.loading {
+				text-align: center;
+				padding: 3rem;
+				color: #64748b;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<div class="header">
+				<h1>🎯 Backlog.md</h1>
+				<p>Task Management Dashboard</p>
+			</div>
+			
+			<div id="board" class="board">
+				<div class="loading">Loading tasks...</div>
+			</div>
+		</div>
+
+		<script>
+			// Simple client-side task board
+			async function loadBoard() {
+				try {
+					const response = await fetch('/api/board');
+					const data = await response.json();
+					
+					if (data.success) {
+						renderBoard(data.data);
+					} else {
+						showError('Failed to load board data');
+					}
+				} catch (error) {
+					showError('Error connecting to server');
+				}
+			}
+
+			function renderBoard(boardData) {
+				const { tasks, statuses } = boardData;
+				const boardEl = document.getElementById('board');
+				
+				boardEl.innerHTML = '';
+				
+				statuses.forEach(status => {
+					const column = document.createElement('div');
+					column.className = 'column';
+					
+					const header = document.createElement('h3');
+					header.textContent = status;
+					column.appendChild(header);
+					
+					const statusTasks = tasks.filter(task => task.status === status);
+					
+					statusTasks.forEach(task => {
+						const taskEl = document.createElement('div');
+						taskEl.className = 'task';
+						
+						const title = document.createElement('h4');
+						title.textContent = task.title;
+						taskEl.appendChild(title);
+						
+						if (task.description) {
+							const desc = document.createElement('p');
+							desc.textContent = task.description.substring(0, 100) + (task.description.length > 100 ? '...' : '');
+							taskEl.appendChild(desc);
+						}
+						
+						column.appendChild(taskEl);
+					});
+					
+					boardEl.appendChild(column);
+				});
+			}
+
+			function showError(message) {
+				const boardEl = document.getElementById('board');
+				boardEl.innerHTML = `<div class="loading" style="color: #dc2626;">${message}</div>`;
+			}
+
+			// Load board on page load
+			loadBoard();
+		</script>
+	</body>
+</html>

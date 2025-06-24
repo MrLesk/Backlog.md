@@ -50,11 +50,13 @@
 	"scripts": {
 		"test": "bun test",
 		"test:windows": "bun test --timeout 10000",
+		"typecheck": "bunx tsc --noEmit",
 		"format": "biome format --write .",
 		"lint": "biome lint --write .",
-		"check": "biome check .",
+		"check": "biome check . && bun run typecheck",
 		"prepare": "husky",
-		"build": "bun build --compile --minify --sourcemap --outfile=backlog src/cli.ts",
+		"build:cli": "bun build --compile --minify --outfile=backlog src/cli.ts",
+		"build": "bun run build:cli",
 		"cli": "bun src/cli.ts"
 	},
 	"lint-staged": {

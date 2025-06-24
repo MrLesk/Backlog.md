@@ -1,15 +1,17 @@
 import { join } from "node:path";
-import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
-import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import type { BacklogConfig, DecisionLog, Document, Task } from "../types";
 
 function ensureDescriptionHeader(description: string): string {
 	const trimmed = description.trim();
 	if (trimmed === "") {
 		return "## Description";
 	}
-	return /^##\s+Description/i.test(trimmed) ? trimmed : `## Description\n\n${trimmed}`;
+	return /^##\s+Description/i.test(trimmed)
+		? trimmed
+		: `## Description\n\n${trimmed}`;
 }
 
 export class Core {
@@ -90,8 +92,12 @@ export class Core {
 
 		if (autoCommit) {
 			const tasksDir = this.fs.tasksDir;
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
-			const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: tasksDir }),
+			);
+			const taskFile = files.find((file) =>
+				file.startsWith(`task-${task.id} -`),
+			);
 
 			if (taskFile) {
 				const filePath = join(tasksDir, taskFile);
@@ -140,7 +146,10 @@ export class Core {
 		return success;
 	}
 
-	async createDecisionLog(decision: DecisionLog, autoCommit = true): Promise<void> {
+	async createDecisionLog(
+		decision: DecisionLog,
+		autoCommit = true,
+	): Promise<void> {
 		await this.fs.saveDecisionLog(decision);
 
 		if (autoCommit) {
@@ -148,7 +157,11 @@ export class Core {
 		}
 	}
 
-	async createDocument(doc: Document, autoCommit = true, subPath = ""): Promise<void> {
+	async createDocument(
+		doc: Document,
+		autoCommit = true,
+		subPath = "",
+	): Promise<void> {
 		await this.fs.saveDocument(doc, subPath);
 
 		if (autoCommit) {
@@ -170,15 +183,23 @@ export class Core {
 		};
 
 		await this.fs.saveConfig(config);
-		await this.git.commitBacklogChanges(`Initialize backlog project: ${projectName}`);
+		await this.git.commitBacklogChanges(
+			`Initialize backlog project: ${projectName}`,
+		);
 	}
 
-	async listTasksWithMetadata(): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
+	async listTasksWithMetadata(): Promise<
+		Array<Task & { lastModified?: Date; branch?: string }>
+	> {
 		const tasks = await this.fs.listTasks();
 		const tasksWithMeta = await Promise.all(
 			tasks.map(async (task) => {
-				const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.fs.tasksDir }));
-				const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
+				const files = await Array.fromAsync(
+					new Bun.Glob("*.md").scan({ cwd: this.fs.tasksDir }),
+				);
+				const taskFile = files.find((file) =>
+					file.startsWith(`task-${task.id} -`),
+				);
 
 				if (taskFile) {
 					const filePath = join(this.fs.tasksDir, taskFile);

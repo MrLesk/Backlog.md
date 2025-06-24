@@ -1,5 +1,7 @@
 import type { Server } from "bun";
 import { Core } from "../core/backlog.ts";
+// Import static files directly - Bun will embed them automatically
+import indexHtml from "./index.html";
 import {
 	API_ERROR_CODES,
 	ConfigSchema,
@@ -32,8 +34,6 @@ export class BacklogServer {
 	private core: Core;
 	private server: Server | null = null;
 	private config: Required<ServerConfig>;
-	private staticFiles: Map<string, { content: Uint8Array; mimeType: string }> =
-		new Map();
 
 	constructor(projectRoot: string, config: ServerConfig = {}) {
 		this.core = new Core(projectRoot);
@@ -43,57 +43,6 @@ export class BacklogServer {
 			development: config.development ?? false,
 			maxPortRetries: config.maxPortRetries ?? 10,
 		};
-	}
-
-	async loadStaticFiles(): Promise<void> {
-		try {
-			// In production, static files will be embedded
-			// For now, we'll just initialize an empty map
-			// This will be populated by the bundling process (Task 100.7)
-			this.staticFiles.clear();
-
-			// Add a basic index.html for health check
-			const indexHtml = `<!DOCTYPE html>
-<html>
-<head>
-    <title>Backlog.md</title>
-</head>
-<body>
-    <div id="root">Loading Backlog.md...</div>
-    <script>
-        // Placeholder - will be replaced with actual React app
-        document.getElementById('root').innerHTML = '<h1>Backlog.md Server Running</h1><p>React app will be loaded here.</p>';
-    </script>
-</body>
-</html>`;
-
-			this.staticFiles.set("index.html", {
-				content: new TextEncoder().encode(indexHtml),
-				mimeType: "text/html",
-			});
-		} catch (error) {
-			console.warn("Failed to load static files:", error);
-		}
-	}
-
-	private getMimeType(filename: string): string {
-		const ext = filename.split(".").pop()?.toLowerCase();
-		const mimeTypes: Record<string, string> = {
-			html: "text/html",
-			css: "text/css",
-			js: "application/javascript",
-			json: "application/json",
-			png: "image/png",
-			jpg: "image/jpeg",
-			jpeg: "image/jpeg",
-			gif: "image/gif",
-			svg: "image/svg+xml",
-			ico: "image/x-icon",
-			woff: "font/woff",
-			woff2: "font/woff2",
-			ttf: "font/ttf",
-		};
-		return mimeTypes[ext || ""] || "application/octet-stream";
 	}
 
 	private async handleRequest(request: Request): Promise<Response> {
@@ -116,8 +65,8 @@ export class BacklogServer {
 			return this.handleApiRequest(request);
 		}
 
-		// Static file serving
-		return this.handleStaticFile(pathname);
+		// Not found
+		return new Response("Not found", { status: 404 });
 	}
 
 	private async handleApiRequest(request: Request): Promise<Response> {
@@ -388,56 +337,21 @@ export class BacklogServer {
 		}
 	}
 
-	private handleStaticFile(pathname: string): Response {
-		// Handle root path
-		if (pathname === "/" || pathname === "") {
-			pathname = "/index.html";
-		}
-
-		// Remove leading slash for map lookup
-		const filename = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-		const file = this.staticFiles.get(filename);
-
-		if (file) {
-			return new Response(file.content, {
-				headers: {
-					"Content-Type": file.mimeType,
-					"Cache-Control": this.config.development
-						? "no-cache"
-						: "public, max-age=3600",
-				},
-			});
-		}
-
-		// For SPA routing, serve index.html for non-API routes
-		const indexFile = this.staticFiles.get("index.html");
-		if (indexFile && !pathname.includes(".")) {
-			return new Response(indexFile.content, {
-				headers: {
-					"Content-Type": "text/html",
-					"Cache-Control": "no-cache",
-				},
-			});
-		}
-
-		// File not found
-		return new Response("File not found", { status: 404 });
-	}
-
 	async start(): Promise<ServerInfo> {
-		await this.loadStaticFiles();
-
 		let selectedPort = this.config.port;
 		let portRetries = 0;
 
 		// Try to find an available port
 		while (portRetries < this.config.maxPortRetries) {
 			try {
-				// Try to start the server directly
+				// Try to start the server directly with routes
 				this.server = Bun.serve({
 					port: selectedPort,
 					hostname: this.config.host,
 					fetch: this.handleRequest.bind(this),
+					routes: {
+						"/": indexHtml,
+					},
 				});
 
 				// If we got here, the port is available

@@ -3,8 +3,8 @@
  * Determines the latest state of tasks across all git branches
  */
 
+import type { GitOperations } from "../git/operations.ts";
 import type { Task } from "../types/index.ts";
-import type { GitOps } from "./git-ops.ts";
 
 export type TaskDirectoryType = "task" | "draft" | "archived";
 
@@ -21,7 +21,7 @@ export interface TaskDirectoryInfo {
  * Only checks the provided task IDs for optimal performance
  */
 export async function getLatestTaskStatesForIds(
-	gitOps: GitOps,
+	gitOps: GitOperations,
 	taskIds: string[],
 	onProgress?: (message: string) => void,
 ): Promise<Map<string, TaskDirectoryInfo>> {
@@ -38,7 +38,9 @@ export async function getLatestTaskStatesForIds(
 			return taskDirectories;
 		}
 
-		onProgress?.(`Checking ${taskIds.length} tasks across ${branches.length} branches...`);
+		onProgress?.(
+			`Checking ${taskIds.length} tasks across ${branches.length} branches...`,
+		);
 
 		// Create all file path combinations we need to check
 		const directoryChecks: Array<{ path: string; type: TaskDirectoryType }> = [
@@ -78,35 +80,40 @@ export async function getLatestTaskStatesForIds(
 
 		for (let i = 0; i < allChecks.length; i += BATCH_SIZE) {
 			const batch = allChecks.slice(i, i + BATCH_SIZE);
-			const batchPromises = batch.map(async ({ branch, taskId, type, filePath }) => {
-				try {
-					// First check if file exists by listing files in the directory
-					const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
-					const files = await gitOps.listFilesInTree(branch, dirPath);
+			const batchPromises = batch.map(
+				async ({ branch, taskId, type, filePath }) => {
+					try {
+						// First check if file exists by listing files in the directory
+						const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
+						const files = await gitOps.listFilesInTree(branch, dirPath);
 
-					// Find the actual file (might have different casing or title)
-					// Extract filename from full path for matching
-					const actualFile = files.find((f) => {
-						const filename = f.substring(f.lastIndexOf("/") + 1);
-						return filename.match(new RegExp(`^${taskId}\\b`));
-					});
-					if (!actualFile) return null;
+						// Find the actual file (might have different casing or title)
+						// Extract filename from full path for matching
+						const actualFile = files.find((f) => {
+							const filename = f.substring(f.lastIndexOf("/") + 1);
+							return filename.match(new RegExp(`^${taskId}\\b`));
+						});
+						if (!actualFile) return null;
 
-					// The actualFile already includes the full path from listFilesInTree
-					const lastModified = await gitOps.getFileLastModifiedTime(branch, actualFile);
-					if (!lastModified) return null;
+						// The actualFile already includes the full path from listFilesInTree
+						const lastModified = await gitOps.getFileLastModifiedTime(
+							branch,
+							actualFile,
+						);
+						if (!lastModified) return null;
 
-					return {
-						taskId,
-						type,
-						lastModified,
-						branch,
-						path: actualFile,
-					};
-				} catch {
-					return null;
-				}
-			});
+						return {
+							taskId,
+							type,
+							lastModified,
+							branch,
+							path: actualFile,
+						};
+					} catch {
+						return null;
+					}
+				},
+			);
 
 			const batchResults = await Promise.all(batchPromises);
 			results.push(...batchResults);
@@ -134,7 +141,10 @@ export async function getLatestTaskStatesForIds(
  * Filter tasks based on their latest directory location across all branches
  * Only returns tasks whose latest directory type is "task" (not draft or archived)
  */
-export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<string, TaskDirectoryInfo>): Task[] {
+export function filterTasksByLatestState(
+	tasks: Task[],
+	latestDirectories: Map<string, TaskDirectoryInfo>,
+): Task[] {
 	return tasks.filter((task) => {
 		const latestDirectory = latestDirectories.get(task.id);
 
