@@ -1,6 +1,6 @@
-import type { Server } from "bun";
+import { serve } from "bun";
 import { Core } from "../core/backlog.ts";
-// Import static files directly - Bun will embed them automatically
+// Import HTML file - Bun will automatically bundle all referenced assets
 import indexHtml from "./index.html";
 import {
 	API_ERROR_CODES,
@@ -10,7 +10,6 @@ import {
 } from "./schemas.ts";
 import {
 	createErrorResponse,
-	createJsonResponse,
 	createSuccessResponse,
 	filterTasks,
 	parseQueryParams,
@@ -30,9 +29,213 @@ export interface ServerInfo {
 	url: string;
 }
 
+// Handler functions for API routes
+// These functions contain the actual logic for each endpoint, keeping the routes clean and organized
+
+async function handleHealthCheck() {
+	return Response.json({
+		success: true,
+		data: {
+			status: "ok",
+			timestamp: new Date().toISOString(),
+			server: "Backlog.md HTTP Server",
+		},
+	});
+}
+
+async function handleGetTasks(core: Core, req: Request) {
+	const url = new URL(req.url);
+	const allTasks = await core.filesystem.listTasks();
+	const queryParams = parseQueryParams(url);
+	const filteredTasks = filterTasks(allTasks, queryParams);
+	return Response.json(createSuccessResponse(filteredTasks));
+}
+
+async function handleCreateTask(core: Core, req: Request) {
+	try {
+		const body = await req.json();
+		const validation = validateRequestBody(CreateTaskSchema, body);
+		if (!validation.success) {
+			return Response.json(validation.error, { status: 422 });
+		}
+
+		const taskId = await core.createTask(validation.data, false);
+		const task = await core.filesystem.loadTask(taskId);
+		return Response.json(createSuccessResponse(task), { status: 201 });
+	} catch (error) {
+		return Response.json(
+			createErrorResponse(
+				API_ERROR_CODES.INTERNAL_ERROR,
+				`Failed to create task: ${error instanceof Error ? error.message : "Unknown error"}`,
+			),
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleGetTask(
+	core: Core,
+	req: Request & { params: { id: string } },
+) {
+	const taskId = req.params.id;
+	const task = await core.filesystem.loadTask(taskId);
+	if (!task) {
+		return Response.json(
+			createErrorResponse(
+				API_ERROR_CODES.TASK_NOT_FOUND,
+				`Task with ID ${taskId} not found`,
+			),
+			{ status: 404 },
+		);
+	}
+	return Response.json(createSuccessResponse(task));
+}
+
+async function handleUpdateTask(
+	core: Core,
+	req: Request & { params: { id: string } },
+) {
+	const taskId = req.params.id;
+	try {
+		const body = await req.json();
+		const validation = validateRequestBody(UpdateTaskSchema, body);
+		if (!validation.success) {
+			return Response.json(validation.error, { status: 422 });
+		}
+
+		// Check if task exists first
+		const existingTask = await core.filesystem.loadTask(taskId);
+		if (!existingTask) {
+			return Response.json(
+				createErrorResponse(
+					API_ERROR_CODES.TASK_NOT_FOUND,
+					`Task with ID ${taskId} not found`,
+				),
+				{ status: 404 },
+			);
+		}
+
+		// Merge the updates with existing task data
+		const updatedTaskData = {
+			...existingTask,
+			...validation.data,
+			id: taskId,
+		};
+
+		await core.updateTask(updatedTaskData, false);
+		const updatedTask = await core.filesystem.loadTask(taskId);
+		return Response.json(createSuccessResponse(updatedTask));
+	} catch (error) {
+		return Response.json(
+			createErrorResponse(
+				API_ERROR_CODES.INTERNAL_ERROR,
+				`Failed to update task: ${error instanceof Error ? error.message : "Unknown error"}`,
+			),
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleDeleteTask(
+	core: Core,
+	req: Request & { params: { id: string } },
+) {
+	const taskId = req.params.id;
+	try {
+		const success = await core.archiveTask(taskId, false);
+		if (!success) {
+			return Response.json(
+				createErrorResponse(
+					API_ERROR_CODES.TASK_NOT_FOUND,
+					`Task with ID ${taskId} not found or already archived`,
+				),
+				{ status: 404 },
+			);
+		}
+		return Response.json(createSuccessResponse({ taskId, archived: true }));
+	} catch (error) {
+		return Response.json(
+			createErrorResponse(
+				API_ERROR_CODES.INTERNAL_ERROR,
+				`Failed to archive task: ${error instanceof Error ? error.message : "Unknown error"}`,
+			),
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleGetBoard(core: Core) {
+	const tasks = await core.filesystem.listTasks();
+	const config = await core.filesystem.loadConfig();
+	const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+	return Response.json(createSuccessResponse({ tasks, statuses }));
+}
+
+async function handleGetDrafts(core: Core) {
+	const drafts = await core.filesystem.listDrafts();
+	return Response.json(createSuccessResponse(drafts));
+}
+
+async function handlePromoteDraft(
+	core: Core,
+	req: Request & { params: { id: string } },
+) {
+	const draftId = req.params.id;
+	try {
+		const success = await core.promoteDraft(draftId, false);
+		if (!success) {
+			return Response.json(
+				createErrorResponse(
+					API_ERROR_CODES.DRAFT_NOT_FOUND,
+					`Draft with ID ${draftId} not found`,
+				),
+				{ status: 404 },
+			);
+		}
+
+		// Get the promoted task
+		const promotedTask = await core.filesystem.loadTask(draftId);
+		return Response.json(createSuccessResponse(promotedTask));
+	} catch (error) {
+		return Response.json(
+			createErrorResponse(
+				API_ERROR_CODES.PROMOTION_FAILED,
+				`Failed to promote draft: ${error instanceof Error ? error.message : "Unknown error"}`,
+			),
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleGetConfig(core: Core) {
+	const config = await core.filesystem.loadConfig();
+	return Response.json(createSuccessResponse(config));
+}
+
+async function handleUpdateConfig(core: Core, req: Request) {
+	try {
+		const body = await req.json();
+		const validation = validateRequestBody(ConfigSchema, body);
+		if (!validation.success) {
+			return Response.json(validation.error, { status: 422 });
+		}
+
+		await core.filesystem.saveConfig(validation.data);
+		return Response.json(createSuccessResponse(validation.data));
+	} catch (error) {
+		return Response.json(
+			createErrorResponse(
+				API_ERROR_CODES.INTERNAL_ERROR,
+				`Failed to save configuration: ${error instanceof Error ? error.message : "Unknown error"}`,
+			),
+			{ status: 500 },
+		);
+	}
+}
+
 export class BacklogServer {
-	private core: Core;
-	private server: Server | null = null;
+	private readonly core: Core;
+	private server: any = null;
 	private config: Required<ServerConfig>;
 
 	constructor(projectRoot: string, config: ServerConfig = {}) {
@@ -45,312 +248,77 @@ export class BacklogServer {
 		};
 	}
 
-	private async handleRequest(request: Request): Promise<Response> {
-		const url = new URL(request.url);
-		const { pathname } = url;
-
-		// Health check endpoint
-		if (pathname === "/health") {
-			return createJsonResponse(
-				createSuccessResponse({
-					status: "ok",
-					timestamp: new Date().toISOString(),
-					server: "Backlog.md HTTP Server",
-				}),
-			);
-		}
-
-		// API routes
-		if (pathname.startsWith("/api/")) {
-			return this.handleApiRequest(request);
-		}
-
-		// Not found
-		return new Response("Not found", { status: 404 });
-	}
-
-	private async handleApiRequest(request: Request): Promise<Response> {
-		const url = new URL(request.url);
-		const { pathname } = url;
-		const method = request.method;
-
-		try {
-			// Parse JSON body for POST/PUT requests
-			let body: any = null;
-			if (method === "POST" || method === "PUT") {
-				const contentType = request.headers.get("content-type");
-				if (contentType?.includes("application/json")) {
-					try {
-						body = await request.json();
-					} catch {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INVALID_INPUT,
-								"Invalid JSON in request body",
-							),
-							400,
-						);
-					}
-				}
-			}
-
-			// Route API requests
-			if (pathname === "/api/tasks") {
-				if (method === "GET") {
-					const allTasks = await this.core.filesystem.listTasks();
-					const queryParams = parseQueryParams(url);
-					const filteredTasks = filterTasks(allTasks, queryParams);
-					return createJsonResponse(createSuccessResponse(filteredTasks));
-				}
-
-				if (method === "POST") {
-					if (!body) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INVALID_INPUT,
-								"Request body required",
-							),
-							400,
-						);
-					}
-
-					const validation = validateRequestBody(CreateTaskSchema, body);
-					if (!validation.success) {
-						return createJsonResponse(validation.error, 422);
-					}
-
-					try {
-						const taskId = await this.core.createTask(validation.data, false);
-						const task = await this.core.filesystem.loadTask(taskId);
-						return createJsonResponse(createSuccessResponse(task), 201);
-					} catch (error) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INTERNAL_ERROR,
-								`Failed to create task: ${error instanceof Error ? error.message : "Unknown error"}`,
-							),
-							500,
-						);
-					}
-				}
-			}
-
-			// Single task operations
-			const taskMatch = pathname.match(/^\/api\/tasks\/(.+)$/);
-			if (taskMatch) {
-				const taskId = taskMatch[1];
-
-				if (method === "GET") {
-					const task = await this.core.filesystem.loadTask(taskId);
-					if (!task) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.TASK_NOT_FOUND,
-								`Task with ID ${taskId} not found`,
-							),
-							404,
-						);
-					}
-					return createJsonResponse(createSuccessResponse(task));
-				}
-
-				if (method === "PUT") {
-					if (!body) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INVALID_INPUT,
-								"Request body required",
-							),
-							400,
-						);
-					}
-
-					const validation = validateRequestBody(UpdateTaskSchema, body);
-					if (!validation.success) {
-						return createJsonResponse(validation.error, 422);
-					}
-
-					// Check if task exists first
-					const existingTask = await this.core.filesystem.loadTask(taskId);
-					if (!existingTask) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.TASK_NOT_FOUND,
-								`Task with ID ${taskId} not found`,
-							),
-							404,
-						);
-					}
-
-					// Merge the updates with existing task data
-					const updatedTaskData = {
-						...existingTask,
-						...validation.data,
-						id: taskId,
-					};
-
-					try {
-						await this.core.updateTask(updatedTaskData, false);
-						const updatedTask = await this.core.filesystem.loadTask(taskId);
-						return createJsonResponse(createSuccessResponse(updatedTask));
-					} catch (error) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INTERNAL_ERROR,
-								`Failed to update task: ${error instanceof Error ? error.message : "Unknown error"}`,
-							),
-							500,
-						);
-					}
-				}
-
-				if (method === "DELETE") {
-					try {
-						const success = await this.core.archiveTask(taskId, false);
-						if (!success) {
-							return createJsonResponse(
-								createErrorResponse(
-									API_ERROR_CODES.TASK_NOT_FOUND,
-									`Task with ID ${taskId} not found or already archived`,
-								),
-								404,
-							);
-						}
-						return createJsonResponse(
-							createSuccessResponse({ taskId, archived: true }),
-						);
-					} catch (error) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INTERNAL_ERROR,
-								`Failed to archive task: ${error instanceof Error ? error.message : "Unknown error"}`,
-							),
-							500,
-						);
-					}
-				}
-			}
-
-			// Draft promotion endpoint
-			const draftPromoteMatch = pathname.match(
-				/^\/api\/drafts\/(.+)\/promote$/,
-			);
-			if (draftPromoteMatch && method === "POST") {
-				const draftId = draftPromoteMatch[1];
-
-				try {
-					const success = await this.core.promoteDraft(draftId, false);
-					if (!success) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.DRAFT_NOT_FOUND,
-								`Draft with ID ${draftId} not found`,
-							),
-							404,
-						);
-					}
-
-					// Get the promoted task
-					const promotedTask = await this.core.filesystem.loadTask(draftId);
-					return createJsonResponse(createSuccessResponse(promotedTask));
-				} catch (error) {
-					return createJsonResponse(
-						createErrorResponse(
-							API_ERROR_CODES.PROMOTION_FAILED,
-							`Failed to promote draft: ${error instanceof Error ? error.message : "Unknown error"}`,
-						),
-						500,
-					);
-				}
-			}
-
-			// Board endpoint
-			if (pathname === "/api/board" && method === "GET") {
-				const tasks = await this.core.filesystem.listTasks();
-				const config = await this.core.filesystem.loadConfig();
-				const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
-
-				return createJsonResponse(createSuccessResponse({ tasks, statuses }));
-			}
-
-			// Drafts endpoint
-			if (pathname === "/api/drafts" && method === "GET") {
-				const drafts = await this.core.filesystem.listDrafts();
-				return createJsonResponse(createSuccessResponse(drafts));
-			}
-
-			// Configuration endpoint
-			if (pathname === "/api/config") {
-				if (method === "GET") {
-					const config = await this.core.filesystem.loadConfig();
-					return createJsonResponse(createSuccessResponse(config));
-				}
-
-				if (method === "PUT") {
-					if (!body) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INVALID_INPUT,
-								"Request body required",
-							),
-							400,
-						);
-					}
-
-					const validation = validateRequestBody(ConfigSchema, body);
-					if (!validation.success) {
-						return createJsonResponse(validation.error, 422);
-					}
-
-					try {
-						await this.core.filesystem.saveConfig(validation.data);
-						return createJsonResponse(createSuccessResponse(validation.data));
-					} catch (error) {
-						return createJsonResponse(
-							createErrorResponse(
-								API_ERROR_CODES.INTERNAL_ERROR,
-								`Failed to save configuration: ${error instanceof Error ? error.message : "Unknown error"}`,
-							),
-							500,
-						);
-					}
-				}
-			}
-
-			// Route not found
-			return createJsonResponse(
-				createErrorResponse(
-					API_ERROR_CODES.INVALID_INPUT,
-					"API endpoint not found",
-				),
-				404,
-			);
-		} catch (error) {
-			console.error("API Error:", error);
-			return createJsonResponse(
-				createErrorResponse(
-					API_ERROR_CODES.INTERNAL_ERROR,
-					`Internal server error: ${error instanceof Error ? error.message : "Unknown error"}`,
-				),
-				500,
-			);
-		}
-	}
-
 	async start(): Promise<ServerInfo> {
 		let selectedPort = this.config.port;
 		let portRetries = 0;
+		const core = this.core; // Capture core instance for use in routes
 
 		// Try to find an available port
 		while (portRetries < this.config.maxPortRetries) {
 			try {
-				// Try to start the server directly with routes
-				this.server = Bun.serve({
+				// Use Bun's fullstack serve with routes object
+				this.server = serve({
 					port: selectedPort,
 					hostname: this.config.host,
-					fetch: this.handleRequest.bind(this),
+					development: this.config.development,
 					routes: {
+						// Main HTML page - Bun will bundle all assets automatically
 						"/": indexHtml,
+
+						// Health check endpoint
+						"/health": {
+							GET: handleHealthCheck,
+						},
+
+						// Tasks API endpoints
+						"/api/tasks": {
+							GET: (req: Request) => handleGetTasks(core, req),
+							POST: (req: Request) => handleCreateTask(core, req),
+						},
+
+						// Single task operations
+						"/api/tasks/:id": {
+							GET: (req: Request) =>
+								handleGetTask(
+									core,
+									req as Request & { params: { id: string } },
+								),
+							PUT: (req: Request) =>
+								handleUpdateTask(
+									core,
+									req as Request & { params: { id: string } },
+								),
+							DELETE: (req: Request) =>
+								handleDeleteTask(
+									core,
+									req as Request & { params: { id: string } },
+								),
+						},
+
+						// Board endpoint
+						"/api/board": {
+							GET: () => handleGetBoard(core),
+						},
+
+						// Drafts endpoint
+						"/api/drafts": {
+							GET: () => handleGetDrafts(core),
+						},
+
+						// Draft promotion endpoint
+						"/api/drafts/:id/promote": {
+							POST: (req: Request) =>
+								handlePromoteDraft(
+									core,
+									req as Request & { params: { id: string } },
+								),
+						},
+
+						// Configuration endpoint
+						"/api/config": {
+							GET: () => handleGetConfig(core),
+							PUT: (req: Request) => handleUpdateConfig(core, req),
+						},
 					},
 				});
 
@@ -368,7 +336,7 @@ export class BacklogServer {
 				}
 
 				return serverInfo;
-			} catch (error) {
+			} catch (_error) {
 				// Port is busy, try next one
 				if (this.server) {
 					this.server.stop();
@@ -393,10 +361,5 @@ export class BacklogServer {
 
 	isRunning(): boolean {
 		return this.server !== null;
-	}
-
-	getUrl(): string | null {
-		if (!this.server) return null;
-		return `http://${this.config.host}:${this.server.port}`;
 	}
 }
