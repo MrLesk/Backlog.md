@@ -1,5 +1,5 @@
 ---
-id: task-101
+id: task-102
 title: Consolidate agent guidelines into single source
 status: To Do
 assignee: []
@@ -15,7 +15,7 @@ Currently the repository maintains three separate files for agent instructions: 
 ## Acceptance Criteria
 
 - [ ] New canonical `AGENT_GUIDELINES.md` (name can vary) created as the single source of truth.
-- [ ] Script or process copies this source to `AGENTS.md`, `CLAUDE.md`, and `.cursorrules`.
+- [ ] Script or process copies this source to `AGENTS.md`, `CLAUDE.md`, and `.cursorrules` depending on what user selected during backlog init.
 - [ ] Documentation updated to explain the new workflow.
 - [ ] Content of the three final files matches the canonical source after the copy step.
 
@@ -26,7 +26,3 @@ Currently the repository maintains three separate files for agent instructions: 
 3. Hook the script into the build or release workflow so guideline files stay up to date.
 4. Remove duplicated text from the old files and replace them with the generated copies.
 5. Update README and any references pointing to the old files.
-
-## Implementation Notes
-
-- None yet.
