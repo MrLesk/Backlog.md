@@ -28,7 +28,11 @@ export function sleep(ms: number): Promise<void> {
  * Retry utility for operations that might fail intermittently
  * Particularly useful for Windows file operations
  */
-export async function retry<T>(fn: () => Promise<T>, maxAttempts = 3, delay = 100): Promise<T> {
+export async function retry<T>(
+	fn: () => Promise<T>,
+	maxAttempts = 3,
+	delay = 100,
+): Promise<T> {
 	let lastError: Error;
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {

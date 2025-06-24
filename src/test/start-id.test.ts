@@ -8,8 +8,11 @@ const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 async function initGitRepo(dir: string) {
 	await Bun.spawn(["git", "init"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: dir }).exited;
+	await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: dir })
+		.exited;
+	await Bun.spawn(["git", "config", "user.email", "test@example.com"], {
+		cwd: dir,
+	}).exited;
 }
 
 describe("task id generation", () => {
@@ -26,7 +29,9 @@ describe("task id generation", () => {
 	});
 
 	it("starts numbering tasks at 1", async () => {
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "First"], { cwd: TEST_DIR });
+		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "First"], {
+			cwd: TEST_DIR,
+		});
 		expect(result.exitCode).toBe(0);
 
 		const files = await readdir(join(TEST_DIR, ".backlog", "tasks"));

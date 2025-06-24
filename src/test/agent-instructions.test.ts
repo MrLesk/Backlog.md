@@ -57,7 +57,9 @@ describe("addAgentInstructions", () => {
 
 		const agentsExists = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 		const claudeExists = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-		const cursorExists = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
+		const cursorExists = await Bun.file(
+			join(TEST_DIR, ".cursorrules"),
+		).exists();
 		const readme = await Bun.file(join(TEST_DIR, "README.md")).text();
 
 		expect(agentsExists).toBe(true);
@@ -71,7 +73,9 @@ describe("addAgentInstructions", () => {
 	it("loads guideline content from file paths", async () => {
 		const pathGuideline = join(__dirname, "../guidelines/AGENTS.md");
 		const content = await _loadAgentGuideline(pathGuideline);
-		expect(content).toContain("# Instructions for the usage of Backlog.md CLI Tool");
+		expect(content).toContain(
+			"# Instructions for the usage of Backlog.md CLI Tool",
+		);
 	});
 
 	it("does not duplicate content when run multiple times (idempotent)", async () => {
@@ -87,7 +91,8 @@ describe("addAgentInstructions", () => {
 	});
 
 	it("preserves existing content and adds Backlog.md content only once", async () => {
-		const existingContent = "# My Existing Claude Instructions\n\nThis is my custom content.\n";
+		const existingContent =
+			"# My Existing Claude Instructions\n\nThis is my custom content.\n";
 		await Bun.write(join(TEST_DIR, "CLAUDE.md"), existingContent);
 
 		// First run
@@ -104,8 +109,12 @@ describe("addAgentInstructions", () => {
 		expect(firstRun).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
 
 		// Count occurrences of the marker to ensure it's only there once
-		const startMarkerCount = (firstRun.match(/<!-- BACKLOG\.MD GUIDELINES START -->/g) || []).length;
-		const endMarkerCount = (firstRun.match(/<!-- BACKLOG\.MD GUIDELINES END -->/g) || []).length;
+		const startMarkerCount = (
+			firstRun.match(/<!-- BACKLOG\.MD GUIDELINES START -->/g) || []
+		).length;
+		const endMarkerCount = (
+			firstRun.match(/<!-- BACKLOG\.MD GUIDELINES END -->/g) || []
+		).length;
 		expect(startMarkerCount).toBe(1);
 		expect(endMarkerCount).toBe(1);
 	});

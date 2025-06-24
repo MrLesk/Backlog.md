@@ -169,7 +169,11 @@ Regular text
 			];
 
 			const result = formatChecklist(items);
-			expect(result).toEqual([" [x] First item", " [ ] Second item", " [x] Third item"]);
+			expect(result).toEqual([
+				" [x] First item",
+				" [ ] Second item",
+				" [x] Third item",
+			]);
 		});
 	});
 
@@ -180,7 +184,11 @@ Regular text
 - [x] Third criterion`;
 
 			const result = alignAcceptanceCriteria(criteriaSection);
-			expect(result).toEqual([" [x] First criterion", " [ ] Second criterion", " [x] Third criterion"]);
+			expect(result).toEqual([
+				" [x] First criterion",
+				" [ ] Second criterion",
+				" [x] Third criterion",
+			]);
 		});
 
 		test("should handle mixed content with consistent padding", () => {
@@ -189,7 +197,11 @@ Regular note
 - [ ] Another checkbox`;
 
 			const result = alignAcceptanceCriteria(criteriaSection);
-			expect(result).toEqual([" [x] Checkbox item", " Regular note", " [ ] Another checkbox"]);
+			expect(result).toEqual([
+				" [x] Checkbox item",
+				" Regular note",
+				" [ ] Another checkbox",
+			]);
 		});
 
 		test("should handle empty or whitespace-only lines", () => {
@@ -200,7 +212,11 @@ Regular note
 - [x] Third item`;
 
 			const result = alignAcceptanceCriteria(criteriaSection);
-			expect(result).toEqual([" [x] First item", " [ ] Second item", " [x] Third item"]);
+			expect(result).toEqual([
+				" [x] First item",
+				" [ ] Second item",
+				" [x] Third item",
+			]);
 		});
 	});
 

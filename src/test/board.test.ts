@@ -134,7 +134,8 @@ describe("generateKanbanBoard", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-1",
-				title: "This is a very long task title that should expand the column width significantly",
+				title:
+					"This is a very long task title that should expand the column width significantly",
 				status: "To Do",
 				assignee: [],
 				createdDate: "",
@@ -187,7 +188,9 @@ describe("generateKanbanBoard", () => {
 		expect(board).toContain("     Child");
 
 		const lines = board.split("\n");
-		const parentIdx = lines.findIndex((l) => l.includes("task-1") && !l.includes("task-1.1"));
+		const parentIdx = lines.findIndex(
+			(l) => l.includes("task-1") && !l.includes("task-1.1"),
+		);
 		const childIdx = lines.findIndex((l) => l.includes("  └─ task-1.1"));
 		expect(parentIdx).toBeGreaterThan(-1);
 		expect(childIdx).toBeGreaterThan(parentIdx);
@@ -249,7 +252,11 @@ describe("generateKanbanBoard", () => {
 			},
 		];
 
-		const board = generateKanbanBoard(tasks, ["To Do", "In Progress", "Done"], "vertical");
+		const board = generateKanbanBoard(
+			tasks,
+			["To Do", "In Progress", "Done"],
+			"vertical",
+		);
 		const lines = board.split("\n");
 		expect(lines[0]).toBe("To Do");
 		expect(lines).toContain("In Progress");

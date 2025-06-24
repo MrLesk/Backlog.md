@@ -6,7 +6,7 @@
 import { stdout as output } from "node:process";
 import blessed from "blessed";
 import { formatHeading } from "../heading.ts";
-import { createScreen } from "../tui.ts";
+import { createScreen } from "../index.ts";
 
 export interface GenericListItem {
 	id: string;
@@ -58,7 +58,9 @@ export interface GenericListController<T extends GenericListItem> {
 	destroy(): void;
 }
 
-export class GenericList<T extends GenericListItem> implements GenericListController<T> {
+export class GenericList<T extends GenericListItem>
+	implements GenericListController<T>
+{
 	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
 	private listBox: any;
 	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
@@ -135,7 +137,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 		this.listBox = blessed.list({
 			parent,
-			label: this.options.title ? `\u00A0${this.options.title}\u00A0` : undefined,
+			label: this.options.title
+				? `\u00A0${this.options.title}\u00A0`
+				: undefined,
 			top: this.options.top || 0,
 			left: this.options.left || 0,
 			width: this.options.width || (parent === this.screen ? "90%" : "100%"),
@@ -160,7 +164,11 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 		// Apply search filter
 		this.filteredItems = this.searchTerm
-			? this.items.filter((item) => JSON.stringify(item).toLowerCase().includes(this.searchTerm.toLowerCase()))
+			? this.items.filter((item) =>
+					JSON.stringify(item)
+						.toLowerCase()
+						.includes(this.searchTerm.toLowerCase()),
+				)
 			: [...this.items];
 
 		// Build display items
@@ -187,9 +195,15 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 				displayItems.push(formatHeading(group || "No Group", 2));
 				itemMap.set(index++, null); // Group header
 				for (const item of groupItems) {
-					const isSelected = this.isMultiSelect ? this.selectedIndices.has(index) : false;
+					const isSelected = this.isMultiSelect
+						? this.selectedIndices.has(index)
+						: false;
 					const rendered = this.itemRenderer(item, index, isSelected);
-					const prefix = this.isMultiSelect ? (isSelected ? "[✓] " : "[ ] ") : "  ";
+					const prefix = this.isMultiSelect
+						? isSelected
+							? "[✓] "
+							: "[ ] "
+						: "  ";
 					displayItems.push(prefix + rendered);
 					itemMap.set(index++, item);
 				}
@@ -198,7 +212,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			// Render flat list
 			for (let i = 0; i < this.filteredItems.length; i++) {
 				const item = this.filteredItems[i];
-				const isSelected = this.isMultiSelect ? this.selectedIndices.has(i) : false;
+				const isSelected = this.isMultiSelect
+					? this.selectedIndices.has(i)
+					: false;
 				const rendered = this.itemRenderer(item, i, isSelected);
 				const prefix = this.isMultiSelect ? (isSelected ? "[✓] " : "[ ] ") : "";
 				displayItems.push(prefix + rendered);
@@ -293,7 +309,11 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		if (this.options.searchable) {
 			// biome-ignore lint/suspicious/noExplicitAny: blessed event handler parameter
 			this.listBox.on("keypress", (ch: string, key: any) => {
-				if (this.isSearchMode && key.name !== "escape" && key.name !== "enter") {
+				if (
+					this.isSearchMode &&
+					key.name !== "escape" &&
+					key.name !== "enter"
+				) {
 					if (key.name === "backspace") {
 						this.searchTerm = this.searchTerm.slice(0, -1);
 					} else if (ch && ch.length === 1 && !key.ctrl && !key.meta) {
@@ -307,7 +327,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 	private selectInitialItem(): void {
 		if (this.filteredItems.length > 0) {
-			const validIndex = Math.min(this.selectedIndex, this.filteredItems.length - 1);
+			const validIndex = Math.min(
+				this.selectedIndex,
+				this.filteredItems.length - 1,
+			);
 			this.listBox.select(validIndex);
 
 			if (!this.isMultiSelect) {
@@ -335,7 +358,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	}
 
 	private triggerSelection(): void {
-		if (this.selectedIndex >= 0 && this.selectedIndex < this.filteredItems.length) {
+		if (
+			this.selectedIndex >= 0 &&
+			this.selectedIndex < this.filteredItems.length
+		) {
 			const selected = this.filteredItems[this.selectedIndex];
 			this.onSelect?.(selected, this.selectedIndex);
 		}
@@ -369,13 +395,16 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 				.map((i) => this.filteredItems[i])
 				.filter(Boolean);
 		}
-		return this.selectedIndex >= 0 && this.selectedIndex < this.filteredItems.length
+		return this.selectedIndex >= 0 &&
+			this.selectedIndex < this.filteredItems.length
 			? this.filteredItems[this.selectedIndex]
 			: null;
 	}
 
 	public getSelectedIndex(): number | number[] {
-		return this.isMultiSelect ? Array.from(this.selectedIndices) : this.selectedIndex;
+		return this.isMultiSelect
+			? Array.from(this.selectedIndices)
+			: this.selectedIndex;
 	}
 
 	public updateItems(items: T[]): void {
@@ -403,7 +432,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 }
 
 // Factory function for easier usage
-export function createGenericList<T extends GenericListItem>(options: GenericListOptions<T>): GenericList<T> {
+export function createGenericList<T extends GenericListItem>(
+	options: GenericListOptions<T>,
+): GenericList<T> {
 	return new GenericList<T>(options);
 }
 

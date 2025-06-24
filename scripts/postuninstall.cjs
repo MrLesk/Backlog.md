@@ -13,13 +13,15 @@ const platformPackages = [
 ];
 
 // Detect package manager
-const packageManager = process.env.npm_config_user_agent?.split("/")[0] || "npm";
+const packageManager =
+	process.env.npm_config_user_agent?.split("/")[0] || "npm";
 
 console.log("Cleaning up platform-specific packages...");
 
 // Try to uninstall all platform packages
 for (const pkg of platformPackages) {
-	const args = packageManager === "bun" ? ["remove", "-g", pkg] : ["uninstall", "-g", pkg];
+	const args =
+		packageManager === "bun" ? ["remove", "-g", pkg] : ["uninstall", "-g", pkg];
 
 	const child = spawn(packageManager, args, {
 		stdio: "pipe", // Don't show output to avoid spam

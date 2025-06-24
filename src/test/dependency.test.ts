@@ -14,8 +14,12 @@ describe("Task Dependencies", () => {
 
 		// Initialize git repository first using the same pattern as other tests
 		await Bun.spawn(["git", "init"], { cwd: tempDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: tempDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: tempDir }).exited;
+		await Bun.spawn(["git", "config", "user.name", "Test User"], {
+			cwd: tempDir,
+		}).exited;
+		await Bun.spawn(["git", "config", "user.email", "test@example.com"], {
+			cwd: tempDir,
+		}).exited;
 
 		core = new Core(tempDir);
 		await core.initializeProject("test-project");
@@ -169,7 +173,8 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: ["feature", "backend"],
 			dependencies: ["task-2", "task-3", "task-4"],
-			description: "## Description\n\nTask with various metadata and dependencies",
+			description:
+				"## Description\n\nTask with various metadata and dependencies",
 		};
 
 		// Create dependency tasks first

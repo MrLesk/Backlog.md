@@ -1,17 +1,28 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_GUIDELINES, CLAUDE_GUIDELINES, CURSOR_GUIDELINES, README_GUIDELINES } from "./constants/index.ts";
+import {
+	AGENT_GUIDELINES,
+	CLAUDE_GUIDELINES,
+	CURSOR_GUIDELINES,
+	README_GUIDELINES,
+} from "./constants/index.ts";
 import type { GitOperations } from "./git/operations.ts";
 
-export type AgentInstructionFile = "AGENTS.md" | "CLAUDE.md" | ".cursorrules" | "README.md";
+export type AgentInstructionFile =
+	| "AGENTS.md"
+	| "CLAUDE.md"
+	| ".cursorrules"
+	| "README.md";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function loadContent(textOrPath: string): Promise<string> {
 	if (textOrPath.includes("\n")) return textOrPath;
 	try {
-		const path = isAbsolute(textOrPath) ? textOrPath : join(__dirname, textOrPath);
+		const path = isAbsolute(textOrPath)
+			? textOrPath
+			: join(__dirname, textOrPath);
 		return await Bun.file(path).text();
 	} catch {
 		return textOrPath;

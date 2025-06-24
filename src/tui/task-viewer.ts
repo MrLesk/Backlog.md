@@ -8,8 +8,8 @@ import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
 import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
 import { createGenericList } from "./components/generic-list.ts";
 import { formatHeading } from "./heading.ts";
+import { createScreen } from "./index.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
-import { createScreen } from "./tui.ts";
 
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	switch (priority) {
@@ -165,7 +165,9 @@ export async function viewTaskEnhanced(
 			const assigneeText = task.assignee?.length
 				? ` {cyan-fg}${task.assignee[0]?.startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 				: "";
-			const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+			const labelsText = task.labels?.length
+				? ` {yellow-fg}[${task.labels.join(", ")}]{/}`
+				: "";
 			const priorityText = getPriorityDisplay(task.priority);
 
 			return `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}`;
@@ -177,8 +179,12 @@ export async function viewTaskEnhanced(
 			// Load the content for the selected task asynchronously
 			(async () => {
 				try {
-					const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-					const normalizedId = selectedTask.id.startsWith("task-") ? selectedTask.id : `task-${selectedTask.id}`;
+					const files = await Array.fromAsync(
+						new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }),
+					);
+					const normalizedId = selectedTask.id.startsWith("task-")
+						? selectedTask.id
+						: `task-${selectedTask.id}`;
 					const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
 
 					if (taskFile) {
@@ -274,26 +280,35 @@ export async function viewTaskEnhanced(
 		metadata.push(`{bold}Created:{/bold} ${currentSelectedTask.createdDate}`);
 
 		// Show updated date if different from created
-		if (currentSelectedTask.updatedDate && currentSelectedTask.updatedDate !== currentSelectedTask.createdDate) {
+		if (
+			currentSelectedTask.updatedDate &&
+			currentSelectedTask.updatedDate !== currentSelectedTask.createdDate
+		) {
 			metadata.push(`{bold}Updated:{/bold} ${currentSelectedTask.updatedDate}`);
 		}
 
 		// Priority
 		if (currentSelectedTask.priority) {
 			const priorityDisplay = getPriorityDisplay(currentSelectedTask.priority);
-			const priorityText = currentSelectedTask.priority.charAt(0).toUpperCase() + currentSelectedTask.priority.slice(1);
+			const priorityText =
+				currentSelectedTask.priority.charAt(0).toUpperCase() +
+				currentSelectedTask.priority.slice(1);
 			metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
 		}
 
 		// Assignee
 		if (currentSelectedTask.assignee?.length) {
-			const assigneeList = currentSelectedTask.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+			const assigneeList = currentSelectedTask.assignee
+				.map((a) => (a.startsWith("@") ? a : `@${a}`))
+				.join(", ");
 			metadata.push(`{bold}Assignee:{/bold} {cyan-fg}${assigneeList}{/}`);
 		}
 
 		// Labels
 		if (currentSelectedTask.labels?.length) {
-			metadata.push(`{bold}Labels:{/bold} ${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+			metadata.push(
+				`{bold}Labels:{/bold} ${currentSelectedTask.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`,
+			);
 		}
 
 		// Reporter
@@ -306,12 +321,16 @@ export async function viewTaskEnhanced(
 
 		// Milestone
 		if (currentSelectedTask.milestone) {
-			metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${currentSelectedTask.milestone}{/}`);
+			metadata.push(
+				`{bold}Milestone:{/bold} {magenta-fg}${currentSelectedTask.milestone}{/}`,
+			);
 		}
 
 		// Parent task
 		if (currentSelectedTask.parentTaskId) {
-			metadata.push(`{bold}Parent:{/bold} {blue-fg}${currentSelectedTask.parentTaskId}{/}`);
+			metadata.push(
+				`{bold}Parent:{/bold} {blue-fg}${currentSelectedTask.parentTaskId}{/}`,
+			);
 		}
 
 		// Subtasks
@@ -323,7 +342,9 @@ export async function viewTaskEnhanced(
 
 		// Dependencies
 		if (currentSelectedTask.dependencies?.length) {
-			metadata.push(`{bold}Dependencies:{/bold} ${currentSelectedTask.dependencies.join(", ")}`);
+			metadata.push(
+				`{bold}Dependencies:{/bold} ${currentSelectedTask.dependencies.join(", ")}`,
+			);
 		}
 
 		bodyContent.push(metadata.join("\n"));
@@ -332,7 +353,9 @@ export async function viewTaskEnhanced(
 		// Description section
 		bodyContent.push(formatHeading("Description", 2));
 		// Extract only the Description section content, not the full markdown
-		const extractedDescription = extractDescriptionSection(currentSelectedTask.description);
+		const extractedDescription = extractDescriptionSection(
+			currentSelectedTask.description,
+		);
 		const descriptionContent = extractedDescription
 			? transformCodePaths(extractedDescription)
 			: "{gray-fg}No description provided{/}";
@@ -342,7 +365,9 @@ export async function viewTaskEnhanced(
 		// Acceptance criteria section
 		bodyContent.push(formatHeading("Acceptance Criteria", 2));
 		// Extract checkbox lines from raw content to preserve checkbox state
-		const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(currentSelectedContent);
+		const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(
+			currentSelectedContent,
+		);
 		if (checkboxLines.length > 0) {
 			const formattedCriteria = checkboxLines.map((line) => {
 				const checkboxItem = parseCheckboxLine(line);
@@ -362,7 +387,9 @@ export async function viewTaskEnhanced(
 		} else if (currentSelectedTask.acceptanceCriteria?.length) {
 			// Fallback to parsed criteria if no checkboxes found in raw content
 			const criteriaContent = styleCodePaths(
-				currentSelectedTask.acceptanceCriteria.map((text) => ` • ${text}`).join("\n"),
+				currentSelectedTask.acceptanceCriteria
+					.map((text) => ` • ${text}`)
+					.join("\n"),
 			);
 			bodyContent.push(criteriaContent);
 		} else {
@@ -371,7 +398,9 @@ export async function viewTaskEnhanced(
 		bodyContent.push("");
 
 		// Implementation Plan section
-		const implementationPlan = extractImplementationPlanSection(currentSelectedContent);
+		const implementationPlan = extractImplementationPlanSection(
+			currentSelectedContent,
+		);
 		if (implementationPlan) {
 			bodyContent.push(formatHeading("Implementation Plan", 2));
 			bodyContent.push(transformCodePaths(implementationPlan));
@@ -379,7 +408,9 @@ export async function viewTaskEnhanced(
 		}
 
 		// Implementation Notes section
-		const implementationNotes = extractImplementationNotesSection(currentSelectedContent);
+		const implementationNotes = extractImplementationNotesSection(
+			currentSelectedContent,
+		);
 		if (implementationNotes) {
 			bodyContent.push(formatHeading("Implementation Notes", 2));
 			bodyContent.push(transformCodePaths(implementationNotes));
@@ -486,7 +517,10 @@ export async function viewTaskEnhanced(
 /**
  * Generate enhanced detail content structure (reusable)
  */
-function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
+function generateDetailContent(
+	task: Task,
+	rawContent = "",
+): { headerContent: string[]; bodyContent: string[] } {
 	// Format header content - just status and title
 	const headerContent = [
 		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -511,24 +545,31 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	// Priority
 	if (task.priority) {
 		const priorityDisplay = getPriorityDisplay(task.priority);
-		const priorityText = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
+		const priorityText =
+			task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
 		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
 	}
 
 	// Assignee
 	if (task.assignee?.length) {
-		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+		const assigneeList = task.assignee
+			.map((a) => (a.startsWith("@") ? a : `@${a}`))
+			.join(", ");
 		metadata.push(`{bold}Assignee:{/bold} {cyan-fg}${assigneeList}{/}`);
 	}
 
 	// Labels
 	if (task.labels?.length) {
-		metadata.push(`{bold}Labels:{/bold} ${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+		metadata.push(
+			`{bold}Labels:{/bold} ${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`,
+		);
 	}
 
 	// Reporter
 	if (task.reporter) {
-		const reporterText = task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`;
+		const reporterText = task.reporter.startsWith("@")
+			? task.reporter
+			: `@${task.reporter}`;
 		metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
 	}
 
@@ -544,7 +585,9 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 
 	// Subtasks
 	if (task.subtasks?.length) {
-		metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
+		metadata.push(
+			`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`,
+		);
 	}
 
 	// Dependencies
@@ -587,7 +630,9 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 		bodyContent.push(criteriaContent);
 	} else if (task.acceptanceCriteria?.length) {
 		// Fallback to parsed criteria if no checkboxes found in raw content
-		const criteriaContent = styleCodePaths(task.acceptanceCriteria.map((text) => ` • ${text}`).join("\n"));
+		const criteriaContent = styleCodePaths(
+			task.acceptanceCriteria.map((text) => ` • ${text}`).join("\n"),
+		);
 		bodyContent.push(criteriaContent);
 	} else {
 		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
@@ -617,7 +662,11 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
  * Display task details in a popup (for board view) using enhanced detail structure
  */
 // biome-ignore lint/suspicious/noExplicitAny: blessed types
-export async function createTaskPopup(screen: any, task: Task, content: string): Promise<any> {
+export async function createTaskPopup(
+	screen: any,
+	task: Task,
+	content: string,
+): Promise<any> {
 	if (output.isTTY === false) return null;
 
 	// Create main popup first
@@ -737,17 +786,26 @@ export function formatTaskPlainText(task: Task, content: string): string {
 	lines.push("=".repeat(50));
 	lines.push("");
 	lines.push(`Status: ${formatStatusWithIcon(task.status)}`);
-	if (task.priority) lines.push(`Priority: ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`);
+	if (task.priority)
+		lines.push(
+			`Priority: ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`,
+		);
 	if (task.assignee?.length)
-		lines.push(`Assignee: ${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}`);
-	if (task.reporter) lines.push(`Reporter: ${task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`}`);
+		lines.push(
+			`Assignee: ${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}`,
+		);
+	if (task.reporter)
+		lines.push(
+			`Reporter: ${task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`}`,
+		);
 	lines.push(`Created: ${task.createdDate}`);
 	if (task.updatedDate) lines.push(`Updated: ${task.updatedDate}`);
 	if (task.labels?.length) lines.push(`Labels: ${task.labels.join(", ")}`);
 	if (task.milestone) lines.push(`Milestone: ${task.milestone}`);
 	if (task.parentTaskId) lines.push(`Parent: ${task.parentTaskId}`);
 	if (task.subtasks?.length) lines.push(`Subtasks: ${task.subtasks.length}`);
-	if (task.dependencies?.length) lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
+	if (task.dependencies?.length)
+		lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
 	lines.push("");
 
 	// Description section

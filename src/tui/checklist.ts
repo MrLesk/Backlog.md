@@ -40,7 +40,11 @@ export function formatChecklistItem(
 		uncheckedSymbol?: string;
 	} = {},
 ): string {
-	const { padding = " ", checkedSymbol = "[x]", uncheckedSymbol = "[ ]" } = options;
+	const {
+		padding = " ",
+		checkedSymbol = "[x]",
+		uncheckedSymbol = "[ ]",
+	} = options;
 
 	const checkbox = item.checked ? checkedSymbol : uncheckedSymbol;
 	return `${padding}${checkbox} ${item.text}`;
@@ -79,8 +83,14 @@ export function extractAndFormatAcceptanceCriteria(content: string): string[] {
 /**
  * Extract a section from markdown content
  */
-function extractSection(content: string, sectionTitle: string): string | undefined {
-	const regex = new RegExp(`## ${sectionTitle}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
+function extractSection(
+	content: string,
+	sectionTitle: string,
+): string | undefined {
+	const regex = new RegExp(
+		`## ${sectionTitle}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`,
+		"i",
+	);
 	const match = content.match(regex);
 	return match?.[1]?.trim();
 }

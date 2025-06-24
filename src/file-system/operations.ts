@@ -1,10 +1,27 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
-import { parseDecisionLog, parseDocument, parseTask } from "../markdown/parser.ts";
-import { serializeDecisionLog, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import {
+	DEFAULT_DIRECTORIES,
+	DEFAULT_FILES,
+	DEFAULT_STATUSES,
+} from "../constants/index.ts";
+import {
+	parseDecisionLog,
+	parseDocument,
+	parseTask,
+} from "../markdown/parser.ts";
+import {
+	serializeDecisionLog,
+	serializeDocument,
+	serializeTask,
+} from "../markdown/serializer.ts";
+import type {
+	BacklogConfig,
+	DecisionLog,
+	Document,
+	Task,
+} from "../types/index.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 export class FileSystem {
@@ -66,9 +83,13 @@ export class FileSystem {
 
 		// Delete any existing task files with the same ID but different filenames
 		try {
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.tasksDir }));
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.tasksDir }),
+			);
 			const normalizedTaskId = taskId;
-			const existingFiles = files.filter((file) => file.startsWith(`${normalizedTaskId} -`) && file !== filename);
+			const existingFiles = files.filter(
+				(file) => file.startsWith(`${normalizedTaskId} -`) && file !== filename,
+			);
 
 			for (const existingFile of existingFiles) {
 				const existingPath = join(this.tasksDir, existingFile);
@@ -85,9 +106,15 @@ export class FileSystem {
 
 	async loadTask(taskId: string): Promise<Task | null> {
 		try {
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.tasksDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = files.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.tasksDir }),
+			);
+			const normalizedTaskId = taskId.startsWith("task-")
+				? taskId
+				: `task-${taskId}`;
+			const taskFile = files.find((file) =>
+				file.startsWith(`${normalizedTaskId} -`),
+			);
 
 			if (!taskFile) return null;
 
@@ -101,7 +128,9 @@ export class FileSystem {
 
 	async listTasks(): Promise<Task[]> {
 		try {
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: this.tasksDir }));
+			const taskFiles = await Array.fromAsync(
+				new Bun.Glob("task-*.md").scan({ cwd: this.tasksDir }),
+			);
 
 			const tasks: Task[] = [];
 			for (const file of taskFiles) {
@@ -118,9 +147,15 @@ export class FileSystem {
 
 	async archiveTask(taskId: string): Promise<boolean> {
 		try {
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.tasksDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const sourceFiles = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.tasksDir }),
+			);
+			const normalizedTaskId = taskId.startsWith("task-")
+				? taskId
+				: `task-${taskId}`;
+			const taskFile = sourceFiles.find((file) =>
+				file.startsWith(`${normalizedTaskId} -`),
+			);
 
 			if (!taskFile) return false;
 
@@ -145,9 +180,15 @@ export class FileSystem {
 
 	async archiveDraft(taskId: string): Promise<boolean> {
 		try {
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const sourceFiles = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.draftsDir }),
+			);
+			const normalizedTaskId = taskId.startsWith("task-")
+				? taskId
+				: `task-${taskId}`;
+			const taskFile = sourceFiles.find((file) =>
+				file.startsWith(`${normalizedTaskId} -`),
+			);
 
 			if (!taskFile) return false;
 
@@ -168,9 +209,15 @@ export class FileSystem {
 
 	async promoteDraft(taskId: string): Promise<boolean> {
 		try {
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const sourceFiles = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.draftsDir }),
+			);
+			const normalizedTaskId = taskId.startsWith("task-")
+				? taskId
+				: `task-${taskId}`;
+			const taskFile = sourceFiles.find((file) =>
+				file.startsWith(`${normalizedTaskId} -`),
+			);
 
 			if (!taskFile) return false;
 
@@ -191,9 +238,15 @@ export class FileSystem {
 
 	async demoteTask(taskId: string): Promise<boolean> {
 		try {
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.tasksDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const sourceFiles = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.tasksDir }),
+			);
+			const normalizedTaskId = taskId.startsWith("task-")
+				? taskId
+				: `task-${taskId}`;
+			const taskFile = sourceFiles.find((file) =>
+				file.startsWith(`${normalizedTaskId} -`),
+			);
 
 			if (!taskFile) return false;
 
@@ -220,8 +273,12 @@ export class FileSystem {
 		const content = serializeTask(task);
 
 		try {
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
-			const existingFiles = files.filter((file) => file.startsWith(`${taskId} -`) && file !== filename);
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.draftsDir }),
+			);
+			const existingFiles = files.filter(
+				(file) => file.startsWith(`${taskId} -`) && file !== filename,
+			);
 
 			for (const existingFile of existingFiles) {
 				const existingPath = join(this.draftsDir, existingFile);
@@ -238,9 +295,15 @@ export class FileSystem {
 
 	async loadDraft(taskId: string): Promise<Task | null> {
 		try {
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.draftsDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = files.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.draftsDir }),
+			);
+			const normalizedTaskId = taskId.startsWith("task-")
+				? taskId
+				: `task-${taskId}`;
+			const taskFile = files.find((file) =>
+				file.startsWith(`${normalizedTaskId} -`),
+			);
 
 			if (!taskFile) return null;
 
@@ -254,7 +317,9 @@ export class FileSystem {
 
 	async listDrafts(): Promise<Task[]> {
 		try {
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: this.draftsDir }));
+			const taskFiles = await Array.fromAsync(
+				new Bun.Glob("task-*.md").scan({ cwd: this.draftsDir }),
+			);
 
 			const tasks: Task[] = [];
 			for (const file of taskFiles) {
@@ -281,8 +346,12 @@ export class FileSystem {
 
 	async loadDecisionLog(decisionId: string): Promise<DecisionLog | null> {
 		try {
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.decisionsDir }));
-			const decisionFile = files.find((file) => file.startsWith(`decision-${decisionId} -`));
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.decisionsDir }),
+			);
+			const decisionFile = files.find((file) =>
+				file.startsWith(`decision-${decisionId} -`),
+			);
 
 			if (!decisionFile) return null;
 
@@ -307,7 +376,9 @@ export class FileSystem {
 
 	async listDecisionLogs(): Promise<DecisionLog[]> {
 		try {
-			const decisionFiles = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: this.decisionsDir }));
+			const decisionFiles = await Array.fromAsync(
+				new Bun.Glob("decision-*.md").scan({ cwd: this.decisionsDir }),
+			);
 			const decisions: DecisionLog[] = [];
 			for (const file of decisionFiles) {
 				const filepath = join(this.decisionsDir, file);
@@ -322,7 +393,9 @@ export class FileSystem {
 
 	async listDocuments(): Promise<Document[]> {
 		try {
-			const docFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.docsDir }));
+			const docFiles = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: this.docsDir }),
+			);
 			const docs: Document[] = [];
 			for (const file of docFiles) {
 				const filepath = join(this.docsDir, file);
@@ -352,18 +425,27 @@ export class FileSystem {
 		await Bun.write(configPath, content);
 	}
 
-	async getUserSetting(key: string, global = false): Promise<string | undefined> {
+	async getUserSetting(
+		key: string,
+		global = false,
+	): Promise<string | undefined> {
 		const settings = await this.loadUserSettings(global);
 		return settings ? settings[key] : undefined;
 	}
 
-	async setUserSetting(key: string, value: string, global = false): Promise<void> {
+	async setUserSetting(
+		key: string,
+		value: string,
+		global = false,
+	): Promise<void> {
 		const settings = (await this.loadUserSettings(global)) || {};
 		settings[key] = value;
 		await this.saveUserSettings(settings, global);
 	}
 
-	private async loadUserSettings(global = false): Promise<Record<string, string> | null> {
+	private async loadUserSettings(
+		global = false,
+	): Promise<Record<string, string> | null> {
 		const filePath = global
 			? join(homedir(), ".backlog", DEFAULT_FILES.USER)
 			: join(this.projectRoot, DEFAULT_FILES.USER);
@@ -388,7 +470,10 @@ export class FileSystem {
 		}
 	}
 
-	private async saveUserSettings(settings: Record<string, string>, global = false): Promise<void> {
+	private async saveUserSettings(
+		settings: Record<string, string>,
+		global = false,
+	): Promise<void> {
 		const filePath = global
 			? join(homedir(), ".backlog", DEFAULT_FILES.USER)
 			: join(this.projectRoot, DEFAULT_FILES.USER);
@@ -477,14 +562,22 @@ export class FileSystem {
 	private serializeConfig(config: BacklogConfig): string {
 		const lines = [
 			`project_name: "${config.projectName}"`,
-			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
-			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
-			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
+			...(config.defaultAssignee
+				? [`default_assignee: "${config.defaultAssignee}"`]
+				: []),
+			...(config.defaultReporter
+				? [`default_reporter: "${config.defaultReporter}"`]
+				: []),
+			...(config.defaultStatus
+				? [`default_status: "${config.defaultStatus}"`]
+				: []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			`milestones: [${config.milestones.map((m) => `"${m}"`).join(", ")}]`,
 			`date_format: ${config.dateFormat}`,
-			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
+			...(config.maxColumnWidth
+				? [`max_column_width: ${config.maxColumnWidth}`]
+				: []),
 		];
 
 		return `${lines.join("\n")}\n`;
@@ -492,7 +585,9 @@ export class FileSystem {
 
 	async listArchivedTasks(): Promise<Task[]> {
 		try {
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: this.archiveTasksDir }));
+			const taskFiles = await Array.fromAsync(
+				new Bun.Glob("task-*.md").scan({ cwd: this.archiveTasksDir }),
+			);
 
 			const tasks: Task[] = [];
 			for (const file of taskFiles) {

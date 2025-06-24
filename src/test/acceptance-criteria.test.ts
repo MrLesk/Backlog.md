@@ -16,8 +16,12 @@ describe("Acceptance Criteria CLI", () => {
 		}
 		await Bun.spawn(["mkdir", "-p", TEST_DIR]).exited;
 		await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+		await Bun.spawn(["git", "config", "user.name", "Test User"], {
+			cwd: TEST_DIR,
+		}).exited;
+		await Bun.spawn(["git", "config", "user.email", "test@example.com"], {
+			cwd: TEST_DIR,
+		}).exited;
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("AC Test Project");
@@ -33,10 +37,21 @@ describe("Acceptance Criteria CLI", () => {
 
 	describe("task create with acceptance criteria", () => {
 		it("should create task with single acceptance criterion using -ac", async () => {
-			const result = spawnSync("bun", [CLI_PATH, "task", "create", "Test Task", "--ac", "Must work correctly"], {
-				cwd: TEST_DIR,
-				encoding: "utf8",
-			});
+			const result = spawnSync(
+				"bun",
+				[
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task",
+					"--ac",
+					"Must work correctly",
+				],
+				{
+					cwd: TEST_DIR,
+					encoding: "utf8",
+				},
+			);
 			if (result.status !== 0) {
 				console.error("STDOUT:", result.stdout);
 				console.error("STDERR:", result.stderr);
@@ -53,7 +68,14 @@ describe("Acceptance Criteria CLI", () => {
 		it("should create task with multiple comma-separated criteria", async () => {
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "create", "Test Task", "--ac", "Criterion 1, Criterion 2, Criterion 3"],
+				[
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task",
+					"--ac",
+					"Criterion 1, Criterion 2, Criterion 3",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
@@ -72,7 +94,14 @@ describe("Acceptance Criteria CLI", () => {
 		it("should create task with criteria using --acceptance-criteria", async () => {
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "create", "Test Task", "--acceptance-criteria", "Full flag test"],
+				[
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task",
+					"--acceptance-criteria",
+					"Full flag test",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
@@ -137,10 +166,21 @@ describe("Acceptance Criteria CLI", () => {
 		});
 
 		it("should add acceptance criteria to existing task", async () => {
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--ac", "New criterion 1, New criterion 2"], {
-				cwd: TEST_DIR,
-				encoding: "utf8",
-			});
+			const result = spawnSync(
+				"bun",
+				[
+					CLI_PATH,
+					"task",
+					"edit",
+					"1",
+					"--ac",
+					"New criterion 1, New criterion 2",
+				],
+				{
+					cwd: TEST_DIR,
+					encoding: "utf8",
+				},
+			);
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -163,10 +203,14 @@ describe("Acceptance Criteria CLI", () => {
 			}
 
 			// Now update with new criteria
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--ac", "Replaced criterion"], {
-				cwd: TEST_DIR,
-				encoding: "utf8",
-			});
+			const result = spawnSync(
+				"bun",
+				[CLI_PATH, "task", "edit", "1", "--ac", "Replaced criterion"],
+				{
+					cwd: TEST_DIR,
+					encoding: "utf8",
+				},
+			);
 			expect(result.status).toBe(0);
 
 			task = await core.filesystem.loadTask("task-1");
@@ -180,7 +224,16 @@ describe("Acceptance Criteria CLI", () => {
 		it("should update title and add acceptance criteria together", async () => {
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "edit", "1", "-t", "Updated Title", "--ac", "Must be updated, Must work"],
+				[
+					CLI_PATH,
+					"task",
+					"edit",
+					"1",
+					"-t",
+					"Updated Title",
+					"--ac",
+					"Must be updated, Must work",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
@@ -200,10 +253,14 @@ describe("Acceptance Criteria CLI", () => {
 
 	describe("acceptance criteria parsing", () => {
 		it("should handle empty criteria gracefully", async () => {
-			const result = spawnSync("bun", [CLI_PATH, "task", "create", "Test Task", "--ac", ""], {
-				cwd: TEST_DIR,
-				encoding: "utf8",
-			});
+			const result = spawnSync(
+				"bun",
+				[CLI_PATH, "task", "create", "Test Task", "--ac", ""],
+				{
+					cwd: TEST_DIR,
+					encoding: "utf8",
+				},
+			);
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -216,7 +273,14 @@ describe("Acceptance Criteria CLI", () => {
 		it("should trim whitespace from criteria", async () => {
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "create", "Test Task", "--ac", "  Criterion with spaces  ,  Another one  "],
+				[
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task",
+					"--ac",
+					"  Criterion with spaces  ,  Another one  ",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",

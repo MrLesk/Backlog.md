@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { formatStatusWithIcon, getStatusColor, getStatusIcon, getStatusStyle } from "../ui/status-icon.ts";
+import {
+	formatStatusWithIcon,
+	getStatusColor,
+	getStatusIcon,
+	getStatusStyle,
+} from "../ui/status-icon.ts";
 
 describe("Status Icon Component", () => {
 	describe("getStatusStyle", () => {

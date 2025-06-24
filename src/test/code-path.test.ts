@@ -28,7 +28,12 @@ describe("Code path utilities", () => {
 		});
 
 		test("should not match non-path backticks", () => {
-			const testCases = ["`just code`", "`function name`", "`variable`", "`123`"];
+			const testCases = [
+				"`just code`",
+				"`function name`",
+				"`variable`",
+				"`123`",
+			];
 
 			for (const testCase of testCases) {
 				// Reset regex lastIndex
@@ -85,9 +90,14 @@ describe("Code path utilities", () => {
 		});
 
 		test("should handle complex paths", () => {
-			const text = "Files: `/absolute/path/file.ts`, `./relative/file.js`, `../parent/file.md`";
+			const text =
+				"Files: `/absolute/path/file.ts`, `./relative/file.js`, `../parent/file.md`";
 			const result = extractCodePaths(text);
-			expect(result).toEqual(["/absolute/path/file.ts", "./relative/file.js", "../parent/file.md"]);
+			expect(result).toEqual([
+				"/absolute/path/file.ts",
+				"./relative/file.js",
+				"../parent/file.md",
+			]);
 		});
 	});
 
@@ -99,7 +109,9 @@ describe("Code path utilities", () => {
 
 		test("should handle paths with special characters", () => {
 			const result = styleCodePath("/path/with-dashes_and.underscores.ts");
-			expect(result).toBe("{gray-fg}`/path/with-dashes_and.underscores.ts`{/gray-fg}");
+			expect(result).toBe(
+				"{gray-fg}`/path/with-dashes_and.underscores.ts`{/gray-fg}",
+			);
 		});
 	});
 
@@ -111,7 +123,8 @@ describe("Code path utilities", () => {
 		});
 
 		test("should extract and separate multiple paths in prose", () => {
-			const text = "Modify `src/cli.ts` and `src/ui/board.ts` to implement the feature.";
+			const text =
+				"Modify `src/cli.ts` and `src/ui/board.ts` to implement the feature.";
 			const result = transformCodePaths(text);
 			expect(result).toBe(
 				"Modify and to implement the feature.\n{gray-fg}`src/cli.ts`{/gray-fg}\n{gray-fg}`src/ui/board.ts`{/gray-fg}",
@@ -121,12 +134,17 @@ describe("Code path utilities", () => {
 		test("should preserve line breaks", () => {
 			const text = "First line with `file1.ts`\nSecond line with `file2.js`";
 			const result = transformCodePaths(text);
-			expect(result).toContain("First line with\n{gray-fg}`file1.ts`{/gray-fg}");
-			expect(result).toContain("Second line with\n{gray-fg}`file2.js`{/gray-fg}");
+			expect(result).toContain(
+				"First line with\n{gray-fg}`file1.ts`{/gray-fg}",
+			);
+			expect(result).toContain(
+				"Second line with\n{gray-fg}`file2.js`{/gray-fg}",
+			);
 		});
 
 		test("should handle text without code paths", () => {
-			const text = "This is just regular text with `variables` and `functions`.";
+			const text =
+				"This is just regular text with `variables` and `functions`.";
 			const result = transformCodePaths(text);
 			expect(result).toBe(text);
 		});

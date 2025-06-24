@@ -84,7 +84,8 @@ describe("Line Wrapping", () => {
 				name: "header",
 				box: blessed.box({
 					parent: screen,
-					content: "Task-123 - This is a very long task title that should wrap properly",
+					content:
+						"Task-123 - This is a very long task title that should wrap properly",
 					wrap: true,
 				}),
 			},
@@ -92,7 +93,8 @@ describe("Line Wrapping", () => {
 				name: "tagBox",
 				box: blessed.box({
 					parent: screen,
-					content: "[label1] [label2] [label3] [label4] [label5] [label6] [label7] [label8]",
+					content:
+						"[label1] [label2] [label3] [label4] [label5] [label6] [label7] [label8]",
 					wrap: true,
 				}),
 			},
@@ -100,7 +102,8 @@ describe("Line Wrapping", () => {
 				name: "metadata",
 				box: blessed.box({
 					parent: screen,
-					content: "Status: In Progress\nAssignee: @user1, @user2, @user3\nCreated: 2024-01-01",
+					content:
+						"Status: In Progress\nAssignee: @user1, @user2, @user3\nCreated: 2024-01-01",
 					wrap: true,
 				}),
 			},
@@ -171,7 +174,8 @@ describe("Line Wrapping", () => {
 
 		const contentArea = blessed.box({
 			parent: screen,
-			content: "Task content goes here with descriptions and acceptance criteria",
+			content:
+				"Task content goes here with descriptions and acceptance criteria",
 			wrap: true,
 		});
 

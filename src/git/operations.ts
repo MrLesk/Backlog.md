@@ -59,15 +59,29 @@ export class GitOperations {
 		await this.execGit(["fetch", remote]);
 	}
 
-	async listFilesInRemoteBranch(branch: string, path: string): Promise<string[]> {
-		const { stdout } = await this.execGit(["ls-tree", "-r", `origin/${branch}`, "--name-only", "--", path]);
+	async listFilesInRemoteBranch(
+		branch: string,
+		path: string,
+	): Promise<string[]> {
+		const { stdout } = await this.execGit([
+			"ls-tree",
+			"-r",
+			`origin/${branch}`,
+			"--name-only",
+			"--",
+			path,
+		]);
 		return stdout
 			.split(/\r?\n/)
 			.map((l) => l.trim())
 			.filter(Boolean);
 	}
 
-	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
+	async addAndCommitTaskFile(
+		taskId: string,
+		filePath: string,
+		action: "create" | "update" | "archive",
+	): Promise<void> {
 		await this.addFile(filePath);
 
 		const actionMessages = {
@@ -88,14 +102,19 @@ export class GitOperations {
 
 		// Check if there are staged changes specifically
 		const { stdout: status } = await this.execGit(["status", "--porcelain"]);
-		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
+		const hasStagedChanges = status
+			.split("\n")
+			.some((line) => line.match(/^[AMDRC]/));
 
 		if (hasStagedChanges) {
 			try {
 				await this.commitChanges(`backlog: ${message}`);
 			} catch (error) {
 				// Check if the error is due to missing git config
-				if (error instanceof Error && error.message.includes("Please tell me who you are")) {
+				if (
+					error instanceof Error &&
+					error.message.includes("Please tell me who you are")
+				) {
 					throw new Error(
 						"Git user configuration is missing. Please configure git with:\n" +
 							'  git config --global user.name "Your Name"\n' +
@@ -110,7 +129,11 @@ export class GitOperations {
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:strip=3)"]);
+			const { stdout } = await this.execGit([
+				"branch",
+				"-r",
+				"--format=%(refname:strip=3)",
+			]);
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
@@ -123,7 +146,10 @@ export class GitOperations {
 
 	async listLocalBranches(): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit(["branch", "--format=%(refname:short)"]);
+			const { stdout } = await this.execGit([
+				"branch",
+				"--format=%(refname:short)",
+			]);
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
@@ -135,7 +161,11 @@ export class GitOperations {
 
 	async listAllBranches(remote = "origin"): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit(["branch", "-a", "--format=%(refname:short)"]);
+			const { stdout } = await this.execGit([
+				"branch",
+				"-a",
+				"--format=%(refname:short)",
+			]);
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
@@ -146,7 +176,14 @@ export class GitOperations {
 	}
 
 	async listFilesInTree(ref: string, path: string): Promise<string[]> {
-		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", ref, "--", path]);
+		const { stdout } = await this.execGit([
+			"ls-tree",
+			"-r",
+			"--name-only",
+			ref,
+			"--",
+			path,
+		]);
 		return stdout
 			.split("\n")
 			.map((l) => l.trim())
@@ -158,7 +195,10 @@ export class GitOperations {
 		return stdout;
 	}
 
-	async getFileLastModifiedTime(ref: string, filePath: string): Promise<Date | null> {
+	async getFileLastModifiedTime(
+		ref: string,
+		filePath: string,
+	): Promise<Date | null> {
 		try {
 			// Get the last commit that modified this file in the given ref
 			const { stdout } = await this.execGit([
@@ -182,7 +222,13 @@ export class GitOperations {
 	async getFileLastModifiedBranch(filePath: string): Promise<string | null> {
 		try {
 			// Get the hash of the last commit that touched the file
-			const { stdout: commitHash } = await this.execGit(["log", "-1", "--format=%H", "--", filePath]);
+			const { stdout: commitHash } = await this.execGit([
+				"log",
+				"-1",
+				"--format=%H",
+				"--",
+				filePath,
+			]);
 			if (!commitHash) return null;
 
 			// Find all branches that contain this commit
@@ -211,7 +257,9 @@ export class GitOperations {
 		}
 	}
 
-	private async execGit(args: string[]): Promise<{ stdout: string; stderr: string }> {
+	private async execGit(
+		args: string[],
+	): Promise<{ stdout: string; stderr: string }> {
 		try {
 			const proc = Bun.spawn(["git", ...args], {
 				cwd: this.projectRoot,
@@ -219,12 +267,17 @@ export class GitOperations {
 				stderr: "pipe",
 			});
 
-			const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+			const [stdout, stderr] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+			]);
 
 			const exitCode = await proc.exited;
 
 			if (exitCode !== 0) {
-				throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);
+				throw new Error(
+					`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`,
+				);
 			}
 
 			return { stdout, stderr };
@@ -249,7 +302,9 @@ export async function isGitRepository(projectRoot: string): Promise<boolean> {
 	}
 }
 
-export async function initializeGitRepository(projectRoot: string): Promise<void> {
+export async function initializeGitRepository(
+	projectRoot: string,
+): Promise<void> {
 	const proc = Bun.spawn(["git", "init"], {
 		cwd: projectRoot,
 		stdout: "pipe",

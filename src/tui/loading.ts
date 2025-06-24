@@ -1,5 +1,5 @@
 import blessed from "blessed";
-import { createScreen } from "./tui.ts";
+import { createScreen } from "./index.ts";
 
 /**
  * Interface for loading screens that can be updated with progress messages.
@@ -170,7 +170,10 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
  *   return await fetchDataFromAPI();
  * });
  */
-export async function withLoadingScreen<T>(message: string, operation: () => Promise<T>): Promise<T> {
+export async function withLoadingScreen<T>(
+	message: string,
+	operation: () => Promise<T>,
+): Promise<T> {
 	const base = createLoadingScreenBase({
 		message,
 		width: 60, // Larger width to prevent wrapping
@@ -229,7 +232,9 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
  * // ... more operations ...
  * loader?.close();
  */
-export async function createLoadingScreen(initialMessage: string): Promise<LoadingScreen | null> {
+export async function createLoadingScreen(
+	initialMessage: string,
+): Promise<LoadingScreen | null> {
 	const base = createLoadingScreenBase({
 		message: initialMessage,
 		width: 70, // Larger width to prevent wrapping

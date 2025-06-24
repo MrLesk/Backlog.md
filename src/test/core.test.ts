@@ -17,8 +17,12 @@ describe("Core", () => {
 
 		// Initialize git repository for testing
 		await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+		await Bun.spawn(["git", "config", "user.name", "Test User"], {
+			cwd: TEST_DIR,
+		}).exited;
+		await Bun.spawn(["git", "config", "user.email", "test@example.com"], {
+			cwd: TEST_DIR,
+		}).exited;
 	});
 
 	afterEach(async () => {
@@ -324,7 +328,9 @@ describe("Core", () => {
 
 			// Verify the task file was created in the correct directory
 			const tasksDir = core.filesystem.tasksDir;
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
+			const files = await Array.fromAsync(
+				new Bun.Glob("*.md").scan({ cwd: tasksDir }),
+			);
 
 			expect(files.some((f) => f.startsWith("task-accessor"))).toBe(true);
 		});

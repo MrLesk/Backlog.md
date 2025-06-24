@@ -1,12 +1,12 @@
 // Types
-export * from "./types/index.ts";
 
+export {_loadAgentGuideline, type AgentInstructionFile, addAgentInstructions,} from "./agent-instructions.ts";
+// Kanban board utilities
+export { exportKanbanBoardToFile, generateKanbanBoard } from "./board.ts";
 // Constants
 export * from "./constants/index.ts";
-
-// Markdown operations
-export * from "./markdown/parser.ts";
-export * from "./markdown/serializer.ts";
+// Core entry point
+export { Core } from "./core/backlog.ts";
 
 // File system operations
 export { FileSystem } from "./file-system/operations.ts";
@@ -14,17 +14,10 @@ export { FileSystem } from "./file-system/operations.ts";
 // Git operations
 export {
 	GitOperations,
-	isGitRepository,
 	initializeGitRepository,
+	isGitRepository,
 } from "./git/operations.ts";
-
-// Core entry point
-export { Core } from "./core/backlog.ts";
-
-// Kanban board utilities
-export { generateKanbanBoard, exportKanbanBoardToFile } from "./board.ts";
-export {
-	addAgentInstructions,
-	type AgentInstructionFile,
-	_loadAgentGuideline,
-} from "./agent-instructions.ts";
+// Markdown operations
+export * from "./markdown/parser.ts";
+export * from "./markdown/serializer.ts";
+export * from "./types/index.ts";

@@ -71,8 +71,12 @@ export function generateKanbanBoard(
 	const ordered =
 		tasks.length > 0
 			? [
-					...statuses.filter((s) => groups.has(s) && (groups.get(s)?.length ?? 0) > 0),
-					...Array.from(groups.keys()).filter((s) => !statuses.includes(s) && (groups.get(s)?.length ?? 0) > 0),
+					...statuses.filter(
+						(s) => groups.has(s) && (groups.get(s)?.length ?? 0) > 0,
+					),
+					...Array.from(groups.keys()).filter(
+						(s) => !statuses.includes(s) && (groups.get(s)?.length ?? 0) > 0,
+					),
 				]
 			: [];
 
@@ -103,7 +107,9 @@ export function generateKanbanBoard(
 		const result: DisplayTask[] = [];
 		for (const t of top) {
 			const priorityIndicator = getPriorityIndicator(t.priority);
-			const displayTitle = priorityIndicator ? `${priorityIndicator} ${t.title}` : t.title;
+			const displayTitle = priorityIndicator
+				? `${priorityIndicator} ${t.title}`
+				: t.title;
 			result.push({ id: t.id, title: displayTitle, priority: t.priority });
 			const subs = children.get(t.id) || [];
 			subs.sort((a, b) => compareTaskIds(a.id, b.id));
@@ -112,8 +118,14 @@ export function generateKanbanBoard(
 				const isLastSub = subIdx === subs.length - 1;
 				const prefix = isLastSub ? "  └─" : "  |—";
 				const subPriorityIndicator = getPriorityIndicator(s.priority);
-				const subDisplayTitle = subPriorityIndicator ? `     ${subPriorityIndicator} ${s.title}` : `     ${s.title}`;
-				result.push({ id: `${prefix} ${s.id}`, title: subDisplayTitle, priority: s.priority });
+				const subDisplayTitle = subPriorityIndicator
+					? `     ${subPriorityIndicator} ${s.title}`
+					: `     ${s.title}`;
+				result.push({
+					id: `${prefix} ${s.id}`,
+					title: subDisplayTitle,
+					priority: s.priority,
+				});
 			}
 		}
 
@@ -183,8 +195,12 @@ export function generateKanbanBoard(
 	// Terminal format with text wrapping
 	const pad = (text: string, width: number): string => text.padEnd(width, " ");
 
-	const headerRow = ordered.map((status, i) => pad(status || "No Status", colWidths[i] || 0)).join(" | ");
-	const separatorRow = ordered.map((_, i) => "-".repeat(colWidths[i] || 0)).join("-|-");
+	const headerRow = ordered
+		.map((status, i) => pad(status || "No Status", colWidths[i] || 0))
+		.join(" | ");
+	const separatorRow = ordered
+		.map((_, i) => "-".repeat(colWidths[i] || 0))
+		.join("-|-");
 
 	// Prepare wrapped tasks for each column
 	const wrappedTasks = ordered.map((_, cIdx) => {
@@ -203,7 +219,8 @@ export function generateKanbanBoard(
 		for (let cIdx = 0; cIdx < ordered.length; cIdx++) {
 			const wrappedTask = wrappedTasks[cIdx]?.[taskIdx];
 			if (wrappedTask) {
-				const taskLines = wrappedTask.idLines.length + wrappedTask.titleLines.length;
+				const taskLines =
+					wrappedTask.idLines.length + wrappedTask.titleLines.length;
 				maxTaskLines = Math.max(maxTaskLines, taskLines);
 			}
 		}
@@ -238,7 +255,9 @@ export function generateKanbanBoard(
 		// Add empty row between tasks for better separation (except after last task)
 		// Skip empty row if next task is a subtask (to keep parent and child together)
 		if (taskIdx < maxTasks - 1) {
-			const emptyRow = ordered.map((_, cIdx) => pad("", colWidths[cIdx] || 0)).join(" | ");
+			const emptyRow = ordered
+				.map((_, cIdx) => pad("", colWidths[cIdx] || 0))
+				.join(" | ");
 			rows.push(emptyRow);
 		}
 	}
@@ -253,7 +272,13 @@ export async function exportKanbanBoardToFile(
 	maxColumnWidth = 20,
 	addTitle = false,
 ): Promise<void> {
-	const board = generateKanbanBoard(tasks, statuses, "horizontal", maxColumnWidth, "markdown");
+	const board = generateKanbanBoard(
+		tasks,
+		statuses,
+		"horizontal",
+		maxColumnWidth,
+		"markdown",
+	);
 
 	let existing = "";
 	try {

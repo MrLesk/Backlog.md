@@ -14,7 +14,8 @@ export function serializeTask(task: Task): string {
 		...(task.milestone && { milestone: task.milestone }),
 		dependencies: task.dependencies,
 		...(task.parentTaskId && { parent_task_id: task.parentTaskId }),
-		...(task.subtasks && task.subtasks.length > 0 && { subtasks: task.subtasks }),
+		...(task.subtasks &&
+			task.subtasks.length > 0 && { subtasks: task.subtasks }),
 		...(task.priority && { priority: task.priority }),
 	};
 
@@ -55,12 +56,17 @@ export function serializeDocument(document: Document): string {
 	return matter.stringify(document.content, frontmatter);
 }
 
-export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {
+export function updateTaskAcceptanceCriteria(
+	content: string,
+	criteria: string[],
+): string {
 	// Find if there's already an Acceptance Criteria section
 	const criteriaRegex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/i;
 	const match = content.match(criteriaRegex);
 
-	const newCriteria = criteria.map((criterion) => `- [ ] ${criterion}`).join("\n");
+	const newCriteria = criteria
+		.map((criterion) => `- [ ] ${criterion}`)
+		.join("\n");
 	const newSection = `## Acceptance Criteria\n\n${newCriteria}`;
 
 	if (match) {
@@ -71,7 +77,10 @@ export function updateTaskAcceptanceCriteria(content: string, criteria: string[]
 	return `${content}\n\n${newSection}`;
 }
 
-export function updateTaskImplementationPlan(content: string, plan: string): string {
+export function updateTaskImplementationPlan(
+	content: string,
+	plan: string,
+): string {
 	// Don't add empty plan
 	if (!plan || !plan.trim()) {
 		return content;
@@ -90,7 +99,8 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 
 	// Find where to insert the new section
 	// It should come after Acceptance Criteria if it exists, otherwise after Description
-	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
+	const acceptanceCriteriaRegex =
+		/## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
 	const acceptanceMatch = content.match(acceptanceCriteriaRegex);
 
 	if (acceptanceMatch && acceptanceMatch.index !== undefined) {

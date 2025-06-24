@@ -14,8 +14,14 @@ describe("CLI plain output for AI agents", () => {
 
 		// Initialize git repo first
 		spawnSync("git", ["init"], { cwd: testDir, encoding: "utf8" });
-		spawnSync("git", ["config", "user.name", "Test User"], { cwd: testDir, encoding: "utf8" });
-		spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: testDir, encoding: "utf8" });
+		spawnSync("git", ["config", "user.name", "Test User"], {
+			cwd: testDir,
+			encoding: "utf8",
+		});
+		spawnSync("git", ["config", "user.email", "test@example.com"], {
+			cwd: testDir,
+			encoding: "utf8",
+		});
 
 		// Initialize backlog project using Core (same pattern as other tests)
 		const core = new Core(testDir);

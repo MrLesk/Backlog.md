@@ -16,8 +16,12 @@ describe("Implementation Plan CLI", () => {
 		}
 		await Bun.spawn(["mkdir", "-p", TEST_DIR]).exited;
 		await Bun.spawn(["git", "init"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+		await Bun.spawn(["git", "config", "user.name", "Test User"], {
+			cwd: TEST_DIR,
+		}).exited;
+		await Bun.spawn(["git", "config", "user.email", "test@example.com"], {
+			cwd: TEST_DIR,
+		}).exited;
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Implementation Plan Test Project");
@@ -35,7 +39,14 @@ describe("Implementation Plan CLI", () => {
 		it("should create task with implementation plan using --plan", async () => {
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "create", "Test Task", "--plan", "Step 1: Analyze\nStep 2: Implement"],
+				[
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task",
+					"--plan",
+					"Step 1: Analyze\nStep 2: Implement",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
@@ -54,7 +65,16 @@ describe("Implementation Plan CLI", () => {
 		it("should create task with both description and implementation plan", async () => {
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "create", "Test Task", "-d", "Task description", "--plan", "1. First step\n2. Second step"],
+				[
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task",
+					"-d",
+					"Task description",
+					"--plan",
+					"1. First step\n2. Second step",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
@@ -123,10 +143,21 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should add implementation plan to existing task", async () => {
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"], {
-				cwd: TEST_DIR,
-				encoding: "utf8",
-			});
+			const result = spawnSync(
+				"bun",
+				[
+					CLI_PATH,
+					"task",
+					"edit",
+					"1",
+					"--plan",
+					"New plan:\n- Step A\n- Step B",
+				],
+				{
+					cwd: TEST_DIR,
+					encoding: "utf8",
+				},
+			);
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -152,7 +183,14 @@ describe("Implementation Plan CLI", () => {
 			// Now update with new plan
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "edit", "1", "--plan", "Updated plan:\n1. New step 1\n2. New step 2"],
+				[
+					CLI_PATH,
+					"task",
+					"edit",
+					"1",
+					"--plan",
+					"Updated plan:\n1. New step 1\n2. New step 2",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
@@ -173,7 +211,16 @@ describe("Implementation Plan CLI", () => {
 		it("should update both title and implementation plan", async () => {
 			const result = spawnSync(
 				"bun",
-				[CLI_PATH, "task", "edit", "1", "-t", "Updated Title", "--plan", "Implementation:\n- Do this\n- Then that"],
+				[
+					CLI_PATH,
+					"task",
+					"edit",
+					"1",
+					"-t",
+					"Updated Title",
+					"--plan",
+					"Implementation:\n- Do this\n- Then that",
+				],
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
@@ -230,10 +277,14 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should handle empty plan gracefully", async () => {
-			const result = spawnSync("bun", [CLI_PATH, "task", "create", "Test Task", "--plan", ""], {
-				cwd: TEST_DIR,
-				encoding: "utf8",
-			});
+			const result = spawnSync(
+				"bun",
+				[CLI_PATH, "task", "create", "Test Task", "--plan", ""],
+				{
+					cwd: TEST_DIR,
+					encoding: "utf8",
+				},
+			);
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);

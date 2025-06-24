@@ -70,7 +70,10 @@ dependencies: []
 		return "";
 	}
 
-	async getFileLastModifiedTime(ref: string, file: string): Promise<Date | null> {
+	async getFileLastModifiedTime(
+		ref: string,
+		file: string,
+	): Promise<Date | null> {
 		return new Date("2025-06-13");
 	}
 }
@@ -99,9 +102,17 @@ describe("Parallel remote task loading", () => {
 		expect(task1?.status).toBe("To Do");
 
 		// Verify progress reporting
-		expect(progressMessages.some((msg) => msg.includes("Fetching remote branches"))).toBe(true);
-		expect(progressMessages.some((msg) => msg.includes("Found 3 remote branches"))).toBe(true);
-		expect(progressMessages.some((msg) => msg.includes("Loaded 3 total remote tasks"))).toBe(true);
+		expect(
+			progressMessages.some((msg) => msg.includes("Fetching remote branches")),
+		).toBe(true);
+		expect(
+			progressMessages.some((msg) => msg.includes("Found 3 remote branches")),
+		).toBe(true);
+		expect(
+			progressMessages.some((msg) =>
+				msg.includes("Loaded 3 total remote tasks"),
+			),
+		).toBe(true);
 	});
 
 	it("should handle errors gracefully", async () => {
@@ -155,12 +166,22 @@ describe("Parallel remote task loading", () => {
 		};
 
 		// Test most_progressed strategy - should pick Done over To Do
-		const resolved1 = resolveTaskConflict(localTask, remoteTask, statuses, "most_progressed");
+		const resolved1 = resolveTaskConflict(
+			localTask,
+			remoteTask,
+			statuses,
+			"most_progressed",
+		);
 		expect(resolved1.status).toBe("Done");
 		expect(resolved1.title).toBe("Remote Task");
 
 		// Test most_recent strategy - should pick the more recent one
-		const resolved2 = resolveTaskConflict(localTask, remoteTask, statuses, "most_recent");
+		const resolved2 = resolveTaskConflict(
+			localTask,
+			remoteTask,
+			statuses,
+			"most_recent",
+		);
 		expect(resolved2.lastModified).toEqual(new Date("2025-06-13T12:00:00Z"));
 		expect(resolved2.title).toBe("Remote Task");
 	});

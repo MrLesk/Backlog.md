@@ -4,7 +4,10 @@ import blessed from "blessed";
 export type HeadingLevel = 1 | 2 | 3;
 
 /** Map heading level → colour + bold flag */
-export function getHeadingStyle(level: HeadingLevel): { color: string; bold: boolean } {
+export function getHeadingStyle(level: HeadingLevel): {
+	color: string;
+	bold: boolean;
+} {
 	switch (level) {
 		case 1:
 			return { color: "bright-white", bold: true };
@@ -33,8 +36,12 @@ export async function createHeading(
 	parent: any,
 	text: string,
 	level: HeadingLevel,
-	opts: { top?: number | string; left?: number | string; width?: number | string } = {},
-	// biome-ignore lint/suspicious/noExplicitAny:
+	opts: {
+		top?: number | string;
+		left?: number | string;
+		width?: number | string;
+	} = {},
+	// biome-ignore lint/suspicious/noExplicitAny: blessed element return type
 ): Promise<any> {
 	return blessed.box({
 		parent,
@@ -44,7 +51,10 @@ export async function createHeading(
 		width: opts.width ?? "100%",
 		height: 1,
 		tags: true,
-		style: { fg: getHeadingStyle(level).color, bold: getHeadingStyle(level).bold },
+		style: {
+			fg: getHeadingStyle(level).color,
+			bold: getHeadingStyle(level).bold,
+		},
 	});
 }
 
@@ -59,9 +69,12 @@ export async function addHeadingWithSpacing(
 	level: HeadingLevel,
 	currentTop: number,
 	opts: { left?: number | string; width?: number | string } = {},
-	// biome-ignore lint/suspicious/noExplicitAny:
+	// biome-ignore lint/suspicious/noExplicitAny: blessed element type
 ): Promise<{ element: any; nextTop: number }> {
 	const actualTop = currentTop === 0 ? 0 : currentTop + 1;
-	const element = await createHeading(parent, text, level, { top: actualTop, ...opts });
+	const element = await createHeading(parent, text, level, {
+		top: actualTop,
+		...opts,
+	});
 	return { element, nextTop: actualTop + 1 };
 }

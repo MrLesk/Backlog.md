@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { parseDecisionLog, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
+import {
+	parseDecisionLog,
+	parseDocument,
+	parseMarkdown,
+	parseTask,
+} from "../markdown/parser.ts";
 import {
 	serializeDecisionLog,
 	serializeDocument,
@@ -168,7 +173,11 @@ title: "Test with mixed criteria"
 
 			const task = parseTask(content);
 
-			expect(task.acceptanceCriteria).toEqual(["Todo item", "Done item", "Another todo"]);
+			expect(task.acceptanceCriteria).toEqual([
+				"Todo item",
+				"Done item",
+				"Another todo",
+			]);
 		});
 
 		it("should parse unquoted assignee names starting with @", () => {
@@ -228,9 +237,15 @@ Better development experience but steeper learning curve.`;
 			expect(decision.id).toBe("decision-1");
 			expect(decision.title).toBe("Use TypeScript for backend");
 			expect(decision.status).toBe("accepted");
-			expect(decision.context).toBe("We need to choose a language for the backend.");
-			expect(decision.decision).toBe("We will use TypeScript for better type safety.");
-			expect(decision.consequences).toBe("Better development experience but steeper learning curve.");
+			expect(decision.context).toBe(
+				"We need to choose a language for the backend.",
+			);
+			expect(decision.decision).toBe(
+				"We will use TypeScript for better type safety.",
+			);
+			expect(decision.consequences).toBe(
+				"Better development experience but steeper learning curve.",
+			);
 		});
 
 		it("should parse decision log with alternatives", () => {

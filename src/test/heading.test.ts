@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { type HeadingLevel, formatHeading, getHeadingStyle } from "../ui/heading.ts";
+import {
+	type HeadingLevel,
+	formatHeading,
+	getHeadingStyle,
+} from "../ui/heading.ts";
 
 describe("Heading component", () => {
 	describe("getHeadingStyle", () => {
@@ -25,7 +29,9 @@ describe("Heading component", () => {
 	describe("formatHeading", () => {
 		test("should format level 1 heading with bold and bright-white", () => {
 			const formatted = formatHeading("Main Title", 1);
-			expect(formatted).toBe("{bold}{brightwhite-fg}Main Title{/brightwhite-fg}{/bold}");
+			expect(formatted).toBe(
+				"{bold}{brightwhite-fg}Main Title{/brightwhite-fg}{/bold}",
+			);
 		});
 
 		test("should format level 2 heading with cyan", () => {

@@ -16,7 +16,10 @@ export function createScreen(options: any = {}): any {
 }
 
 // Ask the user for a single line of input.  Falls back to readline.
-export async function promptText(message: string, defaultValue = ""): Promise<string> {
+export async function promptText(
+	message: string,
+	defaultValue = "",
+): Promise<string> {
 	// Always use readline for simple text input to avoid blessed rendering quirks
 	const { createInterface } = await import("node:readline/promises");
 	const rl = createInterface({ input, output });

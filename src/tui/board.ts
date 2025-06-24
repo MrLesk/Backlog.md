@@ -4,9 +4,9 @@ import { type BoardLayout, generateKanbanBoard } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
+import { createScreen } from "./index.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createTaskPopup } from "./task-viewer.ts";
-import { createScreen } from "./tui.ts";
 
 /**
  * Render tasks in an interactive TUI when stdout is a TTY.
@@ -31,7 +31,9 @@ export async function renderBoardTui(
 	for (const s of statuses) tasksByStatus.set(s, []);
 	for (const t of tasks) (tasksByStatus.get(t.status || "") ?? []).push(t);
 
-	const nonEmptyStatuses = statuses.filter((s) => (tasksByStatus.get(s) ?? []).length > 0);
+	const nonEmptyStatuses = statuses.filter(
+		(s) => (tasksByStatus.get(s) ?? []).length > 0,
+	);
 
 	if (nonEmptyStatuses.length === 0) {
 		console.log("No tasks found in any status.");
@@ -83,17 +85,21 @@ export async function renderBoardTui(
 				style: { selected: { fg: "white" } },
 			});
 
-			const sortedTasks = [...(tasksByStatus.get(status) ?? [])].sort((a, b) => {
-				if (status === "Done") {
-					return compareTaskIds(b.id, a.id); // Descending for Done
-				}
-				return compareTaskIds(a.id, b.id); // Ascending for others
-			});
+			const sortedTasks = [...(tasksByStatus.get(status) ?? [])].sort(
+				(a, b) => {
+					if (status === "Done") {
+						return compareTaskIds(b.id, a.id); // Descending for Done
+					}
+					return compareTaskIds(a.id, b.id); // Ascending for others
+				},
+			);
 			const items = sortedTasks.map((task) => {
 				const assignee = task.assignee?.[0]
 					? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 					: "";
-				const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+				const labels = task.labels?.length
+					? ` {yellow-fg}[${task.labels.join(", ")}]{/}`
+					: "";
 				const branch = (task as Task & { branch?: string }).branch
 					? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}`
 					: "";
@@ -109,7 +115,8 @@ export async function renderBoardTui(
 		let popupOpen = false;
 
 		const focusColumn = (idx: number) => {
-			if (popupOpen || idx === currentCol || idx < 0 || idx >= columns.length) return;
+			if (popupOpen || idx === currentCol || idx < 0 || idx >= columns.length)
+				return;
 			const prev = columns[currentCol];
 			prev.list.style.selected.bg = undefined;
 			prev.box.style.border.fg = "gray";
@@ -160,7 +167,9 @@ export async function renderBoardTui(
 			let content = "";
 			try {
 				const core = new Core(process.cwd());
-				const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
+				const files = await Array.fromAsync(
+					new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }),
+				);
 				const md = files.find((f) => f.startsWith(`${task.id} -`));
 				if (md) {
 					content = await Bun.file(join(core.filesystem.tasksDir, md)).text();

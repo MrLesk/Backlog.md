@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { compareTaskIds, parseTaskId, sortByTaskId } from "../utils/task-sorting.ts";
+import {
+	compareTaskIds,
+	parseTaskId,
+	sortByTaskId,
+} from "../utils/task-sorting.ts";
 
 describe("parseTaskId", () => {
 	test("parses simple task IDs", () => {
@@ -74,7 +78,13 @@ describe("sortByTaskId", () => {
 		];
 
 		const sorted = sortByTaskId(tasks);
-		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3", "task-10", "task-20"]);
+		expect(sorted.map((t) => t.id)).toEqual([
+			"task-1",
+			"task-2",
+			"task-3",
+			"task-10",
+			"task-20",
+		]);
 	});
 
 	test("sorts tasks with decimal IDs correctly", () => {
@@ -87,7 +97,13 @@ describe("sortByTaskId", () => {
 		];
 
 		const sorted = sortByTaskId(tasks);
-		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-2.1", "task-2.2", "task-2.10"]);
+		expect(sorted.map((t) => t.id)).toEqual([
+			"task-1",
+			"task-2",
+			"task-2.1",
+			"task-2.2",
+			"task-2.10",
+		]);
 	});
 
 	test("handles mixed simple and decimal IDs", () => {
@@ -101,7 +117,14 @@ describe("sortByTaskId", () => {
 		];
 
 		const sorted = sortByTaskId(tasks);
-		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-2.1", "task-3", "task-10", "task-10.1"]);
+		expect(sorted.map((t) => t.id)).toEqual([
+			"task-1",
+			"task-2",
+			"task-2.1",
+			"task-3",
+			"task-10",
+			"task-10.1",
+		]);
 	});
 
 	test("preserves original array", () => {

@@ -9,8 +9,11 @@ const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 async function initGitRepo(dir: string) {
 	await Bun.spawn(["git", "init"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: dir }).exited;
+	await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: dir })
+		.exited;
+	await Bun.spawn(["git", "config", "user.email", "test@example.com"], {
+		cwd: dir,
+	}).exited;
 }
 
 describe("CLI parent task id normalization", () => {
@@ -40,7 +43,10 @@ describe("CLI parent task id normalization", () => {
 		};
 		await core.createTask(parent, true);
 
-		await Bun.spawn(["bun", "run", CLI_PATH, "task", "create", "Child", "--parent", "4"], { cwd: TEST_DIR }).exited;
+		await Bun.spawn(
+			["bun", "run", CLI_PATH, "task", "create", "Child", "--parent", "4"],
+			{ cwd: TEST_DIR },
+		).exited;
 
 		const child = await core.filesystem.loadTask("task-4.1");
 		expect(child?.parentTaskId).toBe("task-4");

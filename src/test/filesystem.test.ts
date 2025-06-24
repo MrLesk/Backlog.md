@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
-import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import type {
+	BacklogConfig,
+	DecisionLog,
+	Document,
+	Task,
+} from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -97,7 +102,13 @@ describe("FileSystem", () => {
 			}
 
 			const tasks = await filesystem.listTasks();
-			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3", "task-10", "task-20"]);
+			expect(tasks.map((t) => t.id)).toEqual([
+				"task-1",
+				"task-2",
+				"task-3",
+				"task-10",
+				"task-20",
+			]);
 		});
 
 		it("should sort tasks with decimal IDs correctly", async () => {
@@ -112,7 +123,13 @@ describe("FileSystem", () => {
 			}
 
 			const tasks = await filesystem.listTasks();
-			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-2.1", "task-2.2", "task-2.10"]);
+			expect(tasks.map((t) => t.id)).toEqual([
+				"task-1",
+				"task-2",
+				"task-2.1",
+				"task-2.2",
+				"task-2.10",
+			]);
 		});
 
 		it("should archive a task", async () => {
@@ -125,7 +142,9 @@ describe("FileSystem", () => {
 			expect(task).toBeNull();
 
 			// Check that file exists in archive
-			const archiveFiles = await readdir(join(TEST_DIR, ".backlog", "archive", "tasks"));
+			const archiveFiles = await readdir(
+				join(TEST_DIR, ".backlog", "archive", "tasks"),
+			);
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
@@ -162,7 +181,11 @@ describe("FileSystem", () => {
 
 		it("should list all drafts", async () => {
 			await filesystem.saveDraft(sampleDraft);
-			await filesystem.saveDraft({ ...sampleDraft, id: "task-draft2", title: "Second" });
+			await filesystem.saveDraft({
+				...sampleDraft,
+				id: "task-draft2",
+				title: "Second",
+			});
 
 			const drafts = await filesystem.listDrafts();
 			expect(drafts.map((d) => d.id)).toEqual(["task-draft", "task-draft2"]);
@@ -187,7 +210,9 @@ describe("FileSystem", () => {
 			const draft = await filesystem.loadDraft("task-draft");
 			expect(draft).toBeNull();
 
-			const files = await readdir(join(TEST_DIR, ".backlog", "archive", "drafts"));
+			const files = await readdir(
+				join(TEST_DIR, ".backlog", "archive", "drafts"),
+			);
 			expect(files.some((f) => f.startsWith("task-draft"))).toBe(true);
 		});
 	});
@@ -251,8 +276,12 @@ describe("FileSystem", () => {
 	describe("directory accessors", () => {
 		it("should provide correct directory paths", () => {
 			expect(filesystem.tasksDir).toBe(join(TEST_DIR, ".backlog", "tasks"));
-			expect(filesystem.archiveTasksDir).toBe(join(TEST_DIR, ".backlog", "archive", "tasks"));
-			expect(filesystem.decisionsDir).toBe(join(TEST_DIR, ".backlog", "decisions"));
+			expect(filesystem.archiveTasksDir).toBe(
+				join(TEST_DIR, ".backlog", "archive", "tasks"),
+			);
+			expect(filesystem.decisionsDir).toBe(
+				join(TEST_DIR, ".backlog", "decisions"),
+			);
 			expect(filesystem.docsDir).toBe(join(TEST_DIR, ".backlog", "docs"));
 		});
 	});

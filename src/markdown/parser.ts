@@ -1,5 +1,10 @@
 import matter from "gray-matter";
-import type { DecisionLog, Document, ParsedMarkdown, Task } from "../types/index.ts";
+import type {
+	DecisionLog,
+	Document,
+	ParsedMarkdown,
+	Task,
+} from "../types/index.ts";
 
 function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
@@ -80,10 +85,14 @@ export function parseTask(content: string): Task {
 	const { frontmatter, content: description } = parseMarkdown(content);
 
 	// Validate priority field
-	const priority = frontmatter.priority ? String(frontmatter.priority).toLowerCase() : undefined;
+	const priority = frontmatter.priority
+		? String(frontmatter.priority).toLowerCase()
+		: undefined;
 	const validPriorities = ["high", "medium", "low"];
 	const validatedPriority =
-		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
+		priority && validPriorities.includes(priority)
+			? (priority as "high" | "medium" | "low")
+			: undefined;
 
 	return {
 		id: String(frontmatter.id || ""),
@@ -96,14 +105,26 @@ export function parseTask(content: string): Task {
 				: [],
 		reporter: frontmatter.reporter ? String(frontmatter.reporter) : undefined,
 		createdDate: normalizeDate(frontmatter.created_date),
-		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
-		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
-		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
-		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
+		updatedDate: frontmatter.updated_date
+			? normalizeDate(frontmatter.updated_date)
+			: undefined,
+		labels: Array.isArray(frontmatter.labels)
+			? frontmatter.labels.map(String)
+			: [],
+		milestone: frontmatter.milestone
+			? String(frontmatter.milestone)
+			: undefined,
+		dependencies: Array.isArray(frontmatter.dependencies)
+			? frontmatter.dependencies.map(String)
+			: [],
 		description: description,
 		acceptanceCriteria: extractAcceptanceCriteria(description),
-		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
-		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
+		parentTaskId: frontmatter.parent_task_id
+			? String(frontmatter.parent_task_id)
+			: undefined,
+		subtasks: Array.isArray(frontmatter.subtasks)
+			? frontmatter.subtasks.map(String)
+			: undefined,
 		priority: validatedPriority,
 	};
 }
@@ -131,9 +152,13 @@ export function parseDocument(content: string): Document {
 		title: String(frontmatter.title || ""),
 		type: String(frontmatter.type || "other") as Document["type"],
 		createdDate: normalizeDate(frontmatter.created_date),
-		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
+		updatedDate: frontmatter.updated_date
+			? normalizeDate(frontmatter.updated_date)
+			: undefined,
 		content: body,
-		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+		tags: Array.isArray(frontmatter.tags)
+			? frontmatter.tags.map(String)
+			: undefined,
 	};
 }
 
@@ -143,12 +168,21 @@ function extractAcceptanceCriteria(content: string): string[] {
 
 	return criteriaSection
 		.split("\n")
-		.filter((line) => line.trim().startsWith("- [ ]") || line.trim().startsWith("- [x]"))
+		.filter(
+			(line) =>
+				line.trim().startsWith("- [ ]") || line.trim().startsWith("- [x]"),
+		)
 		.map((line) => line.trim().replace(/^- \[[ x]\] /, ""));
 }
 
-function extractSection(content: string, sectionTitle: string): string | undefined {
-	const regex = new RegExp(`## ${sectionTitle}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
+function extractSection(
+	content: string,
+	sectionTitle: string,
+): string | undefined {
+	const regex = new RegExp(
+		`## ${sectionTitle}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`,
+		"i",
+	);
 	const match = content.match(regex);
 	return match?.[1]?.trim();
 }

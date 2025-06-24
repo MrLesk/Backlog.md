@@ -6,7 +6,6 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
-import { DEFAULT_STATUSES, FALLBACK_STATUS } from "./constants/index.ts";
 import {
 	filterTasksByLatestState,
 	getLatestTaskStatesForIds,
@@ -24,13 +23,13 @@ import {
 	initializeGitRepository,
 	isGitRepository,
 } from "./index.ts";
-import { BacklogServer } from "./server/index.ts";
+import { BacklogServer } from "./web-ui/index.ts";
+import { promptText, scrollableViewer } from "./tui";
+import { renderBoardTui } from "./tui/board.ts";
+import { genericSelectList } from "./tui/components/generic-list.ts";
+import { createLoadingScreen } from "./tui/loading.ts";
+import { formatTaskPlainText, viewTaskEnhanced } from "./tui/task-viewer.ts";
 import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
-import { renderBoardTui } from "./ui/board.ts";
-import { genericSelectList } from "./ui/components/generic-list.ts";
-import { createLoadingScreen } from "./ui/loading.ts";
-import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
-import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { getVersion } from "./utils/version.ts";
 
 // Windows color fix
