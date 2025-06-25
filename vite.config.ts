@@ -9,5 +9,20 @@ export default defineConfig({
 	build: {
 		outDir: "/Users/agavr/projects/Backlog.md/dist",
 		emptyOutDir: true,
+		rollupOptions: {
+			output: {
+				entryFileNames: "assets/index.js",
+				chunkFileNames: "assets/[name].js",
+				assetFileNames: (assetInfo) => {
+					if (assetInfo.name && assetInfo.name.endsWith(".css")) {
+						return "assets/index.css";
+					}
+					if (assetInfo.name && assetInfo.name.endsWith(".png")) {
+						return "assets/logo.png";
+					}
+					return "assets/[name].[ext]";
+				},
+			},
+		},
 	},
 });

@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import logoSrc from "./logo.png";
 
 function App() {
 	return (
@@ -8,7 +9,7 @@ function App() {
 			<div className="container mx-auto">
 				<div className="header mb-8">
 					<div className="flex items-center gap-4 mb-4">
-						<img src="./logo.png" alt="Backlog.md Logo" className="w-12 h-12" />
+						<img src={logoSrc} alt="Backlog.md Logo" className="w-12 h-12" />
 						<h1 className="text-4xl font-bold">Backlog.md</h1>
 					</div>
 					<p className="text-gray-600">Task Management Dashboard</p>

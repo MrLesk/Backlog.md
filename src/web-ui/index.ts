@@ -1,4 +1,4 @@
-import { serve } from "bun";
+import { file, serve } from "bun";
 // Import HTML file from Vite-built dist directory
 import indexHtml from "../../dist/index.html";
 import { Core } from "../core/backlog.ts";
@@ -336,7 +336,10 @@ export class BacklogServer {
 				}
 
 				return serverInfo;
-			} catch (_error) {
+			} catch (error) {
+				// Log the actual error for debugging
+				console.log(`❌ Error on port ${selectedPort}:`, error);
+
 				// Port is busy, try next one
 				if (this.server) {
 					this.server.stop();
