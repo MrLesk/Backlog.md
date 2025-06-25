@@ -1,0 +1,83 @@
+@import "tailwindcss";
+@import "./globals.css";
+
+/* Task Board Styles */
+.container {
+    @apply max-w-7xl mx-auto;
+}
+
+.header {
+    @apply mb-8 text-center;
+}
+
+.header-logo {
+    @apply flex items-center justify-center gap-4 mb-4;
+}
+
+.header-logo img {
+    @apply w-12 h-12;
+}
+
+.header-logo h1 {
+    @apply text-3xl font-bold;
+}
+
+.toolbar {
+    @apply flex gap-4 mb-6 items-center flex-wrap;
+}
+
+.search-input {
+    @apply px-3 py-2 border border-gray-300 rounded-md;
+}
+
+.filter-select {
+    @apply px-3 py-2 border border-gray-300 rounded-md;
+}
+
+.btn {
+    @apply px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700;
+}
+
+.btn-secondary {
+    @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
+}
+
+.board {
+    @apply flex gap-6 overflow-x-auto;
+}
+
+.column {
+    @apply min-w-80 bg-gray-50 border border-gray-200 rounded-lg p-4;
+}
+
+.column h3 {
+    @apply font-semibold text-lg mb-4;
+}
+
+.task {
+    @apply bg-white border border-gray-200 rounded-md p-3 mb-3 cursor-pointer hover:shadow-md;
+}
+
+.task h4 {
+    @apply font-medium mb-2;
+}
+
+.task p {
+    @apply text-sm text-gray-600 mb-3;
+}
+
+.modal {
+    @apply fixed inset-0 bg-black/50 hidden items-center justify-center p-4;
+}
+
+.modal.show {
+    @apply flex;
+}
+
+.modal-content {
+    @apply bg-white border border-gray-200 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto;
+}
+
+.loading {
+    @apply text-center text-gray-500 py-8;
+}

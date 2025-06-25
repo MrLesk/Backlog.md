@@ -1,7 +1,7 @@
 import { serve } from "bun";
+// Import HTML file from Vite-built dist directory
+import indexHtml from "../../dist/index.html";
 import { Core } from "../core/backlog.ts";
-// Import HTML file - Bun will automatically bundle all referenced assets
-import indexHtml from "./index.html";
 import {
 	API_ERROR_CODES,
 	ConfigSchema,
