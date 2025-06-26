@@ -4,7 +4,9 @@ import { join } from "node:path";
 import {
 	AGENT_GUIDELINES,
 	CLAUDE_GUIDELINES,
+	COPILOT_GUIDELINES,
 	CURSOR_GUIDELINES,
+	GEMINI_GUIDELINES,
 	README_GUIDELINES,
 	addAgentInstructions,
 } from "../index.ts";
@@ -27,6 +29,8 @@ describe("addAgentInstructions", () => {
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		const claude = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 		const cursor = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
+		const gemini = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
+		const copilot = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
 
 		// Check that files contain the markers and content
 		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
@@ -40,6 +44,14 @@ describe("addAgentInstructions", () => {
 		expect(cursor).toContain("# === BACKLOG.MD GUIDELINES START ===");
 		expect(cursor).toContain("# === BACKLOG.MD GUIDELINES END ===");
 		expect(cursor).toContain(await _loadAgentGuideline(CURSOR_GUIDELINES));
+
+		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(gemini).toContain(await _loadAgentGuideline(GEMINI_GUIDELINES));
+
+		expect(copilot).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(copilot).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(copilot).toContain(await _loadAgentGuideline(COPILOT_GUIDELINES));
 	});
 
 	it("appends guideline files when they already exist", async () => {
@@ -58,18 +70,22 @@ describe("addAgentInstructions", () => {
 		const agentsExists = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 		const claudeExists = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 		const cursorExists = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
+		const geminiExists = await Bun.file(join(TEST_DIR, "GEMINI.md")).exists();
+		const copilotExists = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).exists();
 		const readme = await Bun.file(join(TEST_DIR, "README.md")).text();
 
 		expect(agentsExists).toBe(true);
 		expect(claudeExists).toBe(false);
 		expect(cursorExists).toBe(false);
+		expect(geminiExists).toBe(false);
+		expect(copilotExists).toBe(false);
 		expect(readme).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(readme).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
 		expect(readme).toContain(await _loadAgentGuideline(README_GUIDELINES));
 	});
 
 	it("loads guideline content from file paths", async () => {
-		const pathGuideline = join(__dirname, "../guidelines/AGENTS.md");
+		const pathGuideline = join(__dirname, "../guidelines/agent-guidelines.md");
 		const content = await _loadAgentGuideline(pathGuideline);
 		expect(content).toContain("# Instructions for the usage of Backlog.md CLI Tool");
 	});

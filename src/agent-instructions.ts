@@ -1,10 +1,24 @@
 import { existsSync, readFileSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_GUIDELINES, CLAUDE_GUIDELINES, CURSOR_GUIDELINES, README_GUIDELINES } from "./constants/index.ts";
+import {
+	AGENT_GUIDELINES,
+	CLAUDE_GUIDELINES,
+	COPILOT_GUIDELINES,
+	CURSOR_GUIDELINES,
+	GEMINI_GUIDELINES,
+	README_GUIDELINES,
+} from "./constants/index.ts";
 import type { GitOperations } from "./git/operations.ts";
 
-export type AgentInstructionFile = "AGENTS.md" | "CLAUDE.md" | ".cursorrules" | "README.md";
+export type AgentInstructionFile =
+	| "AGENTS.md"
+	| "CLAUDE.md"
+	| ".cursorrules"
+	| "GEMINI.md"
+	| ".github/copilot-instructions.md"
+	| "README.md";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,12 +69,20 @@ function wrapWithMarkers(content: string, fileName: string): string {
 export async function addAgentInstructions(
 	projectRoot: string,
 	git?: GitOperations,
-	files: AgentInstructionFile[] = ["AGENTS.md", "CLAUDE.md", ".cursorrules"],
+	files: AgentInstructionFile[] = [
+		"AGENTS.md",
+		"CLAUDE.md",
+		".cursorrules",
+		"GEMINI.md",
+		".github/copilot-instructions.md",
+	],
 ): Promise<void> {
 	const mapping: Record<AgentInstructionFile, string> = {
 		"AGENTS.md": AGENT_GUIDELINES,
 		"CLAUDE.md": CLAUDE_GUIDELINES,
 		".cursorrules": CURSOR_GUIDELINES,
+		"GEMINI.md": GEMINI_GUIDELINES,
+		".github/copilot-instructions.md": COPILOT_GUIDELINES,
 		"README.md": README_GUIDELINES,
 	};
 
@@ -100,6 +122,7 @@ export async function addAgentInstructions(
 			finalContent = wrapWithMarkers(content, name);
 		}
 
+		await mkdir(dirname(filePath), { recursive: true });
 		await Bun.write(filePath, finalContent);
 		paths.push(filePath);
 	}

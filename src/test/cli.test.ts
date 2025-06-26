@@ -146,18 +146,26 @@ describe("CLI Integration", () => {
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			const cursorFile = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
+			const geminiFile = await Bun.file(join(TEST_DIR, "GEMINI.md")).exists();
+			const copilotFile = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).exists();
 
 			expect(agentsFile).toBe(true);
 			expect(claudeFile).toBe(true);
 			expect(cursorFile).toBe(true);
+			expect(geminiFile).toBe(true);
+			expect(copilotFile).toBe(true);
 
 			// Verify content
 			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 			const claudeContent = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 			const cursorContent = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
+			const geminiContent = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
+			const copilotContent = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
 			expect(agentsContent.length).toBeGreaterThan(0);
 			expect(claudeContent.length).toBeGreaterThan(0);
 			expect(cursorContent.length).toBeGreaterThan(0);
+			expect(geminiContent.length).toBeGreaterThan(0);
+			expect(copilotContent.length).toBeGreaterThan(0);
 		});
 	});
 

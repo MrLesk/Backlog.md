@@ -79,12 +79,21 @@ program
 			// 	storeGlobal = store.startsWith("y");
 			// }
 
-			const agentOptions = [".cursorrules", "CLAUDE.md", "AGENTS.md"] as const;
+			const agentOptions = [
+				".cursorrules",
+				"CLAUDE.md",
+				"AGENTS.md",
+				"GEMINI.md",
+				".github/copilot-instructions.md",
+			] as const;
 			const { files: selected } = await prompts({
 				type: "multiselect",
 				name: "files",
 				message: "Select agent instruction files to update",
-				choices: agentOptions.map((name) => ({ title: name, value: name })),
+				choices: agentOptions.map((name) => ({
+					title: name === ".github/copilot-instructions.md" ? "Copilot" : name,
+					value: name,
+				})),
 				hint: "Space to select, Enter to confirm",
 				instructions: false,
 			});
