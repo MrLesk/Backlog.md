@@ -1,0 +1,25 @@
+{
+	"name": "@agents/cli",
+	"version": "0.1.0",
+	"description": "Multi-agent CLI for collaborative problem solving",
+	"type": "module",
+	"bin": {
+		"agents": "./dist/cli.js"
+	},
+	"scripts": {
+		"build": "bun build src/cli.ts --outdir dist --target bun --format esm --external '*'",
+		"dev": "bun run src/cli.ts",
+		"demo": "bun run src/demo-cli.ts",
+		"typecheck": "bun --bun tsc --noEmit"
+	},
+	"dependencies": {
+		"commander": "^12.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.6",
+		"typescript": "^5.7.3"
+	},
+	"engines": {
+		"bun": ">=1.0.0"
+	}
+}

@@ -1,0 +1,19 @@
+🚀 Starting Backlog.md server...
+✅ Server running at http://localhost:3000
+✅ Server running at http://localhost:3000
+Press Ctrl+C to stop the server
+🌐 Opening browser...
+❌ Server error: 73 | 		if (url.pathname.startsWith("/api/")) {
+74 | 			return this.handleApiRequest(req);
+75 | 		}
+76 | 
+77 | 		// For all other requests, delegate to the HTMLBundle's fetch handler
+78 | 		return home.fetch(req);
+                   ^
+TypeError: home.fetch is not a function. (In 'home.fetch(req)', 'home.fetch' is undefined)
+      at <anonymous> (/Users/agavr/projects/Backlog.md/src/web-ui/index.ts:78:15)
+      at handleRequest (/Users/agavr/projects/Backlog.md/src/web-ui/index.ts:70:31)
+
+
+🛑 Shutting down server...
+🛑 Server stopped.
