@@ -39,8 +39,14 @@ describe("Implementation Plan CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -58,8 +64,14 @@ describe("Implementation Plan CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -88,8 +100,14 @@ describe("Implementation Plan CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -126,7 +144,13 @@ describe("Implementation Plan CLI", () => {
 			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"], {
 				cwd: TEST_DIR,
 				encoding: "utf8",
+				timeout: 10000, // 10 second timeout
 			});
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -156,8 +180,14 @@ describe("Implementation Plan CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			task = await core.filesystem.loadTask("task-1");
@@ -177,8 +207,14 @@ describe("Implementation Plan CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -211,8 +247,14 @@ describe("Implementation Plan CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -233,7 +275,13 @@ describe("Implementation Plan CLI", () => {
 			const result = spawnSync("bun", [CLI_PATH, "task", "create", "Test Task", "--plan", ""], {
 				cwd: TEST_DIR,
 				encoding: "utf8",
+				timeout: 10000, // 10 second timeout
 			});
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const core = new Core(TEST_DIR);
