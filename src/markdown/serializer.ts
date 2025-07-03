@@ -111,3 +111,61 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 	// If no Description section found, add at the end
 	return `${content}\n\n${newSection}`;
 }
+
+export function updateTaskImplementationNotes(content: string, notes: string): string {
+	// Don't add empty notes
+	if (!notes || !notes.trim()) {
+		return content;
+	}
+
+	// Find if there's already an Implementation Notes section
+	const notesRegex = /## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = content.match(notesRegex);
+
+	if (match) {
+		// Append to existing section with a timestamp
+		const existingNotes = match[1].trim();
+		const timestamp = new Date().toISOString().split("T")[0];
+		const newNotes = existingNotes
+			? `${existingNotes}\n\n*Added on ${timestamp}:*\n${notes}`
+			: `*Added on ${timestamp}:*\n${notes}`;
+		return content.replace(notesRegex, `## Implementation Notes\n\n${newNotes}`);
+	}
+
+	// Add new section - Implementation Notes should come after Implementation Plan if it exists
+	const timestamp = new Date().toISOString().split("T")[0];
+	const newSection = `## Implementation Notes\n\n*Added on ${timestamp}:*\n${notes}`;
+
+	// Find where to insert the new section
+	// It should come after Implementation Plan if it exists
+	const planRegex = /## Implementation Plan\s*\n[\s\S]*?(?=\n## |$)/i;
+	const planMatch = content.match(planRegex);
+
+	if (planMatch && planMatch.index !== undefined) {
+		// Insert after Implementation Plan
+		const insertIndex = planMatch.index + planMatch[0].length;
+		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+	}
+
+	// Otherwise after Acceptance Criteria
+	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
+	const acceptanceMatch = content.match(acceptanceCriteriaRegex);
+
+	if (acceptanceMatch && acceptanceMatch.index !== undefined) {
+		// Insert after Acceptance Criteria
+		const insertIndex = acceptanceMatch.index + acceptanceMatch[0].length;
+		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+	}
+
+	// Otherwise after Description
+	const descriptionRegex = /## Description\s*\n[\s\S]*?(?=\n## |$)/i;
+	const descMatch = content.match(descriptionRegex);
+
+	if (descMatch && descMatch.index !== undefined) {
+		const insertIndex = descMatch.index + descMatch[0].length;
+		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+	}
+
+	// If no other sections found, add at the end
+	return `${content}\n\n${newSection}`;
+}

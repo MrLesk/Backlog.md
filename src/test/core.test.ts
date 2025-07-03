@@ -323,7 +323,7 @@ describe("Core", () => {
 			await core.createTask(task, false);
 
 			// Verify the task file was created in the correct directory
-			const tasksDir = core.filesystem.tasksDir;
+			const _tasksDir = core.filesystem.tasksDir;
 
 			// List all files to see what was actually created
 			const allFiles = await core.filesystem.listTasks();
