@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
@@ -33,21 +32,18 @@ describe("Implementation Plan CLI", () => {
 
 	describe("task create with implementation plan", () => {
 		it("should create task with implementation plan using --plan", async () => {
-			const result = spawnSync(
-				"bun",
-				[CLI_PATH, "task", "create", "Test Task", "--plan", "Step 1: Analyze\nStep 2: Implement"],
+			const result = Bun.spawnSync(
+				["bun", CLI_PATH, "task", "create", "Test Task", "--plan", "Step 1: Analyze\nStep 2: Implement"],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
@@ -58,21 +54,28 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should create task with both description and implementation plan", async () => {
-			const result = spawnSync(
-				"bun",
-				[CLI_PATH, "task", "create", "Test Task", "-d", "Task description", "--plan", "1. First step\n2. Second step"],
+			const result = Bun.spawnSync(
+				[
+					"bun",
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task",
+					"-d",
+					"Task description",
+					"--plan",
+					"1. First step\n2. Second step",
+				],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
@@ -85,9 +88,9 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should create task with acceptance criteria and implementation plan", async () => {
-			const result = spawnSync(
-				"bun",
+			const result = Bun.spawnSync(
 				[
+					"bun",
 					CLI_PATH,
 					"task",
 					"create",
@@ -99,16 +102,14 @@ describe("Implementation Plan CLI", () => {
 				],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
@@ -141,17 +142,15 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should add implementation plan to existing task", async () => {
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"], {
+			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"], {
 				cwd: TEST_DIR,
-				encoding: "utf8",
-				timeout: 10000, // 10 second timeout
 			});
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
@@ -174,21 +173,18 @@ describe("Implementation Plan CLI", () => {
 			}
 
 			// Now update with new plan
-			const result = spawnSync(
-				"bun",
-				[CLI_PATH, "task", "edit", "1", "--plan", "Updated plan:\n1. New step 1\n2. New step 2"],
+			const result = Bun.spawnSync(
+				["bun", CLI_PATH, "task", "edit", "1", "--plan", "Updated plan:\n1. New step 1\n2. New step 2"],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
@@ -201,21 +197,28 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should update both title and implementation plan", async () => {
-			const result = spawnSync(
-				"bun",
-				[CLI_PATH, "task", "edit", "1", "-t", "Updated Title", "--plan", "Implementation:\n- Do this\n- Then that"],
+			const result = Bun.spawnSync(
+				[
+					"bun",
+					CLI_PATH,
+					"task",
+					"edit",
+					"1",
+					"-t",
+					"Updated Title",
+					"--plan",
+					"Implementation:\n- Do this\n- Then that",
+				],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
@@ -230,9 +233,9 @@ describe("Implementation Plan CLI", () => {
 
 	describe("implementation plan positioning", () => {
 		it("should place implementation plan after acceptance criteria when both exist", async () => {
-			const result = spawnSync(
-				"bun",
+			const result = Bun.spawnSync(
 				[
+					"bun",
 					CLI_PATH,
 					"task",
 					"create",
@@ -246,16 +249,14 @@ describe("Implementation Plan CLI", () => {
 				],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
@@ -272,17 +273,15 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should handle empty plan gracefully", async () => {
-			const result = spawnSync("bun", [CLI_PATH, "task", "create", "Test Task", "--plan", ""], {
+			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Test Task", "--plan", ""], {
 				cwd: TEST_DIR,
-				encoding: "utf8",
-				timeout: 10000, // 10 second timeout
 			});
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
