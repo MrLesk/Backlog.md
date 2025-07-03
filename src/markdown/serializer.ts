@@ -123,18 +123,14 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	const match = content.match(notesRegex);
 
 	if (match) {
-		// Append to existing section with a timestamp
+		// Append to existing section
 		const existingNotes = match[1].trim();
-		const timestamp = new Date().toISOString().split("T")[0];
-		const newNotes = existingNotes
-			? `${existingNotes}\n\n*Added on ${timestamp}:*\n${notes}`
-			: `*Added on ${timestamp}:*\n${notes}`;
+		const newNotes = existingNotes ? `${existingNotes}\n\n${notes}` : notes;
 		return content.replace(notesRegex, `## Implementation Notes\n\n${newNotes}`);
 	}
 
 	// Add new section - Implementation Notes should come after Implementation Plan if it exists
-	const timestamp = new Date().toISOString().split("T")[0];
-	const newSection = `## Implementation Notes\n\n*Added on ${timestamp}:*\n${notes}`;
+	const newSection = `## Implementation Notes\n\n${notes}`;
 
 	// Find where to insert the new section
 	// It should come after Implementation Plan if it exists

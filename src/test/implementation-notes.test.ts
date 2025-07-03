@@ -53,15 +53,20 @@ describe("Implementation Notes CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
 			expect(updatedTask?.description).toContain("## Implementation Notes");
 			expect(updatedTask?.description).toContain("Fixed the bug by updating the validation logic");
-			expect(updatedTask?.description).toMatch(/\*Added on \d{4}-\d{2}-\d{2}:\*/);
 		});
 
 		it("should append to existing implementation notes", async () => {
@@ -74,23 +79,30 @@ describe("Implementation Notes CLI", () => {
 				createdDate: "2025-07-03",
 				labels: [],
 				dependencies: [],
-				description:
-					"Test description\n\n## Implementation Notes\n\n*Added on 2025-07-02:*\nInitial implementation completed",
+				description: "Test description\n\n## Implementation Notes\n\nInitial implementation completed",
 			};
 			await core.createTask(task, false);
 
 			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", "Added error handling"], {
 				cwd: TEST_DIR,
 				encoding: "utf8",
+				timeout: 10000, // 10 second timeout
 			});
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+			}
 			expect(result.status).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
 			expect(updatedTask?.description).toContain("Initial implementation completed");
 			expect(updatedTask?.description).toContain("Added error handling");
-			expect(updatedTask?.description).toMatch(/\*Added on \d{4}-\d{2}-\d{2}:\*[\s\S]*Initial implementation/);
-			expect(updatedTask?.description).toMatch(/\*Added on \d{4}-\d{2}-\d{2}:\*[\s\S]*Added error handling/);
+			// Check that both notes are present in the section
+			const notesSection = updatedTask?.description.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i);
+			expect(notesSection?.[1]).toContain("Initial implementation completed");
+			expect(notesSection?.[1]).toContain("Added error handling");
 		});
 
 		it("should work together with status update when marking as Done", async () => {
@@ -122,6 +134,7 @@ describe("Implementation Notes CLI", () => {
 				{
 					cwd: TEST_DIR,
 					encoding: "utf8",
+					timeout: 10000, // 10 second timeout
 				},
 			);
 			expect(result.status).toBe(0);
@@ -161,7 +174,14 @@ Technical decisions:
 			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", multiLineNotes], {
 				cwd: TEST_DIR,
 				encoding: "utf8",
+				timeout: 10000, // 10 second timeout
 			});
+
+			if (result.status !== 0) {
+				console.error("CLI Error:", result.stderr || result.stdout);
+				console.error("Exit code:", result.status);
+				console.error("Multi-line notes:", JSON.stringify(multiLineNotes));
+			}
 			expect(result.status).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
@@ -189,6 +209,7 @@ Technical decisions:
 			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", "Followed the plan successfully"], {
 				cwd: TEST_DIR,
 				encoding: "utf8",
+				timeout: 10000, // 10 second timeout
 			});
 			expect(result.status).toBe(0);
 
@@ -220,6 +241,7 @@ Technical decisions:
 			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", ""], {
 				cwd: TEST_DIR,
 				encoding: "utf8",
+				timeout: 10000, // 10 second timeout
 			});
 			expect(result.status).toBe(0);
 
