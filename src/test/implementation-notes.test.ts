@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
@@ -47,21 +46,18 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task, false);
 
-			const result = spawnSync(
-				"bun",
-				[CLI_PATH, "task", "edit", "1", "--notes", "Fixed the bug by updating the validation logic"],
+			const result = Bun.spawnSync(
+				["bun", CLI_PATH, "task", "edit", "1", "--notes", "Fixed the bug by updating the validation logic"],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -83,17 +79,15 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task, false);
 
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", "Added error handling"], {
+			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "edit", "1", "--notes", "Added error handling"], {
 				cwd: TEST_DIR,
-				encoding: "utf8",
-				timeout: 10000, // 10 second timeout
 			});
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -119,9 +113,9 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task, false);
 
-			const result = spawnSync(
-				"bun",
+			const result = Bun.spawnSync(
 				[
+					"bun",
 					CLI_PATH,
 					"task",
 					"edit",
@@ -133,11 +127,9 @@ describe("Implementation Notes CLI", () => {
 				],
 				{
 					cwd: TEST_DIR,
-					encoding: "utf8",
-					timeout: 10000, // 10 second timeout
 				},
 			);
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -171,18 +163,16 @@ Technical decisions:
 - Used memoization for expensive calculations
 - Implemented lazy loading`;
 
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", multiLineNotes], {
+			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "edit", "1", "--notes", multiLineNotes], {
 				cwd: TEST_DIR,
-				encoding: "utf8",
-				timeout: 10000, // 10 second timeout
 			});
 
-			if (result.status !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.status);
+			if (result.exitCode !== 0) {
+				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("Exit code:", result.exitCode);
 				console.error("Multi-line notes:", JSON.stringify(multiLineNotes));
 			}
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -206,12 +196,13 @@ Technical decisions:
 			};
 			await core.createTask(task, false);
 
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", "Followed the plan successfully"], {
-				cwd: TEST_DIR,
-				encoding: "utf8",
-				timeout: 10000, // 10 second timeout
-			});
-			expect(result.status).toBe(0);
+			const result = Bun.spawnSync(
+				["bun", CLI_PATH, "task", "edit", "1", "--notes", "Followed the plan successfully"],
+				{
+					cwd: TEST_DIR,
+				},
+			);
+			expect(result.exitCode).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -238,12 +229,10 @@ Technical decisions:
 			};
 			await core.createTask(task, false);
 
-			const result = spawnSync("bun", [CLI_PATH, "task", "edit", "1", "--notes", ""], {
+			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "edit", "1", "--notes", ""], {
 				cwd: TEST_DIR,
-				encoding: "utf8",
-				timeout: 10000, // 10 second timeout
 			});
-			expect(result.status).toBe(0);
+			expect(result.exitCode).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
