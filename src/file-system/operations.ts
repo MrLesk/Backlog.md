@@ -36,8 +36,20 @@ export class FileSystem {
 			console.log("DEBUG: loadConfigDirect - starting");
 			const configPath = join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.CONFIG);
 			console.log("DEBUG: loadConfigDirect - config path:", configPath);
+
+			// Check if file exists first to avoid hanging on Windows
+			console.log("DEBUG: loadConfigDirect - checking if file exists");
+			const file = Bun.file(configPath);
+			const exists = await file.exists();
+			console.log("DEBUG: loadConfigDirect - file exists:", exists);
+
+			if (!exists) {
+				console.log("DEBUG: loadConfigDirect - file does not exist, returning null");
+				return null;
+			}
+
 			console.log("DEBUG: loadConfigDirect - about to read file");
-			const content = await Bun.file(configPath).text();
+			const content = await file.text();
 			console.log("DEBUG: loadConfigDirect - file read, content length:", content.length);
 			const config = this.parseConfig(content);
 			console.log("DEBUG: loadConfigDirect - config parsed");
