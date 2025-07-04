@@ -310,7 +310,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 					.filter(Boolean)
 			: [],
 		dependencies,
-		description: options.description ? String(options.description) : "",
+		description: options.description || options.desc ? String(options.description || options.desc) : "",
 		...(normalizedParent && { parentTaskId: normalizedParent }),
 		...(validatedPriority && { priority: validatedPriority }),
 	};
@@ -321,6 +321,7 @@ const taskCmd = program.command("task").aliases(["tasks"]);
 taskCmd
 	.command("create <title>")
 	.option("-d, --description <text>")
+	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
@@ -493,6 +494,7 @@ taskCmd
 	.description("edit an existing task")
 	.option("-t, --title <title>")
 	.option("-d, --description <text>")
+	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --label <labels>")
@@ -528,8 +530,9 @@ taskCmd
 		if (options.title) {
 			task.title = String(options.title);
 		}
-		if (options.description) {
-			task.description = String(options.description);
+		if (options.description || options.desc) {
+			const { updateTaskDescription } = await import("./markdown/serializer.ts");
+			task.description = updateTaskDescription(task.description, String(options.description || options.desc));
 		}
 		if (typeof options.assignee !== "undefined") {
 			task.assignee = [String(options.assignee)];
@@ -723,6 +726,7 @@ const draftCmd = program.command("draft");
 draftCmd
 	.command("create <title>")
 	.option("-d, --description <text>")
+	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")

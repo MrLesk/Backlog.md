@@ -26,7 +26,7 @@ jobs:
             target: bun-windows-x64
     runs-on: ${{ matrix.os }}
     env:
-      BIN: backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}
+      BIN: backlog-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
@@ -46,10 +46,20 @@ jobs:
       - name: Compile standalone binary
         shell: bash
         run: |
-          bun build src/cli.ts --compile --minify --sourcemap --target=${{ matrix.target }} --define __EMBEDDED_VERSION__="\"${GITHUB_REF##refs/tags/v}\"" --outfile=${{ env.BIN }}
+          mkdir -p dist
+          bun build src/cli.ts --compile --minify --target=${{ matrix.target }} --define __EMBEDDED_VERSION__="\"${GITHUB_REF##refs/tags/v}\"" --outfile=dist/${{ env.BIN }}
       - name: Make binary executable (non-Windows)
         if: ${{ !contains(matrix.target,'windows') }}
-        run: chmod +x "${{ env.BIN }}"
+        run: chmod +x "dist/${{ env.BIN }}"
+      - name: Check build output and move binary
+        shell: bash
+        run: |
+          echo "Contents of dist/:"
+          ls -la dist/
+          echo "Moving dist/${{ env.BIN }} to ${{ env.BIN }}"
+          mv dist/${{ env.BIN }} ${{ env.BIN }}
+          echo "Final binary size:"
+          ls -lh ${{ env.BIN }}
       - uses: actions/upload-artifact@v4
         with:
           name: backlog-${{ matrix.target }}
@@ -127,12 +137,22 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: backlog-${{ matrix.target }}
+        timeout-minutes: 15
       - name: Prepare package
         shell: bash
         run: |
           TAG="${GITHUB_REF##refs/tags/v}"
           mkdir -p pkg
-          mv backlog* pkg/
+          # Rename the binary to the expected name
+          if [[ -f backlog-bin.exe ]]; then
+            mv backlog-bin.exe pkg/backlog.exe
+          elif [[ -f backlog-bin ]]; then
+            mv backlog-bin pkg/backlog
+          else
+            echo "Error: No binary found"
+            ls -la
+            exit 1
+          fi
           cp LICENSE README.md pkg/ 2>/dev/null || true
           cat <<EOF > pkg/package.json
           {
@@ -162,23 +182,34 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
+        timeout-minutes: 15
       - name: Rename binaries for release
         run: |
+          echo "=== Debug: Downloaded artifacts ==="
+          find release-assets -type f -exec ls -lh {} \;
+          echo "=== Processing artifacts ==="
           mkdir -p binaries
           for dir in release-assets/*/; do
             if [ -d "$dir" ]; then
               target=$(basename "$dir" | sed 's/backlog-//')
-              binary=$(find "$dir" -name "backlog*" -type f)
+              echo "Processing target: $target"
+              echo "Directory contents:"
+              ls -la "$dir"
+              binary=$(find "$dir" -name "backlog-bin*" -type f)
               if [ -n "$binary" ]; then
+                echo "Found binary: $binary ($(ls -lh "$binary" | awk '{print $5}'))"
                 if [[ "$target" == *"windows"* ]] && [[ "$binary" == *".exe" ]]; then
                   cp "$binary" "binaries/backlog-${target}.exe"
+                  echo "Copied to binaries/backlog-${target}.exe ($(ls -lh "binaries/backlog-${target}.exe" | awk '{print $5}'))"
                 else
                   cp "$binary" "binaries/backlog-${target}"
+                  echo "Copied to binaries/backlog-${target} ($(ls -lh "binaries/backlog-${target}" | awk '{print $5}'))"
                 fi
               fi
             fi
           done
-          ls -la binaries/
+          echo "=== Final binaries ==="
+          ls -lh binaries/
       - uses: softprops/action-gh-release@v1
         with:
           files: binaries/*

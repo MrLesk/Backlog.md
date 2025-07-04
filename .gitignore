@@ -31,7 +31,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # bun build artifacts
 *.bun-build
 .*.bun-build
-backlog
 
 # IntelliJ based IDEs
 .idea

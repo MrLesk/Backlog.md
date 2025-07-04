@@ -46,18 +46,15 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task, false);
 
-			const result = Bun.spawnSync(
+			const p = Bun.spawn(
 				["bun", CLI_PATH, "task", "edit", "1", "--notes", "Fixed the bug by updating the validation logic"],
 				{
 					cwd: TEST_DIR,
+					stdout: "inherit",
+					stderr: "inherit",
 				},
 			);
-
-			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
-				console.error("Exit code:", result.exitCode);
-			}
-			expect(result.exitCode).toBe(0);
+			expect(await p.exited).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -79,15 +76,12 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task, false);
 
-			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "edit", "1", "--notes", "Added error handling"], {
+			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", "Added error handling"], {
 				cwd: TEST_DIR,
+				stdout: "inherit",
+				stderr: "inherit",
 			});
-
-			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
-				console.error("Exit code:", result.exitCode);
-			}
-			expect(result.exitCode).toBe(0);
+			expect(await p.exited).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -113,7 +107,7 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task, false);
 
-			const result = Bun.spawnSync(
+			const p = Bun.spawn(
 				[
 					"bun",
 					CLI_PATH,
@@ -127,9 +121,11 @@ describe("Implementation Notes CLI", () => {
 				],
 				{
 					cwd: TEST_DIR,
+					stdout: "inherit",
+					stderr: "inherit",
 				},
 			);
-			expect(result.exitCode).toBe(0);
+			expect(await p.exited).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -163,16 +159,12 @@ Technical decisions:
 - Used memoization for expensive calculations
 - Implemented lazy loading`;
 
-			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "edit", "1", "--notes", multiLineNotes], {
+			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", multiLineNotes], {
 				cwd: TEST_DIR,
+				stdout: "inherit",
+				stderr: "inherit",
 			});
-
-			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
-				console.error("Exit code:", result.exitCode);
-				console.error("Multi-line notes:", JSON.stringify(multiLineNotes));
-			}
-			expect(result.exitCode).toBe(0);
+			expect(await p.exited).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -196,13 +188,12 @@ Technical decisions:
 			};
 			await core.createTask(task, false);
 
-			const result = Bun.spawnSync(
-				["bun", CLI_PATH, "task", "edit", "1", "--notes", "Followed the plan successfully"],
-				{
-					cwd: TEST_DIR,
-				},
-			);
-			expect(result.exitCode).toBe(0);
+			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", "Followed the plan successfully"], {
+				cwd: TEST_DIR,
+				stdout: "inherit",
+				stderr: "inherit",
+			});
+			expect(await p.exited).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
@@ -229,10 +220,12 @@ Technical decisions:
 			};
 			await core.createTask(task, false);
 
-			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "edit", "1", "--notes", ""], {
+			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", ""], {
 				cwd: TEST_DIR,
+				stdout: "inherit",
+				stderr: "inherit",
 			});
-			expect(result.exitCode).toBe(0);
+			expect(await p.exited).toBe(0);
 
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
