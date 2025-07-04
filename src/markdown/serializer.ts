@@ -165,3 +165,29 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	// If no other sections found, add at the end
 	return `${content}\n\n${newSection}`;
 }
+
+export function updateTaskDescription(content: string, description: string): string {
+	// Find if there's already a Description section
+	const descriptionRegex = /## Description\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = content.match(descriptionRegex);
+
+	const newSection = `## Description\n\n${description}`;
+
+	if (match) {
+		// Replace existing section
+		return content.replace(descriptionRegex, newSection);
+	}
+
+	// If no Description section found, add at the beginning after any frontmatter
+	// Look for the end of frontmatter (after ---)
+	const frontmatterRegex = /^---\n[\s\S]*?\n---\n\n?/;
+	const frontmatterMatch = content.match(frontmatterRegex);
+
+	if (frontmatterMatch && frontmatterMatch.index !== undefined) {
+		const insertIndex = frontmatterMatch.index + frontmatterMatch[0].length;
+		return `${content.slice(0, insertIndex)}${newSection}\n\n${content.slice(insertIndex)}`;
+	}
+
+	// If no frontmatter found, add at the beginning
+	return `${newSection}\n\n${content}`;
+}

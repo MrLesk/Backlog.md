@@ -529,7 +529,8 @@ taskCmd
 			task.title = String(options.title);
 		}
 		if (options.description) {
-			task.description = String(options.description);
+			const { updateTaskDescription } = await import("./markdown/serializer.ts");
+			task.description = updateTaskDescription(task.description, String(options.description));
 		}
 		if (typeof options.assignee !== "undefined") {
 			task.assignee = [String(options.assignee)];
