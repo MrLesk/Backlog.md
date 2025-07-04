@@ -90,7 +90,9 @@ describe("CLI agents command", () => {
 	});
 
 	it("should fail when not in a backlog project", async () => {
-		const nonBacklogDir = join(process.cwd(), "test-non-backlog");
+		// Use OS temp directory to ensure complete isolation from project
+		const tempDir = await import("node:os").then((os) => os.tmpdir());
+		const nonBacklogDir = join(tempDir, `test-non-backlog-${Date.now()}-${Math.random().toString(36).substring(7)}`);
 
 		// Ensure clean state first
 		await rm(nonBacklogDir, { recursive: true, force: true }).catch(() => {});
