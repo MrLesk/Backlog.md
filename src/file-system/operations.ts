@@ -28,7 +28,16 @@ export class FileSystem {
 	private async loadConfigDirect(): Promise<BacklogConfig | null> {
 		try {
 			const configPath = join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.CONFIG);
-			const content = await Bun.file(configPath).text();
+
+			// Check if file exists first to avoid hanging on Windows
+			const file = Bun.file(configPath);
+			const exists = await file.exists();
+
+			if (!exists) {
+				return null;
+			}
+
+			const content = await file.text();
 			const config = this.parseConfig(content);
 
 			// If config exists but has no backlogDirectory field, this is a legacy config
@@ -418,7 +427,16 @@ export class FileSystem {
 		try {
 			const backlogDir = await this.getBacklogDir();
 			const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
-			const content = await Bun.file(configPath).text();
+
+			// Check if file exists first to avoid hanging on Windows
+			const file = Bun.file(configPath);
+			const exists = await file.exists();
+
+			if (!exists) {
+				return null;
+			}
+
+			const content = await file.text();
 			return this.parseConfig(content);
 		} catch (_error) {
 			return null;

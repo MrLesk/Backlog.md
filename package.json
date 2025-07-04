@@ -32,11 +32,14 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"prepare": "husky",
-		"build": "bun build --compile --minify --sourcemap --outfile=backlog src/cli.ts",
+		"build": "bun build --compile --minify --outfile=dist/backlog src/cli.ts",
 		"cli": "bun src/cli.ts"
 	},
 	"lint-staged": {
-		"*.{ts,js,json}": [
+		"package.json": [
+			"biome check --write --files-ignore-unknown=true"
+		],
+		"*.json": [
 			"biome check --write --files-ignore-unknown=true"
 		],
 		"src/**/*.{ts,js}": [
