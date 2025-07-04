@@ -447,7 +447,20 @@ export class FileSystem {
 			console.log("DEBUG: loadConfig - backlog dir:", backlogDir);
 			const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
 			console.log("DEBUG: loadConfig - config path:", configPath);
-			const content = await Bun.file(configPath).text();
+
+			// Check if file exists first to avoid hanging on Windows
+			console.log("DEBUG: loadConfig - checking if file exists");
+			const file = Bun.file(configPath);
+			const exists = await file.exists();
+			console.log("DEBUG: loadConfig - file exists:", exists);
+
+			if (!exists) {
+				console.log("DEBUG: loadConfig - file does not exist, returning null");
+				return null;
+			}
+
+			console.log("DEBUG: loadConfig - about to read file");
+			const content = await file.text();
 			console.log("DEBUG: loadConfig - config content length:", content.length);
 			return this.parseConfig(content);
 		} catch (error) {
