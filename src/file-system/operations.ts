@@ -18,11 +18,17 @@ export class FileSystem {
 	}
 
 	private async getBacklogDir(): Promise<string> {
+		console.log("DEBUG: getBacklogDir - checking cached config");
 		if (!this.cachedConfig) {
+			console.log("DEBUG: getBacklogDir - loading config direct");
 			this.cachedConfig = await this.loadConfigDirect();
+			console.log("DEBUG: getBacklogDir - loaded config:", this.cachedConfig ? "found" : "null");
 		}
 		const configuredDir = this.cachedConfig?.backlogDirectory || DEFAULT_DIRECTORIES.BACKLOG;
-		return join(this.projectRoot, configuredDir);
+		console.log("DEBUG: getBacklogDir - configured dir:", configuredDir);
+		const result = join(this.projectRoot, configuredDir);
+		console.log("DEBUG: getBacklogDir - final path:", result);
+		return result;
 	}
 
 	private async loadConfigDirect(): Promise<BacklogConfig | null> {
@@ -416,11 +422,16 @@ export class FileSystem {
 	// Config operations
 	async loadConfig(): Promise<BacklogConfig | null> {
 		try {
+			console.log("DEBUG: loadConfig - getting backlog dir");
 			const backlogDir = await this.getBacklogDir();
+			console.log("DEBUG: loadConfig - backlog dir:", backlogDir);
 			const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
+			console.log("DEBUG: loadConfig - config path:", configPath);
 			const content = await Bun.file(configPath).text();
+			console.log("DEBUG: loadConfig - config content length:", content.length);
 			return this.parseConfig(content);
-		} catch (_error) {
+		} catch (error) {
+			console.log("DEBUG: loadConfig - caught error:", error);
 			return null;
 		}
 	}
