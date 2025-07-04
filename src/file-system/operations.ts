@@ -18,54 +18,37 @@ export class FileSystem {
 	}
 
 	private async getBacklogDir(): Promise<string> {
-		console.log("DEBUG: getBacklogDir - checking cached config");
 		if (!this.cachedConfig) {
-			console.log("DEBUG: getBacklogDir - loading config direct");
 			this.cachedConfig = await this.loadConfigDirect();
-			console.log("DEBUG: getBacklogDir - loaded config:", this.cachedConfig ? "found" : "null");
 		}
 		const configuredDir = this.cachedConfig?.backlogDirectory || DEFAULT_DIRECTORIES.BACKLOG;
-		console.log("DEBUG: getBacklogDir - configured dir:", configuredDir);
-		const result = join(this.projectRoot, configuredDir);
-		console.log("DEBUG: getBacklogDir - final path:", result);
-		return result;
+		return join(this.projectRoot, configuredDir);
 	}
 
 	private async loadConfigDirect(): Promise<BacklogConfig | null> {
 		try {
-			console.log("DEBUG: loadConfigDirect - starting");
 			const configPath = join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.CONFIG);
-			console.log("DEBUG: loadConfigDirect - config path:", configPath);
 
 			// Check if file exists first to avoid hanging on Windows
-			console.log("DEBUG: loadConfigDirect - checking if file exists");
 			const file = Bun.file(configPath);
 			const exists = await file.exists();
-			console.log("DEBUG: loadConfigDirect - file exists:", exists);
 
 			if (!exists) {
-				console.log("DEBUG: loadConfigDirect - file does not exist, returning null");
 				return null;
 			}
 
-			console.log("DEBUG: loadConfigDirect - about to read file");
 			const content = await file.text();
-			console.log("DEBUG: loadConfigDirect - file read, content length:", content.length);
 			const config = this.parseConfig(content);
-			console.log("DEBUG: loadConfigDirect - config parsed");
 
 			// If config exists but has no backlogDirectory field, this is a legacy config
 			// Set it to .backlog for backward compatibility and save it
 			if (config && config.backlogDirectory === undefined) {
-				console.log("DEBUG: loadConfigDirect - updating legacy config");
 				config.backlogDirectory = ".backlog";
 				await this.saveConfig(config);
 			}
 
-			console.log("DEBUG: loadConfigDirect - returning config");
 			return config;
-		} catch (error) {
-			console.log("DEBUG: loadConfigDirect - caught error:", error);
+		} catch (_error) {
 			return null;
 		}
 	}
@@ -442,29 +425,20 @@ export class FileSystem {
 	// Config operations
 	async loadConfig(): Promise<BacklogConfig | null> {
 		try {
-			console.log("DEBUG: loadConfig - getting backlog dir");
 			const backlogDir = await this.getBacklogDir();
-			console.log("DEBUG: loadConfig - backlog dir:", backlogDir);
 			const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
-			console.log("DEBUG: loadConfig - config path:", configPath);
 
 			// Check if file exists first to avoid hanging on Windows
-			console.log("DEBUG: loadConfig - checking if file exists");
 			const file = Bun.file(configPath);
 			const exists = await file.exists();
-			console.log("DEBUG: loadConfig - file exists:", exists);
 
 			if (!exists) {
-				console.log("DEBUG: loadConfig - file does not exist, returning null");
 				return null;
 			}
 
-			console.log("DEBUG: loadConfig - about to read file");
 			const content = await file.text();
-			console.log("DEBUG: loadConfig - config content length:", content.length);
 			return this.parseConfig(content);
-		} catch (error) {
-			console.log("DEBUG: loadConfig - caught error:", error);
+		} catch (_error) {
 			return null;
 		}
 	}

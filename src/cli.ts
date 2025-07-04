@@ -1031,21 +1031,16 @@ agentsCmd
 		"update agent instruction files (.cursorrules, CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md)",
 	)
 	.action(async (options) => {
-		console.log("DEBUG: agents action called with options:", options);
 		if (!options.updateInstructions) {
 			agentsCmd.help();
 			return;
 		}
 		try {
 			const cwd = process.cwd();
-			console.log("DEBUG: current working directory:", cwd);
 			const core = new Core(cwd);
-			console.log("DEBUG: Core initialized");
 
 			// Check if backlog project is initialized
-			console.log("DEBUG: About to load config");
 			const config = await core.filesystem.loadConfig();
-			console.log("DEBUG: Config loaded:", config ? "found" : "not found");
 			if (!config) {
 				console.error("No backlog project found. Initialize one first with: backlog init");
 				process.exit(1);

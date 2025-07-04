@@ -116,24 +116,13 @@ describe("CLI agents command", () => {
 		});
 		await gitConfigEmail.exited;
 
-		// Add some debugging
-		console.log("Testing in directory:", nonBacklogDir);
-
 		const result = Bun.spawn(["bun", cliPath, "agents", "--update-instructions"], {
 			cwd: nonBacklogDir,
-			stdout: "pipe",
-			stderr: "pipe",
+			stdout: "inherit",
+			stderr: "inherit",
 		});
 
-		const exitCode = await result.exited;
-		const stdout = await new Response(result.stdout).text();
-		const stderr = await new Response(result.stderr).text();
-
-		console.log("Exit code:", exitCode);
-		console.log("Stdout:", stdout);
-		console.log("Stderr:", stderr);
-
-		expect(exitCode).toBe(1);
+		expect(await result.exited).toBe(1);
 
 		// Cleanup
 		await rm(nonBacklogDir, { recursive: true, force: true }).catch(() => {});
