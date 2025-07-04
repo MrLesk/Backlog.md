@@ -115,7 +115,6 @@ describe("CLI agents command", () => {
 			cwd: nonBacklogDir,
 			stdout: "inherit",
 			stderr: "inherit",
-			stdin: "inherit",
 		});
 
 		expect(await result.exited).toBe(1);
