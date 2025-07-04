@@ -2,10 +2,10 @@
 
 ## 1. Source of Truth
 
-- Tasks live under **`.backlog/tasks/`** (drafts under **`.backlog/drafts/`**).
+- Tasks live under **`backlog/tasks/`** (drafts under **`backlog/drafts/`**).
 - Every implementation decision starts with reading the corresponding Markdown task file.
-- Project documentation is in **`.backlog/docs/`**.
-- Project decisions are in **`.backlog/decisions/`**.
+- Project documentation is in **`backlog/docs/`**.
+- Project decisions are in **`backlog/decisions/`**.
 
 ## 2. Defining Tasks
 
@@ -39,7 +39,7 @@ They should be testable and confirm that the core purpose of the task is achieve
 
 ### Task file
 
-Once a task is created it will be stored in `.backlog/tasks/` directory as a Markdown file with the format
+Once a task is created it will be stored in `backlog/tasks/` directory as a Markdown file with the format
 `task-<id> - <title>.md` (e.g. `task-42 - Add GraphQL resolver.md`).
 
 ### Additional task requirements
@@ -110,8 +110,8 @@ backlog task list -s "To Do" --plain
 
 # 2 Read details & documentation
 backlog task 42 --plain
-# Read also all documentation files in `.backlog/docs/` directory.
-# Read also all decision files in `.backlog/decisions/` directory.
+# Read also all documentation files in `backlog/docs/` directory.
+# Read also all decision files in `backlog/decisions/` directory.
 
 # 3 Start work: assign yourself & move column
 backlog task edit 42 -a @{yourself} -s "In Progress"
@@ -144,7 +144,7 @@ A task is **Done** only when **ALL** of the following are complete:
 3. **Automated tests** (unit + integration) cover new logic.
 4. **Static analysis**: linter & formatter succeed.
 5. **Documentation**:
-    - All relevant docs updated (README, .backlog/docs, .backlog/decisions, etc.).
+    - All relevant docs updated (README, backlog/docs, backlog/decisions, etc.).
     - Task file **MUST** have an `## Implementation Notes` section added summarising:
         - Approach taken
         - Features implemented or modified

@@ -39,7 +39,7 @@ describe("CLI parent shorthand option", () => {
 		expect(createSubtaskShort).toBe(0);
 
 		// Find the created subtask file
-		const tasksDir = join(testDir, ".backlog", "tasks");
+		const tasksDir = join(testDir, "backlog", "tasks");
 		const files = await readdir(tasksDir);
 		const subtaskFiles = files.filter((f) => f.startsWith("task-1.1 - ") && f.endsWith(".md"));
 		expect(subtaskFiles.length).toBe(1);
@@ -60,7 +60,7 @@ describe("CLI parent shorthand option", () => {
 		expect(createSubtaskLong).toBe(0);
 
 		// Find both subtask files
-		const tasksDir = join(testDir, ".backlog", "tasks");
+		const tasksDir = join(testDir, "backlog", "tasks");
 		const files = await readdir(tasksDir);
 		const subtaskFiles1 = files.filter((f) => f.startsWith("task-1.1 - ") && f.endsWith(".md"));
 		const subtaskFiles2 = files.filter((f) => f.startsWith("task-1.2 - ") && f.endsWith(".md"));

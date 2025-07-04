@@ -47,13 +47,17 @@ export async function loadRemoteTasks(
 
 		onProgress?.(`Found ${branches.length} remote branches`);
 
+		// Get configurable backlog directory
+		const config = await fs.loadConfig();
+		const backlogDir = config?.backlogDirectory || "backlog";
+
 		// Process all branches in parallel
 		const branchPromises = branches.map(async (branch) => {
 			const ref = `origin/${branch}`;
 
 			try {
 				// List files in the branch
-				const files = await gitOps.listFilesInTree(ref, ".backlog/tasks");
+				const files = await gitOps.listFilesInTree(ref, `${backlogDir}/tasks`);
 
 				if (files.length === 0) {
 					return [];

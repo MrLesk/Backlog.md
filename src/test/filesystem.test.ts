@@ -27,13 +27,13 @@ describe("FileSystem", () => {
 	describe("ensureBacklogStructure", () => {
 		it("should create all required directories", async () => {
 			const expectedDirs = [
-				join(TEST_DIR, ".backlog"),
-				join(TEST_DIR, ".backlog", "tasks"),
-				join(TEST_DIR, ".backlog", "drafts"),
-				join(TEST_DIR, ".backlog", "archive", "tasks"),
-				join(TEST_DIR, ".backlog", "archive", "drafts"),
-				join(TEST_DIR, ".backlog", "docs"),
-				join(TEST_DIR, ".backlog", "decisions"),
+				join(TEST_DIR, "backlog"),
+				join(TEST_DIR, "backlog", "tasks"),
+				join(TEST_DIR, "backlog", "drafts"),
+				join(TEST_DIR, "backlog", "archive", "tasks"),
+				join(TEST_DIR, "backlog", "archive", "drafts"),
+				join(TEST_DIR, "backlog", "docs"),
+				join(TEST_DIR, "backlog", "decisions"),
 			];
 
 			for (const dir of expectedDirs) {
@@ -125,7 +125,7 @@ describe("FileSystem", () => {
 			expect(task).toBeNull();
 
 			// Check that file exists in archive
-			const archiveFiles = await readdir(join(TEST_DIR, ".backlog", "archive", "tasks"));
+			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "tasks"));
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
@@ -187,7 +187,7 @@ describe("FileSystem", () => {
 			const draft = await filesystem.loadDraft("task-draft");
 			expect(draft).toBeNull();
 
-			const files = await readdir(join(TEST_DIR, ".backlog", "archive", "drafts"));
+			const files = await readdir(join(TEST_DIR, "backlog", "archive", "drafts"));
 			expect(files.some((f) => f.startsWith("task-draft"))).toBe(true);
 		});
 	});
@@ -250,10 +250,10 @@ describe("FileSystem", () => {
 
 	describe("directory accessors", () => {
 		it("should provide correct directory paths", () => {
-			expect(filesystem.tasksDir).toBe(join(TEST_DIR, ".backlog", "tasks"));
-			expect(filesystem.archiveTasksDir).toBe(join(TEST_DIR, ".backlog", "archive", "tasks"));
-			expect(filesystem.decisionsDir).toBe(join(TEST_DIR, ".backlog", "decisions"));
-			expect(filesystem.docsDir).toBe(join(TEST_DIR, ".backlog", "docs"));
+			expect(filesystem.tasksDir).toBe(join(TEST_DIR, "backlog", "tasks"));
+			expect(filesystem.archiveTasksDir).toBe(join(TEST_DIR, "backlog", "archive", "tasks"));
+			expect(filesystem.decisionsDir).toBe(join(TEST_DIR, "backlog", "decisions"));
+			expect(filesystem.docsDir).toBe(join(TEST_DIR, "backlog", "docs"));
 		});
 	});
 

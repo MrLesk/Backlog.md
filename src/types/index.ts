@@ -49,6 +49,7 @@ export interface BacklogConfig {
 	dateFormat: string;
 	maxColumnWidth?: number;
 	taskResolutionStrategy?: "most_recent" | "most_progressed";
+	backlogDirectory?: string;
 }
 
 export interface ParsedMarkdown {

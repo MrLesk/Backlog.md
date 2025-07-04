@@ -44,7 +44,7 @@ backlog task create "Render markdown as kanban"
 backlog board view
 ```
 
-All data is saved under `.backlog` folder as human‑readable Markdown with the following format `task-<task-id> - <task-title>.md` (e.g. `task-12 - Fix typo.md`).
+All data is saved under `backlog` folder as human‑readable Markdown with the following format `task-<task-id> - <task-title>.md` (e.g. `task-12 - Fix typo.md`).
 
 ---
 
@@ -78,8 +78,8 @@ Full help: `backlog --help`
 Backlog.md merges the following layers (highest → lowest):
 
 1. CLI flags  
-2. `.backlog/config.yml` (per‑project)  
-3. `~/.backlog/user` (per‑user)  
+2. `backlog/config.yml` (per‑project)  
+3. `~/backlog/user` (per‑user)  
 4. Built‑ins  
 
 Key options:

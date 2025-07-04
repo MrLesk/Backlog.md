@@ -79,8 +79,8 @@ export class GitOperations {
 		await this.commitTaskChange(taskId, actionMessages[action]);
 	}
 
-	async stageBacklogDirectory(): Promise<void> {
-		await this.execGit(["add", ".backlog/"]);
+	async stageBacklogDirectory(backlogDir = "backlog"): Promise<void> {
+		await this.execGit(["add", `${backlogDir}/`]);
 	}
 
 	async commitBacklogChanges(message: string): Promise<void> {

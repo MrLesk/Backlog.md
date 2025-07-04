@@ -21,13 +21,13 @@ class MockGitOps implements Partial<GitOps> {
 
 	async listFilesInTree(ref: string, _path: string): Promise<string[]> {
 		if (ref === "origin/main") {
-			return [".backlog/tasks/task-1 - Main Task.md"];
+			return ["backlog/tasks/task-1 - Main Task.md"];
 		}
 		if (ref === "origin/feature") {
-			return [".backlog/tasks/task-2 - Feature Task.md"];
+			return ["backlog/tasks/task-2 - Feature Task.md"];
 		}
 		if (ref === "origin/feature2") {
-			return [".backlog/tasks/task-3 - Feature2 Task.md"];
+			return ["backlog/tasks/task-3 - Feature2 Task.md"];
 		}
 		return [];
 	}

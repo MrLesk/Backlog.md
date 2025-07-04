@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
@@ -19,6 +19,11 @@ export class Core {
 	constructor(projectRoot: string) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot);
+	}
+
+	private async getBacklogDirectoryName(): Promise<string> {
+		const config = await this.fs.loadConfig();
+		return config?.backlogDirectory || "backlog";
 	}
 
 	// File system operations
@@ -104,7 +109,9 @@ export class Core {
 		const success = await this.fs.archiveTask(taskId);
 
 		if (success && autoCommit) {
-			await this.git.commitBacklogChanges(`Archive task ${taskId}`);
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Archive task ${taskId}`);
 		}
 
 		return success;
@@ -114,7 +121,9 @@ export class Core {
 		const success = await this.fs.archiveDraft(taskId);
 
 		if (success && autoCommit) {
-			await this.git.commitBacklogChanges(`Archive draft ${taskId}`);
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Archive draft ${taskId}`);
 		}
 
 		return success;
@@ -124,7 +133,9 @@ export class Core {
 		const success = await this.fs.promoteDraft(taskId);
 
 		if (success && autoCommit) {
-			await this.git.commitBacklogChanges(`Promote draft ${taskId}`);
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Promote draft ${taskId}`);
 		}
 
 		return success;
@@ -134,7 +145,9 @@ export class Core {
 		const success = await this.fs.demoteTask(taskId);
 
 		if (success && autoCommit) {
-			await this.git.commitBacklogChanges(`Demote task ${taskId}`);
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Demote task ${taskId}`);
 		}
 
 		return success;
@@ -144,7 +157,9 @@ export class Core {
 		await this.fs.saveDecisionLog(decision);
 
 		if (autoCommit) {
-			await this.git.commitBacklogChanges(`Add decision ${decision.id}`);
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Add decision ${decision.id}`);
 		}
 	}
 
@@ -152,7 +167,9 @@ export class Core {
 		await this.fs.saveDocument(doc, subPath);
 
 		if (autoCommit) {
-			await this.git.commitBacklogChanges(`Add document ${doc.id}`);
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Add document ${doc.id}`);
 		}
 	}
 
@@ -167,10 +184,13 @@ export class Core {
 			defaultStatus: DEFAULT_STATUSES[0], // Use first status as default
 			dateFormat: "yyyy-mm-dd",
 			maxColumnWidth: 20, // Default for terminal display
+			backlogDirectory: DEFAULT_DIRECTORIES.BACKLOG, // Use new default
 		};
 
 		await this.fs.saveConfig(config);
-		await this.git.commitBacklogChanges(`Initialize backlog project: ${projectName}`);
+		const backlogDir = await this.getBacklogDirectoryName();
+		await this.git.stageBacklogDirectory(backlogDir);
+		await this.git.commitChanges(`backlog: Initialize backlog project: ${projectName}`);
 	}
 
 	async listTasksWithMetadata(): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {

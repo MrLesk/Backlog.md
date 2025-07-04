@@ -40,11 +40,15 @@ export async function getLatestTaskStatesForIds(
 
 		onProgress?.(`Checking ${taskIds.length} tasks across ${branches.length} branches...`);
 
+		// Get configurable backlog directory
+		const config = await fs.loadConfig();
+		const backlogDir = config?.backlogDirectory || "backlog";
+
 		// Create all file path combinations we need to check
 		const directoryChecks: Array<{ path: string; type: TaskDirectoryType }> = [
-			{ path: ".backlog/tasks", type: "task" },
-			{ path: ".backlog/drafts", type: "draft" },
-			{ path: ".backlog/archive/tasks", type: "archived" },
+			{ path: `${backlogDir}/tasks`, type: "task" },
+			{ path: `${backlogDir}/drafts`, type: "draft" },
+			{ path: `${backlogDir}/archive/tasks`, type: "archived" },
 		];
 
 		// Flatten all checks into a single array for maximum parallelization
@@ -143,7 +147,7 @@ export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<s
 			return true;
 		}
 
-		// Only show tasks whose latest directory type is "task" (in .backlog/tasks/)
+		// Only show tasks whose latest directory type is "task" (in {backlogDir}/tasks/)
 		return latestDirectory.type === "task";
 	});
 }

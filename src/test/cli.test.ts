@@ -39,7 +39,7 @@ describe("CLI Integration", () => {
 			await core.initializeProject("CLI Test Project");
 
 			// Verify directory structure was created
-			const configExists = await Bun.file(join(TEST_DIR, ".backlog", "config.yml")).exists();
+			const configExists = await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists();
 			expect(configExists).toBe(true);
 
 			// Verify config content
@@ -64,14 +64,14 @@ describe("CLI Integration", () => {
 
 			// Check all expected directories exist
 			const expectedDirs = [
-				".backlog",
-				".backlog/tasks",
-				".backlog/drafts",
-				".backlog/archive",
-				".backlog/archive/tasks",
-				".backlog/archive/drafts",
-				".backlog/docs",
-				".backlog/decisions",
+				"backlog",
+				"backlog/tasks",
+				"backlog/drafts",
+				"backlog/archive",
+				"backlog/archive/tasks",
+				"backlog/archive/drafts",
+				"backlog/docs",
+				"backlog/decisions",
 			];
 
 			for (const dir of expectedDirs) {
@@ -891,7 +891,7 @@ describe("CLI Integration", () => {
 
 			// Verify task exists in archive
 			const { readdir } = await import("node:fs/promises");
-			const archiveFiles = await readdir(join(TEST_DIR, ".backlog", "archive", "tasks"));
+			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "tasks"));
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
@@ -994,7 +994,7 @@ describe("CLI Integration", () => {
 
 			// Verify draft exists in archive
 			const { readdir } = await import("node:fs/promises");
-			const archiveFiles = await readdir(join(TEST_DIR, ".backlog", "archive", "drafts"));
+			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "drafts"));
 			expect(archiveFiles.some((f) => f.startsWith("task-4"))).toBe(true);
 		});
 
@@ -1332,7 +1332,7 @@ describe("CLI Integration", () => {
 
 			for (const branch of branches) {
 				const ref = `origin/${branch}`;
-				const files = await core.gitOps.listFilesInTree(ref, ".backlog/tasks");
+				const files = await core.gitOps.listFilesInTree(ref, "backlog/tasks");
 				for (const file of files) {
 					const content = await core.gitOps.showFile(ref, file);
 					const remoteTask = parseTask(content);

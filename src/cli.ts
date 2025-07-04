@@ -139,10 +139,12 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	try {
 		await core.gitOps.fetch();
 		const branches = await core.gitOps.listAllBranches();
+		const config = await core.filesystem.loadConfig();
+		const backlogDir = config?.backlogDirectory || "backlog";
 
 		// Load files from all branches in parallel
 		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, ".backlog/tasks");
+			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/tasks`);
 			return files
 				.map((file) => {
 					const match = file.match(/task-([\d.]+)/);
