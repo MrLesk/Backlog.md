@@ -2,6 +2,7 @@
  * Helper functions for loading remote tasks in parallel
  */
 
+import type { FileSystem } from "../file-system/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
 import type { GitOps } from "./git-ops.ts";
@@ -31,6 +32,7 @@ type RemoteTaskResult = RemoteTaskLoadResult | RemoteTaskLoadError;
  */
 export async function loadRemoteTasks(
 	gitOps: GitOps,
+	fs: FileSystem,
 	onProgress?: (message: string) => void,
 ): Promise<TaskWithMetadata[]> {
 	const tasks: TaskWithMetadata[] = [];

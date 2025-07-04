@@ -788,7 +788,10 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 		try {
 			// Load local and remote tasks in parallel
 			loadingScreen?.update("Loading tasks from local and remote branches...");
-			const [localTasks, remoteTasks] = await Promise.all([core.listTasksWithMetadata(), loadRemoteTasks(core.gitOps)]);
+			const [localTasks, remoteTasks] = await Promise.all([
+				core.listTasksWithMetadata(),
+				loadRemoteTasks(core.gitOps, core.filesystem),
+			]);
 
 			// Create map with local tasks
 			const tasksById = new Map<string, TaskWithMetadata>(
@@ -868,7 +871,7 @@ boardCmd
 
 			// Load remote tasks in parallel
 			loadingScreen?.update("Loading remote tasks...");
-			const remoteTasks = await loadRemoteTasks(core.gitOps, (msg) => loadingScreen?.update(msg));
+			const remoteTasks = await loadRemoteTasks(core.gitOps, core.filesystem, (msg) => loadingScreen?.update(msg));
 
 			// Merge remote tasks with local tasks
 			loadingScreen?.update("Merging tasks...");

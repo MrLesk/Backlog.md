@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { GitOps } from "../core/git-ops.ts";
 import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
+import type { FileSystem } from "../file-system/operations.ts";
 
 // Mock GitOps for testing
 class MockGitOps implements Partial<GitOps> {
@@ -80,7 +81,8 @@ describe("Parallel remote task loading", () => {
 
 		// Track progress messages
 		const progressMessages: string[] = [];
-		const remoteTasks = await loadRemoteTasks(mockGitOps, (msg) => {
+		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as FileSystem;
+		const remoteTasks = await loadRemoteTasks(mockGitOps, mockFileSystem, (msg) => {
 			progressMessages.push(msg);
 		});
 
@@ -116,7 +118,8 @@ describe("Parallel remote task loading", () => {
 		} as unknown as GitOps;
 
 		// Should return empty array on error
-		const remoteTasks = await loadRemoteTasks(errorGitOps);
+		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as FileSystem;
+		const remoteTasks = await loadRemoteTasks(errorGitOps, mockFileSystem);
 		expect(remoteTasks).toEqual([]);
 
 		// Restore console.error
