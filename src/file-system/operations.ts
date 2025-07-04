@@ -33,19 +33,27 @@ export class FileSystem {
 
 	private async loadConfigDirect(): Promise<BacklogConfig | null> {
 		try {
+			console.log("DEBUG: loadConfigDirect - starting");
 			const configPath = join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.CONFIG);
+			console.log("DEBUG: loadConfigDirect - config path:", configPath);
+			console.log("DEBUG: loadConfigDirect - about to read file");
 			const content = await Bun.file(configPath).text();
+			console.log("DEBUG: loadConfigDirect - file read, content length:", content.length);
 			const config = this.parseConfig(content);
+			console.log("DEBUG: loadConfigDirect - config parsed");
 
 			// If config exists but has no backlogDirectory field, this is a legacy config
 			// Set it to .backlog for backward compatibility and save it
 			if (config && config.backlogDirectory === undefined) {
+				console.log("DEBUG: loadConfigDirect - updating legacy config");
 				config.backlogDirectory = ".backlog";
 				await this.saveConfig(config);
 			}
 
+			console.log("DEBUG: loadConfigDirect - returning config");
 			return config;
-		} catch (_error) {
+		} catch (error) {
+			console.log("DEBUG: loadConfigDirect - caught error:", error);
 			return null;
 		}
 	}
