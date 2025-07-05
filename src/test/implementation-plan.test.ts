@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { createTaskPlatformAware } from "./test-helpers.ts";
 
 const TEST_DIR = join(process.cwd(), "test-plan");
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -82,31 +83,23 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should create task with acceptance criteria and implementation plan", async () => {
-			const result = Bun.spawnSync(
-				[
-					"bun",
-					CLI_PATH,
-					"task",
-					"create",
-					"Test Task",
-					"--ac",
-					"Must work correctly, Must be tested",
-					"--plan",
-					"Phase 1: Setup\nPhase 2: Testing",
-				],
+			const result = await createTaskPlatformAware(
 				{
-					cwd: TEST_DIR,
+					title: "Test Task",
+					ac: "Must work correctly, Must be tested",
+					plan: "Phase 1: Setup\nPhase 2: Testing",
 				},
+				TEST_DIR,
 			);
 
 			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("CLI Error:", result.stderr || result.stdout);
 				console.error("Exit code:", result.exitCode);
 			}
 			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			const task = await core.filesystem.loadTask(result.taskId || "task-1");
 			expect(task).not.toBeNull();
 			expect(task?.description).toContain("## Acceptance Criteria");
 			expect(task?.description).toContain("- [ ] Must work correctly");
