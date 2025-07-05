@@ -545,8 +545,8 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const resultShortcut = Bun.spawnSync(["bun", CLI_PATH, "task", "1"], { cwd: TEST_DIR });
-			const resultView = Bun.spawnSync(["bun", CLI_PATH, "task", "view", "1"], { cwd: TEST_DIR });
+			const resultShortcut = Bun.spawnSync(["bun", CLI_PATH, "task", "1", "--plain"], { cwd: TEST_DIR });
+			const resultView = Bun.spawnSync(["bun", CLI_PATH, "task", "view", "1", "--plain"], { cwd: TEST_DIR });
 
 			const outShortcut = resultShortcut.stdout.toString();
 			const outView = resultView.stdout.toString();
