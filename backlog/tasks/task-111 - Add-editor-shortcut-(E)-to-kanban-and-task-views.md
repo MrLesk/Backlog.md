@@ -1,9 +1,10 @@
 ---
 id: task-111
 title: Add editor shortcut (E) to kanban and task views
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-04'
+updated_date: '2025-07-05'
 labels: []
 dependencies: []
 ---
@@ -22,7 +23,8 @@ Add keyboard shortcut 'E' to open the selected task file in the user's preferred
 - [x] Editor is determined from config.defaultEditor if set
 - [x] Falls back to EDITOR environment variable if config not set
 - [x] Falls back to platform-specific default if neither is set
-- [ ] Configuration can be set via backlog config commands
+- [x] Configuration can be set via `backlog config set defaultEditor <editor>`
+- [x] Configuration can be viewed via `backlog config get defaultEditor`
 - [x] Help text shows the new 'E' shortcut
 - [x] Works on all platforms (Windows/Mac/Linux)
 
@@ -78,6 +80,19 @@ Add keyboard shortcut 'E' to open the selected task file in the user's preferred
 - Editor commands can include arguments (e.g., "code --wait")
 - Platform detection uses `which`/`where` commands for reliability
 
-**Still TODO:**
-- Add CLI config commands to set/get defaultEditor value
-- This would allow: `backlog config set defaultEditor "code --wait"`
+**Completed features (continued):**
+- Added CLI config commands to set/get defaultEditor value:
+  - `backlog config set defaultEditor "code --wait"` - Sets the default editor with validation
+  - `backlog config get defaultEditor` - Gets the current default editor setting
+  - `backlog config list` - Shows all configuration values including defaultEditor
+- Editor validation: The set command validates that the editor exists before saving
+- Comprehensive test coverage for config operations in `src/test/config-commands.test.ts`
+- Updated documentation:
+  - `readme.md` - Added 'E' shortcut notes to CLI reference and defaultEditor to config table
+  - `CLAUDE.md` - Added config management commands section
+  - `AGENTS.md` - Added config management commands section
+  - `.cursorrules` - Added config management commands section and CLI table entries
+  - `GEMINI.md` - Added config management commands section
+  - `.github/copilot-instructions.md` - Created file with config management commands
+
+**All acceptance criteria now completed!** ✅

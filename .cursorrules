@@ -21,6 +21,12 @@
 - `bun test` - Run all tests
 - `bun test <filename>` - Run specific test file
 
+### Configuration Management
+
+- `bun run cli config list` - View all configuration values
+- `bun run cli config get <key>` - Get a specific config value (e.g. defaultEditor)
+- `bun run cli config set <key> <value>` - Set a config value with validation
+
 ## Core Structure
 
 - **CLI Tool**: Built with Bun and TypeScript as a global npm package (`@backlog.md`)
@@ -218,6 +224,8 @@ A task is **Done** only when **ALL** of the following are complete:
 | Archive          | `backlog task archive 7`                                               |
 | Draft flow       | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1`   |
 | Demote to draft  | `backlog task demote <task-id>`                                        |
+| Config editor    | `backlog config set defaultEditor "code --wait"`                       |
+| View config      | `backlog config list`                                                  |
 
 ## 10. Tips for AI Agents
 

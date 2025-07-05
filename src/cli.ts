@@ -1070,4 +1070,170 @@ agentsCmd
 		}
 	});
 
+// Config command group
+const configCmd = program.command("config");
+
+configCmd
+	.command("get <key>")
+	.description("get a configuration value")
+	.action(async (key: string) => {
+		try {
+			const cwd = process.cwd();
+			const core = new Core(cwd);
+			const config = await core.filesystem.loadConfig();
+
+			if (!config) {
+				console.error("No backlog project found. Initialize one first with: backlog init");
+				process.exit(1);
+			}
+
+			// Handle specific config keys
+			switch (key) {
+				case "defaultEditor":
+					if (config.defaultEditor) {
+						console.log(config.defaultEditor);
+					} else {
+						console.log("defaultEditor is not set");
+						process.exit(1);
+					}
+					break;
+				case "projectName":
+					console.log(config.projectName);
+					break;
+				case "defaultStatus":
+					console.log(config.defaultStatus || "");
+					break;
+				case "statuses":
+					console.log(config.statuses.join(", "));
+					break;
+				case "labels":
+					console.log(config.labels.join(", "));
+					break;
+				case "milestones":
+					console.log(config.milestones.join(", "));
+					break;
+				case "dateFormat":
+					console.log(config.dateFormat);
+					break;
+				case "maxColumnWidth":
+					console.log(config.maxColumnWidth?.toString() || "");
+					break;
+				case "backlogDirectory":
+					console.log(config.backlogDirectory || "");
+					break;
+				default:
+					console.error(`Unknown config key: ${key}`);
+					console.error(
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory",
+					);
+					process.exit(1);
+			}
+		} catch (err) {
+			console.error("Failed to get config value", err);
+			process.exitCode = 1;
+		}
+	});
+
+configCmd
+	.command("set <key> <value>")
+	.description("set a configuration value")
+	.action(async (key: string, value: string) => {
+		try {
+			const cwd = process.cwd();
+			const core = new Core(cwd);
+			const config = await core.filesystem.loadConfig();
+
+			if (!config) {
+				console.error("No backlog project found. Initialize one first with: backlog init");
+				process.exit(1);
+			}
+
+			// Handle specific config keys
+			switch (key) {
+				case "defaultEditor": {
+					// Validate that the editor command exists
+					const { isEditorAvailable } = await import("./utils/editor.ts");
+					const isAvailable = await isEditorAvailable(value);
+					if (!isAvailable) {
+						console.error(`Editor command not found: ${value}`);
+						console.error("Please ensure the editor is installed and available in your PATH");
+						process.exit(1);
+					}
+					config.defaultEditor = value;
+					break;
+				}
+				case "projectName":
+					config.projectName = value;
+					break;
+				case "defaultStatus":
+					config.defaultStatus = value;
+					break;
+				case "dateFormat":
+					config.dateFormat = value;
+					break;
+				case "maxColumnWidth": {
+					const width = Number.parseInt(value, 10);
+					if (Number.isNaN(width) || width <= 0) {
+						console.error("maxColumnWidth must be a positive number");
+						process.exit(1);
+					}
+					config.maxColumnWidth = width;
+					break;
+				}
+				case "backlogDirectory":
+					config.backlogDirectory = value;
+					break;
+				case "statuses":
+				case "labels":
+				case "milestones":
+					console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
+					console.error("Array values should be edited in the config file directly.");
+					process.exit(1);
+					break;
+				default:
+					console.error(`Unknown config key: ${key}`);
+					console.error(
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory",
+					);
+					process.exit(1);
+			}
+
+			await core.filesystem.saveConfig(config);
+			console.log(`Set ${key} = ${value}`);
+		} catch (err) {
+			console.error("Failed to set config value", err);
+			process.exitCode = 1;
+		}
+	});
+
+configCmd
+	.command("list")
+	.description("list all configuration values")
+	.action(async () => {
+		try {
+			const cwd = process.cwd();
+			const core = new Core(cwd);
+			const config = await core.filesystem.loadConfig();
+
+			if (!config) {
+				console.error("No backlog project found. Initialize one first with: backlog init");
+				process.exit(1);
+			}
+
+			console.log("Configuration:");
+			console.log(`  projectName: ${config.projectName}`);
+			console.log(`  defaultEditor: ${config.defaultEditor || "(not set)"}`);
+			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
+			console.log(`  statuses: [${config.statuses.join(", ")}]`);
+			console.log(`  labels: [${config.labels.join(", ")}]`);
+			console.log(`  milestones: [${config.milestones.join(", ")}]`);
+			console.log(`  dateFormat: ${config.dateFormat}`);
+			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
+			console.log(`  backlogDirectory: ${config.backlogDirectory || "(not set)"}`);
+		} catch (err) {
+			console.error("Failed to list config values", err);
+			process.exitCode = 1;
+		}
+	});
+
 program.parseAsync(process.argv);

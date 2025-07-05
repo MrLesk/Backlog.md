@@ -58,7 +58,7 @@ All data is saved under `backlog` folder as human‑readable Markdown with the f
 | Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`|
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>]`     |
-| View detail | `backlog task 7`                                     |
+| View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |
 | View (AI mode) | `backlog task 7 --plain`                           |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
@@ -67,7 +67,9 @@ All data is saved under `backlog` folder as human‑readable Markdown with the f
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
-| Kanban board      | `backlog board`            |
+| Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
+| Config editor | `backlog config set defaultEditor "code --wait"` |
+| View config | `backlog config list` |
 
 Full help: `backlog --help`
 
@@ -90,6 +92,7 @@ Key options:
 | `default_status`  | First column       | `To Do`                       |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
 | `date_format`     | ISO or locale      | `yyyy-mm-dd`                  |
+| `default_editor`  | Editor for 'E' key | Platform default (nano/notepad) |
 
 ---
 

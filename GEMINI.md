@@ -21,6 +21,12 @@
 - `bun test` - Run all tests
 - `bun test <filename>` - Run specific test file
 
+### Configuration Management
+
+- `bun run cli config list` - View all configuration values
+- `bun run cli config get <key>` - Get a specific config value (e.g. defaultEditor)
+- `bun run cli config set <key> <value>` - Set a config value with validation
+
 ## Core Structure
 
 - **CLI Tool**: Built with Bun and TypeScript as a global npm package (`@backlog.md`)
