@@ -11,6 +11,11 @@ describe("Config commands", () => {
 		await rm(testDir, { recursive: true, force: true }).catch(() => {});
 		await mkdir(testDir, { recursive: true });
 
+		// Configure git for tests - required for CI
+		await Bun.spawn(["git", "init"], { cwd: testDir }).exited;
+		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
+		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
+
 		core = new Core(testDir);
 		await core.initializeProject("Test Config Project");
 	});
