@@ -4,6 +4,8 @@ import { stdout as output } from "node:process";
 import blessed from "blessed";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { openInEditor } from "../utils/editor.ts";
+import { getTaskPath } from "../utils/task-path.ts";
 import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
 import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
 import { createGenericList } from "./components/generic-list.ts";
@@ -177,12 +179,8 @@ export async function viewTaskEnhanced(
 			// Load the content for the selected task asynchronously
 			(async () => {
 				try {
-					const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-					const normalizedId = selectedTask.id.startsWith("task-") ? selectedTask.id : `task-${selectedTask.id}`;
-					const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
-
-					if (taskFile) {
-						const filePath = `${core.filesystem.tasksDir}/${taskFile}`;
+					const filePath = await getTaskPath(selectedTask.id, core);
+					if (filePath) {
 						currentSelectedContent = await Bun.file(filePath).text();
 					} else {
 						currentSelectedContent = "";
@@ -412,8 +410,8 @@ export async function viewTaskEnhanced(
 			width: "100%",
 			height: 1,
 			content: options.filterDescription
-				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ← task list · → detail · Tab toggle · q/Esc quit `
-				: " ↑/↓ navigate · ← task list · → detail · Tab toggle · q/Esc quit ",
+				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ← task list · → detail · Tab toggle · E edit · q/Esc quit `
+				: " ↑/↓ navigate · ← task list · → detail · Tab toggle · E edit · q/Esc quit ",
 			style: {
 				fg: "gray",
 				bg: "black",
@@ -471,6 +469,20 @@ export async function viewTaskEnhanced(
 
 		screen.key(["right", "l"], () => {
 			updateFocus(1); // Always go to detail pane
+		});
+
+		// Edit in external editor
+		screen.key(["e", "E"], async () => {
+			if (!currentSelectedTask) return;
+			try {
+				const config = await core.filesystem.loadConfig();
+				const filePath = await getTaskPath(currentSelectedTask.id, core);
+				if (filePath) {
+					openInEditor(filePath, config);
+				}
+			} catch (_error) {
+				// Silently handle errors
+			}
 		});
 
 		// Exit keys

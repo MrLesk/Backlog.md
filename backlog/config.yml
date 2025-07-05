@@ -6,3 +6,4 @@ milestones: []
 date_format: yyyy-mm-dd
 max_column_width: 20
 backlog_directory: "backlog"
+default_editor: "rider"

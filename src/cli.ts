@@ -21,6 +21,7 @@ import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
+import { getTaskPath } from "./utils/task-path.ts";
 import { getVersion } from "./utils/version.ts";
 
 // Windows color fix
@@ -455,12 +456,9 @@ taskCmd
 				return;
 			}
 
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-			const taskFile = files.find((f) => f.startsWith(`${firstTask.id} -`));
-
 			let initialContent = "";
-			if (taskFile) {
-				const filePath = join(core.filesystem.tasksDir, taskFile);
+			const filePath = await getTaskPath(firstTask.id, core);
+			if (filePath) {
 				initialContent = await Bun.file(filePath).text();
 			}
 
@@ -626,16 +624,12 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-		const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+		const filePath = await getTaskPath(taskId, core);
 
-		if (!taskFile) {
+		if (!filePath) {
 			console.error(`Task ${taskId} not found.`);
 			return;
 		}
-
-		const filePath = join(core.filesystem.tasksDir, taskFile);
 		const content = await Bun.file(filePath).text();
 		const task = await core.filesystem.loadTask(taskId);
 
@@ -693,16 +687,12 @@ taskCmd
 
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-		const normalizedId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+		const filePath = await getTaskPath(taskId, core);
 
-		if (!taskFile) {
+		if (!filePath) {
 			console.error(`Task ${taskId} not found.`);
 			return;
 		}
-
-		const filePath = join(core.filesystem.tasksDir, taskFile);
 		const content = await Bun.file(filePath).text();
 		const task = await core.filesystem.loadTask(taskId);
 

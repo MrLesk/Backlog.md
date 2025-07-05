@@ -1,8 +1,9 @@
-import { join } from "node:path";
 import blessed from "blessed";
 import { type BoardLayout, generateKanbanBoard } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { openInEditor } from "../utils/editor.ts";
+import { getTaskPath } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createTaskPopup } from "./task-viewer.ts";
@@ -160,10 +161,9 @@ export async function renderBoardTui(
 			let content = "";
 			try {
 				const core = new Core(process.cwd());
-				const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.tasksDir }));
-				const md = files.find((f) => f.startsWith(`${task.id} -`));
-				if (md) {
-					content = await Bun.file(join(core.filesystem.tasksDir, md)).text();
+				const filePath = await getTaskPath(task.id, core);
+				if (filePath) {
+					content = await Bun.file(filePath).text();
 				}
 			} catch {
 				/* fallback to empty content */
@@ -185,13 +185,32 @@ export async function renderBoardTui(
 			screen.render();
 		});
 
+		screen.key(["e", "E"], async () => {
+			if (popupOpen) return;
+			const { list, tasks } = columns[currentCol];
+			const idx = list.selected ?? 0;
+			if (idx < 0 || idx >= tasks.length) return;
+
+			const task = tasks[idx];
+			try {
+				const core = new Core(process.cwd());
+				const config = await core.filesystem.loadConfig();
+				const filePath = await getTaskPath(task.id, core);
+				if (filePath) {
+					openInEditor(filePath, config);
+				}
+			} catch (_error) {
+				// Silently handle errors - user will see editor didn't open
+			}
+		});
+
 		blessed.box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
 			height: 1,
 			width: "100%",
-			content: " ←/→ columns · ↑/↓ tasks · Enter view · q/Esc quit ",
+			content: " ←/→ columns · ↑/↓ tasks · Enter view · E edit · q/Esc quit ",
 			style: { fg: "gray", bg: "black" },
 		});
 

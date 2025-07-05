@@ -1,8 +1,8 @@
-import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import { getTaskPath } from "../utils/task-path.ts";
 
 function ensureDescriptionHeader(description: string): string {
 	const trimmed = description.trim();
@@ -94,12 +94,8 @@ export class Core {
 		await this.fs.saveTask(task);
 
 		if (autoCommit) {
-			const tasksDir = this.fs.tasksDir;
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
-			const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
-
-			if (taskFile) {
-				const filePath = join(tasksDir, taskFile);
+			const filePath = await getTaskPath(task.id, this);
+			if (filePath) {
 				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
 			}
 		}
@@ -197,11 +193,9 @@ export class Core {
 		const tasks = await this.fs.listTasks();
 		const tasksWithMeta = await Promise.all(
 			tasks.map(async (task) => {
-				const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: this.fs.tasksDir }));
-				const taskFile = files.find((file) => file.startsWith(`task-${task.id} -`));
+				const filePath = await getTaskPath(task.id, this);
 
-				if (taskFile) {
-					const filePath = join(this.fs.tasksDir, taskFile);
+				if (filePath) {
 					const bunFile = Bun.file(filePath);
 					const stats = await bunFile.stat();
 					const branch = await this.git.getFileLastModifiedBranch(filePath);

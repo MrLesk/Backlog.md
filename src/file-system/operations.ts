@@ -5,7 +5,15 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constan
 import { parseDecisionLog, parseDocument, parseTask } from "../markdown/parser.ts";
 import { serializeDecisionLog, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
+
+// Interface for task path resolution context
+interface TaskPathContext {
+	filesystem: {
+		tasksDir: string;
+	};
+}
 
 export class FileSystem {
 	private backlogDir: string;
@@ -135,12 +143,9 @@ export class FileSystem {
 
 		// Delete any existing task files with the same ID but different filenames
 		try {
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
-			const normalizedTaskId = taskId;
-			const existingFiles = files.filter((file) => file.startsWith(`${normalizedTaskId} -`) && file !== filename);
-
-			for (const existingFile of existingFiles) {
-				const existingPath = join(tasksDir, existingFile);
+			const core = { filesystem: { tasksDir } };
+			const existingPath = await getTaskPath(taskId, core as TaskPathContext);
+			if (existingPath && !existingPath.endsWith(filename)) {
 				await unlink(existingPath);
 			}
 		} catch {
@@ -155,13 +160,11 @@ export class FileSystem {
 	async loadTask(taskId: string): Promise<Task | null> {
 		try {
 			const tasksDir = await this.getTasksDir();
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = files.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const core = { filesystem: { tasksDir } };
+			const filepath = await getTaskPath(taskId, core as TaskPathContext);
 
-			if (!taskFile) return null;
+			if (!filepath) return null;
 
-			const filepath = join(tasksDir, taskFile);
 			const content = await Bun.file(filepath).text();
 			return parseTask(content);
 		} catch (_error) {
@@ -191,13 +194,12 @@ export class FileSystem {
 		try {
 			const tasksDir = await this.getTasksDir();
 			const archiveTasksDir = await this.getArchiveTasksDir();
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const core = { filesystem: { tasksDir } };
+			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
+			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
-			if (!taskFile) return false;
+			if (!sourcePath || !taskFile) return false;
 
-			const sourcePath = join(tasksDir, taskFile);
 			const targetPath = join(archiveTasksDir, taskFile);
 
 			// Read source file
@@ -220,13 +222,12 @@ export class FileSystem {
 		try {
 			const draftsDir = await this.getDraftsDir();
 			const archiveDraftsDir = await this.getArchiveDraftsDir();
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const core = { filesystem: { tasksDir: draftsDir } };
+			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
+			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
-			if (!taskFile) return false;
+			if (!sourcePath || !taskFile) return false;
 
-			const sourcePath = join(draftsDir, taskFile);
 			const targetPath = join(archiveDraftsDir, taskFile);
 
 			const content = await Bun.file(sourcePath).text();
@@ -245,13 +246,12 @@ export class FileSystem {
 		try {
 			const draftsDir = await this.getDraftsDir();
 			const tasksDir = await this.getTasksDir();
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const core = { filesystem: { tasksDir: draftsDir } };
+			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
+			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
-			if (!taskFile) return false;
+			if (!sourcePath || !taskFile) return false;
 
-			const sourcePath = join(draftsDir, taskFile);
 			const targetPath = join(tasksDir, taskFile);
 
 			const content = await Bun.file(sourcePath).text();
@@ -270,13 +270,12 @@ export class FileSystem {
 		try {
 			const tasksDir = await this.getTasksDir();
 			const draftsDir = await this.getDraftsDir();
-			const sourceFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = sourceFiles.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const core = { filesystem: { tasksDir } };
+			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
+			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
-			if (!taskFile) return false;
+			if (!sourcePath || !taskFile) return false;
 
-			const sourcePath = join(tasksDir, taskFile);
 			const targetPath = join(draftsDir, taskFile);
 
 			const content = await Bun.file(sourcePath).text();
@@ -300,11 +299,9 @@ export class FileSystem {
 		const content = serializeTask(task);
 
 		try {
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
-			const existingFiles = files.filter((file) => file.startsWith(`${taskId} -`) && file !== filename);
-
-			for (const existingFile of existingFiles) {
-				const existingPath = join(draftsDir, existingFile);
+			const core = { filesystem: { tasksDir: draftsDir } };
+			const existingPath = await getTaskPath(taskId, core as TaskPathContext);
+			if (existingPath && !existingPath.endsWith(filename)) {
 				await unlink(existingPath);
 			}
 		} catch {
@@ -319,13 +316,11 @@ export class FileSystem {
 	async loadDraft(taskId: string): Promise<Task | null> {
 		try {
 			const draftsDir = await this.getDraftsDir();
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
-			const normalizedTaskId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-			const taskFile = files.find((file) => file.startsWith(`${normalizedTaskId} -`));
+			const core = { filesystem: { tasksDir: draftsDir } };
+			const filepath = await getTaskPath(taskId, core as TaskPathContext);
 
-			if (!taskFile) return null;
+			if (!filepath) return null;
 
-			const filepath = join(draftsDir, taskFile);
 			const content = await Bun.file(filepath).text();
 			return parseTask(content);
 		} catch {
@@ -560,6 +555,9 @@ export class FileSystem {
 				case "backlog_directory":
 					config.backlogDirectory = value.replace(/["']/g, "");
 					break;
+				case "default_editor":
+					config.defaultEditor = value.replace(/["']/g, "");
+					break;
 			}
 		}
 
@@ -574,6 +572,7 @@ export class FileSystem {
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
 			maxColumnWidth: config.maxColumnWidth,
 			backlogDirectory: config.backlogDirectory,
+			defaultEditor: config.defaultEditor,
 		};
 	}
 
@@ -589,6 +588,7 @@ export class FileSystem {
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

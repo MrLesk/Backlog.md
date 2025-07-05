@@ -50,6 +50,7 @@ export interface BacklogConfig {
 	maxColumnWidth?: number;
 	taskResolutionStrategy?: "most_recent" | "most_progressed";
 	backlogDirectory?: string;
+	defaultEditor?: string;
 }
 
 export interface ParsedMarkdown {
