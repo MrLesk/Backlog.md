@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
-import { runUnifiedView } from "../ui/unified-view.ts";
 
 describe("Tab switching functionality", () => {
 	const testDir = join(process.cwd(), "test-tab-switching");

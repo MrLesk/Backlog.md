@@ -28,51 +28,59 @@ describe("Config commands", () => {
 		// Load initial config
 		const config = await core.filesystem.loadConfig();
 		expect(config).toBeTruthy();
-		expect(config!.defaultEditor).toBeUndefined();
+		expect(config?.defaultEditor).toBeUndefined();
 
 		// Set defaultEditor
-		config!.defaultEditor = "nano";
-		await core.filesystem.saveConfig(config!);
+		if (config) {
+			config.defaultEditor = "nano";
+			await core.filesystem.saveConfig(config);
+		}
 
 		// Reload config and verify it was saved
 		const reloadedConfig = await core.filesystem.loadConfig();
 		expect(reloadedConfig).toBeTruthy();
-		expect(reloadedConfig!.defaultEditor).toBe("nano");
+		expect(reloadedConfig?.defaultEditor).toBe("nano");
 	});
 
 	it("should handle config with and without defaultEditor", async () => {
 		// Initially undefined
 		let config = await core.filesystem.loadConfig();
-		expect(config!.defaultEditor).toBeUndefined();
+		expect(config?.defaultEditor).toBeUndefined();
 
 		// Set to a value
-		config!.defaultEditor = "vi";
-		await core.filesystem.saveConfig(config!);
+		if (config) {
+			config.defaultEditor = "vi";
+			await core.filesystem.saveConfig(config);
+		}
 
 		config = await core.filesystem.loadConfig();
-		expect(config!.defaultEditor).toBe("vi");
+		expect(config?.defaultEditor).toBe("vi");
 
 		// Clear the value
-		config!.defaultEditor = undefined;
-		await core.filesystem.saveConfig(config!);
+		if (config) {
+			config.defaultEditor = undefined;
+			await core.filesystem.saveConfig(config);
+		}
 
 		config = await core.filesystem.loadConfig();
-		expect(config!.defaultEditor).toBeUndefined();
+		expect(config?.defaultEditor).toBeUndefined();
 	});
 
 	it("should preserve other config values when setting defaultEditor", async () => {
 		let config = await core.filesystem.loadConfig();
-		const originalProjectName = config!.projectName;
-		const originalStatuses = [...config!.statuses];
+		const originalProjectName = config?.projectName;
+		const originalStatuses = config ? [...config.statuses] : [];
 
 		// Set defaultEditor
-		config!.defaultEditor = "code";
-		await core.filesystem.saveConfig(config!);
+		if (config) {
+			config.defaultEditor = "code";
+			await core.filesystem.saveConfig(config);
+		}
 
 		// Reload and verify other values are preserved
 		config = await core.filesystem.loadConfig();
-		expect(config!.defaultEditor).toBe("code");
-		expect(config!.projectName).toBe(originalProjectName);
-		expect(config!.statuses).toEqual(originalStatuses);
+		expect(config?.defaultEditor).toBe("code");
+		expect(config?.projectName).toBe(originalProjectName);
+		expect(config?.statuses).toEqual(originalStatuses);
 	});
 });

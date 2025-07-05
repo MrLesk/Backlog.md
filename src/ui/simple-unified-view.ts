@@ -8,7 +8,7 @@ import type { Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { renderBoardTui } from "./board.ts";
 import { viewTaskEnhanced } from "./task-viewer.ts";
-import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
+import type { ViewType } from "./view-switcher.ts";
 
 export interface SimpleUnifiedViewOptions {
 	core: Core;

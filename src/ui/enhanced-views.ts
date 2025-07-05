@@ -7,7 +7,6 @@ import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import type { Task } from "../types/index.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
-import { viewTaskEnhanced } from "./task-viewer.ts";
 import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
 
 export interface EnhancedViewOptions {
@@ -34,7 +33,7 @@ export async function runEnhancedViews(options: EnhancedViewOptions): Promise<vo
 		filter: options.filter,
 	};
 
-	const currentView: (() => Promise<void>) | null = null;
+	const _currentView: (() => Promise<void>) | null = null;
 	let viewSwitcher: ViewSwitcher | null = null;
 
 	// Create view switcher with state change handler
@@ -109,7 +108,9 @@ export async function runEnhancedViews(options: EnhancedViewOptions): Promise<vo
 
 			try {
 				// Wait for kanban data to load
-				const { tasks, statuses } = await viewSwitcher!.getKanbanData();
+				const result = await viewSwitcher?.getKanbanData();
+				if (!result) throw new Error("Failed to get kanban data");
+				const { tasks, statuses } = result;
 				loadingScreen?.close();
 
 				// Now show the kanban board
@@ -184,7 +185,7 @@ async function viewTaskEnhancedWithSwitching(
 async function renderBoardTuiWithSwitching(
 	tasks: TaskWithMetadata[],
 	statuses: string[],
-	options: {
+	_options: {
 		viewSwitcher?: ViewSwitcher;
 		onTaskSelect?: (task: Task) => void;
 	},

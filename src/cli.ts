@@ -16,7 +16,6 @@ import {
 	isGitRepository,
 } from "./index.ts";
 import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
-import { renderBoardTui } from "./ui/board.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
@@ -836,8 +835,8 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 		return;
 	}
 
-	const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
-	const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
+	const _layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
+	const _maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
 
 	// Use unified view for Tab switching support
 	const { runUnifiedView } = await import("./ui/unified-view.ts");
