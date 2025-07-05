@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./core/cross-branch-tasks.ts";
-import { loadRemoteTasks, resolveTaskConflict, type TaskWithMetadata } from "./core/remote-tasks.ts";
+import { loadRemoteTasks, resolveTaskConflict } from "./core/remote-tasks.ts";
 import {
 	type AgentInstructionFile,
 	addAgentInstructions,
@@ -447,19 +447,13 @@ taskCmd
 			return;
 		}
 
-		// Interactive UI - use enhanced viewer directly for unified presentation
+		// Interactive UI - use unified view for Tab switching support
 		if (filtered.length > 0) {
-			// Use the first task as the initial selection and load its content
+			// Use the first task as the initial selection
 			const firstTask = filtered[0];
 			if (!firstTask) {
 				console.log("No tasks found.");
 				return;
-			}
-
-			let initialContent = "";
-			const filePath = await getTaskPath(firstTask.id, core);
-			if (filePath) {
-				initialContent = await Bun.file(filePath).text();
 			}
 
 			// Build filter description for the footer and title
@@ -477,12 +471,19 @@ taskCmd
 				title = `Tasks (${options.assignee})`;
 			}
 
-			// Use enhanced viewer with filtered tasks and custom title
-			await viewTaskEnhanced(firstTask, initialContent, {
-				tasks: filtered,
+			// Use unified view with Tab switching support
+			const { runUnifiedView } = await import("./ui/unified-view.ts");
+			await runUnifiedView({
 				core,
-				title,
-				filterDescription,
+				initialView: "task-list",
+				selectedTask: firstTask,
+				tasks: filtered,
+				filter: {
+					status: options.status,
+					assignee: options.assignee,
+					title,
+					filterDescription,
+				},
 			});
 		}
 	});
@@ -707,8 +708,15 @@ taskCmd
 			return;
 		}
 
-		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(task, content, { startWithDetailFocus: true });
+		// Use unified view with detail focus and Tab switching support
+		const allTasks = await core.filesystem.listTasks();
+		const { runUnifiedView } = await import("./ui/unified-view.ts");
+		await runUnifiedView({
+			core,
+			initialView: "task-detail",
+			selectedTask: task,
+			tasks: allTasks,
+		});
 	});
 
 const draftCmd = program.command("draft");
@@ -788,9 +796,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			]);
 
 			// Create map with local tasks
-			const tasksById = new Map<string, TaskWithMetadata>(
-				localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
-			);
+			const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
 
 			// Merge remote tasks with local tasks
 			for (const remoteTask of remoteTasks) {
@@ -808,7 +814,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			loadingScreen?.update("Resolving task states across branches...");
 			const tasks = Array.from(tasksById.values());
 			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) => {
+			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, core.filesystem, taskIds, (msg) => {
 				loadingScreen?.update(msg);
 			});
 
@@ -832,8 +838,19 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 	const layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
-	// Always use renderBoardTui which falls back to plain text if blessed is not available
-	await renderBoardTui(allTasks, statuses, layout, maxColumnWidth);
+
+	// Use unified view for Tab switching support
+	const { runUnifiedView } = await import("./ui/unified-view.ts");
+	await runUnifiedView({
+		core,
+		initialView: "kanban",
+		tasks: allTasks.map((t) => ({ ...t, status: t.status || "" })), // Ensure tasks have status
+		// Pass the already-loaded kanban data to avoid duplicate loading
+		preloadedKanbanData: {
+			tasks: allTasks,
+			statuses,
+		},
+	});
 }
 
 addBoardOptions(boardCmd).description("display tasks in a Kanban board").action(handleBoardView);
@@ -883,7 +900,7 @@ boardCmd
 			loadingScreen?.update("Checking task states across branches...");
 			const tasks = Array.from(tasksById.values());
 			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, taskIds, (msg) =>
+			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, core.filesystem, taskIds, (msg) =>
 				loadingScreen?.update(msg),
 			);
 

@@ -120,12 +120,14 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 		loadingBox.setLabel(` ${SPINNER_CHARS[0]} Loading `);
 	}
 
-	// Handle escape/Ctrl+C to close
-	screen.key(["escape", "C-c"], () => {
+	// Handle escape/Ctrl+C to close AND exit process immediately
+	screen.key(["escape", "C-c", "q"], () => {
 		if (!closed) {
 			closed = true;
 			if (spinnerInterval) clearInterval(spinnerInterval);
 			screen.destroy();
+			// Exit immediately - don't wait for background operations
+			process.exit(0);
 		}
 	});
 

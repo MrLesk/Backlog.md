@@ -181,4 +181,4 @@ A task is **Done** only when **ALL** of the following are complete:
 
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of using Backlog.md
   interactive UI.
-- When users mention to creat a task, they mean to create a task using Backlog.md CLI tool.
+- When users mention to create a task, they mean to create a task using Backlog.md CLI tool.

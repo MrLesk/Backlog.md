@@ -91,6 +91,9 @@ export async function viewTaskEnhanced(
 		title?: string;
 		filterDescription?: string;
 		startWithDetailFocus?: boolean;
+		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
+		onTaskChange?: (task: Task) => void;
+		onTabPress?: () => Promise<void>;
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
@@ -176,6 +179,10 @@ export async function viewTaskEnhanced(
 			const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 			if (!selectedTask) return;
 			currentSelectedTask = selectedTask;
+
+			// Notify view switcher of task change
+			options.onTaskChange?.(selectedTask);
+
 			// Load the content for the selected task asynchronously
 			(async () => {
 				try {
@@ -410,8 +417,8 @@ export async function viewTaskEnhanced(
 			width: "100%",
 			height: 1,
 			content: options.filterDescription
-				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ← task list · → detail · Tab toggle · E edit · q/Esc quit `
-				: " ↑/↓ navigate · ← task list · → detail · Tab toggle · E edit · q/Esc quit ",
+				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `
+				: ` ↑/↓ navigate · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `,
 			style: {
 				fg: "gray",
 				bg: "black",
@@ -453,12 +460,26 @@ export async function viewTaskEnhanced(
 			updateFocus(initialFocus);
 		});
 
-		// Navigation between panes
-		screen.key(["tab"], () => {
-			updateFocus(focusIndex === 0 ? 1 : 0);
+		// Navigation between panes or view switching
+		screen.key(["tab"], async () => {
+			if (options.onTabPress) {
+				// Use custom Tab handler - caller manages view switching
+				screen.destroy();
+				await options.onTabPress();
+				resolve();
+			} else if (options.viewSwitcher) {
+				// Use view switcher to switch to kanban
+				screen.destroy();
+				await options.viewSwitcher.switchView();
+				resolve();
+			} else {
+				// Fall back to old behavior - toggle between panes
+				updateFocus(focusIndex === 0 ? 1 : 0);
+			}
 		});
 
 		screen.key(["S-tab"], () => {
+			// Shift+Tab always toggles between panes (internal navigation)
 			updateFocus(focusIndex === 0 ? 1 : 0);
 		});
 

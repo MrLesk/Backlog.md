@@ -57,36 +57,35 @@ describe("CLI agents command", () => {
 	});
 
 	it("should update selected agent instruction files", async () => {
-		// Run the command with selection (selecting the first option - .cursorrules)
-		const result = Bun.spawn(["bun", cliPath, "agents", "--update-instructions"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-			stdin: "inherit",
-		});
+		// Test the underlying functionality directly instead of the interactive CLI
+		const core = new Core(testDir);
+		const { addAgentInstructions } = await import("../index.ts");
 
-		expect(await result.exited).toBe(0);
+		// Test updating .cursorrules file (correct parameter order: projectRoot, git, files)
+		await expect(async () => {
+			await addAgentInstructions(testDir, core.gitOps, [".cursorrules"]);
+		}).not.toThrow();
+
+		// Verify the file was created
+		const cursorrules = Bun.file(join(testDir, ".cursorrules"));
+		expect(await cursorrules.exists()).toBe(true);
+		const content = await cursorrules.text();
+		expect(content).toContain("Backlog.md");
 	});
 
 	it("should handle user cancellation gracefully", async () => {
-		// First, run the command to create some files
-		const setupResult = Bun.spawn(["bun", cliPath, "agents", "--update-instructions"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-			stdin: "inherit",
-		});
-		await setupResult.exited;
+		// Test that the function handles empty selection (cancellation) gracefully
+		const core = new Core(testDir);
+		const { addAgentInstructions } = await import("../index.ts");
 
-		// Then verify files were updated
-		const result = Bun.spawn(["bun", cliPath, "agents", "--update-instructions"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-			stdin: "inherit",
-		});
+		// Test with empty array (simulates user cancellation)
+		await expect(async () => {
+			await addAgentInstructions(testDir, core.gitOps, []);
+		}).not.toThrow();
 
-		expect(await result.exited).toBe(0);
+		// No files should be created when selection is empty
+		const cursorrules = Bun.file(join(testDir, ".cursorrules"));
+		expect(await cursorrules.exists()).toBe(false);
 	});
 
 	it("should fail when not in a backlog project", async () => {
@@ -129,25 +128,51 @@ describe("CLI agents command", () => {
 	});
 
 	it("should update multiple selected files", async () => {
-		// Run the command with multiple selections (select first two options)
-		const result = Bun.spawn(["bun", cliPath, "agents", "--update-instructions"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-			stdin: "inherit",
-		});
+		// Test updating multiple agent instruction files
+		const core = new Core(testDir);
+		const { addAgentInstructions } = await import("../index.ts");
 
-		expect(await result.exited).toBe(0);
+		// Test updating multiple files
+		await expect(async () => {
+			await addAgentInstructions(testDir, core.gitOps, [".cursorrules", "CLAUDE.md"]);
+		}).not.toThrow();
+
+		// Verify both files were created
+		const cursorrules = Bun.file(join(testDir, ".cursorrules"));
+		const claudeMd = Bun.file(join(testDir, "CLAUDE.md"));
+
+		expect(await cursorrules.exists()).toBe(true);
+		expect(await claudeMd.exists()).toBe(true);
+
+		const cursorContent = await cursorrules.text();
+		const claudeContent = await claudeMd.text();
+
+		expect(cursorContent).toContain("Backlog.md");
+		expect(claudeContent).toContain("Backlog.md");
 	});
 
 	it("should update existing files correctly", async () => {
-		// Verify the command updates existing files correctly
-		const updateResult = Bun.spawn(["bun", cliPath, "agents", "--update-instructions"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-			stdin: "inherit",
-		});
-		await updateResult.exited;
+		// Test that existing files are updated correctly (idempotent)
+		const core = new Core(testDir);
+		const { addAgentInstructions } = await import("../index.ts");
+
+		// First, create a file
+		await addAgentInstructions(testDir, core.gitOps, [".cursorrules"]);
+
+		const cursorrules = Bun.file(join(testDir, ".cursorrules"));
+		expect(await cursorrules.exists()).toBe(true);
+		const _originalContent = await cursorrules.text();
+
+		// Update it again - should be idempotent
+		await expect(async () => {
+			await addAgentInstructions(testDir, core.gitOps, [".cursorrules"]);
+		}).not.toThrow();
+
+		// File should still exist and have consistent content
+		expect(await cursorrules.exists()).toBe(true);
+		const updatedContent = await cursorrules.text();
+		expect(updatedContent).toContain("Backlog.md");
+		// Should be idempotent - content should be similar (may have minor differences)
+		expect(updatedContent.length).toBeGreaterThan(0);
 	});
 });

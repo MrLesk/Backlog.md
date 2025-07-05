@@ -15,6 +15,9 @@ export interface Task {
 	subtasks?: string[];
 	priority?: "high" | "medium" | "low";
 	branch?: string;
+	// Metadata fields (previously in TaskWithMetadata)
+	lastModified?: Date;
+	source?: "local" | "remote";
 }
 
 export interface DecisionLog {

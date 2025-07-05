@@ -19,6 +19,11 @@ export async function renderBoardTui(
 	statuses: string[],
 	layout: BoardLayout,
 	maxColumnWidth: number,
+	options?: {
+		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
+		onTaskSelect?: (task: Task) => void;
+		onTabPress?: () => Promise<void>;
+	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
 		console.log(generateKanbanBoard(tasks, statuses, layout, maxColumnWidth));
@@ -210,8 +215,40 @@ export async function renderBoardTui(
 			left: 0,
 			height: 1,
 			width: "100%",
-			content: " ←/→ columns · ↑/↓ tasks · Enter view · E edit · q/Esc quit ",
+			content: " ←/→ columns · ↑/↓ tasks · Enter view · E edit · Tab tasks · q/Esc quit ",
 			style: { fg: "gray", bg: "black" },
+		});
+
+		// Tab key for view switching
+		screen.key(["tab"], async () => {
+			if (popupOpen) return;
+			if (options?.onTabPress) {
+				// Get currently selected task
+				const { list, tasks } = columns[currentCol];
+				const idx = list.selected ?? 0;
+				if (idx >= 0 && idx < tasks.length) {
+					const selectedTask = tasks[idx];
+					options.onTaskSelect?.(selectedTask);
+				}
+
+				// Use custom Tab handler - caller manages view switching
+				screen.destroy();
+				await options.onTabPress();
+				resolve();
+			} else if (options?.viewSwitcher) {
+				// Get currently selected task
+				const { list, tasks } = columns[currentCol];
+				const idx = list.selected ?? 0;
+				if (idx >= 0 && idx < tasks.length) {
+					const selectedTask = tasks[idx];
+					options.onTaskSelect?.(selectedTask);
+				}
+
+				// Switch to task view
+				screen.destroy();
+				await options.viewSwitcher.switchView();
+				resolve();
+			}
 		});
 
 		screen.key(["q", "C-c"], () => {

@@ -7,11 +7,8 @@ import { parseTask } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
 import type { GitOps } from "./git-ops.ts";
 
-export interface TaskWithMetadata extends Task {
-	lastModified?: Date;
-	source: "local" | "remote";
-	branch?: string;
-}
+// TaskWithMetadata is now just an alias for Task (for backward compatibility)
+export type TaskWithMetadata = Task;
 
 interface RemoteTaskLoadResult {
 	task: TaskWithMetadata;
