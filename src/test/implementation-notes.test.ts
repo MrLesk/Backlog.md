@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { editTaskPlatformAware } from "./test-helpers.ts";
 
 const TEST_DIR = join(process.cwd(), "test-notes");
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
@@ -14,7 +14,7 @@ describe("Implementation Notes CLI", () => {
 		} catch {
 			// Ignore cleanup errors
 		}
-		await Bun.spawn(["mkdir", "-p", TEST_DIR]).exited;
+		await mkdir(TEST_DIR, { recursive: true });
 		await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
 		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
 		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
@@ -32,11 +32,13 @@ describe("Implementation Notes CLI", () => {
 	});
 
 	describe("task edit with implementation notes", () => {
-		it("should add implementation notes to existing task", async () => {
+		it("should handle all implementation notes scenarios", async () => {
 			const core = new Core(TEST_DIR);
-			const task: Task = {
+
+			// Test 1: add implementation notes to existing task
+			const task1: Task = {
 				id: "task-1",
-				title: "Test Task",
+				title: "Test Task 1",
 				status: "To Do",
 				assignee: [],
 				createdDate: "2025-07-03",
@@ -44,29 +46,26 @@ describe("Implementation Notes CLI", () => {
 				dependencies: [],
 				description: "Test description",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task1, false);
 
-			const p = Bun.spawn(
-				["bun", CLI_PATH, "task", "edit", "1", "--notes", "Fixed the bug by updating the validation logic"],
+			let result = await editTaskPlatformAware(
 				{
-					cwd: TEST_DIR,
-					stdout: "inherit",
-					stderr: "inherit",
+					taskId: "1",
+					notes: "Fixed the bug by updating the validation logic",
 				},
+				TEST_DIR,
 			);
-			expect(await p.exited).toBe(0);
+			expect(result.exitCode).toBe(0);
 
-			const updatedTask = await core.filesystem.loadTask("task-1");
+			let updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask).not.toBeNull();
 			expect(updatedTask?.description).toContain("## Implementation Notes");
 			expect(updatedTask?.description).toContain("Fixed the bug by updating the validation logic");
-		});
 
-		it("should append to existing implementation notes", async () => {
-			const core = new Core(TEST_DIR);
-			const task: Task = {
-				id: "task-1",
-				title: "Test Task",
+			// Test 2: append to existing implementation notes
+			const task2: Task = {
+				id: "task-2",
+				title: "Test Task 2",
 				status: "To Do",
 				assignee: [],
 				createdDate: "2025-07-03",
@@ -74,16 +73,18 @@ describe("Implementation Notes CLI", () => {
 				dependencies: [],
 				description: "Test description\n\n## Implementation Notes\n\nInitial implementation completed",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task2, false);
 
-			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", "Added error handling"], {
-				cwd: TEST_DIR,
-				stdout: "inherit",
-				stderr: "inherit",
-			});
-			expect(await p.exited).toBe(0);
+			result = await editTaskPlatformAware(
+				{
+					taskId: "2",
+					notes: "Added error handling",
+				},
+				TEST_DIR,
+			);
+			expect(result.exitCode).toBe(0);
 
-			const updatedTask = await core.filesystem.loadTask("task-1");
+			updatedTask = await core.filesystem.loadTask("task-2");
 			expect(updatedTask).not.toBeNull();
 			expect(updatedTask?.description).toContain("Initial implementation completed");
 			expect(updatedTask?.description).toContain("Added error handling");
@@ -91,12 +92,10 @@ describe("Implementation Notes CLI", () => {
 			const notesSection = updatedTask?.description.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i);
 			expect(notesSection?.[1]).toContain("Initial implementation completed");
 			expect(notesSection?.[1]).toContain("Added error handling");
-		});
 
-		it("should work together with status update when marking as Done", async () => {
-			const core = new Core(TEST_DIR);
-			const task: Task = {
-				id: "task-1",
+			// Test 3: work together with status update when marking as Done
+			const task3: Task = {
+				id: "task-3",
 				title: "Feature Implementation",
 				status: "In Progress",
 				assignee: ["@dev"],
@@ -105,41 +104,29 @@ describe("Implementation Notes CLI", () => {
 				dependencies: [],
 				description: "Implement new feature\n\n## Acceptance Criteria\n\n- [ ] Feature works\n- [ ] Tests pass",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task3, false);
 
-			const p = Bun.spawn(
-				[
-					"bun",
-					CLI_PATH,
-					"task",
-					"edit",
-					"1",
-					"-s",
-					"Done",
-					"--notes",
-					"Implemented using the factory pattern\nAdded unit tests\nUpdated documentation",
-				],
+			result = await editTaskPlatformAware(
 				{
-					cwd: TEST_DIR,
-					stdout: "inherit",
-					stderr: "inherit",
+					taskId: "3",
+					status: "Done",
+					notes: "Implemented using the factory pattern\nAdded unit tests\nUpdated documentation",
 				},
+				TEST_DIR,
 			);
-			expect(await p.exited).toBe(0);
+			expect(result.exitCode).toBe(0);
 
-			const updatedTask = await core.filesystem.loadTask("task-1");
+			updatedTask = await core.filesystem.loadTask("task-3");
 			expect(updatedTask).not.toBeNull();
 			expect(updatedTask?.status).toBe("Done");
 			expect(updatedTask?.description).toContain("## Implementation Notes");
 			expect(updatedTask?.description).toContain("Implemented using the factory pattern");
 			expect(updatedTask?.description).toContain("Added unit tests");
 			expect(updatedTask?.description).toContain("Updated documentation");
-		});
 
-		it("should handle multi-line notes with proper formatting", async () => {
-			const core = new Core(TEST_DIR);
-			const task: Task = {
-				id: "task-1",
+			// Test 4: handle multi-line notes with proper formatting
+			const task4: Task = {
+				id: "task-4",
 				title: "Complex Task",
 				status: "To Do",
 				assignee: [],
@@ -148,7 +135,7 @@ describe("Implementation Notes CLI", () => {
 				dependencies: [],
 				description: "Complex task description",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task4, false);
 
 			const multiLineNotes = `Completed the following:
 - Refactored the main module
@@ -159,24 +146,24 @@ Technical decisions:
 - Used memoization for expensive calculations
 - Implemented lazy loading`;
 
-			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", multiLineNotes], {
-				cwd: TEST_DIR,
-				stdout: "inherit",
-				stderr: "inherit",
-			});
-			expect(await p.exited).toBe(0);
+			result = await editTaskPlatformAware(
+				{
+					taskId: "4",
+					notes: multiLineNotes,
+				},
+				TEST_DIR,
+			);
+			expect(result.exitCode).toBe(0);
 
-			const updatedTask = await core.filesystem.loadTask("task-1");
+			updatedTask = await core.filesystem.loadTask("task-4");
 			expect(updatedTask).not.toBeNull();
 			expect(updatedTask?.description).toContain("Refactored the main module");
 			expect(updatedTask?.description).toContain("Technical decisions:");
 			expect(updatedTask?.description).toContain("Implemented lazy loading");
-		});
 
-		it("should position implementation notes after implementation plan if present", async () => {
-			const core = new Core(TEST_DIR);
-			const task: Task = {
-				id: "task-1",
+			// Test 5: position implementation notes after implementation plan if present
+			const task5: Task = {
+				id: "task-5",
 				title: "Planned Task",
 				status: "To Do",
 				assignee: [],
@@ -186,16 +173,18 @@ Technical decisions:
 				description:
 					"Task with plan\n\n## Acceptance Criteria\n\n- [ ] Works\n\n## Implementation Plan\n\n1. Design\n2. Build\n3. Test",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task5, false);
 
-			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", "Followed the plan successfully"], {
-				cwd: TEST_DIR,
-				stdout: "inherit",
-				stderr: "inherit",
-			});
-			expect(await p.exited).toBe(0);
+			result = await editTaskPlatformAware(
+				{
+					taskId: "5",
+					notes: "Followed the plan successfully",
+				},
+				TEST_DIR,
+			);
+			expect(result.exitCode).toBe(0);
 
-			const updatedTask = await core.filesystem.loadTask("task-1");
+			updatedTask = await core.filesystem.loadTask("task-5");
 			expect(updatedTask).not.toBeNull();
 			const desc = updatedTask?.description || "";
 
@@ -204,13 +193,11 @@ Technical decisions:
 			const notesIndex = desc.indexOf("## Implementation Notes");
 			expect(planIndex).toBeGreaterThan(0);
 			expect(notesIndex).toBeGreaterThan(planIndex);
-		});
 
-		it("should handle empty notes gracefully", async () => {
-			const core = new Core(TEST_DIR);
-			const task: Task = {
-				id: "task-1",
-				title: "Test Task",
+			// Test 6: handle empty notes gracefully
+			const task6: Task = {
+				id: "task-6",
+				title: "Test Task 6",
 				status: "To Do",
 				assignee: [],
 				createdDate: "2025-07-03",
@@ -218,16 +205,18 @@ Technical decisions:
 				dependencies: [],
 				description: "Test description",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task6, false);
 
-			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--notes", ""], {
-				cwd: TEST_DIR,
-				stdout: "inherit",
-				stderr: "inherit",
-			});
-			expect(await p.exited).toBe(0);
+			result = await editTaskPlatformAware(
+				{
+					taskId: "6",
+					notes: "",
+				},
+				TEST_DIR,
+			);
+			expect(result.exitCode).toBe(0);
 
-			const updatedTask = await core.filesystem.loadTask("task-1");
+			updatedTask = await core.filesystem.loadTask("task-6");
 			expect(updatedTask).not.toBeNull();
 			// Should not add Implementation Notes section for empty notes
 			expect(updatedTask?.description).not.toContain("## Implementation Notes");

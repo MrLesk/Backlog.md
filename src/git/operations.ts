@@ -6,11 +6,17 @@ export class GitOperations {
 	}
 
 	async addFile(filePath: string): Promise<void> {
-		await this.execGit(["add", filePath]);
+		// Convert absolute paths to relative paths from project root to avoid Windows encoding issues
+		const { relative } = await import("node:path");
+		const relativePath = relative(this.projectRoot, filePath).replace(/\\/g, "/");
+		await this.execGit(["add", relativePath]);
 	}
 
 	async addFiles(filePaths: string[]): Promise<void> {
-		await this.execGit(["add", ...filePaths]);
+		// Convert absolute paths to relative paths from project root to avoid Windows encoding issues
+		const { relative } = await import("node:path");
+		const relativePaths = filePaths.map((filePath) => relative(this.projectRoot, filePath).replace(/\\/g, "/"));
+		await this.execGit(["add", ...relativePaths]);
 	}
 
 	async commitTaskChange(taskId: string, message: string): Promise<void> {
@@ -213,10 +219,19 @@ export class GitOperations {
 
 	private async execGit(args: string[]): Promise<{ stdout: string; stderr: string }> {
 		try {
-			const proc = Bun.spawn(["git", ...args], {
+			// Ensure all args are properly encoded strings to avoid Windows encoding issues
+			const sanitizedArgs = args.map((arg) => String(arg).trim()).filter(Boolean);
+
+			const proc = Bun.spawn(["git", ...sanitizedArgs], {
 				cwd: this.projectRoot,
 				stdout: "pipe",
 				stderr: "pipe",
+				env: {
+					...process.env,
+					// Force UTF-8 encoding on Windows to prevent corruption
+					LC_ALL: "C.UTF-8",
+					LANG: "C.UTF-8",
+				},
 			});
 
 			const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
@@ -224,7 +239,7 @@ export class GitOperations {
 			const exitCode = await proc.exited;
 
 			if (exitCode !== 0) {
-				throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);
+				throw new Error(`Git command failed (exit code ${exitCode}): git ${sanitizedArgs.join(" ")}\n${stderr}`);
 			}
 
 			return { stdout, stderr };
@@ -241,6 +256,11 @@ export async function isGitRepository(projectRoot: string): Promise<boolean> {
 			cwd: projectRoot,
 			stdout: "pipe",
 			stderr: "pipe",
+			env: {
+				...process.env,
+				LC_ALL: "C.UTF-8",
+				LANG: "C.UTF-8",
+			},
 		});
 		const exitCode = await proc.exited;
 		return exitCode === 0;
@@ -254,6 +274,11 @@ export async function initializeGitRepository(projectRoot: string): Promise<void
 		cwd: projectRoot,
 		stdout: "pipe",
 		stderr: "pipe",
+		env: {
+			...process.env,
+			LC_ALL: "C.UTF-8",
+			LANG: "C.UTF-8",
+		},
 	});
 
 	const exitCode = await proc.exited;

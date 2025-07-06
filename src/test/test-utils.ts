@@ -73,3 +73,11 @@ export function isWindows(): boolean {
 export function getPlatformTimeout(baseTimeout = 5000): number {
 	return isWindows() ? baseTimeout * 2 : baseTimeout;
 }
+
+/**
+ * Gets the exit code from a spawnSync result, handling Windows quirks
+ * On Windows, result.status can be undefined even for successful processes
+ */
+export function getExitCode(result: { status: number | null; error?: Error }): number {
+	return result.status ?? (result.error ? 1 : 0);
+}

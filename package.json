@@ -33,7 +33,7 @@
 	},
 	"scripts": {
 		"test": "bun test",
-		"test:windows": "bun test --timeout 10000",
+		"test:windows": "bun test --timeout=15000",
 		"format": "biome format --write .",
 		"lint": "biome lint --write .",
 		"check": "biome check .",

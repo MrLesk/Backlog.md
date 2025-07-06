@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { createTaskPlatformAware } from "./test-helpers.ts";
 
 const TEST_DIR = join(process.cwd(), "test-plan");
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -13,7 +14,7 @@ describe("Implementation Plan CLI", () => {
 		} catch {
 			// Ignore cleanup errors
 		}
-		await Bun.spawn(["mkdir", "-p", TEST_DIR]).exited;
+		await mkdir(TEST_DIR, { recursive: true });
 		await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
 		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
 		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
@@ -31,33 +32,33 @@ describe("Implementation Plan CLI", () => {
 	});
 
 	describe("task create with implementation plan", () => {
-		it("should create task with implementation plan using --plan", async () => {
-			const p = Bun.spawn(
-				["bun", CLI_PATH, "task", "create", "Test Task", "--plan", "Step 1: Analyze\nStep 2: Implement"],
+		it("should handle all task creation scenarios with implementation plans", async () => {
+			// Test 1: create task with implementation plan using --plan
+			const p1 = Bun.spawn(
+				["bun", CLI_PATH, "task", "create", "Test Task 1", "--plan", "Step 1: Analyze\nStep 2: Implement"],
 				{
 					cwd: TEST_DIR,
 					stdout: "inherit",
 					stderr: "inherit",
 				},
 			);
-			expect(await p.exited).toBe(0);
+			expect(await p1.exited).toBe(0);
 
 			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.description).toContain("## Implementation Plan");
 			expect(task?.description).toContain("Step 1: Analyze");
 			expect(task?.description).toContain("Step 2: Implement");
-		});
 
-		it("should create task with both description and implementation plan", async () => {
-			const p = Bun.spawn(
+			// Test 2: create task with both description and implementation plan
+			const p2 = Bun.spawn(
 				[
 					"bun",
 					CLI_PATH,
 					"task",
 					"create",
-					"Test Task",
+					"Test Task 2",
 					"-d",
 					"Task description",
 					"--plan",
@@ -69,44 +70,33 @@ describe("Implementation Plan CLI", () => {
 					stderr: "inherit",
 				},
 			);
-			expect(await p.exited).toBe(0);
+			expect(await p2.exited).toBe(0);
 
-			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			task = await core.filesystem.loadTask("task-2");
 			expect(task).not.toBeNull();
 			expect(task?.description).toContain("## Description");
 			expect(task?.description).toContain("Task description");
 			expect(task?.description).toContain("## Implementation Plan");
 			expect(task?.description).toContain("1. First step");
 			expect(task?.description).toContain("2. Second step");
-		});
 
-		it("should create task with acceptance criteria and implementation plan", async () => {
-			const result = Bun.spawnSync(
-				[
-					"bun",
-					CLI_PATH,
-					"task",
-					"create",
-					"Test Task",
-					"--ac",
-					"Must work correctly, Must be tested",
-					"--plan",
-					"Phase 1: Setup\nPhase 2: Testing",
-				],
+			// Test 3: create task with acceptance criteria and implementation plan
+			const result = await createTaskPlatformAware(
 				{
-					cwd: TEST_DIR,
+					title: "Test Task 3",
+					ac: "Must work correctly, Must be tested",
+					plan: "Phase 1: Setup\nPhase 2: Testing",
 				},
+				TEST_DIR,
 			);
 
 			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
+				console.error("CLI Error:", result.stderr || result.stdout);
 				console.error("Exit code:", result.exitCode);
 			}
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			task = await core.filesystem.loadTask(result.taskId || "task-3");
 			expect(task).not.toBeNull();
 			expect(task?.description).toContain("## Acceptance Criteria");
 			expect(task?.description).toContain("- [ ] Must work correctly");
@@ -135,16 +125,17 @@ describe("Implementation Plan CLI", () => {
 			);
 		});
 
-		it("should add implementation plan to existing task", async () => {
-			const p = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"], {
+		it("should handle all task editing scenarios with implementation plans", async () => {
+			// Test 1: add implementation plan to existing task
+			const p1 = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"], {
 				cwd: TEST_DIR,
 				stdout: "inherit",
 				stderr: "inherit",
 			});
-			expect(await p.exited).toBe(0);
+			expect(await p1.exited).toBe(0);
 
 			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.description).toContain("## Description");
 			expect(task?.description).toContain("Existing task description");
@@ -152,14 +143,18 @@ describe("Implementation Plan CLI", () => {
 			expect(task?.description).toContain("New plan:");
 			expect(task?.description).toContain("- Step A");
 			expect(task?.description).toContain("- Step B");
-		});
 
-		it("should replace existing implementation plan", async () => {
-			// First add a plan
-			const core = new Core(TEST_DIR);
-			let task = await core.filesystem.loadTask("task-1");
+			// Test 2: replace existing implementation plan
+			// First manually add an old plan to the task by updating it directly
+			task = await core.filesystem.loadTask("task-1");
 			if (task) {
-				task.description = `${task.description}\n\n## Implementation Plan\n\nOld plan:\n1. Old step 1\n2. Old step 2`;
+				task.description = `${task.description.replace(/## Implementation Plan[\s\S]*?$/, "")}
+
+## Implementation Plan
+
+Old plan:
+1. Old step 1
+2. Old step 2`;
 				await core.updateTask(task, false);
 			}
 
@@ -182,9 +177,8 @@ describe("Implementation Plan CLI", () => {
 			expect(task?.description).toContain("2. New step 2");
 			expect(task?.description).not.toContain("Old plan:");
 			expect(task?.description).not.toContain("Old step 1");
-		});
 
-		it("should update both title and implementation plan", async () => {
+			// Test 3: update both title and implementation plan
 			const result = Bun.spawnSync(
 				[
 					"bun",
@@ -192,13 +186,14 @@ describe("Implementation Plan CLI", () => {
 					"task",
 					"edit",
 					"1",
-					"-t",
+					"--title",
 					"Updated Title",
 					"--plan",
 					"Implementation:\n- Do this\n- Then that",
 				],
 				{
 					cwd: TEST_DIR,
+					encoding: "utf8",
 				},
 			);
 
@@ -208,8 +203,7 @@ describe("Implementation Plan CLI", () => {
 			}
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.title).toBe("Updated Title");
 			expect(task?.description).toContain("## Implementation Plan");
@@ -220,8 +214,9 @@ describe("Implementation Plan CLI", () => {
 	});
 
 	describe("implementation plan positioning", () => {
-		it("should place implementation plan after acceptance criteria when both exist", async () => {
-			const result = Bun.spawnSync(
+		it("should handle implementation plan positioning and edge cases", async () => {
+			// Test 1: place implementation plan after acceptance criteria when both exist
+			const result1 = Bun.spawnSync(
 				[
 					"bun",
 					CLI_PATH,
@@ -240,14 +235,14 @@ describe("Implementation Plan CLI", () => {
 				},
 			);
 
-			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
-				console.error("Exit code:", result.exitCode);
+			if (result1.exitCode !== 0) {
+				console.error("CLI Error:", result1.stderr?.toString() || result1.stdout?.toString());
+				console.error("Exit code:", result1.exitCode);
 			}
-			expect(result.exitCode).toBe(0);
+			expect(result1.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 
 			const description = task?.description || "";
@@ -258,21 +253,19 @@ describe("Implementation Plan CLI", () => {
 			// Verify order: Description -> Acceptance Criteria -> Implementation Plan
 			expect(descIndex).toBeLessThan(acIndex);
 			expect(acIndex).toBeLessThan(planIndex);
-		});
 
-		it("should handle empty plan gracefully", async () => {
-			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Test Task", "--plan", ""], {
+			// Test 2: handle empty plan gracefully
+			const result2 = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Test Task 2", "--plan", ""], {
 				cwd: TEST_DIR,
 			});
 
-			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr?.toString() || result.stdout?.toString());
-				console.error("Exit code:", result.exitCode);
+			if (result2.exitCode !== 0) {
+				console.error("CLI Error:", result2.stderr?.toString() || result2.stdout?.toString());
+				console.error("Exit code:", result2.exitCode);
 			}
-			expect(result.exitCode).toBe(0);
+			expect(result2.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
-			const task = await core.filesystem.loadTask("task-1");
+			task = await core.filesystem.loadTask("task-2");
 			expect(task).not.toBeNull();
 			// Should NOT add the section with empty content
 			expect(task?.description).not.toContain("## Implementation Plan");

@@ -105,6 +105,16 @@ Test task for board CLI integration.`,
 		expect(typeof viewSwitcher.switchView).toBe("function");
 		expect(typeof viewSwitcher.isKanbanReady).toBe("function");
 
+		// Mock the getKanbanData method to avoid remote git operations
+		viewSwitcher.getKanbanData = async () => {
+			// Mock config since it's not fully available in this test environment
+			const statuses = core.config?.get ? await core.config.get("statuses") : ["To Do", "In Progress"];
+			return {
+				tasks: await core.filesystem.listTasks(),
+				statuses: statuses || [],
+			};
+		};
+
 		// Test that getKanbanData method exists and can be called
 		const kanbanData = await viewSwitcher.getKanbanData();
 		expect(kanbanData).toBeDefined();

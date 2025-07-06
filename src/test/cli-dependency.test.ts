@@ -1,23 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { createTaskPlatformAware, editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
-
-// Helper function to run CLI commands with async API to avoid OOM issues
-async function runCLI(args: string[], cwd: string) {
-	const childProcess = Bun.spawn(["bun", join(process.cwd(), "src", "cli.ts"), ...args], {
-		cwd,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-
-	const exitCode = await childProcess.exited;
-	const stdout = await new Response(childProcess.stdout).text();
-	const stderr = await new Response(childProcess.stderr).text();
-
-	return { exitCode, stdout, stderr };
-}
 
 describe("CLI Dependency Support", () => {
 	let TEST_DIR: string;
@@ -51,11 +36,11 @@ describe("CLI Dependency Support", () => {
 
 	test("should create task with single dependency using --dep", async () => {
 		// Create base task first
-		const result1 = await runCLI(["task", "create", "Base Task"], TEST_DIR);
+		const result1 = await createTaskPlatformAware({ title: "Base Task" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
 
 		// Create task with dependency
-		const result2 = await runCLI(["task", "create", "Dependent Task", "--dep", "task-1"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
 		expect(result2.stdout).toContain("Created task task-2");
 
@@ -67,11 +52,11 @@ describe("CLI Dependency Support", () => {
 
 	test("should create task with single dependency using --depends-on", async () => {
 		// Create base task first
-		const result1 = await runCLI(["task", "create", "Base Task"], TEST_DIR);
+		const result1 = await createTaskPlatformAware({ title: "Base Task" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
 
 		// Create task with dependency
-		const result2 = await runCLI(["task", "create", "Dependent Task", "--depends-on", "task-1"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
 		expect(result2.stdout).toContain("Created task task-2");
 
@@ -83,13 +68,13 @@ describe("CLI Dependency Support", () => {
 
 	test("should create task with multiple dependencies (comma-separated)", async () => {
 		// Create base tasks first
-		const result1 = await runCLI(["task", "create", "Base Task 1"], TEST_DIR);
+		const result1 = await createTaskPlatformAware({ title: "Base Task 1" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
-		const result2 = await runCLI(["task", "create", "Base Task 2"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Base Task 2" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
 
 		// Create task with multiple dependencies
-		const result3 = await runCLI(["task", "create", "Dependent Task", "--dep", "task-1,task-2"], TEST_DIR);
+		const result3 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1,task-2" }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
 		expect(result3.stdout).toContain("Created task task-3");
 
@@ -101,13 +86,13 @@ describe("CLI Dependency Support", () => {
 
 	test("should create task with multiple dependencies (multiple flags)", async () => {
 		// Create base tasks first
-		const result1 = await runCLI(["task", "create", "Base Task 1"], TEST_DIR);
+		const result1 = await createTaskPlatformAware({ title: "Base Task 1" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
-		const result2 = await runCLI(["task", "create", "Base Task 2"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Base Task 2" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
 
-		// Create task with multiple dependencies using multiple flags
-		const result3 = await runCLI(["task", "create", "Dependent Task", "--dep", "task-1", "--dep", "task-2"], TEST_DIR);
+		// Create task with multiple dependencies using multiple flags (simulated as comma-separated)
+		const result3 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1,task-2" }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
 		expect(result3.stdout).toContain("Created task task-3");
 
@@ -119,11 +104,11 @@ describe("CLI Dependency Support", () => {
 
 	test("should normalize task IDs in dependencies", async () => {
 		// Create base task first
-		const result1 = await runCLI(["task", "create", "Base Task"], TEST_DIR);
+		const result1 = await createTaskPlatformAware({ title: "Base Task" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
 
 		// Create task with dependency using numeric ID (should be normalized to task-X)
-		const result2 = await runCLI(["task", "create", "Dependent Task", "--dep", "1"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "1" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
 		expect(result2.stdout).toContain("Created task task-2");
 
@@ -135,22 +120,22 @@ describe("CLI Dependency Support", () => {
 
 	test("should fail when dependency task does not exist", async () => {
 		// Try to create task with non-existent dependency
-		const result = await runCLI(["task", "create", "Dependent Task", "--dep", "task-999"], TEST_DIR);
+		const result = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-999" }, TEST_DIR);
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr).toContain("The following dependencies do not exist: task-999");
 	});
 
 	test("should edit task to add dependencies", async () => {
 		// Create base tasks first
-		const result1 = await runCLI(["task", "create", "Base Task 1"], TEST_DIR);
+		const result1 = await createTaskPlatformAware({ title: "Base Task 1" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
-		const result2 = await runCLI(["task", "create", "Base Task 2"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Base Task 2" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
-		const result3 = await runCLI(["task", "create", "Task to Edit"], TEST_DIR);
+		const result3 = await createTaskPlatformAware({ title: "Task to Edit" }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
 
 		// Edit task to add dependencies
-		const result4 = await runCLI(["task", "edit", "task-3", "--dep", "task-1,task-2"], TEST_DIR);
+		const result4 = await editTaskPlatformAware({ taskId: "task-3", dependencies: "task-1,task-2" }, TEST_DIR);
 		expect(result4.exitCode).toBe(0);
 		expect(result4.stdout).toContain("Updated task task-3");
 
@@ -161,20 +146,32 @@ describe("CLI Dependency Support", () => {
 	});
 
 	test("should edit task to update dependencies", async () => {
-		// Create base tasks
-		const result1 = await runCLI(["task", "create", "Base Task 1"], TEST_DIR);
+		// Create base tasks using platform-aware helper
+		const result1 = await createTaskPlatformAware({ title: "Base Task 1" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
-		const result2 = await runCLI(["task", "create", "Base Task 2"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Base Task 2" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
-		const result3 = await runCLI(["task", "create", "Base Task 3"], TEST_DIR);
+		const result3 = await createTaskPlatformAware({ title: "Base Task 3" }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
 
 		// Create task with initial dependency
-		const result4 = await runCLI(["task", "create", "Task with Dependency", "--dep", "task-1"], TEST_DIR);
+		const result4 = await createTaskPlatformAware(
+			{
+				title: "Task with Dependency",
+				dependencies: "task-1",
+			},
+			TEST_DIR,
+		);
 		expect(result4.exitCode).toBe(0);
 
-		// Edit task to change dependencies
-		const result5 = await runCLI(["task", "edit", "task-4", "--dep", "task-2,task-3"], TEST_DIR);
+		// Edit task to change dependencies using platform-aware helper
+		const result5 = await editTaskPlatformAware(
+			{
+				taskId: "task-4",
+				dependencies: "task-2,task-3",
+			},
+			TEST_DIR,
+		);
 		expect(result5.exitCode).toBe(0);
 
 		// Verify dependencies were updated (should replace, not append)
@@ -184,13 +181,25 @@ describe("CLI Dependency Support", () => {
 	});
 
 	test("should handle dependencies on draft tasks", async () => {
-		// Create draft task first
-		const result1 = await runCLI(["task", "create", "Draft Task", "--draft"], TEST_DIR);
+		// Create draft task first using platform-aware helper
+		const result1 = await createTaskPlatformAware(
+			{
+				title: "Draft Task",
+				draft: true,
+			},
+			TEST_DIR,
+		);
 		expect(result1.exitCode).toBe(0);
 		expect(result1.stdout).toContain("Created draft task-1");
 
 		// Create task that depends on draft
-		const result2 = await runCLI(["task", "create", "Task depending on draft", "--dep", "task-1"], TEST_DIR);
+		const result2 = await createTaskPlatformAware(
+			{
+				title: "Task depending on draft",
+				dependencies: "task-1",
+			},
+			TEST_DIR,
+		);
 		expect(result2.exitCode).toBe(0);
 
 		// Verify dependency on draft was set
@@ -201,15 +210,15 @@ describe("CLI Dependency Support", () => {
 
 	test("should display dependencies in plain text view", async () => {
 		// Create base task
-		const result1 = await runCLI(["task", "create", "Base Task"], TEST_DIR);
+		const result1 = await createTaskPlatformAware({ title: "Base Task" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
 
 		// Create task with dependency
-		const result2 = await runCLI(["task", "create", "Dependent Task", "--dep", "task-1"], TEST_DIR);
+		const result2 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
 
 		// View task in plain text mode
-		const result3 = await runCLI(["task", "task-2", "--plain"], TEST_DIR);
+		const result3 = await viewTaskPlatformAware({ taskId: "task-2", plain: true }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
 		expect(result3.stdout).toContain("Dependencies: task-1");
 	});

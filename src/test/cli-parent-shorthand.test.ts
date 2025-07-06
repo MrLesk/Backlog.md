@@ -3,10 +3,10 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Core } from "../index.ts";
+import { createTaskPlatformAware, getCliHelpPlatformAware } from "./test-helpers.ts";
 
 describe("CLI parent shorthand option", () => {
 	let testDir: string;
-	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeAll(async () => {
 		testDir = await mkdtemp(join(tmpdir(), "backlog-test-"));
@@ -27,16 +27,12 @@ describe("CLI parent shorthand option", () => {
 
 	it("should accept -p as shorthand for --parent", async () => {
 		// Create parent task
-		const createParent = await Bun.spawn(["bun", "run", cliPath, "task", "create", "Parent Task"], { cwd: testDir })
-			.exited;
-		expect(createParent).toBe(0);
+		const createParent = await createTaskPlatformAware({ title: "Parent Task" }, testDir);
+		expect(createParent.exitCode).toBe(0);
 
 		// Create subtask using -p shorthand
-		const createSubtaskShort = await Bun.spawn(
-			["bun", "run", cliPath, "task", "create", "Subtask with -p", "-p", "task-1"],
-			{ cwd: testDir },
-		).exited;
-		expect(createSubtaskShort).toBe(0);
+		const createSubtaskShort = await createTaskPlatformAware({ title: "Subtask with -p", parent: "task-1" }, testDir);
+		expect(createSubtaskShort.exitCode).toBe(0);
 
 		// Find the created subtask file
 		const tasksDir = join(testDir, "backlog", "tasks");
@@ -53,11 +49,11 @@ describe("CLI parent shorthand option", () => {
 
 	it("should work the same as --parent option", async () => {
 		// Create subtask using --parent
-		const createSubtaskLong = await Bun.spawn(
-			["bun", "run", cliPath, "task", "create", "Subtask with --parent", "--parent", "task-1"],
-			{ cwd: testDir },
-		).exited;
-		expect(createSubtaskLong).toBe(0);
+		const createSubtaskLong = await createTaskPlatformAware(
+			{ title: "Subtask with --parent", parent: "task-1" },
+			testDir,
+		);
+		expect(createSubtaskLong.exitCode).toBe(0);
 
 		// Find both subtask files
 		const tasksDir = join(testDir, "backlog", "tasks");
@@ -79,10 +75,9 @@ describe("CLI parent shorthand option", () => {
 	});
 
 	it("should show -p in help text", async () => {
-		const helpProc = Bun.spawn(["bun", "run", cliPath, "task", "create", "--help"], { stdout: "pipe" });
+		const helpResult = await getCliHelpPlatformAware(["task", "create", "--help"], testDir);
 
-		const output = await new Response(helpProc.stdout).text();
-		expect(output).toContain("-p, --parent <taskId>");
-		expect(output).toContain("specify parent task ID");
+		expect(helpResult.stdout).toContain("-p, --parent <taskId>");
+		expect(helpResult.stdout).toContain("specify parent task ID");
 	});
 });

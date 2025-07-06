@@ -3,19 +3,25 @@ import { spawnSync } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../index.ts";
+import { createUniqueTestDir, getExitCode, safeCleanup } from "./test-utils.ts";
 
 describe("CLI plain output for AI agents", () => {
-	const testDir = join(process.cwd(), "test-plain-output");
+	let testDir: string;
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		testDir = createUniqueTestDir("test-plain-output");
+		try {
+			await rm(testDir, { recursive: true, force: true });
+		} catch {
+			// Ignore cleanup errors
+		}
 		await mkdir(testDir, { recursive: true });
 
-		// Initialize git repo first
-		spawnSync("git", ["init"], { cwd: testDir, encoding: "utf8" });
-		spawnSync("git", ["config", "user.name", "Test User"], { cwd: testDir, encoding: "utf8" });
-		spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: testDir, encoding: "utf8" });
+		// Initialize git repo first using Bun.spawn (same pattern as other tests)
+		await Bun.spawn(["git", "init", "-b", "main"], { cwd: testDir }).exited;
+		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
+		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
 
 		// Initialize backlog project using Core (same pattern as other tests)
 		const core = new Core(testDir);
@@ -38,7 +44,11 @@ describe("CLI plain output for AI agents", () => {
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(testDir);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	it("should output plain text with task view --plain", () => {
@@ -47,7 +57,16 @@ describe("CLI plain output for AI agents", () => {
 			encoding: "utf8",
 		});
 
-		expect(result.status).toBe(0);
+		// Handle Windows spawnSync status issues
+		const exitCode = getExitCode(result);
+
+		if (exitCode !== 0) {
+			console.error("STDOUT:", result.stdout);
+			console.error("STDERR:", result.stderr);
+			console.error("Error:", result.error);
+		}
+
+		expect(exitCode).toBe(0);
 		// Should contain the formatted task output
 		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
 		expect(result.stdout).toContain("Status: ○ To Do");
@@ -60,13 +79,28 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.stdout).not.toContain("\x1b");
 	});
 
-	it("should output plain text with task <id> --plain shortcut", () => {
+	it("should output plain text with task <id> --plain shortcut", async () => {
+		// Verify task exists before running CLI command
+		const core = new Core(testDir);
+		const task = await core.filesystem.loadTask("task-1");
+		expect(task).not.toBeNull();
+		expect(task?.id).toBe("task-1");
+
 		const result = spawnSync("bun", [cliPath, "task", "1", "--plain"], {
 			cwd: testDir,
 			encoding: "utf8",
 		});
 
-		expect(result.status).toBe(0);
+		// Handle Windows spawnSync status issues
+		const exitCode = getExitCode(result);
+
+		if (exitCode !== 0) {
+			console.error("STDOUT:", result.stdout);
+			console.error("STDERR:", result.stderr);
+			console.error("Error:", result.error);
+		}
+
+		expect(exitCode).toBe(0);
 		// Should contain the formatted task output
 		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
 		expect(result.stdout).toContain("Status: ○ To Do");

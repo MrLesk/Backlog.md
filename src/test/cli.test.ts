@@ -3,6 +3,7 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
+import { viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -325,7 +326,7 @@ describe("CLI Integration", () => {
 					dependencies: [],
 					description: "First test task",
 				},
-				false,
+				true,
 			);
 			await core.createTask(
 				{
@@ -338,35 +339,20 @@ describe("CLI Integration", () => {
 					dependencies: [],
 					description: "Second test task",
 				},
-				false,
+				true,
 			);
 
-			// Test lowercase
-			const resultLower = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "done"], {
-				cwd: TEST_DIR,
-			});
-			const outLower = resultLower.stdout.toString();
-			expect(outLower).toContain("Done:");
-			expect(outLower).toContain("task-2 - Second Task");
-			expect(outLower).not.toContain("task-1");
+			const testCases = ["done", "DONE", "DoNe"];
 
-			// Test uppercase
-			const resultUpper = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "DONE"], {
-				cwd: TEST_DIR,
+			testCases.forEach((status) => {
+				const result = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", status], {
+					cwd: TEST_DIR,
+				});
+				const out = result.stdout.toString();
+				expect(out).toContain("Done:");
+				expect(out).toContain("task-2 - Second Task");
+				expect(out).not.toContain("task-1");
 			});
-			const outUpper = resultUpper.stdout.toString();
-			expect(outUpper).toContain("Done:");
-			expect(outUpper).toContain("task-2 - Second Task");
-			expect(outUpper).not.toContain("task-1");
-
-			// Test mixed case
-			const resultMixed = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "DoNe"], {
-				cwd: TEST_DIR,
-			});
-			const outMixed = resultMixed.stdout.toString();
-			expect(outMixed).toContain("Done:");
-			expect(outMixed).toContain("task-2 - Second Task");
-			expect(outMixed).not.toContain("task-1");
 
 			// Test with -s flag
 			const resultShort = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "-s", "done"], { cwd: TEST_DIR });
@@ -545,11 +531,11 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const resultShortcut = Bun.spawnSync(["bun", CLI_PATH, "task", "1", "--plain"], { cwd: TEST_DIR });
-			const resultView = Bun.spawnSync(["bun", CLI_PATH, "task", "view", "1", "--plain"], { cwd: TEST_DIR });
+			const resultShortcut = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
+			const resultView = await viewTaskPlatformAware({ taskId: "1", plain: true, useViewCommand: true }, TEST_DIR);
 
-			const outShortcut = resultShortcut.stdout.toString();
-			const outView = resultView.stdout.toString();
+			const outShortcut = resultShortcut.stdout;
+			const outView = resultView.stdout;
 
 			expect(outShortcut).toBe(outView);
 			expect(outShortcut).toContain("Task task-1 - Shortcut Task");
@@ -1307,15 +1293,18 @@ describe("CLI Integration", () => {
 			const remoteDir = join(TEST_DIR, "remote.git");
 			await Bun.spawn(["git", "init", "--bare", "-b", "main", remoteDir]).exited;
 			await Bun.spawn(["git", "remote", "add", "origin", remoteDir], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "push", "-u", "origin", "master"], { cwd: TEST_DIR }).exited;
+			await Bun.spawn(["git", "push", "-u", "origin", "main"], { cwd: TEST_DIR }).exited;
 
 			// create branch with updated status
 			await Bun.spawn(["git", "checkout", "-b", "feature"], { cwd: TEST_DIR }).exited;
 			await core.updateTask({ ...task, status: "Done" }, true);
 			await Bun.spawn(["git", "push", "-u", "origin", "feature"], { cwd: TEST_DIR }).exited;
 
-			// switch back to master where status is still To Do
-			await Bun.spawn(["git", "checkout", "master"], { cwd: TEST_DIR }).exited;
+			// Update remote-tracking branches to ensure they are recognized
+			await Bun.spawn(["git", "remote", "update", "origin", "--prune"], { cwd: TEST_DIR }).exited;
+
+			// switch back to main where status is still To Do
+			await Bun.spawn(["git", "checkout", "main"], { cwd: TEST_DIR }).exited;
 
 			await core.gitOps.fetch();
 			const branches = await core.gitOps.listRemoteBranches();

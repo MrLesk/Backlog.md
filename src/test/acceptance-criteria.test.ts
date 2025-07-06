@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { getExitCode } from "./test-utils.ts";
 
 const TEST_DIR = join(process.cwd(), "test-ac");
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -14,7 +15,7 @@ describe("Acceptance Criteria CLI", () => {
 		} catch {
 			// Ignore cleanup errors
 		}
-		await Bun.spawn(["mkdir", "-p", TEST_DIR]).exited;
+		await mkdir(TEST_DIR, { recursive: true });
 		await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
 		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
 		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
@@ -37,11 +38,13 @@ describe("Acceptance Criteria CLI", () => {
 				cwd: TEST_DIR,
 				encoding: "utf8",
 			});
-			if (result.status !== 0) {
+			const exitCode = getExitCode(result);
+			if (exitCode !== 0) {
 				console.error("STDOUT:", result.stdout);
 				console.error("STDERR:", result.stderr);
+				console.error("Error:", result.error);
 			}
-			expect(result.status).toBe(0);
+			expect(exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");

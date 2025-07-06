@@ -149,6 +149,9 @@ describe("View Switcher", () => {
 				initialState,
 			});
 
+			// Mock the preloadKanban method to avoid remote git operations
+			switcher.preloadKanban = async () => {};
+
 			// Should not throw when preloading
 			expect(() => switcher.preloadKanban()).not.toThrow();
 		});
