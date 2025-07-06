@@ -664,7 +664,7 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(task, content));
+			console.log(formatTaskPlainText(task, content, filePath));
 			return;
 		}
 
@@ -727,7 +727,7 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (options.plain || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(task, content));
+			console.log(formatTaskPlainText(task, content, filePath));
 			return;
 		}
 
@@ -787,6 +787,74 @@ draftCmd
 		} else {
 			console.error(`Draft ${taskId} not found.`);
 		}
+	});
+
+draftCmd
+	.command("view <taskId>")
+	.description("display draft details")
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (taskId: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const { getDraftPath } = await import("./utils/task-path.ts");
+		const filePath = await getDraftPath(taskId, core);
+
+		if (!filePath) {
+			console.error(`Draft ${taskId} not found.`);
+			return;
+		}
+		const content = await Bun.file(filePath).text();
+		const draft = await core.filesystem.loadDraft(taskId);
+
+		if (!draft) {
+			console.error(`Draft ${taskId} not found.`);
+			return;
+		}
+
+		// Plain text output for AI agents
+		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
+			console.log(formatTaskPlainText(draft, content, filePath));
+			return;
+		}
+
+		// Use enhanced task viewer with detail focus
+		await viewTaskEnhanced(draft, content, { startWithDetailFocus: true });
+	});
+
+draftCmd
+	.argument("[taskId]")
+	.option("--plain", "use plain text output")
+	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
+		if (!taskId) {
+			draftCmd.help();
+			return;
+		}
+
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const { getDraftPath } = await import("./utils/task-path.ts");
+		const filePath = await getDraftPath(taskId, core);
+
+		if (!filePath) {
+			console.error(`Draft ${taskId} not found.`);
+			return;
+		}
+		const content = await Bun.file(filePath).text();
+		const draft = await core.filesystem.loadDraft(taskId);
+
+		if (!draft) {
+			console.error(`Draft ${taskId} not found.`);
+			return;
+		}
+
+		// Plain text output for AI agents
+		if (options && (options.plain || process.argv.includes("--plain"))) {
+			console.log(formatTaskPlainText(draft, content, filePath));
+			return;
+		}
+
+		// Use enhanced task viewer with detail focus
+		await viewTaskEnhanced(draft, content, { startWithDetailFocus: true });
 	});
 
 const boardCmd = program.command("board");

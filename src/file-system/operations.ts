@@ -91,7 +91,7 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.TASKS);
 	}
 
-	private async getDraftsDir(): Promise<string> {
+	async getDraftsDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS);
 	}
