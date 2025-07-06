@@ -420,6 +420,7 @@ taskCmd
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
+	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = process.cwd();
@@ -435,9 +436,28 @@ taskCmd
 		if (options.assignee) {
 			filtered = filtered.filter((t) => t.assignee.includes(options.assignee));
 		}
+		if (options.parent) {
+			// Normalize parent task ID
+			const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+
+			// Validate parent task exists
+			const parentTask = await core.filesystem.loadTask(parentId);
+			if (!parentTask) {
+				console.error(`Parent task ${parentId} not found.`);
+				return;
+			}
+
+			// Filter tasks by parent ID
+			filtered = filtered.filter((t) => t.parentTaskId === parentId);
+		}
 
 		if (filtered.length === 0) {
-			console.log("No tasks found.");
+			if (options.parent) {
+				const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+				console.log(`No child tasks found for parent task ${parentId}.`);
+			} else {
+				console.log("No tasks found.");
+			}
 			return;
 		}
 
@@ -484,15 +504,17 @@ taskCmd
 			let filterDescription = "";
 			let title = "Tasks";
 
-			if (options.status && options.assignee) {
-				filterDescription = `Status: ${options.status}, Assignee: ${options.assignee}`;
-				title = `Tasks (${options.status} • ${options.assignee})`;
-			} else if (options.status) {
-				filterDescription = `Status: ${options.status}`;
-				title = `Tasks (${options.status})`;
-			} else if (options.assignee) {
-				filterDescription = `Assignee: ${options.assignee}`;
-				title = `Tasks (${options.assignee})`;
+			const filters = [];
+			if (options.status) filters.push(`Status: ${options.status}`);
+			if (options.assignee) filters.push(`Assignee: ${options.assignee}`);
+			if (options.parent) {
+				const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+				filters.push(`Parent: ${parentId}`);
+			}
+
+			if (filters.length > 0) {
+				filterDescription = filters.join(", ");
+				title = `Tasks (${filters.join(" • ")})`;
 			}
 
 			// Use unified view with Tab switching support
