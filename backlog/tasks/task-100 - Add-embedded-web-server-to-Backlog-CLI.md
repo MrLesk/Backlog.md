@@ -1,9 +1,10 @@
 ---
 id: task-100
 title: Add embedded web server to Backlog CLI
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-22'
+updated_date: '2025-07-06'
 labels: []
 dependencies: []
 ---
@@ -55,8 +56,8 @@ This feature will embed a web server directly into the Backlog CLI executable, a
 
 ## Acceptance Criteria
 
-- [ ] Users can run `backlog serve` to start web server
-- [ ] Web UI displays all tasks in a Kanban board
-- [ ] Users can create edit and archive tasks from web UI
-- [ ] Server is embedded in the CLI executable
-- [ ] Works on all supported platforms
+- [x] Users can run `backlog browser` to start web server
+- [x] Web UI displays all tasks in a Kanban board
+- [x] Users can create edit and archive tasks from web UI
+- [x] Server is embedded in the CLI executable
+- [x] Works on all supported platforms
