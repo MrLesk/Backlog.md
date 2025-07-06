@@ -1,9 +1,10 @@
 ---
 id: task-100.3
 title: Implement API endpoints
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-22'
+updated_date: '2025-07-06'
 labels: []
 dependencies:
   - task-100.2
@@ -116,15 +117,16 @@ This ensures consistency between CLI and web operations.
 
 ## Acceptance Criteria
 
-- [ ] GET /api/tasks returns all tasks with optional query filtering
-- [ ] GET /api/tasks/:id returns specific task
-- [ ] POST /api/tasks creates new task with Zod validation
-- [ ] PUT /api/tasks/:id updates task with Zod validation
-- [ ] DELETE /api/tasks/:id archives task
+- [x] GET /api/tasks returns all tasks with optional query filtering
+- [x] GET /api/tasks/:id returns specific task
+- [x] POST /api/tasks creates new task with Zod validation
+- [x] PUT /api/tasks/:id updates task with Zod validation
+- [x] DELETE /api/tasks/:id archives task
+- [x] GET /api/statuses returns available statuses
 - [ ] GET /api/board returns board data
 - [ ] GET /api/drafts returns all drafts
 - [ ] GET /api/config returns project configuration
 - [ ] All request bodies validated with Zod schemas
 - [ ] Clear validation error messages returned for invalid input
-- [ ] All endpoints use existing Core functions
+- [x] All endpoints use existing Core functions
 - [ ] Consistent JSON response format across all endpoints
