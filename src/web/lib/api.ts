@@ -67,6 +67,24 @@ export class ApiClient {
 		}
 		return response.json();
 	}
+
+	async checkHealth(): Promise<{
+		status: "healthy" | "unhealthy";
+		timestamp: string;
+		responseTime: number;
+		project: string;
+		checks: {
+			filesystem: string;
+			config: string;
+		};
+		error?: string;
+	}> {
+		const response = await fetch(`${API_BASE}/health`);
+		if (!response.ok) {
+			throw new Error("Health check failed");
+		}
+		return response.json();
+	}
 }
 
 export const apiClient = new ApiClient();

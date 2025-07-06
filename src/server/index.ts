@@ -132,6 +132,46 @@ export class BacklogServer {
 	}
 
 	private async handleApiRequest(req: Request, pathname: string, method: string): Promise<Response> {
+		// GET /api/health - Health check endpoint
+		if (pathname === "/api/health" && method === "GET") {
+			try {
+				// Basic health checks
+				const startTime = Date.now();
+
+				// Check if we can load the config
+				const config = await this.core.filesystem.loadConfig();
+
+				// Check if we can list tasks (filesystem accessibility)
+				await this.core.filesystem.listTasks();
+
+				const responseTime = Date.now() - startTime;
+
+				return Response.json({
+					status: "healthy",
+					timestamp: new Date().toISOString(),
+					responseTime,
+					project: config?.projectName || "Untitled Project",
+					checks: {
+						filesystem: "ok",
+						config: "ok",
+					},
+				});
+			} catch (error) {
+				return Response.json(
+					{
+						status: "unhealthy",
+						timestamp: new Date().toISOString(),
+						error: error instanceof Error ? error.message : "Unknown error",
+						checks: {
+							filesystem: "error",
+							config: "error",
+						},
+					},
+					{ status: 503 },
+				);
+			}
+		}
+
 		// GET /api/tasks - List all tasks
 		if (pathname === "/api/tasks" && method === "GET") {
 			const tasks = await this.core.filesystem.listTasks();

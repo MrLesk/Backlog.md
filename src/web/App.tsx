@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Board from './components/Board';
 import Navigation from './components/Navigation';
 import Modal from './components/Modal';
 import TaskForm from './components/TaskForm';
+import { HealthIndicator, HealthSuccessToast } from './components/HealthIndicator';
 import { Task } from './types/task';
 import { apiClient } from './lib/api';
+import { useHealthCheck } from './hooks/useHealthCheck';
 
 function App() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  
+  const { isOnline } = useHealthCheck();
+  const previousOnlineRef = useRef(isOnline);
 
   React.useEffect(() => {
     const loadData = async () => {
@@ -34,6 +40,23 @@ function App() {
       document.title = `${projectName} - Task Management`;
     }
   }, [projectName]);
+
+  // Show success toast when connection is restored
+  useEffect(() => {
+    const wasOffline = !previousOnlineRef.current;
+    const isNowOnline = isOnline;
+    
+    if (wasOffline && isNowOnline) {
+      setShowSuccessToast(true);
+      // Auto-dismiss after 4 seconds
+      const timer = setTimeout(() => {
+        setShowSuccessToast(false);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+    
+    previousOnlineRef.current = isOnline;
+  }, [isOnline]);
 
   const handleNewTask = () => {
     setEditingTask(null);
@@ -76,6 +99,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <HealthIndicator />
       <Navigation onNewTask={handleNewTask} projectName={projectName} />
       <main className="container mx-auto px-4 py-8">
         <Board onEditTask={handleEditTask} />
@@ -94,6 +118,10 @@ function App() {
           availableStatuses={statuses}
         />
       </Modal>
+
+      {showSuccessToast && (
+        <HealthSuccessToast onDismiss={() => setShowSuccessToast(false)} />
+      )}
     </div>
   );
 }
