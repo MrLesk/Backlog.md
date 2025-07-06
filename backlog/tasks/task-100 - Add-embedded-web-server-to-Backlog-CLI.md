@@ -11,7 +11,7 @@ dependencies: []
 
 ## Description
 
-Implement a web-based UI for Backlog.md that runs on localhost:3000, providing an HTML interface to view and manage tasks through the browser using React and shadcn/ui.
+Implement a web-based UI for Backlog.md that runs on localhost:3000, providing an HTML interface to view and manage tasks through the browser using React and Tailwind CSS.
 
 ## Overview
 
@@ -28,7 +28,7 @@ This feature will embed a web server directly into the Backlog CLI executable, a
 ### Frontend
 
 - **React 18** with TypeScript for the UI framework
-- **shadcn/ui** with Tailwind CSS v4 for modern, accessible components (see decision-1)
+- **Tailwind CSS v4** for modern, accessible styling (see decision-1)
 - **react-markdown** for rendering task descriptions
 - **Vite** as the build tool for development and production
 
@@ -39,7 +39,7 @@ This feature will embed a web server directly into the Backlog CLI executable, a
 3. **Search & Filter**: Real-time filtering by status, assignee, labels
 4. **Markdown Support**: Rich markdown preview and editing
 5. **Responsive Design**: Mobile-first approach that works on all devices
-6. **Dark Mode**: Built-in theme support via shadcn/ui
+6. **Dark Mode**: Built-in theme support via Tailwind CSS dark mode
 7. **Single Executable**: Everything bundled into the CLI binary
 
 ## Benefits
@@ -47,7 +47,7 @@ This feature will embed a web server directly into the Backlog CLI executable, a
 - **No external dependencies** needed at runtime - everything is bundled
 - **Works offline** - no internet connection required
 - **Better component management** with React's component model
-- **Modern UI** with shadcn/ui's polished, accessible components
+- **Modern UI** with Tailwind CSS's utility-first styling approach
 - **Type safety** throughout with TypeScript
 - **Maintainable architecture** with clear separation of concerns
 - **Easy distribution** - single executable contains everything

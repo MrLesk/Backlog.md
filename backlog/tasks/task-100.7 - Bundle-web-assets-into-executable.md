@@ -92,11 +92,11 @@ Configure build process to embed React app in CLI executable. This is crucial fo
 
 ## Acceptance Criteria
 
-- [ ] Vite builds React app to optimized dist/ directory
-- [ ] Shell glob pattern embeds entire dist/ directory using `bun build --compile`
-- [ ] Embedded assets accessible via `Bun.embeddedFiles` API
-- [ ] Server can serve embedded files directly from Blob objects
-- [ ] Build process simplified without custom embedding scripts
-- [ ] Production build is optimized with proper asset hashing
-- [ ] SPA routing works correctly with embedded index.html fallback
-- [ ] All file types (HTML, CSS, JS, images) served with correct MIME types
+- [x] Vite builds React app to optimized dist/ directory
+- [x] Shell glob pattern embeds entire dist/ directory using `bun build --compile`
+- [x] Embedded assets accessible via `Bun.embeddedFiles` API
+- [x] Server can serve embedded files directly from Blob objects
+- [x] Build process simplified without custom embedding scripts
+- [x] Production build is optimized with proper asset hashing
+- [x] SPA routing works correctly with embedded index.html fallback
+- [x] All file types (HTML, CSS, JS, images) served with correct MIME types

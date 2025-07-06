@@ -34,6 +34,31 @@ if (process.platform === "win32") {
 // Get version from package.json
 const version = await getVersion();
 
+// Global config migration - run before any command processing
+// Only run if we're in a backlog project (skip for init, help, version)
+const shouldRunMigration =
+	!process.argv.includes("init") &&
+	!process.argv.includes("--help") &&
+	!process.argv.includes("-h") &&
+	!process.argv.includes("--version") &&
+	!process.argv.includes("-v") &&
+	process.argv.length > 2; // Ensure we have actual commands
+
+if (shouldRunMigration) {
+	try {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+
+		// Only migrate if config already exists (project is already initialized)
+		const config = await core.filesystem.loadConfig();
+		if (config) {
+			await core.ensureConfigMigrated();
+		}
+	} catch (_error) {
+		// Silently ignore migration errors - project might not be initialized yet
+	}
+}
+
 const program = new Command();
 program
 	.name("backlog")
@@ -574,7 +599,6 @@ taskCmd
 			}
 		}
 		task.labels = labels;
-		task.updatedDate = new Date().toISOString().split("T")[0];
 
 		// Handle dependencies
 		if (options.dependsOn || options.dep) {
@@ -1137,10 +1161,16 @@ configCmd
 				case "backlogDirectory":
 					console.log(config.backlogDirectory || "");
 					break;
+				case "defaultPort":
+					console.log(config.defaultPort?.toString() || "");
+					break;
+				case "autoOpenBrowser":
+					console.log(config.autoOpenBrowser?.toString() || "");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser",
 					);
 					process.exit(1);
 			}
@@ -1199,6 +1229,27 @@ configCmd
 				case "backlogDirectory":
 					config.backlogDirectory = value;
 					break;
+				case "autoOpenBrowser": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.autoOpenBrowser = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.autoOpenBrowser = false;
+					} else {
+						console.error("autoOpenBrowser must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
+				case "defaultPort": {
+					const port = Number.parseInt(value, 10);
+					if (Number.isNaN(port) || port < 1 || port > 65535) {
+						console.error("defaultPort must be a valid port number (1-65535)");
+						process.exit(1);
+					}
+					config.defaultPort = port;
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -1209,7 +1260,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory, autoOpenBrowser, defaultPort",
 					);
 					process.exit(1);
 			}
@@ -1246,8 +1297,47 @@ configCmd
 			console.log(`  dateFormat: ${config.dateFormat}`);
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
 			console.log(`  backlogDirectory: ${config.backlogDirectory || "(not set)"}`);
+			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
+			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
+			process.exitCode = 1;
+		}
+	});
+
+// Browser command for web UI
+program
+	.command("browser")
+	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
+	.option("-p, --port <port>", "port to run server on")
+	.option("--no-open", "don't automatically open browser")
+	.action(async (options) => {
+		try {
+			const cwd = process.cwd();
+			const { BacklogServer } = await import("./server/index.ts");
+			const server = new BacklogServer(cwd);
+
+			// Load config to get default port
+			const core = new Core(cwd);
+			const config = await core.filesystem.loadConfig();
+			const defaultPort = config?.defaultPort ?? 6420;
+
+			const port = Number.parseInt(options.port || defaultPort.toString(), 10);
+			if (Number.isNaN(port) || port < 1 || port > 65535) {
+				console.error("Invalid port number. Must be between 1 and 65535.");
+				process.exit(1);
+			}
+
+			await server.start(port, options.open !== false);
+
+			// Keep the process running
+			process.on("SIGINT", async () => {
+				console.log("\nShutting down server...");
+				await server.stop();
+				process.exit(0);
+			});
+		} catch (err) {
+			console.error("Failed to start browser interface", err);
 			process.exitCode = 1;
 		}
 	});

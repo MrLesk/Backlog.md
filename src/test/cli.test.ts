@@ -593,7 +593,6 @@ describe("CLI Integration", () => {
 				task.title = "Updated Title";
 				task.description = "Updated description";
 				task.status = "In Progress";
-				task.updatedDate = "2025-06-08";
 
 				await core.updateTask(task, false);
 			}
@@ -603,7 +602,8 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.title).toBe("Updated Title");
 			expect(updatedTask?.description).toBe("## Description\n\nUpdated description");
 			expect(updatedTask?.status).toBe("In Progress");
-			expect(updatedTask?.updatedDate).toBe("2025-06-08");
+			const today = new Date().toISOString().split("T")[0];
+			expect(updatedTask?.updatedDate).toBe(today);
 		});
 
 		it("should update assignee", async () => {
@@ -628,7 +628,6 @@ describe("CLI Integration", () => {
 			const task = await core.filesystem.loadTask("task-2");
 			if (task) {
 				task.assignee = ["newuser@example.com"];
-				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, false);
 			}
 
@@ -659,7 +658,6 @@ describe("CLI Integration", () => {
 			const task = await core.filesystem.loadTask("task-3");
 			if (task) {
 				task.labels = ["new1", "new2", "new3"];
-				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, false);
 			}
 
@@ -697,7 +695,6 @@ describe("CLI Integration", () => {
 					}
 				}
 				task.labels = newLabels;
-				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, false);
 			}
 
@@ -729,7 +726,6 @@ describe("CLI Integration", () => {
 			if (task) {
 				const newLabels = task.labels.filter((label) => label !== "remove");
 				task.labels = newLabels;
-				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, false);
 			}
 
@@ -745,7 +741,7 @@ describe("CLI Integration", () => {
 			expect(nonExistentTask).toBeNull();
 		});
 
-		it("should set updated_date field when editing", async () => {
+		it("should automatically set updated_date field when editing", async () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
@@ -763,17 +759,17 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			// Edit the task
+			// Edit the task (without manually setting updatedDate)
 			const task = await core.filesystem.loadTask("task-6");
 			if (task) {
 				task.title = "Updated Title";
-				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, false);
 			}
 
-			// Verify updated_date was set
+			// Verify updated_date was automatically set to today's date
 			const updatedTask = await core.filesystem.loadTask("task-6");
-			expect(updatedTask?.updatedDate).toBe("2025-06-08");
+			const today = new Date().toISOString().split("T")[0];
+			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.createdDate).toBe("2025-06-07"); // Should remain unchanged
 		});
 
@@ -799,7 +795,6 @@ describe("CLI Integration", () => {
 			const task = await core.filesystem.loadTask("task-7");
 			if (task) {
 				task.title = "Updated for Commit";
-				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, true); // autoCommit = true
 			}
 
@@ -834,7 +829,6 @@ describe("CLI Integration", () => {
 			if (task) {
 				task.title = "Updated YAML Test";
 				task.status = "In Progress";
-				task.updatedDate = "2025-06-08";
 				await core.updateTask(task, false);
 			}
 
@@ -845,7 +839,8 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.status).toBe("In Progress");
 			expect(updatedTask?.assignee).toEqual(["testuser"]);
 			expect(updatedTask?.createdDate).toBe("2025-06-08");
-			expect(updatedTask?.updatedDate).toBe("2025-06-08");
+			const today = new Date().toISOString().split("T")[0];
+			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);
 			expect(updatedTask?.description).toBe("## Description\n\nTesting YAML preservation");

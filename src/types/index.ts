@@ -54,6 +54,8 @@ export interface BacklogConfig {
 	taskResolutionStrategy?: "most_recent" | "most_progressed";
 	backlogDirectory?: string;
 	defaultEditor?: string;
+	autoOpenBrowser?: boolean;
+	defaultPort?: number;
 }
 
 export interface ParsedMarkdown {

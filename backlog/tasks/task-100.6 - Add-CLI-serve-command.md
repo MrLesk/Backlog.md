@@ -1,9 +1,10 @@
 ---
 id: task-100.6
-title: Add CLI serve command
-status: To Do
+title: Add CLI browser command
+status: Done
 assignee: []
 created_date: '2025-06-22'
+updated_date: '2025-07-05'
 labels: []
 dependencies:
   - task-100.2
@@ -12,7 +13,7 @@ parent_task_id: task-100
 
 ## Description
 
-Integrate web server into CLI with new serve command. This will provide users with a simple way to start the web interface from the command line.
+Integrate web server into CLI with new browser command. This will provide users with a simple way to start the web interface from the command line.
 
 ## Implementation Details
 
@@ -20,7 +21,7 @@ Integrate web server into CLI with new serve command. This will provide users wi
 
 **Command Structure:**
 
-- Add `serve` command to existing CLI in `src/cli.ts`
+- Add `browser` command to existing CLI in `src/cli.ts`
 - Support port configuration option (default: 3000)
 - Support host binding option (default: localhost)
 - Support browser auto-open option (default: true)
@@ -93,11 +94,11 @@ In production, the server will:
 
 ## Acceptance Criteria
 
-- [ ] `backlog serve` starts the web server
-- [ ] --port option configures starting port
-- [ ] Automatically finds next available port if requested port is busy
-- [ ] Shows clear message when using different port than requested
-- [ ] --open option opens browser automatically with correct URL
-- [ ] --host option configures binding address
-- [ ] Server stops gracefully on Ctrl+C
-- [ ] Clear error message when no ports are available after 10 attempts
+- [x] `backlog browser` starts the web server
+- [x] --port option configures starting port
+- [x] Automatically finds next available port if requested port is busy
+- [x] Shows clear message when using different port than requested
+- [x] --open option opens browser automatically with correct URL
+- [x] --host option configures binding address
+- [x] Server stops gracefully on Ctrl+C
+- [x] Clear error message when no ports are available after 10 attempts

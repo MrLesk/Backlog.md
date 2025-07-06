@@ -3,6 +3,7 @@ import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
+import { migrateConfig, needsMigration } from "./config-migration.ts";
 
 function ensureDescriptionHeader(description: string): string {
 	const trimmed = description.trim();
@@ -34,6 +35,16 @@ export class Core {
 	// Git operations
 	get gitOps() {
 		return this.git;
+	}
+
+	// Config migration
+	async ensureConfigMigrated(): Promise<void> {
+		let config = await this.fs.loadConfig();
+
+		if (!config || needsMigration(config)) {
+			config = migrateConfig(config || {});
+			await this.fs.saveConfig(config);
+		}
 	}
 
 	// High-level operations that combine filesystem and git
@@ -89,6 +100,9 @@ export class Core {
 			// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
 			(task as any).assignee = [(task as any).assignee];
 		}
+
+		// Always set updatedDate when updating a task
+		task.updatedDate = new Date().toISOString().split("T")[0];
 
 		task.description = ensureDescriptionHeader(task.description);
 		await this.fs.saveTask(task);

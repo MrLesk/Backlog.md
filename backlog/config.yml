@@ -7,3 +7,5 @@ date_format: yyyy-mm-dd
 max_column_width: 20
 backlog_directory: "backlog"
 default_editor: "rider"
+auto_open_browser: true
+default_port: 6420

@@ -558,6 +558,12 @@ export class FileSystem {
 				case "default_editor":
 					config.defaultEditor = value.replace(/["']/g, "");
 					break;
+				case "auto_open_browser":
+					config.autoOpenBrowser = value.toLowerCase() === "true";
+					break;
+				case "default_port":
+					config.defaultPort = Number.parseInt(value, 10);
+					break;
 			}
 		}
 
@@ -589,6 +595,8 @@ export class FileSystem {
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
 			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
+			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
+			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

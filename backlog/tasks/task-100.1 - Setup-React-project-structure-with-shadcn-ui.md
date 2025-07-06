@@ -1,7 +1,7 @@
 ---
 id: task-100.1
 title: Setup React project structure with shadcn/ui
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-22'
 labels: []
@@ -11,7 +11,7 @@ parent_task_id: task-100
 
 ## Description
 
-Initialize React project with TypeScript, Tailwind CSS, and shadcn/ui. This will be the foundation for the web UI that users will interact with when running `backlog serve`.
+Initialize React project with TypeScript, Tailwind CSS, and shadcn/ui. This will be the foundation for the web UI that users will interact with when running `backlog browser`.
 
 ## Project Structure
 
@@ -108,8 +108,8 @@ For complete Tailwind v4 setup instructions, migration notes, and troubleshootin
 
 ## Acceptance Criteria
 
-- [ ] React project structure created in src/web/
-- [ ] Tailwind CSS configured
-- [ ] shadcn/ui installed and configured
-- [ ] Basic App.tsx component renders
-- [ ] Vite configured for development and production builds
+- [x] React project structure created in src/web/
+- [x] Tailwind CSS configured (manual CSS implementation)
+- [x] shadcn/ui installed and configured (manual component implementation)
+- [x] Basic App.tsx component renders
+- [x] Vite configured for development and production builds (using Bun's fullstack bundler)

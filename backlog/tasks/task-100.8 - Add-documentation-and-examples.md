@@ -101,8 +101,8 @@ Document common use cases:
 
 ## Acceptance Criteria
 
-- [ ] README updated with serve command docs
-- [ ] Development setup guide created
-- [ ] Screenshots of web UI included
-- [ ] API documentation complete
-- [ ] Troubleshooting section added
+- [x] README updated with serve command docs
+- [x] Development setup guide created
+- [x] Screenshots of web UI included
+- [x] API documentation complete
+- [x] Troubleshooting section added

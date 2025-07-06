@@ -1,9 +1,10 @@
 ---
 id: task-100.4
 title: Build Kanban board component
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-22'
+updated_date: '2025-07-05'
 labels: []
 dependencies:
   - task-100.1
@@ -97,8 +98,8 @@ Each task card will display:
 
 ## Acceptance Criteria
 
-- [ ] Board displays tasks grouped by status
-- [ ] Drag and drop functionality works
-- [ ] Tasks show title ID and assignee
-- [ ] Board is responsive on mobile
-- [ ] Loading and error states handled
+- [x] Board displays tasks grouped by status
+- [x] Drag and drop functionality works
+- [x] Tasks show title ID and assignee
+- [x] Board is responsive on mobile
+- [x] Loading and error states handled

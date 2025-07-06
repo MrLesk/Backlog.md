@@ -123,10 +123,10 @@ This ensures consistency between CLI and web operations.
 - [x] PUT /api/tasks/:id updates task with Zod validation
 - [x] DELETE /api/tasks/:id archives task
 - [x] GET /api/statuses returns available statuses
-- [ ] GET /api/board returns board data
-- [ ] GET /api/drafts returns all drafts
-- [ ] GET /api/config returns project configuration
-- [ ] All request bodies validated with Zod schemas
-- [ ] Clear validation error messages returned for invalid input
+- [x] GET /api/board returns board data
+- [x] GET /api/drafts returns all drafts
+- [x] GET /api/config returns project configuration
+- [x] All request bodies validated with Zod schemas
+- [x] Clear validation error messages returned for invalid input
 - [x] All endpoints use existing Core functions
-- [ ] Consistent JSON response format across all endpoints
+- [x] Consistent JSON response format across all endpoints
