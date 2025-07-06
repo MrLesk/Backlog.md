@@ -49,12 +49,40 @@ async function createTaskViaCore(
 		// Generate next ID (mimicking CLI behavior)
 		const tasks = await core.filesystem.listTasks();
 		const drafts = await core.filesystem.listDrafts();
-		const maxId = Math.max(
-			...tasks.map((t) => Number.parseInt(t.id.replace("task-", "") || "0")),
-			...drafts.map((d) => Number.parseInt(d.id.replace("task-", "") || "0")),
-			0,
-		);
-		const taskId = `task-${maxId + 1}`;
+
+		let taskId: string;
+
+		if (options.parent) {
+			// Handle subtask ID generation
+			const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+			let maxSubtask = 0;
+
+			// Find existing subtasks of this parent
+			for (const t of tasks) {
+				if (t.id.startsWith(`${parentId}.`)) {
+					const rest = t.id.slice(parentId.length + 1);
+					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
+					if (num > maxSubtask) maxSubtask = num;
+				}
+			}
+			for (const d of drafts) {
+				if (d.id.startsWith(`${parentId}.`)) {
+					const rest = d.id.slice(parentId.length + 1);
+					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
+					if (num > maxSubtask) maxSubtask = num;
+				}
+			}
+
+			taskId = `${parentId}.${maxSubtask + 1}`;
+		} else {
+			// Regular task ID generation
+			const maxId = Math.max(
+				...tasks.map((t) => Number.parseInt(t.id.replace("task-", "") || "0")),
+				...drafts.map((d) => Number.parseInt(d.id.replace("task-", "") || "0")),
+				0,
+			);
+			taskId = `task-${maxId + 1}`;
+		}
 
 		// Build task object (mimicking CLI buildTaskFromOptions)
 		const task = {
