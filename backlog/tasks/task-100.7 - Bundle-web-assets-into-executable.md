@@ -1,9 +1,10 @@
 ---
 id: task-100.7
 title: Bundle web assets into executable
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-22'
+updated_date: '2025-07-06'
 labels: []
 dependencies:
   - task-100.1
