@@ -3,7 +3,7 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
-import { viewTaskPlatformAware } from "./test-helpers.ts";
+import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -355,8 +355,8 @@ describe("CLI Integration", () => {
 			});
 
 			// Test with -s flag
-			const resultShort = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "-s", "done"], { cwd: TEST_DIR });
-			const outShort = resultShort.stdout.toString();
+			const resultShort = await listTasksPlatformAware({ plain: true, status: "done" }, TEST_DIR);
+			const outShort = resultShort.stdout;
 			expect(outShort).toContain("Done:");
 			expect(outShort).toContain("task-2 - Second Task");
 			expect(outShort).not.toContain("task-1");

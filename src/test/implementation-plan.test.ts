@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
-import { createTaskPlatformAware } from "./test-helpers.ts";
+import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 
 const TEST_DIR = join(process.cwd(), "test-plan");
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -127,12 +127,8 @@ describe("Implementation Plan CLI", () => {
 
 		it("should handle all task editing scenarios with implementation plans", async () => {
 			// Test 1: add implementation plan to existing task
-			const p1 = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"], {
-				cwd: TEST_DIR,
-				stdout: "inherit",
-				stderr: "inherit",
-			});
-			expect(await p1.exited).toBe(0);
+			const result1 = await editTaskPlatformAware({ taskId: "1", plan: "New plan:\n- Step A\n- Step B" }, TEST_DIR);
+			expect(result1.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			let task = await core.filesystem.loadTask("task-1");
@@ -159,15 +155,11 @@ Old plan:
 			}
 
 			// Now update with new plan
-			const p2 = Bun.spawn(
-				["bun", CLI_PATH, "task", "edit", "1", "--plan", "Updated plan:\n1. New step 1\n2. New step 2"],
-				{
-					cwd: TEST_DIR,
-					stdout: "inherit",
-					stderr: "inherit",
-				},
+			const result2 = await editTaskPlatformAware(
+				{ taskId: "1", plan: "Updated plan:\n1. New step 1\n2. New step 2" },
+				TEST_DIR,
 			);
-			expect(await p2.exited).toBe(0);
+			expect(result2.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();

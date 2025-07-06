@@ -210,6 +210,7 @@ export interface TaskEditOptions {
 	priority?: string;
 	dependencies?: string;
 	notes?: string;
+	plan?: string;
 }
 
 /**
@@ -274,6 +275,12 @@ async function editTaskViaCore(
 			updatedTask.description = updateTaskImplementationNotes(updatedTask.description, options.notes);
 		}
 
+		// Update implementation plan if provided
+		if (options.plan) {
+			const { updateTaskImplementationPlan } = await import("../markdown/serializer.ts");
+			updatedTask.description = updateTaskImplementationPlan(updatedTask.description, options.plan);
+		}
+
 		// Save updated task
 		await core.updateTask(updatedTask, false);
 		return {
@@ -305,6 +312,7 @@ function editTaskViaCLI(
 	if (options.priority) args.push("--priority", options.priority);
 	if (options.dependencies) args.push("--dep", options.dependencies);
 	if (options.notes) args.push("--notes", options.notes);
+	if (options.plan) args.push("--plan", options.plan);
 
 	const result = Bun.spawnSync(args, {
 		cwd: testDir,
@@ -451,6 +459,135 @@ Options:
 
 	// Test CLI integration on Unix systems
 	const result = Bun.spawnSync(["bun", CLI_PATH, ...command], {
+		cwd: testDir,
+		timeout: 30000,
+	});
+
+	return {
+		exitCode: result.exitCode,
+		stdout: result.stdout.toString(),
+		stderr: result.stderr.toString(),
+	};
+}
+
+export interface TaskListOptions {
+	plain?: boolean;
+	status?: string;
+	assignee?: string;
+}
+
+/**
+ * Platform-aware task listing that uses Core directly on Windows
+ * and CLI spawning on Unix systems
+ */
+export async function listTasksPlatformAware(
+	options: TaskListOptions,
+	testDir: string,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+	if (isWindows) {
+		// Test Core directly on Windows to avoid memory issues
+		return listTasksViaCore(options, testDir);
+	}
+	// Test CLI integration on Unix systems
+	return listTasksViaCLI(options, testDir);
+}
+
+async function listTasksViaCore(
+	options: TaskListOptions,
+	testDir: string,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+	try {
+		const core = new Core(testDir);
+		const tasks = await core.filesystem.listTasks();
+
+		// Filter by status if provided
+		let filteredTasks = tasks;
+		if (options.status) {
+			const statusFilter = options.status.toLowerCase();
+			filteredTasks = tasks.filter((task) => task.status.toLowerCase() === statusFilter);
+		}
+
+		// Filter by assignee if provided
+		if (options.assignee) {
+			filteredTasks = filteredTasks.filter((task) =>
+				task.assignee.some((a) => a.toLowerCase().includes(options.assignee!.toLowerCase())),
+			);
+		}
+
+		// Format output to match CLI output
+		if (options.plain) {
+			if (filteredTasks.length === 0) {
+				return {
+					exitCode: 0,
+					stdout: "No tasks found",
+					stderr: "",
+				};
+			}
+
+			// Group by status
+			const tasksByStatus = new Map<string, typeof filteredTasks>();
+			for (const task of filteredTasks) {
+				const status = task.status || "No Status";
+				const existing = tasksByStatus.get(status) || [];
+				existing.push(task);
+				tasksByStatus.set(status, existing);
+			}
+
+			let output = "";
+			for (const [status, statusTasks] of tasksByStatus) {
+				output += `${status}:\n`;
+				for (const task of statusTasks) {
+					output += `${task.id} - ${task.title}\n`;
+				}
+				output += "\n";
+			}
+
+			return {
+				exitCode: 0,
+				stdout: output.trim(),
+				stderr: "",
+			};
+		}
+
+		// Non-plain output (basic format)
+		let output = "";
+		for (const task of filteredTasks) {
+			output += `${task.id} - ${task.title}\n`;
+		}
+
+		return {
+			exitCode: 0,
+			stdout: output,
+			stderr: "",
+		};
+	} catch (error) {
+		return {
+			exitCode: 1,
+			stdout: "",
+			stderr: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+function listTasksViaCLI(
+	options: TaskListOptions,
+	testDir: string,
+): { exitCode: number; stdout: string; stderr: string } {
+	const args = ["bun", CLI_PATH, "task", "list"];
+
+	if (options.plain) {
+		args.push("--plain");
+	}
+
+	if (options.status) {
+		args.push("-s", options.status);
+	}
+
+	if (options.assignee) {
+		args.push("-a", options.assignee);
+	}
+
+	const result = Bun.spawnSync(args, {
 		cwd: testDir,
 		timeout: 30000,
 	});
