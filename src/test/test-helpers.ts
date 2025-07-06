@@ -510,7 +510,7 @@ async function listTasksViaCore(
 		// Filter by assignee if provided
 		if (options.assignee) {
 			filteredTasks = filteredTasks.filter((task) =>
-				task.assignee.some((a) => a.toLowerCase().includes(options.assignee!.toLowerCase())),
+				task.assignee.some((a) => a.toLowerCase().includes(options.assignee?.toLowerCase() ?? "")),
 			);
 		}
 
