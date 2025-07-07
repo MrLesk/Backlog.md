@@ -15,7 +15,7 @@ export function HealthIndicator() {
 				<div className="flex items-center gap-2">
 					<div className="w-2 h-2 bg-white rounded-full animate-pulse" />
 					<span>
-						Connection lost. 
+						Connection lost. Please check if Backlog.md server is still running.
 						{consecutiveFailures > 1 && ` (${consecutiveFailures} attempts)`}
 						{lastCheck?.error && ` - ${lastCheck.error}`}
 					</span>
@@ -27,7 +27,7 @@ export function HealthIndicator() {
 					<button
 						onClick={retry}
 						disabled={isChecking}
-						className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded text-xs font-medium transition-colors"
+						className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed"
 					>
 						Retry
 					</button>
