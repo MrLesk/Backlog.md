@@ -117,7 +117,7 @@ class BackgroundLoader {
 			}
 
 			// Import these dynamically to avoid circular deps
-			const { loadRemoteTasks, resolveTaskConflict } = await import("../core/remote-tasks.ts");
+			const { loadRemoteTasks, resolveTaskConflict, getTaskLoadingMessage } = await import("../core/remote-tasks.ts");
 			const { filterTasksByLatestState, getLatestTaskStatesForIds } = await import("../core/cross-branch-tasks.ts");
 
 			const config = await this.core.filesystem.loadConfig();
@@ -130,11 +130,7 @@ class BackgroundLoader {
 			}
 
 			// Load local and remote tasks in parallel
-			this.onProgress?.(
-				config?.remoteOperations === false
-					? "Loading tasks from local branches..."
-					: "Loading tasks from local and remote branches...",
-			);
+			this.onProgress?.(getTaskLoadingMessage(config));
 			const [localTasks, remoteTasks] = await Promise.all([
 				this.core.listTasksWithMetadata(),
 				loadRemoteTasks(this.core.gitOps, this.core.filesystem, config, this.onProgress),

@@ -7,6 +7,15 @@ import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import type { GitOps } from "./git-ops.ts";
 
+/**
+ * Get the appropriate loading message based on remote operations configuration
+ */
+export function getTaskLoadingMessage(config: BacklogConfig | null): string {
+	return config?.remoteOperations === false
+		? "Loading tasks from local branches..."
+		: "Loading tasks from local and remote branches...";
+}
+
 // TaskWithMetadata is now just an alias for Task (for backward compatibility)
 export type TaskWithMetadata = Task;
 

@@ -821,7 +821,8 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 		try {
 			// Load local and remote tasks in parallel
-			loadingScreen?.update("Loading tasks from local and remote branches...");
+			const { getTaskLoadingMessage } = await import("./core/remote-tasks.ts");
+			loadingScreen?.update(getTaskLoadingMessage(config));
 			const [localTasks, remoteTasks] = await Promise.all([
 				core.listTasksWithMetadata(),
 				loadRemoteTasks(core.gitOps, core.filesystem, config),
