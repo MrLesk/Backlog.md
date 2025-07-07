@@ -31,6 +31,13 @@ if (process.platform === "win32") {
 	}
 }
 
+// Temporarily isolate BUN_OPTIONS during CLI parsing to prevent conflicts
+// Save the original value so it's available for subsequent commands
+const originalBunOptions = process.env.BUN_OPTIONS;
+if (process.env.BUN_OPTIONS) {
+	delete process.env.BUN_OPTIONS;
+}
+
 // Get version from package.json
 const version = await getVersion();
 
@@ -1386,4 +1393,9 @@ program
 		}
 	});
 
-program.parseAsync(process.argv);
+program.parseAsync(process.argv).finally(() => {
+	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
+	if (originalBunOptions) {
+		process.env.BUN_OPTIONS = originalBunOptions;
+	}
+});
