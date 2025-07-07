@@ -1,10 +1,10 @@
 ---
 id: task-101
 title: Show task file path in plain view
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-06-24'
-updated_date: '2025-07-06'
+updated_date: '2025-07-07'
 labels: []
 dependencies: []
 ---
