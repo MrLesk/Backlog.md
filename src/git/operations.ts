@@ -36,6 +36,52 @@ export class GitOperations {
 		await this.execGit(["commit", "-m", message]);
 	}
 
+	async resetIndex(): Promise<void> {
+		// Reset the staging area without affecting working directory
+		await this.execGit(["reset", "HEAD"]);
+	}
+
+	async commitStagedChanges(message: string): Promise<void> {
+		// Check if there are any staged changes before committing
+		const { stdout: status } = await this.execGit(["status", "--porcelain"]);
+		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
+
+		if (!hasStagedChanges) {
+			throw new Error("No staged changes to commit");
+		}
+
+		await this.execGit(["commit", "-m", message]);
+	}
+
+	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
+		let lastError: Error | undefined;
+
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				return await operation();
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+
+				if (process.env.DEBUG) {
+					console.warn(
+						`Git operation '${operationName}' failed on attempt ${attempt}/${maxRetries}:`,
+						lastError.message,
+					);
+				}
+
+				// Don't retry on the last attempt
+				if (attempt === maxRetries) {
+					break;
+				}
+
+				// Wait briefly before retrying (exponential backoff)
+				await new Promise((resolve) => setTimeout(resolve, 2 ** (attempt - 1) * 100));
+			}
+		}
+
+		throw new Error(`Git operation '${operationName}' failed after ${maxRetries} attempts: ${lastError?.message}`);
+	}
+
 	async getStatus(): Promise<string> {
 		const { stdout } = await this.execGit(["status", "--porcelain"]);
 		return stdout;
@@ -129,15 +175,23 @@ export class GitOperations {
 	}
 
 	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
-		await this.addFile(filePath);
-
 		const actionMessages = {
 			create: `Create task ${taskId}`,
 			update: `Update task ${taskId}`,
 			archive: `Archive task ${taskId}`,
 		};
 
-		await this.commitChanges(actionMessages[action]);
+		// Retry git operations to handle transient failures
+		await this.retryGitOperation(async () => {
+			// Reset index to ensure only the specific file is staged
+			await this.resetIndex();
+
+			// Stage only the specific task file
+			await this.addFile(filePath);
+
+			// Commit only the staged file
+			await this.commitStagedChanges(actionMessages[action]);
+		}, `commit task file ${filePath}`);
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<void> {
