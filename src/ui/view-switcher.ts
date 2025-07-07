@@ -195,7 +195,7 @@ class BackgroundLoader {
 			this.loadingPromise = null;
 			// If it's a cancellation, don't treat it as an error
 			if (error instanceof Error && error.message === "Loading cancelled") {
-				process.exit(0); // Exit immediately on cancellation
+				return []; // Return empty array instead of exiting
 			}
 			throw error;
 		}

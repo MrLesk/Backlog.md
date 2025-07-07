@@ -64,6 +64,8 @@ This is another test task for board testing.`,
 	});
 
 	afterEach(async () => {
+		// Wait a bit to ensure any background operations complete
+		await new Promise((resolve) => setTimeout(resolve, 100));
 		await rm(testDir, { recursive: true, force: true }).catch(() => {});
 	});
 
@@ -160,29 +162,28 @@ This is another test task for board testing.`,
 				initialState,
 			});
 
-			// Immediately cleanup to prevent background operations
-			viewSwitcher.cleanup();
-
-			// Mock the getKanbanData method to avoid remote git operations
-			viewSwitcher.getKanbanData = async () => {
-				// Mock config since it's not fully available in this test environment
-				const statuses = core.config?.get ? await core.config.get("statuses") : ["To Do", "In Progress"];
-				return {
-					tasks: await core.filesystem.listTasks(),
-					statuses: statuses || [],
+			try {
+				// Mock the getKanbanData method to avoid remote git operations
+				viewSwitcher.getKanbanData = async () => {
+					// Mock config since it's not fully available in this test environment
+					const statuses = core.config?.get ? await core.config.get("statuses") : ["To Do", "In Progress"];
+					return {
+						tasks: await core.filesystem.listTasks(),
+						statuses: statuses || [],
+					};
 				};
-			};
 
-			// This should not throw "viewSwitcher?.getKanbanData is not a function"
-			await expect(async () => {
-				const kanbanData = await viewSwitcher.getKanbanData();
-				expect(kanbanData).toBeDefined();
-				expect(Array.isArray(kanbanData.tasks)).toBe(true);
-				expect(Array.isArray(kanbanData.statuses)).toBe(true);
-			}).not.toThrow();
-
-			// Clean up again to be sure
-			viewSwitcher.cleanup();
+				// This should not throw "viewSwitcher?.getKanbanData is not a function"
+				await expect(async () => {
+					const kanbanData = await viewSwitcher.getKanbanData();
+					expect(kanbanData).toBeDefined();
+					expect(Array.isArray(kanbanData.tasks)).toBe(true);
+					expect(Array.isArray(kanbanData.statuses)).toBe(true);
+				}).not.toThrow();
+			} finally {
+				// Always cleanup in finally block
+				viewSwitcher.cleanup();
+			}
 		});
 	});
 
