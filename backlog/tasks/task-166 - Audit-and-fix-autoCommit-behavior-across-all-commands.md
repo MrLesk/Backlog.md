@@ -36,14 +36,13 @@ Task 164 implemented autoCommit configuration to prevent automatic commits, but 
 ## Implementation Notes
 
 **Fixed initializeProject method**:
-- Kept `autoCommit = true` default for backward compatibility
-- Method behavior unchanged to maintain test compatibility
+- Changed default from `autoCommit = true` to `autoCommit = false` to match config default
+- Method now defaults to not auto-committing, consistent with config interface
 
 **Fixed CLI init command**:
-- Updated to explicitly pass `autoCommit = false` to respect config default
-- This ensures `backlog init` respects the autoCommit config setting
-- Pass consistent autoCommit parameter to `addAgentInstructions`
-- Fixed hardcoded config value to use simple default `false` consistent with interface
+- Simplified to call `initializeProject(name)` without explicit parameter
+- Relies on method's default `autoCommit = false` behavior
+- Passes explicit `false` to `addAgentInstructions`
 
 **Fixed addAgentInstructions function**:
 - Added `autoCommit = false` parameter with default false
@@ -54,6 +53,8 @@ Task 164 implemented autoCommit configuration to prevent automatic commits, but 
 - Updated to get autoCommit setting from config before calling `addAgentInstructions`
 
 **Files Modified**:
-- `src/core/backlog.ts` - Fixed initializeProject method
-- `src/cli.ts` - Fixed init and agents commands
+- `src/core/backlog.ts` - Fixed initializeProject method default to `autoCommit = false`
+- `src/cli.ts` - Simplified init command to use method default
 - `src/agent-instructions.ts` - Added autoCommit parameter to addAgentInstructions
+- `src/test/auto-commit.test.ts` - Updated test to explicitly pass `true` when expecting commits
+- `src/test/cli.test.ts` - Updated git integration test to explicitly pass `true` when expecting commits

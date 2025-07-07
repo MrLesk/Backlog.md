@@ -213,7 +213,7 @@ export class Core {
 		}
 	}
 
-	async initializeProject(projectName: string, autoCommit = true): Promise<void> {
+	async initializeProject(projectName: string, autoCommit = false): Promise<void> {
 		await this.fs.ensureBacklogStructure();
 
 		const config: BacklogConfig = {

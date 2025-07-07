@@ -18,7 +18,7 @@ describe("Auto-commit configuration", () => {
 		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
 
 		core = new Core(testDir);
-		await core.initializeProject("Test Auto-commit Project");
+		await core.initializeProject("Test Auto-commit Project", true);
 	});
 
 	describe("Config migration", () => {

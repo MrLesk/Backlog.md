@@ -131,14 +131,11 @@ program
 
 			const core = new Core(cwd);
 
-			// Default autoCommit to false for init command, consistent with config default
-			const shouldAutoCommit = false;
-
-			await core.initializeProject(name, shouldAutoCommit);
+			await core.initializeProject(name);
 			console.log(`Initialized backlog project: ${name}`);
 
 			if (files.length > 0) {
-				await addAgentInstructions(cwd, core.gitOps, files, shouldAutoCommit);
+				await addAgentInstructions(cwd, core.gitOps, files, false);
 			}
 
 			// if (reporter) {
