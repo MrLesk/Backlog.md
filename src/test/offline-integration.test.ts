@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { execSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,14 +13,14 @@ describe("Offline Integration Tests", () => {
 		tempDir = await mkdtemp(join(tmpdir(), "backlog-offline-integration-"));
 
 		// Initialize a git repo without remote
-		execSync("git init", { cwd: tempDir });
-		execSync("git config user.email 'test@example.com'", { cwd: tempDir });
-		execSync("git config user.name 'Test User'", { cwd: tempDir });
+		await Bun.spawn(["git", "init"], { cwd: tempDir }).exited;
+		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: tempDir }).exited;
+		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: tempDir }).exited;
 
 		// Create initial commit
 		await writeFile(join(tempDir, "README.md"), "# Test Project");
-		execSync("git add README.md", { cwd: tempDir });
-		execSync("git commit -m 'Initial commit'", { cwd: tempDir });
+		await Bun.spawn(["git", "add", "README.md"], { cwd: tempDir }).exited;
+		await Bun.spawn(["git", "commit", "-m", "Initial commit"], { cwd: tempDir }).exited;
 
 		// Create basic backlog structure
 		const backlogDir = join(tempDir, "backlog");
