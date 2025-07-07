@@ -160,6 +160,9 @@ This is another test task for board testing.`,
 				initialState,
 			});
 
+			// Immediately cleanup to prevent background operations
+			viewSwitcher.cleanup();
+
 			// Mock the getKanbanData method to avoid remote git operations
 			viewSwitcher.getKanbanData = async () => {
 				// Mock config since it's not fully available in this test environment
@@ -178,7 +181,7 @@ This is another test task for board testing.`,
 				expect(Array.isArray(kanbanData.statuses)).toBe(true);
 			}).not.toThrow();
 
-			// Clean up to prevent background operations after test
+			// Clean up again to be sure
 			viewSwitcher.cleanup();
 		});
 	});

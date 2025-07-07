@@ -107,6 +107,9 @@ Test task for board CLI integration.`,
 			initialState,
 		});
 
+		// Immediately cleanup to prevent background operations
+		viewSwitcher.cleanup();
+
 		// Verify the ViewSwitcher has the required methods
 		expect(typeof viewSwitcher.getKanbanData).toBe("function");
 		expect(typeof viewSwitcher.switchView).toBe("function");
@@ -128,7 +131,7 @@ Test task for board CLI integration.`,
 		expect(Array.isArray(kanbanData.tasks)).toBe(true);
 		expect(Array.isArray(kanbanData.statuses)).toBe(true);
 
-		// Clean up to prevent background operations after test
+		// Clean up again to be sure
 		viewSwitcher.cleanup();
 	});
 });
