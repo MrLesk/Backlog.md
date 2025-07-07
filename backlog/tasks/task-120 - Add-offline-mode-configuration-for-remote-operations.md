@@ -1,9 +1,10 @@
 ---
 id: task-120
 title: Add offline mode configuration for remote operations
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-07'
+updated_date: '2025-07-07'
 labels:
   - enhancement
   - offline
