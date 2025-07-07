@@ -1,8 +1,16 @@
+import type { BacklogConfig } from "../types/index.ts";
+
 export class GitOperations {
 	private projectRoot: string;
+	private config: BacklogConfig | null = null;
 
-	constructor(projectRoot: string) {
+	constructor(projectRoot: string, config: BacklogConfig | null = null) {
 		this.projectRoot = projectRoot;
+		this.config = config;
+	}
+
+	setConfig(config: BacklogConfig | null): void {
+		this.config = config;
 	}
 
 	async addFile(filePath: string): Promise<void> {
@@ -26,6 +34,52 @@ export class GitOperations {
 
 	async commitChanges(message: string): Promise<void> {
 		await this.execGit(["commit", "-m", message]);
+	}
+
+	async resetIndex(): Promise<void> {
+		// Reset the staging area without affecting working directory
+		await this.execGit(["reset", "HEAD"]);
+	}
+
+	async commitStagedChanges(message: string): Promise<void> {
+		// Check if there are any staged changes before committing
+		const { stdout: status } = await this.execGit(["status", "--porcelain"]);
+		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
+
+		if (!hasStagedChanges) {
+			throw new Error("No staged changes to commit");
+		}
+
+		await this.execGit(["commit", "-m", message]);
+	}
+
+	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
+		let lastError: Error | undefined;
+
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				return await operation();
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+
+				if (process.env.DEBUG) {
+					console.warn(
+						`Git operation '${operationName}' failed on attempt ${attempt}/${maxRetries}:`,
+						lastError.message,
+					);
+				}
+
+				// Don't retry on the last attempt
+				if (attempt === maxRetries) {
+					break;
+				}
+
+				// Wait briefly before retrying (exponential backoff)
+				await new Promise((resolve) => setTimeout(resolve, 2 ** (attempt - 1) * 100));
+			}
+		}
+
+		throw new Error(`Git operation '${operationName}' failed after ${maxRetries} attempts: ${lastError?.message}`);
 	}
 
 	async getStatus(): Promise<string> {
@@ -62,7 +116,54 @@ export class GitOperations {
 	}
 
 	async fetch(remote = "origin"): Promise<void> {
-		await this.execGit(["fetch", remote]);
+		// Check if remote operations are disabled
+		if (this.config?.remoteOperations === false) {
+			if (process.env.DEBUG) {
+				console.warn("Remote operations are disabled in config. Skipping fetch.");
+			}
+			return;
+		}
+
+		try {
+			await this.execGit(["fetch", remote]);
+		} catch (error) {
+			// Check if this is a network-related error
+			if (this.isNetworkError(error)) {
+				// Don't show console warnings - let the calling code handle user messaging
+				if (process.env.DEBUG) {
+					console.warn(`Network error details: ${error}`);
+				}
+				return;
+			}
+			// Re-throw non-network errors
+			throw error;
+		}
+	}
+
+	private isNetworkError(error: unknown): boolean {
+		if (typeof error === "string") {
+			return this.containsNetworkErrorPattern(error);
+		}
+		if (error instanceof Error) {
+			return this.containsNetworkErrorPattern(error.message);
+		}
+		return false;
+	}
+
+	private containsNetworkErrorPattern(message: string): boolean {
+		const networkErrorPatterns = [
+			"could not resolve host",
+			"connection refused",
+			"network is unreachable",
+			"timeout",
+			"no route to host",
+			"connection timed out",
+			"temporary failure in name resolution",
+			"operation timed out",
+		];
+
+		const lowerMessage = message.toLowerCase();
+		return networkErrorPatterns.some((pattern) => lowerMessage.includes(pattern));
 	}
 
 	async listFilesInRemoteBranch(branch: string, path: string): Promise<string[]> {
@@ -74,15 +175,23 @@ export class GitOperations {
 	}
 
 	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
-		await this.addFile(filePath);
-
 		const actionMessages = {
 			create: `Create task ${taskId}`,
 			update: `Update task ${taskId}`,
 			archive: `Archive task ${taskId}`,
 		};
 
-		await this.commitTaskChange(taskId, actionMessages[action]);
+		// Retry git operations to handle transient failures
+		await this.retryGitOperation(async () => {
+			// Reset index to ensure only the specific file is staged
+			await this.resetIndex();
+
+			// Stage only the specific task file
+			await this.addFile(filePath);
+
+			// Commit only the staged file
+			await this.commitStagedChanges(actionMessages[action]);
+		}, `commit task file ${filePath}`);
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<void> {

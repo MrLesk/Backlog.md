@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./core/cross-branch-tasks.ts";
-import { loadRemoteTasks, resolveTaskConflict } from "./core/remote-tasks.ts";
+import { loadRemoteTasks, resolveTaskConflict, type TaskWithMetadata } from "./core/remote-tasks.ts";
 import {
 	type AgentInstructionFile,
 	addAgentInstructions,
@@ -29,6 +29,13 @@ if (process.platform === "win32") {
 	if (!term || /^(xterm|dumb|ansi|vt100)$/i.test(term)) {
 		process.env.TERM = "xterm-256color";
 	}
+}
+
+// Temporarily isolate BUN_OPTIONS during CLI parsing to prevent conflicts
+// Save the original value so it's available for subsequent commands
+const originalBunOptions = process.env.BUN_OPTIONS;
+if (process.env.BUN_OPTIONS) {
+	delete process.env.BUN_OPTIONS;
 }
 
 // Get version from package.json
@@ -123,11 +130,12 @@ program
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			const core = new Core(cwd);
+
 			await core.initializeProject(name);
 			console.log(`Initialized backlog project: ${name}`);
 
 			if (files.length > 0) {
-				await addAgentInstructions(cwd, core.gitOps, files);
+				await addAgentInstructions(cwd, core.gitOps, files, false);
 			}
 
 			// if (reporter) {
@@ -162,10 +170,19 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		await core.gitOps.fetch();
-		const branches = await core.gitOps.listAllBranches();
 		const config = await core.filesystem.loadConfig();
 		const backlogDir = config?.backlogDirectory || "backlog";
+
+		// Skip remote operations if disabled
+		if (config?.remoteOperations === false) {
+			if (process.env.DEBUG) {
+				console.log("Remote operations disabled - generating ID from local tasks only");
+			}
+		} else {
+			await core.gitOps.fetch();
+		}
+
+		const branches = await core.gitOps.listAllBranches();
 
 		// Load files from all branches in parallel
 		const branchFilePromises = branches.map(async (branch) => {
@@ -405,11 +422,11 @@ taskCmd
 		}
 
 		if (options.draft) {
-			const filepath = await core.createDraft(task, true);
+			const filepath = await core.createDraft(task);
 			console.log(`Created draft ${id}`);
 			console.log(`File: ${filepath}`);
 		} else {
-			const filepath = await core.createTask(task, true);
+			const filepath = await core.createTask(task);
 			console.log(`Created task ${id}`);
 			console.log(`File: ${filepath}`);
 		}
@@ -637,7 +654,7 @@ taskCmd
 			task.description = updateTaskImplementationNotes(task.description, String(options.notes));
 		}
 
-		await core.updateTask(task, true);
+		await core.updateTask(task);
 		console.log(`Updated task ${task.id}`);
 	});
 
@@ -678,7 +695,7 @@ taskCmd
 	.action(async (taskId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const success = await core.archiveTask(taskId, true);
+		const success = await core.archiveTask(taskId);
 		if (success) {
 			console.log(`Archived task ${taskId}`);
 		} else {
@@ -692,7 +709,7 @@ taskCmd
 	.action(async (taskId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const success = await core.demoteTask(taskId, true);
+		const success = await core.demoteTask(taskId);
 		if (success) {
 			console.log(`Demoted task ${taskId}`);
 		} else {
@@ -756,7 +773,7 @@ draftCmd
 		const core = new Core(cwd);
 		const id = await generateNextId(core);
 		const task = buildTaskFromOptions(id, title, options);
-		const filepath = await core.createDraft(task, true);
+		const filepath = await core.createDraft(task);
 		console.log(`Created draft ${id}`);
 		console.log(`File: ${filepath}`);
 	});
@@ -781,7 +798,7 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const success = await core.promoteDraft(taskId, true);
+		const success = await core.promoteDraft(taskId);
 		if (success) {
 			console.log(`Promoted draft ${taskId}`);
 		} else {
@@ -880,10 +897,11 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 		try {
 			// Load local and remote tasks in parallel
-			loadingScreen?.update("Loading tasks from local and remote branches...");
+			const { getTaskLoadingMessage } = await import("./core/remote-tasks.ts");
+			loadingScreen?.update(getTaskLoadingMessage(config));
 			const [localTasks, remoteTasks] = await Promise.all([
 				core.listTasksWithMetadata(),
-				loadRemoteTasks(core.gitOps, core.filesystem),
+				loadRemoteTasks(core.gitOps, core.filesystem, config),
 			]);
 
 			// Create map with local tasks
@@ -973,7 +991,9 @@ boardCmd
 
 			// Load remote tasks in parallel
 			loadingScreen?.update("Loading remote tasks...");
-			const remoteTasks = await loadRemoteTasks(core.gitOps, core.filesystem, (msg) => loadingScreen?.update(msg));
+			const remoteTasks = await loadRemoteTasks(core.gitOps, core.filesystem, config, (msg) =>
+				loadingScreen?.update(msg),
+			);
 
 			// Merge remote tasks with local tasks
 			loadingScreen?.update("Merging tasks...");
@@ -1167,7 +1187,10 @@ agentsCmd
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			if (files.length > 0) {
-				await addAgentInstructions(cwd, core.gitOps, files);
+				// Get autoCommit setting from config
+				const config = await core.filesystem.loadConfig();
+				const shouldAutoCommit = config?.autoCommit ?? false;
+				await addAgentInstructions(cwd, core.gitOps, files, shouldAutoCommit);
 				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
 			} else {
 				console.log("No files selected for update.");
@@ -1235,10 +1258,16 @@ configCmd
 				case "autoOpenBrowser":
 					console.log(config.autoOpenBrowser?.toString() || "");
 					break;
+				case "remoteOperations":
+					console.log(config.remoteOperations?.toString() || "");
+					break;
+				case "autoCommit":
+					console.log(config.autoCommit?.toString() || "");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser, remoteOperations, autoCommit",
 					);
 					process.exit(1);
 			}
@@ -1318,6 +1347,30 @@ configCmd
 					config.defaultPort = port;
 					break;
 				}
+				case "remoteOperations": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.remoteOperations = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.remoteOperations = false;
+					} else {
+						console.error("remoteOperations must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
+				case "autoCommit": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.autoCommit = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.autoCommit = false;
+					} else {
+						console.error("autoCommit must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -1328,7 +1381,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory, autoOpenBrowser, defaultPort",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory, autoOpenBrowser, defaultPort, remoteOperations",
 					);
 					process.exit(1);
 			}
@@ -1367,6 +1420,8 @@ configCmd
 			console.log(`  backlogDirectory: ${config.backlogDirectory || "(not set)"}`);
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
+			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
+			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;
@@ -1410,4 +1465,9 @@ program
 		}
 	});
 
-program.parseAsync(process.argv);
+program.parseAsync(process.argv).finally(() => {
+	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
+	if (originalBunOptions) {
+		process.env.BUN_OPTIONS = originalBunOptions;
+	}
+});

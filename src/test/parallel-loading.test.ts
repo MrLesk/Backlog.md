@@ -82,7 +82,7 @@ describe("Parallel remote task loading", () => {
 		// Track progress messages
 		const progressMessages: string[] = [];
 		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as FileSystem;
-		const remoteTasks = await loadRemoteTasks(mockGitOps, mockFileSystem, (msg) => {
+		const remoteTasks = await loadRemoteTasks(mockGitOps, mockFileSystem, null, (msg) => {
 			progressMessages.push(msg);
 		});
 
@@ -119,7 +119,7 @@ describe("Parallel remote task loading", () => {
 
 		// Should return empty array on error
 		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as FileSystem;
-		const remoteTasks = await loadRemoteTasks(errorGitOps, mockFileSystem);
+		const remoteTasks = await loadRemoteTasks(errorGitOps, mockFileSystem, null);
 		expect(remoteTasks).toEqual([]);
 
 		// Restore console.error

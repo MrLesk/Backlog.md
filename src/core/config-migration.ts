@@ -16,12 +16,17 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		backlogDirectory: "backlog",
 		autoOpenBrowser: true,
 		defaultPort: 6420,
+		remoteOperations: true,
+		autoCommit: false,
 	};
 
 	// Merge provided config with defaults, ensuring all fields exist
+	// Only include fields from config that are not undefined
+	const filteredConfig = Object.fromEntries(Object.entries(config).filter(([_, value]) => value !== undefined));
+
 	const migratedConfig: BacklogConfig = {
 		...defaultConfig,
-		...config,
+		...filteredConfig,
 	};
 
 	// Ensure arrays are not undefined
@@ -37,7 +42,19 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
  */
 export function needsMigration(config: Partial<BacklogConfig>): boolean {
 	// Check for all expected fields including new ones
-	const expectedFields = ["projectName", "statuses", "backlogDirectory", "defaultPort", "autoOpenBrowser"];
+	// We need to check not just presence but also that they aren't undefined
+	const expectedFieldsWithDefaults = [
+		{ field: "projectName", hasDefault: true },
+		{ field: "statuses", hasDefault: true },
+		{ field: "backlogDirectory", hasDefault: true },
+		{ field: "defaultPort", hasDefault: true },
+		{ field: "autoOpenBrowser", hasDefault: true },
+		{ field: "remoteOperations", hasDefault: true },
+		{ field: "autoCommit", hasDefault: true },
+	];
 
-	return expectedFields.some((field) => !(field in config));
+	return expectedFieldsWithDefaults.some(({ field }) => {
+		const value = config[field as keyof BacklogConfig];
+		return value === undefined;
+	});
 }
