@@ -37,6 +37,26 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 }
 
 /**
+ * Get the file path for a draft by ID
+ */
+export async function getDraftPath(taskId: string, core: Core): Promise<string | null> {
+	try {
+		const draftsDir = await core.filesystem.getDraftsDir();
+		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
+		const normalizedId = normalizeTaskId(taskId);
+		const draftFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+
+		if (draftFile) {
+			return join(draftsDir, draftFile);
+		}
+
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Get the filename (without directory) for a task by ID
  */
 export async function getTaskFilename(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {

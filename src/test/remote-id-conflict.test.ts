@@ -24,7 +24,7 @@ describe("next id across remote branches", () => {
 		await Bun.spawn(["git", "remote", "add", "origin", REMOTE_DIR], { cwd: LOCAL_DIR }).exited;
 
 		const core = new Core(LOCAL_DIR);
-		await core.initializeProject("Remote Test");
+		await core.initializeProject("Remote Test", true);
 		await Bun.spawn(["git", "branch", "-M", "main"], { cwd: LOCAL_DIR }).exited;
 		await Bun.spawn(["git", "push", "-u", "origin", "main"], { cwd: LOCAL_DIR }).exited;
 

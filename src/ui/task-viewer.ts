@@ -764,8 +764,15 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	};
 }
 
-export function formatTaskPlainText(task: Task, content: string): string {
+export function formatTaskPlainText(task: Task, content: string, filePath?: string): string {
 	const lines = [];
+
+	// Add file path as first line if provided
+	if (filePath) {
+		lines.push(`File: ${filePath}`);
+		lines.push("");
+	}
+
 	lines.push(`Task ${task.id} - ${task.title}`);
 	lines.push("=".repeat(50));
 	lines.push("");

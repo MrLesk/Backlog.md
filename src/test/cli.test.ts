@@ -37,7 +37,7 @@ describe("CLI Integration", () => {
 
 			// Initialize backlog project using Core (simulating CLI)
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("CLI Test Project");
+			await core.initializeProject("CLI Test Project", true);
 
 			// Verify directory structure was created
 			const configExists = await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists();
@@ -180,7 +180,7 @@ describe("CLI Integration", () => {
 
 		it("should create initial commit with backlog structure", async () => {
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Git Integration Test");
+			await core.initializeProject("Git Integration Test", true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toBe("backlog: Initialize backlog project: Git Integration Test");
@@ -199,7 +199,7 @@ describe("CLI Integration", () => {
 			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("List Test Project");
+			await core.initializeProject("List Test Project", true);
 		});
 
 		it("should show 'No tasks found' when no tasks exist", async () => {
@@ -550,7 +550,7 @@ describe("CLI Integration", () => {
 			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Edit Test Project");
+			await core.initializeProject("Edit Test Project", true);
 		});
 
 		it("should update task title, description, and status", async () => {
@@ -1116,7 +1116,7 @@ describe("CLI Integration", () => {
 			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Board Test Project");
+			await core.initializeProject("Board Test Project", true);
 		});
 
 		it("should display kanban board with tasks grouped by status", async () => {

@@ -35,7 +35,7 @@ describe("Core", () => {
 		});
 
 		it("should initialize project with default config", async () => {
-			await core.initializeProject("Test Project");
+			await core.initializeProject("Test Project", true);
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Test Project");
@@ -57,7 +57,7 @@ describe("Core", () => {
 		};
 
 		beforeEach(async () => {
-			await core.initializeProject("Test Project");
+			await core.initializeProject("Test Project", true);
 		});
 
 		it("should create task without auto-commit", async () => {
@@ -204,7 +204,7 @@ describe("Core", () => {
 		};
 
 		beforeEach(async () => {
-			await core.initializeProject("Draft Project");
+			await core.initializeProject("Draft Project", true);
 		});
 
 		it("should create draft without auto-commit", async () => {

@@ -117,7 +117,7 @@ class BackgroundLoader {
 			}
 
 			// Import these dynamically to avoid circular deps
-			const { loadRemoteTasks, resolveTaskConflict } = await import("../core/remote-tasks.ts");
+			const { loadRemoteTasks, resolveTaskConflict, getTaskLoadingMessage } = await import("../core/remote-tasks.ts");
 			const { filterTasksByLatestState, getLatestTaskStatesForIds } = await import("../core/cross-branch-tasks.ts");
 
 			const config = await this.core.filesystem.loadConfig();
@@ -130,10 +130,10 @@ class BackgroundLoader {
 			}
 
 			// Load local and remote tasks in parallel
-			this.onProgress?.("Loading tasks from local and remote branches...");
+			this.onProgress?.(getTaskLoadingMessage(config));
 			const [localTasks, remoteTasks] = await Promise.all([
 				this.core.listTasksWithMetadata(),
-				loadRemoteTasks(this.core.gitOps, this.core.filesystem, this.onProgress),
+				loadRemoteTasks(this.core.gitOps, this.core.filesystem, config, this.onProgress),
 			]);
 
 			// Check for cancellation after loading basic tasks
@@ -195,7 +195,7 @@ class BackgroundLoader {
 			this.loadingPromise = null;
 			// If it's a cancellation, don't treat it as an error
 			if (error instanceof Error && error.message === "Loading cancelled") {
-				process.exit(0); // Exit immediately on cancellation
+				return []; // Return empty array instead of exiting
 			}
 			throw error;
 		}
@@ -206,6 +206,17 @@ class BackgroundLoader {
 	 */
 	setProgressCallback(callback: (message: string) => void): void {
 		this.onProgress = callback;
+	}
+
+	/**
+	 * Cancel any ongoing loading operations
+	 */
+	cancelLoading(): void {
+		if (this.abortController) {
+			this.abortController.abort();
+			this.abortController = undefined;
+		}
+		this.loadingPromise = null;
 	}
 }
 
@@ -364,5 +375,12 @@ export class ViewSwitcher {
 	setProgressCallback(callback: (message: string) => void): void {
 		this.onProgress = callback;
 		this.backgroundLoader.setProgressCallback(callback);
+	}
+
+	/**
+	 * Clean up resources and cancel any ongoing operations
+	 */
+	cleanup(): void {
+		this.backgroundLoader.cancelLoading();
 	}
 }
