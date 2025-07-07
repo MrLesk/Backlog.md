@@ -1,20 +1,21 @@
 ---
 id: task-114
 title: 'cli: filter task list by parent task'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-06'
-updated_date: '2025-07-06'
+updated_date: '2025-07-07'
 labels: []
 dependencies: []
 ---
 
 ## Description
-Add a new feature to the `backlog task list` command that allows filtering tasks by their parent task ID using a `--parent` flag. It should display all tasks that have the specified task as their parent. Additionally, support a `--plain` flag to output the list in a plain, unformatted text.
+Add a new feature to the `backlog task list` command that allows filtering tasks by their parent task ID using `--parent` or `-p` flags. It should display all tasks that have the specified task as their parent. Additionally, support a `--plain` flag to output the list in a plain, unformatted text.
 
 ## Acceptance Criteria
 
 - [x] Add `--parent <task-id>` flag to `backlog task list` command
+- [x] Add `-p <task-id>` flag to `backlog task list` command
 - [x] Filter and display only tasks that have the specified parent task ID
 - [x] Support `--plain` flag for unformatted output
 - [x] Show appropriate message when no child tasks are found

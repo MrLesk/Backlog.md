@@ -41,6 +41,21 @@ describe("CLI plain output for AI agents", () => {
 			},
 			false,
 		);
+
+		// Create a test draft
+		await core.createDraft(
+			{
+				id: "task-2",
+				title: "Test draft for plain output",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2025-06-18",
+				labels: [],
+				dependencies: [],
+				description: "Test draft description",
+			},
+			false,
+		);
 	});
 
 	afterEach(async () => {
@@ -67,6 +82,9 @@ describe("CLI plain output for AI agents", () => {
 		}
 
 		expect(exitCode).toBe(0);
+		// Should contain the file path as first line
+		expect(result.stdout).toContain("File: ");
+		expect(result.stdout).toContain("task-1 - Test-task-for-plain-output.md");
 		// Should contain the formatted task output
 		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
 		expect(result.stdout).toContain("Status: ○ To Do");
@@ -101,12 +119,81 @@ describe("CLI plain output for AI agents", () => {
 		}
 
 		expect(exitCode).toBe(0);
+		// Should contain the file path as first line
+		expect(result.stdout).toContain("File: ");
+		expect(result.stdout).toContain("task-1 - Test-task-for-plain-output.md");
 		// Should contain the formatted task output
 		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
 		expect(result.stdout).toContain("Status: ○ To Do");
 		expect(result.stdout).toContain("Created: 2025-06-18");
 		expect(result.stdout).toContain("Description:");
 		expect(result.stdout).toContain("Test description");
+		// Should not contain TUI escape codes
+		expect(result.stdout).not.toContain("[?1049h");
+		expect(result.stdout).not.toContain("\x1b");
+	});
+
+	it("should output plain text with draft view --plain", () => {
+		const result = spawnSync("bun", [cliPath, "draft", "view", "2", "--plain"], {
+			cwd: testDir,
+			encoding: "utf8",
+		});
+
+		// Handle Windows spawnSync status issues
+		const exitCode = getExitCode(result);
+
+		if (exitCode !== 0) {
+			console.error("STDOUT:", result.stdout);
+			console.error("STDERR:", result.stderr);
+			console.error("Error:", result.error);
+		}
+
+		expect(exitCode).toBe(0);
+		// Should contain the file path as first line
+		expect(result.stdout).toContain("File: ");
+		expect(result.stdout).toContain("task-2 - Test-draft-for-plain-output.md");
+		// Should contain the formatted draft output
+		expect(result.stdout).toContain("Task task-2 - Test draft for plain output");
+		expect(result.stdout).toContain("Status: ○ Draft");
+		expect(result.stdout).toContain("Created: 2025-06-18");
+		expect(result.stdout).toContain("Description:");
+		expect(result.stdout).toContain("Test draft description");
+		// Should not contain TUI escape codes
+		expect(result.stdout).not.toContain("[?1049h");
+		expect(result.stdout).not.toContain("\x1b");
+	});
+
+	it("should output plain text with draft <id> --plain shortcut", async () => {
+		// Verify draft exists before running CLI command
+		const core = new Core(testDir);
+		const draft = await core.filesystem.loadDraft("task-2");
+		expect(draft).not.toBeNull();
+		expect(draft?.id).toBe("task-2");
+
+		const result = spawnSync("bun", [cliPath, "draft", "2", "--plain"], {
+			cwd: testDir,
+			encoding: "utf8",
+		});
+
+		// Handle Windows spawnSync status issues
+		const exitCode = getExitCode(result);
+
+		if (exitCode !== 0) {
+			console.error("STDOUT:", result.stdout);
+			console.error("STDERR:", result.stderr);
+			console.error("Error:", result.error);
+		}
+
+		expect(exitCode).toBe(0);
+		// Should contain the file path as first line
+		expect(result.stdout).toContain("File: ");
+		expect(result.stdout).toContain("task-2 - Test-draft-for-plain-output.md");
+		// Should contain the formatted draft output
+		expect(result.stdout).toContain("Task task-2 - Test draft for plain output");
+		expect(result.stdout).toContain("Status: ○ Draft");
+		expect(result.stdout).toContain("Created: 2025-06-18");
+		expect(result.stdout).toContain("Description:");
+		expect(result.stdout).toContain("Test draft description");
 		// Should not contain TUI escape codes
 		expect(result.stdout).not.toContain("[?1049h");
 		expect(result.stdout).not.toContain("\x1b");

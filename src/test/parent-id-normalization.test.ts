@@ -26,7 +26,7 @@ describe("CLI parent task id normalization", () => {
 
 	it("should normalize parent task id when creating subtasks", async () => {
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Normalization Test");
+		await core.initializeProject("Normalization Test", true);
 
 		const parent: Task = {
 			id: "task-4",

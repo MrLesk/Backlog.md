@@ -144,13 +144,13 @@ A task is **Done** only when **ALL** of the following are complete:
 3. **Automated tests** (unit + integration) cover new logic.
 4. **Static analysis**: linter & formatter succeed.
 5. **Documentation**:
-    - All relevant docs updated (README, backlog/docs, backlog/decisions, etc.).
+    - All relevant docs updated (any relevant README file, backlog/docs, backlog/decisions, etc.).
     - Task file **MUST** have an `## Implementation Notes` section added summarising:
         - Approach taken
         - Features implemented or modified
         - Technical decisions and trade-offs
         - Modified or added files
-6. **Review**: code reviewed.
+6. **Review**: self review code.
 7. **Task hygiene**: status set to **Done** via CLI (`backlog task edit <id> -s Done`).
 8. **No regressions**: performance, security and licence checks green.
 

@@ -76,6 +76,7 @@ export async function addAgentInstructions(
 		"GEMINI.md",
 		".github/copilot-instructions.md",
 	],
+	autoCommit = false,
 ): Promise<void> {
 	const mapping: Record<AgentInstructionFile, string> = {
 		"AGENTS.md": AGENT_GUIDELINES,
@@ -127,7 +128,7 @@ export async function addAgentInstructions(
 		paths.push(filePath);
 	}
 
-	if (git && paths.length > 0) {
+	if (git && paths.length > 0 && autoCommit) {
 		await git.addFiles(paths);
 		await git.commitChanges("Add AI agent instructions");
 	}
