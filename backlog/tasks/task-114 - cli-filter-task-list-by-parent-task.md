@@ -35,6 +35,7 @@ Add a new feature to the `backlog task list` command that allows filtering tasks
 
 Successfully implemented parent task filtering for the task list command.
 
+Updated README.md documentation to include parent filtering examples and syntax
 ## Approach taken
 - Added `-p, --parent <taskId>` option to the task list command
 - Implemented filtering logic after existing status and assignee filters

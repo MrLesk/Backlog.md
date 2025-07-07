@@ -98,7 +98,8 @@ The web interface provides:
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`|
 | Create draft | `backlog task create "Feature" --draft`             |
 | Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 -p 14` |
-| List tasks  | `backlog task list [-s <status>] [-a <assignee>]`     |
+| List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>]` |
+| List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
 | View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |
 | View (AI mode) | `backlog task 7 --plain`                           |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
