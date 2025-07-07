@@ -1,7 +1,7 @@
 ---
 id: task-164
 title: Add auto_commit config option with default false
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-07-07'
 updated_date: '2025-07-07'
