@@ -130,11 +130,15 @@ program
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			const core = new Core(cwd);
-			await core.initializeProject(name);
+
+			// Default autoCommit to false for init command, consistent with config default
+			const shouldAutoCommit = false;
+
+			await core.initializeProject(name, shouldAutoCommit);
 			console.log(`Initialized backlog project: ${name}`);
 
 			if (files.length > 0) {
-				await addAgentInstructions(cwd, core.gitOps, files);
+				await addAgentInstructions(cwd, core.gitOps, files, shouldAutoCommit);
 			}
 
 			// if (reporter) {
@@ -1118,7 +1122,10 @@ agentsCmd
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
 			if (files.length > 0) {
-				await addAgentInstructions(cwd, core.gitOps, files);
+				// Get autoCommit setting from config
+				const config = await core.filesystem.loadConfig();
+				const shouldAutoCommit = config?.autoCommit ?? false;
+				await addAgentInstructions(cwd, core.gitOps, files, shouldAutoCommit);
 				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
 			} else {
 				console.log("No files selected for update.");
