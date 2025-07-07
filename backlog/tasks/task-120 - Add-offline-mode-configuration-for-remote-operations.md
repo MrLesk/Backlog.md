@@ -18,12 +18,12 @@ Backlog.md currently performs git fetch operations silently in the background wh
 
 ## Acceptance Criteria
 
-- [ ] Add a `remoteOperations` config option (default: true) to enable/disable remote git operations
-- [ ] Display informative warnings when remote fetch fails due to network connectivity (not just in debug mode)
-- [ ] Implement graceful fallback messaging when remote tasks cannot be loaded
-- [ ] Ensure `backlog board`, `backlog board view`, and `backlog board export` commands work seamlessly when remote operations are disabled
-- [ ] Task ID generation continues to work when remote operations are disabled (using only local branches)
-- [ ] Config can be set via `backlog config set remoteOperations false`
+- [x] Add a `remoteOperations` config option (default: true) to enable/disable remote git operations
+- [x] Display informative warnings when remote fetch fails due to network connectivity (not just in debug mode)
+- [x] Implement graceful fallback messaging when remote tasks cannot be loaded
+- [x] Ensure `backlog board`, `backlog board view`, and `backlog board export` commands work seamlessly when remote operations are disabled
+- [x] Task ID generation continues to work when remote operations are disabled (using only local branches)
+- [x] Config can be set via `backlog config set remoteOperations false`
 
 ## Technical Notes
 
