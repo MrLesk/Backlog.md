@@ -20,6 +20,19 @@ export class Core {
 	constructor(projectRoot: string) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot);
+		// Note: Config is loaded lazily when needed since constructor can't be async
+	}
+
+	private async ensureConfigLoaded(): Promise<void> {
+		try {
+			const config = await this.fs.loadConfig();
+			this.git.setConfig(config);
+		} catch (error) {
+			// Config loading failed, git operations will work with null config
+			if (process.env.DEBUG) {
+				console.warn("Failed to load config for git operations:", error);
+			}
+		}
 	}
 
 	private async getBacklogDirectoryName(): Promise<string> {
@@ -27,18 +40,25 @@ export class Core {
 		return config?.backlogDirectory || "backlog";
 	}
 
-	// File system operations
-	get filesystem() {
+	get filesystem(): FileSystem {
 		return this.fs;
 	}
+
+	// File system operations
 
 	// Git operations
 	get gitOps() {
 		return this.git;
 	}
 
+	async getGitOps() {
+		await this.ensureConfigLoaded();
+		return this.git;
+	}
+
 	// Config migration
 	async ensureConfigMigrated(): Promise<void> {
+		await this.ensureConfigLoaded();
 		let config = await this.fs.loadConfig();
 
 		if (!config || needsMigration(config)) {
@@ -198,6 +218,8 @@ export class Core {
 		};
 
 		await this.fs.saveConfig(config);
+		// Update git operations with the new config
+		await this.ensureConfigLoaded();
 		const backlogDir = await this.getBacklogDirectoryName();
 		await this.git.stageBacklogDirectory(backlogDir);
 		await this.git.commitChanges(`backlog: Initialize backlog project: ${projectName}`);

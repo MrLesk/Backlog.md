@@ -144,7 +144,7 @@ A task is **Done** only when **ALL** of the following are complete:
 3. **Automated tests** (unit + integration) cover new logic.
 4. **Static analysis**: linter & formatter succeed.
 5. **Documentation**:
-    - All relevant docs updated (README, backlog/docs, backlog/decisions, etc.).
+    - All relevant docs updated (any relevant README file, backlog/docs, backlog/decisions, etc.).
     - Task file **MUST** have an `## Implementation Notes` section added summarising:
         - Approach taken
         - Features implemented or modified

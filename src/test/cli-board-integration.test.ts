@@ -19,6 +19,13 @@ describe("CLI Board Integration", () => {
 		core = new Core(testDir);
 		await core.initializeProject("Test CLI Board Project");
 
+		// Disable remote operations for tests to prevent background git fetches
+		const config = await core.filesystem.loadConfig();
+		if (config) {
+			config.remoteOperations = false;
+			await core.filesystem.saveConfig(config);
+		}
+
 		// Create test tasks
 		const tasksDir = core.filesystem.tasksDir;
 		await writeFile(
@@ -120,5 +127,8 @@ Test task for board CLI integration.`,
 		expect(kanbanData).toBeDefined();
 		expect(Array.isArray(kanbanData.tasks)).toBe(true);
 		expect(Array.isArray(kanbanData.statuses)).toBe(true);
+
+		// Clean up to prevent background operations after test
+		viewSwitcher.cleanup();
 	});
 });

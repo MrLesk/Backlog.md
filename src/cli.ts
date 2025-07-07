@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./core/cross-branch-tasks.ts";
-import { loadRemoteTasks, resolveTaskConflict } from "./core/remote-tasks.ts";
+import { loadRemoteTasks, resolveTaskConflict, type TaskWithMetadata } from "./core/remote-tasks.ts";
 import {
 	type AgentInstructionFile,
 	addAgentInstructions,
@@ -162,10 +162,19 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		await core.gitOps.fetch();
-		const branches = await core.gitOps.listAllBranches();
 		const config = await core.filesystem.loadConfig();
 		const backlogDir = config?.backlogDirectory || "backlog";
+
+		// Skip remote operations if disabled
+		if (config?.remoteOperations === false) {
+			if (process.env.DEBUG) {
+				console.log("Remote operations disabled - generating ID from local tasks only");
+			}
+		} else {
+			await core.gitOps.fetch();
+		}
+
+		const branches = await core.gitOps.listAllBranches();
 
 		// Load files from all branches in parallel
 		const branchFilePromises = branches.map(async (branch) => {
@@ -815,7 +824,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			loadingScreen?.update("Loading tasks from local and remote branches...");
 			const [localTasks, remoteTasks] = await Promise.all([
 				core.listTasksWithMetadata(),
-				loadRemoteTasks(core.gitOps, core.filesystem),
+				loadRemoteTasks(core.gitOps, core.filesystem, config),
 			]);
 
 			// Create map with local tasks
@@ -905,7 +914,9 @@ boardCmd
 
 			// Load remote tasks in parallel
 			loadingScreen?.update("Loading remote tasks...");
-			const remoteTasks = await loadRemoteTasks(core.gitOps, core.filesystem, (msg) => loadingScreen?.update(msg));
+			const remoteTasks = await loadRemoteTasks(core.gitOps, core.filesystem, config, (msg) =>
+				loadingScreen?.update(msg),
+			);
 
 			// Merge remote tasks with local tasks
 			loadingScreen?.update("Merging tasks...");
@@ -1167,10 +1178,13 @@ configCmd
 				case "autoOpenBrowser":
 					console.log(config.autoOpenBrowser?.toString() || "");
 					break;
+				case "remoteOperations":
+					console.log(config.remoteOperations?.toString() || "");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser, remoteOperations",
 					);
 					process.exit(1);
 			}
@@ -1250,6 +1264,18 @@ configCmd
 					config.defaultPort = port;
 					break;
 				}
+				case "remoteOperations": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.remoteOperations = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.remoteOperations = false;
+					} else {
+						console.error("remoteOperations must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -1260,7 +1286,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory, autoOpenBrowser, defaultPort",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory, autoOpenBrowser, defaultPort, remoteOperations",
 					);
 					process.exit(1);
 			}
@@ -1299,6 +1325,7 @@ configCmd
 			console.log(`  backlogDirectory: ${config.backlogDirectory || "(not set)"}`);
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
+			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;

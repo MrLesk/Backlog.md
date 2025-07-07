@@ -564,6 +564,9 @@ export class FileSystem {
 				case "default_port":
 					config.defaultPort = Number.parseInt(value, 10);
 					break;
+				case "remote_operations":
+					config.remoteOperations = value.toLowerCase() === "true";
+					break;
 			}
 		}
 
@@ -579,6 +582,9 @@ export class FileSystem {
 			maxColumnWidth: config.maxColumnWidth,
 			backlogDirectory: config.backlogDirectory,
 			defaultEditor: config.defaultEditor,
+			autoOpenBrowser: config.autoOpenBrowser,
+			defaultPort: config.defaultPort,
+			remoteOperations: config.remoteOperations,
 		};
 	}
 
@@ -597,6 +603,7 @@ export class FileSystem {
 			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
+			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

@@ -56,6 +56,7 @@ export interface BacklogConfig {
 	defaultEditor?: string;
 	autoOpenBrowser?: boolean;
 	defaultPort?: number;
+	remoteOperations?: boolean;
 }
 
 export interface ParsedMarkdown {

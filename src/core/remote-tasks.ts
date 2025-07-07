@@ -4,7 +4,7 @@
 
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
-import type { Task } from "../types/index.ts";
+import type { BacklogConfig, Task } from "../types/index.ts";
 import type { GitOps } from "./git-ops.ts";
 
 // TaskWithMetadata is now just an alias for Task (for backward compatibility)
@@ -30,11 +30,18 @@ type RemoteTaskResult = RemoteTaskLoadResult | RemoteTaskLoadError;
 export async function loadRemoteTasks(
 	gitOps: GitOps,
 	fs: FileSystem,
+	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
 ): Promise<TaskWithMetadata[]> {
 	const tasks: TaskWithMetadata[] = [];
 
 	try {
+		// Skip remote operations if disabled
+		if (userConfig?.remoteOperations === false) {
+			onProgress?.("Remote operations disabled - skipping remote tasks");
+			return tasks;
+		}
+
 		// Fetch remote branches
 		onProgress?.("Fetching remote branches...");
 		await gitOps.fetch();

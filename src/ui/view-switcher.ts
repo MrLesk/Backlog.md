@@ -133,7 +133,7 @@ class BackgroundLoader {
 			this.onProgress?.("Loading tasks from local and remote branches...");
 			const [localTasks, remoteTasks] = await Promise.all([
 				this.core.listTasksWithMetadata(),
-				loadRemoteTasks(this.core.gitOps, this.core.filesystem, this.onProgress),
+				loadRemoteTasks(this.core.gitOps, this.core.filesystem, config, this.onProgress),
 			]);
 
 			// Check for cancellation after loading basic tasks
@@ -206,6 +206,17 @@ class BackgroundLoader {
 	 */
 	setProgressCallback(callback: (message: string) => void): void {
 		this.onProgress = callback;
+	}
+
+	/**
+	 * Cancel any ongoing loading operations
+	 */
+	cancelLoading(): void {
+		if (this.abortController) {
+			this.abortController.abort();
+			this.abortController = undefined;
+		}
+		this.loadingPromise = null;
 	}
 }
 
@@ -364,5 +375,12 @@ export class ViewSwitcher {
 	setProgressCallback(callback: (message: string) => void): void {
 		this.onProgress = callback;
 		this.backgroundLoader.setProgressCallback(callback);
+	}
+
+	/**
+	 * Clean up resources and cancel any ongoing operations
+	 */
+	cleanup(): void {
+		this.backgroundLoader.cancelLoading();
 	}
 }

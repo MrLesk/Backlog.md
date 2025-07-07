@@ -1,8 +1,16 @@
+import type { BacklogConfig } from "../types/index.ts";
+
 export class GitOperations {
 	private projectRoot: string;
+	private config: BacklogConfig | null = null;
 
-	constructor(projectRoot: string) {
+	constructor(projectRoot: string, config: BacklogConfig | null = null) {
 		this.projectRoot = projectRoot;
+		this.config = config;
+	}
+
+	setConfig(config: BacklogConfig | null): void {
+		this.config = config;
 	}
 
 	async addFile(filePath: string): Promise<void> {
@@ -62,7 +70,54 @@ export class GitOperations {
 	}
 
 	async fetch(remote = "origin"): Promise<void> {
-		await this.execGit(["fetch", remote]);
+		// Check if remote operations are disabled
+		if (this.config?.remoteOperations === false) {
+			if (process.env.DEBUG) {
+				console.warn("Remote operations are disabled in config. Skipping fetch.");
+			}
+			return;
+		}
+
+		try {
+			await this.execGit(["fetch", remote]);
+		} catch (error) {
+			// Check if this is a network-related error
+			if (this.isNetworkError(error)) {
+				console.warn("Warning: Unable to fetch from remote repository. Working in offline mode.");
+				if (process.env.DEBUG) {
+					console.warn(`Network error details: ${error}`);
+				}
+				return;
+			}
+			// Re-throw non-network errors
+			throw error;
+		}
+	}
+
+	private isNetworkError(error: unknown): boolean {
+		if (typeof error === "string") {
+			return this.containsNetworkErrorPattern(error);
+		}
+		if (error instanceof Error) {
+			return this.containsNetworkErrorPattern(error.message);
+		}
+		return false;
+	}
+
+	private containsNetworkErrorPattern(message: string): boolean {
+		const networkErrorPatterns = [
+			"could not resolve host",
+			"connection refused",
+			"network is unreachable",
+			"timeout",
+			"no route to host",
+			"connection timed out",
+			"temporary failure in name resolution",
+			"operation timed out",
+		];
+
+		const lowerMessage = message.toLowerCase();
+		return networkErrorPatterns.some((pattern) => lowerMessage.includes(pattern));
 	}
 
 	async listFilesInRemoteBranch(branch: string, path: string): Promise<string[]> {
@@ -82,7 +137,7 @@ export class GitOperations {
 			archive: `Archive task ${taskId}`,
 		};
 
-		await this.commitTaskChange(taskId, actionMessages[action]);
+		await this.commitChanges(actionMessages[action]);
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<void> {
