@@ -83,7 +83,7 @@ export class GitOperations {
 		} catch (error) {
 			// Check if this is a network-related error
 			if (this.isNetworkError(error)) {
-				console.warn("Warning: Unable to fetch from remote repository. Working in offline mode.");
+				// Don't show console warnings - let the calling code handle user messaging
 				if (process.env.DEBUG) {
 					console.warn(`Network error details: ${error}`);
 				}

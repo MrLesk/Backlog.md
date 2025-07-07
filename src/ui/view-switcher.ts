@@ -130,7 +130,11 @@ class BackgroundLoader {
 			}
 
 			// Load local and remote tasks in parallel
-			this.onProgress?.("Loading tasks from local and remote branches...");
+			this.onProgress?.(
+				config?.remoteOperations === false
+					? "Loading tasks from local branches..."
+					: "Loading tasks from local and remote branches...",
+			);
 			const [localTasks, remoteTasks] = await Promise.all([
 				this.core.listTasksWithMetadata(),
 				loadRemoteTasks(this.core.gitOps, this.core.filesystem, config, this.onProgress),

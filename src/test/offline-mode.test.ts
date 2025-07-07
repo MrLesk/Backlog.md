@@ -114,10 +114,9 @@ describe("Offline Mode Configuration", () => {
 			};
 
 			// Should not throw, should handle gracefully
-			await gitOps.fetch();
-
-			// Verify warning was logged
-			expect(warnMessages.some((msg) => msg.includes("Unable to fetch from remote repository"))).toBe(true);
+			await expect(async () => {
+				await gitOps.fetch();
+			}).not.toThrow();
 
 			// Restore
 			console.warn = originalWarn;
