@@ -414,11 +414,11 @@ taskCmd
 		}
 
 		if (options.draft) {
-			const filepath = await core.createDraft(task, true);
+			const filepath = await core.createDraft(task);
 			console.log(`Created draft ${id}`);
 			console.log(`File: ${filepath}`);
 		} else {
-			const filepath = await core.createTask(task, true);
+			const filepath = await core.createTask(task);
 			console.log(`Created task ${id}`);
 			console.log(`File: ${filepath}`);
 		}
@@ -646,7 +646,7 @@ taskCmd
 			task.description = updateTaskImplementationNotes(task.description, String(options.notes));
 		}
 
-		await core.updateTask(task, true);
+		await core.updateTask(task);
 		console.log(`Updated task ${task.id}`);
 	});
 
@@ -687,7 +687,7 @@ taskCmd
 	.action(async (taskId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const success = await core.archiveTask(taskId, true);
+		const success = await core.archiveTask(taskId);
 		if (success) {
 			console.log(`Archived task ${taskId}`);
 		} else {
@@ -701,7 +701,7 @@ taskCmd
 	.action(async (taskId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const success = await core.demoteTask(taskId, true);
+		const success = await core.demoteTask(taskId);
 		if (success) {
 			console.log(`Demoted task ${taskId}`);
 		} else {
@@ -765,7 +765,7 @@ draftCmd
 		const core = new Core(cwd);
 		const id = await generateNextId(core);
 		const task = buildTaskFromOptions(id, title, options);
-		const filepath = await core.createDraft(task, true);
+		const filepath = await core.createDraft(task);
 		console.log(`Created draft ${id}`);
 		console.log(`File: ${filepath}`);
 	});
@@ -790,7 +790,7 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const success = await core.promoteDraft(taskId, true);
+		const success = await core.promoteDraft(taskId);
 		if (success) {
 			console.log(`Promoted draft ${taskId}`);
 		} else {
@@ -1182,10 +1182,13 @@ configCmd
 				case "remoteOperations":
 					console.log(config.remoteOperations?.toString() || "");
 					break;
+				case "autoCommit":
+					console.log(config.autoCommit?.toString() || "");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser, remoteOperations",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser, remoteOperations, autoCommit",
 					);
 					process.exit(1);
 			}
@@ -1277,6 +1280,18 @@ configCmd
 					}
 					break;
 				}
+				case "autoCommit": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.autoCommit = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.autoCommit = false;
+					} else {
+						console.error("autoCommit must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -1327,6 +1342,7 @@ configCmd
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
+			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;

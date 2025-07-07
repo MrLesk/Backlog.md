@@ -57,6 +57,7 @@ export interface BacklogConfig {
 	autoOpenBrowser?: boolean;
 	defaultPort?: number;
 	remoteOperations?: boolean;
+	autoCommit?: boolean;
 }
 
 export interface ParsedMarkdown {

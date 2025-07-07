@@ -567,6 +567,9 @@ export class FileSystem {
 				case "remote_operations":
 					config.remoteOperations = value.toLowerCase() === "true";
 					break;
+				case "auto_commit":
+					config.autoCommit = value.toLowerCase() === "true";
+					break;
 			}
 		}
 
@@ -585,6 +588,7 @@ export class FileSystem {
 			autoOpenBrowser: config.autoOpenBrowser,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
+			autoCommit: config.autoCommit,
 		};
 	}
 
@@ -604,6 +608,7 @@ export class FileSystem {
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
+			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

@@ -111,6 +111,7 @@ The web interface provides:
 | Web interface | `backlog browser` (launches web UI on port 6420) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
 | Config editor | `backlog config set defaultEditor "code --wait"` |
+| Enable auto-commit | `backlog config set autoCommit true` |
 | View config | `backlog config list` |
 
 Full help: `backlog --help`
@@ -138,8 +139,11 @@ Key options:
 | `default_port`    | Web UI port        | `6420`                        |
 | `auto_open_browser`| Open browser automatically | `true`            |
 | `remote_operations`| Enable remote git operations | `true`           |
+| `auto_commit`     | Automatically commit task changes | `false`       |
 
 > **Note**: Set `remote_operations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
+
+> **Git Control**: By default, `auto_commit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `auto_commit: true` if you prefer automatic commits for each task operation.
 
 ---
 

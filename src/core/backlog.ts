@@ -40,6 +40,16 @@ export class Core {
 		return config?.backlogDirectory || "backlog";
 	}
 
+	private async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
+		// If override is explicitly provided, use it
+		if (overrideValue !== undefined) {
+			return overrideValue;
+		}
+		// Otherwise, check config (default to false for safety)
+		const config = await this.fs.loadConfig();
+		return config?.autoCommit ?? false;
+	}
+
 	get filesystem(): FileSystem {
 		return this.fs;
 	}
@@ -68,7 +78,7 @@ export class Core {
 	}
 
 	// High-level operations that combine filesystem and git
-	async createTask(task: Task, autoCommit = true): Promise<string> {
+	async createTask(task: Task, autoCommit?: boolean): Promise<string> {
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
@@ -84,14 +94,14 @@ export class Core {
 		task.description = ensureDescriptionHeader(task.description);
 		const filepath = await this.fs.saveTask(task);
 
-		if (autoCommit) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.git.addAndCommitTaskFile(task.id, filepath, "create");
 		}
 
 		return filepath;
 	}
 
-	async createDraft(task: Task, autoCommit = true): Promise<string> {
+	async createDraft(task: Task, autoCommit?: boolean): Promise<string> {
 		// Drafts always have status "Draft", regardless of config default
 		task.status = "Draft";
 
@@ -105,7 +115,7 @@ export class Core {
 		task.description = ensureDescriptionHeader(task.description);
 		const filepath = await this.fs.saveDraft(task);
 
-		if (autoCommit) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.git.addFile(filepath);
 			await this.git.commitTaskChange(task.id, `Create draft ${task.id}`);
 		}
@@ -113,7 +123,7 @@ export class Core {
 		return filepath;
 	}
 
-	async updateTask(task: Task, autoCommit = true): Promise<void> {
+	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
 		// Normalize assignee to array if it's a string (YAML allows both string and array)
 		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
 		if (typeof (task as any).assignee === "string") {
@@ -127,7 +137,7 @@ export class Core {
 		task.description = ensureDescriptionHeader(task.description);
 		await this.fs.saveTask(task);
 
-		if (autoCommit) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			const filePath = await getTaskPath(task.id, this);
 			if (filePath) {
 				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
@@ -135,10 +145,10 @@ export class Core {
 		}
 	}
 
-	async archiveTask(taskId: string, autoCommit = true): Promise<boolean> {
+	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		const success = await this.fs.archiveTask(taskId);
 
-		if (success && autoCommit) {
+		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Archive task ${taskId}`);
@@ -147,10 +157,10 @@ export class Core {
 		return success;
 	}
 
-	async archiveDraft(taskId: string, autoCommit = true): Promise<boolean> {
+	async archiveDraft(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		const success = await this.fs.archiveDraft(taskId);
 
-		if (success && autoCommit) {
+		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Archive draft ${taskId}`);
@@ -159,10 +169,10 @@ export class Core {
 		return success;
 	}
 
-	async promoteDraft(taskId: string, autoCommit = true): Promise<boolean> {
+	async promoteDraft(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		const success = await this.fs.promoteDraft(taskId);
 
-		if (success && autoCommit) {
+		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Promote draft ${taskId}`);
@@ -171,10 +181,10 @@ export class Core {
 		return success;
 	}
 
-	async demoteTask(taskId: string, autoCommit = true): Promise<boolean> {
+	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		const success = await this.fs.demoteTask(taskId);
 
-		if (success && autoCommit) {
+		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Demote task ${taskId}`);
@@ -183,27 +193,27 @@ export class Core {
 		return success;
 	}
 
-	async createDecisionLog(decision: DecisionLog, autoCommit = true): Promise<void> {
+	async createDecisionLog(decision: DecisionLog, autoCommit?: boolean): Promise<void> {
 		await this.fs.saveDecisionLog(decision);
 
-		if (autoCommit) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Add decision ${decision.id}`);
 		}
 	}
 
-	async createDocument(doc: Document, autoCommit = true, subPath = ""): Promise<void> {
+	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
 		await this.fs.saveDocument(doc, subPath);
 
-		if (autoCommit) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Add document ${doc.id}`);
 		}
 	}
 
-	async initializeProject(projectName: string): Promise<void> {
+	async initializeProject(projectName: string, autoCommit = true): Promise<void> {
 		await this.fs.ensureBacklogStructure();
 
 		const config: BacklogConfig = {
@@ -215,14 +225,18 @@ export class Core {
 			dateFormat: "yyyy-mm-dd",
 			maxColumnWidth: 20, // Default for terminal display
 			backlogDirectory: DEFAULT_DIRECTORIES.BACKLOG, // Use new default
+			autoCommit: false, // Default to false for user control
 		};
 
 		await this.fs.saveConfig(config);
 		// Update git operations with the new config
 		await this.ensureConfigLoaded();
-		const backlogDir = await this.getBacklogDirectoryName();
-		await this.git.stageBacklogDirectory(backlogDir);
-		await this.git.commitChanges(`backlog: Initialize backlog project: ${projectName}`);
+
+		if (autoCommit) {
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Initialize backlog project: ${projectName}`);
+		}
 	}
 
 	async listTasksWithMetadata(): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
