@@ -1,7 +1,7 @@
 ---
 id: task-164
 title: Add auto_commit config option with default false
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-07'
 updated_date: '2025-07-07'
@@ -17,13 +17,13 @@ Add configuration option to disable automatic git commits based on user feedback
 
 ## Acceptance Criteria
 
-- [ ] Add autoCommit field to BacklogConfig type definition
-- [ ] Update config schema migration to include autoCommit with default false
-- [ ] Modify Core class to respect autoCommit setting for all git operations
-- [ ] Update CLI commands to check autoCommit config before committing
-- [ ] Add config command support for setting autoCommit option
-- [ ] Update tests to verify autoCommit behavior works correctly
-- [ ] Add documentation for autoCommit configuration option
+- [x] Add autoCommit field to BacklogConfig type definition
+- [x] Update config schema migration to include autoCommit with default false
+- [x] Modify Core class to respect autoCommit setting for all git operations
+- [x] Update CLI commands to check autoCommit config before committing
+- [x] Add config command support for setting autoCommit option
+- [x] Update tests to verify autoCommit behavior works correctly
+- [x] Add documentation for autoCommit configuration option
 
 ## Implementation Notes
 
