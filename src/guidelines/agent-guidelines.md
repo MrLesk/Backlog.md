@@ -150,7 +150,7 @@ A task is **Done** only when **ALL** of the following are complete:
         - Features implemented or modified
         - Technical decisions and trade-offs
         - Modified or added files
-6. **Review**: code reviewed.
+6. **Review**: self review code.
 7. **Task hygiene**: status set to **Done** via CLI (`backlog task edit <id> -s Done`).
 8. **No regressions**: performance, security and licence checks green.
 
