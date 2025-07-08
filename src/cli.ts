@@ -371,6 +371,7 @@ taskCmd
 	.option("--ac <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
 	.option("--acceptance-criteria <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "add implementation plan")
+	.option("--notes <text>", "add implementation notes")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
@@ -419,6 +420,12 @@ taskCmd
 		if (options.plan) {
 			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
 			task.description = updateTaskImplementationPlan(task.description, String(options.plan));
+		}
+
+		// Handle implementation notes
+		if (options.notes) {
+			const { updateTaskImplementationNotes } = await import("./markdown/serializer.ts");
+			task.description = updateTaskImplementationNotes(task.description, String(options.notes));
 		}
 
 		if (options.draft) {

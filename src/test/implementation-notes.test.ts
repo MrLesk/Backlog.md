@@ -6,6 +6,7 @@ import type { Task } from "../types/index.ts";
 import { editTaskPlatformAware } from "./test-helpers.ts";
 
 const TEST_DIR = join(process.cwd(), "test-notes");
+const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
@@ -29,6 +30,130 @@ describe("Implementation Notes CLI", () => {
 		} catch {
 			// Ignore cleanup errors
 		}
+	});
+
+	describe("task create with implementation notes", () => {
+		it("should handle all task creation scenarios with implementation notes", async () => {
+			// Test 1: create task with implementation notes using --notes
+			const p1 = Bun.spawn(
+				["bun", CLI_PATH, "task", "create", "Test Task 1", "--notes", "Initial implementation completed"],
+				{
+					cwd: TEST_DIR,
+					stdout: "inherit",
+					stderr: "inherit",
+				},
+			);
+			expect(await p1.exited).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			let task = await core.filesystem.loadTask("task-1");
+			expect(task).not.toBeNull();
+			expect(task?.description).toContain("## Implementation Notes");
+			expect(task?.description).toContain("Initial implementation completed");
+
+			// Test 2: create task with multi-line implementation notes
+			const p2 = Bun.spawn(
+				[
+					"bun",
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task 2",
+					"--notes",
+					"Step 1: Analysis completed\nStep 2: Implementation in progress",
+				],
+				{
+					cwd: TEST_DIR,
+					stdout: "inherit",
+					stderr: "inherit",
+				},
+			);
+			expect(await p2.exited).toBe(0);
+
+			task = await core.filesystem.loadTask("task-2");
+			expect(task).not.toBeNull();
+			expect(task?.description).toContain("## Implementation Notes");
+			expect(task?.description).toContain("Step 1: Analysis completed");
+			expect(task?.description).toContain("Step 2: Implementation in progress");
+
+			// Test 3: create task with both plan and notes (notes should come after plan)
+			const p3 = Bun.spawn(
+				[
+					"bun",
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task 3",
+					"--plan",
+					"1. Design\n2. Build\n3. Test",
+					"--notes",
+					"Following the plan step by step",
+				],
+				{
+					cwd: TEST_DIR,
+					stdout: "inherit",
+					stderr: "inherit",
+				},
+			);
+			expect(await p3.exited).toBe(0);
+
+			task = await core.filesystem.loadTask("task-3");
+			expect(task).not.toBeNull();
+			expect(task?.description).toContain("## Implementation Plan");
+			expect(task?.description).toContain("## Implementation Notes");
+			expect(task?.description).toContain("Following the plan step by step");
+
+			// Check that Implementation Notes comes after Implementation Plan
+			const desc = task?.description || "";
+			const planIndex = desc.indexOf("## Implementation Plan");
+			const notesIndex = desc.indexOf("## Implementation Notes");
+			expect(planIndex).toBeGreaterThan(0);
+			expect(notesIndex).toBeGreaterThan(planIndex);
+
+			// Test 4: create task with multiple options including notes
+			const p4 = Bun.spawn(
+				[
+					"bun",
+					CLI_PATH,
+					"task",
+					"create",
+					"Test Task 4",
+					"-d",
+					"Complex task description",
+					"--ac",
+					"Must work correctly,Must be tested",
+					"--notes",
+					"Using TDD approach",
+				],
+				{
+					cwd: TEST_DIR,
+					stdout: "inherit",
+					stderr: "inherit",
+				},
+			);
+			expect(await p4.exited).toBe(0);
+
+			task = await core.filesystem.loadTask("task-4");
+			expect(task).not.toBeNull();
+			expect(task?.description).toContain("Complex task description");
+			expect(task?.description).toContain("## Acceptance Criteria");
+			expect(task?.description).toContain("Must work correctly");
+			expect(task?.description).toContain("## Implementation Notes");
+			expect(task?.description).toContain("Using TDD approach");
+
+			// Test 5: create task with empty notes should not add the section
+			const p5 = Bun.spawn(["bun", CLI_PATH, "task", "create", "Test Task 5", "--notes", ""], {
+				cwd: TEST_DIR,
+				stdout: "inherit",
+				stderr: "inherit",
+			});
+			expect(await p5.exited).toBe(0);
+
+			task = await core.filesystem.loadTask("task-5");
+			expect(task).not.toBeNull();
+			// Should not add Implementation Notes section for empty notes
+			expect(task?.description).not.toContain("## Implementation Notes");
+		});
 	});
 
 	describe("task edit with implementation notes", () => {
