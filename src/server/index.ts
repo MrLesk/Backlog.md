@@ -22,7 +22,7 @@ export class BacklogServer {
 
 		// Check if browser should open (config setting or CLI override)
 		// Default to true if autoOpenBrowser is not explicitly set to false
-		const shouldOpenBrowser = openBrowser && (config.autoOpenBrowser ?? true);
+		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
 		this.server = Bun.serve({
 			port: finalPort,
