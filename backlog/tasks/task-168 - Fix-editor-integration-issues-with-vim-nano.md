@@ -28,6 +28,8 @@ Default editor configuration with vim/nano is broken. The editor starts but cann
 
 ## Implementation Notes
 
-Successfully fixed editor integration issues by switching from synchronous spawnSync to asynchronous spawn. The root cause was that spawnSync with stdio: 'inherit' was interfering with terminal TTY control needed by vim/nano. The new implementation uses async spawn with proper event handling for 'close' and 'error' events, allowing terminal editors to function properly without hanging processes or stuck terminals. Updated all UI components (task-viewer.ts, board.ts) to handle async editor calls and updated tests accordingly. EDITOR environment variable support was already implemented and working correctly.
+Successfully fixed editor integration issues by switching from synchronous spawnSync to asynchronous spawn. The root cause was that spawnSync with stdio: 'inherit' was interfering with terminal TTY control needed by vim/nano. 
 
-Successfully fixed editor integration issues by switching from synchronous spawnSync to asynchronous spawn. The root cause was that spawnSync with stdio: 'inherit' was interfering with terminal TTY control needed by vim/nano. The new implementation uses async spawn with proper event handling for 'close' and 'error' events, allowing terminal editors to function properly without hanging processes or stuck terminals. Updated all UI components (task-viewer.ts, board.ts) to handle async editor calls and updated tests accordingly. Also fixed priority order so EDITOR environment variable takes precedence over config defaultEditor, then platform default.
+The new implementation uses async spawn with proper event handling for 'close' and 'error' events, allowing terminal editors to function properly without hanging processes or stuck terminals. Updated all UI components (task-viewer.ts, board.ts) to handle async editor calls and updated tests accordingly. 
+
+Also fixed priority order so EDITOR environment variable takes precedence over config defaultEditor, then platform default, which matches standard Unix conventions.
