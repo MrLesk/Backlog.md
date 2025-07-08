@@ -141,7 +141,7 @@ describe("LocalStorage Integration", () => {
 		let parsed = null;
 		try {
 			parsed = JSON.parse(corruptedData);
-		} catch (e) {
+		} catch (_e) {
 			// Should fall back to defaults
 			parsed = {
 				isOnline: true,

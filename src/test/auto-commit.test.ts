@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
+import type { BacklogConfig, Task } from "../types/index.ts";
 
 describe("Auto-commit configuration", () => {
 	const testDir = join(process.cwd(), "test-auto-commit");
@@ -25,26 +25,26 @@ describe("Auto-commit configuration", () => {
 		it("should include autoCommit in default config with false value", async () => {
 			const config = await core.filesystem.loadConfig();
 			expect(config).toBeDefined();
-			expect(config!.autoCommit).toBe(false);
+			expect(config?.autoCommit).toBe(false);
 		});
 
 		it("should migrate existing config to include autoCommit", async () => {
 			// Create config without autoCommit
-			const oldConfig = {
+			const oldConfig: BacklogConfig = {
 				projectName: "Test Project",
 				statuses: ["To Do", "Done"],
 				labels: [],
 				milestones: [],
 				dateFormat: "yyyy-mm-dd",
 			};
-			await core.filesystem.saveConfig(oldConfig as any);
+			await core.filesystem.saveConfig(oldConfig);
 
 			// Trigger migration
 			await core.ensureConfigMigrated();
 
 			const migratedConfig = await core.filesystem.loadConfig();
 			expect(migratedConfig).toBeDefined();
-			expect(migratedConfig!.autoCommit).toBe(false);
+			expect(migratedConfig?.autoCommit).toBe(false);
 		});
 	});
 
@@ -52,8 +52,10 @@ describe("Auto-commit configuration", () => {
 		beforeEach(async () => {
 			// Set autoCommit to false
 			const config = await core.filesystem.loadConfig();
-			config!.autoCommit = false;
-			await core.filesystem.saveConfig(config!);
+			if (config) {
+				config.autoCommit = false;
+				await core.filesystem.saveConfig(config);
+			}
 		});
 
 		it("should not auto-commit when creating task with autoCommit disabled in config", async () => {
@@ -148,8 +150,10 @@ describe("Auto-commit configuration", () => {
 		beforeEach(async () => {
 			// Set autoCommit to true
 			const config = await core.filesystem.loadConfig();
-			config!.autoCommit = true;
-			await core.filesystem.saveConfig(config!);
+			if (config) {
+				config.autoCommit = true;
+				await core.filesystem.saveConfig(config);
+			}
 
 			// Commit the config change to start with a clean state
 			const git = await core.getGitOps();
@@ -202,8 +206,10 @@ describe("Auto-commit configuration", () => {
 		beforeEach(async () => {
 			// Set autoCommit to false
 			const config = await core.filesystem.loadConfig();
-			config!.autoCommit = false;
-			await core.filesystem.saveConfig(config!);
+			if (config) {
+				config.autoCommit = false;
+				await core.filesystem.saveConfig(config);
+			}
 		});
 
 		it("should respect autoCommit config for draft operations", async () => {

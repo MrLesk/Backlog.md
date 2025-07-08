@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../index.ts";
@@ -157,7 +157,7 @@ describe("Health Check Hook State Management", () => {
 		const saved = localStorageMock.getItem("backlog-health-check");
 		expect(saved).toBeTruthy();
 
-		const parsed = JSON.parse(saved!);
+		const parsed = JSON.parse(saved as string);
 		expect(parsed.isOnline).toBe(false);
 		expect(parsed.lastCheckTime).toBe(state.lastCheckTime);
 		expect(parsed.consecutiveFailures).toBe(3);
@@ -173,7 +173,7 @@ describe("Health Check Hook State Management", () => {
 		localStorageMock.setItem("backlog-health-check", JSON.stringify(savedState));
 
 		const loaded = localStorageMock.getItem("backlog-health-check");
-		const parsed = JSON.parse(loaded!);
+		const parsed = JSON.parse(loaded as string);
 
 		expect(parsed.isOnline).toBe(true);
 		expect(parsed.consecutiveFailures).toBe(0);
