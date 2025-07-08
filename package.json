@@ -16,7 +16,7 @@
 		"backlog.md-windows-x64": "*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.0.6",
+		"@biomejs/biome": "2.1.1",
 		"@types/bun": "1.2.17",
 		"@types/prompts": "2.4.9",
 		"@types/react": "^19.1.8",

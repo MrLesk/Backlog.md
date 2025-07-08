@@ -1,8 +1,7 @@
 # ⚠️ **IMPORTANT**
 
 1. Read the [README.md](README.md)
-2. Please follow the instructions below for instructions on how to work with Backlog.md on tasks in this
-   repository [agent-guidelines.md](src/guidelines/agent-guidelines.md)
+2. Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
 
 ## Commands
 
@@ -29,7 +28,7 @@
 
 ## Core Structure
 
-- **CLI Tool**: Built with Bun and TypeScript as a global npm package (`@backlog.md`)
+- **CLI Tool**: Built with Bun and TypeScript as a global npm package (`npm i -g backlog.md`)
 - **Source Code**: Located in `/src` directory with modular TypeScript structure
 - **Task Management**: Uses markdown files in `backlog/` directory structure
 - **Workflow**: Git-integrated with task IDs referenced in commits and PRs
@@ -44,3 +43,8 @@
 
 The pre-commit hook automatically runs `biome check --write` on staged files to ensure code quality. If linting errors
 are found, the commit will be blocked until fixed.
+
+## Git Workflow
+
+- **Branching**: Use feature branches when working on tasks (e.g. `tasks/task-123-feature-name`)
+- **Committing**: Use the following format: `TASK-123 - Title of the task`
