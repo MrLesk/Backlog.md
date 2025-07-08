@@ -22,8 +22,23 @@ describe("Editor utilities", () => {
 	});
 
 	describe("resolveEditor", () => {
-		it("should prioritize config defaultEditor over environment variable", () => {
+		it("should prioritize EDITOR environment variable over config defaultEditor", () => {
 			process.env.EDITOR = "vim";
+			const config: BacklogConfig = {
+				projectName: "Test",
+				statuses: ["To Do", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "yyyy-mm-dd",
+				defaultEditor: "code",
+			};
+
+			const editor = resolveEditor(config);
+			expect(editor).toBe("vim");
+		});
+
+		it("should use config defaultEditor when EDITOR environment variable is not set", () => {
+			delete process.env.EDITOR;
 			const config: BacklogConfig = {
 				projectName: "Test",
 				statuses: ["To Do", "Done"],
@@ -109,7 +124,7 @@ describe("Editor utilities", () => {
 			await rm(testDir, { recursive: true, force: true }).catch(() => {});
 		});
 
-		it("should open file with echo command for testing", () => {
+		it("should open file with echo command for testing", async () => {
 			// Use echo as a safe test command that exists on all platforms
 			const config: BacklogConfig = {
 				projectName: "Test",
@@ -120,11 +135,11 @@ describe("Editor utilities", () => {
 				defaultEditor: "echo",
 			};
 
-			const success = openInEditor(testFile, config);
+			const success = await openInEditor(testFile, config);
 			expect(success).toBe(true);
 		});
 
-		it("should handle editor command failure gracefully", () => {
+		it("should handle editor command failure gracefully", async () => {
 			const config: BacklogConfig = {
 				projectName: "Test",
 				statuses: ["To Do", "Done"],
@@ -134,7 +149,7 @@ describe("Editor utilities", () => {
 				defaultEditor: "definitely-not-a-real-editor",
 			};
 
-			const success = openInEditor(testFile, config);
+			const success = await openInEditor(testFile, config);
 			expect(success).toBe(false);
 		});
 	});

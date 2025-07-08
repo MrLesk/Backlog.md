@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { platform } from "node:os";
 import type { BacklogConfig } from "../types/index.ts";
 
@@ -23,18 +23,18 @@ function getPlatformDefaultEditor(): string {
 
 /**
  * Resolve the editor command based on configuration, environment, and platform defaults
- * Priority: config.defaultEditor -> EDITOR env var -> platform default
+ * Priority: EDITOR env var -> config.defaultEditor -> platform default
  */
 export function resolveEditor(config?: BacklogConfig | null): string {
-	// First check config
-	if (config?.defaultEditor) {
-		return config.defaultEditor;
-	}
-
-	// Then check environment variable
+	// First check environment variable
 	const editorEnv = process.env.EDITOR;
 	if (editorEnv) {
 		return editorEnv;
+	}
+
+	// Then check config
+	if (config?.defaultEditor) {
+		return config.defaultEditor;
 	}
 
 	// Finally use platform default
@@ -75,7 +75,7 @@ export function isEditorAvailable(editor: string): boolean {
 /**
  * Open a file in the editor
  */
-export function openInEditor(filePath: string, config?: BacklogConfig | null): boolean {
+export async function openInEditor(filePath: string, config?: BacklogConfig | null): Promise<boolean> {
 	const editor = resolveEditor(config);
 
 	try {
@@ -84,12 +84,24 @@ export function openInEditor(filePath: string, config?: BacklogConfig | null): b
 		const command = parts[0];
 		const args = [...parts.slice(1), filePath];
 
-		const result = spawnSync(command, args, {
+		// Use async spawn with proper TTY handling for terminal editors
+		const child = spawn(command, args, {
 			stdio: "inherit",
 			shell: platform() === "win32",
+			detached: false,
 		});
 
-		return result.status === 0;
+		// Wait for the editor to close
+		return new Promise((resolve) => {
+			child.on("close", (code) => {
+				resolve(code === 0);
+			});
+
+			child.on("error", (error) => {
+				console.error(`Failed to open editor: ${error}`);
+				resolve(false);
+			});
+		});
 	} catch (error) {
 		console.error(`Failed to open editor: ${error}`);
 		return false;

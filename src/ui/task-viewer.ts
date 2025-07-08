@@ -499,7 +499,7 @@ export async function viewTaskEnhanced(
 				const config = await core.filesystem.loadConfig();
 				const filePath = await getTaskPath(currentSelectedTask.id, core);
 				if (filePath) {
-					openInEditor(filePath, config);
+					await openInEditor(filePath, config);
 				}
 			} catch (_error) {
 				// Silently handle errors

@@ -202,7 +202,7 @@ export async function renderBoardTui(
 				const config = await core.filesystem.loadConfig();
 				const filePath = await getTaskPath(task.id, core);
 				if (filePath) {
-					openInEditor(filePath, config);
+					await openInEditor(filePath, config);
 				}
 			} catch (_error) {
 				// Silently handle errors - user will see editor didn't open
