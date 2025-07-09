@@ -125,6 +125,9 @@ describe("Editor utilities", () => {
 		});
 
 		it("should open file with echo command for testing", async () => {
+			// Clear EDITOR environment variable to ensure config.defaultEditor is used
+			delete process.env.EDITOR;
+
 			// Use echo as a safe test command that exists on all platforms
 			const config: BacklogConfig = {
 				projectName: "Test",
@@ -140,6 +143,9 @@ describe("Editor utilities", () => {
 		});
 
 		it("should handle editor command failure gracefully", async () => {
+			// Clear EDITOR environment variable to ensure config.defaultEditor is used
+			delete process.env.EDITOR;
+
 			const config: BacklogConfig = {
 				projectName: "Test",
 				statuses: ["To Do", "Done"],

@@ -4,9 +4,10 @@ title: Add documentation and decisions pages to web UI
 status: To Do
 assignee: []
 created_date: '2025-07-06'
-updated_date: '2025-07-06'
+updated_date: '2025-07-09'
 labels: []
-dependencies: [task-118]
+dependencies:
+  - task-118
 ---
 
 ## Description
