@@ -12,6 +12,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onUpdate, onEdit }) => {
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('text/plain', task.id);
+    e.dataTransfer.setData('source-status', task.status);
     setIsDragging(true);
   };
 
@@ -41,6 +42,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onUpdate, onEdit }) => {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onClick={() => onEdit(task)}
+      data-task-id={task.id}
     >
       <div className="mb-2">
         <h4 className="font-semibold text-sm text-gray-900 line-clamp-2">
