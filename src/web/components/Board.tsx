@@ -61,11 +61,60 @@ const Board: React.FC<BoardProps> = ({ onEditTask }) => {
     handleTaskUpdate(taskId, { status: newStatus });
   };
 
+  const handleTaskReorder = async (taskId: string, newPosition: number) => {
+    try {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      const statusTasks = getTasksByStatus(task.status);
+      const currentIndex = statusTasks.findIndex(t => t.id === taskId);
+      
+      if (currentIndex === -1) return;
+      
+      // Calculate new positions for affected tasks
+      const updates: { id: string; position: number }[] = [];
+      
+      // Remove the task from its current position
+      const reorderedTasks = statusTasks.filter(t => t.id !== taskId);
+      
+      // Insert the task at the new position
+      reorderedTasks.splice(newPosition, 0, task);
+      
+      // Update positions for all tasks in the column
+      reorderedTasks.forEach((t, index) => {
+        updates.push({ id: t.id, position: index });
+      });
+      
+      // Update positions via API
+      await apiClient.updateTaskPositions(updates);
+      
+      // Update local state
+      setTasks(prevTasks => 
+        prevTasks.map(t => {
+          const update = updates.find(u => u.id === t.id);
+          return update ? { ...t, position: update.position } : t;
+        })
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reorder task');
+    }
+  };
+
   const getTasksByStatus = (status: string): Task[] => {
     const filteredTasks = tasks.filter(task => task.status === status);
     
-    // Sort tasks based on status
+    // Sort tasks based on position first, then fallback to date-based sorting
     return filteredTasks.sort((a, b) => {
+      // If both have position, sort by position
+      if (a.position !== undefined && b.position !== undefined) {
+        return a.position - b.position;
+      }
+      
+      // If only one has position, prioritize it
+      if (a.position !== undefined) return -1;
+      if (b.position !== undefined) return 1;
+      
+      // Fallback to existing date-based sorting
       const isDoneStatus = status.toLowerCase().includes('done') || 
                           status.toLowerCase().includes('complete');
       
@@ -139,6 +188,7 @@ const Board: React.FC<BoardProps> = ({ onEditTask }) => {
               onTaskUpdate={handleTaskUpdate}
               onStatusChange={handleStatusChange}
               onEditTask={onEditTask}
+              onTaskReorder={handleTaskReorder}
             />
           ))}
         </div>

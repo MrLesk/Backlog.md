@@ -52,6 +52,15 @@ export class ApiClient {
 		return this.updateTask(id, { status });
 	}
 
+	async updateTaskPosition(id: string, position: number): Promise<Task> {
+		return this.updateTask(id, { position });
+	}
+
+	async updateTaskPositions(updates: { id: string; position: number }[]): Promise<Task[]> {
+		const promises = updates.map((update) => this.updateTask(update.id, { position: update.position }));
+		return Promise.all(promises);
+	}
+
 	async fetchStatuses(): Promise<string[]> {
 		const response = await fetch(`${API_BASE}/statuses`);
 		if (!response.ok) {

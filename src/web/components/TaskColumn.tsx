@@ -8,6 +8,7 @@ interface TaskColumnProps {
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
   onStatusChange: (taskId: string, status: TaskStatus) => void;
   onEditTask: (task: Task) => void;
+  onTaskReorder: (taskId: string, newPosition: number) => void;
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({ 
@@ -15,9 +16,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   tasks, 
   onTaskUpdate, 
   onStatusChange,
-  onEditTask
+  onEditTask,
+  onTaskReorder
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
+  const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const getStatusBadgeClass = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower.includes('done') || statusLower.includes('complete')) {
@@ -32,17 +35,56 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     return 'bg-blue-100 text-blue-800';
   };
 
+  const calculateDropPosition = (e: React.DragEvent): number => {
+    const columnElement = e.currentTarget;
+    const rect = columnElement.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    
+    const taskElements = columnElement.querySelectorAll('[data-task-id]');
+    
+    for (let i = 0; i < taskElements.length; i++) {
+      const taskElement = taskElements[i];
+      const taskRect = taskElement.getBoundingClientRect();
+      const taskY = taskRect.top - rect.top;
+      const taskHeight = taskRect.height;
+      
+      if (y < taskY + taskHeight / 2) {
+        return i;
+      }
+    }
+    
+    return tasks.length;
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    setDragOverIndex(null);
+    
     const taskId = e.dataTransfer.getData('text/plain');
+    const sourceStatus = e.dataTransfer.getData('source-status');
+    
     if (taskId) {
-      onStatusChange(taskId, title);
+      if (sourceStatus === title) {
+        // Same column - reorder
+        const dropPosition = calculateDropPosition(e);
+        onTaskReorder(taskId, dropPosition);
+      } else {
+        // Different column - change status
+        onStatusChange(taskId, title);
+      }
     }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    const sourceStatus = e.dataTransfer.getData('source-status');
+    
+    if (sourceStatus === title) {
+      // Same column - show drop position
+      const dropPosition = calculateDropPosition(e);
+      setDragOverIndex(dropPosition);
+    }
   };
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -55,6 +97,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     // Only set to false if we're leaving the column entirely
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOver(false);
+      setDragOverIndex(null);
     }
   };
 
@@ -80,17 +123,36 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       </div>
       
       <div className="space-y-3">
-        {tasks.map(task => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            onUpdate={onTaskUpdate}
-            onEdit={onEditTask}
-          />
+        {tasks.map((task, index) => (
+          <React.Fragment key={task.id}>
+            {/* Drop indicator for same column reordering */}
+            {dragOverIndex === index && (
+              <div className="border-2 border-blue-400 border-dashed rounded-md bg-blue-50 p-2 text-center">
+                <div className="text-blue-600 text-xs font-medium">
+                  Drop here
+                </div>
+              </div>
+            )}
+            <TaskCard
+              task={task}
+              onUpdate={onTaskUpdate}
+              onEdit={onEditTask}
+              data-task-id={task.id}
+            />
+          </React.Fragment>
         ))}
         
-        {/* Drop zone indicator */}
-        {isDragOver && (
+        {/* Drop indicator at the end */}
+        {dragOverIndex === tasks.length && (
+          <div className="border-2 border-blue-400 border-dashed rounded-md bg-blue-50 p-2 text-center">
+            <div className="text-blue-600 text-xs font-medium">
+              Drop here
+            </div>
+          </div>
+        )}
+        
+        {/* Drop zone indicator for different column */}
+        {isDragOver && dragOverIndex === null && (
           <div className="border-2 border-green-400 border-dashed rounded-md bg-green-50 p-4 text-center">
             <div className="text-green-600 text-sm font-medium">
               Drop task here

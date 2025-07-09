@@ -10,6 +10,7 @@ export interface Task {
 	dependencies: string[];
 	parentTaskId?: string;
 	priority?: "high" | "medium" | "low";
+	position?: number;
 }
 
 export type TaskStatus = string;
@@ -23,6 +24,7 @@ export interface CreateTaskRequest {
 	dependencies?: string[];
 	parentTaskId?: string;
 	priority?: "high" | "medium" | "low";
+	position?: number;
 }
 
 export interface UpdateTaskRequest {
@@ -34,4 +36,5 @@ export interface UpdateTaskRequest {
 	dependencies?: string[];
 	parentTaskId?: string;
 	priority?: "high" | "medium" | "low";
+	position?: number;
 }
