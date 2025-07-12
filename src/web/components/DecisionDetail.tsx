@@ -1,10 +1,9 @@
-import React, { useState, useEffect, memo, useCallback } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { apiClient, ApiError } from '../lib/api';
+import { apiClient } from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
 import { type Decision } from '../../types';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { LoadingSpinner } from '../components/LoadingSpinner';
 import { SuccessToast } from './SuccessToast';
 
 // Utility function for ID transformations
@@ -17,8 +16,7 @@ const stripIdPrefix = (id: string): string => {
 const MarkdownEditor = memo(function MarkdownEditor({ 
 	value, 
 	onChange, 
-	isEditing, 
-	isReadonly = false 
+	isEditing 
 }: {
 	value: string;
 	onChange?: (val: string | undefined) => void;
@@ -44,7 +42,6 @@ const MarkdownEditor = memo(function MarkdownEditor({
 				height="100%"
 				hideToolbar={false}
 				data-color-mode="light"
-				visibleDragBar={false}
 				textareaProps={{
 					placeholder: 'Write your decision documentation here...',
 					style: { 
@@ -79,8 +76,8 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
-	const [error, setError] = useState<Error | null>(null);
-	const [saveError, setSaveError] = useState<Error | null>(null);
+	
+	
 	const [isNewDecision, setIsNewDecision] = useState(false);
 	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 
@@ -289,7 +286,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 						</div>
 						<div className="flex items-center space-x-3 ml-6">
 							{/* Temporarily hidden - decisions editing not ready */}
-							{false && !isEditing ? (
+							{false ? (
 								<button
 									onClick={handleEdit}
 									className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"

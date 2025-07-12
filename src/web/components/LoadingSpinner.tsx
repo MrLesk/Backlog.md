@@ -5,12 +5,11 @@ interface LoadingSpinnerProps {
 	text?: string;
 	className?: string;
 }
-
-export const LoadingSpinner = memo(function LoadingSpinner({ 
-	size = 'md', 
-	text = 'Loading...', 
-	className = '' 
-}: LoadingSpinnerProps) {
+memo(function LoadingSpinner({
+								 size = 'md',
+								 text = 'Loading...',
+								 className = ''
+							 }: LoadingSpinnerProps) {
 	const sizeClasses = {
 		sm: 'w-4 h-4',
 		md: 'w-6 h-6',
@@ -28,25 +27,6 @@ export const LoadingSpinner = memo(function LoadingSpinner({
 		</div>
 	);
 });
-
-interface LoadingSkeletonProps {
-	lines?: number;
-	className?: string;
-}
-
-export const LoadingSkeleton = memo(function LoadingSkeleton({ 
-	lines = 3, 
-	className = '' 
-}: LoadingSkeletonProps) {
-	return (
-		<div className={`animate-pulse ${className}`}>
-			{Array.from({ length: lines }, (_, i) => (
-				<div key={i} className={`bg-gray-200 rounded h-4 mb-3 ${i === lines - 1 ? 'w-3/4' : 'w-full'}`} />
-			))}
-		</div>
-	);
-});
-
 interface SidebarSkeletonProps {
 	isCollapsed?: boolean;
 }
@@ -93,5 +73,3 @@ export const SidebarSkeleton = memo(function SidebarSkeleton({ isCollapsed = fal
 		</div>
 	);
 });
-
-export default LoadingSpinner;

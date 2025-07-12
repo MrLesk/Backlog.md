@@ -31,16 +31,16 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
     }
   };
 
-  const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
-    try {
-      const updatedTask = await apiClient.updateTask(taskId, updates);
-      setDrafts(prevDrafts => 
-        prevDrafts.map(task => task.id === taskId ? updatedTask : task)
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update draft');
-    }
-  };
+  // const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
+  //   try {
+  //     const updatedTask = await apiClient.updateTask(taskId, updates);
+  //     setDrafts(prevDrafts => 
+  //       prevDrafts.map(task => task.id === taskId ? updatedTask : task)
+  //     );
+  //   } catch (err) {
+  //     setError(err instanceof Error ? err.message : 'Failed to update draft');
+  //   }
+  // };
 
   const getPriorityColor = (priority?: string) => {
     switch (priority?.toLowerCase()) {

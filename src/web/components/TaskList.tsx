@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { apiClient } from '../lib/api';
 import { type Task } from '../../types';
 
 interface TaskListProps {
@@ -9,7 +8,7 @@ interface TaskListProps {
 }
 
 const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks }) => {
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null);
 
   // Sort tasks by ID descending (newest first)
   const sortedTasks = React.useMemo(() => {
@@ -20,21 +19,6 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks }) => 
       return idB - idA; // Highest ID first (newest)
     });
   }, [tasks]);
-
-  const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
-    try {
-      await apiClient.updateTask(taskId, updates);
-      // Note: Task updates will be reflected when the parent component refreshes data
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update task');
-    }
-  };
-
-  const handleStatusChange = (taskId: string, newStatus: string) => {
-    handleTaskUpdate(taskId, { status: newStatus });
-  };
-
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'to do':

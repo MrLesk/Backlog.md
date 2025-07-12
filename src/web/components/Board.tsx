@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { type Task } from '../../types';
 import { apiClient } from '../lib/api';
-import TaskCard from './TaskCard';
 import TaskColumn from './TaskColumn';
 
 interface BoardProps {

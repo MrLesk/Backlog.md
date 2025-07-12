@@ -2,7 +2,7 @@ import { useHealthCheck } from "../hooks/useHealthCheck";
 import { SuccessToast } from "./SuccessToast";
 
 export function HealthIndicator() {
-	const { isOnline, lastCheck, isChecking, consecutiveFailures, retry } = useHealthCheck();
+	const { isOnline, isChecking, consecutiveFailures, retry } = useHealthCheck();
 
 	// Don't show anything if we're online and have no issues
 	if (isOnline && consecutiveFailures === 0) {

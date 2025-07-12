@@ -5,7 +5,6 @@ import Fuse from 'fuse.js';
 import { type Task, type Document, type Decision } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import { SidebarSkeleton } from './LoadingSpinner';
-import { apiClient } from '../lib/api';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -141,8 +140,7 @@ const SideNavigation = memo(function SideNavigation({
 	decisions, 
 	isLoading, 
 	error, 
-	onRetry,
-	onRefreshData
+	onRetry
 }: SideNavigationProps) {
 	const [isCollapsed, setIsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('sideNavCollapsed');
@@ -174,7 +172,7 @@ const SideNavigation = memo(function SideNavigation({
 		navigate('/documentation/new');
 	}, [navigate]);
 
-	const handleCreateDecision = useCallback(() => {
+	useCallback(() => {
 		navigate('/decisions/new');
 	}, [navigate]);
 
@@ -236,9 +234,9 @@ const SideNavigation = memo(function SideNavigation({
 		}
 	}, [isCollapsed, searchInputRef]);
 
-	const isDocsSection = location.pathname.startsWith('/documentation');
-	const isDecisionsSection = location.pathname.startsWith('/decisions');
-	const isBoardSection = location.pathname === '/';
+	location.pathname.startsWith('/documentation');
+	location.pathname.startsWith('/decisions');
+
 
 	// Create Fuse.js instance for unified search
 	const fuse = useMemo(() => {
@@ -297,7 +295,7 @@ const SideNavigation = memo(function SideNavigation({
 			.sort((a, b) => (a.score || 0) - (b.score || 0));
 		
 		return {
-			docs: sortedResults.filter(r => r.item.type === 'doc').map(r => r.item as Document),
+			docs: sortedResults.filter(r => r.item.type === 'doc').map(r => r.item as unknown as Document),
 			decisions: sortedResults.filter(r => r.item.type === 'decision').map(r => r.item as Decision),
 			tasks: sortedResults.filter(r => r.item.type === 'task').map(r => r.item as Task),
 			unified: sortedResults.slice(0, 5) // Show only top 5 unified results
@@ -309,7 +307,7 @@ const SideNavigation = memo(function SideNavigation({
 	const filteredDecisions = decisions;
 
 	const toggleCollapse = useCallback(() => {
-		setIsCollapsed(prev => !prev);
+		setIsCollapsed((prev: any) => !prev);
 	}, []);
 
 	return (
@@ -568,18 +566,18 @@ const SideNavigation = memo(function SideNavigation({
 									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Decisions ({decisions.length})</span>
 								</div>
 								{/* Temporarily hidden - decisions editing not ready */}
-								{false && (
-									<button
-										onClick={handleCreateDecision}
-										className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors cursor-pointer"
-										title="Create new decision"
-									>
-										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-											<circle cx="12" cy="12" r="10" />
-										</svg>
-									</button>
-								)}
+								{/*{false && (*/}
+								{/*	<button*/}
+								{/*		onClick={handleCreateDecision}*/}
+								{/*		className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors cursor-pointer"*/}
+								{/*		title="Create new decision"*/}
+								{/*	>*/}
+								{/*		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
+								{/*			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />*/}
+								{/*			<circle cx="12" cy="12" r="10" />*/}
+								{/*		</svg>*/}
+								{/*	</button>*/}
+								{/*)}*/}
 							</div>
 							
 							{/* Decision List */}

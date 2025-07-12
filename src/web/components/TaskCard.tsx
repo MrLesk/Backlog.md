@@ -7,7 +7,7 @@ interface TaskCardProps {
   onEdit: (task: Task) => void;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onUpdate, onEdit }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit }) => {
   const [isDragging, setIsDragging] = React.useState(false);
 
   const handleDragStart = (e: React.DragEvent) => {
