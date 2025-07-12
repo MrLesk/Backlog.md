@@ -154,6 +154,7 @@ Key options:
 | `auto_open_browser`| Open browser automatically | `true`            |
 | `remote_operations`| Enable remote git operations | `true`           |
 | `auto_commit`     | Automatically commit task changes | `false`       |
+| `zero_padded_ids` | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
 
 > **Note**: Set `remote_operations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 

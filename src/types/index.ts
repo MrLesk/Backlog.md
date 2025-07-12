@@ -65,6 +65,7 @@ export interface BacklogConfig {
 	defaultPort?: number;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
+	zeroPaddedIds?: number;
 }
 
 export interface ParsedMarkdown {

@@ -430,7 +430,9 @@ export class FileSystem {
 	async saveDocument(document: Document, subPath = ""): Promise<void> {
 		const docsDir = await this.getDocsDir();
 		const dir = join(docsDir, subPath);
-		const filename = `doc-${document.id} - ${this.sanitizeFilename(document.title)}.md`;
+		// Normalize ID - remove "doc-" prefix if present
+		const normalizedId = document.id.replace(/^doc-/, "");
+		const filename = `doc-${normalizedId} - ${this.sanitizeFilename(document.title)}.md`;
 		const filepath = join(dir, filename);
 		const content = serializeDocument(document);
 
@@ -631,6 +633,9 @@ export class FileSystem {
 				case "auto_commit":
 					config.autoCommit = value.toLowerCase() === "true";
 					break;
+				case "zero_padded_ids":
+					config.zeroPaddedIds = Number.parseInt(value, 10);
+					break;
 			}
 		}
 
@@ -650,6 +655,7 @@ export class FileSystem {
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
+			zeroPaddedIds: config.zeroPaddedIds,
 		};
 	}
 
@@ -670,6 +676,7 @@ export class FileSystem {
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
+			...(config.zeroPaddedIds ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;
