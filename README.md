@@ -119,6 +119,7 @@ The web interface provides:
 | Archive     | `backlog task archive 7`                             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
+| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder) |
 | Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
 | Export board | `backlog board export [file]` (exports Kanban board to markdown) |
 | Web interface | `backlog browser` (launches web UI on port 6420) |

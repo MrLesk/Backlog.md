@@ -1,8 +1,9 @@
+import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
-import { getTaskPath } from "../utils/task-path.ts";
+import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 
 function ensureDescriptionHeader(body: string): string {
@@ -146,15 +147,63 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		// Get paths before moving the file
+		const taskPath = await getTaskPath(taskId, this);
+		const taskFilename = await getTaskFilename(taskId, this);
+
+		if (!taskPath || !taskFilename) return false;
+
+		const fromPath = taskPath;
+		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
+
 		const success = await this.fs.archiveTask(taskId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			await this.git.stageBacklogDirectory(backlogDir);
+			// Stage the file move for proper Git tracking
+			await this.git.stageFileMove(fromPath, toPath);
 			await this.git.commitChanges(`backlog: Archive task ${taskId}`);
 		}
 
 		return success;
+	}
+
+	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		// Get paths before moving the file
+		const completedDir = await this.fs.getCompletedDir();
+		const taskPath = await getTaskPath(taskId, this);
+		const taskFilename = await getTaskFilename(taskId, this);
+
+		if (!taskPath || !taskFilename) return false;
+
+		const fromPath = taskPath;
+		const toPath = join(completedDir, taskFilename);
+
+		const success = await this.fs.completeTask(taskId);
+
+		if (success && (await this.shouldAutoCommit(autoCommit))) {
+			// Stage the file move for proper Git tracking
+			await this.git.stageFileMove(fromPath, toPath);
+			await this.git.commitChanges(`backlog: Complete task ${taskId}`);
+		}
+
+		return success;
+	}
+
+	async getDoneTasksByAge(olderThanDays: number): Promise<Task[]> {
+		const tasks = await this.fs.listTasks();
+		const cutoffDate = new Date();
+		cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+		return tasks.filter((task) => {
+			if (task.status !== "Done") return false;
+
+			// Check updatedDate first, then createdDate as fallback
+			const taskDate = task.updatedDate || task.createdDate;
+			if (!taskDate) return false;
+
+			const date = new Date(taskDate);
+			return date < cutoffDate;
+		});
 	}
 
 	async archiveDraft(taskId: string, autoCommit?: boolean): Promise<boolean> {

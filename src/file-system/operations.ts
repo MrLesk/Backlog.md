@@ -1,4 +1,4 @@
-import { mkdir, unlink } from "node:fs/promises";
+import { mkdir, rename, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
@@ -70,6 +70,10 @@ export class FileSystem {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.DRAFTS);
 	}
 
+	get completedDir(): string {
+		return join(this.backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
+	}
+
 	get archiveTasksDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
@@ -96,7 +100,7 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS);
 	}
 
-	private async getArchiveTasksDir(): Promise<string> {
+	async getArchiveTasksDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
@@ -116,12 +120,18 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.DOCS);
 	}
 
+	private async getCompletedDir(): Promise<string> {
+		const backlogDir = await this.getBacklogDir();
+		return join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
+	}
+
 	async ensureBacklogStructure(): Promise<void> {
 		const backlogDir = await this.getBacklogDir();
 		const directories = [
 			backlogDir,
 			join(backlogDir, DEFAULT_DIRECTORIES.TASKS),
 			join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS),
+			join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS),
 			join(backlogDir, DEFAULT_DIRECTORIES.DOCS),
@@ -190,6 +200,24 @@ export class FileSystem {
 		}
 	}
 
+	async listCompletedTasks(): Promise<Task[]> {
+		try {
+			const completedDir = await this.getCompletedDir();
+			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: completedDir }));
+
+			const tasks: Task[] = [];
+			for (const file of taskFiles) {
+				const filepath = join(completedDir, file);
+				const content = await Bun.file(filepath).text();
+				tasks.push(parseTask(content));
+			}
+
+			return sortByTaskId(tasks);
+		} catch (_error) {
+			return [];
+		}
+	}
+
 	async archiveTask(taskId: string): Promise<boolean> {
 		try {
 			const tasksDir = await this.getTasksDir();
@@ -202,15 +230,35 @@ export class FileSystem {
 
 			const targetPath = join(archiveTasksDir, taskFile);
 
-			// Read source file
-			const content = await Bun.file(sourcePath).text();
-
-			// Write to target and ensure directory exists
+			// Ensure target directory exists
 			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
 
-			// Remove source file
-			await unlink(sourcePath);
+			// Use rename for proper Git move detection
+			await rename(sourcePath, targetPath);
+
+			return true;
+		} catch (_error) {
+			return false;
+		}
+	}
+
+	async completeTask(taskId: string): Promise<boolean> {
+		try {
+			const tasksDir = await this.getTasksDir();
+			const completedDir = await this.getCompletedDir();
+			const core = { filesystem: { tasksDir } };
+			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
+			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
+
+			if (!sourcePath || !taskFile) return false;
+
+			const targetPath = join(completedDir, taskFile);
+
+			// Ensure target directory exists
+			await this.ensureDirectoryExists(dirname(targetPath));
+
+			// Use rename for proper Git move detection
+			await rename(sourcePath, targetPath);
 
 			return true;
 		} catch (_error) {

@@ -8,6 +8,8 @@ export const DEFAULT_DIRECTORIES = {
 	TASKS: "tasks",
 	/** Draft tasks directory */
 	DRAFTS: "drafts",
+	/** Completed tasks directory */
+	COMPLETED: "completed",
 	/** Archive root directory */
 	ARCHIVE: "archive",
 	/** Archived tasks directory */

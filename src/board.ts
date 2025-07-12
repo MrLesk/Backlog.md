@@ -265,10 +265,8 @@ function generateKanbanBoardWithMetadata(tasks: Task[], statuses: string[], proj
 
 	// Only show statuses that have tasks (filter out empty groups and exclude empty/no status)
 	const ordered = [
-		...statuses.filter((s) => s && s.trim() && groups.has(s) && (groups.get(s)?.length ?? 0) > 0),
-		...Array.from(groups.keys()).filter(
-			(s) => s && s.trim() && !statuses.includes(s) && (groups.get(s)?.length ?? 0) > 0,
-		),
+		...statuses.filter((s) => s?.trim() && groups.has(s) && (groups.get(s)?.length ?? 0) > 0),
+		...Array.from(groups.keys()).filter((s) => s?.trim() && !statuses.includes(s) && (groups.get(s)?.length ?? 0) > 0),
 	];
 
 	// Create header

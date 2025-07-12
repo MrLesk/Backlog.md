@@ -7,7 +7,7 @@ import type { FileSystem } from "../file-system/operations.ts";
 import type { Task } from "../types/index.ts";
 import type { GitOps } from "./git-ops.ts";
 
-export type TaskDirectoryType = "task" | "draft" | "archived";
+export type TaskDirectoryType = "task" | "draft" | "archived" | "completed";
 
 export interface TaskDirectoryInfo {
 	taskId: string;
@@ -51,6 +51,7 @@ export async function getLatestTaskStatesForIds(
 			{ path: `${backlogDir}/tasks`, type: "task" },
 			{ path: `${backlogDir}/drafts`, type: "draft" },
 			{ path: `${backlogDir}/archive/tasks`, type: "archived" },
+			{ path: `${backlogDir}/completed`, type: "completed" },
 		];
 
 		// Flatten all checks into a single array for maximum parallelization

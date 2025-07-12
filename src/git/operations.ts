@@ -223,6 +223,12 @@ export class GitOperations {
 		}
 	}
 
+	async stageFileMove(fromPath: string, toPath: string): Promise<void> {
+		// Stage the deletion of the old file and addition of the new file
+		// Git will automatically detect this as a rename if the content is similar enough
+		await this.execGit(["add", "--all", fromPath, toPath]);
+	}
+
 	async listRemoteBranches(_remote = "origin"): Promise<string[]> {
 		try {
 			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:strip=3)"]);
