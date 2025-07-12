@@ -26,7 +26,7 @@ const MarkdownEditor = memo(function MarkdownEditor({
 	if (!isEditing) {
 		// Preview mode - just show the rendered markdown without editor UI
 		return (
-			<div className="prose prose-sm max-w-none w-full h-full p-6 bg-white rounded-lg border border-gray-200 min-h-96" data-color-mode="light">
+			<div className="prose prose-sm max-w-none w-full p-6 bg-white rounded-lg border border-gray-200" data-color-mode="light">
 				<MDEditor.Markdown source={value} />
 			</div>
 		);
@@ -327,8 +327,8 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 			</div>
 
 			{/* Content Section */}
-			<div className="flex-1 overflow-hidden bg-gray-50 flex flex-col">
-				<div className="flex-1 py-8 px-8 min-h-0">
+			<div className="flex-1 overflow-auto bg-gray-50">
+				<div className="py-8 px-8">
 					<MarkdownEditor
 						value={content}
 						onChange={(val) => setContent(val || '')}
