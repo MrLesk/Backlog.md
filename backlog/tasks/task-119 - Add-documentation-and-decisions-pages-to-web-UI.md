@@ -50,3 +50,23 @@ Implement dedicated pages for viewing and editing Documentation and Decisions in
 - Implement error handling for file operations
 - Consider adding a breadcrumb navigation for better UX
 - Files should be displayed with metadata (last modified, file size)
+
+## Implementation Notes
+
+- Created documentation listing page with responsive grid layout in `src/web/components/DocumentationList.tsx`
+- Created decisions listing page with grid layout and status filtering in `src/web/components/DecisionsList.tsx`
+- Implemented detail pages for viewing and editing both documents and decisions
+- Added create/edit functionality with markdown editor integration
+- Integrated with CLI commands for document and decision management via API endpoints
+- Implemented proper ID generation with cross-branch collision detection for decisions
+- Added all required API endpoints:
+  - `/api/docs` - List all documentation files
+  - `/api/docs/:filename` - Read/update specific documentation
+  - `/api/decisions` - List all decision files
+  - `/api/decisions/:id` - Read/update specific decisions
+- Used the existing markdown editor component from TaskForm for consistency
+- Added proper loading states and error handling throughout
+- Implemented search functionality for documentation files
+- Added status filtering for decisions (Proposed, Accepted, Rejected, Superseded)
+- Enhanced UI with proper spacing, transitions, and responsive design
+- Added metadata display including last modified dates and file information
