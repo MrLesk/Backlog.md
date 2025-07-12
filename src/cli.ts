@@ -1091,8 +1091,9 @@ addBoardOptions(boardCmd.command("view").description("display tasks in a Kanban 
 
 boardCmd
 	.command("export [filename]")
-	.description("append kanban board to readme or output file")
+	.description("export kanban board to markdown file")
 	.option("-o, --output <path>", "output file (deprecated, use filename argument instead)")
+	.option("--force", "overwrite existing file without confirmation")
 	.action(async (filename, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -1147,12 +1148,30 @@ boardCmd
 			// Close loading screen before export
 			loadingScreen?.close();
 
-			// Priority: filename argument > --output option > default README.md
-			const outputFile = filename || options.output || "README.md";
+			// Priority: filename argument > --output option > default Backlog.md
+			const outputFile = filename || options.output || "Backlog.md";
 			const outputPath = join(cwd, outputFile as string);
-			const maxColumnWidth = config?.maxColumnWidth || 30; // Default for export
-			const addTitle = !filename && !options.output; // Add title only for default readme export
-			await exportKanbanBoardToFile(finalTasks, statuses, outputPath, maxColumnWidth, addTitle);
+
+			// Check if file exists and handle overwrite confirmation
+			const fileExists = await Bun.file(outputPath).exists();
+			if (fileExists && !options.force) {
+				const rl = createInterface({ input });
+				try {
+					const answer = await rl.question(`File "${outputPath}" already exists. Overwrite? (y/N): `);
+					if (!answer.toLowerCase().startsWith("y")) {
+						console.log("Export cancelled.");
+						return;
+					}
+				} finally {
+					rl.close();
+				}
+			}
+
+			// Get project name from config or use directory name
+			const { basename } = await import("node:path");
+			const projectName = config?.projectName || basename(cwd);
+
+			await exportKanbanBoardToFile(finalTasks, statuses, outputPath, projectName, options.force || !fileExists);
 			console.log(`Exported board to ${outputPath}`);
 		} catch (error) {
 			loadingScreen?.close();

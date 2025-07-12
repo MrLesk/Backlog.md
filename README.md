@@ -22,6 +22,8 @@
 
 * 📊 **Instant terminal Kanban** -- `backlog board` paints a live board in your shell
 
+* 📤 **Board export** -- `backlog board export` creates shareable markdown reports
+
 * 🌐 **Modern web interface** -- `backlog browser` launches a sleek web UI for visual task management
 
 * 🤖 **AI-ready CLI** -- "Claude, please take over task 33"
@@ -118,6 +120,7 @@ The web interface provides:
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
 | Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
+| Export board | `backlog board export [file]` (exports Kanban board to markdown) |
 | Web interface | `backlog browser` (launches web UI on port 6420) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
 | Config editor | `backlog config set defaultEditor "code --wait"` |
@@ -157,6 +160,26 @@ Key options:
 
 ---
 
+## Sharing & Export
+
+### Board Export
+
+Export your Kanban board to a clean, shareable markdown file:
+
+```bash
+# Export to default Backlog.md file
+backlog board export
+
+# Export to custom file
+backlog board export project-status.md
+
+# Force overwrite existing file
+backlog board export --force
+```
+
+Perfect for sharing project status, creating reports, or storing snapshots in version control.
+
+---
 
 ## License
 

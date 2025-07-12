@@ -261,7 +261,7 @@ describe("generateKanbanBoard", () => {
 });
 
 describe("exportKanbanBoardToFile", () => {
-	it("creates file and appends board content", async () => {
+	it("creates file and overwrites board content", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "board-export-"));
 		const file = join(dir, "README.md");
 		const tasks: Task[] = [
@@ -277,14 +277,16 @@ describe("exportKanbanBoardToFile", () => {
 			},
 		];
 
-		await exportKanbanBoardToFile(tasks, ["To Do"], file);
+		await exportKanbanBoardToFile(tasks, ["To Do"], file, "TestProject");
 		const initial = await Bun.file(file).text();
 		expect(initial).toContain("task-1");
+		expect(initial).toContain("# Kanban Board Export (powered by Backlog.md)");
+		expect(initial).toContain("Project: TestProject");
 
-		await exportKanbanBoardToFile(tasks, ["To Do"], file);
+		await exportKanbanBoardToFile(tasks, ["To Do"], file, "TestProject");
 		const second = await Bun.file(file).text();
 		const occurrences = second.split("task-1").length - 1;
-		expect(occurrences).toBe(2);
+		expect(occurrences).toBe(1); // Should overwrite, not append
 
 		await rm(dir, { recursive: true, force: true });
 	});

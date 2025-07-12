@@ -1380,19 +1380,21 @@ describe("CLI Integration", () => {
 			const config = await core.filesystem.loadConfig();
 			const statuses = config?.statuses || [];
 
-			await exportKanbanBoardToFile(tasks, statuses, outputPath);
+			await exportKanbanBoardToFile(tasks, statuses, outputPath, "TestProject");
 
 			// Verify file was created and contains expected content
 			const content = await Bun.file(outputPath).text();
 			expect(content).toContain("To Do");
 			expect(content).toContain("task-1");
 			expect(content).toContain("Export Test Task");
+			expect(content).toContain("# Kanban Board Export (powered by Backlog.md)");
+			expect(content).toContain("Project: TestProject");
 
-			// Test appending behavior
-			await exportKanbanBoardToFile(tasks, statuses, outputPath);
-			const appendedContent = await Bun.file(outputPath).text();
-			const occurrences = appendedContent.split("task-1").length - 1;
-			expect(occurrences).toBe(2); // Should appear twice after appending
+			// Test overwrite behavior
+			await exportKanbanBoardToFile(tasks, statuses, outputPath, "TestProject");
+			const overwrittenContent = await Bun.file(outputPath).text();
+			const occurrences = overwrittenContent.split("task-1").length - 1;
+			expect(occurrences).toBe(1); // Should appear once after overwrite
 		});
 	});
 });
