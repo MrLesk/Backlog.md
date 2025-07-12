@@ -47,9 +47,9 @@ describe("Implementation Plan CLI", () => {
 			const core = new Core(TEST_DIR);
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Implementation Plan");
-			expect(task?.description).toContain("Step 1: Analyze");
-			expect(task?.description).toContain("Step 2: Implement");
+			expect(task?.body).toContain("## Implementation Plan");
+			expect(task?.body).toContain("Step 1: Analyze");
+			expect(task?.body).toContain("Step 2: Implement");
 
 			// Test 2: create task with both description and implementation plan
 			const p2 = Bun.spawn(
@@ -74,11 +74,11 @@ describe("Implementation Plan CLI", () => {
 
 			task = await core.filesystem.loadTask("task-2");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Description");
-			expect(task?.description).toContain("Task description");
-			expect(task?.description).toContain("## Implementation Plan");
-			expect(task?.description).toContain("1. First step");
-			expect(task?.description).toContain("2. Second step");
+			expect(task?.body).toContain("## Description");
+			expect(task?.body).toContain("Task description");
+			expect(task?.body).toContain("## Implementation Plan");
+			expect(task?.body).toContain("1. First step");
+			expect(task?.body).toContain("2. Second step");
 
 			// Test 3: create task with acceptance criteria and implementation plan
 			const result = await createTaskPlatformAware(
@@ -98,12 +98,12 @@ describe("Implementation Plan CLI", () => {
 
 			task = await core.filesystem.loadTask(result.taskId || "task-3");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Acceptance Criteria");
-			expect(task?.description).toContain("- [ ] Must work correctly");
-			expect(task?.description).toContain("- [ ] Must be tested");
-			expect(task?.description).toContain("## Implementation Plan");
-			expect(task?.description).toContain("Phase 1: Setup");
-			expect(task?.description).toContain("Phase 2: Testing");
+			expect(task?.body).toContain("## Acceptance Criteria");
+			expect(task?.body).toContain("- [ ] Must work correctly");
+			expect(task?.body).toContain("- [ ] Must be tested");
+			expect(task?.body).toContain("## Implementation Plan");
+			expect(task?.body).toContain("Phase 1: Setup");
+			expect(task?.body).toContain("Phase 2: Testing");
 		});
 	});
 
@@ -133,18 +133,18 @@ describe("Implementation Plan CLI", () => {
 			const core = new Core(TEST_DIR);
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Description");
-			expect(task?.description).toContain("Existing task description");
-			expect(task?.description).toContain("## Implementation Plan");
-			expect(task?.description).toContain("New plan:");
-			expect(task?.description).toContain("- Step A");
-			expect(task?.description).toContain("- Step B");
+			expect(task?.body).toContain("## Description");
+			expect(task?.body).toContain("Existing task description");
+			expect(task?.body).toContain("## Implementation Plan");
+			expect(task?.body).toContain("New plan:");
+			expect(task?.body).toContain("- Step A");
+			expect(task?.body).toContain("- Step B");
 
 			// Test 2: replace existing implementation plan
 			// First manually add an old plan to the task by updating it directly
 			task = await core.filesystem.loadTask("task-1");
 			if (task) {
-				task.description = `${task.description.replace(/## Implementation Plan[\s\S]*?$/, "")}
+				task.body = `${task.body.replace(/## Implementation Plan[\s\S]*?$/, "")}
 
 ## Implementation Plan
 
@@ -163,12 +163,12 @@ Old plan:
 
 			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Implementation Plan");
-			expect(task?.description).toContain("Updated plan:");
-			expect(task?.description).toContain("1. New step 1");
-			expect(task?.description).toContain("2. New step 2");
-			expect(task?.description).not.toContain("Old plan:");
-			expect(task?.description).not.toContain("Old step 1");
+			expect(task?.body).toContain("## Implementation Plan");
+			expect(task?.body).toContain("Updated plan:");
+			expect(task?.body).toContain("1. New step 1");
+			expect(task?.body).toContain("2. New step 2");
+			expect(task?.body).not.toContain("Old plan:");
+			expect(task?.body).not.toContain("Old step 1");
 
 			// Test 3: update both title and implementation plan
 			const result = Bun.spawnSync(
@@ -198,10 +198,10 @@ Old plan:
 			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.title).toBe("Updated Title");
-			expect(task?.description).toContain("## Implementation Plan");
-			expect(task?.description).toContain("Implementation:");
-			expect(task?.description).toContain("- Do this");
-			expect(task?.description).toContain("- Then that");
+			expect(task?.body).toContain("## Implementation Plan");
+			expect(task?.body).toContain("Implementation:");
+			expect(task?.body).toContain("- Do this");
+			expect(task?.body).toContain("- Then that");
 		});
 	});
 
@@ -237,7 +237,7 @@ Old plan:
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 
-			const description = task?.description || "";
+			const description = task?.body || "";
 			const descIndex = description.indexOf("## Description");
 			const acIndex = description.indexOf("## Acceptance Criteria");
 			const planIndex = description.indexOf("## Implementation Plan");
@@ -260,7 +260,7 @@ Old plan:
 			task = await core.filesystem.loadTask("task-2");
 			expect(task).not.toBeNull();
 			// Should NOT add the section with empty content
-			expect(task?.description).not.toContain("## Implementation Plan");
+			expect(task?.body).not.toContain("## Implementation Plan");
 		});
 	});
 });

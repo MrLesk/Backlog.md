@@ -437,7 +437,7 @@ describe("CLI Integration", () => {
 			expect(loadedTask?.status).toBe("To Do");
 			expect(loadedTask?.assignee).toEqual(["testuser"]);
 			expect(loadedTask?.labels).toEqual(["test", "cli"]);
-			expect(loadedTask?.description).toBe("## Description\n\nThis is a test task for view command");
+			expect(loadedTask?.body).toBe("## Description\n\nThis is a test task for view command");
 		});
 
 		it("should handle task IDs with and without 'task-' prefix", async () => {
@@ -500,7 +500,7 @@ describe("CLI Integration", () => {
 
 			expect(viewedTask).toEqual(secondView);
 			expect(viewedTask?.title).toBe("Read Only Test");
-			expect(viewedTask?.description).toBe("## Description\n\nOriginal description");
+			expect(viewedTask?.body).toBe("## Description\n\nOriginal description");
 		});
 	});
 
@@ -577,7 +577,7 @@ describe("CLI Integration", () => {
 
 			if (task) {
 				task.title = "Updated Title";
-				task.description = "Updated description";
+				task.body = "Updated description";
 				task.status = "In Progress";
 
 				await core.updateTask(task, false);
@@ -586,7 +586,7 @@ describe("CLI Integration", () => {
 			// Verify changes were persisted
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask?.title).toBe("Updated Title");
-			expect(updatedTask?.description).toBe("## Description\n\nUpdated description");
+			expect(updatedTask?.body).toBe("## Description\n\nUpdated description");
 			expect(updatedTask?.status).toBe("In Progress");
 			const today = new Date().toISOString().split("T")[0];
 			expect(updatedTask?.updatedDate).toBe(today);
@@ -829,7 +829,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);
-			expect(updatedTask?.description).toBe("## Description\n\nTesting YAML preservation");
+			expect(updatedTask?.body).toBe("## Description\n\nTesting YAML preservation");
 		});
 	});
 
@@ -1051,7 +1051,7 @@ describe("CLI Integration", () => {
 			expect(asDraft?.assignee).toEqual(originalTask.assignee);
 			expect(asDraft?.labels).toEqual(originalTask.labels);
 			expect(asDraft?.dependencies).toEqual(originalTask.dependencies);
-			expect(asDraft?.description).toBe(originalTask.description);
+			expect(asDraft?.body).toBe(originalTask.body);
 
 			// Promote back to task
 			await core.promoteDraft("task-6", false);
@@ -1061,7 +1061,7 @@ describe("CLI Integration", () => {
 			expect(backToTask?.assignee).toEqual(originalTask.assignee);
 			expect(backToTask?.labels).toEqual(originalTask.labels);
 			expect(backToTask?.dependencies).toEqual(originalTask.dependencies);
-			expect(backToTask?.description).toBe(originalTask.description);
+			expect(backToTask?.body).toBe(originalTask.body);
 		});
 	});
 
@@ -1082,7 +1082,7 @@ describe("CLI Integration", () => {
 				title: "Guide",
 				type: "guide",
 				createdDate: "2025-06-08",
-				content: "Content",
+				body: "Content",
 			};
 			await core.createDocument(doc, false);
 

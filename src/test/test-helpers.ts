@@ -102,7 +102,7 @@ async function createTaskViaCore(
 						.split(",")
 						.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`))
 				: [],
-			body: options.description || "",
+			body: options.body || "",
 			...(options.parent && {
 				parentTaskId: options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`,
 			}),
@@ -175,7 +175,7 @@ function createTaskViaCLI(
 	// Build CLI arguments
 	const args = ["bun", CLI_PATH, "task", "create", options.title];
 
-	if (options.description) args.push("--description", options.description);
+	if (options.body) args.push("--description", options.body);
 	if (options.assignee) args.push("--assignee", options.assignee);
 	if (options.status) args.push("--status", options.status);
 	if (options.labels) args.push("--labels", options.labels);
@@ -251,7 +251,7 @@ async function editTaskViaCore(
 		const updatedTask = {
 			...existingTask,
 			...(options.title && { title: options.title }),
-			...(options.description && { body: options.description }),
+			...(options.body && { body: options.body }),
 			...(options.status && { status: options.status }),
 			...(options.assignee && { assignee: [options.assignee] }),
 			...(options.labels && {
@@ -305,7 +305,7 @@ function editTaskViaCLI(
 	const args = ["bun", CLI_PATH, "task", "edit", options.taskId];
 
 	if (options.title) args.push("--title", options.title);
-	if (options.description) args.push("--description", options.description);
+	if (options.body) args.push("--description", options.body);
 	if (options.assignee) args.push("--assignee", options.assignee);
 	if (options.status) args.push("--status", options.status);
 	if (options.labels) args.push("--labels", options.labels);

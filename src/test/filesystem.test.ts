@@ -64,7 +64,7 @@ describe("FileSystem", () => {
 			expect(loadedTask?.id).toBe(sampleTask.id);
 			expect(loadedTask?.title).toBe(sampleTask.title);
 			expect(loadedTask?.status).toBe(sampleTask.status);
-			expect(loadedTask?.description).toBe(sampleTask.description);
+			expect(loadedTask?.body).toBe(sampleTask.body);
 		});
 
 		it("should return null for non-existent task", async () => {

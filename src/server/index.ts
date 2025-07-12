@@ -56,6 +56,9 @@ export class BacklogServer {
 				"/api/config": {
 					GET: () => Response.json({ projectName: this.projectName }),
 				},
+				"/api/health": {
+					GET: async () => await this.handleHealthCheck(),
+				},
 				"/api/docs": {
 					GET: async () => await this.handleListDocs(),
 					POST: async (req) => await this.handleCreateDoc(req),
@@ -513,6 +516,59 @@ export class BacklogServer {
 		const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
 		const match = content.match(regex);
 		return match ? match[1].trim() : undefined;
+	}
+
+	private async handleHealthCheck(): Promise<Response> {
+		const startTime = performance.now();
+
+		try {
+			// Check filesystem
+			const config = await this.core.filesystem.loadConfig();
+
+			const responseTime = Math.round(performance.now() - startTime);
+
+			const healthData = {
+				status: "healthy",
+				timestamp: new Date().toISOString(),
+				responseTime,
+				project: this.projectName,
+				checks: {
+					filesystem: "ok",
+					config: config ? "ok" : "warning",
+				},
+			};
+
+			return Response.json(healthData, {
+				headers: {
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type",
+				},
+			});
+		} catch (error) {
+			const responseTime = Math.round(performance.now() - startTime);
+
+			const healthData = {
+				status: "unhealthy",
+				timestamp: new Date().toISOString(),
+				responseTime,
+				project: this.projectName,
+				checks: {
+					filesystem: "error",
+					config: "error",
+				},
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+
+			return Response.json(healthData, {
+				status: 503,
+				headers: {
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type",
+				},
+			});
+		}
 	}
 
 	private handleError(error: Error): Response {

@@ -49,8 +49,8 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Acceptance Criteria");
-			expect(task?.description).toContain("- [ ] Must work correctly");
+			expect(task?.body).toContain("## Acceptance Criteria");
+			expect(task?.body).toContain("- [ ] Must work correctly");
 		});
 
 		it("should create task with multiple comma-separated criteria", async () => {
@@ -67,9 +67,9 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("- [ ] Criterion 1");
-			expect(task?.description).toContain("- [ ] Criterion 2");
-			expect(task?.description).toContain("- [ ] Criterion 3");
+			expect(task?.body).toContain("- [ ] Criterion 1");
+			expect(task?.body).toContain("- [ ] Criterion 2");
+			expect(task?.body).toContain("- [ ] Criterion 3");
 		});
 
 		it("should create task with criteria using --acceptance-criteria", async () => {
@@ -86,8 +86,8 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Acceptance Criteria");
-			expect(task?.description).toContain("- [ ] Full flag test");
+			expect(task?.body).toContain("## Acceptance Criteria");
+			expect(task?.body).toContain("- [ ] Full flag test");
 		});
 
 		it("should create task with both description and acceptance criteria", async () => {
@@ -113,11 +113,11 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Description");
-			expect(task?.description).toContain("Task description");
-			expect(task?.description).toContain("## Acceptance Criteria");
-			expect(task?.description).toContain("- [ ] Must pass tests");
-			expect(task?.description).toContain("- [ ] Must be documented");
+			expect(task?.body).toContain("## Description");
+			expect(task?.body).toContain("Task description");
+			expect(task?.body).toContain("## Acceptance Criteria");
+			expect(task?.body).toContain("- [ ] Must pass tests");
+			expect(task?.body).toContain("- [ ] Must be documented");
 		});
 	});
 
@@ -149,11 +149,11 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Description");
-			expect(task?.description).toContain("Existing task description");
-			expect(task?.description).toContain("## Acceptance Criteria");
-			expect(task?.description).toContain("- [ ] New criterion 1");
-			expect(task?.description).toContain("- [ ] New criterion 2");
+			expect(task?.body).toContain("## Description");
+			expect(task?.body).toContain("Existing task description");
+			expect(task?.body).toContain("## Acceptance Criteria");
+			expect(task?.body).toContain("- [ ] New criterion 1");
+			expect(task?.body).toContain("- [ ] New criterion 2");
 		});
 
 		it("should replace existing acceptance criteria", async () => {
@@ -161,7 +161,7 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			let task = await core.filesystem.loadTask("task-1");
 			if (task) {
-				task.description = `${task.description}\n\n## Acceptance Criteria\n\n- [ ] Old criterion 1\n- [ ] Old criterion 2`;
+				task.body = `${task.body}\n\n## Acceptance Criteria\n\n- [ ] Old criterion 1\n- [ ] Old criterion 2`;
 				await core.updateTask(task, false);
 			}
 
@@ -174,10 +174,10 @@ describe("Acceptance Criteria CLI", () => {
 
 			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("## Acceptance Criteria");
-			expect(task?.description).toContain("- [ ] Replaced criterion");
-			expect(task?.description).not.toContain("Old criterion 1");
-			expect(task?.description).not.toContain("Old criterion 2");
+			expect(task?.body).toContain("## Acceptance Criteria");
+			expect(task?.body).toContain("- [ ] Replaced criterion");
+			expect(task?.body).not.toContain("Old criterion 1");
+			expect(task?.body).not.toContain("Old criterion 2");
 		});
 
 		it("should update title and add acceptance criteria together", async () => {
@@ -195,9 +195,9 @@ describe("Acceptance Criteria CLI", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.title).toBe("Updated Title");
-			expect(task?.description).toContain("## Acceptance Criteria");
-			expect(task?.description).toContain("- [ ] Must be updated");
-			expect(task?.description).toContain("- [ ] Must work");
+			expect(task?.body).toContain("## Acceptance Criteria");
+			expect(task?.body).toContain("- [ ] Must be updated");
+			expect(task?.body).toContain("- [ ] Must work");
 		});
 	});
 
@@ -213,7 +213,7 @@ describe("Acceptance Criteria CLI", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			// Should not add acceptance criteria section for empty input
-			expect(task?.description).not.toContain("## Acceptance Criteria");
+			expect(task?.body).not.toContain("## Acceptance Criteria");
 		});
 
 		it("should trim whitespace from criteria", async () => {
@@ -230,8 +230,8 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.description).toContain("- [ ] Criterion with spaces");
-			expect(task?.description).toContain("- [ ] Another one");
+			expect(task?.body).toContain("- [ ] Criterion with spaces");
+			expect(task?.body).toContain("- [ ] Another one");
 		});
 	});
 });
