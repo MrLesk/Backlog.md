@@ -37,7 +37,7 @@ describe("CLI plain output for AI agents", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			},
 			false,
 		);
@@ -52,7 +52,7 @@ describe("CLI plain output for AI agents", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				description: "Test draft description",
+				body: "Test draft description",
 			},
 			false,
 		);

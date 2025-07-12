@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
@@ -19,6 +19,11 @@ describe("Auto-commit configuration", () => {
 
 		core = new Core(testDir);
 		await core.initializeProject("Test Auto-commit Project", true);
+	});
+
+	afterEach(async () => {
+		// Clean up test directory after each test
+		await rm(testDir, { recursive: true, force: true }).catch(() => {});
 	});
 
 	describe("Config migration", () => {
@@ -67,7 +72,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 
 			await core.createTask(task);
@@ -87,7 +92,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 
 			await core.createTask(task, true);
@@ -108,7 +113,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 			await core.createTask(task, true);
 
@@ -132,7 +137,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 			await core.createTask(task, true);
 
@@ -170,7 +175,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 
 			await core.createTask(task);
@@ -190,7 +195,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 
 			await core.createTask(task, false);
@@ -221,7 +226,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 
 			await core.createDraft(task);
@@ -242,7 +247,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			};
 			await core.createDraft(task, true);
 

@@ -337,7 +337,7 @@ export async function viewTaskEnhanced(
 		// Description section
 		bodyContent.push(formatHeading("Description", 2));
 		// Extract only the Description section content, not the full markdown
-		const extractedDescription = extractDescriptionSection(currentSelectedTask.description);
+		const extractedDescription = extractDescriptionSection(currentSelectedTask.body);
 		const descriptionContent = extractedDescription
 			? transformCodePaths(extractedDescription)
 			: "{gray-fg}No description provided{/}";
@@ -591,7 +591,7 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	// Description section
 	bodyContent.push(formatHeading("Description", 2));
 	// Extract only the Description section content, not the full markdown
-	const extractedDescription = extractDescriptionSection(task.description);
+	const extractedDescription = extractDescriptionSection(task.body);
 	const descriptionContent = extractedDescription
 		? transformCodePaths(extractedDescription)
 		: "{gray-fg}No description provided{/}";

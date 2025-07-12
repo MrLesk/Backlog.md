@@ -2,9 +2,9 @@ import { mkdir, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
-import { parseDecisionLog, parseDocument, parseTask } from "../markdown/parser.ts";
-import { serializeDecisionLog, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
+import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
+import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -347,27 +347,32 @@ export class FileSystem {
 	}
 
 	// Decision log operations
-	async saveDecisionLog(decision: DecisionLog): Promise<void> {
-		const filename = `decision-${decision.id} - ${this.sanitizeFilename(decision.title)}.md`;
+	async saveDecision(decision: Decision): Promise<void> {
+		// Normalize ID - remove "decision-" prefix if present
+		const normalizedId = decision.id.replace(/^decision-/, "");
+		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
-		const content = serializeDecisionLog(decision);
+		const content = serializeDecision(decision);
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 	}
 
-	async loadDecisionLog(decisionId: string): Promise<DecisionLog | null> {
+	async loadDecision(decisionId: string): Promise<Decision | null> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
 			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: decisionsDir }));
-			const decisionFile = files.find((file) => file.startsWith(`decision-${decisionId} -`));
+
+			// Normalize ID - remove "decision-" prefix if present
+			const normalizedId = decisionId.replace(/^decision-/, "");
+			const decisionFile = files.find((file) => file.startsWith(`decision-${normalizedId} -`));
 
 			if (!decisionFile) return null;
 
 			const filepath = join(decisionsDir, decisionFile);
 			const content = await Bun.file(filepath).text();
-			return parseDecisionLog(content);
+			return parseDecision(content);
 		} catch (_error) {
 			return null;
 		}
@@ -377,7 +382,7 @@ export class FileSystem {
 	async saveDocument(document: Document, subPath = ""): Promise<void> {
 		const docsDir = await this.getDocsDir();
 		const dir = join(docsDir, subPath);
-		const filename = `${this.sanitizeFilename(document.title)}.md`;
+		const filename = `doc-${document.id} - ${this.sanitizeFilename(document.title)}.md`;
 		const filepath = join(dir, filename);
 		const content = serializeDocument(document);
 
@@ -385,15 +390,19 @@ export class FileSystem {
 		await Bun.write(filepath, content);
 	}
 
-	async listDecisionLogs(): Promise<DecisionLog[]> {
+	async listDecisions(): Promise<Decision[]> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
 			const decisionFiles = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir }));
-			const decisions: DecisionLog[] = [];
+			const decisions: Decision[] = [];
 			for (const file of decisionFiles) {
+				// Filter out README files as they're just instruction files
+				if (file.toLowerCase().match(/^readme\.md$/i)) {
+					continue;
+				}
 				const filepath = join(decisionsDir, file);
 				const content = await Bun.file(filepath).text();
-				decisions.push(parseDecisionLog(content));
+				decisions.push(parseDecision(content));
 			}
 			return sortByTaskId(decisions);
 		} catch {
@@ -407,6 +416,10 @@ export class FileSystem {
 			const docFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: docsDir }));
 			const docs: Document[] = [];
 			for (const file of docFiles) {
+				// Filter out README files as they're just instruction files
+				if (file.toLowerCase().match(/^readme\.md$/i)) {
+					continue;
+				}
 				const filepath = join(docsDir, file);
 				const content = await Bun.file(filepath).text();
 				docs.push(parseDocument(content));

@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import matter from "gray-matter";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import indexHtml from "../web/index.html";
@@ -29,9 +30,77 @@ export class BacklogServer {
 			development: true,
 			routes: {
 				"/": indexHtml,
+				"/tasks": indexHtml,
+				"/drafts": indexHtml,
+				"/documentation": indexHtml,
+				"/documentation/*": indexHtml,
+				"/decisions": indexHtml,
+				"/decisions/*": indexHtml,
+
+				// API Routes using Bun's native route syntax
+				"/api/tasks": {
+					GET: async (req) => await this.handleListTasks(req),
+					POST: async (req) => await this.handleCreateTask(req),
+				},
+				"/api/task/:id": {
+					GET: async (req) => await this.handleGetTask(req.params.id),
+				},
+				"/api/tasks/:id": {
+					GET: async (req) => await this.handleGetTask(req.params.id),
+					PUT: async (req) => await this.handleUpdateTask(req, req.params.id),
+					DELETE: async (req) => await this.handleDeleteTask(req.params.id),
+				},
+				"/api/statuses": {
+					GET: async () => await this.handleGetStatuses(),
+				},
+				"/api/config": {
+					GET: () => Response.json({ projectName: this.projectName }),
+				},
+				"/api/docs": {
+					GET: async () => await this.handleListDocs(),
+					POST: async (req) => await this.handleCreateDoc(req),
+				},
+				"/api/doc/:id": {
+					GET: async (req) => await this.handleGetDoc(req.params.id),
+				},
+				"/api/docs/:id": {
+					GET: async (req) => await this.handleGetDoc(req.params.id),
+					PUT: async (req) => await this.handleUpdateDoc(req, req.params.id),
+				},
+				"/api/decisions": {
+					GET: async () => await this.handleListDecisions(),
+					POST: async (req) => await this.handleCreateDecision(req),
+				},
+				"/api/decision/:id": {
+					GET: async (req) => await this.handleGetDecision(req.params.id),
+				},
+				"/api/decisions/:id": {
+					GET: async (req) => await this.handleGetDecision(req.params.id),
+					PUT: async (req) => await this.handleUpdateDecision(req, req.params.id),
+				},
 			},
-			fetch: this.handleRequest.bind(this),
+			fetch: async (req, server) => {
+				// Apply CORS headers to all responses
+				const response = await this.handleRequest(req, server);
+				if (response && req.url.includes("/api/")) {
+					response.headers.set("Access-Control-Allow-Origin", "*");
+					response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+					response.headers.set("Access-Control-Allow-Headers", "Content-Type");
+				}
+				return response;
+			},
 			error: this.handleError.bind(this),
+			websocket: {
+				open(_ws) {
+					// Silent - no need to log normal connections
+				},
+				message(_ws, _message) {
+					// No need to handle messages for simple connection monitoring
+				},
+				close(_ws) {
+					// Silent - no need to log normal disconnections
+				},
+			},
 		});
 
 		const url = `http://localhost:${finalPort}`;
@@ -82,10 +151,19 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleRequest(req: Request): Promise<Response> {
+	private async handleRequest(req: Request, server: Server): Promise<Response> {
 		const url = new URL(req.url);
 		const method = req.method;
 		const pathname = url.pathname;
+
+		// Handle WebSocket upgrade
+		if (req.headers.get("upgrade") === "websocket") {
+			const success = server.upgrade(req);
+			if (success) {
+				return new Response(null, { status: 101 }); // WebSocket upgrade successful
+			}
+			return new Response("WebSocket upgrade failed", { status: 400 });
+		}
 
 		// CORS headers for API requests
 		const corsHeaders = {
@@ -99,166 +177,309 @@ export class BacklogServer {
 			return new Response(null, { headers: corsHeaders });
 		}
 
-		// API Routes
+		// The new route syntax handles API routes, so we just need CORS for non-route paths
 		if (pathname.startsWith("/api")) {
-			try {
-				const response = await this.handleApiRequest(req, pathname, method);
-				// Add CORS headers to API responses
-				Object.entries(corsHeaders).forEach(([key, value]) => {
-					response.headers.set(key, value);
-				});
-				return response;
-			} catch (error) {
-				console.error("API Error:", error);
-				return new Response(JSON.stringify({ error: "Internal server error" }), {
-					status: 500,
-					headers: {
-						"Content-Type": "application/json",
-						...corsHeaders,
-					},
-				});
-			}
-		}
-
-		// Serve static assets
-		if (pathname.startsWith("/assets/") || pathname.endsWith(".js") || pathname.endsWith(".css")) {
-			// In development, Bun's HTML imports should handle this automatically
-			// For now, return 404 as the assets should be bundled
-			return new Response("Not Found", { status: 404 });
-		}
-
-		// For non-API routes, return 404
-		return new Response("Not Found", { status: 404 });
-	}
-
-	private async handleApiRequest(req: Request, pathname: string, method: string): Promise<Response> {
-		// GET /api/health - Health check endpoint
-		if (pathname === "/api/health" && method === "GET") {
-			try {
-				// Basic health checks
-				const startTime = Date.now();
-
-				// Check if we can load the config
-				const config = await this.core.filesystem.loadConfig();
-
-				// Check if we can list tasks (filesystem accessibility)
-				await this.core.filesystem.listTasks();
-
-				const responseTime = Date.now() - startTime;
-
-				return Response.json({
-					status: "healthy",
-					timestamp: new Date().toISOString(),
-					responseTime,
-					project: config?.projectName || "Untitled Project",
-					checks: {
-						filesystem: "ok",
-						config: "ok",
-					},
-				});
-			} catch (error) {
-				return Response.json(
-					{
-						status: "unhealthy",
-						timestamp: new Date().toISOString(),
-						error: error instanceof Error ? error.message : "Unknown error",
-						checks: {
-							filesystem: "error",
-							config: "error",
-						},
-					},
-					{ status: 503 },
-				);
-			}
-		}
-
-		// GET /api/tasks - List all tasks
-		if (pathname === "/api/tasks" && method === "GET") {
-			const tasks = await this.core.filesystem.listTasks();
-			return Response.json(tasks);
-		}
-
-		// POST /api/tasks - Create new task
-		if (pathname === "/api/tasks" && method === "POST") {
-			const taskData = await req.json();
-			const id = await this.generateNextId();
-
-			const task: Task = {
-				id,
-				title: taskData.title,
-				description: taskData.description || "",
-				status: taskData.status || "",
-				assignee: taskData.assignee || [],
-				labels: taskData.labels || [],
-				dependencies: taskData.dependencies || [],
-				createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
-				...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
-				...(taskData.priority && { priority: taskData.priority }),
-			};
-
-			await this.core.createTask(task, false);
-			return Response.json(task, { status: 201 });
-		}
-
-		// GET /api/tasks/:id - Get specific task
-		const taskIdMatch = pathname.match(/^\/api\/tasks\/([^/]+)$/);
-		if (taskIdMatch && method === "GET") {
-			const taskId = taskIdMatch[1];
-			const task = await this.core.filesystem.loadTask(taskId);
-
-			if (!task) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
-			}
-
-			return Response.json(task);
-		}
-
-		// PUT /api/tasks/:id - Update task
-		if (taskIdMatch && method === "PUT") {
-			const taskId = taskIdMatch[1];
-			const updates = await req.json();
-
-			const existingTask = await this.core.filesystem.loadTask(taskId);
-			if (!existingTask) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
-			}
-
-			const updatedTask: Task = {
-				...existingTask,
-				...updates,
-			};
-
-			await this.core.updateTask(updatedTask, false);
-			return Response.json(updatedTask);
-		}
-
-		// DELETE /api/tasks/:id - Delete task
-		if (taskIdMatch && method === "DELETE") {
-			const taskId = taskIdMatch[1];
-			const success = await this.core.archiveTask(taskId, false);
-
-			if (!success) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
-			}
-
-			return Response.json({ success: true });
-		}
-
-		// GET /api/statuses - Get available statuses
-		if (pathname === "/api/statuses" && method === "GET") {
-			const config = await this.core.filesystem.loadConfig();
-			const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
-			return Response.json(statuses);
-		}
-
-		// GET /api/config - Get project configuration
-		if (pathname === "/api/config" && method === "GET") {
-			return Response.json({
-				projectName: this.projectName,
+			// This should only be reached for unmatched API routes
+			return new Response(JSON.stringify({ error: "Not Found" }), {
+				status: 404,
+				headers: {
+					"Content-Type": "application/json",
+					...corsHeaders,
+				},
 			});
 		}
 
+		// Serve static assets using Bun.serve with build
+		if (
+			pathname.startsWith("/assets/") ||
+			pathname.endsWith(".js") ||
+			pathname.endsWith(".css") ||
+			pathname.endsWith(".tsx")
+		) {
+			// Handle specific static files
+			if (pathname === "/styles/globals.css") {
+				const cssFile = Bun.file("src/web/styles/globals.css");
+				if (await cssFile.exists()) {
+					return new Response(await cssFile.text(), {
+						headers: { "Content-Type": "text/css" },
+					});
+				}
+			}
+
+			if (pathname === "/main.tsx") {
+				// Bundle the main.tsx file with CSS support
+				const build = await Bun.build({
+					entrypoints: ["src/web/main.tsx"],
+					format: "esm",
+					target: "browser",
+					minify: false, // Keep readable for debugging
+				});
+
+				if (build.success && build.outputs.length > 0) {
+					return new Response(await build.outputs[0].text(), {
+						headers: { "Content-Type": "application/javascript" },
+					});
+				}
+			}
+
+			// Handle assets directory files
+			if (pathname.startsWith("/assets/")) {
+				const assetPath = `src/web${pathname}`;
+				const assetFile = Bun.file(assetPath);
+				if (await assetFile.exists()) {
+					const contentType = pathname.endsWith(".js") ? "application/javascript" : "text/plain";
+					return new Response(await assetFile.text(), {
+						headers: { "Content-Type": contentType },
+					});
+				}
+			}
+
+			return new Response("Not Found", { status: 404 });
+		}
+
+		// For all other routes, return 404
 		return new Response("Not Found", { status: 404 });
+	}
+
+	// Task handlers
+	private async handleListTasks(req: Request): Promise<Response> {
+		const url = new URL(req.url);
+		const status = url.searchParams.get("status");
+		const assignee = url.searchParams.get("assignee");
+		const parent = url.searchParams.get("parent");
+
+		let tasks = await this.core.filesystem.listTasks();
+
+		if (status) {
+			const statusLower = status.toLowerCase();
+			tasks = tasks.filter((t) => t.status.toLowerCase() === statusLower);
+		}
+		if (assignee) {
+			tasks = tasks.filter((t) => t.assignee.includes(assignee));
+		}
+		if (parent) {
+			const parentId = parent.startsWith("task-") ? parent : `task-${parent}`;
+			const parentTask = await this.core.filesystem.loadTask(parentId);
+			if (!parentTask) {
+				return Response.json({ error: `Parent task ${parentId} not found` }, { status: 404 });
+			}
+			tasks = tasks.filter((t) => t.parentTaskId === parentId);
+		}
+
+		return Response.json(tasks);
+	}
+
+	private async handleCreateTask(req: Request): Promise<Response> {
+		const taskData = await req.json();
+		const id = await this.generateNextId();
+
+		const task: Task = {
+			id,
+			title: taskData.title,
+			body: taskData.body || "",
+			status: taskData.status || "",
+			assignee: taskData.assignee || [],
+			labels: taskData.labels || [],
+			dependencies: taskData.dependencies || [],
+			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
+			...(taskData.priority && { priority: taskData.priority }),
+		};
+
+		await this.core.createTask(task, await this.shouldAutoCommit());
+		return Response.json(task, { status: 201 });
+	}
+
+	private async handleGetTask(taskId: string): Promise<Response> {
+		const task = await this.core.filesystem.loadTask(taskId);
+		if (!task) {
+			return Response.json({ error: "Task not found" }, { status: 404 });
+		}
+		return Response.json(task);
+	}
+
+	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
+		const updates = await req.json();
+		const existingTask = await this.core.filesystem.loadTask(taskId);
+		if (!existingTask) {
+			return Response.json({ error: "Task not found" }, { status: 404 });
+		}
+
+		const updatedTask: Task = {
+			...existingTask,
+			...updates,
+		};
+
+		await this.core.updateTask(updatedTask, await this.shouldAutoCommit());
+		return Response.json(updatedTask);
+	}
+
+	private async handleDeleteTask(taskId: string): Promise<Response> {
+		const success = await this.core.archiveTask(taskId, await this.shouldAutoCommit());
+		if (!success) {
+			return Response.json({ error: "Task not found" }, { status: 404 });
+		}
+		return Response.json({ success: true });
+	}
+
+	private async handleGetStatuses(): Promise<Response> {
+		const config = await this.core.filesystem.loadConfig();
+		const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+		return Response.json(statuses);
+	}
+
+	// Documentation handlers
+	private async handleListDocs(): Promise<Response> {
+		try {
+			const docs = await this.core.filesystem.listDocuments();
+			const docFiles = docs.map((doc) => ({
+				name: `${doc.title}.md`,
+				id: doc.id,
+				title: doc.title,
+				type: doc.type,
+				createdDate: doc.createdDate,
+				updatedDate: doc.updatedDate,
+				lastModified: doc.updatedDate || doc.createdDate,
+				tags: doc.tags || [],
+			}));
+			return Response.json(docFiles);
+		} catch (error) {
+			console.error("Error listing documents:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleGetDoc(docId: string): Promise<Response> {
+		try {
+			const docs = await this.core.filesystem.listDocuments();
+			const doc = docs.find((d) => d.id === docId || d.title === docId);
+
+			if (!doc) {
+				return Response.json({ error: "Document not found" }, { status: 404 });
+			}
+
+			return Response.json(doc);
+		} catch (error) {
+			console.error("Error loading document:", error);
+			return Response.json({ error: "Document not found" }, { status: 404 });
+		}
+	}
+
+	private async handleCreateDoc(req: Request): Promise<Response> {
+		const { filename, content } = await req.json();
+
+		try {
+			const title = filename.replace(".md", "");
+			const document = await this.core.createDocumentWithId(title, content, await this.shouldAutoCommit());
+			return Response.json({ success: true, id: document.id }, { status: 201 });
+		} catch (error) {
+			console.error("Error creating document:", error);
+			return Response.json({ error: "Failed to create document" }, { status: 500 });
+		}
+	}
+
+	private async handleUpdateDoc(req: Request, docId: string): Promise<Response> {
+		const content = await req.text();
+
+		try {
+			const docs = await this.core.filesystem.listDocuments();
+			const existingDoc = docs.find((d) => d.id === docId || d.title === docId);
+
+			if (!existingDoc) {
+				return Response.json({ error: "Document not found" }, { status: 404 });
+			}
+
+			const updatedDoc = {
+				...existingDoc,
+				body: content,
+				updatedDate: new Date().toISOString().split("T")[0],
+			};
+
+			await this.core.createDocument(updatedDoc, await this.shouldAutoCommit());
+			return Response.json({ success: true });
+		} catch (error) {
+			console.error("Error updating document:", error);
+			return Response.json({ error: "Failed to update document" }, { status: 500 });
+		}
+	}
+
+	// Decision handlers
+	private async handleListDecisions(): Promise<Response> {
+		try {
+			const decisions = await this.core.filesystem.listDecisions();
+			const decisionFiles = decisions.map((decision) => ({
+				id: decision.id,
+				title: decision.title,
+				status: decision.status,
+				date: decision.date,
+				context: decision.context,
+				decision: decision.decision,
+				consequences: decision.consequences,
+				alternatives: decision.alternatives,
+			}));
+			return Response.json(decisionFiles);
+		} catch (error) {
+			console.error("Error listing decisions:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleGetDecision(decisionId: string): Promise<Response> {
+		try {
+			const decision = await this.core.filesystem.loadDecision(decisionId);
+
+			if (!decision) {
+				return Response.json({ error: "Decision not found" }, { status: 404 });
+			}
+
+			return Response.json(decision);
+		} catch (error) {
+			console.error("Error loading decision:", error);
+			return Response.json({ error: "Decision not found" }, { status: 404 });
+		}
+	}
+
+	private async handleCreateDecision(req: Request): Promise<Response> {
+		const { title } = await req.json();
+
+		try {
+			const decision = await this.core.createDecisionWithTitle(title, await this.shouldAutoCommit());
+			return Response.json(decision, { status: 201 });
+		} catch (error) {
+			console.error("Error creating decision:", error);
+			return Response.json({ error: "Failed to create decision" }, { status: 500 });
+		}
+	}
+
+	private async handleUpdateDecision(req: Request, decisionId: string): Promise<Response> {
+		const content = await req.text();
+
+		try {
+			const existingDecision = await this.core.filesystem.loadDecision(decisionId);
+
+			if (!existingDecision) {
+				return Response.json({ error: "Decision not found" }, { status: 404 });
+			}
+
+			// Parse the markdown content to extract the decision data
+			const { data } = matter(content);
+			const updatedDecision = {
+				...existingDecision,
+				title: data.title || existingDecision.title,
+				status: data.status || existingDecision.status,
+				date: data.date || existingDecision.date,
+				context: this.extractSection(content, "Context") || existingDecision.context,
+				decision: this.extractSection(content, "Decision") || existingDecision.decision,
+				consequences: this.extractSection(content, "Consequences") || existingDecision.consequences,
+				alternatives: this.extractSection(content, "Alternatives") || existingDecision.alternatives,
+			};
+
+			await this.core.createDecision(updatedDecision, await this.shouldAutoCommit());
+			return Response.json({ success: true });
+		} catch (error) {
+			console.error("Error updating decision:", error);
+			return Response.json({ error: "Failed to update decision" }, { status: 500 });
+		}
 	}
 
 	private async generateNextId(): Promise<string> {
@@ -276,6 +497,22 @@ export class BacklogServer {
 		}
 
 		return `task-${max + 1}`;
+	}
+
+	private async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
+		// If override is explicitly provided, use it
+		if (overrideValue !== undefined) {
+			return overrideValue;
+		}
+		// Otherwise, check config (default to false for safety)
+		const config = await this.core.filesystem.loadConfig();
+		return config?.autoCommit ?? false;
+	}
+
+	private extractSection(content: string, sectionName: string): string | undefined {
+		const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
+		const match = content.match(regex);
+		return match ? match[1].trim() : undefined;
 	}
 
 	private handleError(error: Error): Response {

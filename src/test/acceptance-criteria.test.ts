@@ -133,7 +133,7 @@ describe("Acceptance Criteria CLI", () => {
 					createdDate: "2025-06-19",
 					labels: [],
 					dependencies: [],
-					description: "## Description\n\nExisting task description",
+					body: "## Description\n\nExisting task description",
 				},
 				false,
 			);

@@ -16,7 +16,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 			{
 				id: "task-2",
@@ -26,7 +26,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 			{
 				id: "task-3",
@@ -36,7 +36,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 
@@ -64,7 +64,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 
@@ -84,7 +84,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 
@@ -107,7 +107,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 			{
 				id: "task-2",
@@ -117,7 +117,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 
@@ -140,7 +140,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 
@@ -167,7 +167,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 			{
 				id: "task-1.1",
@@ -177,7 +177,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 				parentTaskId: "task-1",
 			},
 		];
@@ -203,7 +203,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 			{
 				id: "task-2",
@@ -213,7 +213,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 
@@ -235,7 +235,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 			{
 				id: "task-2",
@@ -245,7 +245,7 @@ describe("generateKanbanBoard", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 
@@ -273,7 +273,7 @@ describe("exportKanbanBoardToFile", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 		];
 

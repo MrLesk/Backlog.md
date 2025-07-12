@@ -39,7 +39,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: [],
-			description: "## Description\n\nBase task",
+			body: "## Description\n\nBase task",
 		};
 
 		const task2: Task = {
@@ -50,7 +50,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: [],
-			description: "## Description\n\nAnother base task",
+			body: "## Description\n\nAnother base task",
 		};
 
 		await core.createTask(task1, false);
@@ -65,7 +65,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: ["task-1", "task-2"],
-			description: "## Description\n\nTask that depends on others",
+			body: "## Description\n\nTask that depends on others",
 		};
 
 		await core.createTask(dependentTask, false);
@@ -86,7 +86,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: [],
-			description: "## Description\n\nBase task",
+			body: "## Description\n\nBase task",
 		};
 
 		const task2: Task = {
@@ -97,7 +97,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: [],
-			description: "## Description\n\nAnother base task",
+			body: "## Description\n\nAnother base task",
 		};
 
 		const task3: Task = {
@@ -108,7 +108,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: [],
-			description: "## Description\n\nTask without dependencies initially",
+			body: "## Description\n\nTask without dependencies initially",
 		};
 
 		await core.createTask(task1, false);
@@ -135,7 +135,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: [],
-			description: "## Description\n\nDraft task",
+			body: "## Description\n\nDraft task",
 		};
 
 		await core.createDraft(draftTask, false);
@@ -149,7 +149,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: ["task-1"], // Depends on draft task
-			description: "## Description\n\nTask depending on draft",
+			body: "## Description\n\nTask depending on draft",
 		};
 
 		await core.createTask(task2, false);
@@ -169,7 +169,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: ["feature", "backend"],
 			dependencies: ["task-2", "task-3", "task-4"],
-			description: "## Description\n\nTask with various metadata and dependencies",
+			body: "## Description\n\nTask with various metadata and dependencies",
 		};
 
 		// Create dependency tasks first
@@ -182,7 +182,7 @@ describe("Task Dependencies", () => {
 				createdDate: "2024-01-01",
 				labels: [],
 				dependencies: [],
-				description: `## Description\n\nDependency task ${i}`,
+				body: `## Description\n\nDependency task ${i}`,
 			};
 			await core.createTask(depTask, false);
 		}
@@ -209,7 +209,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: [],
-			description: "## Description\n\nTask without dependencies",
+			body: "## Description\n\nTask without dependencies",
 		};
 
 		await core.createTask(task, false);

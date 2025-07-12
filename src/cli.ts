@@ -15,7 +15,7 @@ import {
 	initializeGitRepository,
 	isGitRepository,
 } from "./index.ts";
-import type { DecisionLog, Document as DocType, Task } from "./types/index.ts";
+import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
@@ -163,6 +163,126 @@ program
 		}
 	});
 
+export async function generateNextDocId(core: Core): Promise<string> {
+	// Load local documents
+	const docs = await core.filesystem.listDocuments();
+	const allIds: string[] = [];
+
+	try {
+		const config = await core.filesystem.loadConfig();
+		const backlogDir = config?.backlogDirectory || "backlog";
+
+		// Skip remote operations if disabled
+		if (config?.remoteOperations === false) {
+			if (process.env.DEBUG) {
+				console.log("Remote operations disabled - generating ID from local documents only");
+			}
+		} else {
+			await core.gitOps.fetch();
+		}
+
+		const branches = await core.gitOps.listAllBranches();
+
+		// Load files from all branches in parallel
+		const branchFilePromises = branches.map(async (branch) => {
+			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/docs`);
+			return files
+				.map((file) => {
+					const match = file.match(/doc-(\d+)/);
+					return match ? `doc-${match[1]}` : null;
+				})
+				.filter((id): id is string => id !== null);
+		});
+
+		const branchResults = await Promise.all(branchFilePromises);
+		for (const branchIds of branchResults) {
+			allIds.push(...branchIds);
+		}
+	} catch (error) {
+		// Suppress errors for offline mode or other git issues
+		if (process.env.DEBUG) {
+			console.error("Could not fetch remote document IDs:", error);
+		}
+	}
+
+	// Add local document IDs
+	for (const doc of docs) {
+		allIds.push(doc.id);
+	}
+
+	// Find the highest numeric ID
+	let max = 0;
+	for (const id of allIds) {
+		const match = id.match(/^doc-(\d+)$/);
+		if (match) {
+			const num = Number.parseInt(match[1] || "0", 10);
+			if (num > max) max = num;
+		}
+	}
+
+	return `doc-${max + 1}`;
+}
+
+export async function generateNextDecisionId(core: Core): Promise<string> {
+	// Load local decisions
+	const decisions = await core.filesystem.listDecisions();
+	const allIds: string[] = [];
+
+	try {
+		const config = await core.filesystem.loadConfig();
+		const backlogDir = config?.backlogDirectory || "backlog";
+
+		// Skip remote operations if disabled
+		if (config?.remoteOperations === false) {
+			if (process.env.DEBUG) {
+				console.log("Remote operations disabled - generating ID from local decisions only");
+			}
+		} else {
+			await core.gitOps.fetch();
+		}
+
+		const branches = await core.gitOps.listAllBranches();
+
+		// Load files from all branches in parallel
+		const branchFilePromises = branches.map(async (branch) => {
+			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/decisions`);
+			return files
+				.map((file) => {
+					const match = file.match(/decision-(\d+)/);
+					return match ? `decision-${match[1]}` : null;
+				})
+				.filter((id): id is string => id !== null);
+		});
+
+		const branchResults = await Promise.all(branchFilePromises);
+		for (const branchIds of branchResults) {
+			allIds.push(...branchIds);
+		}
+	} catch (error) {
+		// Suppress errors for offline mode or other git issues
+		if (process.env.DEBUG) {
+			console.error("Could not fetch remote decision IDs:", error);
+		}
+	}
+
+	// Add local decision IDs
+	for (const decision of decisions) {
+		allIds.push(decision.id);
+	}
+
+	// Find the highest numeric ID
+	let max = 0;
+	for (const id of allIds) {
+		const match = id.match(/^decision-(\d+)$/);
+		if (match) {
+			const num = Number.parseInt(match[1] || "0", 10);
+			if (num > max) max = num;
+		}
+	}
+
+	return `decision-${max + 1}`;
+}
+
 async function generateNextId(core: Core, parent?: string): Promise<string> {
 	// Load local tasks and drafts in parallel
 	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
@@ -242,32 +362,6 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 		}
 	}
 	return `task-${max + 1}`;
-}
-
-async function generateNextDecisionId(core: Core): Promise<string> {
-	const files = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: core.filesystem.decisionsDir }));
-	let max = 0;
-	for (const file of files) {
-		const match = file.match(/^decision-(\d+)/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-	return `decision-${max + 1}`;
-}
-
-async function generateNextDocId(core: Core): Promise<string> {
-	const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
-	let max = 0;
-	for (const file of files) {
-		const match = file.match(/^doc-(\d+)/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-	return `doc-${max + 1}`;
 }
 
 function normalizeDependencies(dependencies: unknown): string[] {
@@ -352,7 +446,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 					.filter(Boolean)
 			: [],
 		dependencies,
-		description: options.description || options.desc ? String(options.description || options.desc) : "",
+		body: options.description || options.desc ? String(options.description || options.desc) : "",
 		...(normalizedParent && { parentTaskId: normalizedParent }),
 		...(validatedPriority && { priority: validatedPriority }),
 	};
@@ -413,19 +507,19 @@ taskCmd
 				: String(acceptanceCriteria)
 						.split(",")
 						.map((item: string) => item.trim());
-			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+			task.body = updateTaskAcceptanceCriteria(task.body, criteria.filter(Boolean));
 		}
 
 		// Handle implementation plan
 		if (options.plan) {
 			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
-			task.description = updateTaskImplementationPlan(task.description, String(options.plan));
+			task.body = updateTaskImplementationPlan(task.body, String(options.plan));
 		}
 
 		// Handle implementation notes
 		if (options.notes) {
 			const { updateTaskImplementationNotes } = await import("./markdown/serializer.ts");
-			task.description = updateTaskImplementationNotes(task.description, String(options.notes));
+			task.body = updateTaskImplementationNotes(task.body, String(options.notes));
 		}
 
 		if (options.draft) {
@@ -601,7 +695,7 @@ taskCmd
 		}
 		if (options.description || options.desc) {
 			const { updateTaskDescription } = await import("./markdown/serializer.ts");
-			task.description = updateTaskDescription(task.description, String(options.description || options.desc));
+			task.body = updateTaskDescription(task.body, String(options.description || options.desc));
 		}
 		if (typeof options.assignee !== "undefined") {
 			task.assignee = [String(options.assignee)];
@@ -668,19 +762,19 @@ taskCmd
 				: String(acceptanceCriteria)
 						.split(",")
 						.map((item: string) => item.trim());
-			task.description = updateTaskAcceptanceCriteria(task.description, criteria.filter(Boolean));
+			task.body = updateTaskAcceptanceCriteria(task.body, criteria.filter(Boolean));
 		}
 
 		// Handle implementation plan
 		if (options.plan) {
 			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
-			task.description = updateTaskImplementationPlan(task.description, String(options.plan));
+			task.body = updateTaskImplementationPlan(task.body, String(options.plan));
 		}
 
 		// Handle implementation notes
 		if (options.notes) {
 			const { updateTaskImplementationNotes } = await import("./markdown/serializer.ts");
-			task.description = updateTaskImplementationNotes(task.description, String(options.notes));
+			task.body = updateTaskImplementationNotes(task.body, String(options.notes));
 		}
 
 		await core.updateTask(task);
@@ -1081,7 +1175,7 @@ docCmd
 			title: title as string,
 			type: (options.type || "other") as DocType["type"],
 			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
-			content: "",
+			body: "",
 		};
 		await core.createDocument(document, true, options.path || "");
 		console.log(`Created document ${id}`);
@@ -1155,16 +1249,16 @@ decisionCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const id = await generateNextDecisionId(core);
-		const decision: DecisionLog = {
+		const decision: Decision = {
 			id,
 			title: title as string,
 			date: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
-			status: (options.status || "proposed") as DecisionLog["status"],
+			status: (options.status || "proposed") as Decision["status"],
 			context: "",
 			decision: "",
 			consequences: "",
 		};
-		await core.createDecisionLog(decision, true);
+		await core.createDecision(decision, true);
 		console.log(`Created decision ${id}`);
 	});
 

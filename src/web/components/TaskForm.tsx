@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import type { Task } from '../types/task';
+import { type Task } from '../../types';
 import ChipInput from './ChipInput';
 import DependencyInput from './DependencyInput';
 import { apiClient } from '../lib/api';
-import MDEditor from '@uiw/react-md-editor';
+// MDEditor will be passed as prop
 
 interface TaskFormProps {
   task?: Task;
@@ -11,6 +11,7 @@ interface TaskFormProps {
   onCancel: () => void;
   onArchive?: () => void;
   availableStatuses: string[];
+  MDEditor: React.ComponentType<any>;
 }
 
 const TaskForm: React.FC<TaskFormProps> = ({ 
@@ -18,11 +19,12 @@ const TaskForm: React.FC<TaskFormProps> = ({
   onSubmit, 
   onCancel, 
   onArchive,
-  availableStatuses 
+  availableStatuses,
+  MDEditor
 }) => {
   const [formData, setFormData] = useState({
     title: task?.title || '',
-    description: task?.description || '',
+    body: task?.body || '',
     status: task?.status || availableStatuses[0] || '',
     assignee: task?.assignee || [],
     labels: task?.labels || [],
@@ -54,7 +56,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
     try {
       const taskData: Partial<Task> = {
         title: formData.title.trim(),
-        description: formData.description.trim(),
+        body: formData.body.trim(),
         status: formData.status,
         assignee: formData.assignee,
         labels: formData.labels,
@@ -113,17 +115,16 @@ const TaskForm: React.FC<TaskFormProps> = ({
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Description
+          Content
         </label>
-        <div className="border border-gray-300 rounded-md overflow-hidden">
-          <MDEditor
-            value={formData.description}
-            onChange={(value) => handleChange('description', value || '')}
-            preview="edit"
-            hideToolbar={false}
-            data-color-mode="light"
-          />
-        </div>
+        <MDEditor
+          value={formData.body}
+          onChange={(value: string | undefined) => handleChange('body', value || '')}
+          preview="edit"
+          hideToolbar={false}
+          data-color-mode="light"
+          height={200}
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

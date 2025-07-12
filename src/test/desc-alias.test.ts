@@ -64,7 +64,7 @@ describe("--desc alias functionality", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				description: "Original description",
+				body: "Original description",
 			},
 			false,
 		);

@@ -1,22 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { Task, TaskStatus } from '../types/task';
+import { type Task } from '../../types';
 import { apiClient } from '../lib/api';
 import TaskCard from './TaskCard';
 import TaskColumn from './TaskColumn';
 
 interface BoardProps {
   onEditTask: (task: Task) => void;
+  onNewTask: () => void;
+  highlightTaskId?: string | null;
+  tasks: Task[];
 }
 
-const Board: React.FC<BoardProps> = ({ onEditTask }) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
+const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, tasks }) => {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    loadData();
+    loadStatuses();
     
     // Check if mobile on mount and resize
     const checkMobile = () => {
@@ -29,18 +31,27 @@ const Board: React.FC<BoardProps> = ({ onEditTask }) => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const loadData = async () => {
+  // Handle highlighting a task (opening its edit popup)
+  useEffect(() => {
+    if (highlightTaskId && tasks.length > 0) {
+      const taskToHighlight = tasks.find(task => task.id === highlightTaskId);
+      if (taskToHighlight) {
+        // Use setTimeout to ensure the task is found and modal opens properly
+        setTimeout(() => {
+          onEditTask(taskToHighlight);
+        }, 100);
+      }
+    }
+  }, [highlightTaskId, tasks, onEditTask]);
+
+  const loadStatuses = async () => {
     try {
       setLoading(true);
-      const [tasksData, statusesData] = await Promise.all([
-        apiClient.fetchTasks(),
-        apiClient.fetchStatuses()
-      ]);
-      setTasks(tasksData);
+      const statusesData = await apiClient.fetchStatuses();
       setStatuses(statusesData);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      setError(err instanceof Error ? err.message : 'Failed to load statuses');
     } finally {
       setLoading(false);
     }
@@ -48,16 +59,15 @@ const Board: React.FC<BoardProps> = ({ onEditTask }) => {
 
   const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
     try {
-      const updatedTask = await apiClient.updateTask(taskId, updates);
-      setTasks(prevTasks => 
-        prevTasks.map(task => task.id === taskId ? updatedTask : task)
-      );
+      await apiClient.updateTask(taskId, updates);
+      // Note: Task updates will be reflected when the parent component refreshes data
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update task');
     }
   };
 
-  const handleStatusChange = (taskId: string, newStatus: TaskStatus) => {
+  const handleStatusChange = (taskId: string, newStatus: string) => {
     handleTaskUpdate(taskId, { status: newStatus });
   };
 
@@ -94,7 +104,7 @@ const Board: React.FC<BoardProps> = ({ onEditTask }) => {
       <div className="flex items-center justify-center py-8">
         <div className="text-red-600">Error: {error}</div>
         <button 
-          onClick={loadData}
+          onClick={loadStatuses}
           className="ml-4 inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors cursor-pointer"
         >
           Retry
@@ -126,6 +136,15 @@ const Board: React.FC<BoardProps> = ({ onEditTask }) => {
 
   return (
     <div className="w-full">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Kanban Board</h2>
+        <button 
+          className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors cursor-pointer" 
+          onClick={onNewTask}
+        >
+          + New Task
+        </button>
+      </div>
       <div className={statuses.length > 3 ? 'overflow-x-auto pb-4' : ''}>
         <div 
           className="grid gap-6 min-w-fit"

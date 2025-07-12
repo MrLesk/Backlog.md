@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
-import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -54,7 +54,7 @@ describe("FileSystem", () => {
 			labels: ["test"],
 			milestone: "v1.0",
 			dependencies: [],
-			description: "This is a test task",
+			body: "This is a test task",
 		};
 
 		it("should save and load a task", async () => {
@@ -149,7 +149,7 @@ describe("FileSystem", () => {
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
-			description: "Draft description",
+			body: "Draft description",
 		};
 
 		it("should save and load a draft", async () => {
@@ -258,7 +258,7 @@ describe("FileSystem", () => {
 	});
 
 	describe("decision log operations", () => {
-		const sampleDecision: DecisionLog = {
+		const sampleDecision: Decision = {
 			id: "decision-1",
 			title: "Use TypeScript",
 			date: "2025-06-07",
@@ -269,9 +269,9 @@ describe("FileSystem", () => {
 		};
 
 		it("should save and load a decision log", async () => {
-			await filesystem.saveDecisionLog(sampleDecision);
+			await filesystem.saveDecision(sampleDecision);
 
-			const loadedDecision = await filesystem.loadDecisionLog("decision-1");
+			const loadedDecision = await filesystem.loadDecision("decision-1");
 			expect(loadedDecision?.id).toBe(sampleDecision.id);
 			expect(loadedDecision?.title).toBe(sampleDecision.title);
 			expect(loadedDecision?.status).toBe(sampleDecision.status);
@@ -279,26 +279,26 @@ describe("FileSystem", () => {
 		});
 
 		it("should return null for non-existent decision log", async () => {
-			const decision = await filesystem.loadDecisionLog("non-existent");
+			const decision = await filesystem.loadDecision("non-existent");
 			expect(decision).toBeNull();
 		});
 
 		it("should save decision log with alternatives", async () => {
-			const decisionWithAlternatives: DecisionLog = {
+			const decisionWithAlternatives: Decision = {
 				...sampleDecision,
 				id: "decision-2",
 				alternatives: "Considered JavaScript",
 			};
 
-			await filesystem.saveDecisionLog(decisionWithAlternatives);
-			const loaded = await filesystem.loadDecisionLog("decision-2");
+			await filesystem.saveDecision(decisionWithAlternatives);
+			const loaded = await filesystem.loadDecision("decision-2");
 
 			expect(loaded?.alternatives).toBe("Considered JavaScript");
 		});
 
 		it("should list decision logs", async () => {
-			await filesystem.saveDecisionLog(sampleDecision);
-			const list = await filesystem.listDecisionLogs();
+			await filesystem.saveDecision(sampleDecision);
+			const list = await filesystem.listDecisions();
 			expect(list).toHaveLength(1);
 			expect(list[0].id).toBe(sampleDecision.id);
 		});
@@ -311,7 +311,7 @@ describe("FileSystem", () => {
 			type: "guide",
 			createdDate: "2025-06-07",
 			updatedDate: "2025-06-08",
-			content: "This is the API guide content.",
+			body: "This is the API guide content.",
 			tags: ["api", "guide"],
 		};
 
@@ -329,7 +329,7 @@ describe("FileSystem", () => {
 				title: "Simple Doc",
 				type: "readme",
 				createdDate: "2025-06-07",
-				content: "Simple content.",
+				body: "Simple content.",
 			};
 
 			await filesystem.saveDocument(minimalDoc);
@@ -355,7 +355,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Task with task- prefix",
+				body: "Task with task- prefix",
 			};
 
 			await filesystem.saveTask(taskWithPrefix);
@@ -373,7 +373,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Task without prefix",
+				body: "Task without prefix",
 			};
 
 			await filesystem.saveTask(taskWithoutPrefix);
@@ -436,7 +436,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Task with special characters in title",
+				body: "Task with special characters in title",
 			};
 
 			await filesystem.saveTask(taskWithSpecialChars);
@@ -454,7 +454,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Task with mixed case title",
+				body: "Task with mixed case title",
 			};
 
 			await filesystem.saveTask(taskWithMixedCase);
@@ -478,7 +478,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Check double dashes",
+				body: "Check double dashes",
 			};
 
 			await filesystem.saveTask(weirdTask);

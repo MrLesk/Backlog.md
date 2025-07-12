@@ -38,7 +38,7 @@ describe("Task edit section preservation", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				description: "Original description",
+				body: "Original description",
 			},
 			false,
 		);
@@ -108,7 +108,7 @@ describe("Task edit section preservation", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			},
 			false,
 		);
@@ -159,7 +159,7 @@ describe("Task edit section preservation", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			},
 			false,
 		);
@@ -210,7 +210,7 @@ describe("Task edit section preservation", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				description: "Test description",
+				body: "Test description",
 			},
 			false,
 		);
@@ -260,7 +260,7 @@ describe("Task edit section preservation", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				description: "Minimal description",
+				body: "Minimal description",
 			},
 			false,
 		);

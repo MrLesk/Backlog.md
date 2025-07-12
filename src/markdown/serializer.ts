@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { DecisionLog, Document, Task } from "../types/index.ts";
+import type { Decision, Document, Task } from "../types/index.ts";
 
 export function serializeTask(task: Task): string {
 	const frontmatter = {
@@ -18,12 +18,12 @@ export function serializeTask(task: Task): string {
 		...(task.priority && { priority: task.priority }),
 	};
 
-	const serialized = matter.stringify(task.description, frontmatter);
+	const serialized = matter.stringify(task.body, frontmatter);
 	// Ensure there's a blank line between frontmatter and content
 	return serialized.replace(/^(---\n(?:.*\n)*?---)\n(?!$)/, "$1\n\n");
 }
 
-export function serializeDecisionLog(decision: DecisionLog): string {
+export function serializeDecision(decision: Decision): string {
 	const frontmatter = {
 		id: decision.id,
 		title: decision.title,
@@ -52,7 +52,7 @@ export function serializeDocument(document: Document): string {
 		...(document.tags && document.tags.length > 0 && { tags: document.tags }),
 	};
 
-	return matter.stringify(document.content, frontmatter);
+	return matter.stringify(document.body, frontmatter);
 }
 
 export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {

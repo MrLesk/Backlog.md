@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
-import { apiClient } from "../lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface HealthStatus {
 	status: "healthy" | "unhealthy" | "unknown";
@@ -18,14 +17,17 @@ export interface HealthCheckState {
 	lastCheck: HealthStatus | null;
 	isChecking: boolean;
 	consecutiveFailures: number;
+	wasDisconnected: boolean; // Track if we were previously disconnected
 }
 
-const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+// No periodic health checks needed - WebSocket connection state IS the health status
 const STORAGE_KEY = "backlog-health-status";
+const RECONNECT_DELAY = 5000; // 5 seconds
 
 export function useHealthCheck() {
 	const [state, setState] = useState<HealthCheckState>(() => {
-		// Load initial state from localStorage
+		// Load initial state from localStorage, but always start wasDisconnected as false
+		// We only want to show "restored" during the same browser session
 		try {
 			const saved = localStorage.getItem(STORAGE_KEY);
 			if (saved) {
@@ -35,6 +37,7 @@ export function useHealthCheck() {
 					lastCheck: parsed.lastCheck ?? null,
 					isChecking: false,
 					consecutiveFailures: parsed.consecutiveFailures ?? 0,
+					wasDisconnected: false, // Always start fresh on page load
 				};
 			}
 		} catch (error) {
@@ -46,8 +49,12 @@ export function useHealthCheck() {
 			lastCheck: null,
 			isChecking: false,
 			consecutiveFailures: 0,
+			wasDisconnected: false,
 		};
 	});
+
+	const wsRef = useRef<WebSocket | null>(null);
+	const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 	// Persist state to localStorage
 	useEffect(() => {
@@ -55,68 +62,110 @@ export function useHealthCheck() {
 			isOnline: state.isOnline,
 			lastCheck: state.lastCheck,
 			consecutiveFailures: state.consecutiveFailures,
+			// Don't persist wasDisconnected - it's only for current session
 		};
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-	}, [state.isOnline, state.lastCheck, state.consecutiveFailures]);
+	}, [state.isOnline, state.lastCheck, state.consecutiveFailures, state.wasDisconnected]);
 
-	const performHealthCheck = useCallback(async () => {
-		setState(prev => ({ ...prev, isChecking: true }));
+
+	const connectWebSocket = useCallback(() => {
+		if (wsRef.current?.readyState === WebSocket.OPEN) {
+			return; // Already connected
+		}
 
 		try {
-			const healthData = await apiClient.checkHealth();
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const wsUrl = `${protocol}//${window.location.host}`;
 			
-			const newStatus: HealthStatus = {
-				status: healthData.status,
-				timestamp: healthData.timestamp,
-				responseTime: healthData.responseTime,
-				project: healthData.project,
-				checks: healthData.checks,
-				error: healthData.error,
+			const ws = new WebSocket(wsUrl);
+			wsRef.current = ws;
+
+			ws.onopen = () => {
+				setState(prev => {
+					const wasReconnecting = prev.wasDisconnected;
+					if (wasReconnecting) {
+						console.log("Server connection restored");
+					}
+					// No message for initial connection - it's expected
+					
+					return { 
+						...prev, 
+						isOnline: true, 
+						consecutiveFailures: 0,
+						wasDisconnected: false,
+						lastCheck: {
+							status: "healthy",
+							timestamp: new Date().toISOString(),
+						}
+					};
+				});
 			};
 
-			setState(prev => {
-				const wasOffline = !prev.isOnline;
-				const isNowOnline = healthData.status === "healthy";
+			ws.onmessage = (event) => {
+				// We don't need to process messages for health check
+				// Connection being open IS healthy
+			};
 
-				return {
-					isOnline: isNowOnline,
-					lastCheck: newStatus,
-					isChecking: false,
-					consecutiveFailures: isNowOnline ? 0 : prev.consecutiveFailures + 1,
-				};
-			});
+			ws.onclose = () => {
+				console.log("Server disconnected");
+				setState(prev => ({
+					...prev,
+					isOnline: false,
+					wasDisconnected: true, // Mark that we got disconnected
+					consecutiveFailures: prev.consecutiveFailures + 1,
+					lastCheck: {
+						status: "unhealthy",
+						timestamp: new Date().toISOString(),
+						error: "Server disconnected",
+					},
+				}));
+
+				// Attempt to reconnect after delay
+				reconnectTimeoutRef.current = setTimeout(connectWebSocket, RECONNECT_DELAY);
+			};
+
+			ws.onerror = (error) => {
+				console.error("Server connection error:", error);
+			};
 
 		} catch (error) {
-			const errorStatus: HealthStatus = {
-				status: "unhealthy",
-				timestamp: new Date().toISOString(),
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-
+			console.error("Failed to create WebSocket connection:", error);
 			setState(prev => ({
+				...prev,
 				isOnline: false,
-				lastCheck: errorStatus,
-				isChecking: false,
+				wasDisconnected: true,
 				consecutiveFailures: prev.consecutiveFailures + 1,
+				lastCheck: {
+					status: "unhealthy",
+					timestamp: new Date().toISOString(),
+					error: error instanceof Error ? error.message : "WebSocket creation failed",
+				},
 			}));
 		}
 	}, []);
 
 	// Manual retry function
 	const retry = useCallback(() => {
-		performHealthCheck();
-	}, [performHealthCheck]);
+		if (reconnectTimeoutRef.current) {
+			clearTimeout(reconnectTimeoutRef.current);
+		}
+		connectWebSocket();
+	}, [connectWebSocket]);
 
-	// Set up periodic health checks
+	// Set up WebSocket connection
 	useEffect(() => {
-		// Perform initial health check
-		performHealthCheck();
+		connectWebSocket();
 
-		// Set up interval for periodic checks
-		const interval = setInterval(performHealthCheck, HEALTH_CHECK_INTERVAL);
-
-		return () => clearInterval(interval);
-	}, [performHealthCheck]);
+		return () => {
+			// Cleanup on unmount
+			if (wsRef.current) {
+				wsRef.current.close();
+			}
+			if (reconnectTimeoutRef.current) {
+				clearTimeout(reconnectTimeoutRef.current);
+			}
+		};
+	}, [connectWebSocket]);
 
 	// Expose connection status and functions
 	return {

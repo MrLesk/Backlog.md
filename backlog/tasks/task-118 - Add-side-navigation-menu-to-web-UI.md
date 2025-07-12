@@ -1,7 +1,7 @@
 ---
 id: task-118
 title: Add side navigation menu to web UI
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-06'
 updated_date: '2025-07-06'
@@ -15,14 +15,14 @@ Add a collapsible side navigation menu to the web UI that provides access to dif
 
 ## Acceptance Criteria
 
-- [ ] Create a side navigation component with collapsible/expandable functionality
-- [ ] Include navigation items for: Kanban Board (default), Documentation, Decisions
-- [ ] Implement React Router or similar routing solution for navigation
-- [ ] Highlight the active section in the navigation menu
-- [ ] Make the side menu responsive - collapse to icon-only on mobile
-- [ ] Persist menu state (expanded/collapsed) in localStorage
-- [ ] Update the main layout to accommodate the side navigation
-- [ ] Ensure smooth transitions between sections
+- [x] Create a side navigation component with collapsible/expandable functionality
+- [x] Include navigation items for: Kanban Board (default), Documentation, Decisions
+- [x] Implement React Router or similar routing solution for navigation
+- [x] Highlight the active section in the navigation menu
+- [x] Make the side menu responsive - collapse to icon-only on mobile
+- [x] Persist menu state (expanded/collapsed) in localStorage
+- [x] Update the main layout to accommodate the side navigation
+- [x] Ensure smooth transitions between sections
 
 ## Technical Notes
 

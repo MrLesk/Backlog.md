@@ -1,7 +1,9 @@
+export type TaskStatus = string;
+
 export interface Task {
 	id: string;
 	title: string;
-	status: string;
+	status: TaskStatus;
 	assignee: string[];
 	reporter?: string;
 	createdDate: string;
@@ -9,7 +11,7 @@ export interface Task {
 	labels: string[];
 	milestone?: string;
 	dependencies: string[];
-	description: string;
+	body: string; // Raw markdown content without frontmatter
 	acceptanceCriteria?: string[];
 	parentTaskId?: string;
 	subtasks?: string[];
@@ -20,7 +22,7 @@ export interface Task {
 	source?: "local" | "remote";
 }
 
-export interface DecisionLog {
+export interface Decision {
 	id: string;
 	title: string;
 	date: string;
@@ -29,6 +31,7 @@ export interface DecisionLog {
 	decision: string;
 	consequences: string;
 	alternatives?: string;
+	body?: string; // Raw markdown content without frontmatter
 }
 
 export interface Document {
@@ -37,8 +40,12 @@ export interface Document {
 	type: "readme" | "guide" | "specification" | "other";
 	createdDate: string;
 	updatedDate?: string;
-	content: string;
+	body: string; // Raw markdown content without frontmatter
 	tags?: string[];
+	// Web UI specific fields
+	name?: string;
+	path?: string;
+	lastModified?: string;
 }
 
 export interface BacklogConfig {

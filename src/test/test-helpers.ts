@@ -102,7 +102,7 @@ async function createTaskViaCore(
 						.split(",")
 						.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`))
 				: [],
-			description: options.description || "",
+			body: options.description || "",
 			...(options.parent && {
 				parentTaskId: options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`,
 			}),
@@ -116,13 +116,13 @@ async function createTaskViaCore(
 				.split(",")
 				.map((item) => item.trim())
 				.filter(Boolean);
-			task.description = updateTaskAcceptanceCriteria(task.description, criteria);
+			task.body = updateTaskAcceptanceCriteria(task.body, criteria);
 		}
 
 		// Handle implementation plan
 		if (options.plan) {
 			const { updateTaskImplementationPlan } = await import("../markdown/serializer.ts");
-			task.description = updateTaskImplementationPlan(task.description, options.plan);
+			task.body = updateTaskImplementationPlan(task.body, options.plan);
 		}
 
 		// Validate dependencies exist
@@ -251,7 +251,7 @@ async function editTaskViaCore(
 		const updatedTask = {
 			...existingTask,
 			...(options.title && { title: options.title }),
-			...(options.description && { description: options.description }),
+			...(options.description && { body: options.description }),
 			...(options.status && { status: options.status }),
 			...(options.assignee && { assignee: [options.assignee] }),
 			...(options.labels && {
@@ -272,13 +272,13 @@ async function editTaskViaCore(
 		// Update implementation notes if provided
 		if (options.notes) {
 			const { updateTaskImplementationNotes } = await import("../markdown/serializer.ts");
-			updatedTask.description = updateTaskImplementationNotes(updatedTask.description, options.notes);
+			updatedTask.body = updateTaskImplementationNotes(updatedTask.body, options.notes);
 		}
 
 		// Update implementation plan if provided
 		if (options.plan) {
 			const { updateTaskImplementationPlan } = await import("../markdown/serializer.ts");
-			updatedTask.description = updateTaskImplementationPlan(updatedTask.description, options.plan);
+			updatedTask.body = updateTaskImplementationPlan(updatedTask.body, options.plan);
 		}
 
 		// Save updated task
@@ -378,8 +378,8 @@ async function viewTaskViaCore(
 			if (task.dependencies?.length > 0) {
 				output += `\nDependencies: ${task.dependencies.join(", ")}`;
 			}
-			if (task.description) {
-				output += `\n\n${task.description}`;
+			if (task.body) {
+				output += `\n\n${task.body}`;
 			}
 		}
 

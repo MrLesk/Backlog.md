@@ -53,7 +53,7 @@ describe("Core", () => {
 			createdDate: "2025-06-07",
 			labels: ["test"],
 			dependencies: [],
-			description: "This is a test task",
+			body: "This is a test task",
 		};
 
 		beforeEach(async () => {
@@ -157,24 +157,24 @@ describe("Core", () => {
 			const taskNoHeader: Task = {
 				...sampleTask,
 				id: "task-2",
-				description: "Just text",
+				body: "Just text",
 			};
 
 			await core.createTask(taskNoHeader, false);
 			const loaded = await core.filesystem.loadTask("task-2");
-			expect(loaded?.description.startsWith("## Description")).toBe(true);
+			expect(loaded?.body.startsWith("## Description")).toBe(true);
 		});
 
 		it("should not duplicate description header", async () => {
 			const taskWithHeader: Task = {
 				...sampleTask,
 				id: "task-3",
-				description: "## Description\n\nExisting",
+				body: "## Description\n\nExisting",
 			};
 
 			await core.createTask(taskWithHeader, false);
 			const loaded = await core.filesystem.loadTask("task-3");
-			const matches = loaded?.description.match(/## Description/g) || [];
+			const matches = loaded?.body.match(/## Description/g) || [];
 			expect(matches.length).toBe(1);
 		});
 
@@ -200,7 +200,7 @@ describe("Core", () => {
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
-			description: "Draft task",
+			body: "Draft task",
 		};
 
 		beforeEach(async () => {
@@ -266,7 +266,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Task without status",
+				body: "Task without status",
 			};
 
 			await core.createTask(taskWithoutStatus, false);
@@ -294,7 +294,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Task without status",
+				body: "Task without status",
 			};
 
 			await core.createTask(taskWithoutStatus, false);
@@ -316,7 +316,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				description: "Testing directory accessors",
+				body: "Testing directory accessors",
 			};
 
 			// Create task without auto-commit to avoid potential git timing issues

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, KeyboardEvent } from 'react';
-import { Task } from '../types/task';
+import React, { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import { type Task } from '../../types';
 
 interface DependencyInputProps {
   value: string[];

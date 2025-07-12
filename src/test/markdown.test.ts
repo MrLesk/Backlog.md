@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { parseDecisionLog, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
+import { parseDecision, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
 import {
-	serializeDecisionLog,
+	serializeDecision,
 	serializeDocument,
 	serializeTask,
 	updateTaskAcceptanceCriteria,
 } from "../markdown/serializer.ts";
-import type { DecisionLog, Document, Task } from "../types/index.ts";
+import type { Decision, Document, Task } from "../types/index.ts";
 
 describe("Markdown Parser", () => {
 	describe("parseMarkdown", () => {
@@ -202,7 +202,7 @@ Test task with reporter.`;
 		});
 	});
 
-	describe("parseDecisionLog", () => {
+	describe("parseDecision", () => {
 		it("should parse a decision log", () => {
 			const content = `---
 id: decision-1
@@ -223,7 +223,7 @@ We will use TypeScript for better type safety.
 
 Better development experience but steeper learning curve.`;
 
-			const decision = parseDecisionLog(content);
+			const decision = parseDecision(content);
 
 			expect(decision.id).toBe("decision-1");
 			expect(decision.title).toBe("Use TypeScript for backend");
@@ -257,7 +257,7 @@ Good performance and reliability.
 
 Considered MongoDB and MySQL.`;
 
-			const decision = parseDecisionLog(content);
+			const decision = parseDecision(content);
 
 			expect(decision.alternatives).toBe("Considered MongoDB and MySQL.");
 		});
@@ -274,7 +274,7 @@ status: "proposed"
 
 Some context.`;
 
-			const decision = parseDecisionLog(content);
+			const decision = parseDecision(content);
 
 			expect(decision.context).toBe("Some context.");
 			expect(decision.decision).toBe("");
@@ -302,7 +302,7 @@ Document body.`;
 			expect(doc.type).toBe("guide");
 			expect(doc.createdDate).toBe("2025-06-07");
 			expect(doc.tags).toEqual(["api"]);
-			expect(doc.content).toBe("Document body.");
+			expect(doc.body).toBe("Document body.");
 		});
 	});
 });
@@ -320,7 +320,7 @@ describe("Markdown Serializer", () => {
 				labels: ["bug", "frontend"],
 				milestone: "v1.0",
 				dependencies: ["task-0"],
-				description: "This is a test task description.",
+				body: "This is a test task description.",
 			};
 
 			const result = serializeTask(task);
@@ -344,7 +344,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				description: "A parent task with subtasks.",
+				body: "A parent task with subtasks.",
 				subtasks: ["task-parent.1", "task-parent.2"],
 			};
 
@@ -364,7 +364,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				description: "A subtask.",
+				body: "A subtask.",
 				parentTaskId: "task-1",
 			};
 
@@ -382,7 +382,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				description: "Minimal task.",
+				body: "Minimal task.",
 			};
 
 			const result = serializeTask(task);
@@ -395,9 +395,9 @@ describe("Markdown Serializer", () => {
 		});
 	});
 
-	describe("serializeDecisionLog", () => {
+	describe("serializeDecision", () => {
 		it("should serialize a decision log correctly", () => {
-			const decision: DecisionLog = {
+			const decision: Decision = {
 				id: "decision-1",
 				title: "Use TypeScript",
 				date: "2025-06-03",
@@ -407,7 +407,7 @@ describe("Markdown Serializer", () => {
 				consequences: "Better DX",
 			};
 
-			const result = serializeDecisionLog(decision);
+			const result = serializeDecision(decision);
 
 			expect(result).toContain("id: decision-1");
 			expect(result).toContain("## Context");
@@ -417,7 +417,7 @@ describe("Markdown Serializer", () => {
 		});
 
 		it("should serialize decision log with alternatives", () => {
-			const decision: DecisionLog = {
+			const decision: Decision = {
 				id: "decision-2",
 				title: "Database Choice",
 				date: "2025-06-03",
@@ -428,7 +428,7 @@ describe("Markdown Serializer", () => {
 				alternatives: "Considered MongoDB",
 			};
 
-			const result = serializeDecisionLog(decision);
+			const result = serializeDecision(decision);
 
 			expect(result).toContain("## Alternatives");
 			expect(result).toContain("Considered MongoDB");
@@ -443,7 +443,7 @@ describe("Markdown Serializer", () => {
 				type: "specification",
 				createdDate: "2025-06-07",
 				updatedDate: "2025-06-08",
-				content: "This document describes the API endpoints.",
+				body: "This document describes the API endpoints.",
 				tags: ["api", "docs"],
 			};
 
@@ -466,7 +466,7 @@ describe("Markdown Serializer", () => {
 				title: "Simple Doc",
 				type: "guide",
 				createdDate: "2025-06-07",
-				content: "Simple content.",
+				body: "Simple content.",
 			};
 
 			const result = serializeDocument(document);

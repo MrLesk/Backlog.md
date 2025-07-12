@@ -38,7 +38,7 @@ describe("next id across remote branches", () => {
 				createdDate: "2025-06-08",
 				labels: [],
 				dependencies: [],
-				description: "",
+				body: "",
 			},
 			true,
 		);

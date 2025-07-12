@@ -1,12 +1,12 @@
 import React from 'react';
-import { Task, TaskStatus } from '../types/task';
+import { type Task } from '../../types';
 import TaskCard from './TaskCard';
 
 interface TaskColumnProps {
   title: string;
   tasks: Task[];
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
-  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  onStatusChange: (taskId: string, status: string) => void;
   onEditTask: (task: Task) => void;
 }
 

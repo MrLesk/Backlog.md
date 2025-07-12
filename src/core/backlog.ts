@@ -1,12 +1,12 @@
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
-import type { BacklogConfig, DecisionLog, Document, Task } from "../types/index.ts";
+import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 
-function ensureDescriptionHeader(description: string): string {
-	const trimmed = description.trim();
+function ensureDescriptionHeader(body: string): string {
+	const trimmed = (body || "").trim();
 	if (trimmed === "") {
 		return "## Description";
 	}
@@ -91,7 +91,7 @@ export class Core {
 			(task as any).assignee = [(task as any).assignee];
 		}
 
-		task.description = ensureDescriptionHeader(task.description);
+		task.body = ensureDescriptionHeader(task.body);
 		const filepath = await this.fs.saveTask(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -112,7 +112,7 @@ export class Core {
 			(task as any).assignee = [(task as any).assignee];
 		}
 
-		task.description = ensureDescriptionHeader(task.description);
+		task.body = ensureDescriptionHeader(task.body);
 		const filepath = await this.fs.saveDraft(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -134,7 +134,7 @@ export class Core {
 		// Always set updatedDate when updating a task
 		task.updatedDate = new Date().toISOString().split("T")[0];
 
-		task.description = ensureDescriptionHeader(task.description);
+		task.body = ensureDescriptionHeader(task.body);
 		await this.fs.saveTask(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -193,14 +193,33 @@ export class Core {
 		return success;
 	}
 
-	async createDecisionLog(decision: DecisionLog, autoCommit?: boolean): Promise<void> {
-		await this.fs.saveDecisionLog(decision);
+	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
+		await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Add decision ${decision.id}`);
 		}
+	}
+
+	async createDecisionWithTitle(title: string, autoCommit?: boolean): Promise<Decision> {
+		// Import the generateNextDecisionId function from CLI
+		const { generateNextDecisionId } = await import("../cli.js");
+		const id = await generateNextDecisionId(this);
+
+		const decision: Decision = {
+			id,
+			title,
+			date: new Date().toISOString().split("T")[0],
+			status: "proposed",
+			context: "[Describe the context and problem that needs to be addressed]",
+			decision: "[Describe the decision that was made]",
+			consequences: "[Describe the consequences of this decision]",
+		};
+
+		await this.createDecision(decision, autoCommit);
+		return decision;
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
@@ -211,6 +230,23 @@ export class Core {
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Add document ${doc.id}`);
 		}
+	}
+
+	async createDocumentWithId(title: string, content: string, autoCommit?: boolean): Promise<Document> {
+		// Import the generateNextDocId function from CLI
+		const { generateNextDocId } = await import("../cli.js");
+		const id = await generateNextDocId(this);
+
+		const document: Document = {
+			id,
+			title,
+			type: "other" as const,
+			createdDate: new Date().toISOString().split("T")[0],
+			body: content,
+		};
+
+		await this.createDocument(document, autoCommit);
+		return document;
 	}
 
 	async initializeProject(projectName: string, autoCommit = false): Promise<void> {

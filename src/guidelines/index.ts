@@ -1,17 +1,8 @@
-import AGENT_GUIDELINES from "./agent-guidelines.md";
+import agentGuidelinesContent from "./agent-guidelines.md" with { type: "text" };
 
-const CLAUDE_GUIDELINES = AGENT_GUIDELINES;
-const CURSOR_GUIDELINES = AGENT_GUIDELINES;
-const GEMINI_GUIDELINES = AGENT_GUIDELINES;
-const COPILOT_GUIDELINES = AGENT_GUIDELINES;
-
-const README_GUIDELINES = `## AI Agent Guidelines\n\n${AGENT_GUIDELINES.replace(/^#.*\n/, "")}`;
-
-export {
-	AGENT_GUIDELINES,
-	CLAUDE_GUIDELINES,
-	CURSOR_GUIDELINES,
-	GEMINI_GUIDELINES,
-	COPILOT_GUIDELINES,
-	README_GUIDELINES,
-};
+export const AGENT_GUIDELINES = agentGuidelinesContent;
+export const CLAUDE_GUIDELINES = agentGuidelinesContent;
+export const CURSOR_GUIDELINES = agentGuidelinesContent;
+export const GEMINI_GUIDELINES = agentGuidelinesContent;
+export const COPILOT_GUIDELINES = agentGuidelinesContent;
+export const README_GUIDELINES = `## AI Agent Guidelines\n\n${agentGuidelinesContent.replace(/^#.*\n/, "")}`;

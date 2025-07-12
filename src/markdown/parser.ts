@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { DecisionLog, Document, ParsedMarkdown, Task } from "../types/index.ts";
+import type { Decision, Document, ParsedMarkdown, Task } from "../types/index.ts";
 
 function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
@@ -100,7 +100,7 @@ export function parseTask(content: string): Task {
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
-		description: description,
+		body: description,
 		acceptanceCriteria: extractAcceptanceCriteria(description),
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
@@ -108,18 +108,19 @@ export function parseTask(content: string): Task {
 	};
 }
 
-export function parseDecisionLog(content: string): DecisionLog {
+export function parseDecision(content: string): Decision {
 	const { frontmatter, content: body } = parseMarkdown(content);
 
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		date: normalizeDate(frontmatter.date),
-		status: String(frontmatter.status || "proposed") as DecisionLog["status"],
+		status: String(frontmatter.status || "proposed") as Decision["status"],
 		context: extractSection(body, "Context") || "",
 		decision: extractSection(body, "Decision") || "",
 		consequences: extractSection(body, "Consequences") || "",
 		alternatives: extractSection(body, "Alternatives"),
+		body: body, // Raw markdown content without frontmatter
 	};
 }
 
@@ -132,7 +133,7 @@ export function parseDocument(content: string): Document {
 		type: String(frontmatter.type || "other") as Document["type"],
 		createdDate: normalizeDate(frontmatter.created_date),
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
-		content: body,
+		body: body,
 		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
 	};
 }
