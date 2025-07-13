@@ -676,7 +676,7 @@ export class FileSystem {
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
-			...(config.zeroPaddedIds ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
+			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

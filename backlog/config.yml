@@ -11,3 +11,4 @@ auto_open_browser: true
 default_port: 6420
 remote_operations: true
 auto_commit: false
+zero_padded_ids: 3

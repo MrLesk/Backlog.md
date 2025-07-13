@@ -30,8 +30,9 @@ describe("Enhanced init command", () => {
 		expect(initialConfig?.autoCommit).toBe(false);
 
 		// Modify some config values to test preservation
+		expect(initialConfig).toBeTruthy();
 		const modifiedConfig = {
-			...initialConfig!,
+			...initialConfig,
 			autoCommit: true,
 			defaultEditor: "vim",
 			defaultPort: 8080,
@@ -146,5 +147,92 @@ describe("Enhanced init command", () => {
 		expect(existingConfig?.milestones).toEqual(["v1.0", "v2.0"]);
 		expect(existingConfig?.dateFormat).toBe("dd/mm/yyyy");
 		expect(existingConfig?.maxColumnWidth).toBe(30);
+	});
+
+	test("should handle zero-padding configuration in init flow", async () => {
+		const core = new Core(tmpDir);
+
+		// Test config with zero-padding enabled
+		const configWithPadding = {
+			projectName: "Padded Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			backlogDirectory: "backlog",
+			autoCommit: false,
+			remoteOperations: true,
+			zeroPaddedIds: 3,
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(configWithPadding);
+
+		// Verify zero-padding was saved
+		const loadedConfig = await core.filesystem.loadConfig();
+		expect(loadedConfig?.zeroPaddedIds).toBe(3);
+
+		// Test that zero-padding config is available for ID generation
+		// (ID generation happens in CLI, not in Core.createTask)
+		expect(loadedConfig?.zeroPaddedIds).toBe(3);
+	});
+
+	test("should handle zero-padding disabled configuration", async () => {
+		const core = new Core(tmpDir);
+
+		// Test config with zero-padding disabled
+		const configWithoutPadding = {
+			projectName: "Non-Padded Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			backlogDirectory: "backlog",
+			autoCommit: false,
+			remoteOperations: true,
+			zeroPaddedIds: 0,
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(configWithoutPadding);
+
+		// Verify zero-padding was saved as disabled
+		const loadedConfig = await core.filesystem.loadConfig();
+		expect(loadedConfig?.zeroPaddedIds).toBe(0);
+
+		// Test that zero-padding is properly disabled
+		// (ID generation happens in CLI, not in Core.createTask)
+		expect(loadedConfig?.zeroPaddedIds).toBe(0);
+	});
+
+	test("should preserve existing zero-padding config during re-initialization", async () => {
+		const core = new Core(tmpDir);
+
+		// Create initial config with padding
+		const initialConfig = {
+			projectName: "Test Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			backlogDirectory: "backlog",
+			autoCommit: false,
+			zeroPaddedIds: 4,
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(initialConfig);
+
+		// Simulate re-initialization by loading existing config
+		const existingConfig = await core.filesystem.loadConfig();
+		expect(existingConfig).toBeTruthy();
+		expect(existingConfig?.zeroPaddedIds).toBe(4);
+
+		// Verify the padding config is preserved
+		// (ID generation happens in CLI, not in Core.createTask)
+		expect(existingConfig?.zeroPaddedIds).toBe(4);
 	});
 });
