@@ -90,7 +90,9 @@ The web interface provides:
 
 ---
 
-## CLI reference (essentials)
+## CLI reference
+
+### Task Management
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
@@ -105,7 +107,6 @@ The web interface provides:
 | Create with notes | `backlog task create "Feature" --notes "Started initial research"` |
 | Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`|
-| Create draft | `backlog task create "Feature" --draft`             |
 | Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 -p 14` |
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>]` |
 | List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
@@ -117,16 +118,65 @@ The web interface provides:
 | Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Archive     | `backlog task archive 7`                             |
+
+### Draft Workflow
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Create draft | `backlog task create "Feature" --draft`             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
-| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder) |
+
+### Board Operations
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
 | Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
 | Export board | `backlog board export [file]` (exports Kanban board to markdown) |
+
+### Web Interface
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
 | Web interface | `backlog browser` (launches web UI on port 6420) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
+
+### Configuration
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
 | Config editor | `backlog config set defaultEditor "code --wait"` |
 | Enable auto-commit | `backlog config set autoCommit true` |
 | View config | `backlog config list` |
+
+### Documentation
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Create doc | `backlog doc create "API Guidelines"` |
+| Create with path | `backlog doc create "Setup Guide" -p guides/setup` |
+| Create with type | `backlog doc create "Architecture" -t technical` |
+| List docs | `backlog doc list` |
+| View doc | `backlog doc view doc-1` |
+
+### Decisions
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
+| Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
+
+### Agent Instructions
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Update agent files | `backlog agents --update-instructions` (updates .cursorrules, CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
+
+### Maintenance
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder) |
 
 Full help: `backlog --help`
 
