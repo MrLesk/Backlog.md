@@ -115,11 +115,11 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="text-lg font-medium text-gray-900 dark:text-white">{draft.title}</h3>
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200">
+                      <span className="px-2 py-1 text-xs font-medium rounded-circle bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200">
                         Draft
                       </span>
                       {draft.priority && (
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getPriorityColor(draft.priority)}`}>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getPriorityColor(draft.priority)}`}>
                           {draft.priority}
                         </span>
                       )}
@@ -136,7 +136,7 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
                         <span className="text-sm text-gray-500 dark:text-gray-400">Assigned to:</span>
                         <div className="flex flex-wrap gap-1">
                           {draft.assignee.map((person) => (
-                            <span key={person} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 rounded-full">
+                            <span key={person} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 rounded-circle">
                               {person}
                             </span>
                           ))}
@@ -146,7 +146,7 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
                     {draft.labels && draft.labels.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {draft.labels.map((label) => (
-                          <span key={label} className="px-2 py-1 text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-full">
+                          <span key={label} className="px-2 py-1 text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-circle">
                             {label}
                           </span>
                         ))}

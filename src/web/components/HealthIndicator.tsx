@@ -14,7 +14,7 @@ export function HealthIndicator() {
 		return (
 			<div className="fixed top-0 left-0 right-0 bg-red-500 dark:bg-red-600 text-white px-4 py-3 text-sm flex items-center justify-between shadow-lg z-50 animate-slide-in-down transition-colors duration-200">
 				<div className="flex items-center gap-3">
-					<div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+					<div className="w-2 h-2 bg-white rounded-circle animate-pulse" />
 					<span className="font-medium">
 						Server disconnected
 					</span>

@@ -73,7 +73,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100 transition-colors duration-200">{title}</h3>
-          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadgeClass(title)}`}>
+          <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getStatusBadgeClass(title)}`}>
             {tasks.length}
           </span>
         </div>

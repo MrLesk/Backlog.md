@@ -2,6 +2,16 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --radius-circle: 9999px;
+}
+
+@layer utilities {
+  .rounded-circle {
+    border-radius: var(--radius-circle);
+  }
+}
+
 
 /* Custom styles that can't be done with Tailwind utilities */
 

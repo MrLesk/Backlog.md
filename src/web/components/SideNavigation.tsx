@@ -318,7 +318,7 @@ const SideNavigation = memo(function SideNavigation({
 				{/* Collapse Toggle Button - Always positioned on the border */}
 				<button
 					onClick={toggleCollapse}
-					className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200 cursor-pointer"
+					className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200 cursor-pointer"
 					aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 					title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 				>
