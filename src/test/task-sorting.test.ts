@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compareTaskIds, parseTaskId, sortByTaskId } from "../utils/task-sorting.ts";
+import { compareTaskIds, parseTaskId, sortByPriority, sortByTaskId, sortTasks } from "../utils/task-sorting.ts";
 
 describe("parseTaskId", () => {
 	test("parses simple task IDs", () => {
@@ -116,5 +116,106 @@ describe("sortByTaskId", () => {
 
 		// Original array order should be preserved
 		expect(tasks).toEqual(original);
+	});
+});
+
+describe("sortByPriority", () => {
+	test("sorts tasks by priority order: high > medium > low > undefined", () => {
+		const tasks = [
+			{ id: "task-1", priority: "low" as const },
+			{ id: "task-2", priority: "high" as const },
+			{ id: "task-3" }, // no priority
+			{ id: "task-4", priority: "medium" as const },
+			{ id: "task-5", priority: "high" as const },
+		];
+
+		const sorted = sortByPriority(tasks);
+		expect(sorted.map((t) => ({ id: t.id, priority: t.priority }))).toEqual([
+			{ id: "task-2", priority: "high" },
+			{ id: "task-5", priority: "high" },
+			{ id: "task-4", priority: "medium" },
+			{ id: "task-1", priority: "low" },
+			{ id: "task-3", priority: undefined },
+		]);
+	});
+
+	test("sorts tasks with same priority by task ID", () => {
+		const tasks = [
+			{ id: "task-10", priority: "high" as const },
+			{ id: "task-2", priority: "high" as const },
+			{ id: "task-20", priority: "medium" as const },
+			{ id: "task-1", priority: "medium" as const },
+		];
+
+		const sorted = sortByPriority(tasks);
+		expect(sorted.map((t) => t.id)).toEqual(["task-2", "task-10", "task-1", "task-20"]);
+	});
+
+	test("handles all undefined priorities", () => {
+		const tasks = [{ id: "task-3" }, { id: "task-1" }, { id: "task-2" }];
+
+		const sorted = sortByPriority(tasks);
+		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
+	});
+
+	test("preserves original array", () => {
+		const tasks = [
+			{ id: "task-1", priority: "low" as const },
+			{ id: "task-2", priority: "high" as const },
+		];
+
+		const original = [...tasks];
+		sortByPriority(tasks);
+
+		// Original array order should be preserved
+		expect(tasks).toEqual(original);
+	});
+});
+
+describe("sortTasks", () => {
+	test("sorts by priority when field is 'priority'", () => {
+		const tasks = [
+			{ id: "task-1", priority: "low" as const },
+			{ id: "task-2", priority: "high" as const },
+			{ id: "task-3", priority: "medium" as const },
+		];
+
+		const sorted = sortTasks(tasks, "priority");
+		expect(sorted.map((t) => t.priority)).toEqual(["high", "medium", "low"]);
+	});
+
+	test("sorts by ID when field is 'id'", () => {
+		const tasks = [
+			{ id: "task-10", priority: "high" as const },
+			{ id: "task-2", priority: "high" as const },
+			{ id: "task-1", priority: "high" as const },
+		];
+
+		const sorted = sortTasks(tasks, "id");
+		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-10"]);
+	});
+
+	test("handles case-insensitive field names", () => {
+		const tasks = [
+			{ id: "task-1", priority: "low" as const },
+			{ id: "task-2", priority: "high" as const },
+		];
+
+		const sorted = sortTasks(tasks, "PRIORITY");
+		expect(sorted.map((t) => t.priority)).toEqual(["high", "low"]);
+	});
+
+	test("defaults to ID sorting for unknown fields", () => {
+		const tasks = [{ id: "task-10" }, { id: "task-2" }, { id: "task-1" }];
+
+		const sorted = sortTasks(tasks, "unknown");
+		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-10"]);
+	});
+
+	test("defaults to ID sorting for empty field", () => {
+		const tasks = [{ id: "task-10" }, { id: "task-2" }];
+
+		const sorted = sortTasks(tasks, "");
+		expect(sorted.map((t) => t.id)).toEqual(["task-2", "task-10"]);
 	});
 });

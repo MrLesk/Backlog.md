@@ -21,6 +21,7 @@ import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
+import { sortTasks } from "./utils/task-sorting.ts";
 import { getVersion } from "./utils/version.ts";
 
 // Windows color fix
@@ -539,6 +540,8 @@ taskCmd
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
+	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
+	.option("--sort <field>", "sort tasks by field (priority, id)")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = process.cwd();
@@ -567,6 +570,26 @@ taskCmd
 
 			// Filter tasks by parent ID
 			filtered = filtered.filter((t) => t.parentTaskId === parentId);
+		}
+		if (options.priority) {
+			const priorityLower = options.priority.toLowerCase();
+			const validPriorities = ["high", "medium", "low"];
+			if (!validPriorities.includes(priorityLower)) {
+				console.error(`Invalid priority: ${options.priority}. Valid values are: high, medium, low`);
+				return;
+			}
+			filtered = filtered.filter((t) => t.priority?.toLowerCase() === priorityLower);
+		}
+
+		// Apply sorting if specified
+		if (options.sort) {
+			const validSortFields = ["priority", "id"];
+			const sortField = options.sort.toLowerCase();
+			if (!validSortFields.includes(sortField)) {
+				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+				return;
+			}
+			filtered = sortTasks(filtered, sortField);
 		}
 
 		if (filtered.length === 0) {
@@ -602,7 +625,8 @@ taskCmd
 				if (!list) continue;
 				console.log(`${status || "No Status"}:`);
 				for (const t of list) {
-					console.log(`  ${t.id} - ${t.title}`);
+					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
+					console.log(`  ${priorityIndicator}${t.id} - ${t.title}`);
 				}
 				console.log();
 			}
@@ -629,6 +653,8 @@ taskCmd
 				const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
 				filters.push(`Parent: ${parentId}`);
 			}
+			if (options.priority) filters.push(`Priority: ${options.priority}`);
+			if (options.sort) filters.push(`Sort: ${options.sort}`);
 
 			if (filters.length > 0) {
 				filterDescription = filters.join(", ");
@@ -645,6 +671,8 @@ taskCmd
 				filter: {
 					status: options.status,
 					assignee: options.assignee,
+					priority: options.priority,
+					sort: options.sort,
 					title,
 					filterDescription,
 				},

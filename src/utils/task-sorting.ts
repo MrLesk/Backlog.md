@@ -66,3 +66,48 @@ export function compareTaskIds(a: string, b: string): number {
 export function sortByTaskId<T extends { id: string }>(items: T[]): T[] {
 	return [...items].sort((a, b) => compareTaskIds(a.id, b.id));
 }
+
+/**
+ * Sort an array of tasks by their priority property.
+ * Priority order: high > medium > low > undefined
+ * Tasks with the same priority are sorted by task ID.
+ */
+export function sortByPriority<T extends { id: string; priority?: "high" | "medium" | "low" }>(items: T[]): T[] {
+	const priorityWeight = {
+		high: 3,
+		medium: 2,
+		low: 1,
+	};
+
+	return [...items].sort((a, b) => {
+		const aWeight = a.priority ? priorityWeight[a.priority] : 0;
+		const bWeight = b.priority ? priorityWeight[b.priority] : 0;
+
+		// First sort by priority (higher weight = higher priority)
+		if (aWeight !== bWeight) {
+			return bWeight - aWeight;
+		}
+
+		// If priorities are the same, sort by task ID
+		return compareTaskIds(a.id, b.id);
+	});
+}
+
+/**
+ * Sort tasks by a specified field with fallback to task ID sorting.
+ * Supported fields: 'priority', 'id'
+ */
+export function sortTasks<T extends { id: string; priority?: "high" | "medium" | "low" }>(
+	items: T[],
+	sortField: string,
+): T[] {
+	switch (sortField?.toLowerCase()) {
+		case "priority":
+			return sortByPriority(items);
+		case "id":
+			return sortByTaskId(items);
+		default:
+			// Default to task ID sorting for unknown fields
+			return sortByTaskId(items);
+	}
+}
