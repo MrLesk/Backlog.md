@@ -576,6 +576,7 @@ taskCmd
 			const validPriorities = ["high", "medium", "low"];
 			if (!validPriorities.includes(priorityLower)) {
 				console.error(`Invalid priority: ${options.priority}. Valid values are: high, medium, low`);
+				process.exitCode = 1;
 				return;
 			}
 			filtered = filtered.filter((t) => t.priority?.toLowerCase() === priorityLower);
@@ -587,6 +588,7 @@ taskCmd
 			const sortField = options.sort.toLowerCase();
 			if (!validSortFields.includes(sortField)) {
 				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+				process.exitCode = 1;
 				return;
 			}
 			filtered = sortTasks(filtered, sortField);
