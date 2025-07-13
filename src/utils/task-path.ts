@@ -22,7 +22,7 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 	const coreInstance = core || new Core(process.cwd());
 
 	try {
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
+		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
 		const normalizedId = normalizeTaskId(taskId);
 		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
 
@@ -42,7 +42,7 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 export async function getDraftPath(taskId: string, core: Core): Promise<string | null> {
 	try {
 		const draftsDir = await core.filesystem.getDraftsDir();
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: draftsDir }));
+		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: draftsDir }));
 		const normalizedId = normalizeTaskId(taskId);
 		const draftFile = files.find((f) => f.startsWith(`${normalizedId} -`));
 
@@ -63,7 +63,7 @@ export async function getTaskFilename(taskId: string, core?: Core | TaskPathCont
 	const coreInstance = core || new Core(process.cwd());
 
 	try {
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
+		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
 		const normalizedId = normalizeTaskId(taskId);
 		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
 
