@@ -2,7 +2,7 @@
 <p align="center">Markdown‑native Task Manager &amp; Kanban visualizer for any Git repository</p>
 
 <p align="center">
-<code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code>
+<code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>brew install backlog-md</code>
 </p>
 
 ![Backlog demo GIF using: backlog board](./.github/backlog.gif)
@@ -91,6 +91,22 @@ The web interface provides:
 ---
 
 ## CLI reference
+
+### Project Setup
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Initialize project | `backlog init [project-name]` (creates backlog structure with interactive configuration) |
+| Re-initialize | `backlog init` (preserves existing config, allows updates) |
+
+The `backlog init` command provides comprehensive project setup with interactive prompts for:
+- **Project name** - identifier for your backlog
+- **Auto-commit** - whether to automatically commit task changes to git
+- **Default editor** - editor command for opening tasks (detects from environment)
+- **Remote operations** - enable/disable fetching tasks from remote branches
+- **Web UI settings** - port and browser auto-open preferences
+
+When re-initializing an existing project, all current configuration values are preserved and pre-populated in prompts, allowing you to update only what you need.
 
 ### Task Management
 
