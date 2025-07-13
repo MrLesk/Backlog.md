@@ -9,6 +9,7 @@ import DraftsList from './components/DraftsList';
 import Modal from './components/Modal';
 import TaskForm from './components/TaskForm';
 import { SuccessToast } from './components/SuccessToast';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { type Task, type Document, type Decision } from '../types';
 import { apiClient } from './lib/api';
 import { useHealthCheck } from './hooks/useHealthCheck';
@@ -192,63 +193,65 @@ function App() {
   };
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <Layout
-              projectName={projectName}
-              showSuccessToast={showSuccessToast}
-              onDismissToast={() => setShowSuccessToast(false)}
-              tasks={tasks}
-              docs={docs}
-              decisions={decisions}
-              isLoading={isLoading}
-              onRefreshData={refreshData}
-            />
-          }
+    <ThemeProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Layout
+                projectName={projectName}
+                showSuccessToast={showSuccessToast}
+                onDismissToast={() => setShowSuccessToast(false)}
+                tasks={tasks}
+                docs={docs}
+                decisions={decisions}
+                isLoading={isLoading}
+                onRefreshData={refreshData}
+              />
+            }
+          >
+            <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
+            <Route path="tasks" element={<TaskList onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
+            {/* <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} tasks={tasks} />} /> */}
+            <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
+            <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
+            <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
+            <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
+            <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
+            <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
+          </Route>
+        </Routes>
+
+        <Modal
+          isOpen={showModal}
+          onClose={handleCloseModal}
+          title={editingTask ? `Edit Task ${editingTask.id.replace('task-', '')}` : (isDraftMode ? 'Create New Draft' : 'Create New Task')}
         >
-          <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
-          <Route path="tasks" element={<TaskList onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
-          {/* <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} tasks={tasks} />} /> */}
-          <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-          <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-          <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-          <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-          <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-          <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-        </Route>
-      </Routes>
+          <TaskForm
+            task={editingTask || undefined}
+            onSubmit={handleSubmitTask}
+            onCancel={handleCloseModal}
+            onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+            availableStatuses={statuses}
+            MDEditor={MDEditor}
+          />
+        </Modal>
 
-      <Modal
-        isOpen={showModal}
-        onClose={handleCloseModal}
-        title={editingTask ? `Edit Task ${editingTask.id.replace('task-', '')}` : (isDraftMode ? 'Create New Draft' : 'Create New Task')}
-      >
-        <TaskForm
-          task={editingTask || undefined}
-          onSubmit={handleSubmitTask}
-          onCancel={handleCloseModal}
-          onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-          availableStatuses={statuses}
-          MDEditor={MDEditor}
-        />
-      </Modal>
-
-      {/* Task Creation Confirmation Toast */}
-      {taskConfirmation && (
-        <SuccessToast
-          message={`${taskConfirmation.isDraft ? 'Draft' : 'Task'} "${taskConfirmation.task.title}" created successfully! (${taskConfirmation.task.id.replace('task-', '')})`}
-          onDismiss={() => setTaskConfirmation(null)}
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
-      )}
-    </BrowserRouter>
+        {/* Task Creation Confirmation Toast */}
+        {taskConfirmation && (
+          <SuccessToast
+            message={`${taskConfirmation.isDraft ? 'Draft' : 'Task'} "${taskConfirmation.task.title}" created successfully! (${taskConfirmation.task.id.replace('task-', '')})`}
+            onDismiss={() => setTaskConfirmation(null)}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+          />
+        )}
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

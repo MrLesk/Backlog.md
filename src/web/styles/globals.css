@@ -1,5 +1,22 @@
 /* Base styles - Tailwind CSS v4 is loaded via JavaScript */
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+
+/* Configure Tailwind dark mode */
+/*@theme {*/
+/*  --color-stone-50: #fafaf9;*/
+/*  --color-stone-100: #f5f5f4;*/
+/*  --color-stone-200: #e7e5e4;*/
+/*  --color-stone-300: #d6d3d1;*/
+/*  --color-stone-400: #a8a29e;*/
+/*  --color-stone-500: #78716c;*/
+/*  --color-stone-600: #57534e;*/
+/*  --color-stone-700: #44403c;*/
+/*  --color-stone-800: #292524;*/
+/*  --color-stone-900: #1c1917;*/
+/*}*/
+
 /* Custom styles that can't be done with Tailwind utilities */
 
 /* Line clamp utilities for text truncation */

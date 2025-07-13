@@ -96,24 +96,24 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
 
   return (
     <div>
-      <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">
+      <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
         Dependencies
       </label>
       <div className="relative w-full">
-        <div className="w-full min-h-10 px-3 py-2 border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+        <div className="w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200">
           {/* Display selected dependencies */}
           {value.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {value.map((taskId, index) => (
                 <span
                   key={index}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 text-blue-800 rounded-md"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200"
                 >
                   <span className="max-w-xs truncate">{getTaskDisplay(taskId)}</span>
                   <button
                     type="button"
                     onClick={() => removeDependency(index)}
-                    className="hover:bg-blue-200 rounded-sm p-0.5 transition-colors"
+                    className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
                     aria-label={`Remove ${taskId}`}
                   >
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -137,25 +137,25 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={value.length === 0 ? "Type task ID or title, then press Enter or comma" : "Add more dependencies..."}
-            className="w-full outline-none text-sm bg-transparent resize-none"
+            className="w-full outline-none text-sm bg-transparent resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
             rows={1}
           />
         </div>
 
         {/* Suggestions dropdown */}
         {suggestions.length > 0 && (
-          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+          <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-auto transition-colors duration-200">
             {suggestions.map((task, index) => (
               <button
                 key={task.id}
                 type="button"
                 onClick={() => addDependency(task.id)}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${
-                  index === selectedIndex ? 'bg-gray-100' : ''
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 ${
+                  index === selectedIndex ? 'bg-gray-100 dark:bg-gray-700' : ''
                 }`}
               >
-                <div className="font-medium">{task.id}</div>
-                <div className="text-gray-600 truncate">{task.title}</div>
+                <div className="font-medium text-gray-900 dark:text-white">{task.id}</div>
+                <div className="text-gray-600 dark:text-gray-300 truncate">{task.title}</div>
               </button>
             ))}
           </div>

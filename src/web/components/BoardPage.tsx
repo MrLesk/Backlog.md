@@ -32,7 +32,7 @@ export default function BoardPage({ onEditTask, onNewTask, tasks }: BoardPagePro
 	};
 
 	return (
-		<div className="container mx-auto px-4 py-8">
+		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
 			<Board onEditTask={handleEditTask} onNewTask={onNewTask} highlightTaskId={highlightTaskId} tasks={tasks} />
 		</div>
 	);

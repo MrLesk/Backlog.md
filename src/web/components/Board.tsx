@@ -93,7 +93,7 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-lg text-gray-600">Loading tasks...</div>
+        <div className="text-lg text-gray-600 dark:text-gray-300 transition-colors duration-200">Loading tasks...</div>
       </div>
     );
   }
@@ -101,10 +101,10 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
   if (error) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-red-600">Error: {error}</div>
+        <div className="text-red-600 dark:text-red-400 transition-colors duration-200">Error: {error}</div>
         <button 
           onClick={loadStatuses}
-          className="ml-4 inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors cursor-pointer"
+          className="ml-4 inline-flex items-center px-4 py-2 bg-stone-500 dark:bg-stone-600 text-white text-sm font-medium rounded-md hover:bg-stone-600 dark:hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-400 dark:focus:ring-stone-500 dark:focus:ring-offset-gray-800 transition-colors duration-200 cursor-pointer"
         >
           Retry
         </button>
@@ -136,9 +136,9 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Kanban Board</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
         <button 
-          className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors cursor-pointer" 
+          className="inline-flex items-center px-4 py-2 bg-stone-500 dark:bg-stone-600 text-white text-sm font-medium rounded-md hover:bg-stone-600 dark:hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-400 dark:focus:ring-stone-500 dark:focus:ring-offset-gray-800 transition-colors duration-200 cursor-pointer" 
           onClick={onNewTask}
         >
           + New Task
