@@ -94,22 +94,117 @@ program
 				}
 			}
 
+			const core = new Core(cwd);
+
+			// Check if project is already initialized and load existing config
+			const existingConfig = await core.filesystem.loadConfig();
+			const isReInitialization = !!existingConfig;
+
+			if (isReInitialization) {
+				console.log("Existing backlog project detected. Current configuration will be preserved where not specified.");
+			}
+
+			// Get project name
 			let name = projectName;
 			if (!name) {
-				name = await promptText("Project name:");
+				const defaultName = existingConfig?.projectName || "";
+				const promptMessage = isReInitialization && defaultName ? `Project name (${defaultName}):` : "Project name:";
+				name = await promptText(promptMessage);
+				// Use existing name if nothing entered during re-init
+				if (!name && isReInitialization && defaultName) {
+					name = defaultName;
+				}
 				if (!name) {
 					console.log("Aborting initialization.");
 					process.exit(1);
 				}
 			}
 
-			// const reporter = (await promptText("Default reporter name (leave blank to skip):")) || "";
-			// let storeGlobal = false;
-			// if (reporter) {
-			// 	const store = (await promptText("Store reporter name globally? [y/N]", "N")).toLowerCase();
-			// 	storeGlobal = store.startsWith("y");
-			// }
+			// Configuration prompts with intelligent defaults
+			const configPrompts = await prompts([
+				{
+					type: "confirm",
+					name: "autoCommit",
+					message: "Enable automatic git commits for task operations?",
+					hint: "When enabled, task changes are automatically committed to git",
+					initial: existingConfig?.autoCommit ?? false,
+				},
+				{
+					type: "confirm",
+					name: "remoteOperations",
+					message: "Enable remote git operations? (needed to fetch tasks from remote branches)",
+					initial: existingConfig?.remoteOperations ?? true,
+				},
+				{
+					type: "confirm",
+					name: "configureWebUI",
+					message: "Configure web UI settings?",
+					hint: "Optional: Set custom port and browser behavior",
+					initial: false,
+				},
+			]);
 
+			if (configPrompts === undefined) {
+				console.log("Aborting initialization.");
+				process.exit(1);
+			}
+
+			// Default editor configuration - always prompt during init
+			const editorPrompt = await prompts({
+				type: "text",
+				name: "editor",
+				message: "Default editor command (optional):",
+				hint: "e.g., 'code --wait', 'vim', 'nano'",
+				initial: existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || "",
+			});
+
+			let defaultEditor: string | undefined;
+			if (editorPrompt?.editor) {
+				const { isEditorAvailable } = await import("./utils/editor.ts");
+				const isAvailable = await isEditorAvailable(editorPrompt.editor);
+				if (isAvailable) {
+					defaultEditor = editorPrompt.editor;
+				} else {
+					console.warn(`Warning: Editor command '${editorPrompt.editor}' not found in PATH`);
+					// Still allow them to set it even if not found
+					const confirmAnyway = await prompts({
+						type: "confirm",
+						name: "confirm",
+						message: "Editor not found in PATH. Set it anyway?",
+						initial: false,
+					});
+					if (confirmAnyway?.confirm) {
+						defaultEditor = editorPrompt.editor;
+					}
+				}
+			}
+
+			// Web UI configuration (optional)
+			let webUIConfig: { defaultPort?: number; autoOpenBrowser?: boolean } = {};
+			if (configPrompts.configureWebUI) {
+				const webUIPrompts = await prompts([
+					{
+						type: "number",
+						name: "defaultPort",
+						message: "Default web UI port:",
+						initial: existingConfig?.defaultPort ?? 6420,
+						min: 1,
+						max: 65535,
+					},
+					{
+						type: "confirm",
+						name: "autoOpenBrowser",
+						message: "Automatically open browser when starting web UI?",
+						initial: existingConfig?.autoOpenBrowser ?? true,
+					},
+				]);
+
+				if (webUIPrompts !== undefined) {
+					webUIConfig = webUIPrompts;
+				}
+			}
+
+			// Agent instruction files selection
 			const agentOptions = [
 				".cursorrules",
 				"CLAUDE.md",
@@ -117,6 +212,7 @@ program
 				"GEMINI.md",
 				".github/copilot-instructions.md",
 			] as const;
+
 			const { files: selected } = await prompts({
 				type: "multiselect",
 				name: "files",
@@ -130,34 +226,60 @@ program
 			});
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
-			const core = new Core(cwd);
+			// Prepare configuration object preserving existing values
+			const config = {
+				projectName: name,
+				statuses: existingConfig?.statuses || ["To Do", "In Progress", "Done"],
+				labels: existingConfig?.labels || [],
+				milestones: existingConfig?.milestones || [],
+				defaultStatus: existingConfig?.defaultStatus || "To Do",
+				dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
+				maxColumnWidth: existingConfig?.maxColumnWidth || 20,
+				backlogDirectory: existingConfig?.backlogDirectory || "backlog",
+				autoCommit: configPrompts.autoCommit,
+				remoteOperations: configPrompts.remoteOperations,
+				...(defaultEditor && { defaultEditor }),
+				// Web UI config: use new values, preserve existing, or set defaults
+				defaultPort:
+					webUIConfig.defaultPort !== undefined
+						? webUIConfig.defaultPort
+						: existingConfig?.defaultPort !== undefined
+							? existingConfig.defaultPort
+							: 6420,
+				autoOpenBrowser:
+					webUIConfig.autoOpenBrowser !== undefined
+						? webUIConfig.autoOpenBrowser
+						: existingConfig?.autoOpenBrowser !== undefined
+							? existingConfig.autoOpenBrowser
+							: true,
+			};
 
-			await core.initializeProject(name);
-			console.log(`Initialized backlog project: ${name}`);
+			// Show configuration summary
+			console.log("\nConfiguration Summary:");
+			console.log(`  Project Name: ${config.projectName}`);
+			console.log(`  Auto Commit: ${config.autoCommit}`);
+			console.log(`  Remote Operations: ${config.remoteOperations}`);
+			if (config.defaultEditor) console.log(`  Default Editor: ${config.defaultEditor}`);
+			if (config.defaultPort) console.log(`  Web UI Port: ${config.defaultPort}`);
+			if (config.autoOpenBrowser !== undefined) console.log(`  Auto Open Browser: ${config.autoOpenBrowser}`);
+			console.log(`  Statuses: [${config.statuses.join(", ")}]`);
+			console.log("");
 
-			if (files.length > 0) {
-				await addAgentInstructions(cwd, core.gitOps, files, false);
+			// Initialize or update project
+			if (isReInitialization) {
+				await core.filesystem.saveConfig(config);
+				console.log(`Updated backlog project configuration: ${name}`);
+			} else {
+				await core.filesystem.ensureBacklogStructure();
+				await core.filesystem.saveConfig(config);
+				await core.ensureConfigLoaded();
+				console.log(`Initialized backlog project: ${name}`);
 			}
 
-			// if (reporter) {
-			// 	if (storeGlobal) {
-			// 		const globalPath = join(homedir(), ".backlog", "user");
-			// 		await mkdir(dirname(globalPath), { recursive: true });
-			// 		await Bun.write(globalPath, `default_reporter: "${reporter}"\n`);
-			// 	} else {
-			// 		const userPath = join(cwd, ".user");
-			// 		await Bun.write(userPath, `default_reporter: "${reporter}"\n`);
-			// 		const gitignorePath = join(cwd, ".gitignore");
-			// 		let gitignore = "";
-			// 		try {
-			// 			gitignore = await Bun.file(gitignorePath).text();
-			// 		} catch {}
-			// 		if (!gitignore.split(/\r?\n/).includes(".user")) {
-			// 			gitignore += `${gitignore.endsWith("\n") ? "" : "\n"}.user\n`;
-			// 			await Bun.write(gitignorePath, gitignore);
-			// 		}
-			// 	}
-			// }
+			// Add agent instruction files if selected
+			if (files.length > 0) {
+				await addAgentInstructions(cwd, core.gitOps, files, config.autoCommit);
+			}
 		} catch (err) {
 			console.error("Failed to initialize project", err);
 			process.exitCode = 1;
