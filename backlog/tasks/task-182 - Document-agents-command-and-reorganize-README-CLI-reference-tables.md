@@ -28,6 +28,4 @@ The README currently has one large CLI reference table with too many rows. Need 
 
 ## Implementation Notes
 
-Successfully reorganized CLI reference into purpose-based tables: Task Management, Draft Workflow, Board Operations, Web Interface, Configuration, Agent Instructions, and Maintenance. Added documentation for the 'backlog agents --update-instructions' command. All existing commands remain documented and the README is now more readable and discoverable.
-
 Successfully reorganized CLI reference into purpose-based tables: Task Management, Draft Workflow, Board Operations, Web Interface, Configuration, Documentation, Decisions, Agent Instructions, and Maintenance. Added documentation for the 'backlog agents --update-instructions' command and all doc/decision management commands. All existing commands remain documented and the README is now more readable and discoverable.
