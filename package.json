@@ -14,24 +14,27 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.1.1",
+		"@tailwindcss/cli": "4.1.11",
 		"@types/bun": "1.2.18",
 		"@types/prompts": "2.4.9",
 		"@types/react": "19.1.8",
 		"@types/react-dom": "19.1.6",
 		"@types/react-router-dom": "5.3.3",
 		"@uiw/react-md-editor": "4.0.7",
+		"blessed": "npm:neo-neo-bblessed@1.0.3",
 		"commander": "14.0.0",
+		"fuse.js": "7.1.0",
 		"gray-matter": "4.0.3",
 		"husky": "9.1.7",
+		"install": "^0.13.0",
 		"lint-staged": "16.1.2",
 		"prompts": "2.4.2",
 		"react": "19.1.0",
 		"react-dom": "19.1.0",
 		"react-router-dom": "7.6.3",
 		"react-tooltip": "5.29.1",
-		"typescript": "5.8.3",
-		"fuse.js": "7.1.0",
-		"blessed": "npm:neo-neo-bblessed@1.0.3"
+		"tailwindcss": "4.1.11",
+		"typescript": "5.8.3"
 	},
 	"scripts": {
 		"test": "bun test",
@@ -40,8 +43,9 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"prepare": "husky",
-		"build": "bun build --compile --minify --outfile=dist/backlog src/cli.ts",
-		"cli": "bun src/cli.ts"
+		"build:css": "tailwindcss -i ./src/web/styles/source.css -o ./src/web/styles/style.css --minify",
+		"build": "bun run build:css && bun build --compile --minify --outfile=dist/backlog src/cli.ts",
+		"cli": "bun run build:css && bun src/cli.ts"
 	},
 	"lint-staged": {
 		"package.json": [

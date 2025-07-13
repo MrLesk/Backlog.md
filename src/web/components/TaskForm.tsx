@@ -3,6 +3,7 @@ import { type Task } from '../../types';
 import ChipInput from './ChipInput';
 import DependencyInput from './DependencyInput';
 import { apiClient } from '../lib/api';
+import { useTheme } from '../contexts/ThemeContext';
 // MDEditor will be passed as prop
 
 interface TaskFormProps {
@@ -22,6 +23,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
   availableStatuses,
   MDEditor
 }) => {
+  const { theme } = useTheme();
   const [formData, setFormData] = useState({
     title: task?.title || '',
     body: task?.body || '',
@@ -122,7 +124,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
           onChange={(value: string | undefined) => handleChange('body', value || '')}
           preview="edit"
           hideToolbar={false}
-          data-color-mode="light"
+          data-color-mode={theme}
           height={200}
         />
       </div>
@@ -213,7 +215,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
           </button>
           <button
             type="submit"
-            className="inline-flex items-center px-4 py-2 bg-stone-500 dark:bg-stone-600 text-white text-sm font-medium rounded-md hover:bg-stone-600 dark:hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-stone-400 dark:focus:ring-stone-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             disabled={!isValid || isSubmitting}
           >
             {isSubmitting ? 'Saving...' : task ? 'Update Task' : 'Create Task'}

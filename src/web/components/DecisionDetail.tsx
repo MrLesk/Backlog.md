@@ -5,6 +5,7 @@ import MDEditor from '@uiw/react-md-editor';
 import { type Decision } from '../../types';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Utility function for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -23,10 +24,11 @@ const MarkdownEditor = memo(function MarkdownEditor({
 	isEditing: boolean;
 	isReadonly?: boolean;
 }) {
+	const { theme } = useTheme();
 	if (!isEditing) {
 		// Preview mode - just show the rendered markdown without editor UI
 		return (
-			<div className="prose prose-sm max-w-none w-full p-6 bg-white rounded-lg border border-gray-200" data-color-mode="light">
+			<div className="prose prose-sm max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700" data-color-mode={theme}>
 				<MDEditor.Markdown source={value} />
 			</div>
 		);
@@ -34,14 +36,14 @@ const MarkdownEditor = memo(function MarkdownEditor({
 
 	// Edit mode - show full editor that fills the available space
 	return (
-		<div className="border border-gray-200 rounded-lg overflow-hidden bg-white w-full h-full flex flex-col">
+		<div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800 w-full flex flex-col" style={{ minHeight: '500px', height: '70vh' }}>
 			<MDEditor
 				value={value}
 				onChange={onChange}
 				preview="edit"
 				height="100%"
 				hideToolbar={false}
-				data-color-mode="light"
+				data-color-mode={theme}
 				textareaProps={{
 					placeholder: 'Write your decision documentation here...',
 					style: { 
@@ -230,9 +232,9 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 
 	return (
 		<ErrorBoundary>
-			<div className="h-full bg-white flex flex-col">
+			<div className="h-full bg-white dark:bg-gray-900 flex flex-col transition-colors duration-200">
 			{/* Header Section - Confluence/Linear Style */}
-			<div className="bg-white border-b border-gray-200">
+			<div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 transition-colors duration-200">
 				<div className="max-w-4xl mx-auto px-8 py-6">
 					<div className="flex items-start justify-between mb-6">
 						<div className="flex-1">
@@ -241,15 +243,15 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 									type="text"
 									value={decisionTitle}
 									onChange={(e) => setDecisionTitle(e.target.value)}
-									className="text-3xl font-bold text-gray-900 mb-2 w-full bg-transparent border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+									className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
 									placeholder="Decision title"
 								/>
 							) : (
-								<h1 className="text-3xl font-bold text-gray-900 mb-2">
+								<h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors duration-200">
 									{decisionTitle || decision?.title || (title ? decodeURIComponent(title) : `Decision ${id}`)}
 								</h1>
 							)}
-							<div className="flex items-center space-x-6 text-sm text-gray-500">
+							<div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-200">
 								<div className="flex items-center space-x-2">
 									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a.997.997 0 01-1.414 0l-7-7A1.997 1.997 0 013 12V7a4 4 0 014-4z" />
@@ -289,7 +291,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 							{false ? (
 								<button
 									onClick={handleEdit}
-									className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+									className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 								>
 									<svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -301,17 +303,17 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 								<div className="flex items-center space-x-2">
 									<button
 										onClick={handleCancelEdit}
-										className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors cursor-pointer"
+										className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 dark:focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
 									>
 										Cancel
 									</button>
 									<button
 										onClick={handleSave}
 										disabled={!hasChanges || isSaving}
-										className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
+										className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 ${
 											hasChanges && !isSaving
-												? 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 cursor-pointer'
-												: 'bg-gray-300 text-gray-500 cursor-not-allowed'
+												? 'bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700 focus:ring-blue-500 dark:focus:ring-blue-400 cursor-pointer'
+												: 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
 										}`}
 									>
 										<svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,7 +329,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 			</div>
 
 			{/* Content Section */}
-			<div className="flex-1 overflow-auto bg-gray-50">
+			<div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-800 transition-colors duration-200">
 				<div className="py-8 px-8">
 					<MarkdownEditor
 						value={content}
