@@ -7,7 +7,7 @@ export {
 	addAgentInstructions,
 } from "./agent-instructions.ts";
 // Kanban board utilities
-export { exportKanbanBoardToFile, generateKanbanBoard } from "./board.ts";
+export { exportKanbanBoardToFile, generateKanbanBoardWithMetadata } from "./board.ts";
 // Constants
 export * from "./constants/index.ts";
 // Core entry point

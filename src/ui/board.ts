@@ -1,5 +1,5 @@
 import blessed from "blessed";
-import { type BoardLayout, generateKanbanBoard } from "../board.ts";
+import { type BoardLayout, generateKanbanBoardWithMetadata } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { openInEditor } from "../utils/editor.ts";
@@ -17,8 +17,8 @@ import { createScreen } from "./tui.ts";
 export async function renderBoardTui(
 	tasks: Task[],
 	statuses: string[],
-	layout: BoardLayout,
-	maxColumnWidth: number,
+	_layout: BoardLayout,
+	_maxColumnWidth: number,
 	options?: {
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskSelect?: (task: Task) => void;
@@ -26,7 +26,7 @@ export async function renderBoardTui(
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
-		console.log(generateKanbanBoard(tasks, statuses, layout, maxColumnWidth));
+		console.log(generateKanbanBoardWithMetadata(tasks, statuses, "Project"));
 		return;
 	}
 

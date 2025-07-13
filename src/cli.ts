@@ -1255,7 +1255,6 @@ addBoardOptions(boardCmd.command("view").description("display tasks in a Kanban 
 boardCmd
 	.command("export [filename]")
 	.description("export kanban board to markdown file")
-	.option("-o, --output <path>", "output file (deprecated, use filename argument instead)")
 	.option("--force", "overwrite existing file without confirmation")
 	.option("--readme", "export to README.md with markers")
 	.action(async (filename, options) => {
@@ -1312,12 +1311,16 @@ boardCmd
 			// Close loading screen before export
 			loadingScreen?.close();
 
+			// Get project name from config or use directory name
+			const { basename } = await import("node:path");
+			const projectName = config?.projectName || basename(cwd);
+
 			if (options.readme) {
 				await updateReadmeWithBoard(finalTasks, statuses, projectName);
 				console.log("Updated README.md with Kanban board.");
 			} else {
-				// Priority: filename argument > --output option > default Backlog.md
-				const outputFile = filename || options.output || "Backlog.md";
+				// Use filename argument or default to Backlog.md
+				const outputFile = filename || "Backlog.md";
 				const outputPath = join(cwd, outputFile as string);
 
 				// Check if file exists and handle overwrite confirmation
@@ -1334,10 +1337,6 @@ boardCmd
 						rl.close();
 					}
 				}
-
-				// Get project name from config or use directory name
-				const { basename } = await import("node:path");
-				const projectName = config?.projectName || basename(cwd);
 
 				await exportKanbanBoardToFile(finalTasks, statuses, outputPath, projectName, options.force || !fileExists);
 				console.log(`Exported board to ${outputPath}`);

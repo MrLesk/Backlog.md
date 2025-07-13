@@ -45,21 +45,21 @@ Create a GitHub Action that automatically updates the main README.md file with t
 
 Implemented the --readme flag for the board export command. This flag updates the README.md file with the current Kanban board status. Also added a new job to the release workflow to automate this process.
 
-IMPLEMENTATION APPROACH:
+### IMPLEMENTATION APPROACH:
 - Extend board export command rather than post-processing in workflow
 - Use HTML comment markers for reliable section detection
 - Position board section above License for better visibility
 - Trigger on release creation instead of every push to reduce noise
 - Use github-actions[bot] for automated commits
 
-TECHNICAL CONSIDERATIONS:
+### TECHNICAL CONSIDERATIONS:
 - Need robust README parsing to avoid corrupting existing content
 - Handle cases where License section doesn't exist
 - Ensure markers are properly formatted and detectable
 - Consider README encoding and line ending compatibility
 - Add safeguards against infinite commit loops
 
-WORKFLOW INTEGRATION:
+### WORKFLOW INTEGRATION:
 - Add new job to existing .github/workflows/release.yml (triggers on tag pushes)  
 - Reuse existing Bun setup and dependencies
 - Run after build job completes (needs: build)
