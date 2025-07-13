@@ -151,7 +151,7 @@ describe("CLI parent task filtering", () => {
 
 		const exitCode = getExitCode(result);
 
-		expect(exitCode).toBe(0); // CLI exits successfully but shows error message
+		expect(exitCode).toBe(1); // CLI exits with error for non-existent parent
 		expect(result.stderr).toContain("Parent task task-999 not found.");
 	});
 

@@ -687,6 +687,7 @@ taskCmd
 			const parentTask = await core.filesystem.loadTask(parentId);
 			if (!parentTask) {
 				console.error(`Parent task ${parentId} not found.`);
+				process.exitCode = 1;
 				return;
 			}
 
@@ -995,16 +996,25 @@ taskCmd
 taskCmd
 	.argument("[taskId]")
 	.option("--plain", "use plain text output")
-	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
+	.action(async (taskId: string | undefined, options: any) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+
+		// Don't handle commands that should be handled by specific command handlers
+		const reservedCommands = ["create", "list", "edit", "view", "archive", "demote"];
+		if (taskId && reservedCommands.includes(taskId)) {
+			console.error(`Unknown command: ${taskId}`);
+			taskCmd.help();
+			return;
+		}
+
+		// Handle single task view only
 		if (!taskId) {
 			taskCmd.help();
 			return;
 		}
 
-		const cwd = process.cwd();
-		const core = new Core(cwd);
 		const filePath = await getTaskPath(taskId, core);
-
 		if (!filePath) {
 			console.error(`Task ${taskId} not found.`);
 			return;
