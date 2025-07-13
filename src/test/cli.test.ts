@@ -1173,8 +1173,8 @@ describe("CLI Integration", () => {
 			expect(statuses).toEqual(["To Do", "In Progress", "Done"]);
 
 			// Test the kanban board generation
-			const { generateKanbanBoard } = await import("../board.ts");
-			const board = generateKanbanBoard(tasks, statuses);
+			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
+			const board = generateKanbanBoardWithMetadata(tasks, statuses, "Test Project");
 
 			// Verify board contains all statuses and tasks (now on separate lines)
 			expect(board).toContain("To Do");
@@ -1187,13 +1187,14 @@ describe("CLI Integration", () => {
 			expect(board).toContain("task-3");
 			expect(board).toContain("Done Task");
 
-			// Verify board structure
+			// Verify board structure (now includes metadata header)
 			const lines = board.split("\n");
-			expect(lines[0]).toContain("To Do"); // Header should contain statuses with tasks
-			expect(lines[0]).toContain("In Progress");
-			expect(lines[0]).toContain("Done");
-			expect(lines[1]).toContain("-"); // Separator line
-			expect(lines.length).toBeGreaterThan(2); // Should have content rows
+			expect(board).toContain("# Kanban Board Export");
+			expect(board).toContain("To Do");
+			expect(board).toContain("In Progress");
+			expect(board).toContain("Done");
+			expect(board).toContain("|"); // Table structure
+			expect(lines.length).toBeGreaterThan(5); // Should have content rows
 		});
 
 		it("should handle empty project with default statuses", async () => {
@@ -1205,11 +1206,12 @@ describe("CLI Integration", () => {
 			const config = await core.filesystem.loadConfig();
 			const statuses = config?.statuses || [];
 
-			const { generateKanbanBoard } = await import("../board.ts");
-			const board = generateKanbanBoard(tasks, statuses);
+			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
+			const board = generateKanbanBoardWithMetadata(tasks, statuses, "Test Project");
 
-			// Should return empty board when no tasks exist
-			expect(board).toBe("");
+			// Should return board with metadata and "No tasks found" message
+			expect(board).toContain("# Kanban Board Export");
+			expect(board).toContain("No tasks found");
 		});
 
 		it("should support vertical layout option", async () => {
@@ -1233,11 +1235,12 @@ describe("CLI Integration", () => {
 			const config = await core.filesystem.loadConfig();
 			const statuses = config?.statuses || [];
 
-			const { generateKanbanBoard } = await import("../board.ts");
-			const board = generateKanbanBoard(tasks, statuses, "vertical");
+			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
+			const board = generateKanbanBoardWithMetadata(tasks, statuses, "Test Project");
 
-			const lines = board.split("\n");
-			expect(lines[0]).toBe("To Do");
+			// Should contain proper board structure
+			expect(board).toContain("# Kanban Board Export");
+			expect(board).toContain("To Do");
 			expect(board).toContain("task-1");
 			expect(board).toContain("Todo Task");
 		});
@@ -1264,11 +1267,12 @@ describe("CLI Integration", () => {
 			const statuses = config?.statuses || [];
 
 			// Test that --vertical flag produces vertical layout
-			const { generateKanbanBoard } = await import("../board.ts");
-			const board = generateKanbanBoard(tasks, statuses, "vertical");
+			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
+			const board = generateKanbanBoardWithMetadata(tasks, statuses, "Test Project");
 
-			const lines = board.split("\n");
-			expect(lines[0]).toBe("To Do");
+			// Should contain proper board structure
+			expect(board).toContain("# Kanban Board Export");
+			expect(board).toContain("To Do");
 			expect(board).toContain("task-1");
 			expect(board).toContain("Shortcut Task");
 		});

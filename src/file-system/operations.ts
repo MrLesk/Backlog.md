@@ -410,7 +410,7 @@ export class FileSystem {
 	async loadDecision(decisionId: string): Promise<Decision | null> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: decisionsDir }));
+			const files = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir }));
 
 			// Normalize ID - remove "decision-" prefix if present
 			const normalizedId = decisionId.replace(/^decision-/, "");

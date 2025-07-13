@@ -14,6 +14,7 @@ import {
 	exportKanbanBoardToFile,
 	initializeGitRepository,
 	isGitRepository,
+	updateReadmeWithBoard,
 } from "./index.ts";
 import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
@@ -94,22 +95,117 @@ program
 				}
 			}
 
+			const core = new Core(cwd);
+
+			// Check if project is already initialized and load existing config
+			const existingConfig = await core.filesystem.loadConfig();
+			const isReInitialization = !!existingConfig;
+
+			if (isReInitialization) {
+				console.log("Existing backlog project detected. Current configuration will be preserved where not specified.");
+			}
+
+			// Get project name
 			let name = projectName;
 			if (!name) {
-				name = await promptText("Project name:");
+				const defaultName = existingConfig?.projectName || "";
+				const promptMessage = isReInitialization && defaultName ? `Project name (${defaultName}):` : "Project name:";
+				name = await promptText(promptMessage);
+				// Use existing name if nothing entered during re-init
+				if (!name && isReInitialization && defaultName) {
+					name = defaultName;
+				}
 				if (!name) {
 					console.log("Aborting initialization.");
 					process.exit(1);
 				}
 			}
 
-			// const reporter = (await promptText("Default reporter name (leave blank to skip):")) || "";
-			// let storeGlobal = false;
-			// if (reporter) {
-			// 	const store = (await promptText("Store reporter name globally? [y/N]", "N")).toLowerCase();
-			// 	storeGlobal = store.startsWith("y");
-			// }
+			// Configuration prompts with intelligent defaults
+			const configPrompts = await prompts([
+				{
+					type: "confirm",
+					name: "autoCommit",
+					message: "Enable automatic git commits for task operations?",
+					hint: "When enabled, task changes are automatically committed to git",
+					initial: existingConfig?.autoCommit ?? false,
+				},
+				{
+					type: "confirm",
+					name: "remoteOperations",
+					message: "Enable remote git operations? (needed to fetch tasks from remote branches)",
+					initial: existingConfig?.remoteOperations ?? true,
+				},
+				{
+					type: "confirm",
+					name: "configureWebUI",
+					message: "Configure web UI settings?",
+					hint: "Optional: Set custom port and browser behavior",
+					initial: false,
+				},
+			]);
 
+			if (configPrompts === undefined) {
+				console.log("Aborting initialization.");
+				process.exit(1);
+			}
+
+			// Default editor configuration - always prompt during init
+			const editorPrompt = await prompts({
+				type: "text",
+				name: "editor",
+				message: "Default editor command (optional):",
+				hint: "e.g., 'code --wait', 'vim', 'nano'",
+				initial: existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || "",
+			});
+
+			let defaultEditor: string | undefined;
+			if (editorPrompt?.editor) {
+				const { isEditorAvailable } = await import("./utils/editor.ts");
+				const isAvailable = await isEditorAvailable(editorPrompt.editor);
+				if (isAvailable) {
+					defaultEditor = editorPrompt.editor;
+				} else {
+					console.warn(`Warning: Editor command '${editorPrompt.editor}' not found in PATH`);
+					// Still allow them to set it even if not found
+					const confirmAnyway = await prompts({
+						type: "confirm",
+						name: "confirm",
+						message: "Editor not found in PATH. Set it anyway?",
+						initial: false,
+					});
+					if (confirmAnyway?.confirm) {
+						defaultEditor = editorPrompt.editor;
+					}
+				}
+			}
+
+			// Web UI configuration (optional)
+			let webUIConfig: { defaultPort?: number; autoOpenBrowser?: boolean } = {};
+			if (configPrompts.configureWebUI) {
+				const webUIPrompts = await prompts([
+					{
+						type: "number",
+						name: "defaultPort",
+						message: "Default web UI port:",
+						initial: existingConfig?.defaultPort ?? 6420,
+						min: 1,
+						max: 65535,
+					},
+					{
+						type: "confirm",
+						name: "autoOpenBrowser",
+						message: "Automatically open browser when starting web UI?",
+						initial: existingConfig?.autoOpenBrowser ?? true,
+					},
+				]);
+
+				if (webUIPrompts !== undefined) {
+					webUIConfig = webUIPrompts;
+				}
+			}
+
+			// Agent instruction files selection
 			const agentOptions = [
 				".cursorrules",
 				"CLAUDE.md",
@@ -117,6 +213,7 @@ program
 				"GEMINI.md",
 				".github/copilot-instructions.md",
 			] as const;
+
 			const { files: selected } = await prompts({
 				type: "multiselect",
 				name: "files",
@@ -130,34 +227,60 @@ program
 			});
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
-			const core = new Core(cwd);
+			// Prepare configuration object preserving existing values
+			const config = {
+				projectName: name,
+				statuses: existingConfig?.statuses || ["To Do", "In Progress", "Done"],
+				labels: existingConfig?.labels || [],
+				milestones: existingConfig?.milestones || [],
+				defaultStatus: existingConfig?.defaultStatus || "To Do",
+				dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
+				maxColumnWidth: existingConfig?.maxColumnWidth || 20,
+				backlogDirectory: existingConfig?.backlogDirectory || "backlog",
+				autoCommit: configPrompts.autoCommit,
+				remoteOperations: configPrompts.remoteOperations,
+				...(defaultEditor && { defaultEditor }),
+				// Web UI config: use new values, preserve existing, or set defaults
+				defaultPort:
+					webUIConfig.defaultPort !== undefined
+						? webUIConfig.defaultPort
+						: existingConfig?.defaultPort !== undefined
+							? existingConfig.defaultPort
+							: 6420,
+				autoOpenBrowser:
+					webUIConfig.autoOpenBrowser !== undefined
+						? webUIConfig.autoOpenBrowser
+						: existingConfig?.autoOpenBrowser !== undefined
+							? existingConfig.autoOpenBrowser
+							: true,
+			};
 
-			await core.initializeProject(name);
-			console.log(`Initialized backlog project: ${name}`);
+			// Show configuration summary
+			console.log("\nConfiguration Summary:");
+			console.log(`  Project Name: ${config.projectName}`);
+			console.log(`  Auto Commit: ${config.autoCommit}`);
+			console.log(`  Remote Operations: ${config.remoteOperations}`);
+			if (config.defaultEditor) console.log(`  Default Editor: ${config.defaultEditor}`);
+			if (config.defaultPort) console.log(`  Web UI Port: ${config.defaultPort}`);
+			if (config.autoOpenBrowser !== undefined) console.log(`  Auto Open Browser: ${config.autoOpenBrowser}`);
+			console.log(`  Statuses: [${config.statuses.join(", ")}]`);
+			console.log("");
 
-			if (files.length > 0) {
-				await addAgentInstructions(cwd, core.gitOps, files, false);
+			// Initialize or update project
+			if (isReInitialization) {
+				await core.filesystem.saveConfig(config);
+				console.log(`Updated backlog project configuration: ${name}`);
+			} else {
+				await core.filesystem.ensureBacklogStructure();
+				await core.filesystem.saveConfig(config);
+				await core.ensureConfigLoaded();
+				console.log(`Initialized backlog project: ${name}`);
 			}
 
-			// if (reporter) {
-			// 	if (storeGlobal) {
-			// 		const globalPath = join(homedir(), ".backlog", "user");
-			// 		await mkdir(dirname(globalPath), { recursive: true });
-			// 		await Bun.write(globalPath, `default_reporter: "${reporter}"\n`);
-			// 	} else {
-			// 		const userPath = join(cwd, ".user");
-			// 		await Bun.write(userPath, `default_reporter: "${reporter}"\n`);
-			// 		const gitignorePath = join(cwd, ".gitignore");
-			// 		let gitignore = "";
-			// 		try {
-			// 			gitignore = await Bun.file(gitignorePath).text();
-			// 		} catch {}
-			// 		if (!gitignore.split(/\r?\n/).includes(".user")) {
-			// 			gitignore += `${gitignore.endsWith("\n") ? "" : "\n"}.user\n`;
-			// 			await Bun.write(gitignorePath, gitignore);
-			// 		}
-			// 	}
-			// }
+			// Add agent instruction files if selected
+			if (files.length > 0) {
+				await addAgentInstructions(cwd, core.gitOps, files, config.autoCommit);
+			}
 		} catch (err) {
 			console.error("Failed to initialize project", err);
 			process.exitCode = 1;
@@ -599,6 +722,7 @@ taskCmd
 			const parentTask = await core.filesystem.loadTask(parentId);
 			if (!parentTask) {
 				console.error(`Parent task ${parentId} not found.`);
+				process.exitCode = 1;
 				return;
 			}
 
@@ -907,16 +1031,25 @@ taskCmd
 taskCmd
 	.argument("[taskId]")
 	.option("--plain", "use plain text output")
-	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
+	.action(async (taskId: string | undefined, options: any) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+
+		// Don't handle commands that should be handled by specific command handlers
+		const reservedCommands = ["create", "list", "edit", "view", "archive", "demote"];
+		if (taskId && reservedCommands.includes(taskId)) {
+			console.error(`Unknown command: ${taskId}`);
+			taskCmd.help();
+			return;
+		}
+
+		// Handle single task view only
 		if (!taskId) {
 			taskCmd.help();
 			return;
 		}
 
-		const cwd = process.cwd();
-		const core = new Core(cwd);
 		const filePath = await getTaskPath(taskId, core);
-
 		if (!filePath) {
 			console.error(`Task ${taskId} not found.`);
 			return;
@@ -971,7 +1104,7 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const success = await core.archiveDraft(taskId, true);
+		const success = await core.archiveDraft(taskId);
 		if (success) {
 			console.log(`Archived draft ${taskId}`);
 		} else {
@@ -1156,8 +1289,8 @@ addBoardOptions(boardCmd.command("view").description("display tasks in a Kanban 
 boardCmd
 	.command("export [filename]")
 	.description("export kanban board to markdown file")
-	.option("-o, --output <path>", "output file (deprecated, use filename argument instead)")
 	.option("--force", "overwrite existing file without confirmation")
+	.option("--readme", "export to README.md with markers")
 	.action(async (filename, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -1212,31 +1345,36 @@ boardCmd
 			// Close loading screen before export
 			loadingScreen?.close();
 
-			// Priority: filename argument > --output option > default Backlog.md
-			const outputFile = filename || options.output || "Backlog.md";
-			const outputPath = join(cwd, outputFile as string);
-
-			// Check if file exists and handle overwrite confirmation
-			const fileExists = await Bun.file(outputPath).exists();
-			if (fileExists && !options.force) {
-				const rl = createInterface({ input });
-				try {
-					const answer = await rl.question(`File "${outputPath}" already exists. Overwrite? (y/N): `);
-					if (!answer.toLowerCase().startsWith("y")) {
-						console.log("Export cancelled.");
-						return;
-					}
-				} finally {
-					rl.close();
-				}
-			}
-
 			// Get project name from config or use directory name
 			const { basename } = await import("node:path");
 			const projectName = config?.projectName || basename(cwd);
 
-			await exportKanbanBoardToFile(finalTasks, statuses, outputPath, projectName, options.force || !fileExists);
-			console.log(`Exported board to ${outputPath}`);
+			if (options.readme) {
+				await updateReadmeWithBoard(finalTasks, statuses, projectName);
+				console.log("Updated README.md with Kanban board.");
+			} else {
+				// Use filename argument or default to Backlog.md
+				const outputFile = filename || "Backlog.md";
+				const outputPath = join(cwd, outputFile as string);
+
+				// Check if file exists and handle overwrite confirmation
+				const fileExists = await Bun.file(outputPath).exists();
+				if (fileExists && !options.force) {
+					const rl = createInterface({ input });
+					try {
+						const answer = await rl.question(`File "${outputPath}" already exists. Overwrite? (y/N): `);
+						if (!answer.toLowerCase().startsWith("y")) {
+							console.log("Export cancelled.");
+							return;
+						}
+					} finally {
+						rl.close();
+					}
+				}
+
+				await exportKanbanBoardToFile(finalTasks, statuses, outputPath, projectName, options.force || !fileExists);
+				console.log(`Exported board to ${outputPath}`);
+			}
 		} catch (error) {
 			loadingScreen?.close();
 			throw error;
@@ -1260,7 +1398,7 @@ docCmd
 			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
 			body: "",
 		};
-		await core.createDocument(document, true, options.path || "");
+		await core.createDocument(document, undefined, options.path || "");
 		console.log(`Created document ${id}`);
 	});
 
@@ -1341,7 +1479,7 @@ decisionCmd
 			decision: "",
 			consequences: "",
 		};
-		await core.createDecision(decision, true);
+		await core.createDecision(decision);
 		console.log(`Created decision ${id}`);
 	});
 

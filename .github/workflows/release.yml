@@ -213,3 +213,18 @@ jobs:
       - uses: softprops/action-gh-release@v1
         with:
           files: binaries/*
+
+  update-readme:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+      - run: bun install --frozen-lockfile
+      - run: bun run cli board export --readme
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "docs: update README with latest board status [skip ci]"
+          branch: main
+          file_pattern: README.md
