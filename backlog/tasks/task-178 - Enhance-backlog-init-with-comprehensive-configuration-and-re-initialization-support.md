@@ -27,7 +27,7 @@ Improve the backlog init command to prompt for key configuration options and sup
 - [x] Preserve all non-prompted config values during re-init
 - [x] Show summary of configuration before saving
 - [x] Update tests to cover all new prompts and re-init scenarios
-- [ ] Document the enhanced init process in README
+- [x] Document the enhanced init process in README
 
 ## Implementation Plan
 
