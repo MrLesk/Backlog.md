@@ -14,6 +14,7 @@ import {
 	exportKanbanBoardToFile,
 	initializeGitRepository,
 	isGitRepository,
+	updateReadmeWithBoard,
 } from "./index.ts";
 import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
@@ -1254,8 +1255,8 @@ addBoardOptions(boardCmd.command("view").description("display tasks in a Kanban 
 boardCmd
 	.command("export [filename]")
 	.description("export kanban board to markdown file")
-	.option("-o, --output <path>", "output file (deprecated, use filename argument instead)")
 	.option("--force", "overwrite existing file without confirmation")
+	.option("--readme", "export to README.md with markers")
 	.action(async (filename, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -1310,31 +1311,36 @@ boardCmd
 			// Close loading screen before export
 			loadingScreen?.close();
 
-			// Priority: filename argument > --output option > default Backlog.md
-			const outputFile = filename || options.output || "Backlog.md";
-			const outputPath = join(cwd, outputFile as string);
-
-			// Check if file exists and handle overwrite confirmation
-			const fileExists = await Bun.file(outputPath).exists();
-			if (fileExists && !options.force) {
-				const rl = createInterface({ input });
-				try {
-					const answer = await rl.question(`File "${outputPath}" already exists. Overwrite? (y/N): `);
-					if (!answer.toLowerCase().startsWith("y")) {
-						console.log("Export cancelled.");
-						return;
-					}
-				} finally {
-					rl.close();
-				}
-			}
-
 			// Get project name from config or use directory name
 			const { basename } = await import("node:path");
 			const projectName = config?.projectName || basename(cwd);
 
-			await exportKanbanBoardToFile(finalTasks, statuses, outputPath, projectName, options.force || !fileExists);
-			console.log(`Exported board to ${outputPath}`);
+			if (options.readme) {
+				await updateReadmeWithBoard(finalTasks, statuses, projectName);
+				console.log("Updated README.md with Kanban board.");
+			} else {
+				// Use filename argument or default to Backlog.md
+				const outputFile = filename || "Backlog.md";
+				const outputPath = join(cwd, outputFile as string);
+
+				// Check if file exists and handle overwrite confirmation
+				const fileExists = await Bun.file(outputPath).exists();
+				if (fileExists && !options.force) {
+					const rl = createInterface({ input });
+					try {
+						const answer = await rl.question(`File "${outputPath}" already exists. Overwrite? (y/N): `);
+						if (!answer.toLowerCase().startsWith("y")) {
+							console.log("Export cancelled.");
+							return;
+						}
+					} finally {
+						rl.close();
+					}
+				}
+
+				await exportKanbanBoardToFile(finalTasks, statuses, outputPath, projectName, options.force || !fileExists);
+				console.log(`Exported board to ${outputPath}`);
+			}
 		} catch (error) {
 			loadingScreen?.close();
 			throw error;

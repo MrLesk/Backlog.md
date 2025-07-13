@@ -1,11 +1,14 @@
 ---
 id: task-177
 title: Automate Kanban board updates in README.md on release
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@gemini'
 created_date: '2025-07-12'
+updated_date: '2025-07-13'
 labels: []
-dependencies: [task-173]
+dependencies:
+  - task-173
 priority: medium
 ---
 
@@ -15,15 +18,15 @@ Create a GitHub Action that automatically updates the main README.md file with t
 
 ## Acceptance Criteria
 
-- [ ] Workflow triggers on release created events
-- [ ] Workflow runs backlog board export to generate board content
-- [ ] Add --readme flag to board export command for README integration
-- [ ] Find and replace content between <\!-- BOARD_START --> and <\!-- BOARD_END --> markers in README.md
-- [ ] Create section above License if markers don't exist
-- [ ] Commit updated README.md back to repository using github-actions bot
-- [ ] Handle edge cases like missing markers or malformed README
-- [ ] Add documentation explaining automated README updates
-- [ ] Ensure no conflicts with existing README content
+- [x] Workflow triggers on release created events
+- [x] Workflow runs backlog board export to generate board content
+- [x] Add --readme flag to board export command for README integration
+- [x] Find and replace content between <\!-- BOARD_START --> and <\!-- BOARD_END --> markers in README.md
+- [x] Create section above License if markers don't exist
+- [x] Commit updated README.md back to repository using github-actions bot
+- [x] Handle edge cases like missing markers or malformed README
+- [x] Add documentation explaining automated README updates
+- [x] Ensure no conflicts with existing README content
 
 ## Implementation Plan
 
@@ -40,21 +43,23 @@ Create a GitHub Action that automatically updates the main README.md file with t
 
 ## Implementation Notes
 
-IMPLEMENTATION APPROACH:
+Implemented the --readme flag for the board export command. This flag updates the README.md file with the current Kanban board status. Also added a new job to the release workflow to automate this process.
+
+### IMPLEMENTATION APPROACH:
 - Extend board export command rather than post-processing in workflow
 - Use HTML comment markers for reliable section detection
 - Position board section above License for better visibility
 - Trigger on release creation instead of every push to reduce noise
 - Use github-actions[bot] for automated commits
 
-TECHNICAL CONSIDERATIONS:
+### TECHNICAL CONSIDERATIONS:
 - Need robust README parsing to avoid corrupting existing content
 - Handle cases where License section doesn't exist
 - Ensure markers are properly formatted and detectable
 - Consider README encoding and line ending compatibility
 - Add safeguards against infinite commit loops
 
-WORKFLOW INTEGRATION:
+### WORKFLOW INTEGRATION:
 - Add new job to existing .github/workflows/release.yml (triggers on tag pushes)  
 - Reuse existing Bun setup and dependencies
 - Run after build job completes (needs: build)
