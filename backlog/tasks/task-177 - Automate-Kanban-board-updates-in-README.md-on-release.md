@@ -1,11 +1,14 @@
 ---
 id: task-177
 title: Automate Kanban board updates in README.md on release
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@gemini'
 created_date: '2025-07-12'
+updated_date: '2025-07-13'
 labels: []
-dependencies: [task-173]
+dependencies:
+  - task-173
 priority: medium
 ---
 
@@ -15,15 +18,15 @@ Create a GitHub Action that automatically updates the main README.md file with t
 
 ## Acceptance Criteria
 
-- [ ] Workflow triggers on release created events
-- [ ] Workflow runs backlog board export to generate board content
-- [ ] Add --readme flag to board export command for README integration
-- [ ] Find and replace content between <\!-- BOARD_START --> and <\!-- BOARD_END --> markers in README.md
-- [ ] Create section above License if markers don't exist
-- [ ] Commit updated README.md back to repository using github-actions bot
-- [ ] Handle edge cases like missing markers or malformed README
-- [ ] Add documentation explaining automated README updates
-- [ ] Ensure no conflicts with existing README content
+- [x] Workflow triggers on release created events
+- [x] Workflow runs backlog board export to generate board content
+- [x] Add --readme flag to board export command for README integration
+- [x] Find and replace content between <\!-- BOARD_START --> and <\!-- BOARD_END --> markers in README.md
+- [x] Create section above License if markers don't exist
+- [x] Commit updated README.md back to repository using github-actions bot
+- [x] Handle edge cases like missing markers or malformed README
+- [x] Add documentation explaining automated README updates
+- [x] Ensure no conflicts with existing README content
 
 ## Implementation Plan
 
@@ -39,6 +42,8 @@ Create a GitHub Action that automatically updates the main README.md file with t
 10. Update project documentation
 
 ## Implementation Notes
+
+Implemented the --readme flag for the board export command. This flag updates the README.md file with the current Kanban board status. Also added a new job to the release workflow to automate this process.
 
 IMPLEMENTATION APPROACH:
 - Extend board export command rather than post-processing in workflow

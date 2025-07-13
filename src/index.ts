@@ -1,3 +1,4 @@
+export * from "./readme.ts";
 // Types
 
 export {
