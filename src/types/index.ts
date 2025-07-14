@@ -59,7 +59,6 @@ export interface BacklogConfig {
 	dateFormat: string;
 	maxColumnWidth?: number;
 	taskResolutionStrategy?: "most_recent" | "most_progressed";
-	backlogDirectory?: string;
 	defaultEditor?: string;
 	autoOpenBrowser?: boolean;
 	defaultPort?: number;

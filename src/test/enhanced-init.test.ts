@@ -69,7 +69,6 @@ describe("Enhanced init command", () => {
 		expect(config?.autoCommit).toBe(false); // Default value
 		expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
 		expect(config?.dateFormat).toBe("yyyy-mm-dd");
-		expect(config?.backlogDirectory).toBe("backlog");
 	});
 
 	test("should handle editor configuration in init flow", async () => {

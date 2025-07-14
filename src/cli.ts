@@ -326,7 +326,6 @@ program
 				defaultStatus: existingConfig?.defaultStatus || "To Do",
 				dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
 				maxColumnWidth: existingConfig?.maxColumnWidth || 20,
-				backlogDirectory: existingConfig?.backlogDirectory || "backlog",
 				autoCommit: configPrompts.autoCommit,
 				remoteOperations: configPrompts.remoteOperations,
 				...(defaultEditor && { defaultEditor }),
@@ -391,7 +390,7 @@ export async function generateNextDocId(core: Core): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		const backlogDir = config?.backlogDirectory || "backlog";
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 
 		// Skip remote operations if disabled
 		if (config?.remoteOperations === false) {
@@ -459,7 +458,7 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		const backlogDir = config?.backlogDirectory || "backlog";
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 
 		// Skip remote operations if disabled
 		if (config?.remoteOperations === false) {
@@ -528,7 +527,7 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		const backlogDir = config?.backlogDirectory || "backlog";
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 
 		// Skip remote operations if disabled
 		if (config?.remoteOperations === false) {
@@ -1128,7 +1127,7 @@ taskCmd
 taskCmd
 	.argument("[taskId]")
 	.option("--plain", "use plain text output")
-	.action(async (taskId: string | undefined, options: any) => {
+	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 
@@ -1690,9 +1689,6 @@ configCmd
 				case "maxColumnWidth":
 					console.log(config.maxColumnWidth?.toString() || "");
 					break;
-				case "backlogDirectory":
-					console.log(config.backlogDirectory || "");
-					break;
 				case "defaultPort":
 					console.log(config.defaultPort?.toString() || "");
 					break;
@@ -1711,7 +1707,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, backlogDirectory, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, zeroPaddedIds",
 					);
 					process.exit(1);
 			}
@@ -1767,9 +1763,6 @@ configCmd
 					config.maxColumnWidth = width;
 					break;
 				}
-				case "backlogDirectory":
-					config.backlogDirectory = value;
-					break;
 				case "autoOpenBrowser": {
 					const boolValue = value.toLowerCase();
 					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
@@ -1835,7 +1828,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, backlogDirectory, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, zeroPaddedIds",
 					);
 					process.exit(1);
 			}
@@ -1871,7 +1864,6 @@ configCmd
 			console.log(`  milestones: [${config.milestones.join(", ")}]`);
 			console.log(`  dateFormat: ${config.dateFormat}`);
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
-			console.log(`  backlogDirectory: ${config.backlogDirectory || "(not set)"}`);
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);

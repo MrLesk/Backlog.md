@@ -37,8 +37,8 @@ export class Core {
 	}
 
 	private async getBacklogDirectoryName(): Promise<string> {
-		const config = await this.fs.loadConfig();
-		return config?.backlogDirectory || "backlog";
+		// Always use "backlog" as the directory name
+		return DEFAULT_DIRECTORIES.BACKLOG;
 	}
 
 	private async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
@@ -309,7 +309,6 @@ export class Core {
 			defaultStatus: DEFAULT_STATUSES[0], // Use first status as default
 			dateFormat: "yyyy-mm-dd",
 			maxColumnWidth: 20, // Default for terminal display
-			backlogDirectory: DEFAULT_DIRECTORIES.BACKLOG, // Use new default
 			autoCommit: false, // Default to false for user control
 		};
 

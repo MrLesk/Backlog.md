@@ -2,6 +2,7 @@
  * Helper functions for loading remote tasks in parallel
  */
 
+import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
@@ -38,7 +39,7 @@ type RemoteTaskResult = RemoteTaskLoadResult | RemoteTaskLoadError;
  */
 export async function loadRemoteTasks(
 	gitOps: GitOps,
-	fs: FileSystem,
+	_fs: FileSystem,
 	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
 ): Promise<TaskWithMetadata[]> {
@@ -62,9 +63,8 @@ export async function loadRemoteTasks(
 
 		onProgress?.(`Found ${branches.length} remote branches`);
 
-		// Get configurable backlog directory
-		const config = await fs.loadConfig();
-		const backlogDir = config?.backlogDirectory || "backlog";
+		// Use standard backlog directory
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 
 		// Process all branches in parallel
 		const branchPromises = branches.map(async (branch) => {

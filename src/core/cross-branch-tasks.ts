@@ -3,6 +3,7 @@
  * Determines the latest state of tasks across all git branches
  */
 
+import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import type { Task } from "../types/index.ts";
 import type { GitOps } from "./git-ops.ts";
@@ -23,7 +24,7 @@ export interface TaskDirectoryInfo {
  */
 export async function getLatestTaskStatesForIds(
 	gitOps: GitOps,
-	filesystem: FileSystem,
+	_filesystem: FileSystem,
 	taskIds: string[],
 	onProgress?: (message: string) => void,
 ): Promise<Map<string, TaskDirectoryInfo>> {
@@ -42,9 +43,8 @@ export async function getLatestTaskStatesForIds(
 
 		onProgress?.(`Checking ${taskIds.length} tasks across ${branches.length} branches...`);
 
-		// Get configurable backlog directory
-		const config = await filesystem.loadConfig();
-		const backlogDir = config?.backlogDirectory || "backlog";
+		// Use standard backlog directory
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 
 		// Create all file path combinations we need to check
 		const directoryChecks: Array<{ path: string; type: TaskDirectoryType }> = [
