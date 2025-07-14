@@ -25,6 +25,7 @@ describe("next id across remote branches", () => {
 
 		const core = new Core(LOCAL_DIR);
 		await core.initializeProject("Remote Test", true);
+		await core.ensureConfigMigrated();
 		await Bun.spawn(["git", "branch", "-M", "main"], { cwd: LOCAL_DIR }).exited;
 		await Bun.spawn(["git", "push", "-u", "origin", "main"], { cwd: LOCAL_DIR }).exited;
 

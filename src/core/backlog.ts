@@ -24,7 +24,7 @@ export class Core {
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
-	private async ensureConfigLoaded(): Promise<void> {
+	async ensureConfigLoaded(): Promise<void> {
 		try {
 			const config = await this.fs.loadConfig();
 			this.git.setConfig(config);

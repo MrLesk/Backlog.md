@@ -520,6 +520,9 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 }
 
 async function generateNextId(core: Core, parent?: string): Promise<string> {
+	// Ensure git operations have access to the config
+	await core.ensureConfigLoaded();
+
 	const config = await core.filesystem.loadConfig();
 	// Load local tasks and drafts in parallel
 	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
@@ -737,6 +740,7 @@ taskCmd
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
+		await core.ensureConfigLoaded();
 		const id = await generateNextId(core, options.parent);
 		const task = buildTaskFromOptions(id, title, options);
 
@@ -1187,6 +1191,7 @@ draftCmd
 	.action(async (title: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
+		await core.ensureConfigLoaded();
 		const id = await generateNextId(core);
 		const task = buildTaskFromOptions(id, title, options);
 		const filepath = await core.createDraft(task);

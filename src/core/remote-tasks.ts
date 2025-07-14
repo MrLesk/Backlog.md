@@ -4,9 +4,9 @@
 
 import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
+import type { GitOperations as GitOps } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import type { GitOps } from "./git-ops.ts";
 
 /**
  * Get the appropriate loading message based on remote operations configuration

@@ -5,8 +5,8 @@
 
 import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
+import type { GitOperations as GitOps } from "../git/operations.ts";
 import type { Task } from "../types/index.ts";
-import type { GitOps } from "./git-ops.ts";
 
 export type TaskDirectoryType = "task" | "draft" | "archived" | "completed";
 
