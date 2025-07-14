@@ -5,6 +5,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
+import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./core/cross-branch-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict, type TaskWithMetadata } from "./core/remote-tasks.ts";
 import {
@@ -526,8 +527,16 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	const config = await core.filesystem.loadConfig();
 	// Load local tasks and drafts in parallel
 	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
-	const all = [...tasks, ...drafts];
+
 	const allIds: string[] = [];
+
+	// Add local task and draft IDs first
+	for (const t of tasks) {
+		allIds.push(t.id);
+	}
+	for (const d of drafts) {
+		allIds.push(d.id);
+	}
 
 	try {
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
@@ -543,15 +552,36 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 
 		const branches = await core.gitOps.listAllBranches();
 
-		// Load files from all branches in parallel
-		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/tasks`);
-			return files
-				.map((file) => {
-					const match = file.match(/task-([\d.]+)/);
-					return match ? `task-${match[1]}` : null;
-				})
-				.filter((id): id is string => id !== null);
+		// Filter and normalize branch names - handle both local and remote branches
+		const normalizedBranches = branches
+			.flatMap((branch) => {
+				// For remote branches like "origin/feature", extract just "feature"
+				// But also try the full remote ref in case it's needed
+				if (branch.startsWith("origin/")) {
+					return [branch, branch.replace("origin/", "")];
+				}
+				return [branch];
+			})
+			// Remove duplicates and filter out HEAD
+			.filter((branch, index, arr) => arr.indexOf(branch) === index && branch !== "HEAD" && !branch.includes("HEAD"));
+
+		// Load files from all branches in parallel with better error handling
+		const branchFilePromises = normalizedBranches.map(async (branch) => {
+			try {
+				const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/tasks`);
+				return files
+					.map((file) => {
+						const match = file.match(/task-(\d+)/);
+						return match ? `task-${match[1]}` : null;
+					})
+					.filter((id): id is string => id !== null);
+			} catch (error) {
+				// Silently ignore errors for individual branches (they might not exist or be accessible)
+				if (process.env.DEBUG) {
+					console.log(`Could not access branch ${branch}:`, error);
+				}
+				return [];
+			}
 		});
 
 		const branchResults = await Promise.all(branchFilePromises);
@@ -568,13 +598,7 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	if (parent) {
 		const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
 		let max = 0;
-		for (const t of tasks) {
-			if (t.id.startsWith(`${prefix}.`)) {
-				const rest = t.id.slice(prefix.length + 1);
-				const num = Number.parseInt(rest.split(".")[0] || "0", 10);
-				if (num > max) max = num;
-			}
-		}
+		// Iterate over allIds (which now includes both local and remote)
 		for (const id of allIds) {
 			if (id.startsWith(`${prefix}.`)) {
 				const rest = id.slice(prefix.length + 1);
@@ -596,13 +620,7 @@ async function generateNextId(core: Core, parent?: string): Promise<string> {
 	}
 
 	let max = 0;
-	for (const t of all) {
-		const match = t.id.match(/^task-(\d+)/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
+	// Iterate over allIds (which now includes both local and remote)
 	for (const id of allIds) {
 		const match = id.match(/^task-(\d+)/);
 		if (match) {
