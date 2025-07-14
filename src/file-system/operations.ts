@@ -52,7 +52,10 @@ export class FileSystem {
 			// Set it to .backlog for backward compatibility and save it
 			if (config && config.backlogDirectory === undefined) {
 				config.backlogDirectory = ".backlog";
-				await this.saveConfig(config);
+				// Direct write instead of saveConfig() to avoid circular dependency
+				const content = this.serializeConfig(config);
+				await Bun.write(configPath, content);
+				this.cachedConfig = config;
 			}
 
 			return config;
