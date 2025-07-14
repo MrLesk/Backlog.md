@@ -18,6 +18,8 @@ export interface SimpleUnifiedViewOptions {
 	filter?: {
 		status?: string;
 		assignee?: string;
+		priority?: string;
+		sort?: string;
 		title?: string;
 		filterDescription?: string;
 	};

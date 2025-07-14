@@ -219,7 +219,7 @@ export class BacklogServer {
 				});
 
 				if (build.success && build.outputs.length > 0) {
-					return new Response(await build.outputs[0].text(), {
+					return new Response(await build.outputs[0]!.text(), {
 						headers: { "Content-Type": "application/javascript" },
 					});
 				}
@@ -515,7 +515,7 @@ export class BacklogServer {
 	private extractSection(content: string, sectionName: string): string | undefined {
 		const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
 		const match = content.match(regex);
-		return match ? match[1].trim() : undefined;
+		return match ? match[1]!.trim() : undefined;
 	}
 
 	private async handleHealthCheck(): Promise<Response> {

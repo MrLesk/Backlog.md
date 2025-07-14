@@ -13,7 +13,6 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		milestones: [],
 		dateFormat: "YYYY-MM-DD",
 		maxColumnWidth: 80,
-		backlogDirectory: "backlog",
 		autoOpenBrowser: true,
 		defaultPort: 6420,
 		remoteOperations: true,
@@ -46,7 +45,6 @@ export function needsMigration(config: Partial<BacklogConfig>): boolean {
 	const expectedFieldsWithDefaults = [
 		{ field: "projectName", hasDefault: true },
 		{ field: "statuses", hasDefault: true },
-		{ field: "backlogDirectory", hasDefault: true },
 		{ field: "defaultPort", hasDefault: true },
 		{ field: "autoOpenBrowser", hasDefault: true },
 		{ field: "remoteOperations", hasDefault: true },

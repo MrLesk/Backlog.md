@@ -49,7 +49,7 @@ export function isEditorAvailable(editor: string): boolean {
 		// Try to run the editor with --version or --help to check if it exists
 		// Split the editor command in case it has arguments
 		const parts = editor.split(" ");
-		const command = parts[0];
+		const command = parts[0]!;
 
 		// For Windows, just check if the command exists
 		if (platform() === "win32") {
@@ -81,7 +81,7 @@ export async function openInEditor(filePath: string, config?: BacklogConfig | nu
 	try {
 		// Split the editor command in case it has arguments
 		const parts = editor.split(" ");
-		const command = parts[0];
+		const command = parts[0]!;
 		const args = [...parts.slice(1), filePath];
 
 		// Use async spawn with proper TTY handling for terminal editors
@@ -93,11 +93,11 @@ export async function openInEditor(filePath: string, config?: BacklogConfig | nu
 
 		// Wait for the editor to close
 		return new Promise((resolve) => {
-			child.on("close", (code) => {
+			child.on("close", (code: number | null) => {
 				resolve(code === 0);
 			});
 
-			child.on("error", (error) => {
+			child.on("error", (error: Error) => {
 				console.error(`Failed to open editor: ${error}`);
 				resolve(false);
 			});

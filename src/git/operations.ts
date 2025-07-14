@@ -237,13 +237,15 @@ export class GitOperations {
 		await this.execGit(["add", toPath]);
 	}
 
-	async listRemoteBranches(_remote = "origin"): Promise<string[]> {
+	async listRemoteBranches(remote = "origin"): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:strip=3)"]);
+			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:short)"]);
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
-				.filter(Boolean);
+				.filter(Boolean)
+				.filter((branch) => branch.startsWith(`${remote}/`))
+				.map((branch) => branch.substring(`${remote}/`.length));
 		} catch {
 			// If remote doesn't exist or other error, return empty array
 			return [];

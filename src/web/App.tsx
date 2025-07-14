@@ -165,7 +165,7 @@ function App() {
         const finalTaskData = isDraftMode && !taskData.status 
           ? { ...taskData, status: 'Draft' }
           : taskData;
-        const createdTask = await apiClient.createTask(finalTaskData);
+        const createdTask = await apiClient.createTask(finalTaskData as Omit<Task, "id" | "createdDate">);
         
         // Show task creation confirmation
         setTaskConfirmation({ task: createdTask, isDraft: isDraftMode });

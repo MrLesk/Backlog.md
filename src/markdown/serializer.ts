@@ -124,7 +124,7 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 
 	if (match) {
 		// Append to existing section
-		const existingNotes = match[1].trim();
+		const existingNotes = match[1]!.trim();
 		const newNotes = existingNotes ? `${existingNotes}\n\n${notes}` : notes;
 		return content.replace(notesRegex, `## Implementation Notes\n\n${newNotes}`);
 	}

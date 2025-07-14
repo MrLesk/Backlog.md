@@ -169,7 +169,7 @@ export class Core {
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		// Get paths before moving the file
-		const completedDir = await this.fs.getCompletedDir();
+		const completedDir = this.fs.completedDir;
 		const taskPath = await getTaskPath(taskId, this);
 		const taskFilename = await getTaskFilename(taskId, this);
 
@@ -260,7 +260,7 @@ export class Core {
 		const decision: Decision = {
 			id,
 			title,
-			date: new Date().toISOString().split("T")[0],
+			date: new Date().toISOString().split("T")[0]!,
 			status: "proposed",
 			context: "[Describe the context and problem that needs to be addressed]",
 			decision: "[Describe the decision that was made]",
@@ -290,7 +290,7 @@ export class Core {
 			id,
 			title,
 			type: "other" as const,
-			createdDate: new Date().toISOString().split("T")[0],
+			createdDate: new Date().toISOString().split("T")[0]!,
 			body: content,
 		};
 
