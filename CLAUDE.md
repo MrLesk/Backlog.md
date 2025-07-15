@@ -2,6 +2,7 @@
 
 1. Read the [README.md](README.md)
 2. Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
+3. Never use Tailwind's rounded-full class. Instead use rounded-circle custom class
 
 ## Commands
 
