@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source not inline("{rounded-full}");
 
 @custom-variant dark (&:where(.dark, .dark *));
 
