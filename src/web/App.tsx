@@ -211,7 +211,7 @@ function App() {
               />
             }
           >
-            <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
+            <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} onRefreshData={refreshData} />} />
             <Route path="tasks" element={<TaskList onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
             {/* <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} tasks={tasks} />} /> */}
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />

@@ -8,9 +8,10 @@ interface BoardProps {
   onNewTask: () => void;
   highlightTaskId?: string | null;
   tasks: Task[];
+  onRefreshData?: () => Promise<void>;
 }
 
-const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, tasks }) => {
+const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, tasks, onRefreshData }) => {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,10 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
   const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
     try {
       await apiClient.updateTask(taskId, updates);
-      // Note: Task updates will be reflected when the parent component refreshes data
+      // Refresh data to reflect the changes
+      if (onRefreshData) {
+        await onRefreshData();
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update task');
