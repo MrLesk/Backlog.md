@@ -421,7 +421,7 @@ const SideNavigation = memo(function SideNavigation({
 							{onRetry && (
 								<button
 									onClick={onRetry}
-									className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200"
+									className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200 cursor-pointer"
 								>
 									Retry
 								</button>
@@ -697,6 +697,43 @@ const SideNavigation = memo(function SideNavigation({
 					</div>
 				)}
 			</nav>
+			
+			{/* Settings Button - Bottom Left */}
+			<div className={`border-t border-gray-200 dark:border-gray-700 ${isCollapsed ? 'px-2 py-2' : 'px-4 py-4'}`}>
+				{!isCollapsed ? (
+					<NavLink
+						to="/settings"
+						className={({ isActive }) =>
+							`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
+								isActive
+									? 'bg-stone-50 dark:bg-stone-900/30 text-stone-600 dark:text-stone-400'
+									: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+							}`
+						}
+					>
+						<Icons.DocumentSettings />
+						<span className="ml-3 text-sm font-medium">Settings</span>
+					</NavLink>
+				) : (
+					<NavLink
+						to="/settings"
+						data-tooltip-id="sidebar-tooltip"
+						data-tooltip-content="Settings"
+						className={({ isActive }) =>
+							`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
+								isActive
+									? 'bg-stone-50 dark:bg-stone-900/30 text-stone-700 dark:text-stone-400'
+									: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+							}`
+						}
+					>
+						<div className="w-6 h-6 flex items-center justify-center">
+							<Icons.DocumentSettings />
+						</div>
+					</NavLink>
+				)}
+			</div>
+			
 			<Tooltip id="sidebar-tooltip" place="right" />
 			</div>
 		</ErrorBoundary>

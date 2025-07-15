@@ -36,6 +36,7 @@ export class BacklogServer {
 				"/documentation/*": indexHtml,
 				"/decisions": indexHtml,
 				"/decisions/*": indexHtml,
+				"/settings": indexHtml,
 
 				// API Routes using Bun's native route syntax
 				"/api/tasks": {
@@ -54,7 +55,8 @@ export class BacklogServer {
 					GET: async () => await this.handleGetStatuses(),
 				},
 				"/api/config": {
-					GET: () => Response.json({ projectName: this.projectName }),
+					GET: async () => await this.handleGetConfig(),
+					PUT: async (req) => await this.handleUpdateConfig(req),
 				},
 				"/api/health": {
 					GET: async () => await this.handleHealthCheck(),
@@ -482,6 +484,47 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error updating decision:", error);
 			return Response.json({ error: "Failed to update decision" }, { status: 500 });
+		}
+	}
+
+	private async handleGetConfig(): Promise<Response> {
+		try {
+			const config = await this.core.filesystem.loadConfig();
+			if (!config) {
+				return Response.json({ error: "Configuration not found" }, { status: 404 });
+			}
+			return Response.json(config);
+		} catch (error) {
+			console.error("Error loading config:", error);
+			return Response.json({ error: "Failed to load configuration" }, { status: 500 });
+		}
+	}
+
+	private async handleUpdateConfig(req: Request): Promise<Response> {
+		try {
+			const updatedConfig = await req.json();
+
+			// Validate configuration
+			if (!updatedConfig.projectName?.trim()) {
+				return Response.json({ error: "Project name is required" }, { status: 400 });
+			}
+
+			if (updatedConfig.defaultPort && (updatedConfig.defaultPort < 1 || updatedConfig.defaultPort > 65535)) {
+				return Response.json({ error: "Port must be between 1 and 65535" }, { status: 400 });
+			}
+
+			// Save configuration
+			await this.core.filesystem.saveConfig(updatedConfig);
+
+			// Update local project name if changed
+			if (updatedConfig.projectName !== this.projectName) {
+				this.projectName = updatedConfig.projectName;
+			}
+
+			return Response.json(updatedConfig);
+		} catch (error) {
+			console.error("Error updating config:", error);
+			return Response.json({ error: "Failed to update configuration" }, { status: 500 });
 		}
 	}
 

@@ -113,7 +113,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                   <button
                     type="button"
                     onClick={() => removeDependency(index)}
-                    className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
+                    className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200 cursor-pointer"
                     aria-label={`Remove ${taskId}`}
                   >
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -150,7 +150,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                 key={task.id}
                 type="button"
                 onClick={() => addDependency(task.id)}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 ${
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer ${
                   index === selectedIndex ? 'bg-gray-100 dark:bg-gray-700' : ''
                 }`}
               >

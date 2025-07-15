@@ -1,4 +1,4 @@
-import type { Decision, Document, Task, TaskStatus } from "../../types/index.ts";
+import type { BacklogConfig, Decision, Document, Task, TaskStatus } from "../../types/index.ts";
 
 const API_BASE = "/api";
 
@@ -154,10 +154,24 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async fetchConfig(): Promise<{ projectName: string }> {
+	async fetchConfig(): Promise<BacklogConfig> {
 		const response = await fetch(`${API_BASE}/config`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch config");
+		}
+		return response.json();
+	}
+
+	async updateConfig(config: BacklogConfig): Promise<BacklogConfig> {
+		const response = await fetch(`${API_BASE}/config`, {
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(config),
+		});
+		if (!response.ok) {
+			throw new Error("Failed to update config");
 		}
 		return response.json();
 	}

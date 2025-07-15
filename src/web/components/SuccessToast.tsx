@@ -13,7 +13,7 @@ export function SuccessToast({ message, onDismiss, icon }: SuccessToastProps) {
 			<span className="font-medium">{message}</span>
 			<button
 				onClick={onDismiss}
-				className="ml-2 text-green-200 dark:text-green-300 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-300 dark:focus:ring-green-400 rounded p-1"
+				className="ml-2 text-green-200 dark:text-green-300 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-300 dark:focus:ring-green-400 rounded p-1 cursor-pointer"
 				aria-label="Dismiss"
 			>
 				<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
