@@ -11,99 +11,114 @@
   .rounded-circle {
     border-radius: var(--radius-circle);
   }
-}
 
+  /* Custom Blue-Dark Theme for MDEditor - moved to utilities for higher precedence */
+  .wmde-markdown-var[data-color-mode*="dark"],
+  .wmde-markdown[data-color-mode*="dark"],
+  [data-color-mode*="dark"] .wmde-markdown,
+  [data-color-mode*="dark"] .wmde-markdown-var,
+  div[data-color-mode*="dark"] .wmde-markdown-var,
+  div[data-color-mode*="dark"] .wmde-markdown {
+    /* Base canvas and text colors */
+    --color-canvas-default: #1e293b !important;
+    /* slate-800 - main background */
+    --color-canvas-subtle: #334155 !important;
+    /* slate-700 - subtle background */
+    --color-fg-default: #f1f5f9 !important;
+    /* slate-100 - primary text */
+    --color-fg-muted: #94a3b8 !important;
+    /* slate-400 - muted text */
+    --color-fg-subtle: #64748b !important;
+    /* slate-500 - subtle text */
 
-/* Custom styles that can't be done with Tailwind utilities */
+    /* Borders */
+    --color-border-default: #475569 !important;
+    /* slate-600 - borders */
+    --color-border-muted: #334155 !important;
+    /* slate-700 - muted borders */
 
-/* Line clamp utilities for text truncation */
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+    /* Syntax highlighting with blue theme */
+    --color-prettylights-syntax-comment: #94a3b8 !important;
+    --color-prettylights-syntax-constant: #60a5fa !important;
+    --color-prettylights-syntax-string: #10b981 !important;
+    --color-prettylights-syntax-keyword: #f59e0b !important;
+    --color-prettylights-syntax-entity: #a855f7 !important;
+    --color-prettylights-syntax-variable: #06b6d4 !important;
 
-.line-clamp-3 {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+    /* Accent colors */
+    --color-accent-fg: #3b82f6 !important;
+    --color-accent-emphasis: #2563eb !important;
 
-/* Hide scrollbar for chip input */
-.scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
-}
-
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari and Opera */
-}
-
-/* Health check notification animations */
-@keyframes slide-in-right {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slide-in-down {
-  from {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
+    /* Additional variables for preview mode */
+    --color-prettylights-syntax-markup-heading: #3b82f6 !important;
+    --color-prettylights-syntax-markup-bold: #f1f5f9 !important;
+    --color-prettylights-syntax-markup-italic: #cbd5e1 !important;
+    --color-prettylights-syntax-markup-list: #fbbf24 !important;
+    --color-prettylights-syntax-markup-code-bg: #334155 !important;
   }
 }
 
-.animate-slide-in-right {
-  animation: slide-in-right 0.3s ease-out;
-}
+@layer components {
+  /* Custom styles that can't be done with Tailwind utilities */
 
-.animate-slide-in-down {
-  animation: slide-in-down 0.3s ease-out;
-}
+  /* Line clamp utilities for text truncation */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 
-/* Custom Blue-Dark Theme for MDEditor using proper CSS variables */
-.wmde-markdown-var[data-color-mode*="dark"],
-.wmde-markdown[data-color-mode*="dark"],
-[data-color-mode*="dark"] .wmde-markdown,
-[data-color-mode*="dark"] .wmde-markdown-var {
-  /* Base canvas and text colors */
-  --color-canvas-default: #1e293b; /* slate-800 - main background */
-  --color-canvas-subtle: #334155; /* slate-700 - subtle background */
-  --color-fg-default: #f1f5f9; /* slate-100 - primary text */
-  --color-fg-muted: #94a3b8; /* slate-400 - muted text */
-  --color-fg-subtle: #64748b; /* slate-500 - subtle text */
-  
-  /* Borders */
-  --color-border-default: #475569; /* slate-600 - borders */
-  --color-border-muted: #334155; /* slate-700 - muted borders */
-  
-  /* Syntax highlighting with blue theme */
-  --color-prettylights-syntax-comment: #94a3b8;
-  --color-prettylights-syntax-constant: #60a5fa;
-  --color-prettylights-syntax-string: #10b981;
-  --color-prettylights-syntax-keyword: #f59e0b;
-  --color-prettylights-syntax-entity: #a855f7;
-  --color-prettylights-syntax-variable: #06b6d4;
-  
-  /* Accent colors */
-  --color-accent-fg: #3b82f6;
-  --color-accent-emphasis: #2563eb;
-  
-  /* Additional variables for preview mode */
-  --color-prettylights-syntax-markup-heading: #3b82f6;
-  --color-prettylights-syntax-markup-bold: #f1f5f9;
-  --color-prettylights-syntax-markup-italic: #cbd5e1;
-  --color-prettylights-syntax-markup-list: #fbbf24;
-  --color-prettylights-syntax-markup-code-bg: #334155;
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Hide scrollbar for chip input */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari and Opera */
+  }
+
+  /* Health check notification animations */
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-in-down {
+    from {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  .animate-slide-in-down {
+    animation: slide-in-down 0.3s ease-out;
+  }
 }

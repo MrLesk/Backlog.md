@@ -202,8 +202,8 @@ export class BacklogServer {
 			pathname.endsWith(".tsx")
 		) {
 			// Handle specific static files
-			if (pathname === "/styles/globals.css") {
-				const cssFile = Bun.file("src/web/styles/globals.css");
+			if (pathname === "/styles/style.css") {
+				const cssFile = Bun.file("src/web/styles/style.css");
 				if (await cssFile.exists()) {
 					return new Response(await cssFile.text(), {
 						headers: { "Content-Type": "text/css" },
