@@ -858,7 +858,8 @@ taskCmd
 			filtered = filtered.filter((t) => t.priority?.toLowerCase() === priorityLower);
 		}
 
-		// Apply sorting if specified
+		// Apply sorting - default to priority sorting
+		let sortedTasks = filtered;
 		if (options.sort) {
 			const validSortFields = ["priority", "id"];
 			const sortField = options.sort.toLowerCase();
@@ -867,8 +868,12 @@ taskCmd
 				process.exitCode = 1;
 				return;
 			}
-			filtered = sortTasks(filtered, sortField);
+			sortedTasks = sortTasks(filtered, sortField);
+		} else {
+			// Default to priority sorting
+			sortedTasks = sortTasks(filtered, "priority");
 		}
+		filtered = sortedTasks;
 
 		if (filtered.length === 0) {
 			if (options.parent) {
@@ -884,6 +889,18 @@ taskCmd
 		// Workaround for bun compile issue with commander options
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
+			// If sorting by priority, do global sorting instead of status-grouped sorting
+			if (options.sort && options.sort.toLowerCase() === "priority") {
+				const sortedTasks = sortTasks(filtered, "priority");
+				console.log("Tasks (sorted by priority):");
+				for (const t of sortedTasks) {
+					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
+					const statusIndicator = t.status ? ` (${t.status})` : "";
+					console.log(`  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}`);
+				}
+				return;
+			}
+
 			const groups = new Map<string, Task[]>();
 			for (const task of filtered) {
 				const status = task.status || "";
@@ -901,8 +918,15 @@ taskCmd
 			for (const status of ordered) {
 				const list = groups.get(status);
 				if (!list) continue;
+
+				// Sort tasks within each status group if a sort field was specified
+				let sortedList = list;
+				if (options.sort) {
+					sortedList = sortTasks(list, options.sort.toLowerCase());
+				}
+
 				console.log(`${status || "No Status"}:`);
-				for (const t of list) {
+				for (const t of sortedList) {
 					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
 					console.log(`  ${priorityIndicator}${t.id} - ${t.title}`);
 				}
