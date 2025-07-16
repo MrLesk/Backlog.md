@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../lib/api';
 import { type Task } from '../../types';
 
@@ -14,6 +14,16 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
 
   useEffect(() => {
     loadDrafts();
+    
+    // Listen for draft updates
+    const handleDraftsUpdated = () => {
+      loadDrafts();
+    };
+    
+    window.addEventListener('drafts-updated', handleDraftsUpdated);
+    return () => {
+      window.removeEventListener('drafts-updated', handleDraftsUpdated);
+    };
   }, []);
 
   const loadDrafts = async () => {
@@ -24,7 +34,14 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
         throw new Error(`Failed to load drafts: ${response.statusText}`);
       }
       const draftsData = await response.json();
-      setDrafts(draftsData);
+      // Sort drafts by ID descending (newest first) - same as TaskList
+      const sortedDrafts = [...draftsData].sort((a, b) => {
+        // Extract numeric part from task IDs (task-1, task-2, etc.)
+        const idA = parseInt(a.id.replace('task-', ''), 10);
+        const idB = parseInt(b.id.replace('task-', ''), 10);
+        return idB - idA; // Highest ID first (newest)
+      });
+      setDrafts(sortedDrafts);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load drafts');
@@ -122,9 +139,6 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
                   <div className="flex-1 cursor-pointer" onClick={() => onEditTask(draft)}>
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="text-lg font-medium text-gray-900 dark:text-white">{draft.title}</h3>
-                      <span className="px-2 py-1 text-xs font-medium rounded-circle bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200">
-                        Draft
-                      </span>
                       {draft.priority && (
                         <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getPriorityColor(draft.priority)}`}>
                           {draft.priority}

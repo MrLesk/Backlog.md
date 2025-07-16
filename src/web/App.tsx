@@ -162,8 +162,8 @@ function App() {
       if (editingTask) {
         await apiClient.updateTask(editingTask.id, taskData);
       } else {
-        // Set status to 'Draft' if in draft mode and no status specified
-        const finalTaskData = isDraftMode && !taskData.status 
+        // Set status to 'Draft' if in draft mode
+        const finalTaskData = isDraftMode 
           ? { ...taskData, status: 'Draft' }
           : taskData;
         const createdTask = await apiClient.createTask(finalTaskData as Omit<Task, "id" | "createdDate">);
@@ -178,6 +178,12 @@ function App() {
       }
       handleCloseModal();
       await refreshData();
+      
+      // If we're on the drafts page and created a draft, trigger a refresh
+      if (isDraftMode && window.location.pathname === '/drafts') {
+        // Trigger refresh by updating a timestamp that DraftsList can watch
+        window.dispatchEvent(new Event('drafts-updated'));
+      }
     } catch (error) {
       console.error('Failed to save task:', error);
     }
@@ -235,7 +241,7 @@ function App() {
             onSubmit={handleSubmitTask}
             onCancel={handleCloseModal}
             onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-            availableStatuses={statuses}
+            availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
             MDEditor={MDEditor}
           />
         </Modal>

@@ -1202,8 +1202,9 @@ const draftCmd = program.command("draft");
 draftCmd
 	.command("list")
 	.description("list all drafts")
+	.option("--sort <field>", "sort drafts by field (priority, id)")
 	.option("--plain", "use plain text output")
-	.action(async (options: { plain?: boolean }) => {
+	.action(async (options: { plain?: boolean; sort?: string }) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
@@ -1214,16 +1215,34 @@ draftCmd
 			return;
 		}
 
+		// Apply sorting - default to priority sorting like the web UI
+		const { sortTasks } = await import("./utils/task-sorting.ts");
+		let sortedDrafts = drafts;
+
+		if (options.sort) {
+			const validSortFields = ["priority", "id"];
+			const sortField = options.sort.toLowerCase();
+			if (!validSortFields.includes(sortField)) {
+				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+				process.exitCode = 1;
+				return;
+			}
+			sortedDrafts = sortTasks(drafts, sortField);
+		} else {
+			// Default to priority sorting to match web UI behavior
+			sortedDrafts = sortTasks(drafts, "priority");
+		}
+
 		if (options.plain || process.argv.includes("--plain")) {
 			// Plain text output for AI agents
 			console.log("Drafts:");
-			for (const draft of drafts) {
+			for (const draft of sortedDrafts) {
 				const priorityIndicator = draft.priority ? `[${draft.priority.toUpperCase()}] ` : "";
 				console.log(`  ${priorityIndicator}${draft.id} - ${draft.title}`);
 			}
 		} else {
 			// Interactive UI - use unified view with draft support
-			const firstDraft = drafts[0];
+			const firstDraft = sortedDrafts[0];
 			if (!firstDraft) return;
 
 			const { runUnifiedView } = await import("./ui/unified-view.ts");
@@ -1231,7 +1250,7 @@ draftCmd
 				core,
 				initialView: "task-list",
 				selectedTask: firstDraft,
-				tasks: drafts,
+				tasks: sortedDrafts,
 				filter: {
 					description: "All Drafts",
 				},

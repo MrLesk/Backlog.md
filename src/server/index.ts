@@ -320,7 +320,12 @@ export class BacklogServer {
 			...(taskData.priority && { priority: taskData.priority }),
 		};
 
-		await this.core.createTask(task, await this.shouldAutoCommit());
+		// Check if this should be a draft based on status
+		if (task.status && task.status.toLowerCase() === "draft") {
+			await this.core.createDraft(task, await this.shouldAutoCommit());
+		} else {
+			await this.core.createTask(task, await this.shouldAutoCommit());
+		}
 		return Response.json(task, { status: 201 });
 	}
 
