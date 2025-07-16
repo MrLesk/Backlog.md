@@ -33,22 +33,24 @@ const MarkdownEditor = memo(function MarkdownEditor({
 
     // Edit mode - show full editor that fills the available space
     return (
-        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800 w-full flex flex-col" style={{ minHeight: '500px', height: '70vh' }}>
-            <MDEditor
-                value={value}
-                onChange={onChange}
-                preview="edit"
-                height="100%"
-                hideToolbar={false}
-                data-color-mode={theme}
-                textareaProps={{
-                    placeholder: 'Write your documentation here...',
-                    style: {
-                        fontSize: '14px',
-                        resize: 'none'
-                    }
-                }}
-            />
+        <div className="h-full w-full flex flex-col">
+            <div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800">
+                <MDEditor
+                    value={value}
+                    onChange={onChange}
+                    preview="edit"
+                    height="100%"
+                    hideToolbar={false}
+                    data-color-mode={theme}
+                    textareaProps={{
+                        placeholder: 'Write your documentation here...',
+                        style: {
+                            fontSize: '14px',
+                            resize: 'none'
+                        }
+                    }}
+                />
+            </div>
         </div>
     );
 });
@@ -332,8 +334,8 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 </div>
 
                 {/* Content Section */}
-                <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-800 transition-colors duration-200">
-                    <div className="py-8 px-8">
+                <div className="flex-1 bg-gray-50 dark:bg-gray-800 transition-colors duration-200 flex flex-col">
+                    <div className="flex-1 p-8 flex flex-col min-h-0">
                         <MarkdownEditor
                             value={content}
                             onChange={(val) => setContent(val || '')}
