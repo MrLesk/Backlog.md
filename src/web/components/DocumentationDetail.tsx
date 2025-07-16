@@ -6,6 +6,7 @@ import {type Document} from '../../types';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {SuccessToast} from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
+import { sanitizeUrlTitle } from '../utils/urlHelpers';
 
 // Custom MDEditor wrapper for proper height handling
 const MarkdownEditor = memo(function MarkdownEditor({
@@ -172,7 +173,7 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 setIsNewDocument(false);
                 // Use the returned document ID for navigation
                 const documentId = result.id.replace('doc-', ''); // Remove prefix for URL
-                navigate(`/documentation/${documentId}/${encodeURIComponent(docTitle)}`);
+                navigate(`/documentation/${documentId}/${sanitizeUrlTitle(docTitle)}`);
             } else {
                 // Update existing document
                 if (!id) return;
@@ -184,7 +185,7 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 setTimeout(() => setShowSaveSuccess(false), 4000);
                 // Exit edit mode and navigate to document detail page (this will load in preview mode)
                 setIsEditing(false);
-                navigate(`/documentation/${id}/${encodeURIComponent(docTitle)}`);
+                navigate(`/documentation/${id}/${sanitizeUrlTitle(docTitle)}`);
             }
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Failed to save document');

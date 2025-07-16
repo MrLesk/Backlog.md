@@ -6,6 +6,7 @@ import { type Decision } from '../../types';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
+import { sanitizeUrlTitle } from '../utils/urlHelpers';
 
 // Utility function for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -170,7 +171,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 				setIsEditing(false);
 				setIsNewDecision(false);
 				const newId = stripIdPrefix(decision.id);
-				navigate(`/decisions/${newId}/${encodeURIComponent(decisionTitle)}`);
+				navigate(`/decisions/${newId}/${sanitizeUrlTitle(decisionTitle)}`);
 			} else {
 				// Update existing decision
 				if (!id) return;
@@ -182,7 +183,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 				setTimeout(() => setShowSaveSuccess(false), 4000);
 				// Exit edit mode and navigate to decision detail page (this will load in preview mode)
 				setIsEditing(false);
-				navigate(`/decisions/${id}/${encodeURIComponent(decisionTitle)}`);
+				navigate(`/decisions/${id}/${sanitizeUrlTitle(decisionTitle)}`);
 			}
 		} catch (error) {
 			console.error('Failed to save decision:', error);

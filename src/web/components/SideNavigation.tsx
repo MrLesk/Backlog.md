@@ -5,6 +5,7 @@ import Fuse from 'fuse.js';
 import { type Task, type Document, type Decision } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import { SidebarSkeleton } from './LoadingSpinner';
+import { sanitizeUrlTitle } from '../utils/urlHelpers';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -372,8 +373,8 @@ const SideNavigation = memo(function SideNavigation({
 						{searchResults.unified.map((result, index) => {
 							const item = result.item;
 							const getResultLink = () => {
-								if (item.type === 'doc') return `/documentation/${stripIdPrefix(item.id)}/${encodeURIComponent(item.title)}`;
-								if (item.type === 'decision') return `/decisions/${stripIdPrefix(item.id)}/${encodeURIComponent(item.title)}`;
+								if (item.type === 'doc') return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+								if (item.type === 'decision') return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
 								if (item.type === 'task') return `/?highlight=${encodeURIComponent(item.id)}`; // Tasks are shown on the board page with highlight
 								return '/';
 							};
@@ -530,7 +531,7 @@ const SideNavigation = memo(function SideNavigation({
 										filteredDocs.map((doc) => (
 											<NavLink
 												key={doc.id}
-												to={`/documentation/${stripIdPrefix(doc.id)}/${encodeURIComponent(doc.title)}`}
+												to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
 												className={({ isActive }) =>
 													`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
 														isActive
@@ -589,7 +590,7 @@ const SideNavigation = memo(function SideNavigation({
 										filteredDecisions.map((decision) => (
 											<NavLink
 												key={decision.id}
-												to={`/decisions/${stripIdPrefix(decision.id)}/${encodeURIComponent(decision.title)}`}
+												to={`/decisions/${stripIdPrefix(decision.id)}/${sanitizeUrlTitle(decision.title)}`}
 												className={({ isActive }) =>
 													`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
 														isActive
