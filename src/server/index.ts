@@ -25,100 +25,123 @@ export class BacklogServer {
 		// Default to true if autoOpenBrowser is not explicitly set to false
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
-		this.server = Bun.serve({
-			port: finalPort,
-			development: true,
-			routes: {
-				"/": indexHtml,
-				"/tasks": indexHtml,
-				"/drafts": indexHtml,
-				"/documentation": indexHtml,
-				"/documentation/*": indexHtml,
-				"/decisions": indexHtml,
-				"/decisions/*": indexHtml,
-				"/settings": indexHtml,
+		try {
+			this.server = Bun.serve({
+				port: finalPort,
+				development: true,
+				routes: {
+					"/": indexHtml,
+					"/tasks": indexHtml,
+					"/drafts": indexHtml,
+					"/documentation": indexHtml,
+					"/documentation/*": indexHtml,
+					"/decisions": indexHtml,
+					"/decisions/*": indexHtml,
+					"/settings": indexHtml,
 
-				// API Routes using Bun's native route syntax
-				"/api/tasks": {
-					GET: async (req) => await this.handleListTasks(req),
-					POST: async (req) => await this.handleCreateTask(req),
+					// API Routes using Bun's native route syntax
+					"/api/tasks": {
+						GET: async (req) => await this.handleListTasks(req),
+						POST: async (req) => await this.handleCreateTask(req),
+					},
+					"/api/task/:id": {
+						GET: async (req) => await this.handleGetTask(req.params.id),
+					},
+					"/api/tasks/:id": {
+						GET: async (req) => await this.handleGetTask(req.params.id),
+						PUT: async (req) => await this.handleUpdateTask(req, req.params.id),
+						DELETE: async (req) => await this.handleDeleteTask(req.params.id),
+					},
+					"/api/statuses": {
+						GET: async () => await this.handleGetStatuses(),
+					},
+					"/api/config": {
+						GET: async () => await this.handleGetConfig(),
+						PUT: async (req) => await this.handleUpdateConfig(req),
+					},
+					"/api/health": {
+						GET: async () => await this.handleHealthCheck(),
+					},
+					"/api/docs": {
+						GET: async () => await this.handleListDocs(),
+						POST: async (req) => await this.handleCreateDoc(req),
+					},
+					"/api/doc/:id": {
+						GET: async (req) => await this.handleGetDoc(req.params.id),
+					},
+					"/api/docs/:id": {
+						GET: async (req) => await this.handleGetDoc(req.params.id),
+						PUT: async (req) => await this.handleUpdateDoc(req, req.params.id),
+					},
+					"/api/decisions": {
+						GET: async () => await this.handleListDecisions(),
+						POST: async (req) => await this.handleCreateDecision(req),
+					},
+					"/api/decision/:id": {
+						GET: async (req) => await this.handleGetDecision(req.params.id),
+					},
+					"/api/decisions/:id": {
+						GET: async (req) => await this.handleGetDecision(req.params.id),
+						PUT: async (req) => await this.handleUpdateDecision(req, req.params.id),
+					},
 				},
-				"/api/task/:id": {
-					GET: async (req) => await this.handleGetTask(req.params.id),
+				fetch: async (req, server) => {
+					// Apply CORS headers to all responses
+					const response = await this.handleRequest(req, server);
+					if (response && req.url.includes("/api/")) {
+						response.headers.set("Access-Control-Allow-Origin", "*");
+						response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+						response.headers.set("Access-Control-Allow-Headers", "Content-Type");
+					}
+					return response;
 				},
-				"/api/tasks/:id": {
-					GET: async (req) => await this.handleGetTask(req.params.id),
-					PUT: async (req) => await this.handleUpdateTask(req, req.params.id),
-					DELETE: async (req) => await this.handleDeleteTask(req.params.id),
+				error: this.handleError.bind(this),
+				websocket: {
+					open(_ws) {
+						// Silent - no need to log normal connections
+					},
+					message(_ws, _message) {
+						// No need to handle messages for simple connection monitoring
+					},
+					close(_ws) {
+						// Silent - no need to log normal disconnections
+					},
 				},
-				"/api/statuses": {
-					GET: async () => await this.handleGetStatuses(),
-				},
-				"/api/config": {
-					GET: async () => await this.handleGetConfig(),
-					PUT: async (req) => await this.handleUpdateConfig(req),
-				},
-				"/api/health": {
-					GET: async () => await this.handleHealthCheck(),
-				},
-				"/api/docs": {
-					GET: async () => await this.handleListDocs(),
-					POST: async (req) => await this.handleCreateDoc(req),
-				},
-				"/api/doc/:id": {
-					GET: async (req) => await this.handleGetDoc(req.params.id),
-				},
-				"/api/docs/:id": {
-					GET: async (req) => await this.handleGetDoc(req.params.id),
-					PUT: async (req) => await this.handleUpdateDoc(req, req.params.id),
-				},
-				"/api/decisions": {
-					GET: async () => await this.handleListDecisions(),
-					POST: async (req) => await this.handleCreateDecision(req),
-				},
-				"/api/decision/:id": {
-					GET: async (req) => await this.handleGetDecision(req.params.id),
-				},
-				"/api/decisions/:id": {
-					GET: async (req) => await this.handleGetDecision(req.params.id),
-					PUT: async (req) => await this.handleUpdateDecision(req, req.params.id),
-				},
-			},
-			fetch: async (req, server) => {
-				// Apply CORS headers to all responses
-				const response = await this.handleRequest(req, server);
-				if (response && req.url.includes("/api/")) {
-					response.headers.set("Access-Control-Allow-Origin", "*");
-					response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-					response.headers.set("Access-Control-Allow-Headers", "Content-Type");
+			});
+
+			const url = `http://localhost:${finalPort}`;
+			console.log(`🚀 Backlog.md browser interface running at ${url}`);
+			console.log(`📊 Project: ${this.projectName}`);
+			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";
+			console.log(`⏹️  Press ${stopKey} to stop the server`);
+
+			if (shouldOpenBrowser) {
+				console.log("🌐 Opening browser...");
+				await this.openBrowser(url);
+			} else {
+				console.log("💡 Open your browser and navigate to the URL above");
+			}
+		} catch (error) {
+			// Handle port already in use error
+			const errorCode = (error as any)?.code;
+			const errorMessage = (error as Error)?.message;
+			if (errorCode === "EADDRINUSE" || errorMessage?.includes("address already in use")) {
+				console.error(`\n❌ Error: Port ${finalPort} is already in use.\n`);
+				console.log("💡 Suggestions:");
+				console.log(`   1. Try a different port: backlog browser --port ${finalPort + 1}`);
+				console.log(`   2. Find what's using port ${finalPort}:`);
+				if (process.platform === "darwin" || process.platform === "linux") {
+					console.log(`      Run: lsof -i :${finalPort}`);
+				} else if (process.platform === "win32") {
+					console.log(`      Run: netstat -ano | findstr :${finalPort}`);
 				}
-				return response;
-			},
-			error: this.handleError.bind(this),
-			websocket: {
-				open(_ws) {
-					// Silent - no need to log normal connections
-				},
-				message(_ws, _message) {
-					// No need to handle messages for simple connection monitoring
-				},
-				close(_ws) {
-					// Silent - no need to log normal disconnections
-				},
-			},
-		});
+				console.log("   3. Or kill the process using the port and try again\n");
+				process.exit(1);
+			}
 
-		const url = `http://localhost:${finalPort}`;
-		console.log(`🚀 Backlog.md browser interface running at ${url}`);
-		console.log(`📊 Project: ${this.projectName}`);
-		const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";
-		console.log(`⏹️  Press ${stopKey} to stop the server`);
-
-		if (shouldOpenBrowser) {
-			console.log("🌐 Opening browser...");
-			await this.openBrowser(url);
-		} else {
-			console.log("💡 Open your browser and navigate to the URL above");
+			// Handle other errors
+			console.error("❌ Failed to start server:", errorMessage || error);
+			process.exit(1);
 		}
 	}
 
