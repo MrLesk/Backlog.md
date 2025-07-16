@@ -474,20 +474,20 @@ const SideNavigation = memo(function SideNavigation({
 							<span className="ml-3 text-sm font-medium">All Tasks</span>
 						</NavLink>
 
-						{/* Drafts Navigation - Hidden until drafts list is implemented */}
-						{/* <NavLink
+						{/* Drafts Navigation */}
+						<NavLink
 							to="/drafts"
 							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors ${
+								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
 									isActive
-										? 'bg-stone-50 text-stone-600'
-										: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+										? 'bg-stone-50 dark:bg-stone-900/30 text-stone-600 dark:text-stone-400'
+										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
 								}`
 							}
 						>
 							<Icons.Draft />
 							<span className="ml-3 text-sm font-medium">Drafts</span>
-						</NavLink> */}
+						</NavLink>
 					</div>
 				)}
 
@@ -644,23 +644,23 @@ const SideNavigation = memo(function SideNavigation({
 								<Icons.List />
 							</div>
 						</NavLink>
-						{/* Drafts Navigation - Hidden until drafts list is implemented */}
-						{/* <NavLink
+						{/* Drafts Navigation */}
+						<NavLink
 							to="/drafts"
 							data-tooltip-id="sidebar-tooltip"
 							data-tooltip-content="Drafts"
 							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors ${
+								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
 									isActive
-										? 'bg-stone-50 text-stone-700'
-										: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+										? 'bg-stone-50 dark:bg-stone-900/30 text-stone-700 dark:text-stone-400'
+										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
 								}`
 							}
 						>
 							<div className="w-6 h-6 flex items-center justify-center">
 								<Icons.Draft />
 							</div>
-						</NavLink> */}
+						</NavLink>
 						<button
 							onClick={() => {
 								setIsCollapsed(false);
