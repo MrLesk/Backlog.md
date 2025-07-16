@@ -37,7 +37,7 @@ const MarkdownEditor = memo(function MarkdownEditor({
 
 	// Edit mode - show full editor that fills the available space
 	return (
-		<div className="h-full w-full flex flex-col doc-editor-container">
+		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800">
 				<MDEditor
 					value={value}
