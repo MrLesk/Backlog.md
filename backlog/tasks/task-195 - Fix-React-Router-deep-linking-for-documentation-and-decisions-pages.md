@@ -71,3 +71,25 @@ Verified that:
 - Page refresh maintains the current content
 - The components fetch data independently when accessed via deep links
 - Server-side routing correctly serves index.html for all documentation/* and decisions/* routes
+
+### Additional Enhancement: URL Sanitization
+As requested by the user, implemented URL sanitization to create cleaner, more readable URLs:
+
+#### Implementation
+- Created `src/web/utils/urlHelpers.ts` with `sanitizeUrlTitle()` function that:
+  - Converts titles to lowercase
+  - Replaces spaces with hyphens
+  - Removes special characters (keeping only alphanumeric, hyphens, and underscores)
+  - Handles multiple consecutive hyphens
+  - Trims leading/trailing hyphens
+
+#### Files Modified for URL Sanitization
+- `src/web/components/DocumentationDetail.tsx`: Updated navigation after save to use sanitized URLs
+- `src/web/components/DecisionDetail.tsx`: Updated navigation after save to use sanitized URLs
+- `src/web/components/SideNavigation.tsx`: Updated all navigation links (sidebar and search results) to use sanitized URLs
+
+#### Result
+URLs changed from: `/documentation/1/My%20Awesome%20Title!`
+To: `/documentation/1/my-awesome-title`
+
+This improves readability while maintaining full deep linking functionality.
