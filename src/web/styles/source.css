@@ -122,33 +122,38 @@
     animation: slide-in-down 0.3s ease-out;
   }
 
-  /* MDEditor full height overrides */
-  .w-md-editor {
+  /* MDEditor full height overrides for documentation/decision editors only */
+  .doc-editor-container .w-md-editor {
     height: 100% !important;
   }
 
-  .w-md-editor .w-md-editor-content {
+  .doc-editor-container .w-md-editor .w-md-editor-content {
     height: 100% !important;
   }
 
-  .w-md-editor .w-md-editor-area {
+  .doc-editor-container .w-md-editor .w-md-editor-area {
     height: 100% !important;
   }
 
-  .w-md-editor .w-md-editor-text {
+  .doc-editor-container .w-md-editor .w-md-editor-text {
     min-height: 100% !important;
     height: 100% !important;
   }
 
-  .w-md-editor .w-md-editor-text-pre,
-  .w-md-editor .w-md-editor-text-input {
+  .doc-editor-container .w-md-editor .w-md-editor-text-pre,
+  .doc-editor-container .w-md-editor .w-md-editor-text-input {
     min-height: 100% !important;
     height: 100% !important;
   }
 
   /* Ensure the editor preview also takes full height */
-  .w-md-editor .w-md-editor-preview {
+  .doc-editor-container .w-md-editor .w-md-editor-preview {
     height: 100% !important;
     min-height: 100% !important;
+  }
+
+  /* Ensure a minimum clickable area for all editors */
+  .w-md-editor .w-md-editor-text {
+    min-height: 200px;
   }
 }
