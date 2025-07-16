@@ -1200,6 +1200,47 @@ taskCmd
 const draftCmd = program.command("draft");
 
 draftCmd
+	.command("list")
+	.description("list all drafts")
+	.option("--plain", "use plain text output")
+	.action(async (options: { plain?: boolean }) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		await core.ensureConfigLoaded();
+		const drafts = await core.filesystem.listDrafts();
+
+		if (!drafts || drafts.length === 0) {
+			console.log("No drafts found.");
+			return;
+		}
+
+		if (options.plain || process.argv.includes("--plain")) {
+			// Plain text output for AI agents
+			console.log("Drafts:");
+			for (const draft of drafts) {
+				const priorityIndicator = draft.priority ? `[${draft.priority.toUpperCase()}] ` : "";
+				console.log(`  ${priorityIndicator}${draft.id} - ${draft.title}`);
+			}
+		} else {
+			// Interactive UI - use unified view with draft support
+			const firstDraft = drafts[0];
+			if (!firstDraft) return;
+
+			const { runUnifiedView } = await import("./ui/unified-view.ts");
+			await runUnifiedView({
+				core,
+				initialView: "task-list",
+				selectedTask: firstDraft,
+				tasks: drafts,
+				filter: {
+					description: "All Drafts",
+				},
+				title: "Drafts",
+			});
+		}
+	});
+
+draftCmd
 	.command("create <title>")
 	.option("-d, --description <text>")
 	.option("--desc <text>", "alias for --description")

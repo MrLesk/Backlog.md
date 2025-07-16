@@ -4,10 +4,10 @@ title: Add ordinal field for custom task ordering in web UI
 status: To Do
 assignee: []
 created_date: '2025-07-13'
-updated_date: '2025-07-13'
+updated_date: '2025-07-16'
 labels: []
 dependencies: []
-priority: high
+priority: medium
 ---
 
 ## Description

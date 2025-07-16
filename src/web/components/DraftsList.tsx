@@ -19,9 +19,11 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
   const loadDrafts = async () => {
     try {
       setLoading(true);
-      // For now, we'll filter tasks with status "Draft" since there's no separate drafts endpoint
-      const allTasks = await apiClient.fetchTasks();
-      const draftsData = allTasks.filter(task => task.status.toLowerCase() === 'draft');
+      const response = await fetch('/api/drafts');
+      if (!response.ok) {
+        throw new Error(`Failed to load drafts: ${response.statusText}`);
+      }
+      const draftsData = await response.json();
       setDrafts(draftsData);
       setError(null);
     } catch (err) {
@@ -31,16 +33,22 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
     }
   };
 
-  // const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
-  //   try {
-  //     const updatedTask = await apiClient.updateTask(taskId, updates);
-  //     setDrafts(prevDrafts => 
-  //       prevDrafts.map(task => task.id === taskId ? updatedTask : task)
-  //     );
-  //   } catch (err) {
-  //     setError(err instanceof Error ? err.message : 'Failed to update draft');
-  //   }
-  // };
+  const handlePromoteDraft = async (draftId: string) => {
+    try {
+      const response = await fetch(`/api/drafts/${draftId}/promote`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to promote draft: ${response.statusText}`);
+      }
+      
+      // Reload drafts after successful promotion
+      await loadDrafts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to promote draft');
+    }
+  };
 
   const getPriorityColor = (priority?: string) => {
     switch (priority?.toLowerCase()) {
@@ -108,11 +116,10 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
             {drafts.map((draft) => (
               <div 
                 key={draft.id}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
-                onClick={() => onEditTask(draft)}
+                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                  <div className="flex-1 cursor-pointer" onClick={() => onEditTask(draft)}>
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="text-lg font-medium text-gray-900 dark:text-white">{draft.title}</h3>
                       <span className="px-2 py-1 text-xs font-medium rounded-circle bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200">
@@ -152,6 +159,17 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
                         ))}
                       </div>
                     )}
+                  </div>
+                  <div className="ml-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePromoteDraft(draft.id);
+                      }}
+                      className="inline-flex items-center px-3 py-1.5 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 dark:focus:ring-offset-gray-800 transition-colors duration-200"
+                    >
+                      Promote to Task
+                    </button>
                   </div>
                 </div>
               </div>
