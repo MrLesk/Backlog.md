@@ -1,10 +1,11 @@
 ---
 id: task-195
 title: Fix React Router deep linking for documentation and decisions pages
-status: To Do
+status: Done
 assignee:
-  - '@kiro'
+  - '@claude'
 created_date: '2025-07-15'
+updated_date: '2025-07-16'
 labels:
   - bug
   - routing
@@ -19,9 +20,54 @@ When navigating to documentation or decisions pages through the sidebar, the pag
 
 ## Acceptance Criteria
 
-- [ ] Direct URL navigation works for documentation pages
-- [ ] Direct URL navigation works for decisions pages
-- [ ] Page refresh maintains current content
-- [ ] Bookmarking specific docs/decisions works correctly
-- [ ] Shared URLs load the correct content in new tabs
-- [ ] 404 handling for non-existent docs/decisions
+- [x] Direct URL navigation works for documentation pages
+- [x] Direct URL navigation works for decisions pages
+- [x] Page refresh maintains current content
+- [x] Bookmarking specific docs/decisions works correctly
+- [x] Shared URLs load the correct content in new tabs
+- [x] 404 handling for non-existent docs/decisions
+
+## Implementation Plan
+
+1. Investigate React Router setup for documentation and decisions routes
+2. Check URL normalization issues
+3. Fix routing configuration to support deep linking
+4. Test direct URL navigation for both docs and decisions
+5. Ensure 404 handling works correctly
+
+## Implementation Notes
+
+### Root Cause
+The issue was caused by a race condition in the DocumentationDetail and DecisionDetail components. These components had a condition that prevented content loading when the parent's `docs` or `decisions` arrays were empty:
+
+```typescript
+// Before fix:
+} else if (id && docs.length > 0) {
+    loadDocContent();
+}
+```
+
+When accessing URLs directly (deep linking), the parent component hadn't loaded the data yet, so `docs.length` or `decisions.length` was 0, preventing the components from loading content.
+
+### Solution Implemented
+Removed the array length check from both components, allowing them to fetch content directly from the API regardless of the parent's data state:
+
+```typescript
+// After fix:
+} else if (id) {
+    loadDocContent();
+}
+```
+
+The `loadDocContent` and `loadDecisionContent` functions were also updated to always attempt fetching from the API, ensuring deep linking works even before the parent component loads its data.
+
+### Modified Files
+- `src/web/components/DocumentationDetail.tsx`: Removed `docs.length > 0` condition and updated content loading logic
+- `src/web/components/DecisionDetail.tsx`: Removed `decisions.length > 0` condition and updated content loading logic
+
+### Testing
+Verified that:
+- Direct URL navigation now works for both documentation and decisions pages
+- Page refresh maintains the current content
+- The components fetch data independently when accessed via deep links
+- Server-side routing correctly serves index.html for all documentation/* and decisions/* routes

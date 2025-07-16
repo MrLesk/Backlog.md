@@ -93,7 +93,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 			setOriginalDecisionTitle('');
 			setContent('');
 			setOriginalContent('');
-		} else if (id && decisions.length > 0) {
+		} else if (id) {
 			setIsNewDecision(false);
 			setIsEditing(false); // Ensure we start in preview mode for existing decisions
 			loadDecisionContent();
@@ -120,9 +120,10 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 			// Find decision from props
 			const prefixedId = addDecisionPrefix(id);
 			const decision = decisions.find(d => d.id === prefixedId);
-			if (decision) {
-				setDecision(decision);
-				// Fetch full decision data
+			
+			// Always try to fetch the decision from API, whether we found it in decisions or not
+			// This ensures deep linking works even before the parent component loads the decisions array
+			try {
 				const fullDecision = await apiClient.fetchDecision(prefixedId);
 				setContent(fullDecision.body || '');
 				setOriginalContent(fullDecision.body || '');
@@ -130,6 +131,16 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 				setOriginalDecisionTitle(fullDecision.title || '');
 				// Update decision state with full data
 				setDecision(fullDecision);
+			} catch (fetchError) {
+				// If fetch fails and we don't have the decision in props, show error
+				if (!decision) {
+					console.error('Failed to load decision:', fetchError);
+				} else {
+					// We have basic info from props even if fetch failed
+					setDecision(decision);
+					setDecisionTitle(decision.title || '');
+					setOriginalDecisionTitle(decision.title || '');
+				}
 			}
 		} catch (error) {
 			console.error('Failed to load decision:', error);

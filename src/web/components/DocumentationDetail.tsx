@@ -89,7 +89,7 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             setOriginalDocTitle('');
             setContent('');
             setOriginalContent('');
-        } else if (id && docs.length > 0) {
+        } else if (id) {
             setIsNewDocument(false);
             setIsEditing(false); // Ensure we start in preview mode for existing documents
             loadDocContent();
@@ -117,9 +117,10 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             // Find document from props
             const prefixedId = addDocPrefix(id);
             const doc = docs.find(d => d.id === prefixedId);
-            if (doc) {
-                setDocument(doc);
-                // Fetch full document data
+            
+            // Always try to fetch the document from API, whether we found it in docs or not
+            // This ensures deep linking works even before the parent component loads the docs array
+            try {
                 const fullDoc = await apiClient.fetchDoc(prefixedId);
                 setContent(fullDoc.body || '');
                 setOriginalContent(fullDoc.body || '');
@@ -127,8 +128,17 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 setOriginalDocTitle(fullDoc.title || '');
                 // Update document state with full data
                 setDocument(fullDoc);
-            } else {
-                setError(new Error(`Document with ID "${prefixedId}" not found`));
+            } catch (fetchError) {
+                // If fetch fails and we don't have the doc in props, show error
+                if (!doc) {
+                    setError(new Error(`Document with ID "${prefixedId}" not found`));
+                    console.error('Failed to load document:', fetchError);
+                } else {
+                    // We have basic info from props even if fetch failed
+                    setDocument(doc);
+                    setDocTitle(doc.title || '');
+                    setOriginalDocTitle(doc.title || '');
+                }
             }
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Failed to load document');
