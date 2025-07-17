@@ -61,7 +61,14 @@
             homepage = "https://backlog.md";
             changelog = "https://github.com/MrLesk/Backlog.md/releases";
             license = licenses.mit;
-            maintainers = with maintainers; [ ];
+            maintainers = let
+              mrlesk = {
+                name = "MrLesk";
+                github = "MrLesk";
+                githubId = 181345848;
+              };
+            in
+              with maintainers; [ anpryl mrlesk ];
             platforms = platforms.all;
             mainProgram = "backlog";
           };
