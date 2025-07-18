@@ -16,7 +16,7 @@
         version = packageJson.version;
         
         backlog-md = pkgs.stdenv.mkDerivation rec {
-          pname = "backlog.md";
+          pname = "backlog-md";
           inherit version;
           
           src = ./.;
