@@ -37,7 +37,7 @@
             bun run build:css
             
             # Build the CLI tool with embedded version
-            bun build --compile --minify --define "__EMBEDDED_VERSION__=\"${version}\"" --outfile=dist/backlog src/cli.ts
+            bun build --compile --minify --define "__EMBEDDED_VERSION__=${version}" --outfile=dist/backlog src/cli.ts
             
             runHook postBuild
           '';
