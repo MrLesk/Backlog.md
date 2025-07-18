@@ -1,0 +1,1 @@
+Provide a summary of all tasks that are currently "In Progress". For each task, list its ID, title, and assignee. Use the `backlog task list -s "In Progress" --plain` command.
