@@ -2,7 +2,7 @@
 <p align="center">Markdown‑native Task Manager &amp; Kanban visualizer for any Git repository</p>
 
 <p align="center">
-<code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>brew install backlog-md</code>
+<code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>brew install backlog-md</code> or <code>nix run github:MrLesk/Backlog.md</code>
 </p>
 
 ![Backlog demo GIF using: backlog board](./.github/backlog.gif)
