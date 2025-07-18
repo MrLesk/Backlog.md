@@ -77,7 +77,7 @@
       {
         packages = {
           default = backlog-md;
-          backlog-md = backlog-md;
+          "backlog-md" = backlog-md;
         };
         
         apps = {
