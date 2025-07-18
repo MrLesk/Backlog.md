@@ -1,0 +1,1 @@
+The milestone `<milestone_id>` is complete. Generate a summary of all tasks associated with this milestone. Group the tasks by their labels (e.g., `backend`, `frontend`, `bug`). This summary will be used for our release notes.
