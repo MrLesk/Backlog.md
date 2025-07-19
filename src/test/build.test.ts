@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
+import { $ } from "bun";
 
 const TEST_DIR = join(process.cwd(), "test-build");
 const isWindows = platform() === "win32";
@@ -23,23 +24,14 @@ describe("CLI packaging", () => {
 		const packageJson = await Bun.file("package.json").json();
 		const version = packageJson.version;
 
-		await Bun.spawn([
-			"bun",
-			"build",
-			"src/cli.ts",
-			"--compile",
-			"--define",
-			`__EMBEDDED_VERSION__="${version}"`,
-			"--outfile",
-			OUTFILE,
-		]).exited;
+		await $`bun build src/cli.ts --compile --define __EMBEDDED_VERSION__="\"${version}\"" --outfile ${OUTFILE}`.quiet();
 
-		const helpResult = Bun.spawnSync({ cmd: [OUTFILE, "--help"] });
+		const helpResult = await $`${OUTFILE} --help`.quiet();
 		const helpOutput = helpResult.stdout.toString();
 		expect(helpOutput).toContain("Backlog.md - Project management CLI");
 
 		// Also test version command
-		const versionResult = Bun.spawnSync({ cmd: [OUTFILE, "--version"] });
+		const versionResult = await $`${OUTFILE} --version`.quiet();
 		const versionOutput = versionResult.stdout.toString().trim();
 		expect(versionOutput).toBe(version);
 	});

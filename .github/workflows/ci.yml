@@ -31,10 +31,10 @@ jobs:
         run: |
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Run tests with increased timeout on Windows to handle slower file operations
-            bun run test:windows
+            bun test --timeout=15000
           else
-            # Run tests normally on Unix systems
-            bun test
+            # Run tests with increased timeout to handle Bun shell operations
+            bun test --timeout=10000
           fi
         shell: bash
 
@@ -62,7 +62,7 @@ jobs:
           OUT="backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
           bun build src/cli.ts \
             --compile --minify --sourcemap \
-            --define __EMBEDDED_VERSION__='"${VER}"' \
+            --define __EMBEDDED_VERSION__="\"${VER}\"" \
             --outfile="$OUT"
       - name: Smoke-test binary
         shell: bash

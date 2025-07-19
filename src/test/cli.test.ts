@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
+import type { Decision, Document, Task } from "../types/index.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -31,9 +33,9 @@ describe("CLI Integration", () => {
 	describe("backlog init command", () => {
 		it("should initialize backlog project in existing git repo", async () => {
 			// Set up a git repository
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			// Initialize backlog project using Core (simulating CLI)
 			const core = new Core(TEST_DIR);
@@ -56,9 +58,9 @@ describe("CLI Integration", () => {
 
 		it("should create all required directories", async () => {
 			// Set up a git repository
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("Directory Test");
@@ -88,9 +90,9 @@ describe("CLI Integration", () => {
 
 		it("should handle project names with special characters", async () => {
 			// Set up a git repository
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			const specialProjectName = "My-Project_2024 (v1.0)";
@@ -102,9 +104,9 @@ describe("CLI Integration", () => {
 
 		it("should work when git repo exists", async () => {
 			// Set up existing git repo
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const isRepo = await isGitRepository(TEST_DIR);
 			expect(isRepo).toBe(true);
@@ -117,9 +119,9 @@ describe("CLI Integration", () => {
 		});
 
 		it("should accept optional project name parameter", async () => {
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			// Test the CLI implementation by directly using the Core functionality
 			const core = new Core(TEST_DIR);
@@ -131,9 +133,9 @@ describe("CLI Integration", () => {
 
 		it("should create agent instruction files when requested", async () => {
 			// Set up a git repository
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			// Simulate the agent instructions being added
 			const core = new Core(TEST_DIR);
@@ -173,9 +175,9 @@ describe("CLI Integration", () => {
 	describe("git integration", () => {
 		beforeEach(async () => {
 			// Set up a git repository
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		});
 
 		it("should create initial commit with backlog structure", async () => {
@@ -194,9 +196,9 @@ describe("CLI Integration", () => {
 	describe("task list command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("List Test Project", true);
@@ -305,7 +307,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", "Done"], { cwd: TEST_DIR });
+			const result = await $`bun ${CLI_PATH} task list --plain --status Done`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
 			expect(out).toContain("Done:");
 			expect(out).toContain("task-2 - Second Task");
@@ -344,15 +346,13 @@ describe("CLI Integration", () => {
 
 			const testCases = ["done", "DONE", "DoNe"];
 
-			testCases.forEach((status) => {
-				const result = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--status", status], {
-					cwd: TEST_DIR,
-				});
+			for (const status of testCases) {
+				const result = await $`bun ${CLI_PATH} task list --plain --status ${status}`.cwd(TEST_DIR).quiet();
 				const out = result.stdout.toString();
 				expect(out).toContain("Done:");
 				expect(out).toContain("task-2 - Second Task");
 				expect(out).not.toContain("task-1");
-			});
+			}
 
 			// Test with -s flag
 			const resultShort = await listTasksPlatformAware({ plain: true, status: "done" }, TEST_DIR);
@@ -392,9 +392,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const result = Bun.spawnSync(["bun", CLI_PATH, "task", "list", "--plain", "--assignee", "alice"], {
-				cwd: TEST_DIR,
-			});
+			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
 			expect(out).toContain("task-1 - Assigned Task");
 			expect(out).not.toContain("task-2 - Unassigned Task");
@@ -404,9 +402,9 @@ describe("CLI Integration", () => {
 	describe("task view command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("View Test Project");
@@ -506,9 +504,9 @@ describe("CLI Integration", () => {
 
 	describe("task shortcut command", () => {
 		beforeEach(async () => {
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("Shortcut Test Project");
@@ -545,9 +543,9 @@ describe("CLI Integration", () => {
 	describe("task edit command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("Edit Test Project", true);
@@ -836,9 +834,9 @@ describe("CLI Integration", () => {
 	describe("task archive and state transition commands", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("Archive Test Project");
@@ -1067,9 +1065,9 @@ describe("CLI Integration", () => {
 
 	describe("doc and decision commands", () => {
 		beforeEach(async () => {
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("Doc Test Project");
@@ -1077,7 +1075,7 @@ describe("CLI Integration", () => {
 
 		it("should create and list documents", async () => {
 			const core = new Core(TEST_DIR);
-			const doc: DocType = {
+			const doc: Document = {
 				id: "doc-1",
 				title: "Guide",
 				type: "guide",
@@ -1111,9 +1109,9 @@ describe("CLI Integration", () => {
 
 	describe("board view command", () => {
 		beforeEach(async () => {
-			await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await core.initializeProject("Board Test Project", true);
@@ -1295,20 +1293,20 @@ describe("CLI Integration", () => {
 
 			// set up remote repository
 			const remoteDir = join(TEST_DIR, "remote.git");
-			await Bun.spawn(["git", "init", "--bare", "-b", "main", remoteDir]).exited;
-			await Bun.spawn(["git", "remote", "add", "origin", remoteDir], { cwd: TEST_DIR }).exited;
-			await Bun.spawn(["git", "push", "-u", "origin", "main"], { cwd: TEST_DIR }).exited;
+			await $`git init --bare -b main ${remoteDir}`.quiet();
+			await $`git remote add origin ${remoteDir}`.cwd(TEST_DIR).quiet();
+			await $`git push -u origin main`.cwd(TEST_DIR).quiet();
 
 			// create branch with updated status
-			await Bun.spawn(["git", "checkout", "-b", "feature"], { cwd: TEST_DIR }).exited;
+			await $`git checkout -b feature`.cwd(TEST_DIR).quiet();
 			await core.updateTask({ ...task, status: "Done" }, true);
-			await Bun.spawn(["git", "push", "-u", "origin", "feature"], { cwd: TEST_DIR }).exited;
+			await $`git push -u origin feature`.cwd(TEST_DIR).quiet();
 
 			// Update remote-tracking branches to ensure they are recognized
-			await Bun.spawn(["git", "remote", "update", "origin", "--prune"], { cwd: TEST_DIR }).exited;
+			await $`git remote update origin --prune`.cwd(TEST_DIR).quiet();
 
 			// switch back to main where status is still To Do
-			await Bun.spawn(["git", "checkout", "main"], { cwd: TEST_DIR }).exited;
+			await $`git checkout main`.cwd(TEST_DIR).quiet();
 
 			await core.gitOps.fetch();
 			const branches = await core.gitOps.listRemoteBranches();
@@ -1354,8 +1352,8 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const resultDefault = Bun.spawnSync(["bun", "src/cli.ts", "board"], { cwd: TEST_DIR });
-			const resultView = Bun.spawnSync(["bun", "src/cli.ts", "board", "view"], { cwd: TEST_DIR });
+			const resultDefault = await $`bun ${["src/cli.ts", "board"]}`.cwd(TEST_DIR).quiet().nothrow();
+			const resultView = await $`bun ${["src/cli.ts", "board", "view"]}`.cwd(TEST_DIR).quiet().nothrow();
 
 			expect(resultDefault.stdout.toString()).toBe(resultView.stdout.toString());
 		});

@@ -4,6 +4,7 @@
  */
 
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -102,7 +103,7 @@ async function createTaskViaCore(
 						.split(",")
 						.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`))
 				: [],
-			body: options.body || "",
+			body: options.description || "",
 			...(options.parent && {
 				parentTaskId: options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`,
 			}),
@@ -168,14 +169,14 @@ async function createTaskViaCore(
 	}
 }
 
-function createTaskViaCLI(
+async function createTaskViaCLI(
 	options: TaskCreateOptions,
 	testDir: string,
 ): { exitCode: number; stdout: string; stderr: string; taskId?: string } {
 	// Build CLI arguments
-	const args = ["bun", CLI_PATH, "task", "create", options.title];
+	const args = [CLI_PATH, "task", "create", options.title];
 
-	if (options.body) args.push("--description", options.body);
+	if (options.description) args.push("--description", options.description);
 	if (options.assignee) args.push("--assignee", options.assignee);
 	if (options.status) args.push("--status", options.status);
 	if (options.labels) args.push("--labels", options.labels);
@@ -186,7 +187,7 @@ function createTaskViaCLI(
 	if (options.parent) args.push("--parent", options.parent);
 	if (options.dependencies) args.push("--dep", options.dependencies);
 
-	const result = Bun.spawnSync(args, { cwd: testDir });
+	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
 
 	// Extract task ID from stdout
 	const match = result.stdout.toString().match(/Created (?:task|draft) (task-\d+)/);
@@ -251,7 +252,7 @@ async function editTaskViaCore(
 		const updatedTask = {
 			...existingTask,
 			...(options.title && { title: options.title }),
-			...(options.body && { body: options.body }),
+			...(options.description && { body: options.description }),
 			...(options.status && { status: options.status }),
 			...(options.assignee && { assignee: [options.assignee] }),
 			...(options.labels && {
@@ -297,15 +298,15 @@ async function editTaskViaCore(
 	}
 }
 
-function editTaskViaCLI(
+async function editTaskViaCLI(
 	options: TaskEditOptions,
 	testDir: string,
 ): { exitCode: number; stdout: string; stderr: string } {
 	// Build CLI arguments
-	const args = ["bun", CLI_PATH, "task", "edit", options.taskId];
+	const args = [CLI_PATH, "task", "edit", options.taskId];
 
 	if (options.title) args.push("--title", options.title);
-	if (options.body) args.push("--description", options.body);
+	if (options.description) args.push("--description", options.description);
 	if (options.assignee) args.push("--assignee", options.assignee);
 	if (options.status) args.push("--status", options.status);
 	if (options.labels) args.push("--labels", options.labels);
@@ -314,10 +315,7 @@ function editTaskViaCLI(
 	if (options.notes) args.push("--notes", options.notes);
 	if (options.plan) args.push("--plan", options.plan);
 
-	const result = Bun.spawnSync(args, {
-		cwd: testDir,
-		timeout: 30000, // 30 second timeout
-	});
+	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
 
 	return {
 		exitCode: result.exitCode,
@@ -397,11 +395,11 @@ async function viewTaskViaCore(
 	}
 }
 
-function viewTaskViaCLI(
+async function viewTaskViaCLI(
 	options: TaskViewOptions,
 	testDir: string,
 ): { exitCode: number; stdout: string; stderr: string } {
-	const args = ["bun", CLI_PATH, "task"];
+	const args = [CLI_PATH, "task"];
 
 	// Handle both "task 1" and "task view 1" formats
 	if (options.useViewCommand) {
@@ -414,10 +412,7 @@ function viewTaskViaCLI(
 		args.push("--plain");
 	}
 
-	const result = Bun.spawnSync(args, {
-		cwd: testDir,
-		timeout: 30000,
-	});
+	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
 
 	return {
 		exitCode: result.exitCode,
@@ -458,10 +453,7 @@ Options:
 	}
 
 	// Test CLI integration on Unix systems
-	const result = Bun.spawnSync(["bun", CLI_PATH, ...command], {
-		cwd: testDir,
-		timeout: 30000,
-	});
+	const result = await $`bun ${[CLI_PATH, ...command]}`.cwd(testDir).quiet().nothrow();
 
 	return {
 		exitCode: result.exitCode,
@@ -569,11 +561,11 @@ async function listTasksViaCore(
 	}
 }
 
-function listTasksViaCLI(
+async function listTasksViaCLI(
 	options: TaskListOptions,
 	testDir: string,
 ): { exitCode: number; stdout: string; stderr: string } {
-	const args = ["bun", CLI_PATH, "task", "list"];
+	const args = [CLI_PATH, "task", "list"];
 
 	if (options.plain) {
 		args.push("--plain");
@@ -587,10 +579,7 @@ function listTasksViaCLI(
 		args.push("-a", options.assignee);
 	}
 
-	const result = Bun.spawnSync(args, {
-		cwd: testDir,
-		timeout: 30000,
-	});
+	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
 
 	return {
 		exitCode: result.exitCode,

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../index.ts";
 import type { Task } from "../types/index.ts";
 
@@ -8,9 +9,9 @@ const TEST_DIR = join(process.cwd(), "test-parent-normalization");
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 async function initGitRepo(dir: string) {
-	await Bun.spawn(["git", "init", "-b", "main"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: dir }).exited;
+	await $`git init -b main`.cwd(dir).quiet();
+	await $`git config user.name "Test User"`.cwd(dir).quiet();
+	await $`git config user.email test@example.com`.cwd(dir).quiet();
 }
 
 describe("CLI parent task id normalization", () => {
@@ -40,7 +41,7 @@ describe("CLI parent task id normalization", () => {
 		};
 		await core.createTask(parent, true);
 
-		await Bun.spawn(["bun", "run", CLI_PATH, "task", "create", "Child", "--parent", "4"], { cwd: TEST_DIR }).exited;
+		await $`bun run ${CLI_PATH} task create Child --parent 4`.cwd(TEST_DIR).quiet();
 
 		const child = await core.filesystem.loadTask("task-4.1");
 		expect(child?.parentTaskId).toBe("task-4");

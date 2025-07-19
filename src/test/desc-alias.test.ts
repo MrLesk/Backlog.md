@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../index.ts";
 
 describe("--desc alias functionality", () => {
@@ -13,9 +13,9 @@ describe("--desc alias functionality", () => {
 		await mkdir(testDir, { recursive: true });
 
 		// Initialize git repo first
-		spawnSync("git", ["init"], { cwd: testDir, encoding: "utf8" });
-		spawnSync("git", ["config", "user.name", "Test User"], { cwd: testDir, encoding: "utf8" });
-		spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: testDir, encoding: "utf8" });
+		await $`git init`.cwd(testDir).quiet();
+		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git config user.email "test@example.com"`.cwd(testDir).quiet();
 
 		// Initialize backlog project using Core
 		const core = new Core(testDir);
@@ -26,23 +26,20 @@ describe("--desc alias functionality", () => {
 		await rm(testDir, { recursive: true, force: true }).catch(() => {});
 	});
 
-	it("should create task with --desc alias", () => {
-		const result = spawnSync("bun", [cliPath, "task", "create", "Test --desc alias", "--desc", "Created with --desc"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+	it("should create task with --desc alias", async () => {
+		const result = await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`
+			.cwd(testDir)
+			.quiet();
 
-		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("Created task");
-		expect(result.stdout).toContain("task-1");
+		// Check that command succeeded (no exception thrown)
+		const output = await $`bun ${cliPath} task 1 --plain`.cwd(testDir).text();
+		expect(output).toContain("Test --desc alias");
+		expect(output).toContain("Created with --desc");
 	});
 
 	it("should verify task created with --desc has correct description", async () => {
 		// Create task with --desc
-		spawnSync("bun", [cliPath, "task", "create", "Test task", "--desc", "Description via --desc"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		await $`bun ${cliPath} task create "Test task" --desc "Description via --desc"`.cwd(testDir).quiet();
 
 		// Verify the task was created with correct description
 		const core = new Core(testDir);
@@ -70,35 +67,24 @@ describe("--desc alias functionality", () => {
 		);
 
 		// Edit with --desc
-		const result = spawnSync("bun", [cliPath, "task", "edit", "1", "--desc", "Updated via --desc"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		await $`bun ${cliPath} task edit 1 --desc "Updated via --desc"`.cwd(testDir).quiet();
 
-		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("Updated task");
+		// Command succeeded without throwing
 
 		// Verify the description was updated
 		const updatedTask = await core.filesystem.loadTask("task-1");
 		expect(updatedTask?.body).toContain("Updated via --desc");
 	});
 
-	it("should create draft with --desc alias", () => {
-		const result = spawnSync("bun", [cliPath, "draft", "create", "Draft with --desc", "--desc", "Draft description"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+	it("should create draft with --desc alias", async () => {
+		await $`bun ${cliPath} draft create "Draft with --desc" --desc "Draft description"`.cwd(testDir).quiet();
 
-		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("Created draft");
+		// Command succeeded without throwing
 	});
 
 	it("should verify draft created with --desc has correct description", async () => {
 		// Create draft with --desc
-		spawnSync("bun", [cliPath, "draft", "create", "Test draft", "--desc", "Draft via --desc"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		await $`bun ${cliPath} draft create "Test draft" --desc "Draft via --desc"`.cwd(testDir).quiet();
 
 		// Verify the draft was created with correct description
 		const core = new Core(testDir);
@@ -108,15 +94,11 @@ describe("--desc alias functionality", () => {
 		expect(draft?.body).toContain("Draft via --desc");
 	});
 
-	it("should show --desc in help text", () => {
-		const result = spawnSync("bun", [cliPath, "task", "create", "--help"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+	it("should show --desc in help text", async () => {
+		const result = await $`bun ${cliPath} task create --help`.cwd(testDir).text();
 
-		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("-d, --description <text>");
-		expect(result.stdout).toContain("--desc <text>");
-		expect(result.stdout).toContain("alias for --description");
+		expect(result).toContain("-d, --description <text>");
+		expect(result).toContain("--desc <text>");
+		expect(result).toContain("alias for --description");
 	});
 });

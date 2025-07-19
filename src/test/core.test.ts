@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -15,9 +16,9 @@ describe("Core", () => {
 		await core.filesystem.ensureBacklogStructure();
 
 		// Initialize git repository for testing
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	});
 
 	afterEach(async () => {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../index.ts";
 
 describe("CLI agents command", () => {
@@ -12,20 +13,9 @@ describe("CLI agents command", () => {
 		await mkdir(testDir, { recursive: true });
 
 		// Initialize git repo first
-		const gitInit = Bun.spawn(["git", "init"], { cwd: testDir, stdout: "inherit", stderr: "inherit" });
-		await gitInit.exited;
-		const gitConfigName = Bun.spawn(["git", "config", "user.name", "Test User"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		await gitConfigName.exited;
-		const gitConfigEmail = Bun.spawn(["git", "config", "user.email", "test@example.com"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		await gitConfigEmail.exited;
+		await $`git init`.cwd(testDir).quiet();
+		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
 		// Initialize backlog project using Core
 		const core = new Core(testDir);
@@ -37,23 +27,15 @@ describe("CLI agents command", () => {
 	});
 
 	it("should show help when no options are provided", async () => {
-		const result = Bun.spawn(["bun", cliPath, "agents"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
+		const result = await $`bun ${cliPath} agents`.cwd(testDir).quiet();
 
-		expect(await result.exited).toBe(0);
+		expect(result.exitCode).toBe(0);
 	});
 
 	it("should show help text with agents --help", async () => {
-		const result = Bun.spawn(["bun", cliPath, "agents", "--help"], {
-			cwd: testDir,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
+		const result = await $`bun ${cliPath} agents --help`.cwd(testDir).quiet();
 
-		expect(await result.exited).toBe(0);
+		expect(result.exitCode).toBe(0);
 	});
 
 	it("should update selected agent instruction files", async () => {
@@ -100,28 +82,13 @@ describe("CLI agents command", () => {
 		await mkdir(nonBacklogDir, { recursive: true });
 
 		// Initialize git repo
-		const gitInit = Bun.spawn(["git", "init"], { cwd: nonBacklogDir, stdout: "inherit", stderr: "inherit" });
-		await gitInit.exited;
-		const gitConfigName = Bun.spawn(["git", "config", "user.name", "Test User"], {
-			cwd: nonBacklogDir,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		await gitConfigName.exited;
-		const gitConfigEmail = Bun.spawn(["git", "config", "user.email", "test@example.com"], {
-			cwd: nonBacklogDir,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		await gitConfigEmail.exited;
+		await $`git init`.cwd(nonBacklogDir).quiet();
+		await $`git config user.name "Test User"`.cwd(nonBacklogDir).quiet();
+		await $`git config user.email test@example.com`.cwd(nonBacklogDir).quiet();
 
-		const result = Bun.spawn(["bun", cliPath, "agents", "--update-instructions"], {
-			cwd: nonBacklogDir,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
+		const result = await $`bun ${cliPath} agents --update-instructions`.cwd(nonBacklogDir).nothrow().quiet();
 
-		expect(await result.exited).toBe(1);
+		expect(result.exitCode).toBe(1);
 
 		// Cleanup
 		await rm(nonBacklogDir, { recursive: true, force: true }).catch(() => {});
