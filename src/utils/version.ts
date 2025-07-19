@@ -8,7 +8,7 @@ declare const __EMBEDDED_VERSION__: string | undefined;
 export async function getVersion(): Promise<string> {
 	// If this is a compiled executable with embedded version, use that
 	if (typeof __EMBEDDED_VERSION__ !== "undefined") {
-		return __EMBEDDED_VERSION__;
+		return String(__EMBEDDED_VERSION__);
 	}
 
 	return "0.0.0";

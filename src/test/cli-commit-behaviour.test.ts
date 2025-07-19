@@ -2,14 +2,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { GitOperations } from "../git/operations.ts";
 
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
 async function getCommitCountInTest(dir: string): Promise<number> {
-	const { stdout } = Bun.spawnSync(["git", "rev-list", "--all", "--count"], { cwd: dir });
-	return Number.parseInt(stdout.toString().trim(), 10);
+	const result = await $`git rev-list --all --count`.cwd(dir).quiet();
+	return Number.parseInt(result.stdout.toString().trim(), 10);
 }
 
 describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
@@ -20,9 +21,9 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 		testDir = await mkdtemp(join(tmpdir(), "backlog-test-"));
 
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
+		await $`git init -b main`.cwd(testDir).quiet();
+		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
 		const core = new Core(testDir);
 		git = new GitOperations(testDir);
@@ -34,10 +35,10 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 			config.autoCommit = false;
 			await core.filesystem.saveConfig(config);
 			// Commit the config change to have a clean state for tests
-			const configPath = join(core.filesystem.backlogDir, "config.yml");
+			const configPath = join(testDir, "backlog", "config.yml");
 			await git.addFile(configPath);
 			// Only commit if there are actual changes staged, to avoid errors on empty commits.
-			const diffProc = Bun.spawnSync(["git", "diff", "--staged", "--quiet"], { cwd: testDir });
+			const diffProc = await $`git diff --staged --quiet`.cwd(testDir).nothrow().quiet();
 			if (diffProc.exitCode === 1) {
 				await git.commitChanges("test: set autoCommit to false");
 			}
@@ -51,9 +52,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	test("should not commit when creating a task if autoCommit is false", async () => {
 		const initialCommitCount = await getCommitCountInTest(testDir);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "No-commit Task"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} task create "No-commit Task"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const finalCommitCount = await getCommitCountInTest(testDir);
@@ -66,9 +65,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	test("should not commit when creating a document if autoCommit is false", async () => {
 		const initialCommitCount = await getCommitCountInTest(testDir);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "doc", "create", "No-commit Doc"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} doc create "No-commit Doc"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const finalCommitCount = await getCommitCountInTest(testDir);
@@ -81,9 +78,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	test("should not commit when creating a decision if autoCommit is false", async () => {
 		const initialCommitCount = await getCommitCountInTest(testDir);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "decision", "create", "No-commit Decision"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} decision create "No-commit Decision"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const finalCommitCount = await getCommitCountInTest(testDir);
@@ -101,9 +96,9 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	beforeEach(async () => {
 		testDir = await mkdtemp(join(tmpdir(), "backlog-autocommit-true-"));
 
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
+		await $`git init -b main`.cwd(testDir).quiet();
+		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
 		const core = new Core(testDir);
 		git = new GitOperations(testDir);
@@ -114,10 +109,10 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 		if (config) {
 			config.autoCommit = true; // Enable auto-commit for this test suite
 			await core.filesystem.saveConfig(config);
-			const configPath = join(core.filesystem.backlogDir, "config.yml");
+			const configPath = join(testDir, "backlog", "config.yml");
 			await git.addFile(configPath);
 			// Only commit if there are actual changes staged, to avoid errors on empty commits.
-			const diffProc = Bun.spawnSync(["git", "diff", "--staged", "--quiet"], { cwd: testDir });
+			const diffProc = await $`git diff --staged --quiet`.cwd(testDir).nothrow().quiet();
 			if (diffProc.exitCode === 1) {
 				await git.commitChanges("test: set autoCommit to true");
 			}
@@ -131,9 +126,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	test("should commit when creating a task if autoCommit is true", async () => {
 		const initialCommitCount = await getCommitCountInTest(testDir);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Auto-commit Task"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} task create "Auto-commit Task"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		// Note: isClean() is omitted as createTask's commit strategy can leave the repo dirty.
@@ -144,9 +137,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	test("should commit when creating a document if autoCommit is true", async () => {
 		const initialCommitCount = await getCommitCountInTest(testDir);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "doc", "create", "Auto-commit Doc"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} doc create "Auto-commit Doc"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const finalCommitCount = await getCommitCountInTest(testDir);
@@ -159,9 +150,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	test("should commit when creating a decision if autoCommit is true", async () => {
 		const initialCommitCount = await getCommitCountInTest(testDir);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "decision", "create", "Auto-commit Decision"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} decision create "Auto-commit Decision"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const finalCommitCount = await getCommitCountInTest(testDir);

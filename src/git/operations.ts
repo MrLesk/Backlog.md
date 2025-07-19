@@ -1,3 +1,4 @@
+import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
 
 export class GitOperations {
@@ -343,72 +344,32 @@ export class GitOperations {
 	}
 
 	private async execGit(args: string[]): Promise<{ stdout: string; stderr: string }> {
+		// Use the new Bun shell API
 		try {
-			// Ensure all args are properly encoded strings to avoid Windows encoding issues
-			const sanitizedArgs = args.map((arg) => String(arg).trim()).filter(Boolean);
-
-			const proc = Bun.spawn(["git", ...sanitizedArgs], {
-				cwd: this.projectRoot,
-				stdout: "pipe",
-				stderr: "pipe",
-				env: {
-					...process.env,
-					// Force UTF-8 encoding on Windows to prevent corruption
-					LC_ALL: "C.UTF-8",
-					LANG: "C.UTF-8",
-				},
-			});
-
-			const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-
-			const exitCode = await proc.exited;
-
-			if (exitCode !== 0) {
-				throw new Error(`Git command failed (exit code ${exitCode}): git ${sanitizedArgs.join(" ")}\n${stderr}`);
+			const { stdout, stderr } = await $`git ${args}`.cwd(this.projectRoot).quiet();
+			return { stdout: stdout.toString(), stderr: stderr.toString() };
+		} catch (error: any) {
+			if (error.exitCode !== undefined) {
+				throw new Error(`Git command failed (exit code ${error.exitCode}): git ${args.join(" ")}\n${error.stderr}`);
 			}
-
-			return { stdout, stderr };
-		} catch (error: unknown) {
-			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(`Git command failed: git ${args.join(" ")}\n${message}`);
+			throw error;
 		}
 	}
 }
 
 export async function isGitRepository(projectRoot: string): Promise<boolean> {
 	try {
-		const proc = Bun.spawn(["git", "rev-parse", "--git-dir"], {
-			cwd: projectRoot,
-			stdout: "pipe",
-			stderr: "pipe",
-			env: {
-				...process.env,
-				LC_ALL: "C.UTF-8",
-				LANG: "C.UTF-8",
-			},
-		});
-		const exitCode = await proc.exited;
-		return exitCode === 0;
+		await $`git rev-parse --git-dir`.cwd(projectRoot).quiet();
+		return true;
 	} catch {
 		return false;
 	}
 }
 
 export async function initializeGitRepository(projectRoot: string): Promise<void> {
-	const proc = Bun.spawn(["git", "init"], {
-		cwd: projectRoot,
-		stdout: "pipe",
-		stderr: "pipe",
-		env: {
-			...process.env,
-			LC_ALL: "C.UTF-8",
-			LANG: "C.UTF-8",
-		},
-	});
-
-	const exitCode = await proc.exited;
-	if (exitCode !== 0) {
-		const stderr = await new Response(proc.stderr).text();
-		throw new Error(`Failed to initialize git repository: ${stderr}`);
+	try {
+		await $`git init`.cwd(projectRoot).quiet();
+	} catch (error) {
+		throw new Error(`Failed to initialize git repository: ${error}`);
 	}
 }

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../index.ts";
 import { BacklogServer } from "../server/index.ts";
 
@@ -16,9 +17,9 @@ describe("Web UI Health Check System", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git and backlog
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Health Check Test", true);

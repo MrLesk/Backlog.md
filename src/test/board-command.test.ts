@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 
 describe("Board command integration", () => {
@@ -12,9 +13,9 @@ describe("Board command integration", () => {
 		await mkdir(testDir, { recursive: true });
 
 		// Configure git for tests - required for CI
-		await Bun.spawn(["git", "init"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
+		await $`git init`.cwd(testDir).quiet();
+		await $`git config user.email test@example.com`.cwd(testDir).quiet();
+		await $`git config user.name "Test User"`.cwd(testDir).quiet();
 
 		core = new Core(testDir);
 		await core.initializeProject("Test Board Project");

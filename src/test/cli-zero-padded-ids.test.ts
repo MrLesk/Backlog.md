@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
@@ -13,9 +14,9 @@ describe("CLI Zero Padded IDs Feature", () => {
 		testDir = await mkdtemp(join(tmpdir(), "backlog-test-padding-"));
 
 		// Initialize git and backlog project
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
+		await $`git init -b main`.cwd(testDir).quiet();
+		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
 		const core = new Core(testDir);
 		await core.initializeProject("Padding Test", false); // No auto-commit for init
@@ -34,9 +35,7 @@ describe("CLI Zero Padded IDs Feature", () => {
 	});
 
 	test("should create a task with a zero-padded ID", async () => {
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Padded Task"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} task create "Padded Task"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const tasksDir = join(testDir, "backlog", "tasks");
@@ -46,9 +45,7 @@ describe("CLI Zero Padded IDs Feature", () => {
 	});
 
 	test("should create a document with a zero-padded ID", async () => {
-		const result = Bun.spawnSync(["bun", CLI_PATH, "doc", "create", "Padded Doc"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} doc create "Padded Doc"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const docsDir = join(testDir, "backlog", "docs");
@@ -58,9 +55,7 @@ describe("CLI Zero Padded IDs Feature", () => {
 	});
 
 	test("should create a decision with a zero-padded ID", async () => {
-		const result = Bun.spawnSync(["bun", CLI_PATH, "decision", "create", "Padded Decision"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} decision create "Padded Decision"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const decisionsDir = join(testDir, "backlog", "decisions");
@@ -70,10 +65,8 @@ describe("CLI Zero Padded IDs Feature", () => {
 	});
 
 	test("should correctly increment a padded task ID", async () => {
-		Bun.spawnSync(["bun", CLI_PATH, "task", "create", "First Padded Task"], { cwd: testDir });
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Second Padded Task"], {
-			cwd: testDir,
-		});
+		await $`bun ${CLI_PATH} task create "First Padded Task"`.cwd(testDir).quiet();
+		const result = await $`bun ${CLI_PATH} task create "Second Padded Task"`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const tasksDir = join(testDir, "backlog", "tasks");
@@ -84,14 +77,10 @@ describe("CLI Zero Padded IDs Feature", () => {
 
 	test("should create a sub-task with a zero-padded ID", async () => {
 		// Create parent task first
-		Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Parent Task"], {
-			cwd: testDir,
-		});
+		await $`bun ${CLI_PATH} task create "Parent Task"`.cwd(testDir).quiet();
 
 		// Create sub-task
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Padded Sub-task", "-p", "task-001"], {
-			cwd: testDir,
-		});
+		const result = await $`bun ${CLI_PATH} task create "Padded Sub-task" -p task-001`.cwd(testDir).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const tasksDir = join(testDir, "backlog", "tasks");

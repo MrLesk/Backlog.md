@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import { $ } from "bun";
 import matter from "gray-matter";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
@@ -176,9 +177,7 @@ export class BacklogServer {
 					break;
 			}
 
-			await Bun.spawn(cmd, {
-				stdio: ["ignore", "ignore", "ignore"],
-			});
+			await $`${cmd}`.quiet();
 		} catch (error) {
 			console.warn("⚠️  Failed to open browser automatically:", error);
 			console.log("💡 Please open your browser manually and navigate to the URL above");

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Decision, Document, Task } from "../types";
 
@@ -15,9 +16,9 @@ describe("CLI ID Incrementing Behavior", () => {
 		testDir = await mkdtemp(join(tmpdir(), "backlog-test-"));
 		core = new Core(testDir);
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
+		await $`git init -b main`.cwd(testDir).quiet();
+		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
 		await core.initializeProject("ID Incrementing Test");
 	});
@@ -39,10 +40,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createTask(task1);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "Second Task"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(testDir).quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Created task task-2");
@@ -62,10 +60,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createDocument(doc1);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "doc", "create", "Second Doc"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		const result = await $`bun ${CLI_PATH} doc create "Second Doc"`.cwd(testDir).quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Created document doc-2");
@@ -88,10 +83,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createDecision(decision1);
 
-		const result = Bun.spawnSync(["bun", CLI_PATH, "decision", "create", "Second Decision"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		const result = await $`bun ${CLI_PATH} decision create "Second Decision"`.cwd(testDir).quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Created decision decision-2");
