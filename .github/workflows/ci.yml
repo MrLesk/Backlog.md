@@ -39,13 +39,6 @@ jobs:
             bun test --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
           fi
         shell: bash
-      - name: Publish test results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
-        with:
-          files: test-results.xml
-          check_name: "Test Results (${{ matrix.os }})"
-          comment_title: "Test Results (${{ matrix.os }})"
 
   build-test:
     name: compile-and-smoke-test
