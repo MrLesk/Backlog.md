@@ -5,26 +5,27 @@ import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
+let TEST_DIR: string;
+
 describe("CLI plain output for AI agents", () => {
-	let testDir: string;
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		testDir = createUniqueTestDir("test-plain-output");
+		TEST_DIR = createUniqueTestDir("test-plain-output");
 		try {
-			await rm(testDir, { recursive: true, force: true });
+			await rm(TEST_DIR, { recursive: true, force: true });
 		} catch {
 			// Ignore cleanup errors
 		}
-		await mkdir(testDir, { recursive: true });
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo first using shell API (same pattern as other tests)
-		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project using Core (same pattern as other tests)
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.initializeProject("Plain Output Test Project");
 
 		// Create a test task
@@ -60,14 +61,14 @@ describe("CLI plain output for AI agents", () => {
 
 	afterEach(async () => {
 		try {
-			await safeCleanup(testDir);
+			await safeCleanup(TEST_DIR);
 		} catch {
 			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
 	});
 
 	it("should output plain text with task view --plain", async () => {
-		const result = await $`bun ${cliPath} task view 1 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} task view 1 --plain`.cwd(TEST_DIR).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -92,12 +93,12 @@ describe("CLI plain output for AI agents", () => {
 
 	it("should output plain text with task <id> --plain shortcut", async () => {
 		// Verify task exists before running CLI command
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		const task = await core.filesystem.loadTask("task-1");
 		expect(task).not.toBeNull();
 		expect(task?.id).toBe("task-1");
 
-		const result = await $`bun ${cliPath} task 1 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -120,7 +121,7 @@ describe("CLI plain output for AI agents", () => {
 	});
 
 	it("should output plain text with draft view --plain", async () => {
-		const result = await $`bun ${cliPath} draft view 2 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} draft view 2 --plain`.cwd(TEST_DIR).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -144,12 +145,12 @@ describe("CLI plain output for AI agents", () => {
 
 	it("should output plain text with draft <id> --plain shortcut", async () => {
 		// Verify draft exists before running CLI command
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		const draft = await core.filesystem.loadDraft("task-2");
 		expect(draft).not.toBeNull();
 		expect(draft?.id).toBe("task-2");
 
-		const result = await $`bun ${cliPath} draft 2 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} draft 2 --plain`.cwd(TEST_DIR).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());

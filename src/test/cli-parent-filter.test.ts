@@ -5,26 +5,27 @@ import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
+let TEST_DIR: string;
+
 describe("CLI parent task filtering", () => {
-	let testDir: string;
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		testDir = createUniqueTestDir("test-parent-filter");
+		TEST_DIR = createUniqueTestDir("test-parent-filter");
 		try {
-			await rm(testDir, { recursive: true, force: true });
+			await rm(TEST_DIR, { recursive: true, force: true });
 		} catch {
 			// Ignore cleanup errors
 		}
-		await mkdir(testDir, { recursive: true });
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo first using shell API (same pattern as other tests)
-		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project using Core (same pattern as other tests)
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.initializeProject("Parent Filter Test Project");
 
 		// Create a parent task
@@ -91,14 +92,14 @@ describe("CLI parent task filtering", () => {
 
 	afterEach(async () => {
 		try {
-			await safeCleanup(testDir);
+			await safeCleanup(TEST_DIR);
 		} catch {
 			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
 	});
 
 	it("should filter tasks by parent with full task ID", async () => {
-		const result = await $`bun ${cliPath} task list --parent task-1 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} task list --parent task-1 --plain`.cwd(TEST_DIR).quiet();
 
 		const exitCode = result.exitCode;
 
@@ -117,7 +118,7 @@ describe("CLI parent task filtering", () => {
 	});
 
 	it("should filter tasks by parent with short task ID", async () => {
-		const result = await $`bun ${cliPath} task list --parent 1 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} task list --parent 1 --plain`.cwd(TEST_DIR).quiet();
 
 		const exitCode = result.exitCode;
 
@@ -136,7 +137,7 @@ describe("CLI parent task filtering", () => {
 	});
 
 	it("should show error for non-existent parent task", async () => {
-		const result = await $`bun ${cliPath} task list --parent task-999 --plain`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${cliPath} task list --parent task-999 --plain`.cwd(TEST_DIR).nothrow().quiet();
 
 		const exitCode = result.exitCode;
 
@@ -145,7 +146,7 @@ describe("CLI parent task filtering", () => {
 	});
 
 	it("should show message when parent has no children", async () => {
-		const result = await $`bun ${cliPath} task list --parent task-2 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} task list --parent task-2 --plain`.cwd(TEST_DIR).quiet();
 
 		const exitCode = result.exitCode;
 
@@ -159,7 +160,7 @@ describe("CLI parent task filtering", () => {
 	});
 
 	it("should work with -p shorthand flag", async () => {
-		const result = await $`bun ${cliPath} task list -p task-1 --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} task list -p task-1 --plain`.cwd(TEST_DIR).quiet();
 
 		const exitCode = result.exitCode;
 
@@ -175,7 +176,7 @@ describe("CLI parent task filtering", () => {
 	});
 
 	it("should combine parent filter with status filter", async () => {
-		const result = await $`bun ${cliPath} task list --parent task-1 --status "To Do" --plain`.cwd(testDir).quiet();
+		const result = await $`bun ${cliPath} task list --parent task-1 --status "To Do" --plain`.cwd(TEST_DIR).quiet();
 
 		const exitCode = result.exitCode;
 
