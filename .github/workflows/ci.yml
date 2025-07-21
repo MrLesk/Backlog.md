@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  checks: write
+  pull-requests: write
 
 jobs:
   test:
@@ -25,18 +27,25 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.os }}-bun-
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --linker=isolated
       - run: bun run lint
       - name: Run tests
         run: |
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Run tests with increased timeout on Windows to handle slower file operations
-            bun test --timeout=15000
+            bun test --timeout=15000 --reporter=junit --reporter-outfile=test-results.xml
           else
             # Run tests with increased timeout to handle Bun shell operations
-            bun test --timeout=10000
+            bun test --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
           fi
         shell: bash
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: test-results.xml
+          check_name: "Test Results (${{ matrix.os }})"
+          comment_title: "Test Results (${{ matrix.os }})"
 
   build-test:
     name: compile-and-smoke-test
@@ -54,7 +63,7 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.os }}-bun-
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --linker=isolated
       - name: Build standalone binary
         shell: bash
         run: |
