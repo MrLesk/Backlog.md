@@ -1,19 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-start-id");
+let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 async function initGitRepo(dir: string) {
-	await Bun.spawn(["git", "init", "-b", "main"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: dir }).exited;
-	await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: dir }).exited;
+	await $`git init -b main`.cwd(dir).quiet();
+	await $`git config user.name "Test User"`.cwd(dir).quiet();
+	await $`git config user.email test@example.com`.cwd(dir).quiet();
 }
 
 describe("task id generation", () => {
 	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-start-id");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 		await initGitRepo(TEST_DIR);
@@ -22,11 +25,15 @@ describe("task id generation", () => {
 	});
 
 	afterEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	it("starts numbering tasks at 1", async () => {
-		const result = Bun.spawnSync(["bun", CLI_PATH, "task", "create", "First"], { cwd: TEST_DIR });
+		const result = await $`bun ${CLI_PATH} task create First`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const files = await readdir(join(TEST_DIR, "backlog", "tasks"));

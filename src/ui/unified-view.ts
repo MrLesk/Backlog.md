@@ -15,6 +15,7 @@ export interface UnifiedViewOptions {
 	initialView: ViewType;
 	selectedTask?: Task;
 	tasks?: Task[];
+	title?: string;
 	filter?: {
 		status?: string;
 		assignee?: string;
@@ -80,9 +81,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			}
 
 			// Find the task to view - if selectedTask has an ID, find it in available tasks
-			let taskToView: Task;
+			let taskToView: Task | undefined;
 			if (selectedTask?.id) {
-				const foundTask = availableTasks.find((t) => t.id === selectedTask.id);
+				const foundTask = availableTasks.find((t) => t.id === selectedTask?.id);
 				taskToView = foundTask || availableTasks[0];
 			} else {
 				taskToView = availableTasks[0];
@@ -108,7 +109,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			return new Promise<ViewResult>((resolve) => {
 				let result: ViewResult = "exit"; // Default to exit
 
-				const onTabPress = () => {
+				const onTabPress = async () => {
 					result = "switch";
 				};
 
@@ -189,7 +190,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			return new Promise<ViewResult>((resolve) => {
 				let result: ViewResult = "exit"; // Default to exit
 
-				const onTabPress = () => {
+				const onTabPress = async () => {
 					result = "switch";
 				};
 

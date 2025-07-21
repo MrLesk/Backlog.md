@@ -227,6 +227,7 @@ describe("FileSystem", () => {
 				statuses: ["To Do"],
 				labels: [],
 				milestones: [],
+				dateFormat: "yyyy-mm-dd",
 			};
 
 			await filesystem.saveConfig(cfg);
@@ -300,7 +301,7 @@ describe("FileSystem", () => {
 			await filesystem.saveDecision(sampleDecision);
 			const list = await filesystem.listDecisions();
 			expect(list).toHaveLength(1);
-			expect(list[0].id).toBe(sampleDecision.id);
+			expect(list[0]?.id).toBe(sampleDecision.id);
 		});
 	});
 

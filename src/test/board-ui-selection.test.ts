@@ -48,10 +48,10 @@ describe("board UI task selection", () => {
 		];
 
 		const sorted = [...tasks].sort((a, b) => compareTaskIds(a.id, b.id));
-		expect(sorted[0].id).toBe("task-1");
-		expect(sorted[1].id).toBe("task-2");
-		expect(sorted[2].id).toBe("task-10");
-		expect(sorted[3].id).toBe("task-20");
+		expect(sorted[0]?.id).toBe("task-1");
+		expect(sorted[1]?.id).toBe("task-2");
+		expect(sorted[2]?.id).toBe("task-10");
+		expect(sorted[3]?.id).toBe("task-20");
 	});
 
 	it("compareTaskIds handles decimal task IDs correctly", () => {
@@ -89,9 +89,9 @@ describe("board UI task selection", () => {
 		];
 
 		const sorted = [...tasks].sort((a, b) => compareTaskIds(a.id, b.id));
-		expect(sorted[0].id).toBe("task-1.1");
-		expect(sorted[1].id).toBe("task-1.2");
-		expect(sorted[2].id).toBe("task-1.10");
+		expect(sorted[0]?.id).toBe("task-1.1");
+		expect(sorted[1]?.id).toBe("task-1.2");
+		expect(sorted[2]?.id).toBe("task-1.10");
 	});
 
 	it("simulates board view task selection with sorted tasks", () => {
@@ -139,11 +139,11 @@ describe("board UI task selection", () => {
 
 		// Bug: using unsorted array with sorted display index
 		const wrongTask = unsortedTasks[selectedIndex];
-		expect(wrongTask.id).toBe("task-10"); // Wrong!
+		expect(wrongTask?.id).toBe("task-10"); // Wrong!
 
 		// Fix: using sorted array with sorted display index
 		const correctTask = sortedTasks[selectedIndex];
-		expect(correctTask.id).toBe("task-1"); // Correct!
+		expect(correctTask?.id).toBe("task-1"); // Correct!
 	});
 
 	it("ensures consistent ordering between display and selection", () => {
@@ -207,14 +207,14 @@ describe("board UI task selection", () => {
 		for (let i = 0; i < sortedTasks.length; i++) {
 			const displayedTask = sortedTasks[i];
 			const selectedTask = sortedTasks[i]; // Should be the same!
-			expect(selectedTask.id).toBe(displayedTask.id);
+			expect(selectedTask?.id).toBe(displayedTask?.id ?? "");
 		}
 
 		// Verify specific selections
-		expect(sortedTasks[0].id).toBe("task-1");
-		expect(sortedTasks[1].id).toBe("task-2");
-		expect(sortedTasks[2].id).toBe("task-3");
-		expect(sortedTasks[3].id).toBe("task-4");
-		expect(sortedTasks[4].id).toBe("task-5");
+		expect(sortedTasks[0]?.id).toBe("task-1");
+		expect(sortedTasks[1]?.id).toBe("task-2");
+		expect(sortedTasks[2]?.id).toBe("task-3");
+		expect(sortedTasks[3]?.id).toBe("task-4");
+		expect(sortedTasks[4]?.id).toBe("task-5");
 	});
 });

@@ -1,60 +1,64 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
+let TEST_DIR: string;
+
 describe("Cleanup functionality", () => {
-	let testDir: string;
 	let core: Core;
 
+	// Sample data
+	const sampleTask: Task = {
+		id: "task-1",
+		title: "Test Task",
+		status: "Done",
+		assignee: [],
+		createdDate: "2025-07-21",
+		labels: [],
+		dependencies: [],
+		body: "Test task description",
+	};
+
 	beforeEach(async () => {
-		testDir = createUniqueTestDir("test-cleanup");
+		TEST_DIR = createUniqueTestDir("test-cleanup");
 		try {
-			await rm(testDir, { recursive: true, force: true });
+			await rm(TEST_DIR, { recursive: true, force: true });
 		} catch {
 			// Ignore cleanup errors
 		}
-		await mkdir(testDir, { recursive: true });
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project
-		core = new Core(testDir);
+		core = new Core(TEST_DIR);
 		await core.initializeProject("Cleanup Test Project");
 	});
 
 	afterEach(async () => {
 		try {
-			await safeCleanup(testDir);
+			await safeCleanup(TEST_DIR);
 		} catch {
-			// Ignore cleanup errors
+			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
 	});
 
 	describe("Core functionality", () => {
 		it("should create completed directory in backlog structure", async () => {
 			await core.filesystem.ensureBacklogStructure();
-			expect(core.filesystem.completedDir).toBe(join(testDir, "backlog", "completed"));
+			expect(core.filesystem.completedDir).toBe(join(TEST_DIR, "backlog", "completed"));
 		});
 
 		it("should move Done task to completed folder", async () => {
 			// Create a task
-			const task: Task = {
-				id: "task-1",
-				title: "Test Task",
-				status: "Done",
-				assignee: [],
-				createdDate: "2025-07-01",
-				labels: [],
-				dependencies: [],
-				body: "Test task description",
-			};
-			await core.createTask(task, false);
+			await core.createTask(sampleTask, false);
 
 			// Verify task exists in active tasks
 			const activeTasks = await core.filesystem.listTasks();
@@ -83,14 +87,10 @@ describe("Cleanup functionality", () => {
 			const oldDate = new Date();
 			oldDate.setDate(oldDate.getDate() - 7);
 			const oldTask: Task = {
-				id: "task-1",
+				...sampleTask,
 				title: "Old Done Task",
-				status: "Done",
-				assignee: [],
 				createdDate: oldDate.toISOString().split("T")[0] as string,
 				updatedDate: oldDate.toISOString().split("T")[0] as string,
-				labels: [],
-				dependencies: [],
 				body: "Old task description",
 			};
 			await core.createTask(oldTask, false);
@@ -99,27 +99,22 @@ describe("Cleanup functionality", () => {
 			const recentDate = new Date();
 			recentDate.setDate(recentDate.getDate() - 1);
 			const recentTask: Task = {
+				...sampleTask,
 				id: "task-2",
 				title: "Recent Done Task",
-				status: "Done",
-				assignee: [],
 				createdDate: recentDate.toISOString().split("T")[0] as string,
 				updatedDate: recentDate.toISOString().split("T")[0] as string,
-				labels: [],
-				dependencies: [],
 				body: "Recent task description",
 			};
 			await core.createTask(recentTask, false);
 
 			// Create In Progress task
 			const activeTask: Task = {
+				...sampleTask,
 				id: "task-3",
 				title: "Active Task",
 				status: "In Progress",
-				assignee: [],
 				createdDate: oldDate.toISOString().split("T")[0] as string,
-				labels: [],
-				dependencies: [],
 				body: "Active task description",
 			};
 			await core.createTask(activeTask, false);
@@ -136,13 +131,9 @@ describe("Cleanup functionality", () => {
 
 		it("should handle tasks without dates", async () => {
 			const task: Task = {
-				id: "task-1",
+				...sampleTask,
 				title: "Task Without Date",
-				status: "Done",
-				assignee: [],
 				createdDate: "",
-				labels: [],
-				dependencies: [],
 				body: "Task description",
 			};
 			await core.createTask(task, false);

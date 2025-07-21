@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig } from "../types/index.ts";
 
@@ -13,14 +14,14 @@ describe("Offline Integration Tests", () => {
 		tempDir = await mkdtemp(join(tmpdir(), "backlog-offline-integration-"));
 
 		// Initialize a git repo without remote
-		await Bun.spawn(["git", "init"], { cwd: tempDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: tempDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: tempDir }).exited;
+		await $`git init`.cwd(tempDir).quiet();
+		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
+		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
 
 		// Create initial commit
 		await writeFile(join(tempDir, "README.md"), "# Test Project");
-		await Bun.spawn(["git", "add", "README.md"], { cwd: tempDir }).exited;
-		await Bun.spawn(["git", "commit", "-m", "Initial commit"], { cwd: tempDir }).exited;
+		await $`git add README.md`.cwd(tempDir).quiet();
+		await $`git commit -m "Initial commit"`.cwd(tempDir).quiet();
 
 		// Create basic backlog structure
 		const backlogDir = join(tempDir, "backlog");
@@ -35,7 +36,6 @@ describe("Offline Integration Tests", () => {
 			labels: ["bug", "feature"],
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
-			backlogDirectory: "backlog",
 			remoteOperations: false,
 		};
 
@@ -73,8 +73,8 @@ remote_operations: false
 			body: "This task should be created without remote operations",
 			status: "To Do",
 			assignee: [],
-			createdDate: new Date().toISOString().split("T")[0],
-			updatedDate: new Date().toISOString().split("T")[0],
+			createdDate: new Date().toISOString().split("T")[0] ?? "",
+			updatedDate: new Date().toISOString().split("T")[0] ?? "",
 			labels: ["feature"],
 			dependencies: [],
 			priority: "medium" as const,
@@ -86,8 +86,8 @@ remote_operations: false
 		// List tasks should work without remote operations
 		const tasks = await core.listTasksWithMetadata();
 		expect(tasks).toHaveLength(1);
-		expect(tasks[0].id).toBe("task-1");
-		expect(tasks[0].title).toBe("Test task in offline mode");
+		expect(tasks[0]?.id).toBe("task-1");
+		expect(tasks[0]?.title).toBe("Test task in offline mode");
 	});
 
 	it("should handle task ID generation in offline mode", async () => {
@@ -98,8 +98,8 @@ remote_operations: false
 			body: "First task description",
 			status: "To Do",
 			assignee: [],
-			createdDate: new Date().toISOString().split("T")[0],
-			updatedDate: new Date().toISOString().split("T")[0],
+			createdDate: new Date().toISOString().split("T")[0] ?? "",
+			updatedDate: new Date().toISOString().split("T")[0] ?? "",
 			labels: [],
 			dependencies: [],
 			priority: "medium" as const,
@@ -111,8 +111,8 @@ remote_operations: false
 			body: "Second task description",
 			status: "In Progress",
 			assignee: [],
-			createdDate: new Date().toISOString().split("T")[0],
-			updatedDate: new Date().toISOString().split("T")[0],
+			createdDate: new Date().toISOString().split("T")[0] ?? "",
+			updatedDate: new Date().toISOString().split("T")[0] ?? "",
 			labels: [],
 			dependencies: [],
 			priority: "high" as const,
@@ -158,7 +158,7 @@ remote_operations: false
 
 		// Simulate config set command
 		const updatedConfig = { ...initialConfig, remoteOperations: true };
-		await core.filesystem.saveConfig(updatedConfig);
+		await core.filesystem.saveConfig(updatedConfig as any);
 
 		// Verify config was updated
 		const newConfig = await core.filesystem.loadConfig();
@@ -166,7 +166,7 @@ remote_operations: false
 
 		// Test changing it back
 		const finalConfig = { ...newConfig, remoteOperations: false };
-		await core.filesystem.saveConfig(finalConfig);
+		await core.filesystem.saveConfig(finalConfig as any);
 
 		const verifyConfig = await core.filesystem.loadConfig();
 		expect(verifyConfig?.remoteOperations).toBe(false);

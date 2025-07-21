@@ -33,11 +33,12 @@ describe("Enhanced init command", () => {
 		expect(initialConfig).toBeTruthy();
 		const modifiedConfig = {
 			...initialConfig,
+			projectName: initialConfig?.projectName ?? "Test Project",
 			autoCommit: true,
 			defaultEditor: "vim",
 			defaultPort: 8080,
 		};
-		await core.filesystem.saveConfig(modifiedConfig);
+		await core.filesystem.saveConfig(modifiedConfig as any);
 
 		// Re-initialization should detect existing config
 		const existingConfig = await core.filesystem.loadConfig();

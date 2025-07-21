@@ -134,9 +134,9 @@ describe("Code path utilities", () => {
 		test("should handle empty input", () => {
 			expect(transformCodePaths("")).toBe("");
 			// biome-ignore lint/suspicious/noExplicitAny: testing null/undefined inputs
-			expect(transformCodePaths(null as any)).toBe(null);
+			expect(transformCodePaths(null as any)).toBe("");
 			// biome-ignore lint/suspicious/noExplicitAny: testing null/undefined inputs
-			expect(transformCodePaths(undefined as any)).toBe(undefined);
+			expect(transformCodePaths(undefined as any)).toBe("");
 		});
 
 		test("should handle only a path on a line", () => {
@@ -162,9 +162,9 @@ describe("Code path utilities", () => {
 		test("should handle empty input", () => {
 			expect(transformCodePathsPlain("")).toBe("");
 			// biome-ignore lint/suspicious/noExplicitAny: testing null/undefined inputs
-			expect(transformCodePathsPlain(null as any)).toBe(null);
+			expect(transformCodePathsPlain(null as any)).toBe("");
 			// biome-ignore lint/suspicious/noExplicitAny: testing null/undefined inputs
-			expect(transformCodePathsPlain(undefined as any)).toBe(undefined);
+			expect(transformCodePathsPlain(undefined as any)).toBe("");
 		});
 	});
 

@@ -1,29 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+
+let TEST_DIR: string;
 
 describe("Auto-commit configuration", () => {
-	const testDir = join(process.cwd(), "test-auto-commit");
 	let core: Core;
 
 	beforeEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
-		await mkdir(testDir, { recursive: true });
+		TEST_DIR = createUniqueTestDir("test-auto-commit");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests
-		await Bun.spawn(["git", "init"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
+		await $`git init`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
-		core = new Core(testDir);
+		core = new Core(TEST_DIR);
 		await core.initializeProject("Test Auto-commit Project", true);
 	});
 
 	afterEach(async () => {
-		// Clean up test directory after each test
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	describe("Config migration", () => {
@@ -162,7 +169,7 @@ describe("Auto-commit configuration", () => {
 
 			// Commit the config change to start with a clean state
 			const git = await core.getGitOps();
-			await git.addFile(join(testDir, "backlog", "config.yml"));
+			await git.addFile(join(TEST_DIR, "backlog", "config.yml"));
 			await git.commitChanges("Update autoCommit config for test");
 		});
 

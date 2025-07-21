@@ -44,9 +44,9 @@ interface LoadingScreenConfig {
  * @returns Base loading screen components and control functions
  */
 function createLoadingScreenBase(config: LoadingScreenConfig): {
-	screen: blessed.Widgets.Screen | null;
-	loadingBox: blessed.Widgets.BoxElement | null;
-	spinner: blessed.Widgets.TextElement | null;
+	screen: any | null;
+	loadingBox: any | null;
+	spinner: any | null;
 	spinnerInterval: NodeJS.Timeout | null;
 	closed: boolean;
 	update: (message: string) => void;

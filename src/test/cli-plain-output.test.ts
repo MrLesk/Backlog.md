@@ -1,30 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, getExitCode, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+
+let TEST_DIR: string;
 
 describe("CLI plain output for AI agents", () => {
-	let testDir: string;
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		testDir = createUniqueTestDir("test-plain-output");
+		TEST_DIR = createUniqueTestDir("test-plain-output");
 		try {
-			await rm(testDir, { recursive: true, force: true });
+			await rm(TEST_DIR, { recursive: true, force: true });
 		} catch {
 			// Ignore cleanup errors
 		}
-		await mkdir(testDir, { recursive: true });
+		await mkdir(TEST_DIR, { recursive: true });
 
-		// Initialize git repo first using Bun.spawn (same pattern as other tests)
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
+		// Initialize git repo first using shell API (same pattern as other tests)
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project using Core (same pattern as other tests)
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.initializeProject("Plain Output Test Project");
 
 		// Create a test task
@@ -60,143 +61,115 @@ describe("CLI plain output for AI agents", () => {
 
 	afterEach(async () => {
 		try {
-			await safeCleanup(testDir);
+			await safeCleanup(TEST_DIR);
 		} catch {
 			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
 	});
 
-	it("should output plain text with task view --plain", () => {
-		const result = spawnSync("bun", [cliPath, "task", "view", "1", "--plain"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+	it("should output plain text with task view --plain", async () => {
+		const result = await $`bun ${cliPath} task view 1 --plain`.cwd(TEST_DIR).quiet();
 
-		// Handle Windows spawnSync status issues
-		const exitCode = getExitCode(result);
-
-		if (exitCode !== 0) {
-			console.error("STDOUT:", result.stdout);
-			console.error("STDERR:", result.stderr);
-			console.error("Error:", result.error);
+		if (result.exitCode !== 0) {
+			console.error("STDOUT:", result.stdout.toString());
+			console.error("STDERR:", result.stderr.toString());
 		}
 
-		expect(exitCode).toBe(0);
+		expect(result.exitCode).toBe(0);
 		// Should contain the file path as first line
-		expect(result.stdout).toContain("File: ");
-		expect(result.stdout).toContain("task-1 - Test-task-for-plain-output.md");
+		expect(result.stdout.toString()).toContain("File: ");
+		expect(result.stdout.toString()).toContain("task-1 - Test-task-for-plain-output.md");
 		// Should contain the formatted task output
-		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
-		expect(result.stdout).toContain("Status: ○ To Do");
-		expect(result.stdout).toContain("Created: 2025-06-18");
-		expect(result.stdout).toContain("Description:");
-		expect(result.stdout).toContain("Test description");
-		expect(result.stdout).toContain("Acceptance Criteria:");
+		expect(result.stdout.toString()).toContain("Task task-1 - Test task for plain output");
+		expect(result.stdout.toString()).toContain("Status: ○ To Do");
+		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
+		expect(result.stdout.toString()).toContain("Description:");
+		expect(result.stdout.toString()).toContain("Test description");
+		expect(result.stdout.toString()).toContain("Acceptance Criteria:");
 		// Should not contain TUI escape codes
-		expect(result.stdout).not.toContain("[?1049h");
-		expect(result.stdout).not.toContain("\x1b");
+		expect(result.stdout.toString()).not.toContain("[?1049h");
+		expect(result.stdout.toString()).not.toContain("\x1b");
 	});
 
 	it("should output plain text with task <id> --plain shortcut", async () => {
 		// Verify task exists before running CLI command
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		const task = await core.filesystem.loadTask("task-1");
 		expect(task).not.toBeNull();
 		expect(task?.id).toBe("task-1");
 
-		const result = spawnSync("bun", [cliPath, "task", "1", "--plain"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		const result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).quiet();
 
-		// Handle Windows spawnSync status issues
-		const exitCode = getExitCode(result);
-
-		if (exitCode !== 0) {
-			console.error("STDOUT:", result.stdout);
-			console.error("STDERR:", result.stderr);
-			console.error("Error:", result.error);
+		if (result.exitCode !== 0) {
+			console.error("STDOUT:", result.stdout.toString());
+			console.error("STDERR:", result.stderr.toString());
 		}
 
-		expect(exitCode).toBe(0);
+		expect(result.exitCode).toBe(0);
 		// Should contain the file path as first line
-		expect(result.stdout).toContain("File: ");
-		expect(result.stdout).toContain("task-1 - Test-task-for-plain-output.md");
+		expect(result.stdout.toString()).toContain("File: ");
+		expect(result.stdout.toString()).toContain("task-1 - Test-task-for-plain-output.md");
 		// Should contain the formatted task output
-		expect(result.stdout).toContain("Task task-1 - Test task for plain output");
-		expect(result.stdout).toContain("Status: ○ To Do");
-		expect(result.stdout).toContain("Created: 2025-06-18");
-		expect(result.stdout).toContain("Description:");
-		expect(result.stdout).toContain("Test description");
+		expect(result.stdout.toString()).toContain("Task task-1 - Test task for plain output");
+		expect(result.stdout.toString()).toContain("Status: ○ To Do");
+		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
+		expect(result.stdout.toString()).toContain("Description:");
+		expect(result.stdout.toString()).toContain("Test description");
 		// Should not contain TUI escape codes
-		expect(result.stdout).not.toContain("[?1049h");
-		expect(result.stdout).not.toContain("\x1b");
+		expect(result.stdout.toString()).not.toContain("[?1049h");
+		expect(result.stdout.toString()).not.toContain("\x1b");
 	});
 
-	it("should output plain text with draft view --plain", () => {
-		const result = spawnSync("bun", [cliPath, "draft", "view", "2", "--plain"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+	it("should output plain text with draft view --plain", async () => {
+		const result = await $`bun ${cliPath} draft view 2 --plain`.cwd(TEST_DIR).quiet();
 
-		// Handle Windows spawnSync status issues
-		const exitCode = getExitCode(result);
-
-		if (exitCode !== 0) {
-			console.error("STDOUT:", result.stdout);
-			console.error("STDERR:", result.stderr);
-			console.error("Error:", result.error);
+		if (result.exitCode !== 0) {
+			console.error("STDOUT:", result.stdout.toString());
+			console.error("STDERR:", result.stderr.toString());
 		}
 
-		expect(exitCode).toBe(0);
+		expect(result.exitCode).toBe(0);
 		// Should contain the file path as first line
-		expect(result.stdout).toContain("File: ");
-		expect(result.stdout).toContain("task-2 - Test-draft-for-plain-output.md");
+		expect(result.stdout.toString()).toContain("File: ");
+		expect(result.stdout.toString()).toContain("task-2 - Test-draft-for-plain-output.md");
 		// Should contain the formatted draft output
-		expect(result.stdout).toContain("Task task-2 - Test draft for plain output");
-		expect(result.stdout).toContain("Status: ○ Draft");
-		expect(result.stdout).toContain("Created: 2025-06-18");
-		expect(result.stdout).toContain("Description:");
-		expect(result.stdout).toContain("Test draft description");
+		expect(result.stdout.toString()).toContain("Task task-2 - Test draft for plain output");
+		expect(result.stdout.toString()).toContain("Status: ○ Draft");
+		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
+		expect(result.stdout.toString()).toContain("Description:");
+		expect(result.stdout.toString()).toContain("Test draft description");
 		// Should not contain TUI escape codes
-		expect(result.stdout).not.toContain("[?1049h");
-		expect(result.stdout).not.toContain("\x1b");
+		expect(result.stdout.toString()).not.toContain("[?1049h");
+		expect(result.stdout.toString()).not.toContain("\x1b");
 	});
 
 	it("should output plain text with draft <id> --plain shortcut", async () => {
 		// Verify draft exists before running CLI command
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		const draft = await core.filesystem.loadDraft("task-2");
 		expect(draft).not.toBeNull();
 		expect(draft?.id).toBe("task-2");
 
-		const result = spawnSync("bun", [cliPath, "draft", "2", "--plain"], {
-			cwd: testDir,
-			encoding: "utf8",
-		});
+		const result = await $`bun ${cliPath} draft 2 --plain`.cwd(TEST_DIR).quiet();
 
-		// Handle Windows spawnSync status issues
-		const exitCode = getExitCode(result);
-
-		if (exitCode !== 0) {
-			console.error("STDOUT:", result.stdout);
-			console.error("STDERR:", result.stderr);
-			console.error("Error:", result.error);
+		if (result.exitCode !== 0) {
+			console.error("STDOUT:", result.stdout.toString());
+			console.error("STDERR:", result.stderr.toString());
 		}
 
-		expect(exitCode).toBe(0);
+		expect(result.exitCode).toBe(0);
 		// Should contain the file path as first line
-		expect(result.stdout).toContain("File: ");
-		expect(result.stdout).toContain("task-2 - Test-draft-for-plain-output.md");
+		expect(result.stdout.toString()).toContain("File: ");
+		expect(result.stdout.toString()).toContain("task-2 - Test-draft-for-plain-output.md");
 		// Should contain the formatted draft output
-		expect(result.stdout).toContain("Task task-2 - Test draft for plain output");
-		expect(result.stdout).toContain("Status: ○ Draft");
-		expect(result.stdout).toContain("Created: 2025-06-18");
-		expect(result.stdout).toContain("Description:");
-		expect(result.stdout).toContain("Test draft description");
+		expect(result.stdout.toString()).toContain("Task task-2 - Test draft for plain output");
+		expect(result.stdout.toString()).toContain("Status: ○ Draft");
+		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
+		expect(result.stdout.toString()).toContain("Description:");
+		expect(result.stdout.toString()).toContain("Test draft description");
 		// Should not contain TUI escape codes
-		expect(result.stdout).not.toContain("[?1049h");
-		expect(result.stdout).not.toContain("\x1b");
+		expect(result.stdout.toString()).not.toContain("[?1049h");
+		expect(result.stdout.toString()).not.toContain("\x1b");
 	});
 
 	// Task list already has --plain support and works correctly

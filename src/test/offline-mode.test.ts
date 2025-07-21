@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GitOps } from "../core/git-ops.ts";
 import { loadRemoteTasks } from "../core/remote-tasks.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -18,7 +17,7 @@ describe("Offline Mode Configuration", () => {
 		gitOps = new GitOperations(tempDir);
 		mockFileSystem = {
 			loadConfig: async () => ({ backlogDirectory: "backlog" }),
-		} as FileSystem;
+		} as unknown as FileSystem;
 	});
 
 	afterEach(async () => {
@@ -104,9 +103,9 @@ describe("Offline Mode Configuration", () => {
 			};
 
 			// Mock execGit to simulate network error
-			type GitOpsWithExecGit = { execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }> };
-			const originalExecGit = (gitOps as unknown as GitOpsWithExecGit).execGit;
-			(gitOps as unknown as GitOpsWithExecGit).execGit = async (args: string[]) => {
+			type GitOperationsWithExecGit = { execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }> };
+			const originalExecGit = (gitOps as unknown as GitOperationsWithExecGit).execGit;
+			(gitOps as unknown as GitOperationsWithExecGit).execGit = async (args: string[]) => {
 				if (args[0] === "fetch") {
 					throw new Error("could not resolve host github.com");
 				}
@@ -120,7 +119,7 @@ describe("Offline Mode Configuration", () => {
 
 			// Restore
 			console.warn = originalWarn;
-			(gitOps as unknown as GitOpsWithExecGit).execGit = originalExecGit;
+			(gitOps as unknown as GitOperationsWithExecGit).execGit = originalExecGit;
 		});
 	});
 
@@ -180,14 +179,14 @@ describe("Offline Mode Configuration", () => {
 			const progressMessages: string[] = [];
 			const onProgress = (msg: string) => progressMessages.push(msg);
 
-			const mockGitOps = {
+			const mockGitOperations = {
 				fetch: async () => {
 					throw new Error("This should not be called");
 				},
 				listRemoteBranches: async () => [],
-			} as unknown as GitOps;
+			} as unknown as GitOperations;
 
-			const remoteTasks = await loadRemoteTasks(mockGitOps, mockFileSystem, config, onProgress);
+			const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, config, onProgress);
 
 			expect(remoteTasks).toEqual([]);
 			expect(progressMessages).toContain("Remote operations disabled - skipping remote tasks");
@@ -207,14 +206,14 @@ describe("Offline Mode Configuration", () => {
 			const onProgress = (msg: string) => progressMessages.push(msg);
 
 			let fetchCalled = false;
-			const mockGitOps = {
+			const mockGitOperations = {
 				fetch: async () => {
 					fetchCalled = true;
 				},
 				listRemoteBranches: async () => [],
-			} as unknown as GitOps;
+			} as unknown as GitOperations;
 
-			const remoteTasks = await loadRemoteTasks(mockGitOps, mockFileSystem, config, onProgress);
+			const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, config, onProgress);
 
 			expect(fetchCalled).toBe(true);
 			expect(remoteTasks).toEqual([]);
@@ -226,14 +225,14 @@ describe("Offline Mode Configuration", () => {
 			const onProgress = (msg: string) => progressMessages.push(msg);
 
 			let fetchCalled = false;
-			const mockGitOps = {
+			const mockGitOperations = {
 				fetch: async () => {
 					fetchCalled = true;
 				},
 				listRemoteBranches: async () => [],
-			} as unknown as GitOps;
+			} as unknown as GitOperations;
 
-			const remoteTasks = await loadRemoteTasks(mockGitOps, mockFileSystem, null, onProgress);
+			const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, null, onProgress);
 
 			expect(fetchCalled).toBe(true);
 			expect(remoteTasks).toEqual([]);

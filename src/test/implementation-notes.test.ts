@@ -1,24 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { editTaskPlatformAware } from "./test-helpers.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-notes");
+let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+		TEST_DIR = createUniqueTestDir("test-notes");
 		await mkdir(TEST_DIR, { recursive: true });
-		await Bun.spawn(["git", "init", "-b", "main"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: TEST_DIR }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: TEST_DIR }).exited;
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Implementation Notes Test Project");
@@ -26,7 +24,7 @@ describe("Implementation Notes CLI", () => {
 
 	afterEach(async () => {
 		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
+			await safeCleanup(TEST_DIR);
 		} catch {
 			// Ignore cleanup errors
 		}
@@ -35,15 +33,12 @@ describe("Implementation Notes CLI", () => {
 	describe("task create with implementation notes", () => {
 		it("should handle all task creation scenarios with implementation notes", async () => {
 			// Test 1: create task with implementation notes using --notes
-			const p1 = Bun.spawn(
-				["bun", CLI_PATH, "task", "create", "Test Task 1", "--notes", "Initial implementation completed"],
-				{
-					cwd: TEST_DIR,
-					stdout: "inherit",
-					stderr: "inherit",
-				},
-			);
-			expect(await p1.exited).toBe(0);
+			const result1 =
+				await $`bun ${[CLI_PATH, "task", "create", "Test Task 1", "--notes", "Initial implementation completed"]}`
+					.cwd(TEST_DIR)
+					.quiet()
+					.nothrow();
+			expect(result1.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
 			let task = await core.filesystem.loadTask("task-1");
@@ -52,23 +47,12 @@ describe("Implementation Notes CLI", () => {
 			expect(task?.body).toContain("Initial implementation completed");
 
 			// Test 2: create task with multi-line implementation notes
-			const p2 = Bun.spawn(
-				[
-					"bun",
-					CLI_PATH,
-					"task",
-					"create",
-					"Test Task 2",
-					"--notes",
-					"Step 1: Analysis completed\nStep 2: Implementation in progress",
-				],
-				{
-					cwd: TEST_DIR,
-					stdout: "inherit",
-					stderr: "inherit",
-				},
-			);
-			expect(await p2.exited).toBe(0);
+			const result2 =
+				await $`bun ${[CLI_PATH, "task", "create", "Test Task 2", "--notes", "Step 1: Analysis completed\nStep 2: Implementation in progress"]}`
+					.cwd(TEST_DIR)
+					.quiet()
+					.nothrow();
+			expect(result2.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-2");
 			expect(task).not.toBeNull();
@@ -77,25 +61,12 @@ describe("Implementation Notes CLI", () => {
 			expect(task?.body).toContain("Step 2: Implementation in progress");
 
 			// Test 3: create task with both plan and notes (notes should come after plan)
-			const p3 = Bun.spawn(
-				[
-					"bun",
-					CLI_PATH,
-					"task",
-					"create",
-					"Test Task 3",
-					"--plan",
-					"1. Design\n2. Build\n3. Test",
-					"--notes",
-					"Following the plan step by step",
-				],
-				{
-					cwd: TEST_DIR,
-					stdout: "inherit",
-					stderr: "inherit",
-				},
-			);
-			expect(await p3.exited).toBe(0);
+			const result3 =
+				await $`bun ${[CLI_PATH, "task", "create", "Test Task 3", "--plan", "1. Design\n2. Build\n3. Test", "--notes", "Following the plan step by step"]}`
+					.cwd(TEST_DIR)
+					.quiet()
+					.nothrow();
+			expect(result3.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-3");
 			expect(task).not.toBeNull();
@@ -111,27 +82,12 @@ describe("Implementation Notes CLI", () => {
 			expect(notesIndex).toBeGreaterThan(planIndex);
 
 			// Test 4: create task with multiple options including notes
-			const p4 = Bun.spawn(
-				[
-					"bun",
-					CLI_PATH,
-					"task",
-					"create",
-					"Test Task 4",
-					"-d",
-					"Complex task description",
-					"--ac",
-					"Must work correctly,Must be tested",
-					"--notes",
-					"Using TDD approach",
-				],
-				{
-					cwd: TEST_DIR,
-					stdout: "inherit",
-					stderr: "inherit",
-				},
-			);
-			expect(await p4.exited).toBe(0);
+			const result4 =
+				await $`bun ${[CLI_PATH, "task", "create", "Test Task 4", "-d", "Complex task description", "--ac", "Must work correctly,Must be tested", "--notes", "Using TDD approach"]}`
+					.cwd(TEST_DIR)
+					.quiet()
+					.nothrow();
+			expect(result4.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-4");
 			expect(task).not.toBeNull();
@@ -141,13 +97,9 @@ describe("Implementation Notes CLI", () => {
 			expect(task?.body).toContain("## Implementation Notes");
 			expect(task?.body).toContain("Using TDD approach");
 
-			// Test 5: create task with empty notes should not add the section
-			const p5 = Bun.spawn(["bun", CLI_PATH, "task", "create", "Test Task 5", "--notes", ""], {
-				cwd: TEST_DIR,
-				stdout: "inherit",
-				stderr: "inherit",
-			});
-			expect(await p5.exited).toBe(0);
+			// Test 5: create task without notes should not add the section
+			const result5 = await $`bun ${[CLI_PATH, "task", "create", "Test Task 5"]}`.cwd(TEST_DIR).quiet().nothrow();
+			expect(result5.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-5");
 			expect(task).not.toBeNull();

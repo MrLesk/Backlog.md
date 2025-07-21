@@ -1,22 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+
+let TEST_DIR: string;
 
 describe("Tab switching functionality", () => {
-	const testDir = join(process.cwd(), "test-tab-switching");
 	let core: Core;
 
 	beforeEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
-		await mkdir(testDir, { recursive: true });
+		TEST_DIR = createUniqueTestDir("test-tab-switching");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
-		await Bun.spawn(["git", "init"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
+		await $`git init`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
-		core = new Core(testDir);
+		core = new Core(TEST_DIR);
 		await core.initializeProject("Test Tab Switching Project");
 
 		// Create test tasks
@@ -40,7 +44,11 @@ Test task for tab switching.`,
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	describe("Unified Task domain", () => {
@@ -50,6 +58,9 @@ Test task for tab switching.`,
 			expect(tasks.length).toBe(1);
 
 			const task = tasks[0];
+			expect(task).toBeDefined();
+
+			if (!task) return;
 
 			// Verify Task has all the expected fields (including metadata fields)
 			expect(task.id).toBeDefined();
@@ -128,7 +139,11 @@ Test task for tab switching.`,
 					// Verify the options are valid
 					expect(options.core).toBeDefined();
 					expect(options.initialView).toBe(state.view);
-					expect(options.selectedTask).toBe(state.task);
+					if (state.task) {
+						expect(options.selectedTask).toEqual(state.task);
+					} else {
+						expect(options.selectedTask).toBeNull();
+					}
 					expect(options.tasks).toBeDefined();
 					expect(options.preloadedKanbanData).toBeDefined();
 				}).not.toThrow();

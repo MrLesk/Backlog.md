@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import type { GitOps } from "../core/git-ops.ts";
 import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
 import type { FileSystem } from "../file-system/operations.ts";
+import type { GitOperations } from "../git/operations.ts";
 
-// Mock GitOps for testing
-class MockGitOps implements Partial<GitOps> {
+// Mock GitOperations for testing
+class MockGitOperations implements Partial<GitOperations> {
 	private tasks: Record<string, { content: string; timestamp: Date }>[] = [];
 
 	constructor(tasks: Record<string, { content: string; timestamp: Date }>[]) {
@@ -77,12 +77,12 @@ dependencies: []
 
 describe("Parallel remote task loading", () => {
 	it("should load tasks from multiple branches in parallel", async () => {
-		const mockGitOps = new MockGitOps([]) as unknown as GitOps;
+		const mockGitOperations = new MockGitOperations([]) as unknown as GitOperations;
 
 		// Track progress messages
 		const progressMessages: string[] = [];
-		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as FileSystem;
-		const remoteTasks = await loadRemoteTasks(mockGitOps, mockFileSystem, null, (msg) => {
+		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as unknown as FileSystem;
+		const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, null, (msg) => {
 			progressMessages.push(msg);
 		});
 
@@ -111,15 +111,15 @@ describe("Parallel remote task loading", () => {
 		console.error = () => {};
 
 		// Create a mock that throws an error
-		const errorGitOps = {
+		const errorGitOperations = {
 			fetch: async () => {
 				throw new Error("Network error");
 			},
-		} as unknown as GitOps;
+		} as unknown as GitOperations;
 
 		// Should return empty array on error
-		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as FileSystem;
-		const remoteTasks = await loadRemoteTasks(errorGitOps, mockFileSystem, null);
+		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as unknown as FileSystem;
+		const remoteTasks = await loadRemoteTasks(errorGitOperations, mockFileSystem, null);
 		expect(remoteTasks).toEqual([]);
 
 		// Restore console.error

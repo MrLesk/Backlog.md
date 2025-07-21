@@ -1,5 +1,5 @@
-import { spawn, spawnSync } from "node:child_process";
 import { platform } from "node:os";
+import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
 
 /**
@@ -44,7 +44,7 @@ export function resolveEditor(config?: BacklogConfig | null): string {
 /**
  * Check if an editor command is available on the system
  */
-export function isEditorAvailable(editor: string): boolean {
+export async function isEditorAvailable(editor: string): Promise<boolean> {
 	try {
 		// Try to run the editor with --version or --help to check if it exists
 		// Split the editor command in case it has arguments
@@ -53,20 +53,21 @@ export function isEditorAvailable(editor: string): boolean {
 
 		// For Windows, just check if the command exists
 		if (platform() === "win32") {
-			const result = spawnSync("where", [command], {
-				stdio: "ignore",
-				shell: false,
-			});
-			return result.status === 0;
+			try {
+				await $`where ${command}`.quiet();
+				return true;
+			} catch {
+				return false;
+			}
 		}
 
 		// For Unix-like systems, use which
-		const result = spawnSync("which", [command], {
-			stdio: "ignore",
-			shell: false,
-		});
-
-		return result.status === 0;
+		try {
+			await $`which ${command}`.quiet();
+			return true;
+		} catch {
+			return false;
+		}
 	} catch {
 		return false;
 	}
@@ -84,24 +85,13 @@ export async function openInEditor(filePath: string, config?: BacklogConfig | nu
 		const command = parts[0]!;
 		const args = [...parts.slice(1), filePath];
 
-		// Use async spawn with proper TTY handling for terminal editors
-		const child = spawn(command, args, {
-			stdio: "inherit",
-			shell: platform() === "win32",
-			detached: false,
-		});
-
-		// Wait for the editor to close
-		return new Promise((resolve) => {
-			child.on("close", (code: number | null) => {
-				resolve(code === 0);
-			});
-
-			child.on("error", (error: Error) => {
-				console.error(`Failed to open editor: ${error}`);
-				resolve(false);
-			});
-		});
+		// Use the new Bun shell API
+		try {
+			await $`${command} ${args}`.quiet();
+			return true;
+		} catch {
+			return false;
+		}
 	} catch (error) {
 		console.error(`Failed to open editor: ${error}`);
 		return false;

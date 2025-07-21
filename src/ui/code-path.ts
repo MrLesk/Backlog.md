@@ -43,7 +43,7 @@ export function styleCodePath(path: string): string {
  * Transform text to style code paths and place them on separate lines
  */
 export function transformCodePaths(text: string): string {
-	if (!text) return text;
+	if (!text) return "";
 
 	// Split into lines to preserve existing line breaks
 	const lines = text.split("\n");
@@ -102,7 +102,7 @@ export function transformCodePaths(text: string): string {
  * Simple styling for plain text (without blessed tags)
  */
 export function transformCodePathsPlain(text: string): string {
-	if (!text) return text;
+	if (!text) return "";
 
 	return text.replace(CODE_PATH_PATTERNS.BACKTICKED_PATH, (match, path) => {
 		if (isCodePath(path)) {

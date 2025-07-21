@@ -1,23 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists } from "../utils/task-path.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Task path utilities", () => {
-	const testDir = join(process.cwd(), "test-task-path");
+	let TEST_DIR: string;
 	let core: Core;
 
 	beforeEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
-		await mkdir(testDir, { recursive: true });
+		TEST_DIR = createUniqueTestDir("test-task-path");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
-		await Bun.spawn(["git", "init"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.email", "test@example.com"], { cwd: testDir }).exited;
-		await Bun.spawn(["git", "config", "user.name", "Test User"], { cwd: testDir }).exited;
+		await $`git init`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
-		core = new Core(testDir);
+		core = new Core(TEST_DIR);
 		await core.initializeProject("Test Project");
 
 		// Create some test task files
@@ -28,7 +31,11 @@ describe("Task path utilities", () => {
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	describe("normalizeTaskId", () => {
@@ -106,7 +113,7 @@ describe("Task path utilities", () => {
 		it("should work without explicit core parameter when in valid project", async () => {
 			// Change to test directory to use default Core
 			const originalCwd = process.cwd();
-			process.chdir(testDir);
+			process.chdir(TEST_DIR);
 
 			try {
 				const path = await getTaskPath("123");
