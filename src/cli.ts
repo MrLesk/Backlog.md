@@ -1276,7 +1276,7 @@ draftCmd
 				selectedTask: firstDraft,
 				tasks: sortedDrafts,
 				filter: {
-					description: "All Drafts",
+					filterDescription: "All Drafts",
 				},
 				title: "Drafts",
 			});

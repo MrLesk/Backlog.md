@@ -586,7 +586,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.title).toBe("Updated Title");
 			expect(updatedTask?.body).toBe("## Description\n\nUpdated description");
 			expect(updatedTask?.status).toBe("In Progress");
-			const today = new Date().toISOString().split("T")[0];
+			const today = new Date().toISOString().split("T")[0] ?? "";
 			expect(updatedTask?.updatedDate).toBe(today);
 		});
 
@@ -752,7 +752,7 @@ describe("CLI Integration", () => {
 
 			// Verify updated_date was automatically set to today's date
 			const updatedTask = await core.filesystem.loadTask("task-6");
-			const today = new Date().toISOString().split("T")[0];
+			const today = new Date().toISOString().split("T")[0] ?? "";
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.createdDate).toBe("2025-06-07"); // Should remain unchanged
 		});
@@ -823,7 +823,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.status).toBe("In Progress");
 			expect(updatedTask?.assignee).toEqual(["testuser"]);
 			expect(updatedTask?.createdDate).toBe("2025-06-08");
-			const today = new Date().toISOString().split("T")[0];
+			const today = new Date().toISOString().split("T")[0] ?? "";
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);
@@ -1086,7 +1086,7 @@ describe("CLI Integration", () => {
 
 			const docs = await core.filesystem.listDocuments();
 			expect(docs).toHaveLength(1);
-			expect(docs[0].title).toBe("Guide");
+			expect(docs[0]?.title).toBe("Guide");
 		});
 
 		it("should create and list decisions", async () => {
@@ -1103,7 +1103,7 @@ describe("CLI Integration", () => {
 			await core.createDecision(decision, false);
 			const decisions = await core.filesystem.listDecisions();
 			expect(decisions).toHaveLength(1);
-			expect(decisions[0].title).toBe("Choose Stack");
+			expect(decisions[0]?.title).toBe("Choose Stack");
 		});
 	});
 

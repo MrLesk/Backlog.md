@@ -24,7 +24,7 @@ export function parseCheckboxLine(line: string): ChecklistItem | null {
 
 	const [, checkState, text] = match;
 	return {
-		text: text.trim(),
+		text: text?.trim() || "",
 		checked: checkState === "x",
 	};
 }

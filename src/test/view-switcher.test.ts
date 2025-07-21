@@ -56,9 +56,10 @@ describe("View Switcher", () => {
 				title: "Test Task",
 				status: "To Do",
 				assignee: [],
-				created_date: "2025-07-05",
+				createdDate: "2025-07-05",
 				labels: [],
 				dependencies: [],
+				body: "Test task body",
 			};
 
 			const initialState: ViewState = {
@@ -115,9 +116,10 @@ describe("View Switcher", () => {
 				title: "Updated Task",
 				status: "In Progress",
 				assignee: [],
-				created_date: "2025-07-05",
+				createdDate: "2025-07-05",
 				labels: [],
 				dependencies: [],
+				body: "Updated task body",
 			};
 
 			const updatedState = switcher.updateState({
@@ -187,9 +189,10 @@ describe("View Switcher", () => {
 				title: "Test Task",
 				status: "To Do",
 				assignee: [],
-				created_date: "2025-07-05",
+				createdDate: "2025-07-05",
 				labels: [],
 				dependencies: [],
+				body: "Test task body",
 			};
 
 			switcher.updateState({
@@ -198,8 +201,8 @@ describe("View Switcher", () => {
 			});
 
 			expect(callbackState).toBeTruthy();
-			expect(callbackState?.type).toBe("task-detail");
-			expect(callbackState?.selectedTask).toEqual(newTask);
+			expect((callbackState as any)?.type).toBe("task-detail");
+			expect((callbackState as any)?.selectedTask).toEqual(newTask);
 		});
 	});
 });

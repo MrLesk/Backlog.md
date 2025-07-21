@@ -107,7 +107,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private handleNonTTY(): void {
 		// For non-TTY environments, return first item for single select or empty for multi
 		if (!this.isMultiSelect && this.items.length > 0) {
-			setTimeout(() => this.onSelect?.(this.items[0], 0), 0);
+			const firstItem = this.items[0];
+			if (firstItem) {
+				setTimeout(() => this.onSelect?.(firstItem, 0), 0);
+			}
 		} else {
 			setTimeout(() => this.onSelect?.([], []), 0);
 		}
@@ -198,6 +201,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			// Render flat list
 			for (let i = 0; i < this.filteredItems.length; i++) {
 				const item = this.filteredItems[i];
+				if (!item) continue;
 				const isSelected = this.isMultiSelect ? this.selectedIndices.has(i) : false;
 				const rendered = this.itemRenderer(item, i, isSelected);
 				const prefix = this.isMultiSelect ? (isSelected ? "[✓] " : "[ ] ") : "";
@@ -328,7 +332,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private confirmSelection(): void {
 		const selected = Array.from(this.selectedIndices)
 			.map((i) => this.filteredItems[i])
-			.filter(Boolean);
+			.filter((item): item is T => Boolean(item));
 
 		const indices = Array.from(this.selectedIndices);
 		this.onSelect?.(selected, indices);
@@ -337,7 +341,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private triggerSelection(): void {
 		if (this.selectedIndex >= 0 && this.selectedIndex < this.filteredItems.length) {
 			const selected = this.filteredItems[this.selectedIndex];
-			this.onSelect?.(selected, this.selectedIndex);
+			if (selected) {
+				this.onSelect?.(selected, this.selectedIndex);
+			}
 		}
 	}
 
@@ -367,10 +373,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		if (this.isMultiSelect) {
 			return Array.from(this.selectedIndices)
 				.map((i) => this.filteredItems[i])
-				.filter(Boolean);
+				.filter((item): item is T => Boolean(item));
 		}
 		return this.selectedIndex >= 0 && this.selectedIndex < this.filteredItems.length
-			? this.filteredItems[this.selectedIndex]
+			? (this.filteredItems[this.selectedIndex] ?? null)
 			: null;
 	}
 

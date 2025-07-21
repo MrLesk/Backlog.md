@@ -29,7 +29,7 @@ This is a high priority task.`;
 		});
 
 		it("should handle all priority levels", () => {
-			const priorities = ["high", "medium", "low"];
+			const priorities = ["high", "medium", "low"] as const;
 
 			for (const priority of priorities) {
 				const content = `---

@@ -65,8 +65,8 @@ Test task for board CLI integration.`,
 
 		// Verify basic functionality
 		expect(localTasks.length).toBe(1);
-		expect(localTasks[0].id).toBe("task-1");
-		expect(localTasks[0].status).toBe("To Do");
+		expect(localTasks[0]?.id).toBe("task-1");
+		expect(localTasks[0]?.status).toBe("To Do");
 		expect(statuses).toContain("To Do");
 
 		// Test that we can create the task map
@@ -119,7 +119,8 @@ Test task for board CLI integration.`,
 		// Mock the getKanbanData method to avoid remote git operations
 		viewSwitcher.getKanbanData = async () => {
 			// Mock config since it's not fully available in this test environment
-			const statuses = core.config?.get ? await core.config.get("statuses") : ["To Do", "In Progress"];
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || ["To Do", "In Progress"];
 			return {
 				tasks: await core.filesystem.listTasks(),
 				statuses: statuses || [],

@@ -3,26 +3,33 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+
+let TEST_DIR: string;
 
 describe("Config commands", () => {
-	const testDir = join(process.cwd(), "test-config-commands");
 	let core: Core;
 
 	beforeEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
-		await mkdir(testDir, { recursive: true });
+		TEST_DIR = createUniqueTestDir("test-config-commands");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
-		await $`git init`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git init`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
-		core = new Core(testDir);
+		core = new Core(TEST_DIR);
 		await core.initializeProject("Test Config Project");
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	it("should save and load defaultEditor config", async () => {
@@ -81,7 +88,7 @@ describe("Config commands", () => {
 		// Reload and verify other values are preserved
 		config = await core.filesystem.loadConfig();
 		expect(config?.defaultEditor).toBe("code");
-		expect(config?.projectName).toBe(originalProjectName);
+		expect(config?.projectName).toBe(originalProjectName ?? "");
 		expect(config?.statuses).toEqual(originalStatuses);
 	});
 });

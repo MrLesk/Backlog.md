@@ -36,7 +36,7 @@ auto_commit: false`;
 			setTimeout(() => reject(new Error("Config loading timed out - infinite loop detected!")), 5000);
 		});
 
-		const loadedConfig = await Promise.race([fs.loadConfig(), timeoutPromise]);
+		const loadedConfig = (await Promise.race([fs.loadConfig(), timeoutPromise])) as any;
 
 		expect(loadedConfig).toBeTruthy();
 		expect(loadedConfig?.projectName).toBe("Test Project");

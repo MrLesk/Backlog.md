@@ -264,7 +264,7 @@ Some notes here.`;
 
 			// All checkbox positions should be the same
 			const checkboxPositions = formatted.map((line) => line.indexOf("["));
-			const firstPosition = checkboxPositions[0];
+			const firstPosition = checkboxPositions[0] ?? -1;
 			for (const position of checkboxPositions) {
 				expect(position).toBe(firstPosition);
 			}

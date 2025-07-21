@@ -3,32 +3,39 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+
+let TEST_DIR: string;
 
 describe("Task edit section preservation", () => {
-	const testDir = join(process.cwd(), "test-task-edit-preservation");
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
-		await mkdir(testDir, { recursive: true });
+		TEST_DIR = createUniqueTestDir("test-task-edit-preservation");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo first
-		await $`git init`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email "test@example.com"`.cwd(testDir).quiet();
+		await $`git init`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email "test@example.com"`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project using Core
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.initializeProject("Task Edit Preservation Test");
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	it("should preserve all sections when updating description", async () => {
 		// Create a task with all sections
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.createTask(
 			{
 				id: "task-1",
@@ -44,16 +51,16 @@ describe("Task edit section preservation", () => {
 		);
 
 		// Add acceptance criteria
-		await $`bun ${cliPath} task edit 1 --ac "Criterion 1,Criterion 2"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 1 --ac "Criterion 1,Criterion 2"`.cwd(TEST_DIR).quiet();
 
 		// Add implementation plan
-		await $`bun ${cliPath} task edit 1 --plan "Step 1\nStep 2\nStep 3"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 1 --plan "Step 1\nStep 2\nStep 3"`.cwd(TEST_DIR).quiet();
 
 		// Add implementation notes
-		await $`bun ${cliPath} task edit 1 --notes "Original implementation notes"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 1 --notes "Original implementation notes"`.cwd(TEST_DIR).quiet();
 
 		// Verify all sections exist
-		let result = await $`bun ${cliPath} task 1 --plain`.cwd(testDir).text();
+		let result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("Original description");
 		expect(result).toContain("Criterion 1");
@@ -64,10 +71,10 @@ describe("Task edit section preservation", () => {
 		expect(result).toContain("Original implementation notes");
 
 		// Update just the description
-		await $`bun ${cliPath} task edit 1 -d "UPDATED description"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 1 -d "UPDATED description"`.cwd(TEST_DIR).quiet();
 
 		// Verify ALL sections are preserved
-		result = await $`bun ${cliPath} task 1 --plain`.cwd(testDir).text();
+		result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("UPDATED description");
 		expect(result).toContain("Criterion 1");
@@ -80,7 +87,7 @@ describe("Task edit section preservation", () => {
 
 	it("should preserve all sections when updating acceptance criteria", async () => {
 		// Create a task with all sections
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.createTask(
 			{
 				id: "task-2",
@@ -96,15 +103,15 @@ describe("Task edit section preservation", () => {
 		);
 
 		// Add all sections
-		await $`bun ${cliPath} task edit 2 --ac "Original criterion"`.cwd(testDir).quiet();
-		await $`bun ${cliPath} task edit 2 --plan "Original plan"`.cwd(testDir).quiet();
-		await $`bun ${cliPath} task edit 2 --notes "Original notes"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 2 --ac "Original criterion"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task edit 2 --plan "Original plan"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task edit 2 --notes "Original notes"`.cwd(TEST_DIR).quiet();
 
 		// Update acceptance criteria
-		await $`bun ${cliPath} task edit 2 --ac "Updated criterion 1,Updated criterion 2"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 2 --ac "Updated criterion 1,Updated criterion 2"`.cwd(TEST_DIR).quiet();
 
 		// Verify all sections are preserved
-		const result = await $`bun ${cliPath} task 2 --plain`.cwd(testDir).text();
+		const result = await $`bun ${cliPath} task 2 --plain`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("Test description");
 		expect(result).toContain("Updated criterion 1");
@@ -116,7 +123,7 @@ describe("Task edit section preservation", () => {
 
 	it("should preserve all sections when updating implementation plan", async () => {
 		// Create a task with all sections
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.createTask(
 			{
 				id: "task-3",
@@ -132,15 +139,15 @@ describe("Task edit section preservation", () => {
 		);
 
 		// Add all sections
-		await $`bun ${cliPath} task edit 3 --ac "Test criterion"`.cwd(testDir).quiet();
-		await $`bun ${cliPath} task edit 3 --plan "Original plan"`.cwd(testDir).quiet();
-		await $`bun ${cliPath} task edit 3 --notes "Original notes"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 3 --ac "Test criterion"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task edit 3 --plan "Original plan"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task edit 3 --notes "Original notes"`.cwd(TEST_DIR).quiet();
 
 		// Update implementation plan
-		await $`bun ${cliPath} task edit 3 --plan "Updated plan step 1\nUpdated plan step 2"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 3 --plan "Updated plan step 1\nUpdated plan step 2"`.cwd(TEST_DIR).quiet();
 
 		// Verify all sections are preserved
-		const result = await $`bun ${cliPath} task 3 --plain`.cwd(testDir).text();
+		const result = await $`bun ${cliPath} task 3 --plain`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("Test description");
 		expect(result).toContain("Test criterion");
@@ -152,7 +159,7 @@ describe("Task edit section preservation", () => {
 
 	it("should preserve all sections when updating implementation notes", async () => {
 		// Create a task with all sections
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.createTask(
 			{
 				id: "task-4",
@@ -168,15 +175,15 @@ describe("Task edit section preservation", () => {
 		);
 
 		// Add all sections
-		await $`bun ${cliPath} task edit 4 --ac "Test criterion"`.cwd(testDir).quiet();
-		await $`bun ${cliPath} task edit 4 --plan "Test plan"`.cwd(testDir).quiet();
-		await $`bun ${cliPath} task edit 4 --notes "Original notes"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 4 --ac "Test criterion"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task edit 4 --plan "Test plan"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task edit 4 --notes "Original notes"`.cwd(TEST_DIR).quiet();
 
 		// Update implementation notes (should append to existing)
-		await $`bun ${cliPath} task edit 4 --notes "Additional notes"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 4 --notes "Additional notes"`.cwd(TEST_DIR).quiet();
 
 		// Verify all sections are preserved and notes are appended
-		const result = await $`bun ${cliPath} task 4 --plain`.cwd(testDir).text();
+		const result = await $`bun ${cliPath} task 4 --plain`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("Test description");
 		expect(result).toContain("Test criterion");
@@ -187,7 +194,7 @@ describe("Task edit section preservation", () => {
 
 	it("should handle tasks with minimal content", async () => {
 		// Create a task with just description
-		const core = new Core(testDir);
+		const core = new Core(TEST_DIR);
 		await core.createTask(
 			{
 				id: "task-5",
@@ -203,10 +210,10 @@ describe("Task edit section preservation", () => {
 		);
 
 		// Update description
-		await $`bun ${cliPath} task edit 5 -d "Updated minimal description"`.cwd(testDir).quiet();
+		await $`bun ${cliPath} task edit 5 -d "Updated minimal description"`.cwd(TEST_DIR).quiet();
 
 		// Should have updated description and default AC text
-		const result = await $`bun ${cliPath} task 5 --plain`.cwd(testDir).text();
+		const result = await $`bun ${cliPath} task 5 --plain`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("Updated minimal description");
 		expect(result).toContain("No acceptance criteria defined");

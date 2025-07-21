@@ -172,7 +172,7 @@ async function createTaskViaCore(
 async function createTaskViaCLI(
 	options: TaskCreateOptions,
 	testDir: string,
-): { exitCode: number; stdout: string; stderr: string; taskId?: string } {
+): Promise<{ exitCode: number; stdout: string; stderr: string; taskId?: string }> {
 	// Build CLI arguments
 	const args = [CLI_PATH, "task", "create", options.title];
 
@@ -301,7 +301,7 @@ async function editTaskViaCore(
 async function editTaskViaCLI(
 	options: TaskEditOptions,
 	testDir: string,
-): { exitCode: number; stdout: string; stderr: string } {
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	// Build CLI arguments
 	const args = [CLI_PATH, "task", "edit", options.taskId];
 
@@ -398,7 +398,7 @@ async function viewTaskViaCore(
 async function viewTaskViaCLI(
 	options: TaskViewOptions,
 	testDir: string,
-): { exitCode: number; stdout: string; stderr: string } {
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	const args = [CLI_PATH, "task"];
 
 	// Handle both "task 1" and "task view 1" formats
@@ -564,7 +564,7 @@ async function listTasksViaCore(
 async function listTasksViaCLI(
 	options: TaskListOptions,
 	testDir: string,
-): { exitCode: number; stdout: string; stderr: string } {
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	const args = [CLI_PATH, "task", "list"];
 
 	if (options.plain) {
