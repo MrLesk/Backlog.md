@@ -3,17 +3,15 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-ac");
+let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Acceptance Criteria CLI", () => {
 	beforeEach(async () => {
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+		TEST_DIR = createUniqueTestDir("test-acceptance-criteria");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
@@ -25,9 +23,9 @@ describe("Acceptance Criteria CLI", () => {
 
 	afterEach(async () => {
 		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
+			await safeCleanup(TEST_DIR);
 		} catch {
-			// Ignore cleanup errors
+			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
 	});
 

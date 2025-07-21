@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import type { Task } from "../types/index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-parent-normalization");
+let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 async function initGitRepo(dir: string) {
@@ -16,13 +17,17 @@ async function initGitRepo(dir: string) {
 
 describe("CLI parent task id normalization", () => {
 	beforeEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		TEST_DIR = createUniqueTestDir("test-parent-normalization");
 		await mkdir(TEST_DIR, { recursive: true });
 		await initGitRepo(TEST_DIR);
 	});
 
 	afterEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors
+		}
 	});
 
 	it("should normalize parent task id when creating subtasks", async () => {

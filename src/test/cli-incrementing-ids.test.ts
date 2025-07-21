@@ -1,30 +1,37 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Decision, Document, Task } from "../types";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
+let TEST_DIR: string;
+
 describe("CLI ID Incrementing Behavior", () => {
-	let testDir: string;
 	let core: Core;
 
 	beforeEach(async () => {
-		testDir = await mkdtemp(join(tmpdir(), "backlog-test-"));
-		core = new Core(testDir);
+		TEST_DIR = createUniqueTestDir("test-cli-incrementing-ids");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
+		core = new Core(TEST_DIR);
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
-		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		await core.initializeProject("ID Incrementing Test");
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true });
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	test("should increment task IDs correctly", async () => {
@@ -40,7 +47,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createTask(task1);
 
-		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(testDir).quiet();
+		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Created task task-2");
@@ -60,7 +67,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createDocument(doc1);
 
-		const result = await $`bun ${CLI_PATH} doc create "Second Doc"`.cwd(testDir).quiet();
+		const result = await $`bun ${CLI_PATH} doc create "Second Doc"`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Created document doc-2");
@@ -83,7 +90,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createDecision(decision1);
 
-		const result = await $`bun ${CLI_PATH} decision create "Second Decision"`.cwd(testDir).quiet();
+		const result = await $`bun ${CLI_PATH} decision create "Second Decision"`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Created decision decision-2");

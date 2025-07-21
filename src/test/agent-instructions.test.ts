@@ -11,17 +11,23 @@ import {
 	GEMINI_GUIDELINES,
 	README_GUIDELINES,
 } from "../index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-agents");
+let TEST_DIR: string;
 
 describe("addAgentInstructions", () => {
 	beforeEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true });
+		TEST_DIR = createUniqueTestDir("test-agent-instructions");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 	});
 
 	afterEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true });
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	it("creates guideline files when none exist", async () => {

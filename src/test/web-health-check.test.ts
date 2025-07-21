@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { BacklogServer } from "../server/index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-health-check");
+let TEST_DIR: string;
 const TEST_PORT = 6499; // Use a unique port to avoid conflicts
 
 describe("Web UI Health Check System", () => {
@@ -13,6 +14,7 @@ describe("Web UI Health Check System", () => {
 
 	beforeEach(async () => {
 		// Clean up and create test directory
+		TEST_DIR = createUniqueTestDir("test-health-check");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
@@ -37,7 +39,11 @@ describe("Web UI Health Check System", () => {
 		await server.stop();
 
 		// Clean up test directory
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	describe("Health Endpoint", () => {

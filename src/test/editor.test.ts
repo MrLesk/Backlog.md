@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BacklogConfig } from "../types/index.ts";
 import { isEditorAvailable, openInEditor, resolveEditor } from "../utils/editor.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Editor utilities", () => {
 	let originalEditor: string | undefined;
@@ -112,16 +113,22 @@ describe("Editor utilities", () => {
 	});
 
 	describe("openInEditor", () => {
-		const testDir = join(process.cwd(), "test-editor");
-		const testFile = join(testDir, "test.txt");
+		let TEST_DIR: string;
+		let testFile: string;
 
 		beforeEach(async () => {
-			await mkdir(testDir, { recursive: true });
+			TEST_DIR = createUniqueTestDir("test-editor");
+			testFile = join(TEST_DIR, "test.txt");
+			await mkdir(TEST_DIR, { recursive: true });
 			await writeFile(testFile, "Test content");
 		});
 
 		afterEach(async () => {
-			await rm(testDir, { recursive: true, force: true }).catch(() => {});
+			try {
+				await safeCleanup(TEST_DIR);
+			} catch {
+				// Ignore cleanup errors
+			}
 		});
 
 		it("should open file with echo command for testing", async () => {

@@ -3,8 +3,9 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-start-id");
+let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 async function initGitRepo(dir: string) {
@@ -15,6 +16,7 @@ async function initGitRepo(dir: string) {
 
 describe("task id generation", () => {
 	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-start-id");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 		await initGitRepo(TEST_DIR);
@@ -23,7 +25,11 @@ describe("task id generation", () => {
 	});
 
 	afterEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	it("starts numbering tasks at 1", async () => {

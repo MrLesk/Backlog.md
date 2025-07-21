@@ -1,20 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const TEST_DIR = join(process.cwd(), "test-plan");
+let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Plan CLI", () => {
 	beforeEach(async () => {
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+		TEST_DIR = createUniqueTestDir("test-plan");
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
@@ -26,7 +23,7 @@ describe("Implementation Plan CLI", () => {
 
 	afterEach(async () => {
 		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
+			await safeCleanup(TEST_DIR);
 		} catch {
 			// Ignore cleanup errors
 		}

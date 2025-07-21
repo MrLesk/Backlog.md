@@ -4,21 +4,23 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { type ViewState, ViewSwitcher } from "../ui/view-switcher.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("View Switcher", () => {
-	const testDir = join(process.cwd(), "test-view-switcher");
+	let TEST_DIR: string;
 	let core: Core;
 
 	beforeEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
-		await mkdir(testDir, { recursive: true });
+		TEST_DIR = createUniqueTestDir("test-view-switcher");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
-		await $`git init`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
+		await $`git init`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
-		core = new Core(testDir);
+		core = new Core(TEST_DIR);
 		await core.initializeProject("Test View Switcher Project");
 
 		// Disable remote operations for tests to prevent background git fetches
@@ -30,7 +32,11 @@ describe("View Switcher", () => {
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		try {
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors - the unique directory names prevent conflicts
+		}
 	});
 
 	describe("ViewSwitcher initialization", () => {
