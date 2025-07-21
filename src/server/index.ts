@@ -270,8 +270,8 @@ export class BacklogServer {
 			return new Response("Not Found", { status: 404 });
 		}
 
-		// For all other routes, return 404
-		return new Response("Not Found", { status: 404 });
+		// For all other routes, serve the React app (let React Router handle client-side routing)
+		return indexHtml(req);
 	}
 
 	// Task handlers
