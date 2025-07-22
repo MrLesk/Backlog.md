@@ -127,4 +127,47 @@
     height: 100%;
     min-height: 200px;
   }
+
+  /* Fix for long content in markdown preview - apply to all nested markdown content */
+  .prose pre,
+  .prose .wmde-markdown pre,
+  .wmde-markdown pre {
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    overflow-x: auto !important;
+    max-width: 100% !important;
+  }
+  
+  /* Ensure code blocks don't overflow */
+  .prose pre code,
+  .prose .wmde-markdown pre code,
+  .wmde-markdown pre code,
+  .wmde-markdown code.code-highlight {
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    display: block !important;
+    max-width: 100% !important;
+  }
+
+  /* Ensure the markdown container itself doesn't overflow */
+  .wmde-markdown,
+  .wmde-markdown-color {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Fix for inline code that might be too long */
+  .wmde-markdown code {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  /* Ensure code lines wrap properly */
+  .wmde-markdown .code-line {
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
 }

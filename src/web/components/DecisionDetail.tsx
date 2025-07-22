@@ -29,7 +29,7 @@ const MarkdownEditor = memo(function MarkdownEditor({
 	if (!isEditing) {
 		// Preview mode - just show the rendered markdown without editor UI
 		return (
-			<div className="prose prose-sm max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700" data-color-mode={theme}>
+			<div className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" data-color-mode={theme}>
 				<MDEditor.Markdown source={value} />
 			</div>
 		);

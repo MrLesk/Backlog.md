@@ -44,7 +44,7 @@
 		"check:types": "bunx tsc --noEmit",
 		"prepare": "husky",
 		"build:css": "tailwindcss -i ./src/web/styles/source.css -o ./src/web/styles/style.css --minify",
-		"build": "bun run build:css && bun build --compile --minify --outfile=dist/backlog src/cli.ts",
+		"build": "bun run build:css && bun build --production --compile --minify --outfile=dist/backlog src/cli.ts",
 		"cli": "bun run build:css && bun src/cli.ts"
 	},
 	"lint-staged": {

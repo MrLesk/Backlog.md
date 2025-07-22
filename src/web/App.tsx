@@ -13,7 +13,7 @@ import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { type Task, type Document, type Decision } from '../types';
 import { apiClient } from './lib/api';
-import { useHealthCheck } from './hooks/useHealthCheck';
+import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import MDEditor from '@uiw/react-md-editor';
 
 function App() {
@@ -31,7 +31,7 @@ function App() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  const { isOnline } = useHealthCheck();
+  const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
 

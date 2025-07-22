@@ -1,76 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export interface HealthStatus {
-	status: "healthy" | "unhealthy" | "unknown";
-	timestamp: string;
-	responseTime?: number;
-	project?: string;
-	checks?: {
-		filesystem: string;
-		config: string;
-	};
-	error?: string;
-}
-
-export interface HealthCheckState {
-	isOnline: boolean;
-	lastCheck: HealthStatus | null;
-	isChecking: boolean;
-	consecutiveFailures: number;
-	wasDisconnected: boolean; // Track if we were previously disconnected
-}
-
-// No periodic health checks needed - WebSocket connection state IS the health status
-const STORAGE_KEY = "backlog-health-status";
 const RECONNECT_DELAY = 5000; // 5 seconds
 
 export function useHealthCheck() {
-	const [state, setState] = useState<HealthCheckState>(() => {
-		// Load initial state from localStorage, but always start wasDisconnected as false
-		// We only want to show "restored" during the same browser session
-		try {
-			const saved = localStorage.getItem(STORAGE_KEY);
-			if (saved) {
-				const parsed = JSON.parse(saved);
-				return {
-					isOnline: parsed.isOnline ?? true,
-					lastCheck: parsed.lastCheck ?? null,
-					isChecking: false,
-					consecutiveFailures: parsed.consecutiveFailures ?? 0,
-					wasDisconnected: false, // Always start fresh on page load
-				};
-			}
-		} catch (error) {
-			console.warn("Failed to load health status from localStorage:", error);
-		}
-
-		return {
-			isOnline: true,
-			lastCheck: null,
-			isChecking: false,
-			consecutiveFailures: 0,
-			wasDisconnected: false,
-		};
-	});
-
+	const [isOnline, setIsOnline] = useState(true);
+	const [wasDisconnected, setWasDisconnected] = useState(false);
+	
 	const wsRef = useRef<WebSocket | null>(null);
 	const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-	// Persist state to localStorage
-	useEffect(() => {
-		const stateToSave = {
-			isOnline: state.isOnline,
-			lastCheck: state.lastCheck,
-			consecutiveFailures: state.consecutiveFailures,
-			// Don't persist wasDisconnected - it's only for current session
-		};
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-	}, [state.isOnline, state.lastCheck, state.consecutiveFailures, state.wasDisconnected]);
-
+	const isMountedRef = useRef(true);
 
 	const connectWebSocket = useCallback(() => {
-		if (wsRef.current?.readyState === WebSocket.OPEN) {
-			return; // Already connected
+		if (!isMountedRef.current) {
+			return; // Don't connect if component is unmounted
+		}
+
+		// Check if already connected or connecting
+		if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+			return;
+		}
+
+		// Clean up any existing connection before creating a new one
+		if (wsRef.current) {
+			wsRef.current.close();
+			wsRef.current = null;
 		}
 
 		try {
@@ -81,66 +34,28 @@ export function useHealthCheck() {
 			wsRef.current = ws;
 
 			ws.onopen = () => {
-				setState(prev => {
-					const wasReconnecting = prev.wasDisconnected;
-					if (wasReconnecting) {
-						console.log("Server connection restored");
-					}
-					// No message for initial connection - it's expected
-					
-					return { 
-						...prev, 
-						isOnline: true, 
-						consecutiveFailures: 0,
-						wasDisconnected: false,
-						lastCheck: {
-							status: "healthy",
-							timestamp: new Date().toISOString(),
-						}
-					};
-				});
-			};
-
-			ws.onmessage = (event) => {
-				// We don't need to process messages for health check
-				// Connection being open IS healthy
+				setIsOnline(true);
+				setWasDisconnected(false);
 			};
 
 			ws.onclose = () => {
-				console.log("Server disconnected");
-				setState(prev => ({
-					...prev,
-					isOnline: false,
-					wasDisconnected: true, // Mark that we got disconnected
-					consecutiveFailures: prev.consecutiveFailures + 1,
-					lastCheck: {
-						status: "unhealthy",
-						timestamp: new Date().toISOString(),
-						error: "Server disconnected",
-					},
-				}));
-
-				// Attempt to reconnect after delay
-				reconnectTimeoutRef.current = setTimeout(connectWebSocket, RECONNECT_DELAY);
+				setIsOnline(false);
+				setWasDisconnected(true);
+				// Attempt to reconnect after delay if still mounted
+				if (isMountedRef.current) {
+					reconnectTimeoutRef.current = setTimeout(connectWebSocket, RECONNECT_DELAY);
+				}
 			};
 
-			ws.onerror = (error) => {
-				console.error("Server connection error:", error);
+			ws.onerror = () => {
+				setIsOnline(false);
+				setWasDisconnected(true);
 			};
 
 		} catch (error) {
-			console.error("Failed to create WebSocket connection:", error);
-			setState(prev => ({
-				...prev,
-				isOnline: false,
-				wasDisconnected: true,
-				consecutiveFailures: prev.consecutiveFailures + 1,
-				lastCheck: {
-					status: "unhealthy",
-					timestamp: new Date().toISOString(),
-					error: error instanceof Error ? error.message : "WebSocket creation failed",
-				},
-			}));
+			console.error("[WebSocket Client] Failed to create WebSocket:", error);
+			setIsOnline(false);
+			setWasDisconnected(true);
 		}
 	}, []);
 
@@ -154,25 +69,35 @@ export function useHealthCheck() {
 
 	// Set up WebSocket connection
 	useEffect(() => {
-		connectWebSocket();
+		isMountedRef.current = true;
+		
+		// Add a small delay to avoid rapid connect/disconnect in StrictMode
+		const connectTimer = setTimeout(() => {
+			connectWebSocket();
+		}, 100);
 
 		return () => {
+			// Mark as unmounted
+			isMountedRef.current = false;
+			
+			// Clear the connect timer if it hasn't fired yet
+			clearTimeout(connectTimer);
+			
 			// Cleanup on unmount
-			if (wsRef.current) {
+			if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
 				wsRef.current.close();
+				wsRef.current = null;
 			}
 			if (reconnectTimeoutRef.current) {
 				clearTimeout(reconnectTimeoutRef.current);
+				reconnectTimeoutRef.current = null;
 			}
 		};
 	}, [connectWebSocket]);
 
-	// Expose connection status and functions
 	return {
-		isOnline: state.isOnline,
-		lastCheck: state.lastCheck,
-		isChecking: state.isChecking,
-		consecutiveFailures: state.consecutiveFailures,
+		isOnline,
+		wasDisconnected,
 		retry,
 	};
 }

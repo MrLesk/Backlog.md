@@ -29,7 +29,7 @@ export class BacklogServer {
 		try {
 			this.server = Bun.serve({
 				port: finalPort,
-				development: true,
+				development: process.env.NODE_ENV === "development",
 				routes: {
 					"/": indexHtml,
 					"/tasks": indexHtml,
@@ -59,9 +59,6 @@ export class BacklogServer {
 					"/api/config": {
 						GET: async () => await this.handleGetConfig(),
 						PUT: async (req) => await this.handleUpdateConfig(req),
-					},
-					"/api/health": {
-						GET: async () => await this.handleHealthCheck(),
 					},
 					"/api/docs": {
 						GET: async () => await this.handleListDocs(),
@@ -104,14 +101,15 @@ export class BacklogServer {
 				},
 				error: this.handleError.bind(this),
 				websocket: {
-					open(_ws) {
-						// Silent - no need to log normal connections
+					open(ws) {
+						// Client connected
 					},
-					message(_ws, _message) {
-						// No need to handle messages for simple connection monitoring
+					message(ws, message) {
+						// Echo back for health check
+						ws.send("pong");
 					},
-					close(_ws) {
-						// Silent - no need to log normal disconnections
+					close(ws) {
+						// Client disconnected
 					},
 				},
 			});
@@ -193,7 +191,7 @@ export class BacklogServer {
 		if (req.headers.get("upgrade") === "websocket") {
 			const success = server.upgrade(req);
 			if (success) {
-				return new Response(null, { status: 101 }); // WebSocket upgrade successful
+				return new Response(null, { status: 101 }); // WebSocket upgrade response
 			}
 			return new Response("WebSocket upgrade failed", { status: 400 });
 		}
@@ -270,8 +268,8 @@ export class BacklogServer {
 			return new Response("Not Found", { status: 404 });
 		}
 
-		// For all other routes, serve the React app (let React Router handle client-side routing)
-		return indexHtml(req);
+		// For all other routes, return 404 since routes should handle all valid paths
+		return new Response("Not Found", { status: 404 });
 	}
 
 	// Task handlers
@@ -592,59 +590,6 @@ export class BacklogServer {
 		const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
 		const match = content.match(regex);
 		return match ? match[1]!.trim() : undefined;
-	}
-
-	private async handleHealthCheck(): Promise<Response> {
-		const startTime = performance.now();
-
-		try {
-			// Check filesystem
-			const config = await this.core.filesystem.loadConfig();
-
-			const responseTime = Math.round(performance.now() - startTime);
-
-			const healthData = {
-				status: "healthy",
-				timestamp: new Date().toISOString(),
-				responseTime,
-				project: this.projectName,
-				checks: {
-					filesystem: "ok",
-					config: config ? "ok" : "warning",
-				},
-			};
-
-			return Response.json(healthData, {
-				headers: {
-					"Access-Control-Allow-Origin": "*",
-					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-					"Access-Control-Allow-Headers": "Content-Type",
-				},
-			});
-		} catch (error) {
-			const responseTime = Math.round(performance.now() - startTime);
-
-			const healthData = {
-				status: "unhealthy",
-				timestamp: new Date().toISOString(),
-				responseTime,
-				project: this.projectName,
-				checks: {
-					filesystem: "error",
-					config: "error",
-				},
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-
-			return Response.json(healthData, {
-				status: 503,
-				headers: {
-					"Access-Control-Allow-Origin": "*",
-					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-					"Access-Control-Allow-Headers": "Content-Type",
-				},
-			});
-		}
 	}
 
 	private handleError(error: Error): Response {
