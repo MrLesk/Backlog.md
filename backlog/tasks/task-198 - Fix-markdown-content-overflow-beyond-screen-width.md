@@ -21,4 +21,19 @@ Markdown tables and long content extend beyond viewport causing horizontal scrol
 
 ## Implementation Notes
 
-Fixed by replacing max-w-none with max-w-full in prose containers and adding overflow-x-auto. Added comprehensive CSS rules for responsive tables including max-width constraints, word-break properties, and proper table cell sizing. Modified DecisionDetail.tsx and DocumentationDetail.tsx components, plus added responsive table styles to source.css.
+### Final Solution
+Fixed the overflow issue by adding comprehensive CSS rules to handle the MDEditor component's nested markdown content structure:
+
+1. **Removed problematic classes**: Removed `overflow-x-auto` from component classes that was causing unwanted scrolling
+2. **Added targeted CSS rules** in `source.css`:
+   - Applied `white-space: pre-wrap`, `word-break: break-word`, and `overflow-wrap: break-word` to `.wmde-markdown pre` and nested elements
+   - Set `max-width: 100%` and `overflow-x: hidden` on markdown containers
+   - Added specific rules for code blocks, inline code, and `.code-line` elements
+   - Used `!important` to override any inline styles from the MDEditor component
+
+3. **Key changes**:
+   - Targets `.wmde-markdown` which is the actual container used by MDEditor
+   - Ensures all nested content (pre, code, code-line) wraps properly
+   - Prevents horizontal scrolling while maintaining readability
+
+The solution works by cascading styles to all content rendered by the MDEditor component, ensuring long text and code blocks wrap properly instead of causing horizontal overflow.
