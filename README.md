@@ -149,6 +149,7 @@ When re-initializing an existing project, all current configuration values are p
 |-------------|------------------------------------------------------|
 | Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
 | Export board | `backlog board export [file]` (exports Kanban board to markdown) |
+| Export with version | `backlog board export --export-version "v1.0.0"` (includes version in export) |
 
 ### Web Interface
 
@@ -243,6 +244,13 @@ backlog board export project-status.md
 
 # Force overwrite existing file
 backlog board export --force
+
+# Export to README.md with board markers
+backlog board export --readme
+
+# Include a custom version string in the export
+backlog board export --export-version "v1.2.3"
+backlog board export --readme --export-version "Release 2024.12.1-beta"
 ```
 
 Perfect for sharing project status, creating reports, or storing snapshots in version control.

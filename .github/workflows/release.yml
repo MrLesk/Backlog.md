@@ -230,7 +230,7 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF##refs/tags/v}"
-          bun run cli board export --readme --version "v$TAG"
+          bun run cli board export --readme --export-version "v$TAG"
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
