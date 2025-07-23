@@ -86,8 +86,10 @@ export async function openInEditor(filePath: string, config?: BacklogConfig | nu
 		const args = [...parts.slice(1), filePath];
 
 		// Use the new Bun shell API
+		// Don't use .quiet() as it breaks interactive editors like vim/helix
+		// The editor needs to inherit stdio to work properly
 		try {
-			await $`${command} ${args}`.quiet();
+			await $`${command} ${args}`;
 			return true;
 		} catch {
 			return false;

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
+import { platform } from "node:os";
 import { join } from "node:path";
 import type { BacklogConfig } from "../types/index.ts";
 import { isEditorAvailable, openInEditor, resolveEditor } from "../utils/editor.ts";
@@ -158,6 +159,38 @@ describe("Editor utilities", () => {
 
 			const success = await openInEditor(testFile, config);
 			expect(success).toBe(false);
+		});
+
+		it("should wait for editor to complete before returning", async () => {
+			// Create a platform-specific script that sleeps then exits
+			const isWindows = platform() === "win32";
+			const scriptPath = join(TEST_DIR, isWindows ? "test-editor.bat" : "test-editor.sh");
+
+			if (isWindows) {
+				// Windows batch script
+				await Bun.write(scriptPath, "@echo off\nping -n 1 -w 100 127.0.0.1 >nul\nexit 0");
+			} else {
+				// Unix shell script
+				await Bun.write(scriptPath, "#!/bin/sh\nsleep 0.1\nexit 0");
+				await Bun.$`chmod +x ${scriptPath}`;
+			}
+
+			const config: BacklogConfig = {
+				projectName: "Test",
+				statuses: ["To Do", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "yyyy-mm-dd",
+				defaultEditor: scriptPath,
+			};
+
+			const startTime = Date.now();
+			const success = await openInEditor(testFile, config);
+			const endTime = Date.now();
+
+			expect(success).toBe(true);
+			// Should have waited at least 90ms (allowing some margin)
+			expect(endTime - startTime).toBeGreaterThanOrEqual(85);
 		});
 	});
 });
