@@ -162,18 +162,15 @@ describe("Editor utilities", () => {
 		});
 
 		it("should wait for editor to complete before returning", async () => {
-			// Create a platform-specific script that sleeps then exits
-			const isWindows = platform() === "win32";
-			const scriptPath = join(TEST_DIR, isWindows ? "test-editor.bat" : "test-editor.sh");
-
-			if (isWindows) {
-				// Windows batch script
-				await Bun.write(scriptPath, "@echo off\nping -n 1 -w 100 127.0.0.1 >nul\nexit 0");
-			} else {
-				// Unix shell script
-				await Bun.write(scriptPath, "#!/bin/sh\nsleep 0.1\nexit 0");
-				await Bun.$`chmod +x ${scriptPath}`;
-			}
+			// Create a simple Node.js script that delays then exits
+			// This works cross-platform without needing shell/batch scripts
+			const scriptPath = join(TEST_DIR, "test-editor.js");
+			const scriptContent = `
+				setTimeout(() => {
+					process.exit(0);
+				}, 100);
+			`;
+			await Bun.write(scriptPath, scriptContent);
 
 			const config: BacklogConfig = {
 				projectName: "Test",
@@ -181,7 +178,7 @@ describe("Editor utilities", () => {
 				labels: [],
 				milestones: [],
 				dateFormat: "yyyy-mm-dd",
-				defaultEditor: scriptPath,
+				defaultEditor: `node ${scriptPath}`,
 			};
 
 			const startTime = Date.now();
@@ -190,7 +187,7 @@ describe("Editor utilities", () => {
 
 			expect(success).toBe(true);
 			// Should have waited at least 90ms (allowing some margin)
-			expect(endTime - startTime).toBeGreaterThanOrEqual(85);
+			expect(endTime - startTime).toBeGreaterThanOrEqual(90);
 		});
 	});
 });
