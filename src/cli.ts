@@ -14,6 +14,7 @@ import {
 	Core,
 	exportKanbanBoardToFile,
 	initializeGitRepository,
+	installClaudeAgent,
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
@@ -318,6 +319,23 @@ program
 			);
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
+			// Claude agent installation prompt
+			const claudeAgentPrompt = await prompts(
+				{
+					type: "confirm",
+					name: "installClaudeAgent",
+					message: "Install Claude Code Backlog.md agent for enhanced task management?",
+					hint: "Adds specialized agent to .claude/agents for better Backlog.md integration",
+					initial: true,
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+
 			// Prepare configuration object preserving existing values
 			const config = {
 				projectName: name,
@@ -377,6 +395,12 @@ program
 			// Add agent instruction files if selected
 			if (files.length > 0) {
 				await addAgentInstructions(cwd, core.gitOps, files, config.autoCommit);
+			}
+
+			// Install Claude agent if selected
+			if (claudeAgentPrompt.installClaudeAgent) {
+				await installClaudeAgent(cwd);
+				console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
 			}
 		} catch (err) {
 			console.error("Failed to initialize project", err);

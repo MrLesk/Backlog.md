@@ -5,6 +5,7 @@ export {
 	_loadAgentGuideline,
 	type AgentInstructionFile,
 	addAgentInstructions,
+	installClaudeAgent,
 } from "./agent-instructions.ts";
 // Kanban board utilities
 export { exportKanbanBoardToFile, generateKanbanBoardWithMetadata } from "./board.ts";

@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	AGENT_GUIDELINES,
+	CLAUDE_AGENT_CONTENT,
 	CLAUDE_GUIDELINES,
 	COPILOT_GUIDELINES,
 	CURSOR_GUIDELINES,
@@ -135,3 +136,17 @@ export async function addAgentInstructions(
 }
 
 export { loadContent as _loadAgentGuideline };
+
+/**
+ * Installs the Claude Code backlog agent to the project's .claude/agents directory
+ */
+export async function installClaudeAgent(projectRoot: string): Promise<void> {
+	const agentDir = join(projectRoot, ".claude", "agents");
+	const agentPath = join(agentDir, "project-manager-backlog.md");
+
+	// Create the directory if it doesn't exist
+	await mkdir(agentDir, { recursive: true });
+
+	// Write the agent content
+	await Bun.write(agentPath, CLAUDE_AGENT_CONTENT);
+}
