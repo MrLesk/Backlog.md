@@ -1,8 +1,8 @@
 ---
 id: task-204
-title: Add Claude Code backlog agent integration to init command
-status: In Progress
-assignee: ['@agavr']
+title: Add Experimental Claude Code backlog.md agent integration to init command
+status: Done
+assignee: ['@claude']
 created_date: '2025-07-25'
 labels:
   - cli
@@ -39,4 +39,3 @@ Enhance the init flow to optionally install a specialized Claude Code agent for 
 - Integrated prompt into init flow after agent guidelines selection
 - Added comprehensive tests for agent installation
 - Updated .gitignore to track .claude/agents while ignoring rest of .claude
-- Used "Backlog.md" consistently in user-facing messages
