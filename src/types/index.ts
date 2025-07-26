@@ -65,6 +65,8 @@ export interface BacklogConfig {
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
 	zeroPaddedIds?: number;
+	timezonePreference?: string; // e.g., 'UTC', 'America/New_York', or 'local'
+	includeDateTimeInDates?: boolean; // Whether to include time in new dates
 }
 
 export interface ParsedMarkdown {

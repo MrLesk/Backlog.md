@@ -91,7 +91,7 @@ async function createTaskViaCore(
 			title: options.title,
 			status: options.status || "",
 			assignee: options.assignee ? [options.assignee] : [],
-			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			labels: options.labels
 				? options.labels
 						.split(",")
@@ -267,7 +267,7 @@ async function editTaskViaCore(
 					.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`)),
 			}),
 			...(options.priority && { priority: options.priority as "high" | "medium" | "low" }),
-			updatedDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 		};
 
 		// Update implementation notes if provided

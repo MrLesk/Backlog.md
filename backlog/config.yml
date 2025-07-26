@@ -3,7 +3,7 @@ default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones: []
-date_format: yyyy-mm-dd
+date_format: yyyy-mm-dd hh:mm
 max_column_width: 20
 default_editor: "rider"
 auto_open_browser: true
@@ -11,3 +11,5 @@ default_port: 6420
 remote_operations: true
 auto_commit: false
 zero_padded_ids: 3
+timezone_preference: "UTC"
+include_datetime_in_dates: true
