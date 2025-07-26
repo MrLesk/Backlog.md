@@ -29,34 +29,43 @@ function preprocessFrontmatter(frontmatter: string): string {
 function normalizeDate(value: unknown): string {
 	if (!value) return "";
 	if (value instanceof Date) {
-		// Return full datetime in YYYY-MM-DD HH:mm format
+		// Check if this Date object came from a date-only string (time is midnight UTC)
+		const hours = value.getUTCHours();
+		const minutes = value.getUTCMinutes();
+		const seconds = value.getUTCSeconds();
+
+		if (hours === 0 && minutes === 0 && seconds === 0) {
+			// This was likely a date-only value, preserve it as date-only
+			return value.toISOString().slice(0, 10);
+		}
+		// This has actual time information, preserve it
 		return value.toISOString().slice(0, 16).replace("T", " ");
 	}
 	const str = String(value)
 		.trim()
 		.replace(/^['"]|['"]$/g, "");
 	if (!str) return "";
-	
+
 	// Check for datetime format first (YYYY-MM-DD HH:mm)
 	let match: RegExpMatchArray | null = str.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
 	if (match) {
 		// Already in correct format, return as-is
 		return str;
 	}
-	
+
 	// Check for ISO datetime format (YYYY-MM-DDTHH:mm)
 	match = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
 	if (match) {
 		// Convert T separator to space
 		return str.replace("T", " ");
 	}
-	
+
 	// Check for date-only format (YYYY-MM-DD) - backward compatibility
 	match = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 	if (match) {
 		return `${match[1]}-${match[2]}-${match[3]}`;
 	}
-	
+
 	// Legacy date formats (date-only for backward compatibility)
 	match = str.match(/^(\d{2})-(\d{2})-(\d{2})$/);
 	if (match) {

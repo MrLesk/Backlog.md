@@ -32,14 +32,13 @@ function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 function formatDateForDisplay(dateStr: string): string {
 	// Check if the date string includes time
 	const hasTime = dateStr.includes(" ") || dateStr.includes("T");
-	
+
 	if (hasTime) {
 		// Return the datetime as-is, it's already in a readable format
 		return dateStr;
-	} else {
-		// Return date-only format
-		return dateStr;
 	}
+	// Return date-only format
+	return dateStr;
 }
 
 /**
