@@ -77,7 +77,15 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 			}
 
 			// Calculate task age
-			const ageInDays = Math.floor((now.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
+			// For completed tasks, use the time from creation to completion
+			// For active tasks, use the time from creation to now
+			let ageInDays: number;
+			if (task.status === "Done" && task.updatedDate) {
+				const updatedDate = new Date(task.updatedDate);
+				ageInDays = Math.floor((updatedDate.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
+			} else {
+				ageInDays = Math.floor((now.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
+			}
 			totalAge += ageInDays;
 			taskCount++;
 		}

@@ -188,11 +188,13 @@ describe("getTaskStatistics", () => {
 		const now = new Date();
 		const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
 		const twentyDaysAgo = new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000);
+		const fifteenDaysAgo = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
+		const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 
 		const tasks: Task[] = [
 			{
 				id: "task-1",
-				title: "Task 1",
+				title: "Active Task",
 				status: "To Do",
 				createdDate: tenDaysAgo.toISOString().split("T")[0] as string,
 				assignee: [],
@@ -202,9 +204,21 @@ describe("getTaskStatistics", () => {
 			},
 			{
 				id: "task-2",
-				title: "Task 2",
+				title: "Completed Task",
 				status: "Done",
 				createdDate: twentyDaysAgo.toISOString().split("T")[0] as string,
+				updatedDate: fifteenDaysAgo.toISOString().split("T")[0] as string, // Completed after 5 days
+				assignee: [],
+				body: "",
+				labels: [],
+				dependencies: [],
+			},
+			{
+				id: "task-3",
+				title: "Recently Completed",
+				status: "Done",
+				createdDate: tenDaysAgo.toISOString().split("T")[0] as string,
+				updatedDate: fiveDaysAgo.toISOString().split("T")[0] as string, // Completed after 5 days
 				assignee: [],
 				body: "",
 				labels: [],
@@ -214,8 +228,11 @@ describe("getTaskStatistics", () => {
 
 		const stats = getTaskStatistics(tasks, [], statuses);
 
-		// Average of 10 and 20 days = 15 days
-		expect(stats.projectHealth.averageTaskAge).toBe(15);
+		// Task 1: 10 days (active, so uses current age)
+		// Task 2: 5 days (completed, so uses creation to completion time)
+		// Task 3: 5 days (completed, so uses creation to completion time)
+		// Average: (10 + 5 + 5) / 3 = 6.67, rounded to 7
+		expect(stats.projectHealth.averageTaskAge).toBe(7);
 	});
 
 	test("handles 100% completion correctly", () => {
