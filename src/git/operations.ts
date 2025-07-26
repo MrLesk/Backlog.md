@@ -30,11 +30,19 @@ export class GitOperations {
 
 	async commitTaskChange(taskId: string, message: string): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
-		await this.execGit(["commit", "-m", commitMessage]);
+		const args = ["commit", "-m", commitMessage];
+		if (this.config?.bypassGitHooks) {
+			args.push("--no-verify");
+		}
+		await this.execGit(args);
 	}
 
 	async commitChanges(message: string): Promise<void> {
-		await this.execGit(["commit", "-m", message]);
+		const args = ["commit", "-m", message];
+		if (this.config?.bypassGitHooks) {
+			args.push("--no-verify");
+		}
+		await this.execGit(args);
 	}
 
 	async resetIndex(): Promise<void> {
@@ -51,7 +59,11 @@ export class GitOperations {
 			throw new Error("No staged changes to commit");
 		}
 
-		await this.execGit(["commit", "-m", message]);
+		const args = ["commit", "-m", message];
+		if (this.config?.bypassGitHooks) {
+			args.push("--no-verify");
+		}
+		await this.execGit(args);
 	}
 
 	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {

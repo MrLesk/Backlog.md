@@ -65,6 +65,7 @@ export interface BacklogConfig {
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
 	zeroPaddedIds?: number;
+	bypassGitHooks?: boolean;
 }
 
 export interface ParsedMarkdown {

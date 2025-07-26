@@ -11,3 +11,4 @@ default_port: 6420
 remote_operations: true
 auto_commit: false
 zero_padded_ids: 3
+bypass_git_hooks: false

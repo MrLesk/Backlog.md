@@ -156,6 +156,27 @@ program
 				},
 			);
 
+			// Git hooks bypass prompt (conditional on remoteOperations)
+			let bypassGitHooks = false;
+			if (basicPrompts.remoteOperations) {
+				const gitHooksPrompt = await prompts(
+					{
+						type: "confirm",
+						name: "bypassGitHooks",
+						message: "Bypass git hooks when committing?",
+						hint: "Use --no-verify flag to skip pre-commit hooks (useful if hooks interfere with automated commits)",
+						initial: existingConfig?.bypassGitHooks ?? false,
+					},
+					{
+						onCancel: () => {
+							console.log("Aborting initialization.");
+							process.exit(1);
+						},
+					},
+				);
+				bypassGitHooks = gitHooksPrompt.bypassGitHooks ?? false;
+			}
+
 			// Zero-padding configuration (conditional) - ask immediately after enable question
 			let zeroPaddedIds: number | undefined;
 			if (basicPrompts.enableZeroPadding) {
@@ -347,6 +368,7 @@ program
 				maxColumnWidth: existingConfig?.maxColumnWidth || 20,
 				autoCommit: configPrompts.autoCommit,
 				remoteOperations: configPrompts.remoteOperations,
+				bypassGitHooks,
 				...(defaultEditor && { defaultEditor }),
 				// Web UI config: use new values, preserve existing, or set defaults
 				defaultPort:
@@ -370,6 +392,7 @@ program
 			console.log(`  Project Name: ${config.projectName}`);
 			console.log(`  Auto Commit: ${config.autoCommit}`);
 			console.log(`  Remote Operations: ${config.remoteOperations}`);
+			if (config.bypassGitHooks) console.log(`  Bypass Git Hooks: ${config.bypassGitHooks}`);
 			if (config.defaultEditor) console.log(`  Default Editor: ${config.defaultEditor}`);
 			if (config.defaultPort) console.log(`  Web UI Port: ${config.defaultPort}`);
 			if (config.autoOpenBrowser !== undefined) console.log(`  Auto Open Browser: ${config.autoOpenBrowser}`);
@@ -1835,13 +1858,16 @@ configCmd
 				case "autoCommit":
 					console.log(config.autoCommit?.toString() || "");
 					break;
+				case "bypassGitHooks":
+					console.log(config.bypassGitHooks?.toString() || "");
+					break;
 				case "zeroPaddedIds":
 					console.log(config.zeroPaddedIds?.toString() || "(disabled)");
 					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds",
 					);
 					process.exit(1);
 			}
@@ -1942,6 +1968,18 @@ configCmd
 					}
 					break;
 				}
+				case "bypassGitHooks": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.bypassGitHooks = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.bypassGitHooks = false;
+					} else {
+						console.error("bypassGitHooks must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "zeroPaddedIds": {
 					const padding = Number.parseInt(value, 10);
 					if (Number.isNaN(padding) || padding < 0) {
@@ -1962,7 +2000,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds",
 					);
 					process.exit(1);
 			}
@@ -2002,6 +2040,7 @@ configCmd
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
+			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
 			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
