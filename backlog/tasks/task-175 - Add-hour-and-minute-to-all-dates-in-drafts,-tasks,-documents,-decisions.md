@@ -1,9 +1,10 @@
 ---
 id: task-175
 title: 'Add hour and minute to all dates in drafts, tasks, documents, decisions'
-status: In Progress
+status: Done
 assignee: ['agavr']
 created_date: '2025-07-12'
+updated_date: '2025-07-26 10:29'
 labels: []
 dependencies: []
 priority: medium
@@ -15,17 +16,17 @@ Currently all dates use YYYY-MM-DD format (created_date, updated_date, decision 
 
 ## Acceptance Criteria
 
-- [ ] Research and document current date system architecture
-- [ ] Design backward-compatible migration strategy for existing YYYY-MM-DD dates
-- [ ] Update normalizeDate() function to handle time components
-- [ ] Modify markdown serialization/parsing for datetime fields
-- [ ] Update all UI components (CLI and web) to display time appropriately
-- [ ] Handle timezone complexity and configuration
-- [ ] Update backlog/config.yml date_format from "yyyy-mm-dd" to include time
-- [ ] Create migration script for existing data
-- [ ] Update type definitions to support datetime
-- [ ] Test thoroughly with existing data
-- [ ] Update documentation and user guides
+- [x] Research and document current date system architecture
+- [x] Design backward-compatible migration strategy for existing YYYY-MM-DD dates
+- [x] Update normalizeDate() function to handle time components
+- [x] Modify markdown serialization/parsing for datetime fields
+- [x] Update all UI components (CLI and web) to display time appropriately
+- [x] Handle timezone complexity and configuration
+- [x] Update backlog/config.yml date_format from "yyyy-mm-dd" to include time
+- [x] Create migration script for existing data
+- [x] Update type definitions to support datetime
+- [x] Test thoroughly with existing data
+- [x] Update documentation and user guides
 
 ## Implementation Plan
 
@@ -146,3 +147,45 @@ After analysis, implementing a **gradual migration with optional time** is the b
 4. **UI Components**: Both CLI and web need datetime display logic
 5. **Tests**: Update expectations for new date format
 6. **Config**: Add datetime format options
+
+### Implementation Complete (2025-07-26)
+
+**Changes Made:**
+
+1. **Enhanced normalizeDate() function** (src/markdown/parser.ts):
+   - Now preserves time components when present in input
+   - Maintains backward compatibility with date-only strings
+   - Intelligently detects if Date objects are date-only (midnight UTC)
+
+2. **Updated date generation** across 7 files:
+   - Changed from `toISOString().split('T')[0]` to `toISOString().slice(0, 16).replace('T', ' ')`
+   - Produces format: `YYYY-MM-DD HH:mm` in UTC
+
+3. **UI Components Updated**:
+   - **Web UI** (TaskCard.tsx): Enhanced formatDate() to display time when present
+   - **CLI** (task-viewer.ts): Added formatDateForDisplay() for intelligent date/datetime display
+   - Both UIs now show time only when the date includes it
+
+4. **Configuration Enhanced**:
+   - Added `timezone_preference: "UTC"` to config.yml
+   - Added `include_datetime_in_dates: true` option
+   - Updated date_format to `yyyy-mm-dd hh:mm`
+
+5. **Type System Updates**:
+   - Added `timezonePreference?: string` to BacklogConfig
+   - Added `includeDateTimeInDates?: boolean` for controlling behavior
+
+6. **Migration Script Created** (src/scripts/migrate-dates.ts):
+   - Interactive script with backup capability
+   - Options for selective migration of recent items
+   - Preserves historical date-only entries
+
+7. **Tests Updated**:
+   - Fixed all test expectations to handle new datetime format
+   - All tests passing with backward compatibility maintained
+
+**Backward Compatibility:**
+- ✅ Existing date-only fields remain date-only
+- ✅ New entries get datetime by default
+- ✅ Both formats work seamlessly together
+- ✅ No breaking changes to existing data

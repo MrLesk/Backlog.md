@@ -222,7 +222,9 @@ Key options:
 | `default_assignee`| Pre‑fill assignee  | `[]`                          |
 | `default_status`  | First column       | `To Do`                       |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
-| `date_format`     | ISO or locale      | `yyyy-mm-dd`                  |
+| `date_format`     | Date/time format   | `yyyy-mm-dd hh:mm`            |
+| `timezone_preference` | Timezone for dates | `UTC`                     |
+| `include_datetime_in_dates` | Add time to new dates | `true`              |
 | `default_editor`  | Editor for 'E' key | Platform default (nano/notepad) |
 | `default_port`    | Web UI port        | `6420`                        |
 | `auto_open_browser`| Open browser automatically | `true`            |
@@ -233,6 +235,8 @@ Key options:
 > **Note**: Set `remote_operations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
 > **Git Control**: By default, `auto_commit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `auto_commit: true` if you prefer automatic commits for each task operation.
+
+> **Date/Time Support**: Backlog.md now supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility. Use the migration script `bun src/scripts/migrate-dates.ts` to optionally add time to existing items.
 
 ---
 
