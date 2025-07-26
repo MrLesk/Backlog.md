@@ -17,6 +17,7 @@ export interface Task {
 	subtasks?: string[];
 	priority?: "high" | "medium" | "low";
 	branch?: string;
+	ordinal?: number;
 	// Metadata fields (previously in TaskWithMetadata)
 	lastModified?: Date;
 	source?: "local" | "remote";

@@ -1016,6 +1016,7 @@ taskCmd
 	.option("-s, --status <status>")
 	.option("-l, --label <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
+	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
 	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
@@ -1067,6 +1068,15 @@ taskCmd
 				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
 				return;
 			}
+		}
+
+		if (options.ordinal !== undefined) {
+			const ordinal = Number(options.ordinal);
+			if (Number.isNaN(ordinal) || ordinal < 0) {
+				console.error(`Invalid ordinal: ${options.ordinal}. Must be a non-negative number.`);
+				return;
+			}
+			task.ordinal = ordinal;
 		}
 
 		const labels = [...task.labels];

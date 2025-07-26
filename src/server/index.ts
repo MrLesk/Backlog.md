@@ -88,6 +88,9 @@ export class BacklogServer {
 					"/api/drafts/:id/promote": {
 						POST: async (req) => await this.handlePromoteDraft(req.params.id),
 					},
+					"/api/tasks/reorder": {
+						POST: async (req) => await this.handleReorderTask(req),
+					},
 				},
 				fetch: async (req, server) => {
 					// Apply CORS headers to all responses
@@ -618,6 +621,68 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error promoting draft:", error);
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
+		}
+	}
+
+	private async handleReorderTask(req: Request): Promise<Response> {
+		try {
+			const { taskId, newOrdinal, columnTasks } = await req.json();
+			
+			if (!taskId || newOrdinal === undefined) {
+				return Response.json({ error: "Missing required fields: taskId and newOrdinal" }, { status: 400 });
+			}
+			
+			// Load the task to update
+			const task = await this.core.filesystem.loadTask(taskId);
+			if (!task) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+			
+			// Update the task's ordinal value
+			const updatedTask: Task = {
+				...task,
+				ordinal: newOrdinal,
+				updatedDate: new Date().toISOString().split("T")[0]
+			};
+			
+			// Save the updated task
+			await this.core.updateTask(updatedTask, await this.shouldAutoCommit());
+			
+			// If other tasks in the column need ordinal updates (to prevent collisions)
+			if (columnTasks && Array.isArray(columnTasks)) {
+				// Reassign ordinals to prevent conflicts
+				const tasksToUpdate: Task[] = [];
+				let ordinal = 1000;
+				
+				for (const columnTask of columnTasks) {
+					if (columnTask.id !== taskId) {
+						const existingTask = await this.core.filesystem.loadTask(columnTask.id);
+						if (existingTask && existingTask.ordinal !== ordinal) {
+							tasksToUpdate.push({
+								...existingTask,
+								ordinal: ordinal,
+								updatedDate: new Date().toISOString().split("T")[0]
+							});
+						}
+						ordinal += 1000;
+					}
+				}
+				
+				// Batch update other tasks if needed
+				for (const taskToUpdate of tasksToUpdate) {
+					await this.core.updateTask(taskToUpdate, false); // Don't auto-commit each one
+				}
+				
+				// Commit all changes at once if auto-commit is enabled
+				if (tasksToUpdate.length > 0 && await this.shouldAutoCommit()) {
+					await $`git add . && git commit -m "Reorder tasks in column"`.quiet();
+				}
+			}
+			
+			return Response.json({ success: true, task: updatedTask });
+		} catch (error) {
+			console.error("Error reordering task:", error);
+			return Response.json({ error: "Failed to reorder task" }, { status: 500 });
 		}
 	}
 }
