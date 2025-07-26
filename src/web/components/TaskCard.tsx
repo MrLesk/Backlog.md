@@ -29,7 +29,23 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit }) => {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString();
+    // Handle both date-only and datetime formats
+    const hasTime = dateStr.includes(" ") || dateStr.includes("T");
+    const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
+    
+    if (hasTime) {
+      // Show date and time for datetime values
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } else {
+      // Show only date for date-only values
+      return date.toLocaleDateString();
+    }
   };
 
   return (

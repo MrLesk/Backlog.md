@@ -27,6 +27,22 @@ function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 }
 
 /**
+ * Format date for display, showing time only when present
+ */
+function formatDateForDisplay(dateStr: string): string {
+	// Check if the date string includes time
+	const hasTime = dateStr.includes(" ") || dateStr.includes("T");
+	
+	if (hasTime) {
+		// Return the datetime as-is, it's already in a readable format
+		return dateStr;
+	} else {
+		// Return date-only format
+		return dateStr;
+	}
+}
+
+/**
  * Extract only the Description section content from markdown, avoiding duplication
  */
 function extractDescriptionSection(content: string): string | null {
@@ -276,11 +292,11 @@ export async function viewTaskEnhanced(
 		const metadata = [];
 
 		// Always show created date
-		metadata.push(`{bold}Created:{/bold} ${currentSelectedTask.createdDate}`);
+		metadata.push(`{bold}Created:{/bold} ${formatDateForDisplay(currentSelectedTask.createdDate)}`);
 
 		// Show updated date if different from created
 		if (currentSelectedTask.updatedDate && currentSelectedTask.updatedDate !== currentSelectedTask.createdDate) {
-			metadata.push(`{bold}Updated:{/bold} ${currentSelectedTask.updatedDate}`);
+			metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(currentSelectedTask.updatedDate)}`);
 		}
 
 		// Priority
@@ -534,11 +550,11 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	const metadata = [];
 
 	// Always show created date
-	metadata.push(`{bold}Created:{/bold} ${task.createdDate}`);
+	metadata.push(`{bold}Created:{/bold} ${formatDateForDisplay(task.createdDate)}`);
 
 	// Show updated date if different from created
 	if (task.updatedDate && task.updatedDate !== task.createdDate) {
-		metadata.push(`{bold}Updated:{/bold} ${task.updatedDate}`);
+		metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(task.updatedDate)}`);
 	}
 
 	// Priority
@@ -781,8 +797,8 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	if (task.assignee?.length)
 		lines.push(`Assignee: ${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}`);
 	if (task.reporter) lines.push(`Reporter: ${task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`}`);
-	lines.push(`Created: ${task.createdDate}`);
-	if (task.updatedDate) lines.push(`Updated: ${task.updatedDate}`);
+	lines.push(`Created: ${formatDateForDisplay(task.createdDate)}`);
+	if (task.updatedDate) lines.push(`Updated: ${formatDateForDisplay(task.updatedDate)}`);
 	if (task.labels?.length) lines.push(`Labels: ${task.labels.join(", ")}`);
 	if (task.milestone) lines.push(`Milestone: ${task.milestone}`);
 	if (task.parentTaskId) lines.push(`Parent: ${task.parentTaskId}`);

@@ -312,7 +312,7 @@ export class BacklogServer {
 			assignee: taskData.assignee || [],
 			labels: taskData.labels || [],
 			dependencies: taskData.dependencies || [],
-			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
 			...(taskData.priority && { priority: taskData.priority }),
 		};
@@ -428,7 +428,7 @@ export class BacklogServer {
 			const updatedDoc = {
 				...existingDoc,
 				body: content,
-				updatedDate: new Date().toISOString().split("T")[0],
+				updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			};
 
 			await this.core.createDocument(updatedDoc, await this.shouldAutoCommit());

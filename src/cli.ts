@@ -721,7 +721,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 			: `task-${parentInput}`
 		: undefined;
 
-	const createdDate = new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10);
+	const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
 	// Handle dependencies - they will be validated separately
 	const dependencies = normalizeDependencies(options.dependsOn || options.dep);
@@ -1625,7 +1625,7 @@ docCmd
 			id,
 			title: title as string,
 			type: (options.type || "other") as DocType["type"],
-			createdDate: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			body: "",
 		};
 		await core.createDocument(document, undefined, options.path || "");
@@ -1703,7 +1703,7 @@ decisionCmd
 		const decision: Decision = {
 			id,
 			title: title as string,
-			date: new Date().toISOString().split("T")[0] || new Date().toISOString().slice(0, 10),
+			date: new Date().toISOString().slice(0, 16).replace("T", " "),
 			status: (options.status || "proposed") as Decision["status"],
 			context: "",
 			decision: "",
