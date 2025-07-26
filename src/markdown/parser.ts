@@ -10,7 +10,7 @@ function preprocessFrontmatter(frontmatter: string): string {
 			if (!match) return line;
 
 			const [, prefix, raw] = match;
-			const value = raw!.trim();
+			const value = raw?.trim() || "";
 
 			if (
 				value &&
@@ -64,7 +64,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 	let toParse = content;
 
 	if (match) {
-		const processed = preprocessFrontmatter(match[1]!);
+		const processed = preprocessFrontmatter(match[1] || "");
 		// Replace with consistent line endings
 		toParse = content.replace(fmRegex, `---\n${processed}\n---`);
 	}
@@ -105,6 +105,7 @@ export function parseTask(content: string): Task {
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
 		priority: validatedPriority,
+		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 	};
 }
 

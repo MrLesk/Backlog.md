@@ -74,11 +74,40 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
     handleTaskUpdate(taskId, { status: newStatus });
   };
 
+  const handleTaskReorder = async (taskId: string, newOrdinal: number, columnTasks: Task[]) => {
+    try {
+      await apiClient.reorderTask(taskId, newOrdinal, columnTasks);
+      // Refresh data to reflect the changes
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reorder task');
+    }
+  };
+
   const getTasksByStatus = (status: string): Task[] => {
     const filteredTasks = tasks.filter(task => task.status === status);
     
-    // Sort tasks based on status
+    // Sort tasks based on ordinal first, then by priority/date
     return filteredTasks.sort((a, b) => {
+      // Tasks with ordinal come before tasks without
+      if (a.ordinal !== undefined && b.ordinal === undefined) {
+        return -1;
+      }
+      if (a.ordinal === undefined && b.ordinal !== undefined) {
+        return 1;
+      }
+      
+      // Both have ordinals - sort by ordinal value
+      if (a.ordinal !== undefined && b.ordinal !== undefined) {
+        if (a.ordinal !== b.ordinal) {
+          return a.ordinal - b.ordinal;
+        }
+      }
+      
+      // Same ordinal (or both undefined) - use existing date-based sorting
       const isDoneStatus = status.toLowerCase().includes('done') || 
                           status.toLowerCase().includes('complete');
       
@@ -161,6 +190,7 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
               onTaskUpdate={handleTaskUpdate}
               onStatusChange={handleStatusChange}
               onEditTask={onEditTask}
+              onTaskReorder={handleTaskReorder}
             />
           ))}
         </div>

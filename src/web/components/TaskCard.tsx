@@ -5,18 +5,27 @@ interface TaskCardProps {
   task: Task;
   onUpdate: (taskId: string, updates: Partial<Task>) => void;
   onEdit: (task: Task) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  status?: string;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status }) => {
   const [isDragging, setIsDragging] = React.useState(false);
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('text/plain', task.id);
+    if (status) {
+      e.dataTransfer.setData('text/status', status);
+    }
+    e.dataTransfer.effectAllowed = 'move';
     setIsDragging(true);
+    onDragStart?.();
   };
 
   const handleDragEnd = () => {
     setIsDragging(false);
+    onDragEnd?.();
   };
 
   const getPriorityClass = (priority?: string) => {

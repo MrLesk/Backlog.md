@@ -8,6 +8,7 @@ interface TaskColumnProps {
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
   onStatusChange: (taskId: string, status: string) => void;
   onEditTask: (task: Task) => void;
+  onTaskReorder?: (taskId: string, newOrdinal: number, columnTasks: Task[]) => void;
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({ 
@@ -15,9 +16,12 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   tasks, 
   onTaskUpdate, 
   onStatusChange,
-  onEditTask
+  onEditTask,
+  onTaskReorder
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
+  const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
+  const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
   const getStatusBadgeClass = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower.includes('done') || statusLower.includes('complete')) {
@@ -35,9 +39,43 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    const taskId = e.dataTransfer.getData('text/plain');
-    if (taskId) {
-      onStatusChange(taskId, title);
+    setDropPosition(null);
+    
+    const droppedTaskId = e.dataTransfer.getData('text/plain');
+    const sourceStatus = e.dataTransfer.getData('text/status');
+    
+    if (!droppedTaskId) return;
+    
+    // If dropping from another column, just change status
+    if (sourceStatus !== title) {
+      onStatusChange(droppedTaskId, title);
+      return;
+    }
+    
+    // For same column drops, handle reordering if supported
+    if (onTaskReorder && dropPosition) {
+      const { index, position } = dropPosition;
+      let newOrdinal: number;
+      
+      if (index === 0 && position === 'before') {
+        // Dropping at the very beginning
+        newOrdinal = tasks[0]?.ordinal !== undefined ? tasks[0].ordinal / 2 : 1000;
+      } else if (index === tasks.length - 1 && position === 'after') {
+        // Dropping at the very end
+        newOrdinal = tasks[tasks.length - 1]?.ordinal !== undefined ? tasks[tasks.length - 1].ordinal + 1000 : (tasks.length + 1) * 1000;
+      } else {
+        // Dropping between two tasks
+        const actualIndex = position === 'before' ? index : index + 1;
+        const prevTask = tasks[actualIndex - 1];
+        const nextTask = tasks[actualIndex];
+        
+        const prevOrdinal = prevTask?.ordinal ?? actualIndex * 1000;
+        const nextOrdinal = nextTask?.ordinal ?? (actualIndex + 1) * 1000;
+        
+        newOrdinal = (prevOrdinal + nextOrdinal) / 2;
+      }
+      
+      onTaskReorder(droppedTaskId, newOrdinal, tasks);
     }
   };
 
@@ -55,6 +93,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     // Only set to false if we're leaving the column entirely
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOver(false);
+      setDropPosition(null);
     }
   };
 
@@ -80,13 +119,56 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       </div>
       
       <div className="space-y-3">
-        {tasks.map(task => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            onUpdate={onTaskUpdate}
-            onEdit={onEditTask}
-          />
+        {tasks.map((task, index) => (
+          <div key={task.id} className="relative">
+            {/* Drop indicator for before this task */}
+            {dropPosition?.index === index && dropPosition.position === 'before' && (
+              <div className="h-1 bg-blue-500 rounded-full mb-2 animate-pulse" />
+            )}
+            
+            <TaskCard
+              task={task}
+              onUpdate={onTaskUpdate}
+              onEdit={onEditTask}
+              onDragStart={() => setDraggedTaskId(task.id)}
+              onDragEnd={() => {
+                setDraggedTaskId(null);
+                setDropPosition(null);
+              }}
+              status={title}
+            />
+            
+            {/* Drop indicator for after this task */}
+            {dropPosition?.index === index && dropPosition.position === 'after' && (
+              <div className="h-1 bg-blue-500 rounded-full mt-2 animate-pulse" />
+            )}
+            
+            {/* Drop zones for reordering */}
+            {onTaskReorder && (
+              <>
+                <div
+                  className="absolute inset-x-0 -top-2 h-4 z-10"
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (draggedTaskId && draggedTaskId !== task.id) {
+                      setDropPosition({ index, position: 'before' });
+                    }
+                  }}
+                />
+                <div
+                  className="absolute inset-x-0 -bottom-2 h-4 z-10"
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (draggedTaskId && draggedTaskId !== task.id) {
+                      setDropPosition({ index, position: 'after' });
+                    }
+                  }}
+                />
+              </>
+            )}
+          </div>
         ))}
         
         {/* Drop zone indicator */}
