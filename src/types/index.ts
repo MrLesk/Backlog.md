@@ -19,7 +19,7 @@ export interface Task {
 	branch?: string;
 	// Metadata fields (previously in TaskWithMetadata)
 	lastModified?: Date;
-	source?: "local" | "remote";
+	source?: "local" | "remote" | "completed";
 }
 
 export interface Decision {
@@ -66,6 +66,8 @@ export interface BacklogConfig {
 	autoCommit?: boolean;
 	zeroPaddedIds?: number;
 	bypassGitHooks?: boolean;
+	checkActiveBranches?: boolean; // Check task states across active branches (default: true)
+	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
 }
 
 export interface ParsedMarkdown {

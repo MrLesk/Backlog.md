@@ -177,6 +177,45 @@ program
 				bypassGitHooks = gitHooksPrompt.bypassGitHooks ?? false;
 			}
 
+			// Cross-branch checking configuration
+			const crossBranchPrompt = await prompts(
+				{
+					type: "confirm",
+					name: "checkActiveBranches",
+					message: "Check task states across active branches?",
+					hint: "Ensures accurate task tracking across branches (may impact performance on large repos)",
+					initial: existingConfig?.checkActiveBranches ?? true,
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+
+			let activeBranchDays = 30;
+			if (crossBranchPrompt.checkActiveBranches) {
+				const daysPrompt = await prompts(
+					{
+						type: "number",
+						name: "activeBranchDays",
+						message: "How many days should a branch be considered active?",
+						hint: "Lower values improve performance (default: 30 days)",
+						initial: existingConfig?.activeBranchDays || 30,
+						min: 1,
+						max: 365,
+					},
+					{
+						onCancel: () => {
+							console.log("Aborting initialization.");
+							process.exit(1);
+						},
+					},
+				);
+				activeBranchDays = daysPrompt.activeBranchDays || 30;
+			}
+
 			// Zero-padding configuration (conditional) - ask immediately after enable question
 			let zeroPaddedIds: number | undefined;
 			if (basicPrompts.enableZeroPadding) {
@@ -369,6 +408,8 @@ program
 				autoCommit: configPrompts.autoCommit,
 				remoteOperations: configPrompts.remoteOperations,
 				bypassGitHooks,
+				checkActiveBranches: crossBranchPrompt.checkActiveBranches ?? true,
+				activeBranchDays,
 				...(defaultEditor && { defaultEditor }),
 				// Web UI config: use new values, preserve existing, or set defaults
 				defaultPort:
@@ -1864,10 +1905,16 @@ configCmd
 				case "zeroPaddedIds":
 					console.log(config.zeroPaddedIds?.toString() || "(disabled)");
 					break;
+				case "checkActiveBranches":
+					console.log(config.checkActiveBranches?.toString() || "true");
+					break;
+				case "activeBranchDays":
+					console.log(config.activeBranchDays?.toString() || "30");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -1990,6 +2037,27 @@ configCmd
 					config.zeroPaddedIds = padding > 0 ? padding : undefined;
 					break;
 				}
+				case "checkActiveBranches": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.checkActiveBranches = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.checkActiveBranches = false;
+					} else {
+						console.error("checkActiveBranches must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
+				case "activeBranchDays": {
+					const days = Number.parseInt(value, 10);
+					if (Number.isNaN(days) || days < 0) {
+						console.error("activeBranchDays must be a non-negative number.");
+						process.exit(1);
+					}
+					config.activeBranchDays = days;
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -2000,7 +2068,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -2042,6 +2110,8 @@ configCmd
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
 			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
 			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
+			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
+			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;

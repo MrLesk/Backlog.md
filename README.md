@@ -222,6 +222,8 @@ Backlog.md merges the following layers (highest → lowest):
 | Set config value | `backlog config set defaultEditor "code --wait"` |
 | Enable auto-commit | `backlog config set autoCommit true` |
 | Bypass git hooks | `backlog config set bypassGitHooks true` |
+| Enable cross-branch check | `backlog config set checkActiveBranches true` |
+| Set active branch days | `backlog config set activeBranchDays 30` |
 
 ### Available Configuration Options
 
@@ -238,12 +240,16 @@ Backlog.md merges the following layers (highest → lowest):
 | `autoCommit`      | Automatically commit task changes | `false`       |
 | `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
 | `zeroPaddedIds`   | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
+| `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
+| `activeBranchDays` | How many days a branch is considered active | `30` |
 
 > **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
 > **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
 
 > **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
+
+> **Performance**: Cross-branch checking ensures accurate task tracking across all active branches but may impact performance on large repositories. You can disable it by setting `checkActiveBranches: false` for maximum speed, or adjust `activeBranchDays` to control how far back to look for branch activity (lower values = better performance).
 
 ---
 

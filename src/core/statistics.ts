@@ -50,6 +50,11 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 
 	// Process each task
 	for (const task of tasks) {
+		// Skip tasks with empty or undefined status
+		if (!task.status || task.status === "") {
+			continue;
+		}
+
 		// Count by status
 		const currentCount = statusCounts.get(task.status) || 0;
 		statusCounts.set(task.status, currentCount + 1);
@@ -125,8 +130,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 	// Calculate average task age
 	const averageTaskAge = taskCount > 0 ? Math.round(totalAge / taskCount) : 0;
 
-	// Calculate completion percentage
-	const totalTasks = tasks.length;
+	// Calculate completion percentage (only count tasks with valid status)
+	const totalTasks = Array.from(statusCounts.values()).reduce((sum, count) => sum + count, 0);
 	const completionPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
 	return {

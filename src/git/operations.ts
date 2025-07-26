@@ -265,6 +265,50 @@ export class GitOperations {
 		}
 	}
 
+	async listRecentBranches(daysAgo: number): Promise<string[]> {
+		try {
+			// Get all branches with their last commit date
+			// Using for-each-ref which is more efficient than multiple branch commands
+			const since = new Date();
+			since.setDate(since.getDate() - daysAgo);
+
+			// Build refs to check based on remoteOperations config
+			const refs = ["refs/heads"];
+			if (this.config?.remoteOperations !== false) {
+				refs.push("refs/remotes/origin");
+			}
+
+			// Get local and remote branches with commit dates
+			const { stdout } = await this.execGit([
+				"for-each-ref",
+				"--format=%(refname:short)|%(committerdate:iso8601)",
+				...refs,
+			]);
+
+			const recentBranches: string[] = [];
+			const lines = stdout.split("\n").filter(Boolean);
+
+			for (const line of lines) {
+				const [branch, dateStr] = line.split("|");
+				if (!branch || !dateStr) continue;
+
+				const commitDate = new Date(dateStr);
+				if (commitDate >= since) {
+					// Keep the full branch name including origin/ prefix
+					// This allows cross-branch checking to distinguish local vs remote
+					if (!recentBranches.includes(branch)) {
+						recentBranches.push(branch);
+					}
+				}
+			}
+
+			return recentBranches;
+		} catch {
+			// Fallback to all branches if the command fails
+			return this.listAllBranches();
+		}
+	}
+
 	async listLocalBranches(): Promise<string[]> {
 		try {
 			const { stdout } = await this.execGit(["branch", "--format=%(refname:short)"]);
@@ -279,7 +323,13 @@ export class GitOperations {
 
 	async listAllBranches(_remote = "origin"): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit(["branch", "-a", "--format=%(refname:short)"]);
+			// Use -a flag only if remote operations are enabled
+			const branchArgs =
+				this.config?.remoteOperations === false
+					? ["branch", "--format=%(refname:short)"]
+					: ["branch", "-a", "--format=%(refname:short)"];
+
+			const { stdout } = await this.execGit(branchArgs);
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
@@ -295,6 +345,30 @@ export class GitOperations {
 			.split("\n")
 			.map((l) => l.trim())
 			.filter(Boolean);
+	}
+
+	/**
+	 * Check which files exist from a list of paths in a single git command
+	 * Returns a Set of paths that exist in the given ref
+	 */
+	async checkFilesExist(ref: string, paths: string[]): Promise<Set<string>> {
+		if (paths.length === 0) return new Set();
+
+		try {
+			// Use ls-tree to check multiple paths at once
+			const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", ref, "--", ...paths]);
+
+			const existingFiles = new Set(
+				stdout
+					.split("\n")
+					.map((l) => l.trim())
+					.filter(Boolean),
+			);
+
+			return existingFiles;
+		} catch {
+			return new Set();
+		}
 	}
 
 	async showFile(ref: string, filePath: string): Promise<string> {

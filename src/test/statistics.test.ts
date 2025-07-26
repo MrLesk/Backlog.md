@@ -5,6 +5,19 @@ import type { Task } from "../types/index.ts";
 describe("getTaskStatistics", () => {
 	const statuses = ["To Do", "In Progress", "Done"];
 
+	// Helper to create test tasks with required fields
+	const createTask = (partial: Partial<Task>): Task => ({
+		id: "task-1",
+		title: "Test Task",
+		status: "To Do",
+		assignee: [],
+		labels: [],
+		dependencies: [],
+		createdDate: "2024-01-01",
+		body: "",
+		...partial,
+	});
+
 	test("handles empty task list", () => {
 		const stats = getTaskStatistics([], [], statuses);
 
@@ -19,11 +32,11 @@ describe("getTaskStatistics", () => {
 
 	test("counts tasks by status correctly", () => {
 		const tasks: Task[] = [
-			{ id: "task-1", title: "Task 1", status: "To Do", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-2", title: "Task 2", status: "To Do", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-3", title: "Task 3", status: "In Progress", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-4", title: "Task 4", status: "Done", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-5", title: "Task 5", status: "Done", assignee: [], labels: [], dependencies: [] },
+			createTask({ id: "task-1", title: "Task 1", status: "To Do" }),
+			createTask({ id: "task-2", title: "Task 2", status: "To Do" }),
+			createTask({ id: "task-3", title: "Task 3", status: "In Progress" }),
+			createTask({ id: "task-4", title: "Task 4", status: "Done" }),
+			createTask({ id: "task-5", title: "Task 5", status: "Done" }),
 		];
 
 		const stats = getTaskStatistics(tasks, [], statuses);
@@ -38,19 +51,11 @@ describe("getTaskStatistics", () => {
 
 	test("counts tasks by priority correctly", () => {
 		const tasks: Task[] = [
-			{ id: "task-1", title: "Task 1", status: "To Do", priority: "high", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-2", title: "Task 2", status: "To Do", priority: "high", assignee: [], labels: [], dependencies: [] },
-			{
-				id: "task-3",
-				title: "Task 3",
-				status: "In Progress",
-				priority: "medium",
-				assignee: [],
-				labels: [],
-				dependencies: [],
-			},
-			{ id: "task-4", title: "Task 4", status: "Done", priority: "low", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-5", title: "Task 5", status: "Done", assignee: [], labels: [], dependencies: [] }, // No priority
+			createTask({ id: "task-1", title: "Task 1", status: "To Do", priority: "high" }),
+			createTask({ id: "task-2", title: "Task 2", status: "To Do", priority: "high" }),
+			createTask({ id: "task-3", title: "Task 3", status: "In Progress", priority: "medium" }),
+			createTask({ id: "task-4", title: "Task 4", status: "Done", priority: "low" }),
+			createTask({ id: "task-5", title: "Task 5", status: "Done" }), // No priority
 		];
 
 		const stats = getTaskStatistics(tasks, [], statuses);
@@ -62,12 +67,10 @@ describe("getTaskStatistics", () => {
 	});
 
 	test("counts drafts correctly", () => {
-		const tasks: Task[] = [
-			{ id: "task-1", title: "Task 1", status: "To Do", assignee: [], labels: [], dependencies: [] },
-		];
+		const tasks: Task[] = [createTask({ id: "task-1", title: "Task 1", status: "To Do" })];
 		const drafts: Task[] = [
-			{ id: "task-2", title: "Draft 1", status: "", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-3", title: "Draft 2", status: "", assignee: [], labels: [], dependencies: [] },
+			createTask({ id: "task-2", title: "Draft 1", status: "" }),
+			createTask({ id: "task-3", title: "Draft 2", status: "" }),
 		];
 
 		const stats = getTaskStatistics(tasks, drafts, statuses);
@@ -86,17 +89,19 @@ describe("getTaskStatistics", () => {
 				id: "task-1",
 				title: "Recent Task",
 				status: "To Do",
-				createdDate: fiveDaysAgo.toISOString().split("T")[0],
+				createdDate: fiveDaysAgo.toISOString().split("T")[0] as string,
 				assignee: [],
 				labels: [],
 				dependencies: [],
+				body: "",
 			},
 			{
 				id: "task-2",
 				title: "Old Task",
 				status: "To Do",
-				createdDate: tenDaysAgo.toISOString().split("T")[0],
+				createdDate: tenDaysAgo.toISOString().split("T")[0] as string,
 				assignee: [],
+				body: "",
 				labels: [],
 				dependencies: [],
 			},
@@ -104,9 +109,10 @@ describe("getTaskStatistics", () => {
 				id: "task-3",
 				title: "Updated Task",
 				status: "In Progress",
-				createdDate: tenDaysAgo.toISOString().split("T")[0],
-				updatedDate: fiveDaysAgo.toISOString().split("T")[0],
+				createdDate: tenDaysAgo.toISOString().split("T")[0] as string,
+				updatedDate: fiveDaysAgo.toISOString().split("T")[0] as string,
 				assignee: [],
+				body: "",
 				labels: [],
 				dependencies: [],
 			},
@@ -115,9 +121,9 @@ describe("getTaskStatistics", () => {
 		const stats = getTaskStatistics(tasks, [], statuses);
 
 		expect(stats.recentActivity.created.length).toBe(1);
-		expect(stats.recentActivity.created[0].id).toBe("task-1");
+		expect(stats.recentActivity.created[0]?.id).toBe("task-1");
 		expect(stats.recentActivity.updated.length).toBe(1);
-		expect(stats.recentActivity.updated[0].id).toBe("task-3");
+		expect(stats.recentActivity.updated[0]?.id).toBe("task-3");
 	});
 
 	test("identifies stale tasks correctly", () => {
@@ -130,8 +136,9 @@ describe("getTaskStatistics", () => {
 				id: "task-1",
 				title: "Stale Task",
 				status: "To Do",
-				createdDate: twoMonthsAgo.toISOString().split("T")[0],
+				createdDate: twoMonthsAgo.toISOString().split("T")[0] as string,
 				assignee: [],
+				body: "",
 				labels: [],
 				dependencies: [],
 			},
@@ -139,8 +146,9 @@ describe("getTaskStatistics", () => {
 				id: "task-2",
 				title: "Recent Task",
 				status: "To Do",
-				createdDate: oneWeekAgo.toISOString().split("T")[0],
+				createdDate: oneWeekAgo.toISOString().split("T")[0] as string,
 				assignee: [],
+				body: "",
 				labels: [],
 				dependencies: [],
 			},
@@ -148,8 +156,9 @@ describe("getTaskStatistics", () => {
 				id: "task-3",
 				title: "Old but Done",
 				status: "Done",
-				createdDate: twoMonthsAgo.toISOString().split("T")[0],
+				createdDate: twoMonthsAgo.toISOString().split("T")[0] as string,
 				assignee: [],
+				body: "",
 				labels: [],
 				dependencies: [],
 			},
@@ -158,49 +167,21 @@ describe("getTaskStatistics", () => {
 		const stats = getTaskStatistics(tasks, [], statuses);
 
 		expect(stats.projectHealth.staleTasks.length).toBe(1);
-		expect(stats.projectHealth.staleTasks[0].id).toBe("task-1");
+		expect(stats.projectHealth.staleTasks[0]?.id).toBe("task-1");
 	});
 
 	test("identifies blocked tasks correctly", () => {
 		const tasks: Task[] = [
-			{
-				id: "task-1",
-				title: "Blocking Task",
-				status: "In Progress",
-				assignee: [],
-				labels: [],
-				dependencies: [],
-			},
-			{
-				id: "task-2",
-				title: "Blocked Task",
-				status: "To Do",
-				assignee: [],
-				labels: [],
-				dependencies: ["task-1"], // Depends on task-1 which is not done
-			},
-			{
-				id: "task-3",
-				title: "Not Blocked",
-				status: "To Do",
-				assignee: [],
-				labels: [],
-				dependencies: ["task-4"], // Depends on task-4 which is done
-			},
-			{
-				id: "task-4",
-				title: "Done Task",
-				status: "Done",
-				assignee: [],
-				labels: [],
-				dependencies: [],
-			},
+			createTask({ id: "task-1", title: "Blocking Task", status: "In Progress" }),
+			createTask({ id: "task-2", title: "Blocked Task", status: "To Do", dependencies: ["task-1"] }), // Depends on task-1 which is not done
+			createTask({ id: "task-3", title: "Not Blocked", status: "To Do", dependencies: ["task-4"] }), // Depends on task-4 which is done
+			createTask({ id: "task-4", title: "Done Task", status: "Done" }),
 		];
 
 		const stats = getTaskStatistics(tasks, [], statuses);
 
 		expect(stats.projectHealth.blockedTasks.length).toBe(1);
-		expect(stats.projectHealth.blockedTasks[0].id).toBe("task-2");
+		expect(stats.projectHealth.blockedTasks[0]?.id).toBe("task-2");
 	});
 
 	test("calculates average task age correctly", () => {
@@ -213,8 +194,9 @@ describe("getTaskStatistics", () => {
 				id: "task-1",
 				title: "Task 1",
 				status: "To Do",
-				createdDate: tenDaysAgo.toISOString().split("T")[0],
+				createdDate: tenDaysAgo.toISOString().split("T")[0] as string,
 				assignee: [],
+				body: "",
 				labels: [],
 				dependencies: [],
 			},
@@ -222,8 +204,9 @@ describe("getTaskStatistics", () => {
 				id: "task-2",
 				title: "Task 2",
 				status: "Done",
-				createdDate: twentyDaysAgo.toISOString().split("T")[0],
+				createdDate: twentyDaysAgo.toISOString().split("T")[0] as string,
 				assignee: [],
+				body: "",
 				labels: [],
 				dependencies: [],
 			},
@@ -237,9 +220,9 @@ describe("getTaskStatistics", () => {
 
 	test("handles 100% completion correctly", () => {
 		const tasks: Task[] = [
-			{ id: "task-1", title: "Task 1", status: "Done", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-2", title: "Task 2", status: "Done", assignee: [], labels: [], dependencies: [] },
-			{ id: "task-3", title: "Task 3", status: "Done", assignee: [], labels: [], dependencies: [] },
+			createTask({ id: "task-1", title: "Task 1", status: "Done" }),
+			createTask({ id: "task-2", title: "Task 2", status: "Done" }),
+			createTask({ id: "task-3", title: "Task 3", status: "Done" }),
 		];
 
 		const stats = getTaskStatistics(tasks, [], statuses);

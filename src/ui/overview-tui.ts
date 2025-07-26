@@ -1,7 +1,7 @@
 import blessed from "blessed";
 import type { TaskStatistics } from "../core/statistics.ts";
-import { createScreen } from "./tui.ts";
 import { getStatusIcon } from "./status-icon.ts";
+import { createScreen } from "./tui.ts";
 
 /**
  * Render the project overview in an interactive TUI
@@ -24,7 +24,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		});
 
 		// Title
-		const titleBox = blessed.box({
+		blessed.box({
 			parent: container,
 			top: 0,
 			left: "center",
@@ -37,10 +37,6 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			},
 		});
 
-		// Create sections
-		const sections = [];
-		let currentSection = 0;
-
 		// Status Overview Section (Top Left)
 		const statusBox = blessed.box({
 			parent: container,
@@ -51,7 +47,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			border: { type: "line" },
 			label: " Status Overview ",
 			style: {
-				border: { fg: "yellow" },
+				border: { fg: "gray" },
 			},
 			tags: true,
 			scrollable: true,
@@ -73,7 +69,6 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			statusContent += `  {yellow-fg}Drafts:{/yellow-fg} ${statistics.draftCount}\n`;
 		}
 		statusBox.setContent(statusContent);
-		sections.push(statusBox);
 
 		// Priority Breakdown Section (Top Right)
 		const priorityBox = blessed.box({
@@ -112,7 +107,6 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			}
 		}
 		priorityBox.setContent(priorityContent);
-		sections.push(priorityBox);
 
 		// Recent Activity Section (Bottom Left)
 		const activityBox = blessed.box({
@@ -152,7 +146,6 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			activityContent += "  {gray-fg}No tasks updated in the last 7 days{/gray-fg}\n";
 		}
 		activityBox.setContent(activityContent);
-		sections.push(activityBox);
 
 		// Project Health Section (Bottom Right)
 		const healthBox = blessed.box({
@@ -194,96 +187,23 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			healthContent += "  {green-fg}No blocked tasks{/green-fg}\n";
 		}
 		healthBox.setContent(healthContent);
-		sections.push(healthBox);
 
-		// Help section at bottom
-		const helpBox = blessed.box({
+		// Instructions at bottom
+		blessed.box({
 			parent: container,
 			bottom: 0,
 			left: 0,
 			width: "100%",
 			height: 3,
-			content: "{center}Tab: Next Section | Shift+Tab: Previous | q: Quit | h: Help{/center}",
+			content: "{center}Press q or Esc to exit{/center}",
 			tags: true,
 			style: {
 				fg: "gray",
 			},
 		});
 
-		// Navigation functions
-		const focusSection = (index: number) => {
-			if (index < 0 || index >= sections.length) return;
-
-			// Remove highlight from current section
-			sections[currentSection].style.border.fg = "gray";
-
-			// Highlight new section
-			currentSection = index;
-			sections[currentSection].style.border.fg = "yellow";
-			sections[currentSection].focus();
-			screen.render();
-		};
-
-		// Initial focus
-		focusSection(0);
-
-		// Keyboard navigation
-		screen.key(["tab"], () => {
-			focusSection((currentSection + 1) % sections.length);
-		});
-
-		screen.key(["S-tab"], () => {
-			focusSection((currentSection - 1 + sections.length) % sections.length);
-		});
-
-		screen.key(["1"], () => focusSection(0));
-		screen.key(["2"], () => focusSection(1));
-		screen.key(["3"], () => focusSection(2));
-		screen.key(["4"], () => focusSection(3));
-
-		// Help dialog
-		screen.key(["h", "?"], () => {
-			const helpDialog = blessed.box({
-				parent: screen,
-				top: "center",
-				left: "center",
-				width: "60%",
-				height: "60%",
-				border: { type: "line" },
-				label: " Help ",
-				content: `
-  {bold}Keyboard Shortcuts:{/bold}
-
-  Tab         - Next section
-  Shift+Tab   - Previous section
-  1-4         - Jump to section
-  Up/Down     - Scroll in current section
-  h, ?        - Show this help
-  q, Esc      - Quit
-
-  {bold}Sections:{/bold}
-  1. Status Overview - Task counts by status
-  2. Priority Breakdown - Task distribution by priority
-  3. Recent Activity - Recently created/updated tasks
-  4. Project Health - Stale and blocked tasks
-
-  Press any key to close this help...`,
-				tags: true,
-				keys: true,
-				style: {
-					border: { fg: "cyan" },
-					bg: "black",
-				},
-			});
-
-			helpDialog.focus();
-			helpDialog.key(["escape", "q", "h", "?", "enter", "space"], () => {
-				helpDialog.destroy();
-				focusSection(currentSection);
-			});
-
-			screen.render();
-		});
+		// Focus on status box for scrolling
+		statusBox.focus();
 
 		// Exit handlers
 		screen.key(["escape", "q", "C-c"], () => {

@@ -99,3 +99,14 @@ IMPLEMENTATION COMPLETED:
 - Added tests in src/test/statistics.test.ts (all passing)
 - Updated README.md with overview command documentation
 - Successfully tested both interactive TUI and plain text modes
+
+## Performance Optimizations Added
+
+- Implemented cross-branch checking optimization that only checks branches with recent activity
+- Added `checkActiveBranches` and `activeBranchDays` configuration options
+- Default `activeBranchDays: 30` provides good balance between accuracy and performance
+- Added `listRecentBranches()` method to git operations for efficient branch filtering
+- Added timing information to loading screen for performance debugging
+- Optimization applies to all commands that load tasks (overview, board, etc.)
+- Users can set lower values (e.g., 7 days) for better performance on repos with many branches
+- Properly respects `remoteOperations` config when checking branches
