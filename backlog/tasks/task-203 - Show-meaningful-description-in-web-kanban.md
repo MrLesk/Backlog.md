@@ -2,8 +2,10 @@
 id: task-203
 title: Show meaningful description in web kanban
 status: Done
-assignee: [agavr]
+assignee:
+  - '@claude'
 created_date: '2025-07-25'
+updated_date: '2025-07-26'
 labels:
   - frontend
   - enhancement
