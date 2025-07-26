@@ -9,5 +9,6 @@ default_editor: "rider"
 auto_open_browser: true
 default_port: 6420
 remote_operations: true
-auto_commit: false
+auto_commit: true
 zero_padded_ids: 3
+bypass_git_hooks: false

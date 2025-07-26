@@ -171,6 +171,7 @@ When re-initializing an existing project, all current configuration values are p
 |-------------|------------------------------------------------------|
 | Config editor | `backlog config set defaultEditor "code --wait"` |
 | Enable auto-commit | `backlog config set autoCommit true` |
+| Bypass git hooks | `backlog config set bypassGitHooks true` |
 | View config | `backlog config list` |
 
 ### Documentation
@@ -219,20 +220,23 @@ Key options:
 
 | Key               | Purpose            | Default                       |
 |-------------------|--------------------|-------------------------------|
-| `default_assignee`| Pre‑fill assignee  | `[]`                          |
-| `default_status`  | First column       | `To Do`                       |
+| `defaultAssignee` | Pre‑fill assignee  | `[]`                          |
+| `defaultStatus`   | First column       | `To Do`                       |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
-| `date_format`     | ISO or locale      | `yyyy-mm-dd`                  |
-| `default_editor`  | Editor for 'E' key | Platform default (nano/notepad) |
-| `default_port`    | Web UI port        | `6420`                        |
-| `auto_open_browser`| Open browser automatically | `true`            |
-| `remote_operations`| Enable remote git operations | `true`           |
-| `auto_commit`     | Automatically commit task changes | `false`       |
-| `zero_padded_ids` | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
+| `dateFormat`      | ISO or locale      | `yyyy-mm-dd`                  |
+| `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
+| `defaultPort`     | Web UI port        | `6420`                        |
+| `autoOpenBrowser` | Open browser automatically | `true`            |
+| `remoteOperations`| Enable remote git operations | `true`           |
+| `autoCommit`      | Automatically commit task changes | `false`       |
+| `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
+| `zeroPaddedIds`   | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
 
-> **Note**: Set `remote_operations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
+> **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
-> **Git Control**: By default, `auto_commit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `auto_commit: true` if you prefer automatic commits for each task operation.
+> **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
+
+> **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
 
 ---
 

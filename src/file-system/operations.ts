@@ -643,6 +643,9 @@ export class FileSystem {
 				case "zero_padded_ids":
 					config.zeroPaddedIds = Number.parseInt(value, 10);
 					break;
+				case "bypass_git_hooks":
+					config.bypassGitHooks = value.toLowerCase() === "true";
+					break;
 			}
 		}
 
@@ -662,6 +665,7 @@ export class FileSystem {
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
 			zeroPaddedIds: config.zeroPaddedIds,
+			bypassGitHooks: config.bypassGitHooks,
 		};
 	}
 
@@ -682,6 +686,7 @@ export class FileSystem {
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
+			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;
