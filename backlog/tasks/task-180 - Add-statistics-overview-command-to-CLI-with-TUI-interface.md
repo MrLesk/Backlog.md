@@ -3,7 +3,7 @@ id: task-180
 title: Add statistics overview command to CLI with TUI interface
 status: Done
 assignee:
-  - '@me'
+  - '@claude'
 created_date: '2025-07-12'
 updated_date: '2025-07-26'
 labels: []
