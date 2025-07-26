@@ -24,7 +24,8 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 	try {
 		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
 		const normalizedId = normalizeTaskId(taskId);
-		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+		// Handle both formats: "task-123 - Title.md" and "task-123-title.md"
+		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`) || f.startsWith(`${normalizedId}-`));
 
 		if (taskFile) {
 			return join(coreInstance.filesystem.tasksDir, taskFile);
@@ -44,7 +45,8 @@ export async function getDraftPath(taskId: string, core: Core): Promise<string |
 		const draftsDir = await core.filesystem.getDraftsDir();
 		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: draftsDir }));
 		const normalizedId = normalizeTaskId(taskId);
-		const draftFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+		// Handle both formats: "task-123 - Title.md" and "task-123-title.md"
+		const draftFile = files.find((f) => f.startsWith(`${normalizedId} -`) || f.startsWith(`${normalizedId}-`));
 
 		if (draftFile) {
 			return join(draftsDir, draftFile);
@@ -65,7 +67,8 @@ export async function getTaskFilename(taskId: string, core?: Core | TaskPathCont
 	try {
 		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
 		const normalizedId = normalizeTaskId(taskId);
-		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`));
+		// Handle both formats: "task-123 - Title.md" and "task-123-title.md"
+		const taskFile = files.find((f) => f.startsWith(`${normalizedId} -`) || f.startsWith(`${normalizedId}-`));
 
 		return taskFile || null;
 	} catch {
