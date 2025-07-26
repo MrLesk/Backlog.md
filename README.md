@@ -158,6 +158,12 @@ When re-initializing an existing project, all current configuration values are p
 | Export board | `backlog board export [file]` (exports Kanban board to markdown) |
 | Export with version | `backlog board export --export-version "v1.0.0"` (includes version in export) |
 
+### Statistics & Overview
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Project overview | `backlog overview` (interactive TUI showing project statistics) |
+
 ### Web Interface
 
 | Action      | Example                                              |

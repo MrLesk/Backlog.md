@@ -1,9 +1,11 @@
 ---
 id: task-201
 title: Add configurable git hooks bypass option
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@agavr'
 created_date: '2025-07-23'
+updated_date: '2025-07-26'
 labels:
   - enhancement
   - git

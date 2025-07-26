@@ -2177,6 +2177,30 @@ program
 		}
 	});
 
+// Overview command for statistics
+program
+	.command("overview")
+	.description("display project statistics and metrics")
+	.action(async () => {
+		try {
+			const cwd = process.cwd();
+			const core = new Core(cwd);
+			const config = await core.filesystem.loadConfig();
+
+			if (!config) {
+				console.error("No backlog project found. Initialize one first with: backlog init");
+				process.exit(1);
+			}
+
+			// Import and run the overview command
+			const { runOverviewCommand } = await import("./commands/overview.ts");
+			await runOverviewCommand(core);
+		} catch (err) {
+			console.error("Failed to display project overview", err);
+			process.exitCode = 1;
+		}
+	});
+
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
 	if (originalBunOptions) {
