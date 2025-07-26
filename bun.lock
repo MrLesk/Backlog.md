@@ -5,7 +5,7 @@
       "name": "backlog.md",
       "devDependencies": {
         "@biomejs/biome": "2.1.1",
-        "@tailwindcss/cli": "^4.1.11",
+        "@tailwindcss/cli": "4.1.11",
         "@types/bun": "1.2.18",
         "@types/prompts": "2.4.9",
         "@types/react": "19.1.8",
@@ -24,7 +24,7 @@
         "react-dom": "19.1.0",
         "react-router-dom": "7.6.3",
         "react-tooltip": "5.29.1",
-        "tailwindcss": "^4.1.11",
+        "tailwindcss": "4.1.11",
         "typescript": "5.8.3",
       },
       "optionalDependencies": {

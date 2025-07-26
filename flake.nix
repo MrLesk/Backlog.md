@@ -15,25 +15,28 @@
         packageJson = builtins.fromJSON (builtins.readFile ./package.json);
         version = packageJson.version;
         
-        backlog-md = pkgs.stdenv.mkDerivation rec {
+        # Use nixpkgs buildNpmPackage with generated package-lock.json
+        backlog-md = pkgs.buildNpmPackage {
           pname = "backlog-md";
           inherit version;
-          
           src = ./.;
           
-          nativeBuildInputs = with pkgs; [
-            bun
-            nodejs_20
-            git
-          ];
+          npmDepsHash = "sha256-WZRa08B75py5BEjWqXA9I4Xz5mvIihq0l/IhQn2TinQ=";
+          
+          nativeBuildInputs = with pkgs; [ bun nodejs_20 git ];
+          
+          # Don't run npm scripts during install
+          npmInstallFlags = [ "--ignore-scripts" ];
+          
+          preBuild = ''
+            export HOME=$TMPDIR
+            export HUSKY=0
+          '';
           
           buildPhase = ''
             runHook preBuild
             
-            # Install dependencies
-            bun install --frozen-lockfile
-            
-            # Build CSS
+            # Build CSS first 
             bun run build:css
             
             # Build the CLI tool with embedded version
