@@ -32,6 +32,27 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit }) => {
     return new Date(dateStr).toLocaleDateString();
   };
 
+  const extractDescription = (body: string): string => {
+    if (!body) return '';
+    
+    // Extract the Description section content
+    const regex = /## Description\s*\n([\s\S]*?)(?=\n## |$)/i;
+    const match = body.match(regex);
+    
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+    
+    // If no Description header found, return the body as-is
+    // but remove any headers that might be at the start
+    return body.replace(/^##\s+\w+.*\n/i, '').trim();
+  };
+
+  const truncateText = (text: string, maxLength: number = 120): string => {
+    if (!text || text.length <= maxLength) return text;
+    return text.substring(0, maxLength).trim() + '...';
+  };
+
   return (
     <div
       className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 cursor-pointer transition-all duration-200 hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400 ${getPriorityClass(task.priority)} ${
@@ -51,7 +72,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit }) => {
       
       {task.body && (
         <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-3 transition-colors duration-200">
-          {task.body}
+          {truncateText(extractDescription(task.body))}
         </p>
       )}
       
