@@ -165,15 +165,6 @@ When re-initializing an existing project, all current configuration values are p
 | Web interface | `backlog browser` (launches web UI on port 6420) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
 
-### Configuration
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Config editor | `backlog config set defaultEditor "code --wait"` |
-| Enable auto-commit | `backlog config set autoCommit true` |
-| Bypass git hooks | `backlog config set bypassGitHooks true` |
-| View config | `backlog config list` |
-
 ### Documentation
 
 | Action      | Example                                              |
@@ -216,7 +207,17 @@ Backlog.md merges the following layers (highest → lowest):
 3. `~/backlog/user` (per‑user)
 4. Built‑ins
 
-Key options:
+### Configuration Commands
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| View all configs | `backlog config list` |
+| Get specific config | `backlog config get defaultEditor` |
+| Set config value | `backlog config set defaultEditor "code --wait"` |
+| Enable auto-commit | `backlog config set autoCommit true` |
+| Bypass git hooks | `backlog config set bypassGitHooks true` |
+
+### Available Configuration Options
 
 | Key               | Purpose            | Default                       |
 |-------------------|--------------------|-------------------------------|
