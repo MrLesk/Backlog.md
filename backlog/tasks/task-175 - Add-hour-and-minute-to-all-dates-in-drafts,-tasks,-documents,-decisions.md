@@ -1,8 +1,8 @@
 ---
 id: task-175
 title: 'Add hour and minute to all dates in drafts, tasks, documents, decisions'
-status: To Do
-assignee: []
+status: In Progress
+assignee: ['agavr']
 created_date: '2025-07-12'
 labels: []
 dependencies: []

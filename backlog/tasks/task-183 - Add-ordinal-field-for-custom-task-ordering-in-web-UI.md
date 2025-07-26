@@ -1,10 +1,11 @@
 ---
 id: task-183
 title: Add ordinal field for custom task ordering in web UI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - Claude
 created_date: '2025-07-13'
-updated_date: '2025-07-16'
+updated_date: '2025-07-26'
 labels: []
 dependencies: []
 priority: medium
