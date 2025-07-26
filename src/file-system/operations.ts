@@ -643,6 +643,15 @@ export class FileSystem {
 				case "zero_padded_ids":
 					config.zeroPaddedIds = Number.parseInt(value, 10);
 					break;
+				case "bypass_git_hooks":
+					config.bypassGitHooks = value.toLowerCase() === "true";
+					break;
+				case "check_active_branches":
+					config.checkActiveBranches = value.toLowerCase() === "true";
+					break;
+				case "active_branch_days":
+					config.activeBranchDays = Number.parseInt(value, 10);
+					break;
 			}
 		}
 
@@ -662,6 +671,9 @@ export class FileSystem {
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
 			zeroPaddedIds: config.zeroPaddedIds,
+			bypassGitHooks: config.bypassGitHooks,
+			checkActiveBranches: config.checkActiveBranches,
+			activeBranchDays: config.activeBranchDays,
 		};
 	}
 
@@ -682,6 +694,11 @@ export class FileSystem {
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
+			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
+			...(typeof config.checkActiveBranches === "boolean"
+				? [`check_active_branches: ${config.checkActiveBranches}`]
+				: []),
+			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

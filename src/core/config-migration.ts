@@ -17,6 +17,9 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		defaultPort: 6420,
 		remoteOperations: true,
 		autoCommit: false,
+		bypassGitHooks: false,
+		checkActiveBranches: true,
+		activeBranchDays: 30,
 	};
 
 	// Merge provided config with defaults, ensuring all fields exist

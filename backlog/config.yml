@@ -11,3 +11,6 @@ default_port: 6420
 remote_operations: true
 auto_commit: false
 zero_padded_ids: 3
+bypass_git_hooks: false
+check_active_branches: true
+active_branch_days: 10

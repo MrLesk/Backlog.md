@@ -14,7 +14,7 @@
 Ask questions to the user if something is not clear or ambiguous.
 Break down the task into smaller, manageable parts if it is too large or complex.
 
-### **Title**
+### **Title (one liner)**
 
 Use a clear brief title that summarizes the task.
 
