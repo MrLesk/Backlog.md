@@ -1,9 +1,10 @@
 ---
 id: task-207
 title: Reorganize backlog init command questions order
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-26'
+updated_date: '2025-07-26'
 labels:
   - cli
   - ux
@@ -17,9 +18,16 @@ Reorder the prompts in the backlog init command to improve logical flow and user
 
 ## Acceptance Criteria
 
-- [ ] Init command prompts appear in the specified order
-- [ ] Cross-branch checking prompts are nested properly
-- [ ] Zero-padding prompts are nested properly
-- [ ] Web UI prompt uses 'override' instead of 'configure'
-- [ ] Agent selection prompt includes hint about space to select
-- [ ] Automatic git commits question is removed from init flow
+- [x] Init command prompts appear in this order:
+  1. Cross-branch checking configuration
+  2. Git hooks bypass
+  3. Zero-padding configuration
+  4. Default editor
+  5. Override web UI settings
+  6. Agent instructions selection
+  7. Claude agent installation
+- [x] Cross-branch checking prompts are nested properly (remote operations and active days only show if cross-branch is enabled)
+- [x] Zero-padding prompts are nested properly (digit count only shows if zero-padding is enabled)
+- [x] Web UI prompt uses 'override' instead of 'configure'
+- [x] Agent selection prompt includes hint about space to select
+- [x] Automatic git commits question is removed from init flow

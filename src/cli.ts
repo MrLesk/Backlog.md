@@ -123,61 +123,7 @@ program
 				}
 			}
 
-			// Configuration prompts with intelligent defaults - step by step to ensure proper order
-			const basicPrompts = await prompts(
-				[
-					{
-						type: "confirm",
-						name: "autoCommit",
-						message: "Enable automatic git commits for task operations?",
-						hint: "When enabled, task changes are automatically committed to git",
-						initial: existingConfig?.autoCommit ?? false,
-					},
-					{
-						type: "confirm",
-						name: "remoteOperations",
-						message: "Enable remote git operations? (needed to fetch tasks from remote branches)",
-						hint: "Required for accessing tasks from feature branches and remote repos",
-						initial: existingConfig?.remoteOperations ?? true,
-					},
-					{
-						type: "confirm",
-						name: "enableZeroPadding",
-						message: "Enable zero-padded IDs for consistent formatting? (3 -> task-001, task-023)",
-						hint: "Example: task-001, doc-001 instead of task-1, doc-1",
-						initial: (existingConfig?.zeroPaddedIds ?? 0) > 0,
-					},
-				],
-				{
-					onCancel: () => {
-						console.log("Aborting initialization.");
-						process.exit(1);
-					},
-				},
-			);
-
-			// Git hooks bypass prompt (conditional on remoteOperations)
-			let bypassGitHooks = false;
-			if (basicPrompts.remoteOperations) {
-				const gitHooksPrompt = await prompts(
-					{
-						type: "confirm",
-						name: "bypassGitHooks",
-						message: "Bypass git hooks when committing?",
-						hint: "Use --no-verify flag to skip pre-commit hooks (useful if hooks interfere with automated commits)",
-						initial: existingConfig?.bypassGitHooks ?? false,
-					},
-					{
-						onCancel: () => {
-							console.log("Aborting initialization.");
-							process.exit(1);
-						},
-					},
-				);
-				bypassGitHooks = gitHooksPrompt.bypassGitHooks ?? false;
-			}
-
-			// Cross-branch checking configuration
+			// 1. Cross-branch checking configuration
 			const crossBranchPrompt = await prompts(
 				{
 					type: "confirm",
@@ -194,8 +140,29 @@ program
 				},
 			);
 
+			let remoteOperations = false;
 			let activeBranchDays = 30;
+
 			if (crossBranchPrompt.checkActiveBranches) {
+				// 1.1 Remote branches checking
+				const remotePrompt = await prompts(
+					{
+						type: "confirm",
+						name: "remoteOperations",
+						message: "Check task states in remote branches?",
+						hint: "Required for accessing tasks from feature branches on remote repos",
+						initial: existingConfig?.remoteOperations ?? true,
+					},
+					{
+						onCancel: () => {
+							console.log("Aborting initialization.");
+							process.exit(1);
+						},
+					},
+				);
+				remoteOperations = remotePrompt.remoteOperations ?? false;
+
+				// 1.2 Active branch days
 				const daysPrompt = await prompts(
 					{
 						type: "number",
@@ -216,9 +183,44 @@ program
 				activeBranchDays = daysPrompt.activeBranchDays || 30;
 			}
 
-			// Zero-padding configuration (conditional) - ask immediately after enable question
+			// 2. Git hooks bypass prompt
+			const gitHooksPrompt = await prompts(
+				{
+					type: "confirm",
+					name: "bypassGitHooks",
+					message: "Bypass git hooks when committing?",
+					hint: "Use --no-verify flag to skip pre-commit hooks",
+					initial: existingConfig?.bypassGitHooks ?? false,
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+			const bypassGitHooks = gitHooksPrompt.bypassGitHooks ?? false;
+
+			// 3. Zero-padding configuration
+			const zeroPaddingPrompt = await prompts(
+				{
+					type: "confirm",
+					name: "enableZeroPadding",
+					message: "Enable zero-padded IDs for consistent formatting?",
+					hint: "Example: task-001, doc-001 instead of task-1, doc-1",
+					initial: (existingConfig?.zeroPaddedIds ?? 0) > 0,
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+
 			let zeroPaddedIds: number | undefined;
-			if (basicPrompts.enableZeroPadding) {
+			if (zeroPaddingPrompt.enableZeroPadding) {
+				// 3.1 Number of digits for zero-padding
 				const paddingPrompt = await prompts(
 					{
 						type: "number",
@@ -245,12 +247,58 @@ program
 				zeroPaddedIds = 0;
 			}
 
-			// Web UI configuration prompt
+			// 4. Default editor configuration
+			const editorPrompt = await prompts(
+				{
+					type: "text",
+					name: "editor",
+					message: "Default editor command (optional):",
+					hint: "e.g., 'code --wait', 'vim', 'nano'",
+					initial: existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || "",
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+
+			let defaultEditor: string | undefined;
+			if (editorPrompt?.editor) {
+				const { isEditorAvailable } = await import("./utils/editor.ts");
+				const isAvailable = await isEditorAvailable(editorPrompt.editor);
+				if (isAvailable) {
+					defaultEditor = editorPrompt.editor;
+				} else {
+					console.warn(`Warning: Editor command '${editorPrompt.editor}' not found in PATH`);
+					// Still allow them to set it even if not found
+					const confirmAnyway = await prompts(
+						{
+							type: "confirm",
+							name: "confirm",
+							message: "Editor not found in PATH. Set it anyway?",
+							initial: false,
+						},
+						{
+							onCancel: () => {
+								console.log("Aborting initialization.");
+								process.exit(1);
+							},
+						},
+					);
+					if (confirmAnyway?.confirm) {
+						defaultEditor = editorPrompt.editor;
+					}
+				}
+			}
+
+			// 5. Web UI configuration
 			const webUIPrompt = await prompts(
 				{
 					type: "confirm",
 					name: "configureWebUI",
-					message: "Configure web UI settings?",
+					message: "Override default web UI settings?",
 					hint: "Optional: Set custom port and browser behavior",
 					initial: false,
 				},
@@ -297,59 +345,7 @@ program
 				}
 			}
 
-			// Combine all configuration responses
-			const configPrompts = {
-				...basicPrompts,
-				configureWebUI: webUIPrompt.configureWebUI,
-			};
-
-			// Default editor configuration - always prompt during init
-			const editorPrompt = await prompts(
-				{
-					type: "text",
-					name: "editor",
-					message: "Default editor command (optional):",
-					hint: "e.g., 'code --wait', 'vim', 'nano'",
-					initial: existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || "",
-				},
-				{
-					onCancel: () => {
-						console.log("Aborting initialization.");
-						process.exit(1);
-					},
-				},
-			);
-
-			let defaultEditor: string | undefined;
-			if (editorPrompt?.editor) {
-				const { isEditorAvailable } = await import("./utils/editor.ts");
-				const isAvailable = await isEditorAvailable(editorPrompt.editor);
-				if (isAvailable) {
-					defaultEditor = editorPrompt.editor;
-				} else {
-					console.warn(`Warning: Editor command '${editorPrompt.editor}' not found in PATH`);
-					// Still allow them to set it even if not found
-					const confirmAnyway = await prompts(
-						{
-							type: "confirm",
-							name: "confirm",
-							message: "Editor not found in PATH. Set it anyway?",
-							initial: false,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
-					if (confirmAnyway?.confirm) {
-						defaultEditor = editorPrompt.editor;
-					}
-				}
-			}
-
-			// Agent instruction files selection
+			// 6. Agent instruction files selection
 			const agentOptions = [
 				".cursorrules",
 				"CLAUDE.md",
@@ -362,7 +358,7 @@ program
 				{
 					type: "multiselect",
 					name: "files",
-					message: "Select agent instruction files to update",
+					message: "Select agent instruction files to update (space to select)",
 					choices: agentOptions.map((name) => ({
 						title: name === ".github/copilot-instructions.md" ? "Copilot" : name,
 						value: name,
@@ -379,7 +375,7 @@ program
 			);
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
-			// Claude agent installation prompt
+			// 7. Claude agent installation prompt
 			const claudeAgentPrompt = await prompts(
 				{
 					type: "confirm",
@@ -405,8 +401,8 @@ program
 				defaultStatus: existingConfig?.defaultStatus || "To Do",
 				dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
 				maxColumnWidth: existingConfig?.maxColumnWidth || 20,
-				autoCommit: configPrompts.autoCommit,
-				remoteOperations: configPrompts.remoteOperations,
+				autoCommit: existingConfig?.autoCommit ?? false, // Keep autoCommit as hidden/advanced setting
+				remoteOperations,
 				bypassGitHooks,
 				checkActiveBranches: crossBranchPrompt.checkActiveBranches ?? true,
 				activeBranchDays,
