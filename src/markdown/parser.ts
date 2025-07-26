@@ -29,16 +29,35 @@ function preprocessFrontmatter(frontmatter: string): string {
 function normalizeDate(value: unknown): string {
 	if (!value) return "";
 	if (value instanceof Date) {
-		return value.toISOString().slice(0, 10);
+		// Return full datetime in YYYY-MM-DD HH:mm format
+		return value.toISOString().slice(0, 16).replace("T", " ");
 	}
 	const str = String(value)
 		.trim()
 		.replace(/^['"]|['"]$/g, "");
 	if (!str) return "";
-	let match: RegExpMatchArray | null = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	
+	// Check for datetime format first (YYYY-MM-DD HH:mm)
+	let match: RegExpMatchArray | null = str.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+	if (match) {
+		// Already in correct format, return as-is
+		return str;
+	}
+	
+	// Check for ISO datetime format (YYYY-MM-DDTHH:mm)
+	match = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+	if (match) {
+		// Convert T separator to space
+		return str.replace("T", " ");
+	}
+	
+	// Check for date-only format (YYYY-MM-DD) - backward compatibility
+	match = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 	if (match) {
 		return `${match[1]}-${match[2]}-${match[3]}`;
 	}
+	
+	// Legacy date formats (date-only for backward compatibility)
 	match = str.match(/^(\d{2})-(\d{2})-(\d{2})$/);
 	if (match) {
 		const [day, month, year] = match.slice(1);
