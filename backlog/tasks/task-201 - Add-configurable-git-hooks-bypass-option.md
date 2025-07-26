@@ -3,7 +3,7 @@ id: task-201
 title: Add configurable git hooks bypass option
 status: Done
 assignee:
-  - '@agavr'
+  - '@claude'
 created_date: '2025-07-23'
 updated_date: '2025-07-26'
 labels:
