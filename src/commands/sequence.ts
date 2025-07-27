@@ -1,6 +1,5 @@
 import type { Core } from "../core/backlog.ts";
 import { computeSequences } from "../core/sequences.ts";
-import type { Task } from "../types/index.ts";
 
 export interface SequenceListOptions {
 	plain?: boolean;
@@ -55,8 +54,7 @@ export async function listSequences(core: Core, options: SequenceListOptions): P
 		return;
 	}
 
-	// For interactive TUI, we'll implement this in the next step
-	// For now, we'll import and use a TUI viewer
-	const { viewSequencesTUI } = await import("../ui/sequences-tui.ts");
-	await viewSequencesTUI(sequences);
+	// For interactive TUI, use the column-based view
+	const { viewSequencesColumnsTUI } = await import("../ui/sequences-columns-tui.ts");
+	await viewSequencesColumnsTUI(sequences);
 }
