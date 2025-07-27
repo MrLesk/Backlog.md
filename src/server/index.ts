@@ -211,6 +211,15 @@ export class BacklogServer {
 			return new Response(null, { headers: corsHeaders });
 		}
 
+		// Handle sequences API endpoints
+		if (pathname === "/api/sequences" && method === "GET") {
+			return await this.handleGetSequences();
+		}
+
+		if (pathname === "/api/sequences/move" && method === "POST") {
+			return await this.handleMoveTaskToSequence(req);
+		}
+
 		// The new route syntax handles API routes, so we just need CORS for non-route paths
 		if (pathname.startsWith("/api")) {
 			// This should only be reached for unmatched API routes
@@ -684,5 +693,195 @@ export class BacklogServer {
 			console.error("Error reordering task:", error);
 			return Response.json({ error: "Failed to reorder task" }, { status: 500 });
 		}
+	}
+
+	private async handleGetSequences(): Promise<Response> {
+		try {
+			// Import computeSequences function
+			const { computeSequences } = await import("../core/sequences.ts");
+
+			// Load all tasks
+			const tasks = await this.core.filesystem.listTasks();
+
+			// Compute sequences
+			const sequences = computeSequences(tasks);
+
+			// Transform sequences to include full task data for the API response
+			const sequencesWithTasks = sequences.map((sequence) => ({
+				number: sequence.number,
+				tasks: sequence.tasks.map((task) => ({
+					id: task.id,
+					title: task.title,
+					status: task.status,
+					assignee: task.assignee,
+					priority: task.priority,
+					labels: task.labels,
+					dependencies: task.dependencies,
+				})),
+			}));
+
+			return Response.json({ sequences: sequencesWithTasks });
+		} catch (error) {
+			console.error("Error getting sequences:", error);
+			return Response.json({ error: "Failed to get sequences" }, { status: 500 });
+		}
+	}
+
+	private async handleMoveTaskToSequence(req: Request): Promise<Response> {
+		try {
+			const { taskId, targetSequence } = await req.json();
+
+			// Validate input
+			if (!taskId || targetSequence === undefined || targetSequence === null) {
+				return Response.json(
+					{
+						error: "Missing required fields: taskId and targetSequence",
+					},
+					{ status: 400 },
+				);
+			}
+
+			// Import computeSequences function
+			const { computeSequences } = await import("../core/sequences.ts");
+
+			// Load all tasks and the specific task to move
+			const allTasks = await this.core.filesystem.listTasks();
+			const taskToMove = await this.core.filesystem.loadTask(taskId);
+
+			if (!taskToMove) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+
+			// Compute current sequences
+			const currentSequences = computeSequences(allTasks);
+
+			// Validate target sequence number
+			if (targetSequence < 1 || targetSequence > currentSequences.length + 1) {
+				return Response.json(
+					{
+						error: `Invalid target sequence. Must be between 1 and ${currentSequences.length + 1}`,
+					},
+					{ status: 400 },
+				);
+			}
+
+			// Find which sequence the task is currently in
+			let currentSequenceNum = 0;
+			for (const seq of currentSequences) {
+				if (seq.tasks.some((t) => t.id === taskId)) {
+					currentSequenceNum = seq.number;
+					break;
+				}
+			}
+
+			// If task is already in the target sequence, no changes needed
+			if (currentSequenceNum === targetSequence) {
+				return Response.json({
+					success: true,
+					message: "Task is already in the target sequence",
+					task: taskToMove,
+				});
+			}
+
+			// Calculate new dependencies based on target sequence
+			let newDependencies: string[] = [];
+
+			if (targetSequence === 1) {
+				// Moving to sequence 1 means no dependencies
+				newDependencies = [];
+			} else {
+				// Moving to sequence N means depending on all tasks in sequence N-1
+				const dependencySequence = currentSequences.find((seq) => seq.number === targetSequence - 1);
+				if (dependencySequence) {
+					// Exclude the task being moved from the dependencies
+					newDependencies = dependencySequence.tasks.filter((t) => t.id !== taskId).map((t) => t.id);
+				}
+			}
+
+			// Check for circular dependencies
+			const wouldCreateCircular = this.checkCircularDependencies(taskId, newDependencies, allTasks);
+
+			if (wouldCreateCircular) {
+				return Response.json(
+					{
+						error: "Cannot move task: would create circular dependencies",
+					},
+					{ status: 400 },
+				);
+			}
+
+			// Update the task with new dependencies
+			const updatedTask: Task = {
+				...taskToMove,
+				dependencies: newDependencies,
+				updatedDate: new Date().toISOString().split("T")[0],
+			};
+
+			// Save the updated task
+			await this.core.updateTask(updatedTask, await this.shouldAutoCommit());
+
+			// Recompute sequences with the updated task
+			const updatedTasks = allTasks.map((t) => (t.id === taskId ? updatedTask : t));
+			const newSequences = computeSequences(updatedTasks);
+
+			// Transform sequences for response
+			const sequencesWithTasks = newSequences.map((sequence) => ({
+				number: sequence.number,
+				tasks: sequence.tasks.map((task) => ({
+					id: task.id,
+					title: task.title,
+					status: task.status,
+					assignee: task.assignee,
+					priority: task.priority,
+					labels: task.labels,
+					dependencies: task.dependencies,
+				})),
+			}));
+
+			return Response.json({
+				success: true,
+				task: updatedTask,
+				sequences: sequencesWithTasks,
+			});
+		} catch (error) {
+			console.error("Error moving task to sequence:", error);
+			return Response.json({ error: "Failed to move task to sequence" }, { status: 500 });
+		}
+	}
+
+	private checkCircularDependencies(taskId: string, newDependencies: string[], allTasks: Task[]): boolean {
+		// Build a map of task dependencies for quick lookup
+		const taskMap = new Map<string, Task>();
+		for (const task of allTasks) {
+			taskMap.set(task.id, task);
+		}
+
+		// Check if adding these dependencies would create a cycle
+		const visited = new Set<string>();
+		const recursionStack = new Set<string>();
+
+		function hasCycle(currentId: string): boolean {
+			visited.add(currentId);
+			recursionStack.add(currentId);
+
+			// Get dependencies for current task
+			const deps = currentId === taskId ? newDependencies : taskMap.get(currentId)?.dependencies || [];
+
+			for (const depId of deps) {
+				if (!visited.has(depId)) {
+					if (hasCycle(depId)) {
+						return true;
+					}
+				} else if (recursionStack.has(depId)) {
+					return true;
+				}
+			}
+
+			recursionStack.delete(currentId);
+			return false;
+		}
+
+		// Check if the task would create a cycle
+		return hasCycle(taskId);
 	}
 }
