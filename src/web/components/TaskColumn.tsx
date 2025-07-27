@@ -96,6 +96,15 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       setDropPosition(null);
     }
   };
+  
+  const handleDragOverColumn = (e: React.DragEvent) => {
+    e.preventDefault();
+    // Clear drop position if dragging in empty space
+    const target = e.target as HTMLElement;
+    if (target === e.currentTarget || target.classList.contains('space-y-3')) {
+      setDropPosition(null);
+    }
+  };
 
   return (
     <div 
@@ -105,7 +114,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           : 'bg-gray-50 dark:bg-gray-800 border-2 border-transparent'
       }`}
       onDrop={handleDrop}
-      onDragOver={handleDragOver}
+      onDragOver={handleDragOverColumn}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
     >
@@ -120,7 +129,25 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       
       <div className="space-y-3">
         {tasks.map((task, index) => (
-          <div key={task.id} className="relative">
+          <div 
+            key={task.id} 
+            className="relative"
+            onDragOver={(e) => {
+              if (!onTaskReorder || !draggedTaskId || draggedTaskId === task.id) return;
+              
+              e.preventDefault();
+              const rect = e.currentTarget.getBoundingClientRect();
+              const y = e.clientY - rect.top;
+              const height = rect.height;
+              
+              // Determine if we're in the top or bottom half
+              if (y < height / 2) {
+                setDropPosition({ index, position: 'before' });
+              } else {
+                setDropPosition({ index, position: 'after' });
+              }
+            }}
+          >
             {/* Drop indicator for before this task */}
             {dropPosition?.index === index && dropPosition.position === 'before' && (
               <div className="h-1 bg-blue-500 rounded-full mb-2 animate-pulse" />
@@ -141,32 +168,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             {/* Drop indicator for after this task */}
             {dropPosition?.index === index && dropPosition.position === 'after' && (
               <div className="h-1 bg-blue-500 rounded-full mt-2 animate-pulse" />
-            )}
-            
-            {/* Drop zones for reordering */}
-            {onTaskReorder && (
-              <>
-                <div
-                  className="absolute inset-x-0 -top-2 h-4 z-10"
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (draggedTaskId && draggedTaskId !== task.id) {
-                      setDropPosition({ index, position: 'before' });
-                    }
-                  }}
-                />
-                <div
-                  className="absolute inset-x-0 -bottom-2 h-4 z-10"
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (draggedTaskId && draggedTaskId !== task.id) {
-                      setDropPosition({ index, position: 'after' });
-                    }
-                  }}
-                />
-              </>
             )}
           </div>
         ))}
