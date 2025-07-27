@@ -1681,6 +1681,20 @@ boardCmd
 		}
 	});
 
+const sequenceCmd = program.command("sequence");
+
+sequenceCmd
+	.command("list")
+	.description("list task sequences based on dependencies")
+	.option("--plain", "use plain text output instead of interactive TUI")
+	.action(async (options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+
+		const { listSequences } = await import("./commands/sequence.ts");
+		await listSequences(core, options);
+	});
+
 const docCmd = program.command("doc");
 
 docCmd

@@ -75,3 +75,5 @@ export interface ParsedMarkdown {
 	frontmatter: Record<string, unknown>;
 	content: string;
 }
+
+export type { Sequence } from "../core/sequences.ts";
