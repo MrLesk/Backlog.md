@@ -54,7 +54,7 @@ export async function listSequences(core: Core, options: SequenceListOptions): P
 		return;
 	}
 
-	// For interactive TUI, use the column-based view
-	const { viewSequencesColumnsTUI } = await import("../ui/sequences-columns-tui.ts");
-	await viewSequencesColumnsTUI(sequences);
+	// For interactive TUI, show sequences in a vertical scrollable layout
+	const { viewSequencesTUI } = await import("../ui/sequences-tui.ts");
+	await viewSequencesTUI(sequences);
 }

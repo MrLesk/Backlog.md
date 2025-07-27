@@ -157,6 +157,7 @@ When re-initializing an existing project, all current configuration values are p
 | Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
 | Export board | `backlog board export [file]` (exports Kanban board to markdown) |
 | Export with version | `backlog board export --export-version "v1.0.0"` (includes version in export) |
+| List sequences | `backlog sequence list` |
 
 ### Statistics & Overview
 

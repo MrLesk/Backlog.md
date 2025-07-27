@@ -288,6 +288,30 @@ export class ApiClient {
 		}
 		return response.json();
 	}
+
+	async fetchSequences(): Promise<import("../../types").Sequence[]> {
+		const response = await fetch(`${API_BASE}/sequences`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch sequences");
+		}
+		return response.json().then((data) => data.sequences);
+	}
+
+	async moveTaskToSequence(
+		taskId: string,
+		targetSequence: number,
+	): Promise<{ success: boolean; task: import("../../types").Task; sequences: import("../../types").Sequence[] }> {
+		const response = await fetch(`${API_BASE}/sequences/move`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ taskId, targetSequence }),
+		});
+		if (!response.ok) {
+			const errorData = await response.json().catch(() => ({}));
+			throw new Error(errorData.error || "Failed to move task");
+		}
+		return response.json();
+	}
 }
 
 export const apiClient = new ApiClient();

@@ -27,3 +27,10 @@ Ensure users and developers understand how sequences work across all interfaces 
 - [ ] Document the new API endpoints and how the web UI uses them.
 - [ ] Add integration tests covering end-to-end flows: computing sequences, listing via CLI, viewing in TUI, fetching via API and interacting with the web UI.
 - [ ] Ensure that acceptance criteria across all tasks have corresponding tests and that all docs reflect the current behaviour.
+
+## Implementation Plan
+
+1. Write a user guide `doc-002 - Sequences Guide.md` describing sequence usage across CLI, TUI and Web.
+2. Extend README with a reference to the new `backlog sequence list` command.
+3. Add unit tests for the new API helpers and ensure existing server tests cover the endpoints.
+4. Verify CLI help output mentions the sequence command.

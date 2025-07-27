@@ -6,6 +6,7 @@ import DocumentationDetail from './components/DocumentationDetail';
 import DecisionDetail from './components/DecisionDetail';
 import TaskList from './components/TaskList';
 import DraftsList from './components/DraftsList';
+import SequencesPage from './components/SequencesPage';
 import Settings from './components/Settings';
 import Modal from './components/Modal';
 import TaskForm from './components/TaskForm';
@@ -227,6 +228,7 @@ function App() {
             <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
             <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
             <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
+            <Route path="sequences" element={<SequencesPage />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

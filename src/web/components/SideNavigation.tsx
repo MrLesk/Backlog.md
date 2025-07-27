@@ -459,35 +459,50 @@ const SideNavigation = memo(function SideNavigation({
 							<span className="ml-3 text-sm font-medium">Kanban Board</span>
 						</NavLink>
 
-						{/* Tasks Navigation */}
-						<NavLink
-							to="/tasks"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<Icons.List />
-							<span className="ml-3 text-sm font-medium">All Tasks</span>
-						</NavLink>
+                                                {/* Planning Navigation */}
+                                                <NavLink
+                                                        to="/sequences"
+                                                        className={({ isActive }) =>
+                                                                `flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
+                                                                        isActive
+                                                                                ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+                                                                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                                                                }`
+                                                        }
+                                                >
+                                                        <Icons.Board />
+                                                        <span className="ml-3 text-sm font-medium">Planning</span>
+                                                </NavLink>
 
-						{/* Drafts Navigation */}
-						<NavLink
-							to="/drafts"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<Icons.Draft />
-							<span className="ml-3 text-sm font-medium">Drafts</span>
-						</NavLink>
+                                                {/* Tasks Navigation */}
+                                                <NavLink
+                                                        to="/tasks"
+                                                        className={({ isActive }) =>
+                                                                `flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
+                                                                        isActive
+                                                                                ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+                                                                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                                                                }`
+                                                        }
+                                                >
+                                                        <Icons.List />
+                                                        <span className="ml-3 text-sm font-medium">All Tasks</span>
+                                                </NavLink>
+
+                                                {/* Drafts Navigation */}
+                                                <NavLink
+                                                        to="/drafts"
+                                                        className={({ isActive }) =>
+                                                                `flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
+                                                                        isActive
+                                                                                ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+                                                                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                                                                }`
+                                                        }
+                                                >
+                                                        <Icons.Draft />
+                                                        <span className="ml-3 text-sm font-medium">Drafts</span>
+                                                </NavLink>
 					</div>
 				)}
 
@@ -628,39 +643,55 @@ const SideNavigation = memo(function SideNavigation({
 								<Icons.Board />
 							</div>
 						</NavLink>
-						<NavLink
-							to="/tasks"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="All Tasks"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.List />
-							</div>
-						</NavLink>
-						{/* Drafts Navigation */}
-						<NavLink
-							to="/drafts"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Drafts"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Draft />
-							</div>
-						</NavLink>
+                                                <NavLink
+                                                        to="/sequences"
+                                                        data-tooltip-id="sidebar-tooltip"
+                                                        data-tooltip-content="Planning"
+                                                        className={({ isActive }) =>
+                                                                `flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
+                                                                        isActive
+                                                                                ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+                                                                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                                                                }`
+                                                        }
+                                                >
+                                                        <div className="w-6 h-6 flex items-center justify-center">
+                                                                <Icons.Board />
+                                                        </div>
+                                                </NavLink>
+                                                <NavLink
+                                                        to="/tasks"
+                                                        data-tooltip-id="sidebar-tooltip"
+                                                        data-tooltip-content="All Tasks"
+                                                        className={({ isActive }) =>
+                                                                `flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
+                                                                        isActive
+                                                                                ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+                                                                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                                                                }`
+                                                        }
+                                                >
+                                                        <div className="w-6 h-6 flex items-center justify-center">
+                                                                <Icons.List />
+                                                        </div>
+                                                </NavLink>
+                                                {/* Drafts Navigation */}
+                                                <NavLink
+                                                        to="/drafts"
+                                                        data-tooltip-id="sidebar-tooltip"
+                                                        data-tooltip-content="Drafts"
+                                                        className={({ isActive }) =>
+                                                                `flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
+                                                                        isActive
+                                                                                ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+                                                                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                                                                }`
+                                                        }
+                                                >
+                                                        <div className="w-6 h-6 flex items-center justify-center">
+                                                                <Icons.Draft />
+                                                        </div>
+                                                </NavLink>
 						<button
 							onClick={() => {
 								setIsCollapsed(false);
