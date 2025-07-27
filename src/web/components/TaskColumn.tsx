@@ -62,7 +62,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         newOrdinal = tasks[0]?.ordinal !== undefined ? tasks[0].ordinal / 2 : 1000;
       } else if (index === tasks.length - 1 && position === 'after') {
         // Dropping at the very end
-        newOrdinal = tasks[tasks.length - 1]?.ordinal !== undefined ? tasks[tasks.length - 1].ordinal + 1000 : (tasks.length + 1) * 1000;
+        const lastTask = tasks[tasks.length - 1];
+        newOrdinal = lastTask?.ordinal !== undefined ? lastTask.ordinal + 1000 : (tasks.length + 1) * 1000;
       } else {
         // Dropping between two tasks
         const actualIndex = position === 'before' ? index : index + 1;

@@ -24,7 +24,7 @@ export async function viewSequencesTUI(sequences: Sequence[]): Promise<void> {
 	});
 
 	// Title
-	const title = blessed.text({
+	const _title = blessed.text({
 		parent: container,
 		top: 0,
 		left: "center",
@@ -36,7 +36,7 @@ export async function viewSequencesTUI(sequences: Sequence[]): Promise<void> {
 	});
 
 	// Instructions
-	const instructions = blessed.text({
+	const _instructions = blessed.text({
 		parent: container,
 		bottom: 0,
 		left: 0,
@@ -82,6 +82,7 @@ export async function viewSequencesTUI(sequences: Sequence[]): Promise<void> {
 
 	for (let seqIndex = 0; seqIndex < sequences.length; seqIndex++) {
 		const sequence = sequences[seqIndex];
+		if (!sequence) continue;
 
 		// Sequence header
 		content += `{cyan-fg}{bold}Sequence ${sequence.number}{/bold}{/cyan-fg}\n`;

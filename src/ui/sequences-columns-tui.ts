@@ -42,7 +42,7 @@ export async function viewSequencesColumnsTUI(sequences: Sequence[], options?: S
 		});
 
 		// Title
-		const title = blessed.text({
+		const _title = blessed.text({
 			parent: container,
 			top: 0,
 			left: "center",
@@ -52,7 +52,7 @@ export async function viewSequencesColumnsTUI(sequences: Sequence[], options?: S
 		});
 
 		// Instructions footer
-		const footer = blessed.box({
+		const _footer = blessed.box({
 			parent: container,
 			bottom: 0,
 			left: 0,
@@ -82,7 +82,7 @@ export async function viewSequencesColumnsTUI(sequences: Sequence[], options?: S
 		// Track current selection
 		let currentColumn = 0;
 		let currentRow = 0;
-		const columnLists: blessed.Widgets.ListElement[] = [];
+		const columnLists: any[] = [];
 		const tasksByColumn: Array<Array<{ task: (typeof sequences)[0]["tasks"][0]; sequenceNum: number }>> = [];
 
 		// Create columns for each sequence
@@ -153,7 +153,7 @@ export async function viewSequencesColumnsTUI(sequences: Sequence[], options?: S
 					: "";
 
 				const statusColor = task.status === "Done" ? "green" : task.status === "In Progress" ? "yellow" : "white";
-				const truncatedTitle = task.title.length > 25 ? task.title.substring(0, 22) + "..." : task.title;
+				const truncatedTitle = task.title.length > 25 ? `${task.title.substring(0, 22)}...` : task.title;
 
 				return `${priorityIndicator}{${statusColor}-fg}${task.id}{/${statusColor}-fg}\n{gray-fg}${truncatedTitle}{/gray-fg}`;
 			});
@@ -166,7 +166,7 @@ export async function viewSequencesColumnsTUI(sequences: Sequence[], options?: S
 		// Update column borders based on selection
 		function updateColumnBorders() {
 			displaySequences.forEach((_, colIdx) => {
-				const column = columnsContainer.children[colIdx] as blessed.Widgets.BoxElement;
+				const column = columnsContainer.children[colIdx] as any;
 				column.style.border = { fg: currentColumn === colIdx ? "cyan" : "gray" };
 			});
 			screen.render();
@@ -270,15 +270,18 @@ export async function viewSequencesColumnsTUI(sequences: Sequence[], options?: S
 		// Task interaction
 		screen.key(["enter", "e"], async () => {
 			const tasks = tasksByColumn[currentColumn];
-			if (tasks && tasks[currentRow]) {
-				const { task } = tasks[currentRow];
+			const taskData = tasks?.[currentRow];
+			if (taskData) {
+				const { task } = taskData;
 				const cwd = process.cwd();
 				const core = new (await import("../core/backlog.ts")).Core(cwd);
-				const taskPath = getTaskPath(task, core.projectRoot);
+				const taskPath = await getTaskPath(task.id, core);
 
-				screen.destroy();
-				await openInEditor(taskPath);
-				resolve();
+				if (taskPath) {
+					screen.destroy();
+					await openInEditor(taskPath);
+					resolve();
+				}
 			}
 		});
 

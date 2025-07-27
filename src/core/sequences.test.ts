@@ -29,9 +29,9 @@ describe("computeSequences", () => {
 		const result = computeSequences(tasks);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].number).toBe(1);
-		expect(result[0].tasks).toHaveLength(3);
-		expect(result[0].tasks.map((t) => t.id).sort()).toEqual(["task-1", "task-2", "task-3"]);
+		expect(result[0]?.number).toBe(1);
+		expect(result[0]?.tasks).toHaveLength(3);
+		expect(result[0]?.tasks.map((t) => t.id).sort()).toEqual(["task-1", "task-2", "task-3"]);
 	});
 
 	it("should handle simple linear chain (A→B→C)", () => {
@@ -41,17 +41,17 @@ describe("computeSequences", () => {
 
 		expect(result).toHaveLength(3);
 
-		expect(result[0].number).toBe(1);
-		expect(result[0].tasks).toHaveLength(1);
-		expect(result[0].tasks[0].id).toBe("task-1");
+		expect(result[0]?.number).toBe(1);
+		expect(result[0]?.tasks).toHaveLength(1);
+		expect(result[0]?.tasks[0]?.id).toBe("task-1");
 
-		expect(result[1].number).toBe(2);
-		expect(result[1].tasks).toHaveLength(1);
-		expect(result[1].tasks[0].id).toBe("task-2");
+		expect(result[1]?.number).toBe(2);
+		expect(result[1]?.tasks).toHaveLength(1);
+		expect(result[1]?.tasks[0]?.id).toBe("task-2");
 
-		expect(result[2].number).toBe(3);
-		expect(result[2].tasks).toHaveLength(1);
-		expect(result[2].tasks[0].id).toBe("task-3");
+		expect(result[2]?.number).toBe(3);
+		expect(result[2]?.tasks).toHaveLength(1);
+		expect(result[2]?.tasks[0]?.id).toBe("task-3");
 	});
 
 	it("should handle parallel branches (A→B, A→C)", () => {
@@ -61,13 +61,15 @@ describe("computeSequences", () => {
 
 		expect(result).toHaveLength(2);
 
-		expect(result[0].number).toBe(1);
-		expect(result[0].tasks).toHaveLength(1);
-		expect(result[0].tasks[0].id).toBe("task-1");
+		const firstSeq = result[0];
+		expect(firstSeq?.number).toBe(1);
+		expect(firstSeq?.tasks).toHaveLength(1);
+		expect(firstSeq?.tasks[0]?.id).toBe("task-1");
 
-		expect(result[1].number).toBe(2);
-		expect(result[1].tasks).toHaveLength(2);
-		expect(result[1].tasks.map((t) => t.id).sort()).toEqual(["task-2", "task-3"]);
+		const secondSeq = result[1];
+		expect(secondSeq?.number).toBe(2);
+		expect(secondSeq?.tasks).toHaveLength(2);
+		expect(secondSeq?.tasks.map((t) => t.id).sort()).toEqual(["task-2", "task-3"]);
 	});
 
 	it("should handle diamond dependency (A→B, A→C, B→D, C→D)", () => {
@@ -82,17 +84,20 @@ describe("computeSequences", () => {
 
 		expect(result).toHaveLength(3);
 
-		expect(result[0].number).toBe(1);
-		expect(result[0].tasks).toHaveLength(1);
-		expect(result[0].tasks[0].id).toBe("task-1");
+		const seq1 = result[0];
+		expect(seq1?.number).toBe(1);
+		expect(seq1?.tasks).toHaveLength(1);
+		expect(seq1?.tasks[0]?.id).toBe("task-1");
 
-		expect(result[1].number).toBe(2);
-		expect(result[1].tasks).toHaveLength(2);
-		expect(result[1].tasks.map((t) => t.id).sort()).toEqual(["task-2", "task-3"]);
+		const seq2 = result[1];
+		expect(seq2?.number).toBe(2);
+		expect(seq2?.tasks).toHaveLength(2);
+		expect(seq2?.tasks.map((t) => t.id).sort()).toEqual(["task-2", "task-3"]);
 
-		expect(result[2].number).toBe(3);
-		expect(result[2].tasks).toHaveLength(1);
-		expect(result[2].tasks[0].id).toBe("task-4");
+		const seq3 = result[2];
+		expect(seq3?.number).toBe(3);
+		expect(seq3?.tasks).toHaveLength(1);
+		expect(seq3?.tasks[0]?.id).toBe("task-4");
 	});
 
 	it("should handle complex dependency graph", () => {
@@ -111,20 +116,24 @@ describe("computeSequences", () => {
 		expect(result).toHaveLength(4);
 
 		// Sequence 1: task-1, task-2 (no dependencies)
-		expect(result[0].number).toBe(1);
-		expect(result[0].tasks.map((t) => t.id).sort()).toEqual(["task-1", "task-2"]);
+		const r0 = result[0];
+		expect(r0?.number).toBe(1);
+		expect(r0?.tasks.map((t) => t.id).sort()).toEqual(["task-1", "task-2"]);
 
 		// Sequence 2: task-3, task-4 (depend on sequence 1)
-		expect(result[1].number).toBe(2);
-		expect(result[1].tasks.map((t) => t.id).sort()).toEqual(["task-3", "task-4"]);
+		const r1 = result[1];
+		expect(r1?.number).toBe(2);
+		expect(r1?.tasks.map((t) => t.id).sort()).toEqual(["task-3", "task-4"]);
 
 		// Sequence 3: task-5, task-6 (depend on sequence 2)
-		expect(result[2].number).toBe(3);
-		expect(result[2].tasks.map((t) => t.id).sort()).toEqual(["task-5", "task-6"]);
+		const r2 = result[2];
+		expect(r2?.number).toBe(3);
+		expect(r2?.tasks.map((t) => t.id).sort()).toEqual(["task-5", "task-6"]);
 
 		// Sequence 4: task-7 (depends on sequence 3)
-		expect(result[3].number).toBe(4);
-		expect(result[3].tasks.map((t) => t.id)).toEqual(["task-7"]);
+		const r3 = result[3];
+		expect(r3?.number).toBe(4);
+		expect(r3?.tasks.map((t) => t.id)).toEqual(["task-7"]);
 	});
 
 	it("should detect circular dependencies", () => {
@@ -147,11 +156,13 @@ describe("computeSequences", () => {
 
 		expect(result).toHaveLength(2);
 
-		expect(result[0].number).toBe(1);
-		expect(result[0].tasks[0].id).toBe("task-1");
+		const res0 = result[0];
+		const res1 = result[1];
+		expect(res0?.number).toBe(1);
+		expect(res0?.tasks[0]?.id).toBe("task-1");
 
-		expect(result[1].number).toBe(2);
-		expect(result[1].tasks[0].id).toBe("task-2");
+		expect(res1?.number).toBe(2);
+		expect(res1?.tasks[0]?.id).toBe("task-2");
 	});
 
 	it("should handle self-dependencies gracefully", () => {
@@ -169,7 +180,7 @@ describe("computeSequences", () => {
 		const result = computeSequences(tasks);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
+		expect(result[0]?.tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
 	});
 
 	it("should handle tasks with multiple dependencies at different levels", () => {
