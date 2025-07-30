@@ -563,6 +563,9 @@ export class BacklogServer {
 	}
 
 	private async generateNextId(): Promise<string> {
+		const config = await this.core.filesystem.loadConfig();
+		const padding = config?.zeroPaddedIds;
+
 		const tasks = await this.core.filesystem.listTasks();
 		const drafts = await this.core.filesystem.listDrafts();
 		const all = [...tasks, ...drafts];
@@ -576,7 +579,14 @@ export class BacklogServer {
 			}
 		}
 
-		return `task-${max + 1}`;
+	    const nextIdNumber = max + 1;
+
+	    if (padding && typeof padding === "number" && padding > 0) {
+		   const paddedId = String(nextIdNumber).padStart(padding, "0");
+		   return `task-${paddedId}`;
+     	}
+
+	    return `task-${nextIdNumber}`;		
 	}
 
 	private async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
