@@ -136,7 +136,11 @@ export class ApiClient {
 		});
 	}
 
-	async reorderTask(taskId: string, newOrdinal: number, columnTasks?: Task[]): Promise<{ success: boolean; task: Task }> {
+	async reorderTask(
+		taskId: string,
+		newOrdinal: number,
+		columnTasks?: Task[],
+	): Promise<{ success: boolean; task: Task }> {
 		return this.fetchJson<{ success: boolean; task: Task }>(`${API_BASE}/tasks/reorder`, {
 			method: "POST",
 			body: JSON.stringify({ taskId, newOrdinal, columnTasks }),

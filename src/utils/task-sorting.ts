@@ -107,14 +107,14 @@ export function sortByOrdinal<T extends { id: string; ordinal?: number }>(items:
 		if (a.ordinal === undefined && b.ordinal !== undefined) {
 			return 1;
 		}
-		
+
 		// Both have ordinals - sort by ordinal value
 		if (a.ordinal !== undefined && b.ordinal !== undefined) {
 			if (a.ordinal !== b.ordinal) {
 				return a.ordinal - b.ordinal;
 			}
 		}
-		
+
 		// Same ordinal (or both undefined) - sort by task ID
 		return compareTaskIds(a.id, b.id);
 	});
@@ -124,7 +124,9 @@ export function sortByOrdinal<T extends { id: string; ordinal?: number }>(items:
  * Sort an array of tasks considering ordinal first, then priority, then ID.
  * This is the default sorting for the board view.
  */
-export function sortByOrdinalAndPriority<T extends { id: string; ordinal?: number; priority?: "high" | "medium" | "low" }>(items: T[]): T[] {
+export function sortByOrdinalAndPriority<
+	T extends { id: string; ordinal?: number; priority?: "high" | "medium" | "low" },
+>(items: T[]): T[] {
 	const priorityWeight = {
 		high: 3,
 		medium: 2,
@@ -139,22 +141,22 @@ export function sortByOrdinalAndPriority<T extends { id: string; ordinal?: numbe
 		if (a.ordinal === undefined && b.ordinal !== undefined) {
 			return 1;
 		}
-		
+
 		// Both have ordinals - sort by ordinal value
 		if (a.ordinal !== undefined && b.ordinal !== undefined) {
 			if (a.ordinal !== b.ordinal) {
 				return a.ordinal - b.ordinal;
 			}
 		}
-		
+
 		// Same ordinal (or both undefined) - sort by priority
 		const aWeight = a.priority ? priorityWeight[a.priority] : 0;
 		const bWeight = b.priority ? priorityWeight[b.priority] : 0;
-		
+
 		if (aWeight !== bWeight) {
 			return bWeight - aWeight;
 		}
-		
+
 		// Same priority - sort by task ID
 		return compareTaskIds(a.id, b.id);
 	});

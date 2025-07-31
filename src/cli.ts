@@ -604,125 +604,6 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	return `decision-${nextIdNumber}`;
 }
 
-async function generateNextId(core: Core, parent?: string): Promise<string> {
-	// Ensure git operations have access to the config
-	await core.ensureConfigLoaded();
-
-	const config = await core.filesystem.loadConfig();
-	// Load local tasks and drafts in parallel
-	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
-
-	const allIds: string[] = [];
-
-	// Add local task and draft IDs first
-	for (const t of tasks) {
-		allIds.push(t.id);
-	}
-	for (const d of drafts) {
-		allIds.push(d.id);
-	}
-
-	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local tasks only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
-		const branches = await core.gitOps.listAllBranches();
-
-		// Filter and normalize branch names - handle both local and remote branches
-		const normalizedBranches = branches
-			.flatMap((branch) => {
-				// For remote branches like "origin/feature", extract just "feature"
-				// But also try the full remote ref in case it's needed
-				if (branch.startsWith("origin/")) {
-					return [branch, branch.replace("origin/", "")];
-				}
-				return [branch];
-			})
-			// Remove duplicates and filter out HEAD
-			.filter((branch, index, arr) => arr.indexOf(branch) === index && branch !== "HEAD" && !branch.includes("HEAD"));
-
-		// Load files from all branches in parallel with better error handling
-		const branchFilePromises = normalizedBranches.map(async (branch) => {
-			try {
-				const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/tasks`);
-				return files
-					.map((file) => {
-						const match = file.match(/task-(\d+)/);
-						return match ? `task-${match[1]}` : null;
-					})
-					.filter((id): id is string => id !== null);
-			} catch (error) {
-				// Silently ignore errors for individual branches (they might not exist or be accessible)
-				if (process.env.DEBUG) {
-					console.log(`Could not access branch ${branch}:`, error);
-				}
-				return [];
-			}
-		});
-
-		const branchResults = await Promise.all(branchFilePromises);
-		for (const branchIds of branchResults) {
-			allIds.push(...branchIds);
-		}
-	} catch (error) {
-		// Suppress errors for offline mode or other git issues
-		if (process.env.DEBUG) {
-			console.error("Could not fetch remote task IDs:", error);
-		}
-	}
-
-	if (parent) {
-		const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
-		let max = 0;
-		// Iterate over allIds (which now includes both local and remote)
-		for (const id of allIds) {
-			if (id.startsWith(`${prefix}.`)) {
-				const rest = id.slice(prefix.length + 1);
-				const num = Number.parseInt(rest.split(".")[0] || "0", 10);
-				if (num > max) max = num;
-			}
-		}
-		const nextSubIdNumber = max + 1;
-		const padding = config?.zeroPaddedIds;
-
-		if (padding && typeof padding === "number" && padding > 0) {
-			// Pad sub-tasks to 2 digits. This supports up to 99 sub-tasks,
-			// which is a reasonable limit and keeps IDs from getting too long.
-			const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
-			return `${prefix}.${paddedSubId}`;
-		}
-
-		return `${prefix}.${nextSubIdNumber}`;
-	}
-
-	let max = 0;
-	// Iterate over allIds (which now includes both local and remote)
-	for (const id of allIds) {
-		const match = id.match(/^task-(\d+)/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `task-${paddedId}`;
-	}
-
-	return `task-${nextIdNumber}`;
-}
-
 function normalizeDependencies(dependencies: unknown): string[] {
 	if (!dependencies) return [];
 
@@ -843,7 +724,7 @@ taskCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await generateNextId(core, options.parent);
+		const id = await core.generateNextId(options.parent);
 		const task = buildTaskFromOptions(id, title, options);
 
 		// Validate dependencies if provided
@@ -1388,7 +1269,7 @@ draftCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await generateNextId(core);
+		const id = await core.generateNextId();
 		const task = buildTaskFromOptions(id, title, options);
 		const filepath = await core.createDraft(task);
 		console.log(`Created draft ${id}`);
