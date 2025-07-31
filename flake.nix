@@ -24,7 +24,7 @@
           inherit version;
           src = ./.;
           packageJson = ./package.json;
-          bunLock = ./bun.lock;
+          bunNix = ./bun.nix;
           
           nativeBuildInputs = with pkgs; [ bun nodejs_20 git ];
           
@@ -91,6 +91,11 @@
         };
         
         devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
+            bun
+            bun2nix.packages.${system}.default
+          ];
+          
           buildInputs = with pkgs; [
             bun
             nodejs_20
