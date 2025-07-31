@@ -4,9 +4,13 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    bun2nix = {
+      url = "github:baileyluTCD/bun2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, bun2nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -15,18 +19,14 @@
         packageJson = builtins.fromJSON (builtins.readFile ./package.json);
         version = packageJson.version;
         
-        # Use nixpkgs buildNpmPackage with generated package-lock.json
-        backlog-md = pkgs.buildNpmPackage {
+        backlog-md = bun2nix.lib.${system}.mkBunDerivation {
           pname = "backlog-md";
           inherit version;
           src = ./.;
-          
-          npmDepsHash = "sha256-WZRa08B75py5BEjWqXA9I4Xz5mvIihq0l/IhQn2TinQ=";
+          packageJson = ./package.json;
+          bunLock = ./bun.lock;
           
           nativeBuildInputs = with pkgs; [ bun nodejs_20 git ];
-          
-          # Don't run npm scripts during install
-          npmInstallFlags = [ "--ignore-scripts" ];
           
           preBuild = ''
             export HOME=$TMPDIR
@@ -36,7 +36,7 @@
           buildPhase = ''
             runHook preBuild
             
-            # Build CSS first 
+            # Build CSS
             bun run build:css
             
             # Build the CLI tool with embedded version
