@@ -31,4 +31,4 @@ Refactor the server layer to eliminate business logic violations and become a pr
 
 ## Implementation Notes
 
-The server's `generateNextId()` method should be removed entirely and replaced with proper delegation to the Core class's ID generation logic.
+Moved duplicate business logic from server to Core class. Created `core.generateNextId()`, `core.createTaskFromData()`, `core.updateDecisionFromContent()`, and `core.updateTasksBulk()` methods. Server now only handles HTTP concerns while Core manages all business logic. All tests pass with zero breaking changes.
