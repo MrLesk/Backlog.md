@@ -26,7 +26,7 @@
           packageJson = ./package.json;
           bunNix = ./bun.nix;
           
-          nativeBuildInputs = with pkgs; [ bun nodejs_20 git ];
+          nativeBuildInputs = with pkgs; [ bun git rsync ];
           
           preBuild = ''
             export HOME=$TMPDIR

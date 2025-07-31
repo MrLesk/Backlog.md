@@ -17,57 +17,57 @@
     binaries = {
       "biome" = "../@biomejs/biome/bin/biome";
     };
-    name = "@biomejs/biome@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/biome/-/biome-2.1.1.tgz";
-    hash = "sha512-HFGYkxG714KzG+8tvtXCJ1t1qXQMzgWzfvQaUjxN6UeKv+KvMEuliInnbZLJm6DXFXwqVi6446EGI0sGBLIYng==";
+    name = "@biomejs/biome@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/biome/-/biome-2.1.3.tgz";
+    hash = "sha512-KE/tegvJIxTkl7gJbGWSgun7G6X/n2M6C35COT6ctYrAy7SiPyNvi6JtoQERVK/VRbttZfgGq96j2bFmhmnH4w==";
   };
   "@biomejs/cli-darwin-arm64" = {
     out_path = "@biomejs/cli-darwin-arm64";
-    name = "@biomejs/cli-darwin-arm64@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-darwin-arm64/-/cli-darwin-arm64-2.1.1.tgz";
-    hash = "sha512-2Muinu5ok4tWxq4nu5l19el48cwCY/vzvI7Vjbkf3CYIQkjxZLyj0Ad37Jv2OtlXYaLvv+Sfu1hFeXt/JwRRXQ==";
+    name = "@biomejs/cli-darwin-arm64@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-darwin-arm64/-/cli-darwin-arm64-2.1.3.tgz";
+    hash = "sha512-LFLkSWRoSGS1wVUD/BE6Nlt2dSn0ulH3XImzg2O/36BoToJHKXjSxzPEMAqT9QvwVtk7/9AQhZpTneERU9qaXA==";
   };
   "@biomejs/cli-darwin-x64" = {
     out_path = "@biomejs/cli-darwin-x64";
-    name = "@biomejs/cli-darwin-x64@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-darwin-x64/-/cli-darwin-x64-2.1.1.tgz";
-    hash = "sha512-cC8HM5lrgKQXLAK+6Iz2FrYW5A62pAAX6KAnRlEyLb+Q3+Kr6ur/sSuoIacqlp1yvmjHJqjYfZjPvHWnqxoEIA==";
+    name = "@biomejs/cli-darwin-x64@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-darwin-x64/-/cli-darwin-x64-2.1.3.tgz";
+    hash = "sha512-Q/4OTw8P9No9QeowyxswcWdm0n2MsdCwWcc5NcKQQvzwPjwuPdf8dpPPf4r+x0RWKBtl1FLiAUtJvBlri6DnYw==";
   };
   "@biomejs/cli-linux-arm64" = {
     out_path = "@biomejs/cli-linux-arm64";
-    name = "@biomejs/cli-linux-arm64@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-linux-arm64/-/cli-linux-arm64-2.1.1.tgz";
-    hash = "sha512-tw4BEbhAUkWPe4WBr6IX04DJo+2jz5qpPzpW/SWvqMjb9QuHY8+J0M23V8EPY/zWU4IG8Ui0XESapR1CB49Q7g==";
+    name = "@biomejs/cli-linux-arm64@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-linux-arm64/-/cli-linux-arm64-2.1.3.tgz";
+    hash = "sha512-2hS6LgylRqMFmAZCOFwYrf77QMdUwJp49oe8PX/O8+P2yKZMSpyQTf3Eo5ewnsMFUEmYbPOskafdV1ds1MZMJA==";
   };
   "@biomejs/cli-linux-arm64-musl" = {
     out_path = "@biomejs/cli-linux-arm64-musl";
-    name = "@biomejs/cli-linux-arm64-musl@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-linux-arm64-musl/-/cli-linux-arm64-musl-2.1.1.tgz";
-    hash = "sha512-/7FBLnTswu4jgV9ttI3AMIdDGqVEPIZd8I5u2D4tfCoj8rl9dnjrEQbAIDlWhUXdyWlFSz8JypH3swU9h9P+2A==";
+    name = "@biomejs/cli-linux-arm64-musl@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-linux-arm64-musl/-/cli-linux-arm64-musl-2.1.3.tgz";
+    hash = "sha512-KXouFSBnoxAWZYDQrnNRzZBbt5s9UJkIm40hdvSL9mBxSSoxRFQJbtg1hP3aa8A2SnXyQHxQfpiVeJlczZt76w==";
   };
   "@biomejs/cli-linux-x64" = {
     out_path = "@biomejs/cli-linux-x64";
-    name = "@biomejs/cli-linux-x64@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-linux-x64/-/cli-linux-x64-2.1.1.tgz";
-    hash = "sha512-3WJ1GKjU7NzZb6RTbwLB59v9cTIlzjbiFLDB0z4376TkDqoNYilJaC37IomCr/aXwuU8QKkrYoHrgpSq5ffJ4Q==";
+    name = "@biomejs/cli-linux-x64@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-linux-x64/-/cli-linux-x64-2.1.3.tgz";
+    hash = "sha512-NxlSCBhLvQtWGagEztfAZ4WcE1AkMTntZV65ZvR+J9jp06+EtOYEBPQndA70ZGhHbEDG57bR6uNvqkd1WrEYVA==";
   };
   "@biomejs/cli-linux-x64-musl" = {
     out_path = "@biomejs/cli-linux-x64-musl";
-    name = "@biomejs/cli-linux-x64-musl@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-linux-x64-musl/-/cli-linux-x64-musl-2.1.1.tgz";
-    hash = "sha512-kUu+loNI3OCD2c12cUt7M5yaaSjDnGIksZwKnueubX6c/HWUyi/0mPbTBHR49Me3F0KKjWiKM+ZOjsmC+lUt9g==";
+    name = "@biomejs/cli-linux-x64-musl@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-linux-x64-musl/-/cli-linux-x64-musl-2.1.3.tgz";
+    hash = "sha512-KaLAxnROouzIWtl6a0Y88r/4hW5oDUJTIqQorOTVQITaKQsKjZX4XCUmHIhdEk8zMnaiLZzRTAwk1yIAl+mIew==";
   };
   "@biomejs/cli-win32-arm64" = {
     out_path = "@biomejs/cli-win32-arm64";
-    name = "@biomejs/cli-win32-arm64@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-win32-arm64/-/cli-win32-arm64-2.1.1.tgz";
-    hash = "sha512-vEHK0v0oW+E6RUWLoxb2isI3rZo57OX9ZNyyGH701fZPj6Il0Rn1f5DMNyCmyflMwTnIQstEbs7n2BxYSqQx4Q==";
+    name = "@biomejs/cli-win32-arm64@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-win32-arm64/-/cli-win32-arm64-2.1.3.tgz";
+    hash = "sha512-V9CUZCtWH4u0YwyCYbQ3W5F4ZGPWp2C2TYcsiWFNNyRfmOW1j/TY/jAurl33SaRjgZPO5UUhGyr9m6BN9t84NQ==";
   };
   "@biomejs/cli-win32-x64" = {
     out_path = "@biomejs/cli-win32-x64";
-    name = "@biomejs/cli-win32-x64@2.1.1";
-    url = "https://registry.npmjs.org/@biomejs/cli-win32-x64/-/cli-win32-x64-2.1.1.tgz";
-    hash = "sha512-i2PKdn70kY++KEF/zkQFvQfX1e8SkA8hq4BgC+yE9dZqyLzB/XStY2MvwI3qswlRgnGpgncgqe0QYKVS1blksg==";
+    name = "@biomejs/cli-win32-x64@2.1.3";
+    url = "https://registry.npmjs.org/@biomejs/cli-win32-x64/-/cli-win32-x64-2.1.3.tgz";
+    hash = "sha512-dxy599q6lgp8ANPpR8sDMscwdp9oOumEsVXuVCVT9N2vAho8uYXlCz53JhxX6LtJOXaE73qzgkGQ7QqvFlMC0g==";
   };
   "@floating-ui/core" = {
     out_path = "@floating-ui/core";
@@ -344,9 +344,9 @@
   };
   "@types/bun" = {
     out_path = "@types/bun";
-    name = "@types/bun@1.2.18";
-    url = "https://registry.npmjs.org/@types/bun/-/bun-1.2.18.tgz";
-    hash = "sha512-Xf6RaWVheyemaThV0kUfaAUvCNokFr+bH8Jxp+tTZfx7dAPA8z9ePnP9S9+Vspzuxxx9JRAXhnyccRj3GyCMdQ==";
+    name = "@types/bun@1.2.19";
+    url = "https://registry.npmjs.org/@types/bun/-/bun-1.2.19.tgz";
+    hash = "sha512-d9ZCmrH3CJ2uYKXQIUuZ/pUnTqIvLDS0SK7pFmbx8ma+ziH/FRMoAq5bYpRG7y+w1gl+HgyNZbtqgMq4W4e2Lg==";
   };
   "@types/debug" = {
     out_path = "@types/debug";
@@ -410,15 +410,15 @@
   };
   "@types/react" = {
     out_path = "@types/react";
-    name = "@types/react@19.1.8";
-    url = "https://registry.npmjs.org/@types/react/-/react-19.1.8.tgz";
-    hash = "sha512-AwAfQ2Wa5bCx9WP8nZL2uMZWod7J7/JSplxbTmBQ5ms6QpqNYm672H0Vu9ZVKVngQ+ii4R/byguVEUZQyeg44g==";
+    name = "@types/react@19.1.9";
+    url = "https://registry.npmjs.org/@types/react/-/react-19.1.9.tgz";
+    hash = "sha512-WmdoynAX8Stew/36uTSVMcLJJ1KRh6L3IZRx1PZ7qJtBqT3dYTgyDTx8H1qoRghErydW7xw9mSJ3wS//tCRpFA==";
   };
   "@types/react-dom" = {
     out_path = "@types/react-dom";
-    name = "@types/react-dom@19.1.6";
-    url = "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.1.6.tgz";
-    hash = "sha512-4hOiT/dwO8Ko0gV1m/TJZYk3y0KBnY9vzDh7W+DH17b2HFSOGgdj33dhihPeuy3l0q23+4e+hoXHV6hCC4dCXw==";
+    name = "@types/react-dom@19.1.7";
+    url = "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.1.7.tgz";
+    hash = "sha512-i5ZzwYpqjmrKenzkoLM2Ibzt6mAsM7pxB6BCIouEVVmgiqaMj1TjaK7hnA36hbW5aZv20kx7Lw6hWzPWg0Rurw==";
   };
   "@types/react-router" = {
     out_path = "@types/react-router";
@@ -431,6 +431,18 @@
     name = "@types/react-router-dom@5.3.3";
     url = "https://registry.npmjs.org/@types/react-router-dom/-/react-router-dom-5.3.3.tgz";
     hash = "sha512-kpqnYK4wcdm5UaWI3fLcELopqLrHgLqNsdpHauzlQktfkHL3npOSwtj1Uz9oKBAzs7lFtVkV8j83voAz2D8fhw==";
+  };
+  "@types/react-router-dom/@types/react" = {
+    out_path = "@types/react-router-dom/node_modules/@types/node_modules/react";
+    name = "@types/react@19.1.8";
+    url = "https://registry.npmjs.org/@types/react/-/react-19.1.8.tgz";
+    hash = "sha512-AwAfQ2Wa5bCx9WP8nZL2uMZWod7J7/JSplxbTmBQ5ms6QpqNYm672H0Vu9ZVKVngQ+ii4R/byguVEUZQyeg44g==";
+  };
+  "@types/react-router/@types/react" = {
+    out_path = "@types/react-router/node_modules/@types/node_modules/react";
+    name = "@types/react@19.1.8";
+    url = "https://registry.npmjs.org/@types/react/-/react-19.1.8.tgz";
+    hash = "sha512-AwAfQ2Wa5bCx9WP8nZL2uMZWod7J7/JSplxbTmBQ5ms6QpqNYm672H0Vu9ZVKVngQ+ii4R/byguVEUZQyeg44g==";
   };
   "@types/unist" = {
     out_path = "@types/unist";
@@ -458,9 +470,9 @@
   };
   "@uiw/react-md-editor" = {
     out_path = "@uiw/react-md-editor";
-    name = "@uiw/react-md-editor@4.0.7";
-    url = "https://registry.npmjs.org/@uiw/react-md-editor/-/react-md-editor-4.0.7.tgz";
-    hash = "sha512-fKUJDo/f6ty1R5CRfYCIgt2eWNCWnwkEZhj65zv3cLsywAw13rsOL0/TuG8khpcV9mSnDHPWAz43xgKcjk5VJA==";
+    name = "@uiw/react-md-editor@4.0.8";
+    url = "https://registry.npmjs.org/@uiw/react-md-editor/-/react-md-editor-4.0.8.tgz";
+    hash = "sha512-S3mOzZeGmJNhzdXJxRTCwsFMDp8nBWeQUf59cK3L6QHzDUHnRoHpcmWpfVRyKGKSg8zaI2+meU5cYWf8kYn3mQ==";
   };
   "@ungap/structured-clone" = {
     out_path = "@ungap/structured-clone";
@@ -572,9 +584,9 @@
   };
   "bun-types" = {
     out_path = "bun-types";
-    name = "bun-types@1.2.18";
-    url = "https://registry.npmjs.org/bun-types/-/bun-types-1.2.18.tgz";
-    hash = "sha512-04+Eha5NP7Z0A9YgDAzMk5PHR16ZuLVa83b26kH5+cp1qZW4F6FmAURngE7INf4tKOvCE69vYvDEwoNl1tGiWw==";
+    name = "bun-types@1.2.19";
+    url = "https://registry.npmjs.org/bun-types/-/bun-types-1.2.19.tgz";
+    hash = "sha512-uAOTaZSPuYsWIXRpj7o56Let0g/wjihKCkeRqUBhlLVM/Bt+Fj9xTo+LhC1OV1XDaGkz4hNC80et5xgy+9KTHQ==";
   };
   "ccount" = {
     out_path = "ccount";
@@ -1584,15 +1596,15 @@
   };
   "react" = {
     out_path = "react";
-    name = "react@19.1.0";
-    url = "https://registry.npmjs.org/react/-/react-19.1.0.tgz";
-    hash = "sha512-FS+XFBNvn3GTAWq26joslQgWNoFu08F4kl0J4CgdNKADkdSGXQyTCnKteIAJy96Br6YbpEU1LSzV5dYtjMkMDg==";
+    name = "react@19.1.1";
+    url = "https://registry.npmjs.org/react/-/react-19.1.1.tgz";
+    hash = "sha512-w8nqGImo45dmMIfljjMwOGtbmC/mk4CMYhWIicdSflH91J9TyCyczcPFXJzrZ/ZXcgGRFeP6BU0BEJTw6tZdfQ==";
   };
   "react-dom" = {
     out_path = "react-dom";
-    name = "react-dom@19.1.0";
-    url = "https://registry.npmjs.org/react-dom/-/react-dom-19.1.0.tgz";
-    hash = "sha512-Xs1hdnE+DyKgeHJeJznQmYMIBG3TKIHJJT95Q58nHLSrElKlGQqDTR2HQ9fx5CN/Gk6Vh/kupBTDLU11/nDk/g==";
+    name = "react-dom@19.1.1";
+    url = "https://registry.npmjs.org/react-dom/-/react-dom-19.1.1.tgz";
+    hash = "sha512-Dlq/5LAZgF0Gaz6yiqZCf6VCcZs1ghAJyrsu84Q/GT0gV+mCxbfmKNoGRKBYMJ8IEdGPqu49YWXD02GCknEDkw==";
   };
   "react-markdown" = {
     out_path = "react-markdown";
@@ -1602,15 +1614,15 @@
   };
   "react-router" = {
     out_path = "react-router";
-    name = "react-router@7.6.3";
-    url = "https://registry.npmjs.org/react-router/-/react-router-7.6.3.tgz";
-    hash = "sha512-zf45LZp5skDC6I3jDLXQUu0u26jtuP4lEGbc7BbdyxenBN1vJSTA18czM2D+h5qyMBuMrD+9uB+mU37HIoKGRA==";
+    name = "react-router@7.7.1";
+    url = "https://registry.npmjs.org/react-router/-/react-router-7.7.1.tgz";
+    hash = "sha512-jVKHXoWRIsD/qS6lvGveckwb862EekvapdHJN/cGmzw40KnJH5gg53ujOJ4qX6EKIK9LSBfFed/xiQ5yeXNrUA==";
   };
   "react-router-dom" = {
     out_path = "react-router-dom";
-    name = "react-router-dom@7.6.3";
-    url = "https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.6.3.tgz";
-    hash = "sha512-DiWJm9qdUAmiJrVWaeJdu4TKu13+iB/8IEi0EW/XgaHCjW/vWGrwzup0GVvaMteuZjKnh5bEvJP/K0MDnzawHw==";
+    name = "react-router-dom@7.7.1";
+    url = "https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.7.1.tgz";
+    hash = "sha512-bavdk2BA5r3MYalGKZ01u8PGuDBloQmzpBZVhDLrOOv1N943Wq6dcM9GhB3x8b7AbqPMEezauv4PeGkAJfy7FQ==";
   };
   "react-tooltip" = {
     out_path = "react-tooltip";
@@ -1882,9 +1894,9 @@
       "tsc" = "../typescript/bin/tsc";
       "tsserver" = "../typescript/bin/tsserver";
     };
-    name = "typescript@5.8.3";
-    url = "https://registry.npmjs.org/typescript/-/typescript-5.8.3.tgz";
-    hash = "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==";
+    name = "typescript@5.9.2";
+    url = "https://registry.npmjs.org/typescript/-/typescript-5.9.2.tgz";
+    hash = "sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==";
   };
   "undici-types" = {
     out_path = "undici-types";
