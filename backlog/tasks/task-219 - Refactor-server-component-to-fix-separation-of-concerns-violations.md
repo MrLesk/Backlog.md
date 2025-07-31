@@ -31,4 +31,13 @@ Refactor the server layer to eliminate business logic violations and become a pr
 
 ## Implementation Notes
 
-Moved duplicate business logic from server to Core class. Created `core.generateNextId()`, `core.createTaskFromData()`, `core.updateDecisionFromContent()`, and `core.updateTasksBulk()` methods. Server now only handles HTTP concerns while Core manages all business logic. All tests pass with zero breaking changes.
+Refactored server component to eliminate separation of concerns violations by moving all business logic to Core class. The server previously duplicated ID generation, auto-commit logic, markdown parsing, and direct git operations.
+
+Key changes:
+- Moved sophisticated `generateNextId` from CLI to Core, removing server's simplified duplicate version
+- Created `core.createTaskFromData()` to handle task construction instead of manual object building in server
+- Added `core.updateDecisionFromContent()` and `core.updateDocument()` for proper business logic encapsulation
+- Replaced direct git operations with `core.updateTasksBulk()` for consistent transactional handling
+- Made Core's `shouldAutoCommit` public to eliminate server duplicate
+
+Server handlers are now significantly simplified (e.g., `handleCreateTask` reduced from 25 lines to 3) and focus purely on HTTP concerns. All 448 tests pass with zero breaking changes to existing API endpoints.
