@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2025-07-12'
-updated_date: '2025-07-26 14:54'
+updated_date: '2025-08-01 18:55'
 labels: []
 dependencies: []
 priority: medium
@@ -96,97 +96,24 @@ Currently all dates use YYYY-MM-DD format (created_date, updated_date, decision 
 
 ## Implementation Notes
 
-### Research Findings (2025-07-26)
+Successfully implemented datetime precision for all date fields (tasks, documents, decisions) with full backward compatibility.
 
-**Current Date System Architecture:**
-1. **Date Generation**: Found 17 instances of `toISOString().split('T')[0]` across codebase
-   - src/cli.ts: Lines 724, 1628, 1706 (task/doc/decision creation)
-   - src/core/backlog.ts: Lines 136, 263, 293 (updates and creation)
-   - src/server/index.ts: Lines 315, 431 (API endpoints)
-   - Test files: Multiple instances for test data
+**Core Changes:**
+- Enhanced normalizeDate() function to preserve time components when present
+- Updated date generation from YYYY-MM-DD to YYYY-MM-DD HH:mm format in UTC
+- Modified UI components (CLI and web) to display time when available
+- Added timezone configuration options to BacklogConfig type
+- Created optional migration script for existing data
 
-2. **Date Parsing**: `normalizeDate()` in parser.ts (lines 29-58)
-   - Converts various date formats to YYYY-MM-DD
-   - Handles Date objects, strings with quotes, and multiple formats
-   - Always strips time information via `.slice(0, 10)`
+**Technical Decisions:**
+- Gradual migration approach: existing date-only entries remain unchanged, new entries include time
+- UTC storage with local display for consistency
+- Space-separated format (YYYY-MM-DD HH:mm) for readability
+- Backward compatibility maintained - no breaking changes
 
-3. **Date Display**:
-   - CLI: Shows raw date strings (e.g., "Created: 2025-07-12")
-   - Web UI: Uses `new Date(dateStr).toLocaleDateString()` for localized display
-
-4. **Configuration**: 
-   - `date_format: yyyy-mm-dd` exists in config but isn't actively used
-   - No timezone configuration currently exists
-
-### Design Decision: Gradual Migration Approach
-
-After analysis, implementing a **gradual migration with optional time** is the best approach:
-
-**Advantages:**
-- ✅ Full backward compatibility - existing YYYY-MM-DD dates continue to work
-- ✅ No forced migration - users can adopt datetime at their own pace
-- ✅ Minimal disruption - no breaking changes to existing files
-- ✅ Progressive enhancement - new features available immediately
-
-**Implementation Strategy:**
-1. Update `normalizeDate()` to preserve time when present
-2. Change date generation to include time (with config option)
-3. Update UI to display time only when present
-4. Provide optional migration tool for users who want to add times
-
-### Critical Considerations:
-- **Timezone Handling**: Store in UTC, display in local time
-- **Format Choice**: `YYYY-MM-DD HH:mm` (space separator for readability)
-- **UI Space**: Terminal width constraints require compact display
-- **Migration**: Must be optional and reversible
-- **Testing**: All date format tests need updates to handle both formats
-
-### Files Requiring Changes:
-1. **Core Parser** (src/markdown/parser.ts): normalizeDate function enhancement
-2. **Date Generation** (7 files): Update toISOString() usage
-3. **Type Definitions** (src/types/index.ts): Add timezone preference
-4. **UI Components**: Both CLI and web need datetime display logic
-5. **Tests**: Update expectations for new date format
-6. **Config**: Add datetime format options
-
-### Implementation Complete (2025-07-26)
-
-**Changes Made:**
-
-1. **Enhanced normalizeDate() function** (src/markdown/parser.ts):
-   - Now preserves time components when present in input
-   - Maintains backward compatibility with date-only strings
-   - Intelligently detects if Date objects are date-only (midnight UTC)
-
-2. **Updated date generation** across 7 files:
-   - Changed from `toISOString().split('T')[0]` to `toISOString().slice(0, 16).replace('T', ' ')`
-   - Produces format: `YYYY-MM-DD HH:mm` in UTC
-
-3. **UI Components Updated**:
-   - **Web UI** (TaskCard.tsx): Enhanced formatDate() to display time when present
-   - **CLI** (task-viewer.ts): Added formatDateForDisplay() for intelligent date/datetime display
-   - Both UIs now show time only when the date includes it
-
-4. **Configuration Enhanced**:
-   - Added `timezone_preference: "UTC"` to config.yml
-   - Added `include_datetime_in_dates: true` option
-   - Updated date_format to `yyyy-mm-dd hh:mm`
-
-5. **Type System Updates**:
-   - Added `timezonePreference?: string` to BacklogConfig
-   - Added `includeDateTimeInDates?: boolean` for controlling behavior
-
-6. **Migration Script Created** (src/scripts/migrate-dates.ts):
-   - Interactive script with backup capability
-   - Options for selective migration of recent items
-   - Preserves historical date-only entries
-
-7. **Tests Updated**:
-   - Fixed all test expectations to handle new datetime format
-   - All tests passing with backward compatibility maintained
-
-**Backward Compatibility:**
-- ✅ Existing date-only fields remain date-only
-- ✅ New entries get datetime by default
-- ✅ Both formats work seamlessly together
-- ✅ No breaking changes to existing data
+**Files Modified:**
+- src/markdown/parser.ts (normalizeDate enhancement)
+- src/core/backlog.ts (date generation updates)
+- src/types/index.ts (config type extensions)
+- src/web/components/TaskCard.tsx (UI datetime display)
+- backlog/config.yml (timezone and format options)
