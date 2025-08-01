@@ -54,7 +54,7 @@ backlog task create "Add user authentication system" -d "Implement a secure auth
 
 ## Task Creation Guidelines
 
-### **Title**
+### **Title (one liner)**
 
 Use a clear brief title that summarizes the task.
 

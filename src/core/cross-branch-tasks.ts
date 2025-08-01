@@ -27,6 +27,7 @@ export async function getLatestTaskStatesForIds(
 	_filesystem: FileSystem,
 	taskIds: string[],
 	onProgress?: (message: string) => void,
+	options?: { recentBranchesOnly?: boolean; daysAgo?: number },
 ): Promise<Map<string, TaskDirectoryInfo>> {
 	const taskDirectories = new Map<string, TaskDirectoryInfo>();
 
@@ -35,13 +36,24 @@ export async function getLatestTaskStatesForIds(
 	}
 
 	try {
-		// Get all branches
-		const branches = await gitOps.listAllBranches();
+		// Get branches - use recent branches by default for performance
+		const useRecentOnly = options?.recentBranchesOnly ?? true;
+		const daysAgo = options?.daysAgo ?? 9999; // Use config default
+
+		let branches = useRecentOnly ? await gitOps.listRecentBranches(daysAgo) : await gitOps.listAllBranches();
+
 		if (branches.length === 0) {
 			return taskDirectories;
 		}
 
-		onProgress?.(`Checking ${taskIds.length} tasks across ${branches.length} branches...`);
+		// Count local vs remote branches for info
+		const localBranches = branches.filter((b) => !b.includes("origin/"));
+		const remoteBranches = branches.filter((b) => b.includes("origin/"));
+
+		const branchMsg = useRecentOnly
+			? `${branches.length} recent branches (last ${daysAgo} days, ${localBranches.length} local, ${remoteBranches.length} remote)`
+			: `${branches.length} branches (${localBranches.length} local, ${remoteBranches.length} remote)`;
+		onProgress?.(`Checking ${taskIds.length} tasks across ${branchMsg}...`);
 
 		// Use standard backlog directory
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
@@ -54,78 +66,114 @@ export async function getLatestTaskStatesForIds(
 			{ path: `${backlogDir}/completed`, type: "completed" },
 		];
 
-		// Flatten all checks into a single array for maximum parallelization
-		const allChecks: Array<{
-			branch: string;
-			taskId: string;
-			type: TaskDirectoryType;
-			filePath: string;
-		}> = [];
+		// For better performance, prioritize checking current branch and main branch first
+		const priorityBranches = ["main", "master"];
+		const currentBranch = await gitOps.getCurrentBranch();
+		if (currentBranch && !priorityBranches.includes(currentBranch)) {
+			priorityBranches.unshift(currentBranch);
+		}
 
-		for (const branch of branches) {
-			for (const taskId of taskIds) {
-				// Extract numeric part for filename
-				const match = taskId.match(/task-([\d.]+)/);
-				if (!match) continue;
+		// Check priority branches first
+		for (const branch of priorityBranches) {
+			if (!branches.includes(branch)) continue;
 
-				for (const { path, type } of directoryChecks) {
-					allChecks.push({
-						branch,
-						taskId,
-						type,
-						filePath: `${path}/${taskId}`,
-					});
+			// Remove from main list to avoid duplicate checking
+			branches = branches.filter((b) => b !== branch);
+
+			// Quick check for all tasks in this branch
+			for (const { path, type } of directoryChecks) {
+				try {
+					const files = await gitOps.listFilesInTree(branch, path);
+
+					for (const taskId of taskIds) {
+						const taskFile = files.find((f) => {
+							const filename = f.substring(f.lastIndexOf("/") + 1);
+							return filename.match(new RegExp(`^${taskId}\\b`));
+						});
+
+						if (taskFile) {
+							const lastModified = await gitOps.getFileLastModifiedTime(branch, taskFile);
+							if (lastModified) {
+								const existing = taskDirectories.get(taskId);
+								if (!existing || lastModified > existing.lastModified) {
+									taskDirectories.set(taskId, {
+										taskId,
+										type,
+										lastModified,
+										branch,
+										path: taskFile,
+									});
+								}
+							}
+						}
+					}
+				} catch {
+					// Skip directories that don't exist
 				}
 			}
 		}
 
-		// Process all checks in parallel with batching to avoid overwhelming git
-		const BATCH_SIZE = 50;
-		const results: (TaskDirectoryInfo | null)[] = [];
-
-		for (let i = 0; i < allChecks.length; i += BATCH_SIZE) {
-			const batch = allChecks.slice(i, i + BATCH_SIZE);
-			const batchPromises = batch.map(async ({ branch, taskId, type, filePath }) => {
-				try {
-					// First check if file exists by listing files in the directory
-					const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
-					const files = await gitOps.listFilesInTree(branch, dirPath);
-
-					// Find the actual file (might have different casing or title)
-					// Extract filename from full path for matching
-					const actualFile = files.find((f) => {
-						const filename = f.substring(f.lastIndexOf("/") + 1);
-						return filename.match(new RegExp(`^${taskId}\\b`));
-					});
-					if (!actualFile) return null;
-
-					// The actualFile already includes the full path from listFilesInTree
-					const lastModified = await gitOps.getFileLastModifiedTime(branch, actualFile);
-					if (!lastModified) return null;
-
-					return {
-						taskId,
-						type,
-						lastModified,
-						branch,
-						path: actualFile,
-					};
-				} catch {
-					return null;
-				}
-			});
-
-			const batchResults = await Promise.all(batchPromises);
-			results.push(...batchResults);
+		// If we found all tasks in priority branches, we can skip other branches
+		if (taskDirectories.size === taskIds.length) {
+			onProgress?.(`Found all ${taskIds.length} tasks in priority branches`);
+			return taskDirectories;
 		}
 
-		// Process results to find the latest directory location for each task
-		for (const directoryInfo of results) {
-			if (!directoryInfo) continue;
+		// For remaining tasks, check other branches
+		const remainingTaskIds = taskIds.filter((id) => !taskDirectories.has(id));
+		if (remainingTaskIds.length === 0 || branches.length === 0) {
+			onProgress?.(`Checked ${taskIds.length} tasks`);
+			return taskDirectories;
+		}
 
-			const existing = taskDirectories.get(directoryInfo.taskId);
-			if (!existing || directoryInfo.lastModified > existing.lastModified) {
-				taskDirectories.set(directoryInfo.taskId, directoryInfo);
+		onProgress?.(`Checking ${remainingTaskIds.length} remaining tasks across ${branches.length} branches...`);
+
+		// Check remaining branches in parallel batches
+		const BRANCH_BATCH_SIZE = 3; // Process 3 branches at a time
+		for (let i = 0; i < branches.length; i += BRANCH_BATCH_SIZE) {
+			const branchBatch = branches.slice(i, i + BRANCH_BATCH_SIZE);
+
+			await Promise.all(
+				branchBatch.map(async (branch) => {
+					for (const { path, type } of directoryChecks) {
+						try {
+							const files = await gitOps.listFilesInTree(branch, path);
+
+							for (const taskId of remainingTaskIds) {
+								// Skip if we already found this task
+								if (taskDirectories.has(taskId)) continue;
+
+								const taskFile = files.find((f) => {
+									const filename = f.substring(f.lastIndexOf("/") + 1);
+									return filename.match(new RegExp(`^${taskId}\\b`));
+								});
+
+								if (taskFile) {
+									const lastModified = await gitOps.getFileLastModifiedTime(branch, taskFile);
+									if (lastModified) {
+										const existing = taskDirectories.get(taskId);
+										if (!existing || lastModified > existing.lastModified) {
+											taskDirectories.set(taskId, {
+												taskId,
+												type,
+												lastModified,
+												branch,
+												path: taskFile,
+											});
+										}
+									}
+								}
+							}
+						} catch {
+							// Skip directories that don't exist
+						}
+					}
+				}),
+			);
+
+			// Early exit if we found all tasks
+			if (taskDirectories.size === taskIds.length) {
+				break;
 			}
 		}
 
@@ -139,7 +187,7 @@ export async function getLatestTaskStatesForIds(
 
 /**
  * Filter tasks based on their latest directory location across all branches
- * Only returns tasks whose latest directory type is "task" (not draft or archived)
+ * Only returns tasks whose latest directory type is "task" or "completed" (not draft or archived)
  */
 export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<string, TaskDirectoryInfo>): Task[] {
 	return tasks.filter((task) => {
@@ -150,7 +198,7 @@ export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<s
 			return true;
 		}
 
-		// Only show tasks whose latest directory type is "task" (in {backlogDir}/tasks/)
-		return latestDirectory.type === "task";
+		// Show tasks whose latest directory type is "task" or "completed"
+		return latestDirectory.type === "task" || latestDirectory.type === "completed";
 	});
 }

@@ -94,10 +94,79 @@ export function sortByPriority<T extends { id: string; priority?: "high" | "medi
 }
 
 /**
- * Sort tasks by a specified field with fallback to task ID sorting.
- * Supported fields: 'priority', 'id'
+ * Sort an array of tasks by their ordinal property, then by task ID.
+ * Tasks with ordinal values come before tasks without.
+ * Tasks with the same ordinal (or both undefined) are sorted by task ID.
  */
-export function sortTasks<T extends { id: string; priority?: "high" | "medium" | "low" }>(
+export function sortByOrdinal<T extends { id: string; ordinal?: number }>(items: T[]): T[] {
+	return [...items].sort((a, b) => {
+		// Tasks with ordinal come before tasks without
+		if (a.ordinal !== undefined && b.ordinal === undefined) {
+			return -1;
+		}
+		if (a.ordinal === undefined && b.ordinal !== undefined) {
+			return 1;
+		}
+
+		// Both have ordinals - sort by ordinal value
+		if (a.ordinal !== undefined && b.ordinal !== undefined) {
+			if (a.ordinal !== b.ordinal) {
+				return a.ordinal - b.ordinal;
+			}
+		}
+
+		// Same ordinal (or both undefined) - sort by task ID
+		return compareTaskIds(a.id, b.id);
+	});
+}
+
+/**
+ * Sort an array of tasks considering ordinal first, then priority, then ID.
+ * This is the default sorting for the board view.
+ */
+export function sortByOrdinalAndPriority<
+	T extends { id: string; ordinal?: number; priority?: "high" | "medium" | "low" },
+>(items: T[]): T[] {
+	const priorityWeight = {
+		high: 3,
+		medium: 2,
+		low: 1,
+	};
+
+	return [...items].sort((a, b) => {
+		// Tasks with ordinal come before tasks without
+		if (a.ordinal !== undefined && b.ordinal === undefined) {
+			return -1;
+		}
+		if (a.ordinal === undefined && b.ordinal !== undefined) {
+			return 1;
+		}
+
+		// Both have ordinals - sort by ordinal value
+		if (a.ordinal !== undefined && b.ordinal !== undefined) {
+			if (a.ordinal !== b.ordinal) {
+				return a.ordinal - b.ordinal;
+			}
+		}
+
+		// Same ordinal (or both undefined) - sort by priority
+		const aWeight = a.priority ? priorityWeight[a.priority] : 0;
+		const bWeight = b.priority ? priorityWeight[b.priority] : 0;
+
+		if (aWeight !== bWeight) {
+			return bWeight - aWeight;
+		}
+
+		// Same priority - sort by task ID
+		return compareTaskIds(a.id, b.id);
+	});
+}
+
+/**
+ * Sort tasks by a specified field with fallback to task ID sorting.
+ * Supported fields: 'priority', 'id', 'ordinal'
+ */
+export function sortTasks<T extends { id: string; priority?: "high" | "medium" | "low"; ordinal?: number }>(
 	items: T[],
 	sortField: string,
 ): T[] {
@@ -106,8 +175,10 @@ export function sortTasks<T extends { id: string; priority?: "high" | "medium" |
 			return sortByPriority(items);
 		case "id":
 			return sortByTaskId(items);
+		case "ordinal":
+			return sortByOrdinal(items);
 		default:
-			// Default to task ID sorting for unknown fields
-			return sortByTaskId(items);
+			// Default to ordinal + priority sorting for board view
+			return sortByOrdinalAndPriority(items);
 	}
 }

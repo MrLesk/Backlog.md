@@ -14,7 +14,7 @@
 Ask questions to the user if something is not clear or ambiguous.
 Break down the task into smaller, manageable parts if it is too large or complex.
 
-### **Title**
+### **Title (one liner)**
 
 Use a clear brief title that summarizes the task.
 
@@ -95,7 +95,7 @@ Short, imperative explanation of the goal of the task and why it is needed.
 4. Write unit and integration tests
 5. Benchmark performance under load
 
-## Implementation Notes (only added after finishing the code implementation of a task)
+## Implementation Notes (imagine this is the PR description) (only added after finishing the code implementation of a task)
 
 - Approach taken
 - Features implemented or modified
@@ -112,7 +112,8 @@ Mandatory sections for every task:
   and before starting working on the task.
 - **Implementation Notes**: Document your approach, decisions, challenges, and any deviations from the plan. This
   section is added after you are done working on the task. It should summarize what you did and why you did it. Keep it
-  concise but informative.
+  concise but informative. Imagine this is the PR description. Make it brief, explain the core changes and assume that
+  others will read the code to understand the details.
 
 **IMPORTANT**: Do not implement anything else that deviates from the **Acceptance Criteria**. If you need to
 implement something that is not in the AC, update the AC first and then implement it or create a new task for it.

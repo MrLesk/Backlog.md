@@ -1,6 +1,5 @@
 import type { Server } from "bun";
 import { $ } from "bun";
-import matter from "gray-matter";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import indexHtml from "../web/index.html";
@@ -87,6 +86,9 @@ export class BacklogServer {
 					},
 					"/api/drafts/:id/promote": {
 						POST: async (req) => await this.handlePromoteDraft(req.params.id),
+					},
+					"/api/tasks/reorder": {
+						POST: async (req) => await this.handleReorderTask(req),
 					},
 				},
 				fetch: async (req, server) => {
@@ -302,27 +304,7 @@ export class BacklogServer {
 
 	private async handleCreateTask(req: Request): Promise<Response> {
 		const taskData = await req.json();
-		const id = await this.generateNextId();
-
-		const task: Task = {
-			id,
-			title: taskData.title,
-			body: taskData.body || "",
-			status: taskData.status || "",
-			assignee: taskData.assignee || [],
-			labels: taskData.labels || [],
-			dependencies: taskData.dependencies || [],
-			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-			...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
-			...(taskData.priority && { priority: taskData.priority }),
-		};
-
-		// Check if this should be a draft based on status
-		if (task.status && task.status.toLowerCase() === "draft") {
-			await this.core.createDraft(task, await this.shouldAutoCommit());
-		} else {
-			await this.core.createTask(task, await this.shouldAutoCommit());
-		}
+		const task = await this.core.createTaskFromData(taskData, await this.core.shouldAutoCommit());
 		return Response.json(task, { status: 201 });
 	}
 
@@ -346,12 +328,12 @@ export class BacklogServer {
 			...updates,
 		};
 
-		await this.core.updateTask(updatedTask, await this.shouldAutoCommit());
+		await this.core.updateTask(updatedTask, await this.core.shouldAutoCommit());
 		return Response.json(updatedTask);
 	}
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
-		const success = await this.core.archiveTask(taskId, await this.shouldAutoCommit());
+		const success = await this.core.archiveTask(taskId, await this.core.shouldAutoCommit());
 		if (!success) {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
@@ -406,7 +388,7 @@ export class BacklogServer {
 
 		try {
 			const title = filename.replace(".md", "");
-			const document = await this.core.createDocumentWithId(title, content, await this.shouldAutoCommit());
+			const document = await this.core.createDocumentWithId(title, content, await this.core.shouldAutoCommit());
 			return Response.json({ success: true, id: document.id }, { status: 201 });
 		} catch (error) {
 			console.error("Error creating document:", error);
@@ -425,13 +407,7 @@ export class BacklogServer {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
 
-			const updatedDoc = {
-				...existingDoc,
-				body: content,
-				updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-			};
-
-			await this.core.createDocument(updatedDoc, await this.shouldAutoCommit());
+			await this.core.updateDocument(existingDoc, content, await this.core.shouldAutoCommit());
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error updating document:", error);
@@ -479,7 +455,7 @@ export class BacklogServer {
 		const { title } = await req.json();
 
 		try {
-			const decision = await this.core.createDecisionWithTitle(title, await this.shouldAutoCommit());
+			const decision = await this.core.createDecisionWithTitle(title, await this.core.shouldAutoCommit());
 			return Response.json(decision, { status: 201 });
 		} catch (error) {
 			console.error("Error creating decision:", error);
@@ -491,28 +467,12 @@ export class BacklogServer {
 		const content = await req.text();
 
 		try {
-			const existingDecision = await this.core.filesystem.loadDecision(decisionId);
-
-			if (!existingDecision) {
-				return Response.json({ error: "Decision not found" }, { status: 404 });
-			}
-
-			// Parse the markdown content to extract the decision data
-			const { data } = matter(content);
-			const updatedDecision = {
-				...existingDecision,
-				title: data.title || existingDecision.title,
-				status: data.status || existingDecision.status,
-				date: data.date || existingDecision.date,
-				context: this.extractSection(content, "Context") || existingDecision.context,
-				decision: this.extractSection(content, "Decision") || existingDecision.decision,
-				consequences: this.extractSection(content, "Consequences") || existingDecision.consequences,
-				alternatives: this.extractSection(content, "Alternatives") || existingDecision.alternatives,
-			};
-
-			await this.core.createDecision(updatedDecision, await this.shouldAutoCommit());
+			await this.core.updateDecisionFromContent(decisionId, content, await this.core.shouldAutoCommit());
 			return Response.json({ success: true });
 		} catch (error) {
+			if (error instanceof Error && error.message.includes("not found")) {
+				return Response.json({ error: "Decision not found" }, { status: 404 });
+			}
 			console.error("Error updating decision:", error);
 			return Response.json({ error: "Failed to update decision" }, { status: 500 });
 		}
@@ -559,39 +519,6 @@ export class BacklogServer {
 		}
 	}
 
-	private async generateNextId(): Promise<string> {
-		const tasks = await this.core.filesystem.listTasks();
-		const drafts = await this.core.filesystem.listDrafts();
-		const all = [...tasks, ...drafts];
-
-		let max = 0;
-		for (const t of all) {
-			const match = t.id.match(/^task-(\d+)/);
-			if (match) {
-				const num = Number.parseInt(match[1] || "0", 10);
-				if (num > max) max = num;
-			}
-		}
-
-		return `task-${max + 1}`;
-	}
-
-	private async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
-		// If override is explicitly provided, use it
-		if (overrideValue !== undefined) {
-			return overrideValue;
-		}
-		// Otherwise, check config (default to false for safety)
-		const config = await this.core.filesystem.loadConfig();
-		return config?.autoCommit ?? false;
-	}
-
-	private extractSection(content: string, sectionName: string): string | undefined {
-		const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
-		const match = content.match(regex);
-		return match ? match[1]!.trim() : undefined;
-	}
-
 	private handleError(error: Error): Response {
 		console.error("Server Error:", error);
 		return new Response("Internal Server Error", { status: 500 });
@@ -618,6 +545,63 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error promoting draft:", error);
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
+		}
+	}
+
+	private async handleReorderTask(req: Request): Promise<Response> {
+		try {
+			const { taskId, newOrdinal, columnTasks } = await req.json();
+
+			if (!taskId || newOrdinal === undefined) {
+				return Response.json({ error: "Missing required fields: taskId and newOrdinal" }, { status: 400 });
+			}
+
+			// Load the task to update
+			const task = await this.core.filesystem.loadTask(taskId);
+			if (!task) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+
+			// Update the task's ordinal value
+			const updatedTask: Task = {
+				...task,
+				ordinal: newOrdinal,
+				// Note: updatedDate will be set automatically by Core.updateTask
+			};
+
+			// Save the updated task
+			await this.core.updateTask(updatedTask, await this.core.shouldAutoCommit());
+
+			// If other tasks in the column need ordinal updates (to prevent collisions)
+			if (columnTasks && Array.isArray(columnTasks)) {
+				// Reassign ordinals to prevent conflicts
+				const tasksToUpdate: Task[] = [];
+				let ordinal = 1000;
+
+				for (const columnTask of columnTasks) {
+					if (columnTask.id !== taskId) {
+						const existingTask = await this.core.filesystem.loadTask(columnTask.id);
+						if (existingTask && existingTask.ordinal !== ordinal) {
+							tasksToUpdate.push({
+								...existingTask,
+								ordinal: ordinal,
+								// Note: updatedDate will be set automatically by Core.updateTask
+							});
+						}
+						ordinal += 1000;
+					}
+				}
+
+				// Use Core's bulk update method instead of manual git operations
+				if (tasksToUpdate.length > 0) {
+					await this.core.updateTasksBulk(tasksToUpdate, "Reorder tasks in column", await this.core.shouldAutoCommit());
+				}
+			}
+
+			return Response.json({ success: true, task: updatedTask });
+		} catch (error) {
+			console.error("Error reordering task:", error);
+			return Response.json({ error: "Failed to reorder task" }, { status: 500 });
 		}
 	}
 }

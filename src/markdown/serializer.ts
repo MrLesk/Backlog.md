@@ -16,6 +16,7 @@ export function serializeTask(task: Task): string {
 		...(task.parentTaskId && { parent_task_id: task.parentTaskId }),
 		...(task.subtasks && task.subtasks.length > 0 && { subtasks: task.subtasks }),
 		...(task.priority && { priority: task.priority }),
+		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
 	};
 
 	const serialized = matter.stringify(task.body, frontmatter);
@@ -124,7 +125,7 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 
 	if (match) {
 		// Append to existing section
-		const existingNotes = match[1]!.trim();
+		const existingNotes = match[1]?.trim() || "";
 		const newNotes = existingNotes ? `${existingNotes}\n\n${notes}` : notes;
 		return content.replace(notesRegex, `## Implementation Notes\n\n${newNotes}`);
 	}

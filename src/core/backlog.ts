@@ -41,7 +41,7 @@ export class Core {
 		return DEFAULT_DIRECTORIES.BACKLOG;
 	}
 
-	private async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
+	async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
 		// If override is explicitly provided, use it
 		if (overrideValue !== undefined) {
 			return overrideValue;
@@ -78,7 +78,165 @@ export class Core {
 		}
 	}
 
+	// ID generation
+	async generateNextId(parent?: string): Promise<string> {
+		// Ensure git operations have access to the config
+		await this.ensureConfigLoaded();
+
+		const config = await this.fs.loadConfig();
+		// Load local tasks and drafts in parallel
+		const [tasks, drafts] = await Promise.all([this.fs.listTasks(), this.fs.listDrafts()]);
+
+		const allIds: string[] = [];
+
+		// Add local task and draft IDs first
+		for (const t of tasks) {
+			allIds.push(t.id);
+		}
+		for (const d of drafts) {
+			allIds.push(d.id);
+		}
+
+		try {
+			const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+
+			// Skip remote operations if disabled
+			if (config?.remoteOperations === false) {
+				if (process.env.DEBUG) {
+					console.log("Remote operations disabled - generating ID from local tasks only");
+				}
+			} else {
+				await this.git.fetch();
+			}
+
+			const branches = await this.git.listAllBranches();
+
+			// Filter and normalize branch names - handle both local and remote branches
+			const normalizedBranches = branches
+				.flatMap((branch) => {
+					// For remote branches like "origin/feature", extract just "feature"
+					// But also try the full remote ref in case it's needed
+					if (branch.startsWith("origin/")) {
+						return [branch, branch.replace("origin/", "")];
+					}
+					return [branch];
+				})
+				// Remove duplicates and filter out HEAD
+				.filter((branch, index, arr) => arr.indexOf(branch) === index && branch !== "HEAD" && !branch.includes("HEAD"));
+
+			// Load files from all branches in parallel with better error handling
+			const branchFilePromises = normalizedBranches.map(async (branch) => {
+				try {
+					const files = await this.git.listFilesInTree(branch, `${backlogDir}/tasks`);
+					return files
+						.map((file) => {
+							const match = file.match(/task-(\d+)/);
+							return match ? `task-${match[1]}` : null;
+						})
+						.filter((id): id is string => id !== null);
+				} catch (error) {
+					// Silently ignore errors for individual branches (they might not exist or be accessible)
+					if (process.env.DEBUG) {
+						console.log(`Could not access branch ${branch}:`, error);
+					}
+					return [];
+				}
+			});
+
+			const branchResults = await Promise.all(branchFilePromises);
+			for (const branchIds of branchResults) {
+				allIds.push(...branchIds);
+			}
+		} catch (error) {
+			// Suppress errors for offline mode or other git issues
+			if (process.env.DEBUG) {
+				console.error("Could not fetch remote task IDs:", error);
+			}
+		}
+
+		if (parent) {
+			const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
+			let max = 0;
+			// Iterate over allIds (which now includes both local and remote)
+			for (const id of allIds) {
+				if (id.startsWith(`${prefix}.`)) {
+					const rest = id.slice(prefix.length + 1);
+					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
+					if (num > max) max = num;
+				}
+			}
+			const nextSubIdNumber = max + 1;
+			const padding = config?.zeroPaddedIds;
+
+			if (padding && typeof padding === "number" && padding > 0) {
+				// Pad sub-tasks to 2 digits. This supports up to 99 sub-tasks,
+				// which is a reasonable limit and keeps IDs from getting too long.
+				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
+				return `${prefix}.${paddedSubId}`;
+			}
+
+			return `${prefix}.${nextSubIdNumber}`;
+		}
+
+		let max = 0;
+		// Iterate over allIds (which now includes both local and remote)
+		for (const id of allIds) {
+			const match = id.match(/^task-(\d+)/);
+			if (match) {
+				const num = Number.parseInt(match[1] || "0", 10);
+				if (num > max) max = num;
+			}
+		}
+		const nextIdNumber = max + 1;
+		const padding = config?.zeroPaddedIds;
+
+		if (padding && typeof padding === "number" && padding > 0) {
+			const paddedId = String(nextIdNumber).padStart(padding, "0");
+			return `task-${paddedId}`;
+		}
+
+		return `task-${nextIdNumber}`;
+	}
+
 	// High-level operations that combine filesystem and git
+	async createTaskFromData(
+		taskData: {
+			title: string;
+			body?: string;
+			status?: string;
+			assignee?: string[];
+			labels?: string[];
+			dependencies?: string[];
+			parentTaskId?: string;
+			priority?: "high" | "medium" | "low";
+		},
+		autoCommit?: boolean,
+	): Promise<Task> {
+		const id = await this.generateNextId();
+
+		const task: Task = {
+			id,
+			title: taskData.title,
+			body: taskData.body || "",
+			status: taskData.status || "",
+			assignee: taskData.assignee || [],
+			labels: taskData.labels || [],
+			dependencies: taskData.dependencies || [],
+			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+			...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
+			...(taskData.priority && { priority: taskData.priority }),
+		};
+
+		// Check if this should be a draft based on status
+		if (task.status && task.status.toLowerCase() === "draft") {
+			await this.createDraft(task, autoCommit);
+		} else {
+			await this.createTask(task, autoCommit);
+		}
+
+		return task;
+	}
+
 	async createTask(task: Task, autoCommit?: boolean): Promise<string> {
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
@@ -143,6 +301,20 @@ export class Core {
 			if (filePath) {
 				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
 			}
+		}
+	}
+
+	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+		// Update all tasks without committing individually
+		for (const task of tasks) {
+			await this.updateTask(task, false); // Don't auto-commit each one
+		}
+
+		// Commit all changes at once if auto-commit is enabled
+		if (await this.shouldAutoCommit(autoCommit)) {
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(commitMessage || `Update ${tasks.length} tasks`);
 		}
 	}
 
@@ -252,6 +424,36 @@ export class Core {
 		}
 	}
 
+	async updateDecisionFromContent(decisionId: string, content: string, autoCommit?: boolean): Promise<void> {
+		const existingDecision = await this.fs.loadDecision(decisionId);
+		if (!existingDecision) {
+			throw new Error(`Decision ${decisionId} not found`);
+		}
+
+		// Parse the markdown content to extract the decision data
+		const matter = await import("gray-matter");
+		const { data } = matter.default(content);
+
+		const extractSection = (content: string, sectionName: string): string | undefined => {
+			const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
+			const match = content.match(regex);
+			return match ? match[1]?.trim() : undefined;
+		};
+
+		const updatedDecision = {
+			...existingDecision,
+			title: data.title || existingDecision.title,
+			status: data.status || existingDecision.status,
+			date: data.date || existingDecision.date,
+			context: extractSection(content, "Context") || existingDecision.context,
+			decision: extractSection(content, "Decision") || existingDecision.decision,
+			consequences: extractSection(content, "Consequences") || existingDecision.consequences,
+			alternatives: extractSection(content, "Alternatives") || existingDecision.alternatives,
+		};
+
+		await this.createDecision(updatedDecision, autoCommit);
+	}
+
 	async createDecisionWithTitle(title: string, autoCommit?: boolean): Promise<Decision> {
 		// Import the generateNextDecisionId function from CLI
 		const { generateNextDecisionId } = await import("../cli.js");
@@ -279,6 +481,16 @@ export class Core {
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Add document ${doc.id}`);
 		}
+	}
+
+	async updateDocument(existingDoc: Document, content: string, autoCommit?: boolean): Promise<void> {
+		const updatedDoc = {
+			...existingDoc,
+			body: content,
+			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+		};
+
+		await this.createDocument(updatedDoc, autoCommit);
 	}
 
 	async createDocumentWithId(title: string, content: string, autoCommit?: boolean): Promise<Document> {

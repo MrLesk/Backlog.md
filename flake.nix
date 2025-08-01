@@ -4,9 +4,13 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    bun2nix = {
+      url = "github:baileyluTCD/bun2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, bun2nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -15,23 +19,22 @@
         packageJson = builtins.fromJSON (builtins.readFile ./package.json);
         version = packageJson.version;
         
-        backlog-md = pkgs.stdenv.mkDerivation rec {
+        backlog-md = bun2nix.lib.${system}.mkBunDerivation {
           pname = "backlog-md";
           inherit version;
-          
           src = ./.;
+          packageJson = ./package.json;
+          bunNix = ./bun.nix;
           
-          nativeBuildInputs = with pkgs; [
-            bun
-            nodejs_20
-            git
-          ];
+          nativeBuildInputs = with pkgs; [ bun git rsync ];
+          
+          preBuild = ''
+            export HOME=$TMPDIR
+            export HUSKY=0
+          '';
           
           buildPhase = ''
             runHook preBuild
-            
-            # Install dependencies
-            bun install --frozen-lockfile
             
             # Build CSS
             bun run build:css
@@ -88,6 +91,11 @@
         };
         
         devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
+            bun
+            bun2nix.packages.${system}.default
+          ];
+          
           buildInputs = with pkgs; [
             bun
             nodejs_20

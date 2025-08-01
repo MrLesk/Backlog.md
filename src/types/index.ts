@@ -17,9 +17,10 @@ export interface Task {
 	subtasks?: string[];
 	priority?: "high" | "medium" | "low";
 	branch?: string;
+	ordinal?: number;
 	// Metadata fields (previously in TaskWithMetadata)
 	lastModified?: Date;
-	source?: "local" | "remote";
+	source?: "local" | "remote" | "completed";
 }
 
 export interface Decision {
@@ -67,6 +68,9 @@ export interface BacklogConfig {
 	zeroPaddedIds?: number;
 	timezonePreference?: string; // e.g., 'UTC', 'America/New_York', or 'local'
 	includeDateTimeInDates?: boolean; // Whether to include time in new dates
+	bypassGitHooks?: boolean;
+	checkActiveBranches?: boolean; // Check task states across active branches (default: true)
+	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
 }
 
 export interface ParsedMarkdown {

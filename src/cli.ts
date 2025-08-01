@@ -123,31 +123,15 @@ program
 				}
 			}
 
-			// Configuration prompts with intelligent defaults - step by step to ensure proper order
-			const basicPrompts = await prompts(
-				[
-					{
-						type: "confirm",
-						name: "autoCommit",
-						message: "Enable automatic git commits for task operations?",
-						hint: "When enabled, task changes are automatically committed to git",
-						initial: existingConfig?.autoCommit ?? false,
-					},
-					{
-						type: "confirm",
-						name: "remoteOperations",
-						message: "Enable remote git operations? (needed to fetch tasks from remote branches)",
-						hint: "Required for accessing tasks from feature branches and remote repos",
-						initial: existingConfig?.remoteOperations ?? true,
-					},
-					{
-						type: "confirm",
-						name: "enableZeroPadding",
-						message: "Enable zero-padded IDs for consistent formatting? (3 -> task-001, task-023)",
-						hint: "Example: task-001, doc-001 instead of task-1, doc-1",
-						initial: (existingConfig?.zeroPaddedIds ?? 0) > 0,
-					},
-				],
+			// 1. Cross-branch checking configuration
+			const crossBranchPrompt = await prompts(
+				{
+					type: "confirm",
+					name: "checkActiveBranches",
+					message: "Check task states across active branches?",
+					hint: "Ensures accurate task tracking across branches (may impact performance on large repos)",
+					initial: existingConfig?.checkActiveBranches ?? true,
+				},
 				{
 					onCancel: () => {
 						console.log("Aborting initialization.");
@@ -156,9 +140,87 @@ program
 				},
 			);
 
-			// Zero-padding configuration (conditional) - ask immediately after enable question
+			let remoteOperations = false;
+			let activeBranchDays = 30;
+
+			if (crossBranchPrompt.checkActiveBranches) {
+				// 1.1 Remote branches checking
+				const remotePrompt = await prompts(
+					{
+						type: "confirm",
+						name: "remoteOperations",
+						message: "Check task states in remote branches?",
+						hint: "Required for accessing tasks from feature branches on remote repos",
+						initial: existingConfig?.remoteOperations ?? true,
+					},
+					{
+						onCancel: () => {
+							console.log("Aborting initialization.");
+							process.exit(1);
+						},
+					},
+				);
+				remoteOperations = remotePrompt.remoteOperations ?? false;
+
+				// 1.2 Active branch days
+				const daysPrompt = await prompts(
+					{
+						type: "number",
+						name: "activeBranchDays",
+						message: "How many days should a branch be considered active?",
+						hint: "Lower values improve performance (default: 30 days)",
+						initial: existingConfig?.activeBranchDays || 30,
+						min: 1,
+						max: 365,
+					},
+					{
+						onCancel: () => {
+							console.log("Aborting initialization.");
+							process.exit(1);
+						},
+					},
+				);
+				activeBranchDays = daysPrompt.activeBranchDays || 30;
+			}
+
+			// 2. Git hooks bypass prompt
+			const gitHooksPrompt = await prompts(
+				{
+					type: "confirm",
+					name: "bypassGitHooks",
+					message: "Bypass git hooks when committing?",
+					hint: "Use --no-verify flag to skip pre-commit hooks",
+					initial: existingConfig?.bypassGitHooks ?? false,
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+			const bypassGitHooks = gitHooksPrompt.bypassGitHooks ?? false;
+
+			// 3. Zero-padding configuration
+			const zeroPaddingPrompt = await prompts(
+				{
+					type: "confirm",
+					name: "enableZeroPadding",
+					message: "Enable zero-padded IDs for consistent formatting?",
+					hint: "Example: task-001, doc-001 instead of task-1, doc-1",
+					initial: (existingConfig?.zeroPaddedIds ?? 0) > 0,
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+
 			let zeroPaddedIds: number | undefined;
-			if (basicPrompts.enableZeroPadding) {
+			if (zeroPaddingPrompt.enableZeroPadding) {
+				// 3.1 Number of digits for zero-padding
 				const paddingPrompt = await prompts(
 					{
 						type: "number",
@@ -185,12 +247,58 @@ program
 				zeroPaddedIds = 0;
 			}
 
-			// Web UI configuration prompt
+			// 4. Default editor configuration
+			const editorPrompt = await prompts(
+				{
+					type: "text",
+					name: "editor",
+					message: "Default editor command (optional):",
+					hint: "e.g., 'code --wait', 'vim', 'nano'",
+					initial: existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || "",
+				},
+				{
+					onCancel: () => {
+						console.log("Aborting initialization.");
+						process.exit(1);
+					},
+				},
+			);
+
+			let defaultEditor: string | undefined;
+			if (editorPrompt?.editor) {
+				const { isEditorAvailable } = await import("./utils/editor.ts");
+				const isAvailable = await isEditorAvailable(editorPrompt.editor);
+				if (isAvailable) {
+					defaultEditor = editorPrompt.editor;
+				} else {
+					console.warn(`Warning: Editor command '${editorPrompt.editor}' not found in PATH`);
+					// Still allow them to set it even if not found
+					const confirmAnyway = await prompts(
+						{
+							type: "confirm",
+							name: "confirm",
+							message: "Editor not found in PATH. Set it anyway?",
+							initial: false,
+						},
+						{
+							onCancel: () => {
+								console.log("Aborting initialization.");
+								process.exit(1);
+							},
+						},
+					);
+					if (confirmAnyway?.confirm) {
+						defaultEditor = editorPrompt.editor;
+					}
+				}
+			}
+
+			// 5. Web UI configuration
 			const webUIPrompt = await prompts(
 				{
 					type: "confirm",
 					name: "configureWebUI",
-					message: "Configure web UI settings?",
+					message: "Override default web UI settings?",
 					hint: "Optional: Set custom port and browser behavior",
 					initial: false,
 				},
@@ -237,59 +345,7 @@ program
 				}
 			}
 
-			// Combine all configuration responses
-			const configPrompts = {
-				...basicPrompts,
-				configureWebUI: webUIPrompt.configureWebUI,
-			};
-
-			// Default editor configuration - always prompt during init
-			const editorPrompt = await prompts(
-				{
-					type: "text",
-					name: "editor",
-					message: "Default editor command (optional):",
-					hint: "e.g., 'code --wait', 'vim', 'nano'",
-					initial: existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || "",
-				},
-				{
-					onCancel: () => {
-						console.log("Aborting initialization.");
-						process.exit(1);
-					},
-				},
-			);
-
-			let defaultEditor: string | undefined;
-			if (editorPrompt?.editor) {
-				const { isEditorAvailable } = await import("./utils/editor.ts");
-				const isAvailable = await isEditorAvailable(editorPrompt.editor);
-				if (isAvailable) {
-					defaultEditor = editorPrompt.editor;
-				} else {
-					console.warn(`Warning: Editor command '${editorPrompt.editor}' not found in PATH`);
-					// Still allow them to set it even if not found
-					const confirmAnyway = await prompts(
-						{
-							type: "confirm",
-							name: "confirm",
-							message: "Editor not found in PATH. Set it anyway?",
-							initial: false,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
-					if (confirmAnyway?.confirm) {
-						defaultEditor = editorPrompt.editor;
-					}
-				}
-			}
-
-			// Agent instruction files selection
+			// 6. Agent instruction files selection
 			const agentOptions = [
 				".cursorrules",
 				"CLAUDE.md",
@@ -302,7 +358,7 @@ program
 				{
 					type: "multiselect",
 					name: "files",
-					message: "Select agent instruction files to update",
+					message: "Select agent instruction files to update (space to select)",
 					choices: agentOptions.map((name) => ({
 						title: name === ".github/copilot-instructions.md" ? "Copilot" : name,
 						value: name,
@@ -319,7 +375,7 @@ program
 			);
 			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
 
-			// Claude agent installation prompt
+			// 7. Claude agent installation prompt
 			const claudeAgentPrompt = await prompts(
 				{
 					type: "confirm",
@@ -345,8 +401,11 @@ program
 				defaultStatus: existingConfig?.defaultStatus || "To Do",
 				dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
 				maxColumnWidth: existingConfig?.maxColumnWidth || 20,
-				autoCommit: configPrompts.autoCommit,
-				remoteOperations: configPrompts.remoteOperations,
+				autoCommit: existingConfig?.autoCommit ?? false, // Keep autoCommit as hidden/advanced setting
+				remoteOperations,
+				bypassGitHooks,
+				checkActiveBranches: crossBranchPrompt.checkActiveBranches ?? true,
+				activeBranchDays,
 				...(defaultEditor && { defaultEditor }),
 				// Web UI config: use new values, preserve existing, or set defaults
 				defaultPort:
@@ -370,6 +429,7 @@ program
 			console.log(`  Project Name: ${config.projectName}`);
 			console.log(`  Auto Commit: ${config.autoCommit}`);
 			console.log(`  Remote Operations: ${config.remoteOperations}`);
+			if (config.bypassGitHooks) console.log(`  Bypass Git Hooks: ${config.bypassGitHooks}`);
 			if (config.defaultEditor) console.log(`  Default Editor: ${config.defaultEditor}`);
 			if (config.defaultPort) console.log(`  Web UI Port: ${config.defaultPort}`);
 			if (config.autoOpenBrowser !== undefined) console.log(`  Auto Open Browser: ${config.autoOpenBrowser}`);
@@ -544,125 +604,6 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	return `decision-${nextIdNumber}`;
 }
 
-async function generateNextId(core: Core, parent?: string): Promise<string> {
-	// Ensure git operations have access to the config
-	await core.ensureConfigLoaded();
-
-	const config = await core.filesystem.loadConfig();
-	// Load local tasks and drafts in parallel
-	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
-
-	const allIds: string[] = [];
-
-	// Add local task and draft IDs first
-	for (const t of tasks) {
-		allIds.push(t.id);
-	}
-	for (const d of drafts) {
-		allIds.push(d.id);
-	}
-
-	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local tasks only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
-		const branches = await core.gitOps.listAllBranches();
-
-		// Filter and normalize branch names - handle both local and remote branches
-		const normalizedBranches = branches
-			.flatMap((branch) => {
-				// For remote branches like "origin/feature", extract just "feature"
-				// But also try the full remote ref in case it's needed
-				if (branch.startsWith("origin/")) {
-					return [branch, branch.replace("origin/", "")];
-				}
-				return [branch];
-			})
-			// Remove duplicates and filter out HEAD
-			.filter((branch, index, arr) => arr.indexOf(branch) === index && branch !== "HEAD" && !branch.includes("HEAD"));
-
-		// Load files from all branches in parallel with better error handling
-		const branchFilePromises = normalizedBranches.map(async (branch) => {
-			try {
-				const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/tasks`);
-				return files
-					.map((file) => {
-						const match = file.match(/task-(\d+)/);
-						return match ? `task-${match[1]}` : null;
-					})
-					.filter((id): id is string => id !== null);
-			} catch (error) {
-				// Silently ignore errors for individual branches (they might not exist or be accessible)
-				if (process.env.DEBUG) {
-					console.log(`Could not access branch ${branch}:`, error);
-				}
-				return [];
-			}
-		});
-
-		const branchResults = await Promise.all(branchFilePromises);
-		for (const branchIds of branchResults) {
-			allIds.push(...branchIds);
-		}
-	} catch (error) {
-		// Suppress errors for offline mode or other git issues
-		if (process.env.DEBUG) {
-			console.error("Could not fetch remote task IDs:", error);
-		}
-	}
-
-	if (parent) {
-		const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
-		let max = 0;
-		// Iterate over allIds (which now includes both local and remote)
-		for (const id of allIds) {
-			if (id.startsWith(`${prefix}.`)) {
-				const rest = id.slice(prefix.length + 1);
-				const num = Number.parseInt(rest.split(".")[0] || "0", 10);
-				if (num > max) max = num;
-			}
-		}
-		const nextSubIdNumber = max + 1;
-		const padding = config?.zeroPaddedIds;
-
-		if (padding && typeof padding === "number" && padding > 0) {
-			// Pad sub-tasks to 2 digits. This supports up to 99 sub-tasks,
-			// which is a reasonable limit and keeps IDs from getting too long.
-			const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
-			return `${prefix}.${paddedSubId}`;
-		}
-
-		return `${prefix}.${nextSubIdNumber}`;
-	}
-
-	let max = 0;
-	// Iterate over allIds (which now includes both local and remote)
-	for (const id of allIds) {
-		const match = id.match(/^task-(\d+)/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `task-${paddedId}`;
-	}
-
-	return `task-${nextIdNumber}`;
-}
-
 function normalizeDependencies(dependencies: unknown): string[] {
 	if (!dependencies) return [];
 
@@ -783,7 +724,7 @@ taskCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await generateNextId(core, options.parent);
+		const id = await core.generateNextId(options.parent);
 		const task = buildTaskFromOptions(id, title, options);
 
 		// Validate dependencies if provided
@@ -1016,6 +957,7 @@ taskCmd
 	.option("-s, --status <status>")
 	.option("-l, --label <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
+	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
 	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
@@ -1067,6 +1009,15 @@ taskCmd
 				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
 				return;
 			}
+		}
+
+		if (options.ordinal !== undefined) {
+			const ordinal = Number(options.ordinal);
+			if (Number.isNaN(ordinal) || ordinal < 0) {
+				console.error(`Invalid ordinal: ${options.ordinal}. Must be a non-negative number.`);
+				return;
+			}
+			task.ordinal = ordinal;
 		}
 
 		const labels = [...task.labels];
@@ -1318,7 +1269,7 @@ draftCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await generateNextId(core);
+		const id = await core.generateNextId();
 		const task = buildTaskFromOptions(id, title, options);
 		const filepath = await core.createDraft(task);
 		console.log(`Created draft ${id}`);
@@ -1835,13 +1786,22 @@ configCmd
 				case "autoCommit":
 					console.log(config.autoCommit?.toString() || "");
 					break;
+				case "bypassGitHooks":
+					console.log(config.bypassGitHooks?.toString() || "");
+					break;
 				case "zeroPaddedIds":
 					console.log(config.zeroPaddedIds?.toString() || "(disabled)");
+					break;
+				case "checkActiveBranches":
+					console.log(config.checkActiveBranches?.toString() || "true");
+					break;
+				case "activeBranchDays":
+					console.log(config.activeBranchDays?.toString() || "30");
 					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -1942,6 +1902,18 @@ configCmd
 					}
 					break;
 				}
+				case "bypassGitHooks": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.bypassGitHooks = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.bypassGitHooks = false;
+					} else {
+						console.error("bypassGitHooks must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "zeroPaddedIds": {
 					const padding = Number.parseInt(value, 10);
 					if (Number.isNaN(padding) || padding < 0) {
@@ -1950,6 +1922,27 @@ configCmd
 					}
 					// Set to undefined if 0 to remove it from config
 					config.zeroPaddedIds = padding > 0 ? padding : undefined;
+					break;
+				}
+				case "checkActiveBranches": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.checkActiveBranches = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.checkActiveBranches = false;
+					} else {
+						console.error("checkActiveBranches must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
+				case "activeBranchDays": {
+					const days = Number.parseInt(value, 10);
+					if (Number.isNaN(days) || days < 0) {
+						console.error("activeBranchDays must be a non-negative number.");
+						process.exit(1);
+					}
+					config.activeBranchDays = days;
 					break;
 				}
 				case "statuses":
@@ -1962,7 +1955,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, zeroPaddedIds",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -2002,7 +1995,10 @@ configCmd
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
+			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
 			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
+			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
+			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;
@@ -2173,6 +2169,30 @@ program
 			});
 		} catch (err) {
 			console.error("Failed to start browser interface", err);
+			process.exitCode = 1;
+		}
+	});
+
+// Overview command for statistics
+program
+	.command("overview")
+	.description("display project statistics and metrics")
+	.action(async () => {
+		try {
+			const cwd = process.cwd();
+			const core = new Core(cwd);
+			const config = await core.filesystem.loadConfig();
+
+			if (!config) {
+				console.error("No backlog project found. Initialize one first with: backlog init");
+				process.exit(1);
+			}
+
+			// Import and run the overview command
+			const { runOverviewCommand } = await import("./commands/overview.ts");
+			await runOverviewCommand(core);
+		} catch (err) {
+			console.error("Failed to display project overview", err);
 			process.exitCode = 1;
 		}
 	});

@@ -158,20 +158,18 @@ When re-initializing an existing project, all current configuration values are p
 | Export board | `backlog board export [file]` (exports Kanban board to markdown) |
 | Export with version | `backlog board export --export-version "v1.0.0"` (includes version in export) |
 
+### Statistics & Overview
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Project overview | `backlog overview` (interactive TUI showing project statistics) |
+
 ### Web Interface
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
 | Web interface | `backlog browser` (launches web UI on port 6420) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
-
-### Configuration
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Config editor | `backlog config set defaultEditor "code --wait"` |
-| Enable auto-commit | `backlog config set autoCommit true` |
-| View config | `backlog config list` |
 
 ### Documentation
 
@@ -215,26 +213,45 @@ Backlog.md merges the following layers (highest → lowest):
 3. `~/backlog/user` (per‑user)
 4. Built‑ins
 
-Key options:
+### Configuration Commands
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| View all configs | `backlog config list` |
+| Get specific config | `backlog config get defaultEditor` |
+| Set config value | `backlog config set defaultEditor "code --wait"` |
+| Enable auto-commit | `backlog config set autoCommit true` |
+| Bypass git hooks | `backlog config set bypassGitHooks true` |
+| Enable cross-branch check | `backlog config set checkActiveBranches true` |
+| Set active branch days | `backlog config set activeBranchDays 30` |
+
+### Available Configuration Options
 
 | Key               | Purpose            | Default                       |
 |-------------------|--------------------|-------------------------------|
-| `default_assignee`| Pre‑fill assignee  | `[]`                          |
-| `default_status`  | First column       | `To Do`                       |
+| `defaultAssignee` | Pre‑fill assignee  | `[]`                          |
+| `defaultStatus`   | First column       | `To Do`                       |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
-| `date_format`     | Date/time format   | `yyyy-mm-dd hh:mm`            |
-| `timezone_preference` | Timezone for dates | `UTC`                     |
-| `include_datetime_in_dates` | Add time to new dates | `true`              |
-| `default_editor`  | Editor for 'E' key | Platform default (nano/notepad) |
-| `default_port`    | Web UI port        | `6420`                        |
-| `auto_open_browser`| Open browser automatically | `true`            |
-| `remote_operations`| Enable remote git operations | `true`           |
-| `auto_commit`     | Automatically commit task changes | `false`       |
-| `zero_padded_ids` | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
+| `dateFormat`      | Date/time format   | `yyyy-mm-dd hh:mm`            |
+| `timezonePreference` | Timezone for dates | `UTC`                     |
+| `includeDatetimeInDates` | Add time to new dates | `true`              |
+| `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
+| `defaultPort`     | Web UI port        | `6420`                        |
+| `autoOpenBrowser` | Open browser automatically | `true`            |
+| `remoteOperations`| Enable remote git operations | `true`           |
+| `autoCommit`      | Automatically commit task changes | `false`       |
+| `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
+| `zeroPaddedIds`   | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
+| `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
+| `activeBranchDays` | How many days a branch is considered active | `30` |
 
-> **Note**: Set `remote_operations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
+> **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
-> **Git Control**: By default, `auto_commit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `auto_commit: true` if you prefer automatic commits for each task operation.
+> **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
+
+> **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
+
+> **Performance**: Cross-branch checking ensures accurate task tracking across all active branches but may impact performance on large repositories. You can disable it by setting `checkActiveBranches: false` for maximum speed, or adjust `activeBranchDays` to control how far back to look for branch activity (lower values = better performance).
 
 > **Date/Time Support**: Backlog.md now supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility. Use the migration script `bun src/scripts/migrate-dates.ts` to optionally add time to existing items.
 
@@ -270,22 +287,31 @@ Perfect for sharing project status, creating reports, or storing snapshots in ve
 
 <!-- BOARD_START -->
 
-## 📊 Backlog.md Project Status (v1.5.8)
+## 📊 Backlog.md Project Status (v1.6.5)
 
 This board was automatically generated by [Backlog.md](https://backlog.md)
 
-Generated on: 2025-07-25 21:04:15
+Generated on: 2025-07-31 21:45:02
 
 | To Do | In Progress | Done |
 | --- | --- | --- |
-| **task-203** - Show meaningful description in web kanban<br>(Assignees: none, Labels: frontend, enhancement) | **└─ task-24.1** - CLI: Kanban board milestone view<br>(Assignees: @codex, Labels: none) | **task-205** - Fix Claude Code agent trying to use slash commands instead of backlog CLI<br>(Assignees: @claude, Labels: bug, agent) |
-| **task-201** - Add configurable git hooks bypass option<br>(Assignees: none, Labels: enhancement, git) |  | **task-204** - Add Experimental Claude Code backlog.md agent integration to init command<br>(Assignees: @claude, Labels: cli, integration, dx) |
-| **task-200** - Add Claude Code integration with workflow commands during init<br>(Assignees: none, Labels: enhancement, developer-experience) |  | **task-202** - Fix editor integration regression with Helix and other interactive editors<br>(Assignees: none, Labels: bug, regression, editor) |
-| **task-183** - Add ordinal field for custom task ordering in web UI<br>(Assignees: none, Labels: none) |  | **task-199** - Add version parameter to board export command<br>(Assignees: none, Labels: none) |
-| **task-181** - Add statistics dashboard to web UI<br>(Assignees: none, Labels: none) |  | **task-198** - Fix markdown content overflow beyond screen width<br>(Assignees: none, Labels: none) |
-| **task-180** - Add statistics overview command to CLI with TUI interface<br>(Assignees: none, Labels: none) |  | **task-197** - Fix decision page refresh showing blank screen<br>(Assignees: none, Labels: none) |
-| **task-175** - Add hour and minute to all dates in drafts, tasks, documents, decisions<br>(Assignees: none, Labels: none) |  | **task-196** - Add NixOS packaging support<br>(Assignees: none, Labels: none) |
-| **task-172** - Order tasks by status and ID in both web and CLI lists<br>(Assignees: none, Labels: none) |  | **task-191** - Migrate from Bun.spawn to Bun shell API<br>(Assignees: @gemini, @claude, Labels: refactoring, developer-experience) |
+| **task-218** - Update documentation and tests for sequences<br>(Assignees: none, Labels: sequences, documentation, testing) | **└─ task-24.1** - CLI: Kanban board milestone view<br>(Assignees: @codex, Labels: none) | **task-219** - Refactor server component to fix separation of concerns violations<br>(Assignees: none, Labels: refactoring, architecture, server) |
+| **task-217** - Create web UI for sequences with drag-and-drop<br>(Assignees: none, Labels: sequences, web-ui, frontend) |  | **task-210** - Refactor Nix packaging to build node_modules offline<br>(Assignees: none, Labels: nix, build, packaging) |
+| **task-216** - Add server API endpoints and web UI for sequences<br>(Assignees: none, Labels: sequences, api, backend, web-ui, frontend) |  | **task-209** - Fix cleanup command to handle non-standard task filenames<br>(Assignees: @claude, Labels: bug-fix, cli) |
+| **task-215** - Implement TUI view for sequences<br>(Assignees: none, Labels: sequences, tui, ui) |  | **task-207** - Reorganize backlog init command questions order<br>(Assignees: @claude, Labels: cli, ux, enhancement) |
+| **task-214** - Add CLI command to list sequences (plain text output)<br>(Assignees: none, Labels: sequences, cli) |  | **task-205** - Fix Claude Code agent trying to use slash commands instead of backlog CLI<br>(Assignees: @claude, Labels: bug, agent) |
+| **task-213** - Compute sequences from task dependencies<br>(Assignees: none, Labels: sequences, core) |  | **task-204** - Add Experimental Claude Code backlog.md agent integration to init command<br>(Assignees: @claude, Labels: cli, integration, dx) |
+| **task-212** - Improve board export UI formatting and readability<br>(Assignees: none, Labels: formatting, dx, cli) |  | **task-203** - Show meaningful description in web kanban<br>(Assignees: @claude, Labels: frontend, enhancement) |
+| **task-211** - Add version number display to browser UI<br>(Assignees: none, Labels: ui, frontend, enhancement) |  | **task-202** - Fix editor integration regression with Helix and other interactive editors<br>(Assignees: none, Labels: bug, regression, editor) |
+| **task-208** - Add paste-as-markdown support in Web UI<br>(Assignees: none, Labels: web-ui, enhancement, markdown) |  | **task-201** - Add configurable git hooks bypass option<br>(Assignees: @claude, Labels: enhancement, git) |
+| **task-206** - Order done column by updatedDate in board export<br>(Assignees: none, Labels: board, export, sorting) |  | **task-199** - Add version parameter to board export command<br>(Assignees: none, Labels: none) |
+| **task-200** - Add Claude Code integration with workflow commands during init<br>(Assignees: none, Labels: enhancement, developer-experience) |  | **task-198** - Fix markdown content overflow beyond screen width<br>(Assignees: none, Labels: none) |
+| **task-181** - Add statistics dashboard to web UI<br>(Assignees: none, Labels: none) |  | **task-197** - Fix decision page refresh showing blank screen<br>(Assignees: none, Labels: none) |
+| **task-172** - Order tasks by status and ID in both web and CLI lists<br>(Assignees: none, Labels: none) |  | **task-196** - Add NixOS packaging support<br>(Assignees: none, Labels: none) |
+|  |  | **task-191** - Migrate from Bun.spawn to Bun shell API<br>(Assignees: @gemini, @claude, Labels: refactoring, developer-experience) |
+|  |  | **task-183** - Add ordinal field for custom task ordering in web UI<br>(Assignees: Claude, Labels: none) |
+|  |  | **task-180** - Add statistics overview command to CLI with TUI interface<br>(Assignees: @claude, Labels: none) |
+|  |  | **task-175** - Add hour and minute to all dates in drafts, tasks, documents, decisions<br>(Assignees: @claude, Labels: none) |
 
 <!-- BOARD_END -->
 

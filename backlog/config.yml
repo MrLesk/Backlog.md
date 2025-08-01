@@ -13,3 +13,6 @@ auto_commit: false
 zero_padded_ids: 3
 timezone_preference: "UTC"
 include_datetime_in_dates: true
+bypass_git_hooks: false
+check_active_branches: true
+active_branch_days: 10
