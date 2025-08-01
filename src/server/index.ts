@@ -304,7 +304,7 @@ export class BacklogServer {
 
 	private async handleCreateTask(req: Request): Promise<Response> {
 		const taskData = await req.json();
-		const task = await this.core.createTaskFromData(taskData, await this.core.shouldAutoCommit());
+		const task = await this.core.createTaskFromData(taskData);
 		return Response.json(task, { status: 201 });
 	}
 
@@ -328,12 +328,12 @@ export class BacklogServer {
 			...updates,
 		};
 
-		await this.core.updateTask(updatedTask, await this.core.shouldAutoCommit());
+		await this.core.updateTask(updatedTask);
 		return Response.json(updatedTask);
 	}
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
-		const success = await this.core.archiveTask(taskId, await this.core.shouldAutoCommit());
+		const success = await this.core.archiveTask(taskId);
 		if (!success) {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
@@ -388,7 +388,7 @@ export class BacklogServer {
 
 		try {
 			const title = filename.replace(".md", "");
-			const document = await this.core.createDocumentWithId(title, content, await this.core.shouldAutoCommit());
+			const document = await this.core.createDocumentWithId(title, content);
 			return Response.json({ success: true, id: document.id }, { status: 201 });
 		} catch (error) {
 			console.error("Error creating document:", error);
@@ -407,7 +407,7 @@ export class BacklogServer {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
 
-			await this.core.updateDocument(existingDoc, content, await this.core.shouldAutoCommit());
+			await this.core.updateDocument(existingDoc, content);
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error updating document:", error);
@@ -455,7 +455,7 @@ export class BacklogServer {
 		const { title } = await req.json();
 
 		try {
-			const decision = await this.core.createDecisionWithTitle(title, await this.core.shouldAutoCommit());
+			const decision = await this.core.createDecisionWithTitle(title);
 			return Response.json(decision, { status: 201 });
 		} catch (error) {
 			console.error("Error creating decision:", error);
@@ -467,7 +467,7 @@ export class BacklogServer {
 		const content = await req.text();
 
 		try {
-			await this.core.updateDecisionFromContent(decisionId, content, await this.core.shouldAutoCommit());
+			await this.core.updateDecisionFromContent(decisionId, content);
 			return Response.json({ success: true });
 		} catch (error) {
 			if (error instanceof Error && error.message.includes("not found")) {
@@ -570,7 +570,7 @@ export class BacklogServer {
 			};
 
 			// Save the updated task
-			await this.core.updateTask(updatedTask, await this.core.shouldAutoCommit());
+			await this.core.updateTask(updatedTask);
 
 			// If other tasks in the column need ordinal updates (to prevent collisions)
 			if (columnTasks && Array.isArray(columnTasks)) {
@@ -594,7 +594,7 @@ export class BacklogServer {
 
 				// Use Core's bulk update method instead of manual git operations
 				if (tasksToUpdate.length > 0) {
-					await this.core.updateTasksBulk(tasksToUpdate, "Reorder tasks in column", await this.core.shouldAutoCommit());
+					await this.core.updateTasksBulk(tasksToUpdate, "Reorder tasks in column");
 				}
 			}
 

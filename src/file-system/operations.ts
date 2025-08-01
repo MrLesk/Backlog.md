@@ -491,7 +491,16 @@ export class FileSystem {
 	}
 
 	// Config operations
+	invalidateConfigCache(): void {
+		this.cachedConfig = null;
+	}
+
 	async loadConfig(): Promise<BacklogConfig | null> {
+		// Return cached config if available
+		if (this.cachedConfig !== null) {
+			return this.cachedConfig;
+		}
+
 		try {
 			const backlogDir = await this.getBacklogDir();
 			const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
@@ -505,7 +514,11 @@ export class FileSystem {
 			}
 
 			const content = await file.text();
-			return this.parseConfig(content);
+			const config = this.parseConfig(content);
+
+			// Cache the loaded config
+			this.cachedConfig = config;
+			return config;
 		} catch (_error) {
 			return null;
 		}

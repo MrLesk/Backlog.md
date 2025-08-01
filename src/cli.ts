@@ -2102,7 +2102,7 @@ program
 					const fromPath = taskPath;
 					const toPath = join(core.filesystem.completedDir, taskFilename);
 
-					const success = await core.completeTask(task.id, shouldAutoCommit);
+					const success = await core.completeTask(task.id);
 					if (success) {
 						successCount++;
 						movedTasks.push({ fromPath, toPath, taskId: task.id });
