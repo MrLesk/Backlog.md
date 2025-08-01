@@ -47,7 +47,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				options.initialView === "kanban"
 					? options.preloadedKanbanData
 						? {
-								tasks: options.preloadedKanbanData.tasks,
+								tasks: options.preloadedKanbanData.tasks.filter(
+									(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
+								),
 								statuses: options.preloadedKanbanData.statuses,
 								isLoading: false, // Data is already loaded!
 							}
@@ -73,7 +75,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		// Function to show task view
 		const showTaskView = async (): Promise<ViewResult> => {
 			// Get all available tasks - prefer options.tasks, fallback to preloaded kanban data
-			const availableTasks = options.tasks || options.preloadedKanbanData?.tasks || [];
+			const availableTasks = (options.tasks || options.preloadedKanbanData?.tasks || [])
+				// Extra safeguard: filter out any tasks without proper IDs
+				.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
 
 			if (availableTasks.length === 0) {
 				console.log("No tasks available.");
@@ -140,8 +144,10 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			let statuses: string[];
 
 			if (options.preloadedKanbanData) {
-				// Use preloaded data
-				kanbanTasks = options.preloadedKanbanData.tasks;
+				// Use preloaded data but filter for valid tasks
+				kanbanTasks = options.preloadedKanbanData.tasks.filter(
+					(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
+				);
 				statuses = options.preloadedKanbanData.statuses;
 			} else {
 				// Fallback: use existing tasks or load from ViewSwitcher
@@ -234,7 +240,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentView = "kanban";
 						break;
 					case "kanban":
-						currentView = selectedTask ? "task-detail" : "task-list";
+						// Always go to task-list view when switching from board, keeping selected task highlighted
+						currentView = "task-list";
 						break;
 				}
 			} else {

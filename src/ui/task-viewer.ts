@@ -4,7 +4,6 @@ import { stdout as output } from "node:process";
 import blessed from "blessed";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { openInEditor } from "../utils/editor.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
 import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
@@ -119,7 +118,9 @@ export async function viewTaskEnhanced(
 	// Get project root and load tasks
 	const cwd = process.cwd();
 	const core = options.core || new Core(cwd);
-	const allTasks = options.tasks || (await core.filesystem.listTasks());
+	const allTasks = (options.tasks || (await core.filesystem.listTasks()))
+		// Extra safeguard: filter out any tasks without proper IDs
+		.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
 
 	// Find the initial selected task index
 	const initialIndex = allTasks.findIndex((t) => t.id === task.id);
@@ -511,10 +512,9 @@ export async function viewTaskEnhanced(
 		screen.key(["e", "E"], async () => {
 			if (!currentSelectedTask) return;
 			try {
-				const config = await core.filesystem.loadConfig();
 				const filePath = await getTaskPath(currentSelectedTask.id, core);
 				if (filePath) {
-					await openInEditor(filePath, config);
+					await core.openEditor(filePath, screen);
 				}
 			} catch (_error) {
 				// Silently handle errors

@@ -2,7 +2,6 @@ import blessed from "blessed";
 import { type BoardLayout, generateKanbanBoardWithMetadata } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { openInEditor } from "../utils/editor.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getStatusIcon } from "./status-icon.ts";
@@ -187,6 +186,19 @@ export async function renderBoardTui(
 				columns[currentCol].list.focus();
 			});
 
+			// Add edit key handler for popup
+			contentArea.key(["e", "E"], async () => {
+				try {
+					const core = new Core(process.cwd());
+					const filePath = await getTaskPath(task.id, core);
+					if (filePath) {
+						await core.openEditor(filePath, screen);
+					}
+				} catch (_error) {
+					// Silently handle errors
+				}
+			});
+
 			screen.render();
 		});
 
@@ -199,13 +211,12 @@ export async function renderBoardTui(
 			const task = tasks[idx];
 			try {
 				const core = new Core(process.cwd());
-				const config = await core.filesystem.loadConfig();
 				const filePath = await getTaskPath(task.id, core);
 				if (filePath) {
-					await openInEditor(filePath, config);
+					await core.openEditor(filePath, screen);
 				}
 			} catch (_error) {
-				// Silently handle errors - user will see editor didn't open
+				// Silently handle errors
 			}
 		});
 

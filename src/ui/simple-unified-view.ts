@@ -49,21 +49,24 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 				await showKanbanBoard();
 				break;
 			case "kanban":
-				// Switch back to task view
-				currentView = selectedTask ? "task-detail" : "task-list";
+				// Always go to task-list view when switching from board, keeping selected task highlighted
+				currentView = "task-list";
 				await showTaskView();
 				break;
 		}
 	};
 
 	const showTaskView = async (): Promise<void> => {
-		if (!options.tasks || options.tasks.length === 0) {
+		// Extra safeguard: filter out any tasks without proper IDs
+		const validTasks = (options.tasks || []).filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+
+		if (!validTasks || validTasks.length === 0) {
 			console.log("No tasks available.");
 			isRunning = false;
 			return;
 		}
 
-		const taskToView = selectedTask || options.tasks[0];
+		const taskToView = selectedTask || validTasks[0];
 		if (!taskToView) {
 			isRunning = false;
 			return;
@@ -82,7 +85,7 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 
 		// Show task viewer with simple view switching
 		await viewTaskEnhanced(taskToView, content, {
-			tasks: options.tasks,
+			tasks: validTasks,
 			core: options.core,
 			title: options.filter?.title,
 			filterDescription: options.filter?.filterDescription,
@@ -106,12 +109,17 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 		let statuses: string[];
 
 		if (options.preloadedKanbanData) {
-			// Use preloaded data
-			kanbanTasks = options.preloadedKanbanData.tasks;
+			// Use preloaded data but filter for valid tasks
+			kanbanTasks = options.preloadedKanbanData.tasks.filter(
+				(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
+			);
 			statuses = options.preloadedKanbanData.statuses;
 		} else {
 			// This shouldn't happen in practice since CLI preloads, but fallback
-			kanbanTasks = options.tasks?.map((t) => ({ ...t, source: "local" as const })) || [];
+			const validKanbanTasks = (options.tasks || []).filter(
+				(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
+			);
+			kanbanTasks = validKanbanTasks.map((t) => ({ ...t, source: "local" as const }));
 			const config = await options.core.filesystem.loadConfig();
 			statuses = config?.statuses || [];
 		}

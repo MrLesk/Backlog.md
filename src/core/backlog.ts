@@ -3,8 +3,26 @@ import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../const
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
+import { openInEditor } from "../utils/editor.ts";
 import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
+
+interface BlessedScreen {
+	program: {
+		disableMouse(): void;
+		enableMouse(): void;
+		hideCursor(): void;
+		showCursor(): void;
+		input: NodeJS.EventEmitter;
+	};
+	leave(): void;
+	enter(): void;
+	render(): void;
+	clearRegion(x1: number, x2: number, y1: number, y2: number): void;
+	width: number;
+	height: number;
+	emit(event: string): void;
+}
 
 function ensureDescriptionHeader(body: string): string {
 	const trimmed = (body || "").trim();
@@ -556,5 +574,68 @@ export class Core {
 		);
 
 		return tasksWithMeta;
+	}
+
+	/**
+	 * Open a file in the configured editor with minimal interference
+	 * @param filePath - Path to the file to edit
+	 * @param screen - Optional blessed screen to suspend (for TUI contexts)
+	 */
+	async openEditor(filePath: string, screen?: BlessedScreen): Promise<boolean> {
+		const config = await this.fs.loadConfig();
+
+		// If no screen provided, use simple editor opening
+		if (!screen) {
+			return await openInEditor(filePath, config);
+		}
+
+		// Store all event listeners before removing them
+		const inputListeners = new Map<string, Function[]>();
+		const eventNames = ["keypress", "data", "readable"];
+
+		for (const eventName of eventNames) {
+			const listeners = screen.program.input.listeners(eventName);
+			if (listeners.length > 0) {
+				inputListeners.set(eventName, [...listeners]);
+			}
+		}
+
+		try {
+			// Suspend blessed screen
+			screen.program.disableMouse();
+			screen.program.hideCursor();
+			screen.leave();
+
+			// Remove input listeners temporarily
+			for (const eventName of eventNames) {
+				screen.program.input.removeAllListeners(eventName);
+			}
+
+			// Use the original working editor function (Bun shell API)
+			const success = await openInEditor(filePath, config);
+
+			return success;
+		} finally {
+			// Restore blessed screen
+			screen.enter();
+			screen.program.enableMouse();
+			screen.program.showCursor();
+
+			// Restore all the original listeners
+			for (const [eventName, listeners] of inputListeners) {
+				for (const listener of listeners) {
+					screen.program.input.on(eventName, listener);
+				}
+			}
+
+			// Clear the screen buffer completely and force full redraw
+			screen.clearRegion(0, screen.width, 0, screen.height);
+			screen.render();
+
+			// Also trigger a resize event to ensure proper layout recalculation
+			process.nextTick(() => {
+				screen.emit("resize");
+			});
+		}
 	}
 }
