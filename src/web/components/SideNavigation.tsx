@@ -722,7 +722,7 @@ const SideNavigation = memo(function SideNavigation({
 						<Icons.DocumentSettings />
 						<span className="ml-3 text-sm font-medium">Settings</span>
 						{version && (
-							<span className="ml-auto text-xs text-gray-500 dark:text-gray-400">{version}</span>
+							<span className="ml-auto text-xs text-gray-500 dark:text-gray-400">Backlog.md - v{version}</span>
 						)}
 					</NavLink>
 				) : (

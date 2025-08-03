@@ -40,7 +40,7 @@ function App() {
   React.useEffect(() => {
     getWebVersion().then(version => {
       if (version) {
-        document.body.setAttribute('data-version', version);
+        document.body.setAttribute('data-version', `Backlog.md - v${version}`);
       }
     });
   }, []);
