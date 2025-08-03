@@ -556,13 +556,11 @@ export class BacklogServer {
 
 	private async handleGetStatistics(): Promise<Response> {
 		try {
-			console.log("DEBUG: handleGetStatistics called");
 			// Load tasks using the same logic as CLI overview
 			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
 
 			// Calculate statistics using the exact same function as CLI
 			const statistics = getTaskStatistics(tasks, drafts, statuses);
-			console.log("DEBUG: statistics result:", statistics.totalTasks, "total");
 
 			// Convert Maps to objects for JSON serialization
 			const response = {
@@ -574,7 +572,6 @@ export class BacklogServer {
 			return Response.json(response);
 		} catch (error) {
 			console.error("Error getting statistics:", error);
-			console.error("Stack trace:", (error as Error).stack);
 			return Response.json({ error: "Failed to get statistics" }, { status: 500 });
 		}
 	}

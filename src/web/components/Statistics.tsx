@@ -12,35 +12,94 @@ interface StatisticsData extends Omit<TaskStatistics, 'statusCounts' | 'priority
 interface StatisticsProps {
 	tasks?: Task[];
 	isLoading?: boolean;
+	onEditTask?: (task: Task) => void;
 }
 
-const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoading }) => {
+const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoading, onEditTask }) => {
 	const [statistics, setStatistics] = useState<StatisticsData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [loadingMessage, setLoadingMessage] = useState('Building statistics...');
 
 	useEffect(() => {
+		let isMounted = true;
+		let messageInterval: NodeJS.Timeout;
+
 		const fetchStatistics = async () => {
+			if (!isMounted) return;
+			
 			try {
 				setLoading(true);
 				setError(null);
-				const data = await apiClient.fetchStatistics();
-				setStatistics(data);
+				
+				// Simulate the loading messages from CLI
+				const loadingMessages = [
+					'Building statistics...',
+					'Loading local tasks...',
+					'Loading completed tasks...',
+					'Merging tasks...',
+					'Checking task states across branches...',
+					'Loading drafts...',
+					'Calculating statistics...'
+				];
+
+				// Start with first message
+				if (isMounted) setLoadingMessage(loadingMessages[0]);
+
+				// Show loading progress - each message for 1 second, no cycling
+				const showNextMessage = async () => {
+					for (let i = 1; i < loadingMessages.length; i++) {
+						if (!isMounted) return;
+						await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+						if (isMounted) {
+							setLoadingMessage(loadingMessages[i]);
+						}
+					}
+				};
+
+				// Start showing messages and API call in parallel
+				const [data] = await Promise.all([
+					apiClient.fetchStatistics(),
+					showNextMessage()
+				]);
+				
+				if (isMounted) {
+					setStatistics(data);
+				}
 			} catch (err) {
-				console.error('Failed to fetch statistics:', err);
-				setError('Failed to load statistics');
+				if (isMounted) {
+					console.error('Failed to fetch statistics:', err);
+					setError('Failed to load statistics');
+				}
 			} finally {
-				setLoading(false);
+				if (isMounted) {
+					setLoading(false);
+				}
 			}
 		};
 
 		fetchStatistics();
+
+		return () => {
+			isMounted = false;
+			if (messageInterval) {
+				clearInterval(messageInterval);
+			}
+		};
 	}, []);
 
 	if (loading || externalLoading) {
 		return (
-			<div className="flex justify-center items-center h-64">
-				<LoadingSpinner size="lg" />
+			<div className="flex flex-col justify-center items-center h-64 space-y-4">
+				<LoadingSpinner size="lg" text="" />
+				<div className="text-center">
+					<p className="text-lg font-medium text-gray-900 dark:text-gray-100">
+						{loading ? loadingMessage : 'Loading statistics...'}
+					</p>
+					<p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+						This might take a while...
+					</p>
+				</div>
 			</div>
 		);
 	}
@@ -63,6 +122,45 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 			</div>
 		);
 	}
+
+	const TaskPreview = ({ task, showDate, onClick }: { task: Task; showDate: 'created' | 'updated'; onClick?: () => void }) => {
+		const formatDate = (dateStr: string) => {
+			const hasTime = dateStr.includes(" ") || dateStr.includes("T");
+			const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
+			
+			if (hasTime) {
+				return date.toLocaleString(undefined, {
+					year: 'numeric',
+					month: 'short',
+					day: 'numeric',
+					hour: '2-digit',
+					minute: '2-digit'
+				});
+			} else {
+				return date.toLocaleDateString();
+			}
+		};
+
+		const displayDate = showDate === 'created' ? task.createdDate : task.updatedDate || task.createdDate;
+
+		return (
+			<div 
+				key={task.id} 
+				className={`flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors duration-200 ${
+					onClick ? 'hover:bg-gray-100 dark:hover:bg-gray-600/50 cursor-pointer' : ''
+				}`}
+				onClick={onClick}
+			>
+				<StatusIcon status={task.status} />
+				<div className="flex-1 min-w-0">
+					<p className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</p>
+					<p className="text-sm text-gray-500 dark:text-gray-400">
+						{task.id} • {showDate === 'created' ? 'Created' : 'Updated'} {formatDate(displayDate)}
+					</p>
+				</div>
+			</div>
+		);
+	};
 
 	const StatusIcon = ({ status }: { status: string }) => {
 		switch (status.toLowerCase()) {
@@ -308,13 +406,11 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 					{statistics.recentActivity.created.length > 0 ? (
 						<div className="space-y-3">
 							{statistics.recentActivity.created.map((task) => (
-								<div key={task.id} className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-									<StatusIcon status={task.status} />
-									<div className="flex-1 min-w-0">
-										<p className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</p>
-										<p className="text-sm text-gray-500 dark:text-gray-400">{task.id} • Created {task.createdDate}</p>
-									</div>
-								</div>
+								<TaskPreview 
+									task={task} 
+									showDate="created" 
+									onClick={onEditTask ? () => onEditTask(task) : undefined}
+								/>
 							))}
 						</div>
 					) : (
@@ -328,13 +424,11 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 					{statistics.recentActivity.updated.length > 0 ? (
 						<div className="space-y-3">
 							{statistics.recentActivity.updated.map((task) => (
-								<div key={task.id} className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-									<StatusIcon status={task.status} />
-									<div className="flex-1 min-w-0">
-										<p className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</p>
-										<p className="text-sm text-gray-500 dark:text-gray-400">{task.id} • Updated {task.updatedDate}</p>
-									</div>
-								</div>
+								<TaskPreview 
+									task={task} 
+									showDate="updated" 
+									onClick={onEditTask ? () => onEditTask(task) : undefined}
+								/>
 							))}
 						</div>
 					) : (
@@ -343,85 +437,96 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 				</div>
 			</div>
 
-			{/* Project Health */}
-			{(statistics.projectHealth.staleTasks.length > 0 || statistics.projectHealth.blockedTasks.length > 0) && (
-				<div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-					<h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Project Health</h3>
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-						{/* Average Task Age */}
-						<div className="text-center">
-							<div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-								{statistics.projectHealth.averageTaskAge}
+			{/* Project Health - Completely redesigned as a summary row */}
+			<div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+				<div className="flex items-center justify-between">
+					<h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Project Health</h3>
+					
+					<div className="flex items-center space-x-4 text-sm">
+						<div className="flex items-center space-x-1">
+							<span className="text-gray-600 dark:text-gray-400">Avg age:</span>
+							<span className="font-medium text-gray-900 dark:text-gray-100">{statistics.projectHealth.averageTaskAge}d</span>
+						</div>
+						
+						{statistics.projectHealth.staleTasks.length > 0 && (
+							<div className="flex items-center space-x-1">
+								<div className="w-2 h-2 bg-yellow-500 rounded-circle"></div>
+								<span className="font-medium text-yellow-700 dark:text-yellow-400">{statistics.projectHealth.staleTasks.length} stale</span>
 							</div>
-							<div className="text-sm text-gray-600 dark:text-gray-400">Average Task Age (days)</div>
-						</div>
-
-						{/* Stale Tasks */}
-						<div>
-							<h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">
-								Stale Tasks ({statistics.projectHealth.staleTasks.length})
-							</h4>
-							{statistics.projectHealth.staleTasks.length > 0 ? (
-								<div className="space-y-2">
-									{statistics.projectHealth.staleTasks.map((task) => (
-										<div key={task.id} className="text-sm text-yellow-600 dark:text-yellow-400">
-											{task.id} - {task.title}
-										</div>
-									))}
+						)}
+						
+						{statistics.projectHealth.blockedTasks.length > 0 && (
+							<div className="flex items-center space-x-1">
+								<div className="w-2 h-2 bg-red-500 rounded-circle"></div>
+								<span className="font-medium text-red-700 dark:text-red-400">{statistics.projectHealth.blockedTasks.length} blocked</span>
+							</div>
+						)}
+						
+						{statistics.projectHealth.staleTasks.length === 0 && statistics.projectHealth.blockedTasks.length === 0 && (
+							<div className="flex items-center space-x-1">
+								<div className="w-2 h-2 bg-green-500 rounded-circle"></div>
+								<span className="font-medium text-green-700 dark:text-green-400">All good!</span>
+							</div>
+						)}
+					</div>
+				</div>
+				
+				{/* Expandable task lists - only show if there are issues */}
+				{(statistics.projectHealth.staleTasks.length > 0 || statistics.projectHealth.blockedTasks.length > 0) && (
+					<div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+							{/* Stale Tasks */}
+							{statistics.projectHealth.staleTasks.length > 0 && (
+								<div>
+									<h4 className="font-medium text-yellow-700 dark:text-yellow-400 mb-3 text-sm">
+										Stale Tasks (&gt;30 days)
+									</h4>
+									<div className="space-y-2">
+										{statistics.projectHealth.staleTasks.slice(0, 3).map((task) => (
+											<TaskPreview 
+												key={task.id}
+												task={task} 
+												showDate="updated" 
+												onClick={onEditTask ? () => onEditTask(task) : undefined}
+											/>
+										))}
+										{statistics.projectHealth.staleTasks.length > 3 && (
+											<p className="text-xs text-gray-500 dark:text-gray-400 px-3">
+												+{statistics.projectHealth.staleTasks.length - 3} more stale tasks
+											</p>
+										)}
+									</div>
 								</div>
-							) : (
-								<p className="text-sm text-gray-500 dark:text-gray-400">No stale tasks</p>
 							)}
-						</div>
 
-						{/* Blocked Tasks */}
-						<div>
-							<h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">
-								Blocked Tasks ({statistics.projectHealth.blockedTasks.length})
-							</h4>
-							{statistics.projectHealth.blockedTasks.length > 0 ? (
-								<div className="space-y-2">
-									{statistics.projectHealth.blockedTasks.map((task) => (
-										<div key={task.id} className="text-sm text-red-600 dark:text-red-400">
-											{task.id} - {task.title}
-										</div>
-									))}
+							{/* Blocked Tasks */}
+							{statistics.projectHealth.blockedTasks.length > 0 && (
+								<div>
+									<h4 className="font-medium text-red-700 dark:text-red-400 mb-3 text-sm">
+										Blocked Tasks
+									</h4>
+									<div className="space-y-2">
+										{statistics.projectHealth.blockedTasks.slice(0, 3).map((task) => (
+											<TaskPreview 
+												key={task.id}
+												task={task} 
+												showDate="created" 
+												onClick={onEditTask ? () => onEditTask(task) : undefined}
+											/>
+										))}
+										{statistics.projectHealth.blockedTasks.length > 3 && (
+											<p className="text-xs text-gray-500 dark:text-gray-400 px-3">
+												+{statistics.projectHealth.blockedTasks.length - 3} more blocked tasks
+											</p>
+										)}
+									</div>
 								</div>
-							) : (
-								<p className="text-sm text-gray-500 dark:text-gray-400">No blocked tasks</p>
 							)}
 						</div>
 					</div>
-				</div>
-			)}
-
-			{/* Export Functionality */}
-			<div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-				<h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Export Statistics</h3>
-				<p className="text-gray-600 dark:text-gray-400 mb-4">
-					Export your project statistics for reporting or archival purposes.
-				</p>
-				<button
-					onClick={() => {
-						const dataStr = JSON.stringify(statistics, null, 2);
-						const dataBlob = new Blob([dataStr], { type: 'application/json' });
-						const url = URL.createObjectURL(dataBlob);
-						const link = document.createElement('a');
-						link.href = url;
-						link.download = `project-statistics-${new Date().toISOString().split('T')[0]}.json`;
-						document.body.appendChild(link);
-						link.click();
-						document.body.removeChild(link);
-						URL.revokeObjectURL(url);
-					}}
-					className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
-				>
-					<svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-					</svg>
-					Export JSON
-				</button>
+				)}
 			</div>
+
 		</div>
 	);
 };
