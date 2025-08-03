@@ -2,6 +2,8 @@ import type { Server } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { getVersion } from "../utils/version.ts";
+import favicon from "../web/favicon.png" with { type: "file" };
 import indexHtml from "../web/index.html";
 
 export class BacklogServer {
@@ -9,7 +11,7 @@ export class BacklogServer {
 	private server: Server | null = null;
 	private projectName = "Untitled Project";
 
-	constructor(private projectPath: string) {
+	constructor(projectPath: string) {
 		this.core = new Core(projectPath);
 	}
 
@@ -90,27 +92,23 @@ export class BacklogServer {
 					"/api/tasks/reorder": {
 						POST: async (req) => await this.handleReorderTask(req),
 					},
+					"/api/version": {
+						GET: async () => await this.handleGetVersion(),
+					},
 				},
 				fetch: async (req, server) => {
-					// Apply CORS headers to all responses
-					const response = await this.handleRequest(req, server);
-					if (response && req.url.includes("/api/")) {
-						response.headers.set("Access-Control-Allow-Origin", "*");
-						response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-						response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-					}
-					return response;
+					return await this.handleRequest(req, server);
 				},
 				error: this.handleError.bind(this),
 				websocket: {
-					open(ws) {
+					open() {
 						// Client connected
 					},
-					message(ws, message) {
+					message(ws) {
 						// Echo back for health check
 						ws.send("pong");
 					},
-					close(ws) {
+					close() {
 						// Client disconnected
 					},
 				},
@@ -154,7 +152,7 @@ export class BacklogServer {
 
 	async stop(): Promise<void> {
 		if (this.server) {
-			this.server.stop();
+			await this.server.stop();
 			this.server = null;
 			console.log("Server stopped");
 		}
@@ -186,7 +184,6 @@ export class BacklogServer {
 
 	private async handleRequest(req: Request, server: Server): Promise<Response> {
 		const url = new URL(req.url);
-		const method = req.method;
 		const pathname = url.pathname;
 
 		// Handle WebSocket upgrade
@@ -198,76 +195,12 @@ export class BacklogServer {
 			return new Response("WebSocket upgrade failed", { status: 400 });
 		}
 
-		// CORS headers for API requests
-		const corsHeaders = {
-			"Access-Control-Allow-Origin": "*",
-			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-			"Access-Control-Allow-Headers": "Content-Type",
-		};
-
-		// Handle CORS preflight
-		if (method === "OPTIONS") {
-			return new Response(null, { headers: corsHeaders });
-		}
-
-		// The new route syntax handles API routes, so we just need CORS for non-route paths
-		if (pathname.startsWith("/api")) {
-			// This should only be reached for unmatched API routes
-			return new Response(JSON.stringify({ error: "Not Found" }), {
-				status: 404,
-				headers: {
-					"Content-Type": "application/json",
-					...corsHeaders,
-				},
+		// Workaround as Bun doesn't support images imported from link tags in HTML
+		if (pathname.startsWith("/favicon")) {
+			const faviconFile = Bun.file(favicon);
+			return new Response(faviconFile, {
+				headers: { "Content-Type": "image/png" },
 			});
-		}
-
-		// Serve static assets using Bun.serve with build
-		if (
-			pathname.startsWith("/assets/") ||
-			pathname.endsWith(".js") ||
-			pathname.endsWith(".css") ||
-			pathname.endsWith(".tsx")
-		) {
-			// Handle specific static files
-			if (pathname === "/styles/style.css") {
-				const cssFile = Bun.file("src/web/styles/style.css");
-				if (await cssFile.exists()) {
-					return new Response(await cssFile.text(), {
-						headers: { "Content-Type": "text/css" },
-					});
-				}
-			}
-
-			if (pathname === "/main.tsx") {
-				// Bundle the main.tsx file with CSS support
-				const build = await Bun.build({
-					entrypoints: ["src/web/main.tsx"],
-					format: "esm",
-					target: "browser",
-					minify: false, // Keep readable for debugging
-				});
-
-				if (build.success && build.outputs.length > 0) {
-					return new Response(await build.outputs[0]!.text(), {
-						headers: { "Content-Type": "application/javascript" },
-					});
-				}
-			}
-
-			// Handle assets directory files
-			if (pathname.startsWith("/assets/")) {
-				const assetPath = `src/web${pathname}`;
-				const assetFile = Bun.file(assetPath);
-				if (await assetFile.exists()) {
-					const contentType = pathname.endsWith(".js") ? "application/javascript" : "text/plain";
-					return new Response(await assetFile.text(), {
-						headers: { "Content-Type": contentType },
-					});
-				}
-			}
-
-			return new Response("Not Found", { status: 404 });
 		}
 
 		// For all other routes, return 404 since routes should handle all valid paths
@@ -545,6 +478,16 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error promoting draft:", error);
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
+		}
+	}
+
+	private async handleGetVersion(): Promise<Response> {
+		try {
+			const version = await getVersion();
+			return Response.json({ version });
+		} catch (error) {
+			console.error("Error getting version:", error);
+			return Response.json({ error: "Failed to get version" }, { status: 500 });
 		}
 	}
 

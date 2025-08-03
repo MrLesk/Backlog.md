@@ -11,5 +11,11 @@ export async function getVersion(): Promise<string> {
 		return String(__EMBEDDED_VERSION__);
 	}
 
-	return "0.0.0";
+	// In development, read from package.json
+	try {
+		const packageJson = await Bun.file("package.json").json();
+		return packageJson.version || "0.0.0";
+	} catch {
+		return "0.0.0";
+	}
 }
