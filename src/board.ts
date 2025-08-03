@@ -104,13 +104,17 @@ Project: ${projectName}
 
 			// Check if this is a subtask
 			const isSubtask = task.parentTaskId;
-			const taskId = isSubtask ? `└─ ${task.id}` : task.id;
+			const taskIdPrefix = isSubtask ? "└─ " : "";
+			const taskIdUpper = task.id.toUpperCase();
 
-			// Format: **task-ID** - Task Title with assignees and labels on new line
-			const assigneesText = task.assignee && task.assignee.length > 0 ? task.assignee.join(", ") : "none";
-			const labelsText = task.labels && task.labels.length > 0 ? task.labels.join(", ") : "none";
+			// Format assignees in brackets or empty string if none
+			const assigneesText = task.assignee && task.assignee.length > 0 ? ` [@${task.assignee.join(", @")}]` : "";
 
-			return `**${taskId}** - ${task.title}<br>(Assignees: ${assigneesText}, Labels: ${labelsText})`;
+			// Format labels with # prefix and italic or empty string if none
+			const labelsText =
+				task.labels && task.labels.length > 0 ? `<br>*${task.labels.map((label) => `#${label}`).join(" ")}*` : "";
+
+			return `${taskIdPrefix}**${taskIdUpper}** - ${task.title}${assigneesText}${labelsText}`;
 		});
 		rows.push(`| ${row.join(" | ")} |`);
 	}
