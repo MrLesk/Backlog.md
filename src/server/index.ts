@@ -2,6 +2,7 @@ import type { Server } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { getVersion } from "../utils/version.ts";
 import indexHtml from "../web/index.html";
 
 export class BacklogServer {
@@ -89,6 +90,9 @@ export class BacklogServer {
 					},
 					"/api/tasks/reorder": {
 						POST: async (req) => await this.handleReorderTask(req),
+					},
+					"/api/version": {
+						GET: async () => await this.handleGetVersion(),
 					},
 				},
 				fetch: async (req, server) => {
@@ -545,6 +549,16 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error promoting draft:", error);
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
+		}
+	}
+
+	private async handleGetVersion(): Promise<Response> {
+		try {
+			const version = await getVersion();
+			return Response.json({ version });
+		} catch (error) {
+			console.error("Error getting version:", error);
+			return Response.json({ error: "Failed to get version" }, { status: 500 });
 		}
 	}
 

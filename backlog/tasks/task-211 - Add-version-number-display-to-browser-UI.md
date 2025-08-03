@@ -1,9 +1,10 @@
 ---
 id: task-211
 title: Add version number display to browser UI
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-27'
+updated_date: '2025-08-03 10:28'
 labels:
   - ui
   - frontend

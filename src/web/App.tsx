@@ -14,6 +14,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { type Task, type Document, type Decision } from '../types';
 import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
+import { getWebVersion } from './utils/version';
 import MDEditor from '@uiw/react-md-editor';
 
 function App() {
@@ -34,6 +35,15 @@ function App() {
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
+
+  // Set version data attribute on body
+  React.useEffect(() => {
+    getWebVersion().then(version => {
+      if (version) {
+        document.body.setAttribute('data-version', version);
+      }
+    });
+  }, []);
 
   React.useEffect(() => {
     const loadData = async () => {
