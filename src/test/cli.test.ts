@@ -1178,11 +1178,11 @@ describe("CLI Integration", () => {
 			expect(board).toContain("To Do");
 			expect(board).toContain("In Progress");
 			expect(board).toContain("Done");
-			expect(board).toContain("task-1");
+			expect(board).toContain("TASK-1");
 			expect(board).toContain("Todo Task");
-			expect(board).toContain("task-2");
+			expect(board).toContain("TASK-2");
 			expect(board).toContain("Progress Task");
-			expect(board).toContain("task-3");
+			expect(board).toContain("TASK-3");
 			expect(board).toContain("Done Task");
 
 			// Verify board structure (now includes metadata header)
@@ -1239,7 +1239,7 @@ describe("CLI Integration", () => {
 			// Should contain proper board structure
 			expect(board).toContain("# Kanban Board Export");
 			expect(board).toContain("To Do");
-			expect(board).toContain("task-1");
+			expect(board).toContain("TASK-1");
 			expect(board).toContain("Todo Task");
 		});
 
@@ -1271,7 +1271,7 @@ describe("CLI Integration", () => {
 			// Should contain proper board structure
 			expect(board).toContain("# Kanban Board Export");
 			expect(board).toContain("To Do");
-			expect(board).toContain("task-1");
+			expect(board).toContain("TASK-1");
 			expect(board).toContain("Shortcut Task");
 		});
 
@@ -1387,7 +1387,7 @@ describe("CLI Integration", () => {
 			// Verify file was created and contains expected content
 			const content = await Bun.file(outputPath).text();
 			expect(content).toContain("To Do");
-			expect(content).toContain("task-1");
+			expect(content).toContain("TASK-1");
 			expect(content).toContain("Export Test Task");
 			expect(content).toContain("# Kanban Board Export (powered by Backlog.md)");
 			expect(content).toContain("Project: TestProject");
@@ -1395,7 +1395,7 @@ describe("CLI Integration", () => {
 			// Test overwrite behavior
 			await exportKanbanBoardToFile(tasks, statuses, outputPath, "TestProject");
 			const overwrittenContent = await Bun.file(outputPath).text();
-			const occurrences = overwrittenContent.split("task-1").length - 1;
+			const occurrences = overwrittenContent.split("TASK-1").length - 1;
 			expect(occurrences).toBe(1); // Should appear once after overwrite
 		});
 	});

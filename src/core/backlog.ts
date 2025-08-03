@@ -590,13 +590,13 @@ export class Core {
 		}
 
 		// Store all event listeners before removing them
-		const inputListeners = new Map<string, Function[]>();
+		const inputListeners = new Map<string, ((...args: any[]) => void)[]>();
 		const eventNames = ["keypress", "data", "readable"];
 
 		for (const eventName of eventNames) {
 			const listeners = screen.program.input.listeners(eventName);
 			if (listeners.length > 0) {
-				inputListeners.set(eventName, [...listeners]);
+				inputListeners.set(eventName, [...listeners] as ((...args: any[]) => void)[]);
 			}
 		}
 
