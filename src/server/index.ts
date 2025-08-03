@@ -1,6 +1,7 @@
 import type { Server } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { getTaskStatistics } from "../core/statistics.ts";
 import type { Task } from "../types/index.ts";
 import { getVersion } from "../utils/version.ts";
 // @ts-ignore
@@ -40,6 +41,7 @@ export class BacklogServer {
 					"/documentation/*": indexHtml,
 					"/decisions": indexHtml,
 					"/decisions/*": indexHtml,
+					"/statistics": indexHtml,
 					"/settings": indexHtml,
 
 					// API Routes using Bun's native route syntax
@@ -95,6 +97,9 @@ export class BacklogServer {
 					},
 					"/api/version": {
 						GET: async () => await this.handleGetVersion(),
+					},
+					"/api/statistics": {
+						GET: async () => await this.handleGetStatistics(),
 					},
 				},
 				fetch: async (req, server) => {
@@ -546,6 +551,31 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error reordering task:", error);
 			return Response.json({ error: "Failed to reorder task" }, { status: 500 });
+		}
+	}
+
+	private async handleGetStatistics(): Promise<Response> {
+		try {
+			console.log("DEBUG: handleGetStatistics called");
+			// Load tasks using the same logic as CLI overview
+			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+
+			// Calculate statistics using the exact same function as CLI
+			const statistics = getTaskStatistics(tasks, drafts, statuses);
+			console.log("DEBUG: statistics result:", statistics.totalTasks, "total");
+
+			// Convert Maps to objects for JSON serialization
+			const response = {
+				...statistics,
+				statusCounts: Object.fromEntries(statistics.statusCounts),
+				priorityCounts: Object.fromEntries(statistics.priorityCounts),
+			};
+
+			return Response.json(response);
+		} catch (error) {
+			console.error("Error getting statistics:", error);
+			console.error("Stack trace:", (error as Error).stack);
+			return Response.json({ error: "Failed to get statistics" }, { status: 500 });
 		}
 	}
 }

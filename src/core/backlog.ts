@@ -6,6 +6,9 @@ import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts"
 import { openInEditor } from "../utils/editor.ts";
 import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
+import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
+import { loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
+import { getTaskStatistics, type TaskStatistics } from "./statistics.ts";
 
 interface BlessedScreen {
 	program: {
@@ -33,13 +36,22 @@ function ensureDescriptionHeader(body: string): string {
 }
 
 export class Core {
-	private fs: FileSystem;
-	private git: GitOperations;
+	public fs: FileSystem;
+	public git: GitOperations;
 
 	constructor(projectRoot: string) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot);
 		// Note: Config is loaded lazily when needed since constructor can't be async
+	}
+
+	// Backward compatibility aliases
+	get filesystem() {
+		return this.fs;
+	}
+
+	get gitOps() {
+		return this.git;
 	}
 
 	async ensureConfigLoaded(): Promise<void> {
@@ -67,17 +79,6 @@ export class Core {
 		// Otherwise, check config (default to false for safety)
 		const config = await this.fs.loadConfig();
 		return config?.autoCommit ?? false;
-	}
-
-	get filesystem(): FileSystem {
-		return this.fs;
-	}
-
-	// File system operations
-
-	// Git operations
-	get gitOps() {
-		return this.git;
 	}
 
 	async getGitOps() {
@@ -637,5 +638,81 @@ export class Core {
 				screen.emit("resize");
 			});
 		}
+	}
+
+	/**
+	 * Load and process all tasks with the same logic as CLI overview
+	 * This method extracts the common task loading logic for reuse
+	 */
+	async loadAllTasksForStatistics(
+		progressCallback?: (msg: string) => void,
+	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[] }> {
+		const config = await this.fs.loadConfig();
+		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
+		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
+
+		// Load local, completed, and remote tasks in parallel
+		progressCallback?.("Loading local tasks...");
+		const [localTasks, completedTasks, remoteTasks] = await Promise.all([
+			this.listTasksWithMetadata(),
+			this.fs.listCompletedTasks(),
+			loadRemoteTasks(this.git, this.fs, config),
+		]);
+		progressCallback?.("Loaded tasks");
+
+		// Create map with local tasks
+		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
+
+		// Add completed tasks to the map
+		for (const completedTask of completedTasks) {
+			if (!tasksById.has(completedTask.id)) {
+				tasksById.set(completedTask.id, { ...completedTask, source: "completed" });
+			}
+		}
+
+		// Merge remote tasks with local tasks
+		progressCallback?.("Merging tasks...");
+		for (const remoteTask of remoteTasks) {
+			const existing = tasksById.get(remoteTask.id);
+			if (!existing) {
+				tasksById.set(remoteTask.id, remoteTask);
+			} else {
+				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
+				tasksById.set(remoteTask.id, resolved);
+			}
+		}
+
+		// Get all tasks as array
+		const tasks = Array.from(tasksById.values());
+		let activeTasks: Task[];
+
+		if (config?.checkActiveBranches === false) {
+			// Skip cross-branch checking for maximum performance
+			progressCallback?.("Skipping cross-branch check (disabled in config)...");
+			activeTasks = tasks;
+		} else {
+			// Get the latest state of each task across all branches
+			progressCallback?.("Checking task states across branches...");
+			const taskIds = tasks.map((t) => t.id);
+			const latestTaskDirectories = await getLatestTaskStatesForIds(
+				this.git,
+				this.fs,
+				taskIds,
+				progressCallback || (() => {}),
+				{
+					recentBranchesOnly: true,
+					daysAgo: config?.activeBranchDays ?? 30,
+				},
+			);
+
+			// Filter tasks based on their latest directory location
+			activeTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+		}
+
+		// Load drafts
+		progressCallback?.("Loading drafts...");
+		const drafts = await this.fs.listDrafts();
+
+		return { tasks: activeTasks, drafts, statuses: statuses as string[] };
 	}
 }

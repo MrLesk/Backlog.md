@@ -1,3 +1,4 @@
+import type { TaskStatistics } from "../../core/statistics.ts";
 import type { BacklogConfig, Decision, Document, Task, TaskStatus } from "../../types/index.ts";
 
 const API_BASE = "/api";
@@ -287,6 +288,14 @@ export class ApiClient {
 			throw new Error("Failed to create decision");
 		}
 		return response.json();
+	}
+
+	async fetchStatistics(): Promise<
+		TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
+	> {
+		return this.fetchJson<
+			TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
+		>(`${API_BASE}/statistics`);
 	}
 }
 
