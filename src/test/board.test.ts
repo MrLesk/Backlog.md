@@ -36,7 +36,7 @@ describe("exportKanbanBoardToFile", () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	it("sorts Done column by updatedDate, other columns by ID", async () => {
+	it("sorts all columns by updatedDate descending, then by ID", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "board-export-"));
 		const file = join(dir, "README.md");
 		const tasks: Task[] = [
@@ -46,6 +46,7 @@ describe("exportKanbanBoardToFile", () => {
 				status: "To Do",
 				assignee: [],
 				createdDate: "2025-01-01",
+				updatedDate: "2025-01-08 10:00",
 				labels: [],
 				dependencies: [],
 				body: "",
@@ -56,6 +57,7 @@ describe("exportKanbanBoardToFile", () => {
 				status: "To Do",
 				assignee: [],
 				createdDate: "2025-01-03",
+				updatedDate: "2025-01-09 10:00",
 				labels: [],
 				dependencies: [],
 				body: "",
@@ -108,7 +110,7 @@ describe("exportKanbanBoardToFile", () => {
 		const task4Row = lines.find((line) => line.includes("TASK-4"));
 		const task5Row = lines.find((line) => line.includes("TASK-5"));
 
-		// Check that task-3 appears before task-1 in To Do column
+		// Check that To Do tasks are ordered by updatedDate (task-3 has newer date than task-1)
 		const task3Index = lines.indexOf(task3Row!);
 		const task1Index = lines.indexOf(task1Row!);
 		expect(task3Index).toBeLessThan(task1Index);
@@ -166,6 +168,33 @@ describe("exportKanbanBoardToFile", () => {
 		// Check that tasks without assignees/labels don't have empty brackets
 		expect(content).not.toContain("[]");
 		expect(content).not.toContain("**TASK-205** - Subtask Example<br>");
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("handles assignees with existing @ symbols correctly", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "board-export-"));
+		const file = join(dir, "README.md");
+		const tasks: Task[] = [
+			{
+				id: "task-100",
+				title: "Test @ Handling",
+				status: "To Do",
+				assignee: ["@claude", "alice", "@bob"],
+				createdDate: "2025-01-01",
+				labels: [],
+				dependencies: [],
+				body: "",
+			},
+		];
+
+		await exportKanbanBoardToFile(tasks, ["To Do"], file, "TestProject");
+		const content = await Bun.file(file).text();
+
+		// Check that we don't get double @ symbols
+		expect(content).toContain("[@claude, @alice, @bob]");
+		expect(content).not.toContain("@@claude");
+		expect(content).not.toContain("@@bob");
 
 		await rm(dir, { recursive: true, force: true });
 	});
