@@ -227,7 +227,8 @@ export class BacklogServer {
 			pathname.startsWith("/assets/") ||
 			pathname.endsWith(".js") ||
 			pathname.endsWith(".css") ||
-			pathname.endsWith(".tsx")
+			pathname.endsWith(".tsx") ||
+			pathname === "/favicon.png"
 		) {
 			// Handle specific static files
 			if (pathname === "/styles/style.css") {
@@ -235,6 +236,15 @@ export class BacklogServer {
 				if (await cssFile.exists()) {
 					return new Response(await cssFile.text(), {
 						headers: { "Content-Type": "text/css" },
+					});
+				}
+			}
+
+			if (pathname === "/favicon.png") {
+				const faviconFile = Bun.file("src/web/favicon.png");
+				if (await faviconFile.exists()) {
+					return new Response(faviconFile, {
+						headers: { "Content-Type": "image/png" },
 					});
 				}
 			}
