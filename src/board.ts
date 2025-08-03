@@ -57,8 +57,18 @@ Project: ${projectName}
 		const top: Task[] = [];
 		const children = new Map<string, Task[]>();
 
-		// Sort items by ID descending within each status (newest first)
+		// Sort items: Done column by updatedDate, others by ID descending
 		const sortedItems = items.sort((a, b) => {
+			if (status === "Done") {
+				// For Done column: sort by updatedDate (newest first), then by ID as secondary
+				const dateA = a.updatedDate ? new Date(a.updatedDate).getTime() : 0;
+				const dateB = b.updatedDate ? new Date(b.updatedDate).getTime() : 0;
+				if (dateB !== dateA) {
+					return dateB - dateA; // Newest first
+				}
+				// If dates are equal or missing, fall back to ID comparison
+			}
+			// For all other columns or as secondary sort for Done: sort by ID descending
 			const idA = Number.parseInt(a.id.replace("task-", ""), 10);
 			const idB = Number.parseInt(b.id.replace("task-", ""), 10);
 			return idB - idA; // Highest ID first (newest)

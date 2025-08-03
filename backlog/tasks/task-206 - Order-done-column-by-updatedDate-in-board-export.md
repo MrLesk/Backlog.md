@@ -1,9 +1,10 @@
 ---
 id: task-206
 title: Order done column by updatedDate in board export
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-26'
+updated_date: '2025-08-03 10:15'
 labels:
   - board
   - export
