@@ -107,13 +107,14 @@ Short, imperative explanation of the goal of the task and why it is needed.
 
 Mandatory sections for every task:
 
-- **Implementation Plan**: (The **"how"**) Outline the steps to achieve the task. Because the implementation details may
+- **Implementation Plan**: (The **"how"**)  
+  Outline the steps to achieve the task. Because the implementation details may
   change after the task is created, **the implementation plan must be added only after putting the task in progress**
   and before starting working on the task.
-- **Implementation Notes**: Start with a brief summary of what has been implemented. Document your approach, decisions, challenges, and any deviations from the plan. This
+- **Implementation Notes**: (Imagine this is a PR note)  
+  Start with a brief summary of what has been implemented. Document your approach, decisions, challenges, and any deviations from the plan. This
   section is added after you are done working on the task. It should summarize what you did and why you did it. Keep it
-  concise but informative. Imagine this is the PR description. Make it brief, explain the core changes and assume that
-  others will read the code to understand the details.
+  concise but informative. Make it brief, explain ONLY the core changes and assume that others will read the code to understand the details.
 
 **IMPORTANT**: Do not implement anything else that deviates from the **Acceptance Criteria**. If you need to
 implement something that is not in the AC, update the AC first and then implement it or create a new task for it.
