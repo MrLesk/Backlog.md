@@ -23,7 +23,7 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 
 	useEffect(() => {
 		let isMounted = true;
-		let messageInterval: NodeJS.Timeout;
+		let messageInterval: NodeJS.Timeout | undefined;
 
 		const fetchStatistics = async () => {
 			if (!isMounted) return;
@@ -44,7 +44,7 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 				];
 
 				// Start with first message
-				if (isMounted) setLoadingMessage(loadingMessages[0]);
+				if (isMounted) setLoadingMessage(loadingMessages[0] || '');
 
 				// Show loading progress - each message for 1 second, no cycling
 				const showNextMessage = async () => {
@@ -52,7 +52,7 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 						if (!isMounted) return;
 						await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
 						if (isMounted) {
-							setLoadingMessage(loadingMessages[i]);
+							setLoadingMessage(loadingMessages[i] || '');
 						}
 					}
 				};
