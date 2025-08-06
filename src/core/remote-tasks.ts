@@ -70,7 +70,7 @@ export async function loadRemoteTasks(
 
 		// Build a cheap index without fetching content
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir);
+		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir, days);
 
 		if (remoteIndex.size === 0) {
 			onProgress?.("No remote tasks found");
@@ -102,7 +102,7 @@ export async function loadRemoteTasks(
 		}
 
 		// Only fetch content for the tasks we actually need
-		const hydratedTasks = await hydrateTasks(gitOps, fs, winners);
+		const hydratedTasks = await hydrateTasks(gitOps, winners);
 
 		onProgress?.(`Loaded ${hydratedTasks.length} remote tasks`);
 		return hydratedTasks;
@@ -134,16 +134,19 @@ export function resolveTaskConflict(
 	}
 
 	// Default to most_progressed strategy
+	// Map status to rank (default to 0 for unknown statuses)
 	const currentIdx = statuses.indexOf(existing.status);
 	const newIdx = statuses.indexOf(incoming.status);
+	const currentRank = currentIdx >= 0 ? currentIdx : 0;
+	const newRank = newIdx >= 0 ? newIdx : 0;
 
 	// If incoming task has a more progressed status, use it
-	if (newIdx > currentIdx || currentIdx === -1) {
+	if (newRank > currentRank) {
 		return incoming;
 	}
 
 	// If statuses are equal and we have dates, use the most recent
-	if (newIdx === currentIdx) {
+	if (newRank === currentRank) {
 		const existingDate = existing.updatedDate ? new Date(existing.updatedDate) : existing.lastModified;
 		const incomingDate = incoming.updatedDate ? new Date(incoming.updatedDate) : incoming.lastModified;
 

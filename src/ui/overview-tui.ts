@@ -169,7 +169,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 
 		let healthContent = `{bold}Average Task Age:{/bold} ${statistics.projectHealth.averageTaskAge} days\n\n`;
 
-		healthContent += "{bold}Stale Tasks:{/bold}\n";
+		healthContent += "{bold}Stale Tasks:{/bold} {gray-fg}(>30 days without updates){/gray-fg}\n";
 		if (statistics.projectHealth.staleTasks.length > 0) {
 			for (const task of statistics.projectHealth.staleTasks) {
 				healthContent += `  {yellow-fg}${task.id}{/yellow-fg} - ${task.title.substring(0, 35)}${task.title.length > 35 ? "..." : ""}\n`;
@@ -178,7 +178,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			healthContent += "  {green-fg}No stale tasks{/green-fg}\n";
 		}
 
-		healthContent += "\n{bold}Blocked Tasks:{/bold}\n";
+		healthContent += "\n{bold}Blocked Tasks:{/bold} {gray-fg}(waiting on dependencies){/gray-fg}\n";
 		if (statistics.projectHealth.blockedTasks.length > 0) {
 			for (const task of statistics.projectHealth.blockedTasks) {
 				healthContent += `  {red-fg}${task.id}{/red-fg} - ${task.title.substring(0, 35)}${task.title.length > 35 ? "..." : ""}\n`;
@@ -264,7 +264,7 @@ function renderPlainTextOverview(statistics: TaskStatistics, projectName: string
 	console.log("\nProject Health:");
 	console.log(`  Average Task Age: ${statistics.projectHealth.averageTaskAge} days`);
 
-	console.log("\n  Stale Tasks:");
+	console.log("\n  Stale Tasks (>30 days without updates):");
 	if (statistics.projectHealth.staleTasks.length > 0) {
 		for (const task of statistics.projectHealth.staleTasks) {
 			console.log(`    ${task.id} - ${task.title}`);
@@ -273,7 +273,7 @@ function renderPlainTextOverview(statistics: TaskStatistics, projectName: string
 		console.log("    No stale tasks");
 	}
 
-	console.log("\n  Blocked Tasks:");
+	console.log("\n  Blocked Tasks (waiting on dependencies):");
 	if (statistics.projectHealth.blockedTasks.length > 0) {
 		for (const task of statistics.projectHealth.blockedTasks) {
 			console.log(`    ${task.id} - ${task.title}`);

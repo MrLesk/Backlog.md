@@ -23,6 +23,7 @@ export async function buildRemoteTaskIndex(
 	git: GitOperations,
 	branches: string[],
 	backlogDir = "backlog",
+	sinceDays?: number,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -43,11 +44,12 @@ export async function buildRemoteTaskIndex(
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
-				const lm = await git.getBranchLastModifiedMap(ref, `${backlogDir}/tasks`);
+				const lm = await git.getBranchLastModifiedMap(ref, `${backlogDir}/tasks`, sinceDays);
 
 				for (const f of files) {
 					// Extract task ID from filename
-					const m = f.match(/task-(\d+)/);
+					// Extract task ID from filename (support subtasks like task-123.01)
+					const m = f.match(/task-(\d+(?:\.\d+)?)/);
 					if (!m) continue;
 
 					const id = `task-${m[1]}`;
@@ -78,7 +80,6 @@ export async function buildRemoteTaskIndex(
  */
 export async function hydrateTasks(
 	git: GitOperations,
-	fs: FileSystem,
 	winners: Array<{ id: string; ref: string; path: string }>,
 ): Promise<Task[]> {
 	const CONCURRENCY = 8;
@@ -177,6 +178,7 @@ export async function buildCompletedTaskIndex(
 	git: GitOperations,
 	branches: string[],
 	backlogDir = "backlog",
+	sinceDays?: number,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -196,10 +198,11 @@ export async function buildCompletedTaskIndex(
 				const files = await git.listFilesInTree(ref, `${backlogDir}/completed`);
 				if (files.length === 0) continue;
 
-				const lm = await git.getBranchLastModifiedMap(ref, `${backlogDir}/completed`);
+				const lm = await git.getBranchLastModifiedMap(ref, `${backlogDir}/completed`, sinceDays);
 
 				for (const f of files) {
-					const m = f.match(/task-(\d+)/);
+					// Extract task ID from filename (support subtasks like task-123.01)
+					const m = f.match(/task-(\d+(?:\.\d+)?)/);
 					if (!m) continue;
 
 					const id = `task-${m[1]}`;

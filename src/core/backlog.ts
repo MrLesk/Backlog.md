@@ -127,7 +127,12 @@ export class Core {
 				await this.git.fetch();
 			}
 
-			const branches = await this.git.listAllBranches();
+			// Use recent branches for better performance when generating IDs
+			const days = config?.activeBranchDays ?? 30;
+			const branches =
+				config?.remoteOperations === false
+					? await this.git.listLocalBranches()
+					: await this.git.listRecentBranches(days);
 
 			// Filter and normalize branch names - handle both local and remote branches
 			const normalizedBranches = branches
@@ -553,7 +558,9 @@ export class Core {
 		}
 	}
 
-	async listTasksWithMetadata(): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
+	async listTasksWithMetadata(
+		includeBranchMeta = false,
+	): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
 		const tasks = await this.fs.listTasks();
 		const tasksWithMeta = await Promise.all(
 			tasks.map(async (task) => {
@@ -562,11 +569,13 @@ export class Core {
 				if (filePath) {
 					const bunFile = Bun.file(filePath);
 					const stats = await bunFile.stat();
-					const branch = await this.git.getFileLastModifiedBranch(filePath);
 					return {
 						...task,
 						lastModified: new Date(stats.mtime),
-						branch: branch || undefined,
+						// Only include branch if explicitly requested
+						...(includeBranchMeta && {
+							branch: (await this.git.getFileLastModifiedBranch(filePath)) || undefined,
+						}),
 					};
 				}
 				return task;

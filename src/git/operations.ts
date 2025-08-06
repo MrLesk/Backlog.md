@@ -96,7 +96,7 @@ export class GitOperations {
 	}
 
 	async getStatus(): Promise<string> {
-		const { stdout } = await this.execGit(["status", "--porcelain"]);
+		const { stdout } = await this.execGit(["status", "--porcelain"], { readOnly: true });
 		return stdout;
 	}
 
@@ -106,7 +106,7 @@ export class GitOperations {
 	}
 
 	async getCurrentBranch(): Promise<string> {
-		const { stdout } = await this.execGit(["branch", "--show-current"]);
+		const { stdout } = await this.execGit(["branch", "--show-current"], { readOnly: true });
 		return stdout.trim();
 	}
 
@@ -124,7 +124,7 @@ export class GitOperations {
 	}
 
 	async getLastCommitMessage(): Promise<string> {
-		const { stdout } = await this.execGit(["log", "-1", "--pretty=format:%s"]);
+		const { stdout } = await this.execGit(["log", "-1", "--pretty=format:%s"], { readOnly: true });
 		return stdout.trim();
 	}
 
@@ -138,7 +138,8 @@ export class GitOperations {
 		}
 
 		try {
-			await this.execGit(["fetch", remote]);
+			// Use --prune to remove dead refs and reduce later scans
+			await this.execGit(["fetch", remote, "--prune", "--quiet"]);
 		} catch (error) {
 			// Check if this is a network-related error
 			if (this.isNetworkError(error)) {
@@ -180,7 +181,9 @@ export class GitOperations {
 	}
 
 	async listFilesInRemoteBranch(branch: string, path: string): Promise<string[]> {
-		const { stdout } = await this.execGit(["ls-tree", "-r", `origin/${branch}`, "--name-only", "--", path]);
+		const { stdout } = await this.execGit(["ls-tree", "-r", `origin/${branch}`, "--name-only", "--", path], {
+			readOnly: true,
+		});
 		return stdout
 			.split(/\r?\n/)
 			.map((l) => l.trim())
@@ -252,7 +255,7 @@ export class GitOperations {
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:short)"]);
+			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:short)"], { readOnly: true });
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
@@ -271,11 +274,10 @@ export class GitOperations {
 	 */
 	async listRecentRemoteBranches(daysAgo: number, remote = "origin"): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit([
-				"for-each-ref",
-				"--format=%(refname:short)|%(committerdate:iso8601)",
-				`refs/remotes/${remote}`,
-			]);
+			const { stdout } = await this.execGit(
+				["for-each-ref", "--format=%(refname:short)|%(committerdate:iso8601)", `refs/remotes/${remote}`],
+				{ readOnly: true },
+			);
 			const since = Date.now() - daysAgo * 24 * 60 * 60 * 1000;
 			return stdout
 				.split("\n")
@@ -306,11 +308,10 @@ export class GitOperations {
 			}
 
 			// Get local and remote branches with commit dates
-			const { stdout } = await this.execGit([
-				"for-each-ref",
-				"--format=%(refname:short)|%(committerdate:iso8601)",
-				...refs,
-			]);
+			const { stdout } = await this.execGit(
+				["for-each-ref", "--format=%(refname:short)|%(committerdate:iso8601)", ...refs],
+				{ readOnly: true },
+			);
 
 			const recentBranches: string[] = [];
 			const lines = stdout.split("\n").filter(Boolean);
@@ -338,7 +339,7 @@ export class GitOperations {
 
 	async listLocalBranches(): Promise<string[]> {
 		try {
-			const { stdout } = await this.execGit(["branch", "--format=%(refname:short)"]);
+			const { stdout } = await this.execGit(["branch", "--format=%(refname:short)"], { readOnly: true });
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
@@ -356,22 +357,20 @@ export class GitOperations {
 					? ["branch", "--format=%(refname:short)"]
 					: ["branch", "-a", "--format=%(refname:short)"];
 
-			const { stdout } = await this.execGit(branchArgs);
+			const { stdout } = await this.execGit(branchArgs, { readOnly: true });
 			return stdout
 				.split("\n")
 				.map((l) => l.trim())
-				.filter(Boolean);
+				.filter(Boolean)
+				.filter((b) => !b.includes("HEAD"));
 		} catch {
 			return [];
 		}
 	}
 
 	async listFilesInTree(ref: string, path: string): Promise<string[]> {
-		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", ref, "--", path]);
-		return stdout
-			.split("\n")
-			.map((l) => l.trim())
-			.filter(Boolean);
+		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", "-z", ref, "--", path], { readOnly: true });
+		return stdout.split("\0").filter(Boolean);
 	}
 
 	/**
@@ -399,21 +398,24 @@ export class GitOperations {
 	}
 
 	async showFile(ref: string, filePath: string): Promise<string> {
-		const { stdout } = await this.execGit(["show", `${ref}:${filePath}`]);
+		const { stdout } = await this.execGit(["show", `${ref}:${filePath}`], { readOnly: true });
 		return stdout;
 	}
 
 	async getFileLastModifiedTime(ref: string, filePath: string): Promise<Date | null> {
 		try {
 			// Get the last commit that modified this file in the given ref
-			const { stdout } = await this.execGit([
-				"log",
-				"-1",
-				"--format=%aI", // Author date in ISO 8601 format
-				ref,
-				"--",
-				filePath,
-			]);
+			const { stdout } = await this.execGit(
+				[
+					"log",
+					"-1",
+					"--format=%aI", // Author date in ISO 8601 format
+					ref,
+					"--",
+					filePath,
+				],
+				{ readOnly: true },
+			);
 			const timestamp = stdout.trim();
 			if (timestamp) {
 				return new Date(timestamp);
@@ -433,33 +435,19 @@ export class GitOperations {
 
 		if (filePaths.length === 0) return result;
 
-		// For large batches, fall back to individual queries as git log can be slow
-		if (filePaths.length > 10) {
-			// Process in parallel for better performance
-			const promises = filePaths.map(async (filePath) => {
-				const date = await this.getFileLastModifiedTime(ref, filePath);
-				return { filePath, date };
-			});
-
-			const results = await Promise.all(promises);
-			for (const { filePath, date } of results) {
-				if (date) {
-					result.set(filePath, date);
-				}
-			}
-			return result;
-		}
-
 		try {
-			// Use git log with all files at once for small batches
-			const { stdout } = await this.execGit([
-				"log",
-				"--format=%aI %s", // ISO date and subject
-				"--name-only", // Show file names
-				ref,
-				"--",
-				...filePaths,
-			]);
+			// Use git log with all files at once - scales fine with -z
+			const { stdout } = await this.execGit(
+				[
+					"log",
+					"--format=%aI %s", // ISO date and subject
+					"--name-only", // Show file names
+					ref,
+					"--",
+					...filePaths,
+				],
+				{ readOnly: true },
+			);
 
 			// Parse the output to extract dates for each file
 			const lines = stdout.split("\n");
@@ -502,34 +490,52 @@ export class GitOperations {
 	 * Much more efficient than individual getFileLastModifiedTime calls
 	 * Returns a Map of filePath -> Date
 	 */
-	async getBranchLastModifiedMap(ref: string, dir: string): Promise<Map<string, Date>> {
+	async getBranchLastModifiedMap(ref: string, dir: string, sinceDays?: number): Promise<Map<string, Date>> {
 		const out = new Map<string, Date>();
 
 		try {
-			// Null-delimited to be safe with filenames
-			const { stdout } = await this.execGit([
+			// Build args with optional --since filter
+			const args = [
 				"log",
-				"--format=%ct", // Unix timestamp for easier parsing
+				"--pretty=format:%ct%x00", // Unix timestamp + NUL for bulletproof parsing
 				"--name-only",
 				"-z", // Null-delimited for safety
-				ref,
-				"--",
-				dir,
-			]);
+			];
+
+			if (sinceDays) {
+				args.push(`--since=${sinceDays}.days`);
+			}
+
+			args.push(ref, "--", dir);
+
+			// Null-delimited to be safe with filenames
+			const { stdout } = await this.execGit(args, { readOnly: true });
 
 			// Parse null-delimited output
+			// Format is: timestamp\0 file1\0 file2\0 ... timestamp\0 file1\0 ...
 			const parts = stdout.split("\0").filter(Boolean);
-			let currentEpoch: number | null = null;
+			let i = 0;
 
-			for (const p of parts) {
-				if (/^\d+$/.test(p)) {
-					// This is a timestamp
-					currentEpoch = Number(p);
-				} else if (currentEpoch !== null) {
-					// This is a file path - first time we see it is its last modification
-					if (!out.has(p)) {
-						out.set(p, new Date(currentEpoch * 1000));
+			while (i < parts.length) {
+				const timestampStr = parts[i];
+				if (timestampStr && /^\d+$/.test(timestampStr)) {
+					// This is a timestamp, files follow until next timestamp
+					const epoch = Number(timestampStr);
+					const date = new Date(epoch * 1000);
+					i++;
+
+					// Process files until we hit another timestamp or end
+					while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i]!)) {
+						const file = parts[i];
+						// First time we see a file is its last modification
+						if (file && !out.has(file)) {
+							out.set(file, date);
+						}
+						i++;
 					}
+				} else {
+					// Skip unexpected content
+					i++;
 				}
 			}
 		} catch (error) {
@@ -543,7 +549,9 @@ export class GitOperations {
 	async getFileLastModifiedBranch(filePath: string): Promise<string | null> {
 		try {
 			// Get the hash of the last commit that touched the file
-			const { stdout: commitHash } = await this.execGit(["log", "-1", "--format=%H", "--", filePath]);
+			const { stdout: commitHash } = await this.execGit(["log", "-1", "--format=%H", "--", filePath], {
+				readOnly: true,
+			});
 			if (!commitHash) return null;
 
 			// Find all branches that contain this commit
@@ -572,10 +580,15 @@ export class GitOperations {
 		}
 	}
 
-	private async execGit(args: string[]): Promise<{ stdout: string; stderr: string }> {
+	private async execGit(args: string[], options?: { readOnly?: boolean }): Promise<{ stdout: string; stderr: string }> {
 		// Use the new Bun shell API
 		try {
-			const { stdout, stderr } = await $`git ${args}`.cwd(this.projectRoot).quiet();
+			// Set GIT_OPTIONAL_LOCKS=0 for read-only operations to avoid lock contention
+			const env = options?.readOnly
+				? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
+				: (process.env as Record<string, string>);
+
+			const { stdout, stderr } = await $`git ${args}`.cwd(this.projectRoot).env(env).quiet();
 			return { stdout: stdout.toString(), stderr: stderr.toString() };
 		} catch (error: any) {
 			if (error.exitCode !== undefined) {

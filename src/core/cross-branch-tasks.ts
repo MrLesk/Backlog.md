@@ -108,12 +108,20 @@ export async function getLatestTaskStatesForIds(
 					// Get all modification times in one pass
 					const modTimes = await gitOps.getBranchLastModifiedMap(branch, path);
 
+					// Build file->id map for O(1) lookup
+					const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+					const fileToId = new Map<string, string>();
+					for (const f of files) {
+						const filename = f.substring(f.lastIndexOf("/") + 1);
+						const match = filename.match(/^(task-\d+(?:\.\d+)?)/);
+						if (match && match[1]) {
+							fileToId.set(match[1], f);
+						}
+					}
+
 					// Check each task ID
 					for (const taskId of taskIds) {
-						const taskFile = files.find((f) => {
-							const filename = f.substring(f.lastIndexOf("/") + 1);
-							return filename.match(new RegExp(`^${taskId}\\b`));
-						});
+						const taskFile = fileToId.get(taskId);
 
 						if (taskFile) {
 							const lastModified = modTimes.get(taskFile);
@@ -168,14 +176,21 @@ export async function getLatestTaskStatesForIds(
 							// Get all modification times in one pass
 							const modTimes = await gitOps.getBranchLastModifiedMap(branch, path);
 
+							// Build file->id map for O(1) lookup
+							const fileToId = new Map<string, string>();
+							for (const f of files) {
+								const filename = f.substring(f.lastIndexOf("/") + 1);
+								const match = filename.match(/^(task-\d+(?:\.\d+)?)/);
+								if (match && match[1]) {
+									fileToId.set(match[1], f);
+								}
+							}
+
 							for (const taskId of remainingTaskIds) {
 								// Skip if we already found this task
 								if (taskDirectories.has(taskId)) continue;
 
-								const taskFile = files.find((f) => {
-									const filename = f.substring(f.lastIndexOf("/") + 1);
-									return filename.match(new RegExp(`^${taskId}\\b`));
-								});
+								const taskFile = fileToId.get(taskId);
 
 								if (taskFile) {
 									const lastModified = modTimes.get(taskFile);
