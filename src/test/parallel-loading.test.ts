@@ -20,6 +20,19 @@ class MockGitOperations implements Partial<GitOperations> {
 		return ["main", "feature", "feature2"];
 	}
 
+	async listRecentRemoteBranches(_daysAgo: number): Promise<string[]> {
+		return ["main", "feature", "feature2"];
+	}
+
+	async getBranchLastModifiedMap(_ref: string, _dir: string): Promise<Map<string, Date>> {
+		const map = new Map<string, Date>();
+		// Add all files with the same date for simplicity
+		map.set("backlog/tasks/task-1 - Main Task.md", new Date("2025-06-13"));
+		map.set("backlog/tasks/task-2 - Feature Task.md", new Date("2025-06-13"));
+		map.set("backlog/tasks/task-3 - Feature2 Task.md", new Date("2025-06-13"));
+		return map;
+	}
+
 	async listFilesInTree(ref: string, _path: string): Promise<string[]> {
 		if (ref === "origin/main") {
 			return ["backlog/tasks/task-1 - Main Task.md"];
@@ -101,8 +114,8 @@ describe("Parallel remote task loading", () => {
 
 		// Verify progress reporting
 		expect(progressMessages.some((msg) => msg.includes("Fetching remote branches"))).toBe(true);
-		expect(progressMessages.some((msg) => msg.includes("Found 3 remote branches"))).toBe(true);
-		expect(progressMessages.some((msg) => msg.includes("Loaded 3 total remote tasks"))).toBe(true);
+		expect(progressMessages.some((msg) => msg.includes("Found 3 unique tasks across remote branches"))).toBe(true);
+		expect(progressMessages.some((msg) => msg.includes("Loaded 3 remote tasks"))).toBe(true);
 	});
 
 	it("should handle errors gracefully", async () => {

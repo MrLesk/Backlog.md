@@ -46,17 +46,36 @@ export async function getLatestTaskStatesForIds(
 			return taskDirectories;
 		}
 
+		// Use standard backlog directory
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+
+		// Filter branches that actually have backlog changes
+		const branchesWithBacklog: string[] = [];
+
+		// Quick check which branches actually have the backlog directory
+		for (const branch of branches) {
+			try {
+				// Just check if the backlog directory exists
+				const files = await gitOps.listFilesInTree(branch, backlogDir);
+				if (files.length > 0) {
+					branchesWithBacklog.push(branch);
+				}
+			} catch {
+				// Branch doesn't have backlog directory
+			}
+		}
+
+		// Use filtered branches
+		branches = branchesWithBacklog;
+
 		// Count local vs remote branches for info
 		const localBranches = branches.filter((b) => !b.includes("origin/"));
 		const remoteBranches = branches.filter((b) => b.includes("origin/"));
 
 		const branchMsg = useRecentOnly
-			? `${branches.length} recent branches (last ${daysAgo} days, ${localBranches.length} local, ${remoteBranches.length} remote)`
-			: `${branches.length} branches (${localBranches.length} local, ${remoteBranches.length} remote)`;
+			? `${branches.length} branches with backlog (from ${daysAgo} days, ${localBranches.length} local, ${remoteBranches.length} remote)`
+			: `${branches.length} branches with backlog (${localBranches.length} local, ${remoteBranches.length} remote)`;
 		onProgress?.(`Checking ${taskIds.length} tasks across ${branchMsg}...`);
-
-		// Use standard backlog directory
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 
 		// Create all file path combinations we need to check
 		const directoryChecks: Array<{ path: string; type: TaskDirectoryType }> = [
@@ -84,7 +103,12 @@ export async function getLatestTaskStatesForIds(
 			for (const { path, type } of directoryChecks) {
 				try {
 					const files = await gitOps.listFilesInTree(branch, path);
+					if (files.length === 0) continue;
 
+					// Get all modification times in one pass
+					const modTimes = await gitOps.getBranchLastModifiedMap(branch, path);
+
+					// Check each task ID
 					for (const taskId of taskIds) {
 						const taskFile = files.find((f) => {
 							const filename = f.substring(f.lastIndexOf("/") + 1);
@@ -92,7 +116,7 @@ export async function getLatestTaskStatesForIds(
 						});
 
 						if (taskFile) {
-							const lastModified = await gitOps.getFileLastModifiedTime(branch, taskFile);
+							const lastModified = modTimes.get(taskFile);
 							if (lastModified) {
 								const existing = taskDirectories.get(taskId);
 								if (!existing || lastModified > existing.lastModified) {
@@ -129,7 +153,7 @@ export async function getLatestTaskStatesForIds(
 		onProgress?.(`Checking ${remainingTaskIds.length} remaining tasks across ${branches.length} branches...`);
 
 		// Check remaining branches in parallel batches
-		const BRANCH_BATCH_SIZE = 3; // Process 3 branches at a time
+		const BRANCH_BATCH_SIZE = 5; // Process 5 branches at a time for better performance
 		for (let i = 0; i < branches.length; i += BRANCH_BATCH_SIZE) {
 			const branchBatch = branches.slice(i, i + BRANCH_BATCH_SIZE);
 
@@ -138,6 +162,11 @@ export async function getLatestTaskStatesForIds(
 					for (const { path, type } of directoryChecks) {
 						try {
 							const files = await gitOps.listFilesInTree(branch, path);
+
+							if (files.length === 0) continue;
+
+							// Get all modification times in one pass
+							const modTimes = await gitOps.getBranchLastModifiedMap(branch, path);
 
 							for (const taskId of remainingTaskIds) {
 								// Skip if we already found this task
@@ -149,7 +178,7 @@ export async function getLatestTaskStatesForIds(
 								});
 
 								if (taskFile) {
-									const lastModified = await gitOps.getFileLastModifiedTime(branch, taskFile);
+									const lastModified = modTimes.get(taskFile);
 									if (lastModified) {
 										const existing = taskDirectories.get(taskId);
 										if (!existing || lastModified > existing.lastModified) {

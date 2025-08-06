@@ -7,6 +7,7 @@ import type { FileSystem } from "../file-system/operations.ts";
 import type { GitOperations as GitOps } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { buildRemoteTaskIndex, chooseWinners, hydrateTasks } from "./task-loader.ts";
 
 /**
  * Get the appropriate loading message based on remote operations configuration
@@ -35,113 +36,81 @@ interface RemoteTaskLoadError {
 type RemoteTaskResult = RemoteTaskLoadResult | RemoteTaskLoadError;
 
 /**
- * Load all remote tasks in parallel for better performance
+ * Load all remote tasks using optimized index-first, hydrate-later pattern
+ * Dramatically reduces git operations by only fetching content for tasks that need it
  */
 export async function loadRemoteTasks(
 	gitOps: GitOps,
-	_fs: FileSystem,
+	fs: FileSystem,
 	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
+	localTasks?: Task[], // Optional: provide local tasks to optimize loading
 ): Promise<TaskWithMetadata[]> {
-	const tasks: TaskWithMetadata[] = [];
-
 	try {
 		// Skip remote operations if disabled
 		if (userConfig?.remoteOperations === false) {
 			onProgress?.("Remote operations disabled - skipping remote tasks");
-			return tasks;
+			return [];
 		}
 
 		// Fetch remote branches
 		onProgress?.("Fetching remote branches...");
 		await gitOps.fetch();
-		const branches = await gitOps.listRemoteBranches();
+
+		// Use recent branches only for better performance
+		const days = userConfig?.activeBranchDays ?? 30;
+		const branches = await gitOps.listRecentRemoteBranches(days);
 
 		if (branches.length === 0) {
-			return tasks;
+			onProgress?.("No recent remote branches found");
+			return [];
 		}
 
-		onProgress?.(`Found ${branches.length} remote branches`);
+		onProgress?.(`Indexing ${branches.length} recent remote branches (last ${days} days)...`);
 
-		// Use standard backlog directory
+		// Build a cheap index without fetching content
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir);
 
-		// Process all branches in parallel
-		const branchPromises = branches.map(async (branch) => {
-			const ref = `origin/${branch}`;
-
-			try {
-				// List files in the branch
-				const files = await gitOps.listFilesInTree(ref, `${backlogDir}/tasks`);
-
-				if (files.length === 0) {
-					return [];
-				}
-
-				// Load all files in this branch in parallel
-				const filePromises = files.map(async (file): Promise<RemoteTaskResult> => {
-					try {
-						// Load file content and timestamp in parallel
-						const [content, lastModified] = await Promise.all([
-							gitOps.showFile(ref, file),
-							gitOps.getFileLastModifiedTime(ref, file),
-						]);
-
-						const task = parseTask(content);
-
-						return {
-							task: {
-								...task,
-								lastModified: lastModified || undefined,
-								source: "remote" as const,
-								branch,
-							},
-						};
-					} catch (error) {
-						return {
-							error: error as Error,
-							file,
-							branch,
-						};
-					}
-				});
-
-				const results = await Promise.all(filePromises);
-
-				// Extract successful tasks and report errors
-				const branchTasks: TaskWithMetadata[] = [];
-				for (const result of results) {
-					if (result.task) {
-						branchTasks.push(result.task);
-					} else if (result.error) {
-						// Log error but continue processing
-						console.error(`Failed to load task from ${result.branch}:${result.file}: ${result.error.message}`);
-					}
-				}
-
-				onProgress?.(`Loaded ${branchTasks.length} tasks from ${branch}`);
-				return branchTasks;
-			} catch (error) {
-				console.error(`Failed to process branch ${branch}:`, error);
-				return [];
-			}
-		});
-
-		// Wait for all branches to complete
-		const branchResults = await Promise.all(branchPromises);
-
-		// Flatten results
-		for (const branchTasks of branchResults) {
-			tasks.push(...branchTasks);
+		if (remoteIndex.size === 0) {
+			onProgress?.("No remote tasks found");
+			return [];
 		}
 
-		onProgress?.(`Loaded ${tasks.length} total remote tasks`);
+		onProgress?.(`Found ${remoteIndex.size} unique tasks across remote branches`);
+
+		// If we have local tasks, use them to determine which remote tasks to hydrate
+		let winners: Array<{ id: string; ref: string; path: string }>;
+
+		if (localTasks && localTasks.length > 0) {
+			// Build local task map for comparison
+			const localById = new Map(localTasks.map((t) => [t.id, t]));
+			const statuses = userConfig?.statuses || ["To Do", "In Progress", "Done"];
+			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
+
+			// Only hydrate remote tasks that are newer or missing locally
+			winners = chooseWinners(localById, remoteIndex, statuses, strategy);
+			onProgress?.(`Hydrating ${winners.length} remote candidates...`);
+		} else {
+			// No local tasks, need to hydrate all remote tasks (take newest of each)
+			winners = [];
+			for (const [id, entries] of remoteIndex) {
+				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+				winners.push({ id, ref: `origin/${best.branch}`, path: best.path });
+			}
+			onProgress?.(`Hydrating ${winners.length} remote tasks...`);
+		}
+
+		// Only fetch content for the tasks we actually need
+		const hydratedTasks = await hydrateTasks(gitOps, fs, winners);
+
+		onProgress?.(`Loaded ${hydratedTasks.length} remote tasks`);
+		return hydratedTasks;
 	} catch (error) {
 		// If fetch fails, we can still work with local tasks
 		console.error("Failed to fetch remote tasks:", error);
+		return [];
 	}
-
-	return tasks;
 }
 
 /**

@@ -8,7 +8,6 @@ import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
-import { getTaskStatistics, type TaskStatistics } from "./statistics.ts";
 
 interface BlessedScreen {
 	program: {
@@ -651,13 +650,21 @@ export class Core {
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
-		// Load local, completed, and remote tasks in parallel
+		// Load local and completed tasks first
 		progressCallback?.("Loading local tasks...");
-		const [localTasks, completedTasks, remoteTasks] = await Promise.all([
+		const [localTasks, completedTasks] = await Promise.all([
 			this.listTasksWithMetadata(),
 			this.fs.listCompletedTasks(),
-			loadRemoteTasks(this.git, this.fs, config),
 		]);
+
+		// Now load remote tasks with local tasks for optimization
+		const remoteTasks = await loadRemoteTasks(
+			this.git,
+			this.fs,
+			config,
+			progressCallback,
+			localTasks, // Pass local tasks to optimize remote loading
+		);
 		progressCallback?.("Loaded tasks");
 
 		// Create map with local tasks

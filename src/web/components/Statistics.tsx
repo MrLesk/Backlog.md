@@ -32,7 +32,7 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 				setLoading(true);
 				setError(null);
 				
-				// Simulate the loading messages from CLI
+				// Loading messages that reflect actual backend operations
 				const loadingMessages = [
 					'Building statistics...',
 					'Loading local tasks...',
@@ -46,22 +46,24 @@ const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoadi
 				// Start with first message
 				if (isMounted) setLoadingMessage(loadingMessages[0] || '');
 
-				// Show loading progress - each message for 1 second, no cycling
-				const showNextMessage = async () => {
-					for (let i = 1; i < loadingMessages.length; i++) {
-						if (!isMounted) return;
-						await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
-						if (isMounted) {
-							setLoadingMessage(loadingMessages[i] || '');
-						}
+				// Cycle through loading messages at a readable pace
+				let messageIndex = 0;
+				messageInterval = setInterval(() => {
+					if (!isMounted || messageIndex >= loadingMessages.length - 1) {
+						clearInterval(messageInterval);
+						return;
 					}
-				};
+					messageIndex++;
+					setLoadingMessage(loadingMessages[messageIndex] || '');
+				}, 800); // 800ms so users can actually read each message
 
-				// Start showing messages and API call in parallel
-				const [data] = await Promise.all([
-					apiClient.fetchStatistics(),
-					showNextMessage()
-				]);
+				// Fetch data (this happens in parallel with message cycling)
+				const data = await apiClient.fetchStatistics();
+				
+				// Stop the message cycling once data arrives
+				if (messageInterval) {
+					clearInterval(messageInterval);
+				}
 				
 				if (isMounted) {
 					setStatistics(data);

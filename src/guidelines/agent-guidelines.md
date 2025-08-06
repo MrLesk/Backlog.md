@@ -2,10 +2,15 @@
 
 ## 1. Source of Truth
 
-- Tasks live under **`backlog/tasks/`** (drafts under **`backlog/drafts/`**).
+- Markdown version of the tasks live under **`backlog/tasks/`** (drafts under **`backlog/drafts/`**).
 - Every implementation decision starts with reading the corresponding Markdown task file.
 - Project documentation is in **`backlog/docs/`**.
 - Project decisions are in **`backlog/decisions/`**.
+- All task operations should be done via Backlog.md CLI tool, this will correctly update the metadata in the task files
+  and keep the project in sync. NO OPERATIONS SHOULD BE DONE MANUALLY ON THE TASK FILES.
+- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of using Backlog.md
+    interactive UI.
+- When users mention one or multiple tasks, they are probably suggesting to use Backlog.md CLI tool
 
 ## 2. Defining Tasks
 
@@ -204,9 +209,3 @@ A task is **Done** only when **ALL** of the following are complete:
 | Demote to draft         | `backlog task demote <id>`                                                                                                                                    |
 
 Full help: `backlog --help`
-
-## 10. Tips for AI Agents
-
-- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output instead of using Backlog.md
-  interactive UI.
-- When users mention to create a task, they mean to create a task using Backlog.md CLI tool.

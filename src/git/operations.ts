@@ -265,6 +265,33 @@ export class GitOperations {
 		}
 	}
 
+	/**
+	 * List remote branches that have been active within the specified days
+	 * Much faster than listRemoteBranches for filtering old branches
+	 */
+	async listRecentRemoteBranches(daysAgo: number, remote = "origin"): Promise<string[]> {
+		try {
+			const { stdout } = await this.execGit([
+				"for-each-ref",
+				"--format=%(refname:short)|%(committerdate:iso8601)",
+				`refs/remotes/${remote}`,
+			]);
+			const since = Date.now() - daysAgo * 24 * 60 * 60 * 1000;
+			return stdout
+				.split("\n")
+				.map((l) => l.trim())
+				.filter(Boolean)
+				.map((line) => {
+					const [ref, iso] = line.split("|");
+					return { ref, t: Date.parse(iso || "") };
+				})
+				.filter((x) => Number.isFinite(x.t) && x.t >= since && x.ref)
+				.map((x) => x.ref!.replace(`${remote}/`, "")); // return short like "feature-foo"
+		} catch {
+			return [];
+		}
+	}
+
 	async listRecentBranches(daysAgo: number): Promise<string[]> {
 		try {
 			// Get all branches with their last commit date
@@ -395,6 +422,122 @@ export class GitOperations {
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * Get last modified times for multiple files in a single git command for better performance
+	 * Returns a Map of filePath -> Date
+	 */
+	async getBatchFileLastModifiedTimes(ref: string, filePaths: string[]): Promise<Map<string, Date>> {
+		const result = new Map<string, Date>();
+
+		if (filePaths.length === 0) return result;
+
+		// For large batches, fall back to individual queries as git log can be slow
+		if (filePaths.length > 10) {
+			// Process in parallel for better performance
+			const promises = filePaths.map(async (filePath) => {
+				const date = await this.getFileLastModifiedTime(ref, filePath);
+				return { filePath, date };
+			});
+
+			const results = await Promise.all(promises);
+			for (const { filePath, date } of results) {
+				if (date) {
+					result.set(filePath, date);
+				}
+			}
+			return result;
+		}
+
+		try {
+			// Use git log with all files at once for small batches
+			const { stdout } = await this.execGit([
+				"log",
+				"--format=%aI %s", // ISO date and subject
+				"--name-only", // Show file names
+				ref,
+				"--",
+				...filePaths,
+			]);
+
+			// Parse the output to extract dates for each file
+			const lines = stdout.split("\n");
+			let currentDate: Date | null = null;
+
+			for (const line of lines) {
+				const trimmed = line.trim();
+				if (!trimmed) continue;
+
+				// Check if line is a date (ISO 8601 format)
+				if (trimmed.match(/^\d{4}-\d{2}-\d{2}T/)) {
+					const dateStr = trimmed.split(" ")[0];
+					currentDate = dateStr ? new Date(dateStr) : null;
+				} else if (currentDate) {
+					// This is a file path
+					for (const filePath of filePaths) {
+						if (trimmed.endsWith(filePath) || filePath.endsWith(trimmed)) {
+							if (!result.has(filePath)) {
+								result.set(filePath, currentDate);
+							}
+						}
+					}
+				}
+			}
+		} catch (error) {
+			// Fallback to individual queries if batch fails
+			for (const filePath of filePaths) {
+				const date = await this.getFileLastModifiedTime(ref, filePath);
+				if (date) {
+					result.set(filePath, date);
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Build a map of file -> last modified date for all files in a directory in one git log pass
+	 * Much more efficient than individual getFileLastModifiedTime calls
+	 * Returns a Map of filePath -> Date
+	 */
+	async getBranchLastModifiedMap(ref: string, dir: string): Promise<Map<string, Date>> {
+		const out = new Map<string, Date>();
+
+		try {
+			// Null-delimited to be safe with filenames
+			const { stdout } = await this.execGit([
+				"log",
+				"--format=%ct", // Unix timestamp for easier parsing
+				"--name-only",
+				"-z", // Null-delimited for safety
+				ref,
+				"--",
+				dir,
+			]);
+
+			// Parse null-delimited output
+			const parts = stdout.split("\0").filter(Boolean);
+			let currentEpoch: number | null = null;
+
+			for (const p of parts) {
+				if (/^\d+$/.test(p)) {
+					// This is a timestamp
+					currentEpoch = Number(p);
+				} else if (currentEpoch !== null) {
+					// This is a file path - first time we see it is its last modification
+					if (!out.has(p)) {
+						out.set(p, new Date(currentEpoch * 1000));
+					}
+				}
+			}
+		} catch (error) {
+			// If the command fails, return empty map
+			console.error(`Failed to get branch last modified map for ${ref}:${dir}`, error);
+		}
+
+		return out;
 	}
 
 	async getFileLastModifiedBranch(filePath: string): Promise<string | null> {
