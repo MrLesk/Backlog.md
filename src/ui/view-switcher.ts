@@ -135,7 +135,7 @@ class BackgroundLoader {
 			this.onProgress?.(getTaskLoadingMessage(config));
 			const [localTasks, remoteTasks] = await Promise.all([
 				this.core.listTasksWithMetadata(),
-				loadRemoteTasks(this.core.gitOps, this.core.filesystem, config, this.onProgress),
+				loadRemoteTasks(this.core.gitOps, config, this.onProgress),
 			]);
 
 			// Check for cancellation after loading basic tasks

@@ -109,15 +109,6 @@ export class GitOperations {
 		const { stdout } = await this.execGit(["branch", "--show-current"], { readOnly: true });
 		return stdout.trim();
 	}
-
-	async createBranch(branchName: string): Promise<void> {
-		await this.execGit(["checkout", "-b", branchName]);
-	}
-
-	async switchBranch(branchName: string): Promise<void> {
-		await this.execGit(["checkout", branchName]);
-	}
-
 	async hasUncommittedChanges(): Promise<boolean> {
 		const status = await this.getStatus();
 		return status.trim() !== "";
@@ -179,17 +170,6 @@ export class GitOperations {
 		const lowerMessage = message.toLowerCase();
 		return networkErrorPatterns.some((pattern) => lowerMessage.includes(pattern));
 	}
-
-	async listFilesInRemoteBranch(branch: string, path: string): Promise<string[]> {
-		const { stdout } = await this.execGit(["ls-tree", "-r", `origin/${branch}`, "--name-only", "--", path], {
-			readOnly: true,
-		});
-		return stdout
-			.split(/\r?\n/)
-			.map((l) => l.trim())
-			.filter(Boolean);
-	}
-
 	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
 		const actionMessages = {
 			create: `Create task ${taskId}`,
@@ -213,32 +193,6 @@ export class GitOperations {
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<void> {
 		await this.execGit(["add", `${backlogDir}/`]);
 	}
-
-	async commitBacklogChanges(message: string): Promise<void> {
-		await this.stageBacklogDirectory();
-
-		// Check if there are staged changes specifically
-		const { stdout: status } = await this.execGit(["status", "--porcelain"]);
-		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
-
-		if (hasStagedChanges) {
-			try {
-				await this.commitChanges(`backlog: ${message}`);
-			} catch (error) {
-				// Check if the error is due to missing git config
-				if (error instanceof Error && error.message.includes("Please tell me who you are")) {
-					throw new Error(
-						"Git user configuration is missing. Please configure git with:\n" +
-							'  git config --global user.name "Your Name"\n' +
-							'  git config --global user.email "your.email@example.com"\n' +
-							"Then try again.",
-					);
-				}
-				throw error;
-			}
-		}
-	}
-
 	async stageFileMove(fromPath: string, toPath: string): Promise<void> {
 		// Stage the deletion of the old file and addition of the new file
 		// Git will automatically detect this as a rename if the content is similar enough
@@ -372,119 +326,10 @@ export class GitOperations {
 		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", "-z", ref, "--", path], { readOnly: true });
 		return stdout.split("\0").filter(Boolean);
 	}
-
-	/**
-	 * Check which files exist from a list of paths in a single git command
-	 * Returns a Set of paths that exist in the given ref
-	 */
-	async checkFilesExist(ref: string, paths: string[]): Promise<Set<string>> {
-		if (paths.length === 0) return new Set();
-
-		try {
-			// Use ls-tree to check multiple paths at once
-			const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", ref, "--", ...paths]);
-
-			const existingFiles = new Set(
-				stdout
-					.split("\n")
-					.map((l) => l.trim())
-					.filter(Boolean),
-			);
-
-			return existingFiles;
-		} catch {
-			return new Set();
-		}
-	}
-
 	async showFile(ref: string, filePath: string): Promise<string> {
 		const { stdout } = await this.execGit(["show", `${ref}:${filePath}`], { readOnly: true });
 		return stdout;
 	}
-
-	async getFileLastModifiedTime(ref: string, filePath: string): Promise<Date | null> {
-		try {
-			// Get the last commit that modified this file in the given ref
-			const { stdout } = await this.execGit(
-				[
-					"log",
-					"-1",
-					"--format=%aI", // Author date in ISO 8601 format
-					ref,
-					"--",
-					filePath,
-				],
-				{ readOnly: true },
-			);
-			const timestamp = stdout.trim();
-			if (timestamp) {
-				return new Date(timestamp);
-			}
-			return null;
-		} catch {
-			return null;
-		}
-	}
-
-	/**
-	 * Get last modified times for multiple files in a single git command for better performance
-	 * Returns a Map of filePath -> Date
-	 */
-	async getBatchFileLastModifiedTimes(ref: string, filePaths: string[]): Promise<Map<string, Date>> {
-		const result = new Map<string, Date>();
-
-		if (filePaths.length === 0) return result;
-
-		try {
-			// Use git log with all files at once - scales fine with -z
-			const { stdout } = await this.execGit(
-				[
-					"log",
-					"--format=%aI %s", // ISO date and subject
-					"--name-only", // Show file names
-					ref,
-					"--",
-					...filePaths,
-				],
-				{ readOnly: true },
-			);
-
-			// Parse the output to extract dates for each file
-			const lines = stdout.split("\n");
-			let currentDate: Date | null = null;
-
-			for (const line of lines) {
-				const trimmed = line.trim();
-				if (!trimmed) continue;
-
-				// Check if line is a date (ISO 8601 format)
-				if (trimmed.match(/^\d{4}-\d{2}-\d{2}T/)) {
-					const dateStr = trimmed.split(" ")[0];
-					currentDate = dateStr ? new Date(dateStr) : null;
-				} else if (currentDate) {
-					// This is a file path
-					for (const filePath of filePaths) {
-						if (trimmed.endsWith(filePath) || filePath.endsWith(trimmed)) {
-							if (!result.has(filePath)) {
-								result.set(filePath, currentDate);
-							}
-						}
-					}
-				}
-			}
-		} catch (error) {
-			// Fallback to individual queries if batch fails
-			for (const filePath of filePaths) {
-				const date = await this.getFileLastModifiedTime(ref, filePath);
-				if (date) {
-					result.set(filePath, date);
-				}
-			}
-		}
-
-		return result;
-	}
-
 	/**
 	 * Build a map of file -> last modified date for all files in a directory in one git log pass
 	 * Much more efficient than individual getFileLastModifiedTime calls

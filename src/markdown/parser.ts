@@ -174,7 +174,7 @@ function extractAcceptanceCriteria(content: string): string[] {
 	return criteriaSection
 		.split("\n")
 		.filter((line) => line.trim().startsWith("- [ ]") || line.trim().startsWith("- [x]"))
-		.map((line) => line.trim().replace(/^- \[[ x]\] /, ""));
+		.map((line) => line.trim().replace(/^- \[[ x]] /, ""));
 }
 
 function extractSection(content: string, sectionTitle: string): string | undefined {

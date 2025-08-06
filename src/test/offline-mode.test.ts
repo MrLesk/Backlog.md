@@ -186,7 +186,7 @@ describe("Offline Mode Configuration", () => {
 				listRemoteBranches: async () => [],
 			} as unknown as GitOperations;
 
-			const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, config, onProgress);
+			const remoteTasks = await loadRemoteTasks(mockGitOperations, config, onProgress);
 
 			expect(remoteTasks).toEqual([]);
 			expect(progressMessages).toContain("Remote operations disabled - skipping remote tasks");
@@ -213,7 +213,7 @@ describe("Offline Mode Configuration", () => {
 				listRemoteBranches: async () => [],
 			} as unknown as GitOperations;
 
-			const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, config, onProgress);
+			const remoteTasks = await loadRemoteTasks(mockGitOperations, config, onProgress);
 
 			expect(fetchCalled).toBe(true);
 			expect(remoteTasks).toEqual([]);
@@ -232,7 +232,7 @@ describe("Offline Mode Configuration", () => {
 				listRemoteBranches: async () => [],
 			} as unknown as GitOperations;
 
-			const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, null, onProgress);
+			const remoteTasks = await loadRemoteTasks(mockGitOperations, null, onProgress);
 
 			expect(fetchCalled).toBe(true);
 			expect(remoteTasks).toEqual([]);

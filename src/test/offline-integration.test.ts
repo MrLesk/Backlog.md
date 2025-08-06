@@ -204,9 +204,7 @@ backlog_directory: "backlog"
 		const { loadRemoteTasks } = await import("../core/remote-tasks.ts");
 
 		const progressMessages: string[] = [];
-		const remoteTasks = await loadRemoteTasks(core.gitOps, core.filesystem, config, (msg) =>
-			progressMessages.push(msg),
-		);
+		const remoteTasks = await loadRemoteTasks(core.gitOps, config, (msg: string) => progressMessages.push(msg));
 
 		// Should return empty array and skip remote operations
 		expect(remoteTasks).toEqual([]);

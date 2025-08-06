@@ -3,7 +3,6 @@
  * Dramatically reduces git operations for multi-branch task loading
  */
 
-import type { FileSystem } from "../file-system/operations.ts";
 import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { Task } from "../types/index.ts";
@@ -101,8 +100,7 @@ export async function hydrateTasks(
 					// Mark as remote source and branch
 					(task as any).source = "remote";
 					// Extract branch name from ref (e.g., "origin/main" -> "main")
-					const branch = w.ref.replace("origin/", "");
-					(task as any).branch = branch;
+					(task as any).branch = w.ref.replace("origin/", "");
 					result.push(task);
 				}
 			} catch (error) {
@@ -122,7 +120,6 @@ export async function hydrateTasks(
 export function chooseWinners(
 	localById: Map<string, Task>,
 	remoteIndex: Map<string, RemoteIndexEntry[]>,
-	statuses: string[],
 	strategy: "most_recent" | "most_progressed" = "most_progressed",
 ): Array<{ id: string; ref: string; path: string }> {
 	const winners: Array<{ id: string; ref: string; path: string }> = [];
@@ -169,59 +166,4 @@ export function chooseWinners(
 	}
 
 	return winners;
-}
-
-/**
- * Build index for completed tasks directory
- */
-export async function buildCompletedTaskIndex(
-	git: GitOperations,
-	branches: string[],
-	backlogDir = "backlog",
-	sinceDays?: number,
-): Promise<Map<string, RemoteIndexEntry[]>> {
-	const out = new Map<string, RemoteIndexEntry[]>();
-
-	// Similar to buildRemoteTaskIndex but for completed directory
-	const CONCURRENCY = 4;
-	const queue = [...branches];
-
-	const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-		while (queue.length) {
-			const br = queue.pop();
-			if (!br) break;
-
-			const ref = `origin/${br}`;
-
-			try {
-				// Check completed directory
-				const files = await git.listFilesInTree(ref, `${backlogDir}/completed`);
-				if (files.length === 0) continue;
-
-				const lm = await git.getBranchLastModifiedMap(ref, `${backlogDir}/completed`, sinceDays);
-
-				for (const f of files) {
-					// Extract task ID from filename (support subtasks like task-123.01)
-					const m = f.match(/task-(\d+(?:\.\d+)?)/);
-					if (!m) continue;
-
-					const id = `task-${m[1]}`;
-					const lastModified = lm.get(f) ?? new Date(0);
-					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
-
-					const arr = out.get(id);
-					if (arr) {
-						arr.push(entry);
-					} else {
-						out.set(id, [entry]);
-					}
-				}
-			} catch {
-				// Directory might not exist
-			}
-		}
-	});
-
-	await Promise.all(workers);
-	return out;
 }

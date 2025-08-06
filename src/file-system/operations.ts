@@ -16,8 +16,8 @@ interface TaskPathContext {
 }
 
 export class FileSystem {
-	private backlogDir: string;
-	private projectRoot: string;
+	private readonly backlogDir: string;
+	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
 
 	constructor(projectRoot: string) {
@@ -75,11 +75,6 @@ export class FileSystem {
 	get tasksDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.TASKS);
 	}
-
-	get draftsDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.DRAFTS);
-	}
-
 	get completedDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
 	}
@@ -87,11 +82,6 @@ export class FileSystem {
 	get archiveTasksDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
-
-	get archiveDraftsDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
-	}
-
 	get decisionsDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.DECISIONS);
 	}
@@ -491,10 +481,6 @@ export class FileSystem {
 	}
 
 	// Config operations
-	invalidateConfigCache(): void {
-		this.cachedConfig = null;
-	}
-
 	async loadConfig(): Promise<BacklogConfig | null> {
 		// Return cached config if available
 		if (this.cachedConfig !== null) {
@@ -556,11 +542,10 @@ export class FileSystem {
 				const idx = trimmed.indexOf(":");
 				if (idx === -1) continue;
 				const k = trimmed.substring(0, idx).trim();
-				const v = trimmed
+				result[k] = trimmed
 					.substring(idx + 1)
 					.trim()
 					.replace(/^['"]|['"]$/g, "");
-				result[k] = v;
 			}
 			return result;
 		} catch {
@@ -715,23 +700,5 @@ export class FileSystem {
 		];
 
 		return `${lines.join("\n")}\n`;
-	}
-
-	async listArchivedTasks(): Promise<Task[]> {
-		try {
-			const archiveTasksDir = await this.getArchiveTasksDir();
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: archiveTasksDir }));
-
-			const tasks: Task[] = [];
-			for (const file of taskFiles) {
-				const filepath = join(archiveTasksDir, file);
-				const content = await Bun.file(filepath).text();
-				tasks.push(parseTask(content));
-			}
-
-			return sortByTaskId(tasks);
-		} catch (_error) {
-			return [];
-		}
 	}
 }

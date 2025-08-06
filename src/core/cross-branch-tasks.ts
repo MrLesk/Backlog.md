@@ -109,12 +109,11 @@ export async function getLatestTaskStatesForIds(
 					const modTimes = await gitOps.getBranchLastModifiedMap(branch, path);
 
 					// Build file->id map for O(1) lookup
-					const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 					const fileToId = new Map<string, string>();
 					for (const f of files) {
 						const filename = f.substring(f.lastIndexOf("/") + 1);
 						const match = filename.match(/^(task-\d+(?:\.\d+)?)/);
-						if (match && match[1]) {
+						if (match?.[1]) {
 							fileToId.set(match[1], f);
 						}
 					}
@@ -181,7 +180,7 @@ export async function getLatestTaskStatesForIds(
 							for (const f of files) {
 								const filename = f.substring(f.lastIndexOf("/") + 1);
 								const match = filename.match(/^(task-\d+(?:\.\d+)?)/);
-								if (match && match[1]) {
+								if (match?.[1]) {
 									fileToId.set(match[1], f);
 								}
 							}

@@ -191,7 +191,7 @@ export class Core {
 			const nextSubIdNumber = max + 1;
 			const padding = config?.zeroPaddedIds;
 
-			if (padding && typeof padding === "number" && padding > 0) {
+			if (padding && padding > 0) {
 				// Pad sub-tasks to 2 digits. This supports up to 99 sub-tasks,
 				// which is a reasonable limit and keeps IDs from getting too long.
 				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
@@ -213,7 +213,7 @@ export class Core {
 		const nextIdNumber = max + 1;
 		const padding = config?.zeroPaddedIds;
 
-		if (padding && typeof padding === "number" && padding > 0) {
+		if (padding && padding > 0) {
 			const paddedId = String(nextIdNumber).padStart(padding, "0");
 			return `task-${paddedId}`;
 		}
@@ -562,7 +562,7 @@ export class Core {
 		includeBranchMeta = false,
 	): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
 		const tasks = await this.fs.listTasks();
-		const tasksWithMeta = await Promise.all(
+		return await Promise.all(
 			tasks.map(async (task) => {
 				const filePath = await getTaskPath(task.id, this);
 
@@ -581,8 +581,6 @@ export class Core {
 				return task;
 			}),
 		);
-
-		return tasksWithMeta;
 	}
 
 	/**
@@ -621,9 +619,7 @@ export class Core {
 			}
 
 			// Use the original working editor function (Bun shell API)
-			const success = await openInEditor(filePath, config);
-
-			return success;
+			return await openInEditor(filePath, config);
 		} finally {
 			// Restore blessed screen
 			screen.enter();
@@ -669,7 +665,6 @@ export class Core {
 		// Now load remote tasks with local tasks for optimization
 		const remoteTasks = await loadRemoteTasks(
 			this.git,
-			this.fs,
 			config,
 			progressCallback,
 			localTasks, // Pass local tasks to optimize remote loading

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
-import type { FileSystem } from "../file-system/operations.ts";
 import type { GitOperations } from "../git/operations.ts";
 
 // Mock GitOperations for testing
@@ -94,8 +93,7 @@ describe("Parallel remote task loading", () => {
 
 		// Track progress messages
 		const progressMessages: string[] = [];
-		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as unknown as FileSystem;
-		const remoteTasks = await loadRemoteTasks(mockGitOperations, mockFileSystem, null, (msg) => {
+		const remoteTasks = await loadRemoteTasks(mockGitOperations, null, (msg: string) => {
 			progressMessages.push(msg);
 		});
 
@@ -131,8 +129,7 @@ describe("Parallel remote task loading", () => {
 		} as unknown as GitOperations;
 
 		// Should return empty array on error
-		const mockFileSystem = { loadConfig: async () => ({ backlogDirectory: "backlog" }) } as unknown as FileSystem;
-		const remoteTasks = await loadRemoteTasks(errorGitOperations, mockFileSystem, null);
+		const remoteTasks = await loadRemoteTasks(errorGitOperations, null);
 		expect(remoteTasks).toEqual([]);
 
 		// Restore console.error

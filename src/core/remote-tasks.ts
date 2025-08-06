@@ -3,9 +3,7 @@
  */
 
 import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
-import type { FileSystem } from "../file-system/operations.ts";
 import type { GitOperations as GitOps } from "../git/operations.ts";
-import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { buildRemoteTaskIndex, chooseWinners, hydrateTasks } from "./task-loader.ts";
 
@@ -21,27 +19,12 @@ export function getTaskLoadingMessage(config: BacklogConfig | null): string {
 // TaskWithMetadata is now just an alias for Task (for backward compatibility)
 export type TaskWithMetadata = Task;
 
-interface RemoteTaskLoadResult {
-	task: TaskWithMetadata;
-	error?: never;
-}
-
-interface RemoteTaskLoadError {
-	task?: never;
-	error: Error;
-	file: string;
-	branch: string;
-}
-
-type RemoteTaskResult = RemoteTaskLoadResult | RemoteTaskLoadError;
-
 /**
  * Load all remote tasks using optimized index-first, hydrate-later pattern
  * Dramatically reduces git operations by only fetching content for tasks that need it
  */
 export async function loadRemoteTasks(
 	gitOps: GitOps,
-	fs: FileSystem,
 	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
 	localTasks?: Task[], // Optional: provide local tasks to optimize loading
@@ -85,11 +68,10 @@ export async function loadRemoteTasks(
 		if (localTasks && localTasks.length > 0) {
 			// Build local task map for comparison
 			const localById = new Map(localTasks.map((t) => [t.id, t]));
-			const statuses = userConfig?.statuses || ["To Do", "In Progress", "Done"];
 			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
 
 			// Only hydrate remote tasks that are newer or missing locally
-			winners = chooseWinners(localById, remoteIndex, statuses, strategy);
+			winners = chooseWinners(localById, remoteIndex, strategy);
 			onProgress?.(`Hydrating ${winners.length} remote candidates...`);
 		} else {
 			// No local tasks, need to hydrate all remote tasks (take newest of each)
