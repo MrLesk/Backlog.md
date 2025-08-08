@@ -44,6 +44,7 @@ class BackgroundLoader {
 	private readonly CACHE_TTL = 30000; // 30 seconds
 	private onProgress?: (message: string) => void;
 	private abortController?: AbortController;
+	private lastProgressMessage = "";
 
 	constructor(private core: Core) {}
 
@@ -55,6 +56,9 @@ class BackgroundLoader {
 		if (this.loadingPromise || this.isCacheFresh()) {
 			return;
 		}
+
+		// Clear last progress message when starting fresh load
+		this.lastProgressMessage = "";
 
 		// Create new abort controller for this loading operation
 		this.abortController = new AbortController();
@@ -80,7 +84,7 @@ class BackgroundLoader {
 			this.loadingPromise = this.loadKanbanData();
 		} else {
 			// If loading is already in progress, send a status update to the current progress callback
-			this.onProgress?.("Loading in progress...");
+			this.onProgress?.("Loading tasks from local and remote branches...");
 		}
 
 		// Wait for loading to complete
@@ -118,17 +122,25 @@ class BackgroundLoader {
 				throw new Error("Loading cancelled");
 			}
 
+			// Create a progress wrapper that stores the last message
+			const progressWrapper = (msg: string) => {
+				this.lastProgressMessage = msg;
+				this.onProgress?.(msg);
+			};
+
 			// Use the shared Core method for loading board tasks
-			const filteredTasks = await this.core.loadBoardTasks(this.onProgress, this.abortController?.signal);
+			const filteredTasks = await this.core.loadBoardTasks(progressWrapper, this.abortController?.signal);
 
 			// Cache the results
 			this.cachedTasks = filteredTasks;
 			this.lastLoadTime = Date.now();
 			this.loadingPromise = null;
+			this.lastProgressMessage = ""; // Clear progress message after completion
 
 			return filteredTasks;
 		} catch (error) {
 			this.loadingPromise = null;
+			this.lastProgressMessage = ""; // Clear progress message on error
 			// If it's a cancellation, don't treat it as an error
 			if (error instanceof Error && error.message === "Loading cancelled") {
 				return []; // Return empty array instead of exiting
@@ -142,6 +154,10 @@ class BackgroundLoader {
 	 */
 	setProgressCallback(callback: (message: string) => void): void {
 		this.onProgress = callback;
+		// If we have a last progress message and loading is in progress, send it immediately
+		if (this.lastProgressMessage && this.loadingPromise) {
+			callback(this.lastProgressMessage);
+		}
 	}
 
 	/**
