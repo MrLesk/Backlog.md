@@ -733,7 +733,7 @@ export class Core {
 	 */
 	async loadBoardTasks(progressCallback?: (msg: string) => void, abortSignal?: AbortSignal): Promise<Task[]> {
 		const config = await this.fs.loadConfig();
-		const statuses = config?.statuses || DEFAULT_STATUSES;
+		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
 		// Check for cancellation

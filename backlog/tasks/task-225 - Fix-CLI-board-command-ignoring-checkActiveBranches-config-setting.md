@@ -1,9 +1,10 @@
 ---
 id: task-225
 title: Fix CLI board command ignoring checkActiveBranches config setting
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-08-08 19:01'
+updated_date: '2025-08-08 19:05'
 labels:
   - bug
   - performance

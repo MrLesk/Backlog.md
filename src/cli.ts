@@ -1594,47 +1594,16 @@ boardCmd
 		const core = new Core(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
-		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
 		// Load tasks with progress tracking
 		const loadingScreen = await createLoadingScreen("Loading tasks for export");
 
+		let finalTasks: Task[];
 		try {
-			// Load local tasks
-			loadingScreen?.update("Loading local tasks...");
-			const localTasks = await core.listTasksWithMetadata();
-			const tasksById = new Map<string, TaskWithMetadata>(
-				localTasks.map((t) => [t.id, { ...t, source: "local" } as TaskWithMetadata]),
-			);
-			loadingScreen?.update(`Found ${localTasks.length} local tasks`);
-
-			// Load remote tasks in parallel
-			loadingScreen?.update("Loading remote tasks...");
-			const remoteTasks = await loadRemoteTasks(core.gitOps, config, (msg: string) => loadingScreen?.update(msg));
-
-			// Merge remote tasks with local tasks
-			loadingScreen?.update("Merging tasks...");
-			for (const remoteTask of remoteTasks) {
-				const existing = tasksById.get(remoteTask.id);
-				if (!existing) {
-					tasksById.set(remoteTask.id, remoteTask);
-				} else {
-					const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
-					tasksById.set(remoteTask.id, resolved);
-				}
-			}
-
-			// Get the latest state of each task across all branches
-			loadingScreen?.update("Checking task states across branches...");
-			const tasks = Array.from(tasksById.values());
-			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, core.filesystem, taskIds, (msg) =>
-				loadingScreen?.update(msg),
-			);
-
-			// Filter tasks based on their latest directory location
-			// Only show tasks whose latest directory type is "task" (not draft or archived)
-			const finalTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+			// Use the shared Core method for loading board tasks
+			finalTasks = await core.loadBoardTasks((msg) => {
+				loadingScreen?.update(msg);
+			});
 
 			loadingScreen?.update(`Total tasks: ${finalTasks.length}`);
 

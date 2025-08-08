@@ -39,7 +39,7 @@ They should be testable and confirm that the core purpose of the task is achieve
 **Key Principles for Good ACs:**
 
 - **Outcome-Oriented:** Focus on the result, not the method.
-- **Testable/Verifiable:** Each criterion should be something that can be objectively tested or verified.
+- **Testable/Verifiable:** Each criterion should be something that can be objectively tested or verified manually.
 - **Clear and Concise:** Unambiguous language.
 - **Complete:** Collectively, ACs should cover the scope of the task.
 - **User-Focused (where applicable):** Frame ACs from the perspective of the end-user or the system's external behavior.
@@ -64,7 +64,7 @@ When breaking down features:
 
 ### Additional task requirements
 
-- Tasks must be **atomic** and **testable**. If a task is too large, break it down into smaller subtasks.
+- Tasks must be **atomic** and **testable** or **verifiable**. If a task is too large, break it down into smaller subtasks.
   Each task should represent a single unit of work that can be completed in a single PR.
 
 - **Never** reference tasks that are to be done in the future or that are not yet created. You can only reference
@@ -163,10 +163,10 @@ A task is **Done** only when **ALL** of the following are complete:
 
 1. **Acceptance criteria** checklist in the task file is fully checked (all `- [ ]` changed to `- [x]`).
 2. **Implementation plan** was followed or deviations were documented in Implementation Notes.
-3. **Automated tests** (unit + integration) cover new logic.
+3. **Automated tests** (unit + integration when applicable) cover new logic.
 4. **Static analysis**: linter & formatter succeed.
 5. **Documentation**:
-    - All relevant docs updated (any relevant README file, backlog/docs, backlog/decisions, etc.).
+    - All relevant docs updated (any relevant README file, backlog/docs, backlog/decisions, etc.) when applicable.
     - Task file **MUST** have an `## Implementation Notes` section added summarising:
         - Approach taken
         - Features implemented or modified
