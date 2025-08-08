@@ -6,8 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
-import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./core/cross-branch-tasks.ts";
-import { loadRemoteTasks, resolveTaskConflict, type TaskWithMetadata } from "./core/remote-tasks.ts";
+import type { TaskWithMetadata } from "./core/remote-tasks.ts";
 import {
 	type AgentInstructionFile,
 	addAgentInstructions,
@@ -1539,69 +1538,18 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 	const cwd = process.cwd();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
-	const statuses = config?.statuses || [];
-	const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
 	// Load tasks with loading screen for better user experience
 	const allTasks = await (async () => {
 		const loadingScreen = await createLoadingScreen("Loading board");
 
 		try {
-			// Load local and remote tasks in parallel
-			const { getTaskLoadingMessage } = await import("./core/remote-tasks.ts");
-			loadingScreen?.update(getTaskLoadingMessage(config));
-			const [localTasks, remoteTasks] = await Promise.all([
-				core.listTasksWithMetadata(),
-				loadRemoteTasks(core.gitOps, config),
-			]);
-
-			// Create map with local tasks
-			const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
-
-			// Merge remote tasks with local tasks
-			for (const remoteTask of remoteTasks) {
-				const existing = tasksById.get(remoteTask.id);
-				if (!existing) {
-					tasksById.set(remoteTask.id, remoteTask);
-				} else {
-					const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
-					tasksById.set(remoteTask.id, resolved);
-				}
-			}
-
-			// Get the latest directory location of each task across all branches
-			// Use optimized version that only checks the tasks we have
-			const tasks = Array.from(tasksById.values());
-			let filteredTasks: Task[];
-
-			if (config?.checkActiveBranches === false) {
-				// Skip cross-branch checking for maximum performance
-				loadingScreen?.update("Skipping cross-branch check (disabled in config)...");
-				filteredTasks = tasks;
-			} else {
-				loadingScreen?.update("Resolving task states across branches...");
-				const taskIds = tasks.map((t) => t.id);
-				const latestTaskDirectories = await getLatestTaskStatesForIds(
-					core.gitOps,
-					core.filesystem,
-					taskIds,
-					(msg) => {
-						loadingScreen?.update(msg);
-					},
-					{
-						recentBranchesOnly: true,
-						daysAgo: config?.activeBranchDays ?? 30,
-					},
-				);
-
-				// Filter tasks based on their latest directory location
-				// Only show tasks whose latest directory type is "task" (not draft or archived)
-				loadingScreen?.update("Filtering active tasks...");
-				filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
-			}
+			const tasks = await core.loadBoardTasks((msg) => {
+				loadingScreen?.update(msg);
+			});
 
 			loadingScreen?.close();
-			return filteredTasks;
+			return tasks;
 		} catch (error) {
 			loadingScreen?.close();
 			throw error;
@@ -1615,6 +1563,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 	const _layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const _maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
+	const statuses = config?.statuses || [];
 
 	// Use unified view for Tab switching support
 	const { runUnifiedView } = await import("./ui/unified-view.ts");

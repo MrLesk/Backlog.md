@@ -726,4 +726,85 @@ export class Core {
 
 		return { tasks: activeTasks, drafts, statuses: statuses as string[] };
 	}
+
+	/**
+	 * Load board data (tasks) with optimized cross-branch checking
+	 * This is the shared logic for both CLI and UI board views
+	 */
+	async loadBoardTasks(progressCallback?: (msg: string) => void, abortSignal?: AbortSignal): Promise<Task[]> {
+		const config = await this.fs.loadConfig();
+		const statuses = config?.statuses || DEFAULT_STATUSES;
+		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
+
+		// Check for cancellation
+		if (abortSignal?.aborted) {
+			throw new Error("Loading cancelled");
+		}
+
+		// Load local and remote tasks in parallel
+		const { getTaskLoadingMessage } = await import("./remote-tasks.ts");
+		progressCallback?.(getTaskLoadingMessage(config));
+
+		const [localTasks, remoteTasks] = await Promise.all([
+			this.listTasksWithMetadata(),
+			loadRemoteTasks(this.git, config, progressCallback),
+		]);
+
+		// Check for cancellation after loading
+		if (abortSignal?.aborted) {
+			throw new Error("Loading cancelled");
+		}
+
+		// Create map with local tasks
+		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
+
+		// Merge remote tasks with local tasks
+		for (const remoteTask of remoteTasks) {
+			// Check for cancellation during merge
+			if (abortSignal?.aborted) {
+				throw new Error("Loading cancelled");
+			}
+
+			const existing = tasksById.get(remoteTask.id);
+			if (!existing) {
+				tasksById.set(remoteTask.id, remoteTask);
+			} else {
+				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
+				tasksById.set(remoteTask.id, resolved);
+			}
+		}
+
+		// Check for cancellation before cross-branch checking
+		if (abortSignal?.aborted) {
+			throw new Error("Loading cancelled");
+		}
+
+		// Get the latest directory location of each task across all branches
+		const tasks = Array.from(tasksById.values());
+		let filteredTasks: Task[];
+
+		if (config?.checkActiveBranches === false) {
+			// Skip cross-branch checking for maximum performance
+			progressCallback?.("Skipping cross-branch check (disabled in config)...");
+			filteredTasks = tasks;
+		} else {
+			progressCallback?.("Resolving task states across branches...");
+			const taskIds = tasks.map((t) => t.id);
+			const latestTaskDirectories = await getLatestTaskStatesForIds(this.git, this.fs, taskIds, progressCallback, {
+				recentBranchesOnly: true,
+				daysAgo: config?.activeBranchDays ?? 30,
+			});
+
+			// Check for cancellation before filtering
+			if (abortSignal?.aborted) {
+				throw new Error("Loading cancelled");
+			}
+
+			// Filter tasks based on their latest directory location
+			progressCallback?.("Filtering active tasks...");
+			filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+		}
+
+		return filteredTasks;
+	}
 }
