@@ -38,7 +38,7 @@ export async function getLatestTaskStatesForIds(
 	try {
 		// Get branches - use recent branches by default for performance
 		const useRecentOnly = options?.recentBranchesOnly ?? true;
-		const daysAgo = options?.daysAgo ?? 9999; // Use config default
+		const daysAgo = options?.daysAgo ?? 30; // Default to 30 days if not specified
 
 		let branches = useRecentOnly ? await gitOps.listRecentBranches(daysAgo) : await gitOps.listAllBranches();
 

@@ -1571,17 +1571,34 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 			// Get the latest directory location of each task across all branches
 			// Use optimized version that only checks the tasks we have
-			loadingScreen?.update("Resolving task states across branches...");
 			const tasks = Array.from(tasksById.values());
-			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(core.gitOps, core.filesystem, taskIds, (msg) => {
-				loadingScreen?.update(msg);
-			});
+			let filteredTasks: Task[];
 
-			// Filter tasks based on their latest directory location
-			// Only show tasks whose latest directory type is "task" (not draft or archived)
-			loadingScreen?.update("Filtering active tasks...");
-			const filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+			if (config?.checkActiveBranches === false) {
+				// Skip cross-branch checking for maximum performance
+				loadingScreen?.update("Skipping cross-branch check (disabled in config)...");
+				filteredTasks = tasks;
+			} else {
+				loadingScreen?.update("Resolving task states across branches...");
+				const taskIds = tasks.map((t) => t.id);
+				const latestTaskDirectories = await getLatestTaskStatesForIds(
+					core.gitOps,
+					core.filesystem,
+					taskIds,
+					(msg) => {
+						loadingScreen?.update(msg);
+					},
+					{
+						recentBranchesOnly: true,
+						daysAgo: config?.activeBranchDays ?? 30,
+					},
+				);
+
+				// Filter tasks based on their latest directory location
+				// Only show tasks whose latest directory type is "task" (not draft or archived)
+				loadingScreen?.update("Filtering active tasks...");
+				filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+			}
 
 			loadingScreen?.close();
 			return filteredTasks;

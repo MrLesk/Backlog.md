@@ -170,22 +170,34 @@ class BackgroundLoader {
 
 			// Get the latest directory location of each task across all branches
 			const tasks = Array.from(tasksById.values());
-			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(
-				this.core.gitOps,
-				this.core.filesystem,
-				taskIds,
-				this.onProgress,
-			);
+			let filteredTasks: Task[];
 
-			// Check for cancellation before filtering
-			if (this.abortController?.signal.aborted) {
-				throw new Error("Loading cancelled");
+			if (config?.checkActiveBranches === false) {
+				// Skip cross-branch checking for maximum performance
+				this.onProgress?.("Skipping cross-branch check (disabled in config)...");
+				filteredTasks = tasks;
+			} else {
+				const taskIds = tasks.map((t) => t.id);
+				const latestTaskDirectories = await getLatestTaskStatesForIds(
+					this.core.gitOps,
+					this.core.filesystem,
+					taskIds,
+					this.onProgress,
+					{
+						recentBranchesOnly: true,
+						daysAgo: config?.activeBranchDays ?? 30,
+					},
+				);
+
+				// Check for cancellation before filtering
+				if (this.abortController?.signal.aborted) {
+					throw new Error("Loading cancelled");
+				}
+
+				// Filter tasks based on their latest directory location
+				this.onProgress?.("Filtering active tasks...");
+				filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
 			}
-
-			// Filter tasks based on their latest directory location
-			this.onProgress?.("Filtering active tasks...");
-			const filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
 
 			// Cache the results
 			this.cachedTasks = filteredTasks;
