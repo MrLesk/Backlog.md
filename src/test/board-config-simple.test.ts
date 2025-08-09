@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 
@@ -40,7 +42,7 @@ describe("Board loading with checkActiveBranches config", () => {
 		const progressMessages: string[] = [];
 
 		// Create a Core instance (we'll use a temporary directory)
-		const tempDir = `/tmp/test-board-${Date.now()}`;
+		const tempDir = join(tmpdir(), `test-board-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		const core = new Core(tempDir);
 
 		// Override the filesystem and git operations
@@ -96,7 +98,7 @@ describe("Board loading with checkActiveBranches config", () => {
 		const progressMessages: string[] = [];
 
 		// Create a Core instance
-		const tempDir = `/tmp/test-board-${Date.now()}`;
+		const tempDir = join(tmpdir(), `test-board-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		const core = new Core(tempDir);
 
 		// Override the filesystem and git operations
@@ -151,7 +153,7 @@ describe("Board loading with checkActiveBranches config", () => {
 		const progressMessages: string[] = [];
 
 		// Create a Core instance
-		const tempDir = `/tmp/test-board-${Date.now()}`;
+		const tempDir = join(tmpdir(), `test-board-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		const core = new Core(tempDir);
 
 		// Override the filesystem and git operations
