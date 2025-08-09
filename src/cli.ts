@@ -891,16 +891,16 @@ taskCmd
 			task.dependencies = valid;
 		}
 
-		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
+		// Handle acceptance criteria with new stable format (for create command)
+		const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
 		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
 		if (acceptanceCriteria) {
-			const { updateTaskAcceptanceCriteria } = await import("./markdown/serializer.ts");
 			const criteria = Array.isArray(acceptanceCriteria)
 				? acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
 				: String(acceptanceCriteria)
 						.split(",")
 						.map((item: string) => item.trim());
-			task.body = updateTaskAcceptanceCriteria(task.body, criteria.filter(Boolean));
+			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria.filter(Boolean));
 		}
 
 		// Handle implementation plan
@@ -1112,7 +1112,13 @@ taskCmd
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
-	.option("--ac <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
+	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", (value, previous) => {
+		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+		return [...soFar, value];
+	})
+	.option("--remove-ac <index>", "remove acceptance criterion by index (1-based)")
+	.option("--check-ac <index>", "check acceptance criterion by index (1-based)")
+	.option("--uncheck-ac <index>", "uncheck acceptance criterion by index (1-based)")
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "set implementation plan")
 	.option("--notes <text>", "add implementation notes")
@@ -1210,16 +1216,77 @@ taskCmd
 			task.dependencies = valid;
 		}
 
-		// Handle acceptance criteria (support both --ac and --acceptance-criteria)
-		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
-		if (acceptanceCriteria) {
-			const { updateTaskAcceptanceCriteria } = await import("./markdown/serializer.ts");
-			const criteria = Array.isArray(acceptanceCriteria)
-				? acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
-				: String(acceptanceCriteria)
+		// Handle acceptance criteria with new stable format
+		const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
+
+		// Handle adding new acceptance criteria
+		if (options.ac) {
+			const newCriteria = Array.isArray(options.ac) ? options.ac : [options.ac];
+			task.body = AcceptanceCriteriaManager.addCriteria(
+				task.body,
+				newCriteria.map((c: string) => String(c)),
+			);
+		}
+
+		// Handle legacy --acceptance-criteria flag (for backward compatibility)
+		if (options.acceptanceCriteria) {
+			const criteria = Array.isArray(options.acceptanceCriteria)
+				? options.acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
+				: String(options.acceptanceCriteria)
 						.split(",")
 						.map((item: string) => item.trim());
-			task.body = updateTaskAcceptanceCriteria(task.body, criteria.filter(Boolean));
+			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria.filter(Boolean));
+		}
+
+		// Handle removing acceptance criterion by index
+		if (options.removeAc) {
+			const index = Number.parseInt(String(options.removeAc), 10);
+			if (Number.isNaN(index) || index < 1) {
+				console.error(`Invalid index: ${options.removeAc}. Index must be a positive number (1-based).`);
+				process.exitCode = 1;
+				return;
+			}
+			try {
+				task.body = AcceptanceCriteriaManager.removeCriterionByIndex(task.body, index);
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exitCode = 1;
+				return;
+			}
+		}
+
+		// Handle checking acceptance criterion by index
+		if (options.checkAc) {
+			const index = Number.parseInt(String(options.checkAc), 10);
+			if (Number.isNaN(index) || index < 1) {
+				console.error(`Invalid index: ${options.checkAc}. Index must be a positive number (1-based).`);
+				process.exitCode = 1;
+				return;
+			}
+			try {
+				task.body = AcceptanceCriteriaManager.checkCriterionByIndex(task.body, index, true);
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exitCode = 1;
+				return;
+			}
+		}
+
+		// Handle unchecking acceptance criterion by index
+		if (options.uncheckAc) {
+			const index = Number.parseInt(String(options.uncheckAc), 10);
+			if (Number.isNaN(index) || index < 1) {
+				console.error(`Invalid index: ${options.uncheckAc}. Index must be a positive number (1-based).`);
+				process.exitCode = 1;
+				return;
+			}
+			try {
+				task.body = AcceptanceCriteriaManager.checkCriterionByIndex(task.body, index, false);
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exitCode = 1;
+				return;
+			}
 		}
 
 		// Handle implementation plan

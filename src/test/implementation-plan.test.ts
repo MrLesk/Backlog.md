@@ -81,8 +81,8 @@ describe("Implementation Plan CLI", () => {
 			task = await core.filesystem.loadTask(result.taskId || "task-3");
 			expect(task).not.toBeNull();
 			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] Must work correctly");
-			expect(task?.body).toContain("- [ ] Must be tested");
+			expect(task?.body).toContain("- [ ] #1 Must work correctly");
+			expect(task?.body).toContain("- [ ] #2 Must be tested");
 			expect(task?.body).toContain("## Implementation Plan");
 			expect(task?.body).toContain("Phase 1: Setup");
 			expect(task?.body).toContain("Phase 2: Testing");

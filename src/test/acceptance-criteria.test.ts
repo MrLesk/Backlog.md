@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { AcceptanceCriteriaManager } from "../core/acceptance-criteria.ts";
 import { Core } from "../core/backlog.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -42,7 +43,7 @@ describe("Acceptance Criteria CLI", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] Must work correctly");
+			expect(task?.body).toContain("- [ ] #1 Must work correctly");
 		});
 
 		it("should create task with multiple comma-separated criteria", async () => {
@@ -54,9 +55,9 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("- [ ] Criterion 1");
-			expect(task?.body).toContain("- [ ] Criterion 2");
-			expect(task?.body).toContain("- [ ] Criterion 3");
+			expect(task?.body).toContain("- [ ] #1 Criterion 1");
+			expect(task?.body).toContain("- [ ] #2 Criterion 2");
+			expect(task?.body).toContain("- [ ] #3 Criterion 3");
 		});
 
 		it("should create task with criteria using --acceptance-criteria", async () => {
@@ -69,7 +70,7 @@ describe("Acceptance Criteria CLI", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] Full flag test");
+			expect(task?.body).toContain("- [ ] #1 Full flag test");
 		});
 
 		it("should create task with both description and acceptance criteria", async () => {
@@ -85,8 +86,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.body).toContain("## Description");
 			expect(task?.body).toContain("Task description");
 			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] Must pass tests");
-			expect(task?.body).toContain("- [ ] Must be documented");
+			expect(task?.body).toContain("- [ ] #1 Must pass tests");
+			expect(task?.body).toContain("- [ ] #2 Must be documented");
 		});
 	});
 
@@ -109,7 +110,9 @@ describe("Acceptance Criteria CLI", () => {
 		});
 
 		it("should add acceptance criteria to existing task", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 --ac "New criterion 1, New criterion 2"`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 1 --ac "New criterion 1" --ac "New criterion 2"`
+				.cwd(TEST_DIR)
+				.quiet();
 			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -118,11 +121,11 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.body).toContain("## Description");
 			expect(task?.body).toContain("Existing task description");
 			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] New criterion 1");
-			expect(task?.body).toContain("- [ ] New criterion 2");
+			expect(task?.body).toContain("- [ ] #1 New criterion 1");
+			expect(task?.body).toContain("- [ ] #2 New criterion 2");
 		});
 
-		it("should replace existing acceptance criteria", async () => {
+		it("should add to existing acceptance criteria", async () => {
 			// First add some criteria
 			const core = new Core(TEST_DIR);
 			let task = await core.filesystem.loadTask("task-1");
@@ -131,20 +134,20 @@ describe("Acceptance Criteria CLI", () => {
 				await core.updateTask(task, false);
 			}
 
-			// Now update with new criteria
-			const result = await $`bun ${CLI_PATH} task edit 1 --ac "Replaced criterion"`.cwd(TEST_DIR).quiet();
+			// Now add new criteria
+			const result = await $`bun ${CLI_PATH} task edit 1 --ac "New criterion"`.cwd(TEST_DIR).quiet();
 			expect(result.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] Replaced criterion");
-			expect(task?.body).not.toContain("Old criterion 1");
-			expect(task?.body).not.toContain("Old criterion 2");
+			expect(task?.body).toContain("- [ ] #1 Old criterion 1");
+			expect(task?.body).toContain("- [ ] #2 Old criterion 2");
+			expect(task?.body).toContain("- [ ] #3 New criterion");
 		});
 
 		it("should update title and add acceptance criteria together", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 -t "Updated Title" --ac "Must be updated, Must work"`
+			const result = await $`bun ${CLI_PATH} task edit 1 -t "Updated Title" --ac "Must be updated" --ac "Must work"`
 				.cwd(TEST_DIR)
 				.quiet();
 			expect(result.exitCode).toBe(0);
@@ -154,8 +157,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task).not.toBeNull();
 			expect(task?.title).toBe("Updated Title");
 			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] Must be updated");
-			expect(task?.body).toContain("- [ ] Must work");
+			expect(task?.body).toContain("- [ ] #1 Must be updated");
+			expect(task?.body).toContain("- [ ] #2 Must work");
 		});
 	});
 
@@ -181,8 +184,215 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("- [ ] Criterion with spaces");
-			expect(task?.body).toContain("- [ ] Another one");
+			expect(task?.body).toContain("- [ ] #1 Criterion with spaces");
+			expect(task?.body).toContain("- [ ] #2 Another one");
 		});
+	});
+
+	describe("new AC management features", () => {
+		beforeEach(async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Test Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-19",
+					labels: [],
+					dependencies: [],
+					body: `## Description
+
+Test task with acceptance criteria
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 First criterion
+- [ ] #2 Second criterion
+- [ ] #3 Third criterion
+<!-- AC:END -->`,
+				},
+				false,
+			);
+		});
+
+		it("should add new acceptance criteria with --ac", async () => {
+			const result = await $`bun ${CLI_PATH} task edit 1 --ac "Fourth criterion" --ac "Fifth criterion"`
+				.cwd(TEST_DIR)
+				.quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.body).toContain("- [ ] #1 First criterion");
+			expect(task?.body).toContain("- [ ] #2 Second criterion");
+			expect(task?.body).toContain("- [ ] #3 Third criterion");
+			expect(task?.body).toContain("- [ ] #4 Fourth criterion");
+			expect(task?.body).toContain("- [ ] #5 Fifth criterion");
+		});
+
+		it("should remove acceptance criterion by index with --remove-ac", async () => {
+			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 2`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.body).toContain("- [ ] #1 First criterion");
+			expect(task?.body).not.toContain("Second criterion");
+			expect(task?.body).toContain("- [ ] #2 Third criterion"); // Renumbered
+		});
+
+		it("should check acceptance criterion by index with --check-ac", async () => {
+			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 2`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.body).toContain("- [ ] #1 First criterion");
+			expect(task?.body).toContain("- [x] #2 Second criterion");
+			expect(task?.body).toContain("- [ ] #3 Third criterion");
+		});
+
+		it("should uncheck acceptance criterion by index with --uncheck-ac", async () => {
+			// First check a criterion
+			await $`bun ${CLI_PATH} task edit 1 --check-ac 1`.cwd(TEST_DIR).quiet();
+
+			// Then uncheck it
+			const result = await $`bun ${CLI_PATH} task edit 1 --uncheck-ac 1`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.body).toContain("- [ ] #1 First criterion");
+		});
+
+		it("should handle multiple operations in one command", async () => {
+			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 1 --remove-ac 2 --ac "New criterion"`
+				.cwd(TEST_DIR)
+				.quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.body).toContain("- [x] #1 First criterion");
+			expect(task?.body).not.toContain("Second criterion");
+			expect(task?.body).toContain("- [ ] #2 Third criterion"); // Renumbered
+			expect(task?.body).toContain("- [ ] #3 New criterion");
+		});
+
+		it("should error on invalid index for --remove-ac", async () => {
+			try {
+				await $`bun ${CLI_PATH} task edit 1 --remove-ac 10`.cwd(TEST_DIR).quiet();
+				expect(true).toBe(false); // Should not reach here
+			} catch (error: any) {
+				expect(error.exitCode).not.toBe(0);
+				expect(error.stderr.toString()).toContain("Acceptance criterion #10 not found");
+			}
+		});
+
+		it("should error on invalid index for --check-ac", async () => {
+			try {
+				await $`bun ${CLI_PATH} task edit 1 --check-ac 10`.cwd(TEST_DIR).quiet();
+				expect(true).toBe(false); // Should not reach here
+			} catch (error: any) {
+				expect(error.exitCode).not.toBe(0);
+				expect(error.stderr.toString()).toContain("Acceptance criterion #10 not found");
+			}
+		});
+
+		it("should error on non-numeric index", async () => {
+			try {
+				await $`bun ${CLI_PATH} task edit 1 --remove-ac abc`.cwd(TEST_DIR).quiet();
+				expect(true).toBe(false); // Should not reach here
+			} catch (error: any) {
+				expect(error.exitCode).not.toBe(0);
+				expect(error.stderr.toString()).toContain("Invalid index");
+			}
+		});
+
+		it("should error on zero index", async () => {
+			try {
+				await $`bun ${CLI_PATH} task edit 1 --remove-ac 0`.cwd(TEST_DIR).quiet();
+				expect(true).toBe(false); // Should not reach here
+			} catch (error: any) {
+				expect(error.exitCode).not.toBe(0);
+				expect(error.stderr.toString()).toContain("Invalid index");
+			}
+		});
+
+		it("should error on negative index", async () => {
+			try {
+				await $`bun ${CLI_PATH} task edit 1 --remove-ac=-1`.cwd(TEST_DIR).quiet();
+				expect(true).toBe(false); // Should not reach here
+			} catch (error: any) {
+				expect(error.exitCode).not.toBe(0);
+				expect(error.stderr.toString()).toContain("Invalid index");
+			}
+		});
+	});
+
+	describe("stable format migration", () => {
+		it("should convert old format to stable format when editing", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Old Format Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-19",
+					labels: [],
+					dependencies: [],
+					body: `## Description
+
+## Acceptance Criteria
+
+- [ ] Old format criterion 1
+- [x] Old format criterion 2`,
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task edit 2 --ac "New criterion"`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+
+			const task = await core.filesystem.loadTask("task-2");
+			expect(task?.body).toContain("<!-- AC:BEGIN -->");
+			expect(task?.body).toContain("- [ ] #1 Old format criterion 1");
+			expect(task?.body).toContain("- [x] #2 Old format criterion 2");
+			expect(task?.body).toContain("- [ ] #3 New criterion");
+			expect(task?.body).toContain("<!-- AC:END -->");
+		});
+	});
+});
+
+describe("AcceptanceCriteriaManager unit tests", () => {
+	test("should parse criteria with stable markers", () => {
+		const content = `## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 First criterion
+- [x] #2 Second criterion
+- [ ] #3 Third criterion
+<!-- AC:END -->`;
+
+		const criteria = AcceptanceCriteriaManager.parseAcceptanceCriteria(content);
+		expect(criteria).toHaveLength(3);
+		expect(criteria[0]).toEqual({ checked: false, text: "First criterion", index: 1 });
+		expect(criteria[1]).toEqual({ checked: true, text: "Second criterion", index: 2 });
+		expect(criteria[2]).toEqual({ checked: false, text: "Third criterion", index: 3 });
+	});
+
+	test("should format criteria with proper numbering", () => {
+		const criteria = [
+			{ checked: false, text: "First", index: 1 },
+			{ checked: true, text: "Second", index: 2 },
+		];
+
+		const formatted = AcceptanceCriteriaManager.formatAcceptanceCriteria(criteria);
+		expect(formatted).toContain("## Acceptance Criteria");
+		expect(formatted).toContain("<!-- AC:BEGIN -->");
+		expect(formatted).toContain("- [ ] #1 First");
+		expect(formatted).toContain("- [x] #2 Second");
+		expect(formatted).toContain("<!-- AC:END -->");
 	});
 });

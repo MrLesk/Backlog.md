@@ -137,7 +137,10 @@ When re-initializing an existing project, all current configuration values are p
 | View (AI mode) | `backlog task 7 --plain`                           |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
-| Add AC      | `backlog task edit 7 --ac "New criterion,Another one"`    |
+| Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
+| Remove AC   | `backlog task edit 7 --remove-ac 2` (removes AC #2)      |
+| Check AC    | `backlog task edit 7 --check-ac 1` (marks AC #1 as done) |
+| Uncheck AC  | `backlog task edit 7 --uncheck-ac 3` (marks AC #3 as not done) |
 | Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Archive     | `backlog task archive 7`                             |

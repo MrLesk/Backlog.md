@@ -107,18 +107,18 @@ describe("Task edit section preservation", () => {
 		await $`bun ${cliPath} task edit 2 --plan "Original plan"`.cwd(TEST_DIR).quiet();
 		await $`bun ${cliPath} task edit 2 --notes "Original notes"`.cwd(TEST_DIR).quiet();
 
-		// Update acceptance criteria
-		await $`bun ${cliPath} task edit 2 --ac "Updated criterion 1,Updated criterion 2"`.cwd(TEST_DIR).quiet();
+		// Add new acceptance criteria (now adds instead of replacing)
+		await $`bun ${cliPath} task edit 2 --ac "Updated criterion 1" --ac "Updated criterion 2"`.cwd(TEST_DIR).quiet();
 
 		// Verify all sections are preserved
 		const result = await $`bun ${cliPath} task 2 --plain`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("Test description");
+		expect(result).toContain("Original criterion"); // Now preserved
 		expect(result).toContain("Updated criterion 1");
 		expect(result).toContain("Updated criterion 2");
 		expect(result).toContain("Original plan");
 		expect(result).toContain("Original notes");
-		expect(result).not.toContain("Original criterion");
 	});
 
 	it("should preserve all sections when updating implementation plan", async () => {

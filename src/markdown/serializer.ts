@@ -85,8 +85,10 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 	const newSection = `## Implementation Plan\n\n${plan}`;
 
 	if (match) {
-		// Replace existing section
-		return content.replace(planRegex, newSection);
+		// Replace existing section, ensuring proper spacing after
+		const hasFollowingSection = /\n## /.test(content.slice((match.index || 0) + match[0].length));
+		const replacement = hasFollowingSection ? `${newSection}\n` : newSection;
+		return content.replace(planRegex, replacement);
 	}
 
 	// Find where to insert the new section
@@ -127,7 +129,11 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 		// Append to existing section
 		const existingNotes = match[1]?.trim() || "";
 		const newNotes = existingNotes ? `${existingNotes}\n\n${notes}` : notes;
-		return content.replace(notesRegex, `## Implementation Notes\n\n${newNotes}`);
+		const hasFollowingSection = /\n## /.test(content.slice((match.index || 0) + match[0].length));
+		const replacement = hasFollowingSection
+			? `## Implementation Notes\n\n${newNotes}\n`
+			: `## Implementation Notes\n\n${newNotes}`;
+		return content.replace(notesRegex, replacement);
 	}
 
 	// Add new section - Implementation Notes should come after Implementation Plan if it exists
