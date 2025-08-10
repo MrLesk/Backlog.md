@@ -26,6 +26,106 @@ import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getVersion } from "./utils/version.ts";
 
+// Helper function for accumulating multiple CLI option values
+function createMultiValueAccumulator() {
+	return (value: string, previous: string | string[]) => {
+		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+		return [...soFar, value];
+	};
+}
+
+// Helper function to process multiple AC operations
+async function processAcceptanceCriteriaOperations(
+	taskBody: string,
+	operations: {
+		remove?: string | string[];
+		check?: string | string[];
+		uncheck?: string | string[];
+	},
+): Promise<string> {
+	const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
+	let updatedBody = taskBody;
+
+	// Process removal operations (do these first to avoid index shifting issues)
+	if (operations.remove) {
+		const removeIndices = Array.isArray(operations.remove) ? operations.remove : [operations.remove];
+		// Sort indices in descending order so we remove from highest to lowest
+		const sortedIndices = removeIndices
+			.map((idx) => Number.parseInt(String(idx), 10))
+			.filter((idx) => !Number.isNaN(idx) && idx >= 1)
+			.sort((a, b) => b - a);
+
+		for (const index of sortedIndices) {
+			try {
+				updatedBody = AcceptanceCriteriaManager.removeCriterionByIndex(updatedBody, index);
+			} catch (error) {
+				throw new Error(`Failed to remove AC #${index}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+	}
+
+	// Process check operations
+	if (operations.check) {
+		const checkIndices = Array.isArray(operations.check) ? operations.check : [operations.check];
+		for (const indexStr of checkIndices) {
+			const index = Number.parseInt(String(indexStr), 10);
+			if (Number.isNaN(index) || index < 1) {
+				throw new Error(`Invalid index: ${indexStr}. Index must be a positive number (1-based).`);
+			}
+			try {
+				updatedBody = AcceptanceCriteriaManager.checkCriterionByIndex(updatedBody, index, true);
+			} catch (error) {
+				throw new Error(`Failed to check AC #${index}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+	}
+
+	// Process uncheck operations
+	if (operations.uncheck) {
+		const uncheckIndices = Array.isArray(operations.uncheck) ? operations.uncheck : [operations.uncheck];
+		for (const indexStr of uncheckIndices) {
+			const index = Number.parseInt(String(indexStr), 10);
+			if (Number.isNaN(index) || index < 1) {
+				throw new Error(`Invalid index: ${indexStr}. Index must be a positive number (1-based).`);
+			}
+			try {
+				updatedBody = AcceptanceCriteriaManager.checkCriterionByIndex(updatedBody, index, false);
+			} catch (error) {
+				throw new Error(`Failed to uncheck AC #${index}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+	}
+
+	return updatedBody;
+}
+
+/**
+ * Processes --ac and --acceptance-criteria options to extract acceptance criteria
+ * Handles both single values and arrays from multi-value accumulators
+ */
+function processAcceptanceCriteriaOptions(options: {
+	ac?: string | string[];
+	acceptanceCriteria?: string | string[];
+}): string[] {
+	const criteria: string[] = [];
+
+	// Process --ac options
+	if (options.ac) {
+		const acCriteria = Array.isArray(options.ac) ? options.ac : [options.ac];
+		criteria.push(...acCriteria.map((c) => String(c).trim()).filter(Boolean));
+	}
+
+	// Process --acceptance-criteria options
+	if (options.acceptanceCriteria) {
+		const accCriteria = Array.isArray(options.acceptanceCriteria)
+			? options.acceptanceCriteria
+			: [options.acceptanceCriteria];
+		criteria.push(...accCriteria.map((c) => String(c).trim()).filter(Boolean));
+	}
+
+	return criteria;
+}
+
 // Windows color fix
 if (process.platform === "win32") {
 	const term = process.env.TERM;
@@ -854,8 +954,12 @@ taskCmd
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
-	.option("--ac <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
-	.option("--acceptance-criteria <criteria>", "add acceptance criteria (comma-separated or use multiple times)")
+	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
+	.option(
+		"--acceptance-criteria <criteria>",
+		"add acceptance criteria (can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
 	.option("--plan <text>", "add implementation plan")
 	.option("--notes <text>", "add implementation notes")
 	.option("--draft")
@@ -893,14 +997,9 @@ taskCmd
 
 		// Handle acceptance criteria with new stable format (for create command)
 		const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
-		const acceptanceCriteria = options.ac || options.acceptanceCriteria;
-		if (acceptanceCriteria) {
-			const criteria = Array.isArray(acceptanceCriteria)
-				? acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
-				: String(acceptanceCriteria)
-						.split(",")
-						.map((item: string) => item.trim());
-			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria.filter(Boolean));
+		const criteria = processAcceptanceCriteriaOptions(options);
+		if (criteria.length > 0) {
+			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria);
 		}
 
 		// Handle implementation plan
@@ -1112,13 +1211,22 @@ taskCmd
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
-	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
-	.option("--remove-ac <index>", "remove acceptance criterion by index (1-based)")
-	.option("--check-ac <index>", "check acceptance criterion by index (1-based)")
-	.option("--uncheck-ac <index>", "uncheck acceptance criterion by index (1-based)")
+	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
+	.option(
+		"--remove-ac <index>",
+		"remove acceptance criterion by index (1-based, can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--check-ac <index>",
+		"check acceptance criterion by index (1-based, can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--uncheck-ac <index>",
+		"uncheck acceptance criterion by index (1-based, can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "set implementation plan")
 	.option("--notes <text>", "add implementation notes")
@@ -1219,69 +1327,20 @@ taskCmd
 		// Handle acceptance criteria with new stable format
 		const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
 
-		// Handle adding new acceptance criteria
-		if (options.ac) {
-			const newCriteria = Array.isArray(options.ac) ? options.ac : [options.ac];
-			task.body = AcceptanceCriteriaManager.addCriteria(
-				task.body,
-				newCriteria.map((c: string) => String(c)),
-			);
+		// Handle adding new acceptance criteria (unified handling for both --ac and --acceptance-criteria)
+		const criteria = processAcceptanceCriteriaOptions(options);
+		if (criteria.length > 0) {
+			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria);
 		}
 
-		// Handle legacy --acceptance-criteria flag (for backward compatibility)
-		if (options.acceptanceCriteria) {
-			const criteria = Array.isArray(options.acceptanceCriteria)
-				? options.acceptanceCriteria.flatMap((c: string) => c.split(",").map((item: string) => item.trim()))
-				: String(options.acceptanceCriteria)
-						.split(",")
-						.map((item: string) => item.trim());
-			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria.filter(Boolean));
-		}
-
-		// Handle removing acceptance criterion by index
-		if (options.removeAc) {
-			const index = Number.parseInt(String(options.removeAc), 10);
-			if (Number.isNaN(index) || index < 1) {
-				console.error(`Invalid index: ${options.removeAc}. Index must be a positive number (1-based).`);
-				process.exitCode = 1;
-				return;
-			}
+		// Handle AC operations (remove, check, uncheck) with support for multiple values
+		if (options.removeAc || options.checkAc || options.uncheckAc) {
 			try {
-				task.body = AcceptanceCriteriaManager.removeCriterionByIndex(task.body, index);
-			} catch (error) {
-				console.error(error instanceof Error ? error.message : String(error));
-				process.exitCode = 1;
-				return;
-			}
-		}
-
-		// Handle checking acceptance criterion by index
-		if (options.checkAc) {
-			const index = Number.parseInt(String(options.checkAc), 10);
-			if (Number.isNaN(index) || index < 1) {
-				console.error(`Invalid index: ${options.checkAc}. Index must be a positive number (1-based).`);
-				process.exitCode = 1;
-				return;
-			}
-			try {
-				task.body = AcceptanceCriteriaManager.checkCriterionByIndex(task.body, index, true);
-			} catch (error) {
-				console.error(error instanceof Error ? error.message : String(error));
-				process.exitCode = 1;
-				return;
-			}
-		}
-
-		// Handle unchecking acceptance criterion by index
-		if (options.uncheckAc) {
-			const index = Number.parseInt(String(options.uncheckAc), 10);
-			if (Number.isNaN(index) || index < 1) {
-				console.error(`Invalid index: ${options.uncheckAc}. Index must be a positive number (1-based).`);
-				process.exitCode = 1;
-				return;
-			}
-			try {
-				task.body = AcceptanceCriteriaManager.checkCriterionByIndex(task.body, index, false);
+				task.body = await processAcceptanceCriteriaOperations(task.body, {
+					remove: options.removeAc,
+					check: options.checkAc,
+					uncheck: options.uncheckAc,
+				});
 			} catch (error) {
 				console.error(error instanceof Error ? error.message : String(error));
 				process.exitCode = 1;

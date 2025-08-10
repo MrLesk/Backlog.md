@@ -46,10 +46,11 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.body).toContain("- [ ] #1 Must work correctly");
 		});
 
-		it("should create task with multiple comma-separated criteria", async () => {
-			const result = await $`bun ${CLI_PATH} task create "Test Task" --ac "Criterion 1, Criterion 2, Criterion 3"`
-				.cwd(TEST_DIR)
-				.quiet();
+		it("should create task with multiple criteria using multiple --ac flags", async () => {
+			const result =
+				await $`bun ${CLI_PATH} task create "Test Task" --ac "Criterion 1" --ac "Criterion 2" --ac "Criterion 3"`
+					.cwd(TEST_DIR)
+					.quiet();
 			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -58,6 +59,21 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.body).toContain("- [ ] #1 Criterion 1");
 			expect(task?.body).toContain("- [ ] #2 Criterion 2");
 			expect(task?.body).toContain("- [ ] #3 Criterion 3");
+		});
+
+		it("should treat comma-separated text as single criterion", async () => {
+			const result = await $`bun ${CLI_PATH} task create "Test Task" --ac "Criterion 1, Criterion 2, Criterion 3"`
+				.cwd(TEST_DIR)
+				.quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task).not.toBeNull();
+			// Should create single criterion with commas intact
+			expect(task?.body).toContain("- [ ] #1 Criterion 1, Criterion 2, Criterion 3");
+			// Should NOT create multiple criteria
+			expect(task?.body).not.toContain("- [ ] #2");
 		});
 
 		it("should create task with criteria using --acceptance-criteria", async () => {
@@ -75,7 +91,7 @@ describe("Acceptance Criteria CLI", () => {
 
 		it("should create task with both description and acceptance criteria", async () => {
 			const result =
-				await $`bun ${CLI_PATH} task create "Test Task" -d "Task description" --ac "Must pass tests, Must be documented"`
+				await $`bun ${CLI_PATH} task create "Test Task" -d "Task description" --ac "Must pass tests" --ac "Must be documented"`
 					.cwd(TEST_DIR)
 					.quiet();
 			expect(result.exitCode).toBe(0);
@@ -176,9 +192,10 @@ describe("Acceptance Criteria CLI", () => {
 		});
 
 		it("should trim whitespace from criteria", async () => {
-			const result = await $`bun ${CLI_PATH} task create "Test Task" --ac "  Criterion with spaces  ,  Another one  "`
-				.cwd(TEST_DIR)
-				.quiet();
+			const result =
+				await $`bun ${CLI_PATH} task create "Test Task" --ac "  Criterion with spaces  " --ac "  Another one  "`
+					.cwd(TEST_DIR)
+					.quiet();
 			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -394,5 +411,100 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		expect(formatted).toContain("- [ ] #1 First");
 		expect(formatted).toContain("- [x] #2 Second");
 		expect(formatted).toContain("<!-- AC:END -->");
+	});
+
+	describe("Multi-value CLI operations", () => {
+		it("should support multiple --ac flags in task create", async () => {
+			const result =
+				await $`bun run ${CLI_PATH} task create "Multi AC Test" --ac "First" --ac "Second" --ac "Third"`.cwd(TEST_DIR);
+			expect(result.exitCode).toBe(0);
+
+			// Parse task ID from output
+			const taskId = result.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+			expect(taskId).toBeTruthy();
+
+			// Verify ACs were created
+			const taskResult = await $`bun run ${CLI_PATH} task ${taskId} --plain`.cwd(TEST_DIR);
+			expect(taskResult.stdout).toContain("- [ ] #1 First");
+			expect(taskResult.stdout).toContain("- [ ] #2 Second");
+			expect(taskResult.stdout).toContain("- [ ] #3 Third");
+		});
+
+		it("should support multiple --check-ac flags in single command", async () => {
+			// Create task with multiple ACs
+			const createResult =
+				await $`bun run ${CLI_PATH} task create "Check Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
+					TEST_DIR,
+				);
+			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+
+			// Check multiple ACs at once
+			const checkResult = await $`bun run ${CLI_PATH} task edit ${taskId} --check-ac 1 --check-ac 3`.cwd(TEST_DIR);
+			expect(checkResult.exitCode).toBe(0);
+
+			// Verify correct ACs were checked
+			const taskResult = await $`bun run ${CLI_PATH} task ${taskId} --plain`.cwd(TEST_DIR);
+			expect(taskResult.stdout).toContain("- [x] #1 First");
+			expect(taskResult.stdout).toContain("- [ ] #2 Second");
+			expect(taskResult.stdout).toContain("- [x] #3 Third");
+			expect(taskResult.stdout).toContain("- [ ] #4 Fourth");
+		});
+
+		it("should support mixed AC operations in single command", async () => {
+			// Create task with multiple ACs
+			const createResult =
+				await $`bun run ${CLI_PATH} task create "Mixed Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
+					TEST_DIR,
+				);
+			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+
+			// Check some ACs first
+			await $`bun run ${CLI_PATH} task edit ${taskId} --check-ac 1 --check-ac 2 --check-ac 3`.cwd(TEST_DIR);
+
+			// Now do mixed operations: uncheck 1, keep 2 checked, check 4
+			const mixedResult = await $`bun run ${CLI_PATH} task edit ${taskId} --uncheck-ac 1 --check-ac 4`.cwd(TEST_DIR);
+			expect(mixedResult.exitCode).toBe(0);
+
+			// Verify final state
+			const taskResult = await $`bun run ${CLI_PATH} task ${taskId} --plain`.cwd(TEST_DIR);
+			expect(taskResult.stdout).toContain("- [ ] #1 First"); // unchecked
+			expect(taskResult.stdout).toContain("- [x] #2 Second"); // remained checked
+			expect(taskResult.stdout).toContain("- [x] #3 Third"); // remained checked
+			expect(taskResult.stdout).toContain("- [x] #4 Fourth"); // newly checked
+		});
+
+		it("should support multiple --remove-ac flags with proper renumbering", async () => {
+			// Create task with 5 ACs
+			const createResult =
+				await $`bun run ${CLI_PATH} task create "Remove Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth" --ac "Fifth"`.cwd(
+					TEST_DIR,
+				);
+			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+
+			// Remove ACs 2 and 4 (should be processed in descending order to avoid index shifting)
+			const removeResult = await $`bun run ${CLI_PATH} task edit ${taskId} --remove-ac 2 --remove-ac 4`.cwd(TEST_DIR);
+			expect(removeResult.exitCode).toBe(0);
+
+			// Verify remaining ACs are properly renumbered
+			const taskResult = await $`bun run ${CLI_PATH} task ${taskId} --plain`.cwd(TEST_DIR);
+			expect(taskResult.stdout).toContain("- [ ] #1 First"); // original #1
+			expect(taskResult.stdout).toContain("- [ ] #2 Third"); // original #3 -> #2
+			expect(taskResult.stdout).toContain("- [ ] #3 Fifth"); // original #5 -> #3
+			expect(taskResult.stdout).not.toContain("Second"); // removed
+			expect(taskResult.stdout).not.toContain("Fourth"); // removed
+		});
+
+		it("should handle invalid indices gracefully in multi-value operations", async () => {
+			// Create task with 2 ACs
+			const createResult = await $`bun run ${CLI_PATH} task create "Invalid Test" --ac "First" --ac "Second"`.cwd(
+				TEST_DIR,
+			);
+			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+
+			// Try to check valid and invalid indices
+			const checkResult = await $`bun run ${CLI_PATH} task edit ${taskId} --check-ac 1 --check-ac 5`.cwd(TEST_DIR);
+			expect(checkResult.exitCode).toBe(1);
+			expect(checkResult.stderr).toContain("Failed to check AC #5");
+		});
 	});
 });

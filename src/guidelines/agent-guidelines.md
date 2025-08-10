@@ -155,16 +155,33 @@ Provide a concise summary of the task purpose and its goal. Explains the context
 - Format: `- [ ] #1 Criterion text` (unchecked) or `- [x] #1 Criterion text` (checked)
 
 **Managing Acceptance Criteria via CLI:**
+
+⚠️ **IMPORTANT: How AC Commands Work**
+- **Adding criteria (`--ac`)** accepts multiple flags: `--ac "First" --ac "Second"` ✅
+- **Checking/unchecking/removing** accept multiple flags too: `--check-ac 1 --check-ac 2` ✅
+- **Mixed operations** work in a single command: `--check-ac 1 --uncheck-ac 2 --remove-ac 3` ✅
+
 ```bash
-# Add new criteria
+# Add new criteria (MULTIPLE values allowed)
 backlog task edit 42 --ac "User can login" --ac "Session persists"
 
-# Check/uncheck specific criteria by index
+# Check specific criteria by index (MULTIPLE values supported)
+backlog task edit 42 --check-ac 1 --check-ac 2 --check-ac 3  # Check multiple ACs
+# Or check them individually if you prefer:
 backlog task edit 42 --check-ac 1    # Mark #1 as complete
-backlog task edit 42 --uncheck-ac 2  # Mark #2 as incomplete
+backlog task edit 42 --check-ac 2    # Mark #2 as complete
 
-# Remove a criterion
-backlog task edit 42 --remove-ac 3   # Remove criterion #3
+# Mixed operations in single command
+backlog task edit 42 --check-ac 1 --uncheck-ac 2 --remove-ac 3
+
+# ❌ STILL WRONG - These formats don't work:
+# backlog task edit 42 --check-ac 1,2,3  # No comma-separated values
+# backlog task edit 42 --check-ac 1-3    # No ranges
+# backlog task edit 42 --check 1         # Wrong flag name
+
+# Multiple operations of same type
+backlog task edit 42 --uncheck-ac 1 --uncheck-ac 2  # Uncheck multiple ACs
+backlog task edit 42 --remove-ac 2 --remove-ac 4    # Remove multiple ACs (processed high-to-low)
 ```
 
 **Key Principles for Good ACs:**
@@ -235,10 +252,12 @@ backlog task edit 42 --plan "1. Analyze\n2. Refactor\n3. Test"
 
 # 5. Work on the task (write code, test, etc.)
 
-# 6. Mark acceptance criteria as complete
-backlog task edit 42 --check-ac 1
-backlog task edit 42 --check-ac 2
-backlog task edit 42 --check-ac 3
+# 6. Mark acceptance criteria as complete (supports multiple in one command)
+backlog task edit 42 --check-ac 1 --check-ac 2 --check-ac 3  # Check all at once
+# Or check them individually if preferred:
+# backlog task edit 42 --check-ac 1
+# backlog task edit 42 --check-ac 2
+# backlog task edit 42 --check-ac 3
 
 # 7. Add implementation notes
 backlog task edit 42 --notes "Refactored using strategy pattern, updated tests"
@@ -314,9 +333,11 @@ A task is **Done** only when **ALL** of the following are complete:
 |--------|---------|
 | Add AC | `backlog task edit 42 --ac "New criterion" --ac "Another"` |
 | Remove AC #2 | `backlog task edit 42 --remove-ac 2` |
+| Remove multiple ACs | `backlog task edit 42 --remove-ac 2 --remove-ac 4` |
 | Check AC #1 | `backlog task edit 42 --check-ac 1` |
+| Check multiple ACs | `backlog task edit 42 --check-ac 1 --check-ac 3` |
 | Uncheck AC #3 | `backlog task edit 42 --uncheck-ac 3` |
-| Multiple operations | `backlog task edit 42 --check-ac 1 --remove-ac 2 --ac "New"` |
+| Mixed operations | `backlog task edit 42 --check-ac 1 --uncheck-ac 2 --remove-ac 3 --ac "New"` |
 
 ### Task Content
 | Action | Command |
