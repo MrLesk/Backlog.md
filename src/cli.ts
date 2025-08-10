@@ -49,11 +49,15 @@ async function processAcceptanceCriteriaOperations(
 	// Process removal operations (do these first to avoid index shifting issues)
 	if (operations.remove) {
 		const removeIndices = Array.isArray(operations.remove) ? operations.remove : [operations.remove];
+		// Validate indices first
+		for (const indexStr of removeIndices) {
+			const index = Number.parseInt(String(indexStr), 10);
+			if (Number.isNaN(index) || index < 1) {
+				throw new Error(`Invalid index: ${indexStr}. Index must be a positive number (1-based).`);
+			}
+		}
 		// Sort indices in descending order so we remove from highest to lowest
-		const sortedIndices = removeIndices
-			.map((idx) => Number.parseInt(String(idx), 10))
-			.filter((idx) => !Number.isNaN(idx) && idx >= 1)
-			.sort((a, b) => b - a);
+		const sortedIndices = removeIndices.map((idx) => Number.parseInt(String(idx), 10)).sort((a, b) => b - a);
 
 		for (const index of sortedIndices) {
 			try {

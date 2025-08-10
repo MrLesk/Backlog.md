@@ -112,12 +112,10 @@ async function createTaskViaCore(
 
 		// Handle acceptance criteria
 		if (options.ac) {
-			const { updateTaskAcceptanceCriteria } = await import("../markdown/serializer.ts");
-			const criteria = options.ac
-				.split(",")
-				.map((item) => item.trim())
-				.filter(Boolean);
-			task.body = updateTaskAcceptanceCriteria(task.body, criteria);
+			const { AcceptanceCriteriaManager } = await import("../core/acceptance-criteria.ts");
+			// Treat the entire ac string as a single criterion (matching current CLI behavior)
+			const criteria = [options.ac.trim()];
+			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria);
 		}
 
 		// Handle implementation plan
