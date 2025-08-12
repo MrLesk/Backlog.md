@@ -216,18 +216,26 @@ Bad Example (Implementation Step):
 
 ## 5. Implementing Tasks
 
-### Implementation Plan (The "how")
-Add AFTER starting work, BEFORE coding:
+### Implementation Plan (The "how") (only after starting work)
 ```bash
 backlog task edit 42 -s "In Progress" -a @{myself}
 backlog task edit 42 --plan "1. Research patterns\n2. Implement\n3. Test"
 ```
 
 ### Implementation Notes (Imagine you need to copy paste this into a PR description)
-Add AFTER completing the implementation:
 ```bash
 backlog task edit 42 --notes "Implemented using pattern X, modified files Y and Z"
 ```
+
+**IMPORTANT**: Do NOT include an Implementation Plan when creating a task. The plan is added only after you start implementation.
+- Creation phase: provide Title, Description, Acceptance Criteria, and optionally labels/priority/assignee.
+- When you begin work, switch to edit and add the plan: `backlog task edit <id> --plan "..."`.
+- Add Implementation Notes only after completing the work: `backlog task edit <id> --notes "..."`.
+
+Phase discipline: What goes where
+- Creation: Title, Description, Acceptance Criteria, labels/priority/assignee.
+- Implementation: Implementation Plan (after moving to In Progress).
+- Wrap-up: Implementation Notes, AC and Definition of Done checks.
 
 **IMPORTANT**: Only implement what's in the Acceptance Criteria. If you need to do more, either:
 1. Update the AC first: `backlog task edit 42 --ac "New requirement"`

@@ -1,7 +1,6 @@
 # ⚠️ **IMPORTANT**
 
-1. Read the [README.md](README.md)
-2. Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
+Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
 
 ## Commands
 
