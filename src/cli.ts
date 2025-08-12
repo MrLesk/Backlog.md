@@ -958,6 +958,7 @@ taskCmd
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
+	.option("--plain", "use plain text output after creating")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
 	.option(
 		"--acceptance-criteria <criteria>",
@@ -1018,12 +1019,25 @@ taskCmd
 			task.body = updateTaskImplementationNotes(task.body, String(options.notes));
 		}
 
+		// Workaround for bun compile issue with commander options
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+
 		if (options.draft) {
 			const filepath = await core.createDraft(task);
+			if (isPlainFlag) {
+				const content = await Bun.file(filepath).text();
+				console.log(formatTaskPlainText(task, content, filepath));
+				return;
+			}
 			console.log(`Created draft ${id}`);
 			console.log(`File: ${filepath}`);
 		} else {
 			const filepath = await core.createTask(task);
+			if (isPlainFlag) {
+				const content = await Bun.file(filepath).text();
+				console.log(formatTaskPlainText(task, content, filepath));
+				return;
+			}
 			console.log(`Created task ${id}`);
 			console.log(`File: ${filepath}`);
 		}
@@ -1213,6 +1227,7 @@ taskCmd
 	.option("-l, --label <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
+	.option("--plain", "use plain text output after editing")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
@@ -1365,6 +1380,18 @@ taskCmd
 		}
 
 		await core.updateTask(task);
+
+		// Workaround for bun compile issue with commander options
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		if (isPlainFlag) {
+			const filePath = await getTaskPath(task.id, core);
+			if (filePath) {
+				const content = await Bun.file(filePath).text();
+				console.log(formatTaskPlainText(task, content, filePath));
+				return;
+			}
+		}
+
 		console.log(`Updated task ${task.id}`);
 	});
 

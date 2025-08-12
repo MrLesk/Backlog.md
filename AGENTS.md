@@ -1,6 +1,7 @@
 # ⚠️ **IMPORTANT**
 
 Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
+When you're working on a task, you should assign it yourself: -a @codex
 
 ## Commands
 
