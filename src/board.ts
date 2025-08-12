@@ -14,16 +14,22 @@ export function generateKanbanBoardWithMetadata(tasks: Task[], statuses: string[
 	const now = new Date();
 	const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
 
-	// Group tasks by status, filtering out tasks without status
-	const groups = new Map<string, Task[]>();
+	// Build case-insensitive mapping from configured statuses to their canonical display value
+	const canonicalByLower = new Map<string, string>();
+	for (const s of statuses) {
+		if (!s) continue;
+		canonicalByLower.set(s.toLowerCase(), s);
+	}
+
+	// Group tasks by canonical status, filtering out tasks without status
+	const groups = new Map<string, Task[]>(); // key is display/canonical label
 	for (const task of tasks) {
-		const status = task.status?.trim();
-		if (status) {
-			// Only include tasks with a valid status
-			const list = groups.get(status) || [];
-			list.push(task);
-			groups.set(status, list);
-		}
+		const raw = (task.status || "").trim();
+		if (!raw) continue;
+		const canonical = canonicalByLower.get(raw.toLowerCase()) || raw; // fallback to raw if unknown
+		const list = groups.get(canonical) || [];
+		list.push(task);
+		groups.set(canonical, list);
 	}
 
 	// Only show statuses that have tasks (filter out empty groups and exclude empty/no status)

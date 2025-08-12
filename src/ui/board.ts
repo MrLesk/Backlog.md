@@ -30,13 +30,33 @@ export async function renderBoardTui(
 	}
 
 	/* ------------------------------------------------------------------
-     Group tasks by status
+     Group tasks by status (case-insensitive), preserving configured casing
      ------------------------------------------------------------------ */
-	const tasksByStatus = new Map<string, Task[]>();
-	for (const s of statuses) tasksByStatus.set(s, []);
-	for (const t of tasks) (tasksByStatus.get(t.status || "") ?? []).push(t);
+	const canonicalByLower = new Map<string, string>();
+	for (const s of statuses) {
+		if (!s) continue;
+		canonicalByLower.set(s.toLowerCase(), s);
+	}
 
-	const nonEmptyStatuses = statuses.filter((s) => (tasksByStatus.get(s) ?? []).length > 0);
+	const tasksByStatus = new Map<string, Task[]>(); // key is display/canonical status label
+	// Initialize configured statuses
+	for (const s of statuses) tasksByStatus.set(s, []);
+
+	for (const t of tasks) {
+		const raw = (t.status || "").trim();
+		if (!raw) continue;
+		const canonical = canonicalByLower.get(raw.toLowerCase()) || raw;
+		const list = tasksByStatus.get(canonical) || [];
+		list.push(t);
+		tasksByStatus.set(canonical, list);
+	}
+
+	// Determine displayed columns: configured statuses with tasks, then any unknown statuses with tasks
+	const nonEmptyConfigured = statuses.filter((s) => (tasksByStatus.get(s) ?? []).length > 0);
+	const unknownWithTasks = Array.from(tasksByStatus.keys()).filter(
+		(s) => !statuses.includes(s) && (tasksByStatus.get(s) ?? []).length > 0,
+	);
+	const nonEmptyStatuses = [...nonEmptyConfigured, ...unknownWithTasks];
 
 	if (nonEmptyStatuses.length === 0) {
 		console.log("No tasks found in any status.");

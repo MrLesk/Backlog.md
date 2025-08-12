@@ -22,6 +22,7 @@ import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
+import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getVersion } from "./utils/version.ts";
@@ -988,6 +989,20 @@ taskCmd
 		const id = await core.generateNextId(options.parent);
 		const task = buildTaskFromOptions(id, title, options);
 
+		// Normalize and validate status if provided (case-insensitive)
+		if (options.status) {
+			const canonical = await getCanonicalStatus(String(options.status), core);
+			if (!canonical) {
+				const configuredStatuses = await getValidStatuses(core);
+				console.error(
+					`Invalid status: ${options.status}. Valid statuses are: ${formatValidStatuses(configuredStatuses)}`,
+				);
+				process.exitCode = 1;
+				return;
+			}
+			task.status = canonical;
+		}
+
 		// Validate dependencies if provided
 		if (task.dependencies.length > 0) {
 			const { valid, invalid } = await validateDependencies(task.dependencies, core);
@@ -1135,15 +1150,20 @@ taskCmd
 				return;
 			}
 
+			// Group by status case-insensitively, preserving configured casing
+			const canonicalByLower = new Map<string, string>();
+			const statuses = config?.statuses || [];
+			for (const s of statuses) canonicalByLower.set(s.toLowerCase(), s);
+
 			const groups = new Map<string, Task[]>();
 			for (const task of filtered) {
-				const status = task.status || "";
-				const list = groups.get(status) || [];
+				const raw = (task.status || "").trim();
+				const canonical = canonicalByLower.get(raw.toLowerCase()) || raw;
+				const list = groups.get(canonical) || [];
 				list.push(task);
-				groups.set(status, list);
+				groups.set(canonical, list);
 			}
 
-			const statuses = config?.statuses || [];
 			const ordered = [
 				...statuses.filter((s) => groups.has(s)),
 				...Array.from(groups.keys()).filter((s) => !statuses.includes(s)),
@@ -1282,7 +1302,16 @@ taskCmd
 			task.assignee = [String(options.assignee)];
 		}
 		if (options.status) {
-			task.status = String(options.status);
+			const canonical = await getCanonicalStatus(String(options.status), core);
+			if (!canonical) {
+				const configuredStatuses = await getValidStatuses(core);
+				console.error(
+					`Invalid status: ${options.status}. Valid statuses are: ${formatValidStatuses(configuredStatuses)}`,
+				);
+				process.exitCode = 1;
+				return;
+			}
+			task.status = canonical;
 		}
 
 		if (options.priority) {
