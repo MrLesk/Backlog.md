@@ -19,6 +19,12 @@
         packageJson = builtins.fromJSON (builtins.readFile ./package.json);
         version = packageJson.version;
         
+        ldLibraryPath = ''
+          LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [
+            pkgs.stdenv.cc.cc.lib
+          ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+        '';
+
         backlog-md = bun2nix.lib.${system}.mkBunDerivation {
           pname = "backlog-md";
           inherit version;
@@ -31,6 +37,7 @@
           preBuild = ''
             export HOME=$TMPDIR
             export HUSKY=0
+            export ${ldLibraryPath}
           '';
           
           buildPhase = ''
@@ -104,6 +111,8 @@
           ];
           
           shellHook = ''
+            export ${ldLibraryPath}
+
             echo "Backlog.md development environment"
             echo "Available commands:"
             echo "  bun i          - Install dependencies"
