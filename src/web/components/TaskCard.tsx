@@ -4,14 +4,16 @@ import { type Task } from '../../types';
 interface TaskCardProps {
   task: Task;
   onUpdate: (taskId: string, updates: Partial<Task>) => void;
+  onView: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   status?: string;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onView, onEdit, onDragStart, onDragEnd, status }) => {
   const [isDragging, setIsDragging] = React.useState(false);
+  const [hoverArea, setHoverArea] = React.useState<'left' | 'right' | null>(null);
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('text/plain', task.id);
@@ -26,6 +28,34 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
   const handleDragEnd = () => {
     setIsDragging(false);
     onDragEnd?.();
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const width = rect.width;
+    
+    if (x < width / 2) {
+      setHoverArea('left');
+    } else {
+      setHoverArea('right');
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHoverArea(null);
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const width = rect.width;
+    
+    if (x < width / 2) {
+      onView(task);
+    } else {
+      onEdit(task);
+    }
   };
 
   const getPriorityClass = (priority?: string) => {
@@ -80,14 +110,28 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
 
   return (
     <div
-      className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 cursor-pointer transition-all duration-200 hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400 ${getPriorityClass(task.priority)} ${
+      className={`relative bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 cursor-pointer transition-all duration-200 hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400 ${getPriorityClass(task.priority)} ${
         isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
       }`}
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onClick={() => onEdit(task)}
+      onClick={handleClick}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     >
+      {/* hover hint */}
+      {hoverArea === 'left' && (
+        <div className="absolute top-1 left-1 bg-stone-500/80 dark:bg-stone-400/80 text-white text-xs px-1.5 py-0.5 rounded pointer-events-none z-10 text-[10px] font-medium">
+          View
+        </div>
+      )}
+      
+      {hoverArea === 'right' && (
+        <div className="absolute top-1 right-1 bg-stone-500/80 dark:bg-stone-400/80 text-white text-xs px-1.5 py-0.5 rounded pointer-events-none z-10 text-[10px] font-medium">
+          Edit
+        </div>
+      )}
       <div className="mb-2">
         <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 line-clamp-2 transition-colors duration-200">
           {task.title}

@@ -5,13 +5,14 @@ import TaskColumn from './TaskColumn';
 
 interface BoardProps {
   onEditTask: (task: Task) => void;
+  onViewTask: (task: Task) => void;
   onNewTask: () => void;
   highlightTaskId?: string | null;
   tasks: Task[];
   onRefreshData?: () => Promise<void>;
 }
 
-const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, tasks, onRefreshData }) => {
+const Board: React.FC<BoardProps> = ({ onEditTask, onViewTask, onNewTask, highlightTaskId, tasks, onRefreshData }) => {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +191,7 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
               onTaskUpdate={handleTaskUpdate}
               onStatusChange={handleStatusChange}
               onEditTask={onEditTask}
+              onViewTask={onViewTask}
               onTaskReorder={handleTaskReorder}
             />
           ))}

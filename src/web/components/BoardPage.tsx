@@ -5,12 +5,13 @@ import { type Task } from '../../types';
 
 interface BoardPageProps {
 	onEditTask: (task: Task) => void;
+	onViewTask: (task: Task) => void;
 	onNewTask: () => void;
 	tasks: Task[];
 	onRefreshData?: () => Promise<void>;
 }
 
-export default function BoardPage({ onEditTask, onNewTask, tasks, onRefreshData }: BoardPageProps) {
+export default function BoardPage({ onEditTask, onViewTask, onNewTask, tasks, onRefreshData }: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 
@@ -34,7 +35,7 @@ export default function BoardPage({ onEditTask, onNewTask, tasks, onRefreshData 
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
-			<Board onEditTask={handleEditTask} onNewTask={onNewTask} highlightTaskId={highlightTaskId} tasks={tasks} onRefreshData={onRefreshData} />
+			<Board onEditTask={handleEditTask} onViewTask={onViewTask} onNewTask={onNewTask} highlightTaskId={highlightTaskId} tasks={tasks} onRefreshData={onRefreshData} />
 		</div>
 	);
 }

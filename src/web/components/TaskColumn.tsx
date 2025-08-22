@@ -8,6 +8,7 @@ interface TaskColumnProps {
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
   onStatusChange: (taskId: string, status: string) => void;
   onEditTask: (task: Task) => void;
+  onViewTask: (task: Task) => void;
   onTaskReorder?: (taskId: string, newOrdinal: number, columnTasks: Task[]) => void;
 }
 
@@ -17,6 +18,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onTaskUpdate, 
   onStatusChange,
   onEditTask,
+  onViewTask,
   onTaskReorder
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -157,6 +159,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             <TaskCard
               task={task}
               onUpdate={onTaskUpdate}
+              onView={onViewTask}
               onEdit={onEditTask}
               onDragStart={() => setDraggedTaskId(task.id)}
               onDragEnd={() => {

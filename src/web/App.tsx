@@ -17,10 +17,12 @@ import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import MDEditor from '@uiw/react-md-editor';
+import TaskView from './components/TaskView';
 
 function App() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [viewingTask, setViewingTask] = useState<Task | null>(null); 
   const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
@@ -128,30 +130,6 @@ function App() {
     previousOnlineRef.current = isOnline;
   }, [isOnline]);
 
-  const handleNewTask = () => {
-    setEditingTask(null);
-    setIsDraftMode(false);
-    setShowModal(true);
-  };
-
-  const handleNewDraft = () => {
-    // Create a draft task (same as new task but with status 'Draft')
-    setEditingTask(null);
-    setIsDraftMode(true);
-    setShowModal(true);
-  };
-
-  const handleEditTask = (task: Task) => {
-    setEditingTask(task);
-    setShowModal(true);
-  };
-
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingTask(null);
-    setIsDraftMode(false);
-  };
-
   const refreshData = async () => {
     try {
       const [tasksData, docsData, decisionsData] = await Promise.all([
@@ -166,6 +144,43 @@ function App() {
     } catch (error) {
       console.error('Failed to refresh data:', error);
     }
+  };
+
+  const handleNewTask = () => {
+    setEditingTask(null);
+    setViewingTask(null);
+    setIsDraftMode(false);
+    setShowModal(true);
+  };
+
+  const handleNewDraft = () => {
+    // Create a draft task (same as new task but with status 'Draft')
+    setEditingTask(null);
+    setViewingTask(null);
+    setIsDraftMode(true);
+    setShowModal(true);
+  };
+
+  const handleEditTask = (task: Task) => {
+    setEditingTask(task);
+    setViewingTask(null);
+    setIsDraftMode(false);
+    setShowModal(true);
+  };
+
+  // 읽기 모달 열기 함수 추가
+  const handleViewTask = (task: Task) => {
+    setViewingTask(task);
+    setEditingTask(null);
+    setIsDraftMode(false);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingTask(null);
+    setViewingTask(null);
+    setIsDraftMode(false);
   };
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {
@@ -229,7 +244,7 @@ function App() {
               />
             }
           >
-            <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} onRefreshData={refreshData} />} />
+            <Route index element={<BoardPage onEditTask={handleEditTask} onViewTask={handleViewTask} onNewTask={handleNewTask} tasks={tasks} onRefreshData={refreshData} />} />
             <Route path="tasks" element={<TaskList onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
             <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
@@ -246,16 +261,33 @@ function App() {
         <Modal
           isOpen={showModal}
           onClose={handleCloseModal}
-          title={editingTask ? `Edit Task ${editingTask.id.replace('task-', '')}` : (isDraftMode ? 'Create New Draft' : 'Create New Task')}
+          title={
+            viewingTask 
+              ? `View Task ${viewingTask.id.replace('task-', '')}` 
+              : editingTask 
+                ? `Edit Task ${editingTask.id.replace('task-', '')}` 
+                : (isDraftMode ? 'Create New Draft' : 'Create New Task')
+          }
         >
-          <TaskForm
-            task={editingTask || undefined}
-            onSubmit={handleSubmitTask}
-            onCancel={handleCloseModal}
-            onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-            availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
-            MDEditor={MDEditor}
-          />
+          {viewingTask ? (
+            <TaskView
+              task={viewingTask}
+              onEdit={(task) => {
+                setViewingTask(null);
+                setEditingTask(task);
+              }}
+              onClose={handleCloseModal}
+            />
+          ) : (
+            <TaskForm
+              task={editingTask || undefined}
+              onSubmit={handleSubmitTask}
+              onCancel={handleCloseModal}
+              onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+              availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+              MDEditor={MDEditor}
+            />
+          )}
         </Modal>
 
         {/* Task Creation Confirmation Toast */}
