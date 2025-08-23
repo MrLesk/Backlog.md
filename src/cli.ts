@@ -7,6 +7,7 @@ import { Command } from "commander";
 import prompts from "prompts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import type { TaskWithMetadata } from "./core/remote-tasks.ts";
+import { computeSequences } from "./core/sequences.ts";
 import {
 	type AgentInstructionFile,
 	addAgentInstructions,
@@ -2000,6 +2001,44 @@ agentsCmd
 
 // Config command group
 const configCmd = program.command("config");
+
+// Sequences command group
+const sequenceCmd = program.command("sequence");
+
+sequenceCmd
+	.description("list and inspect execution sequences computed from task dependencies")
+	.command("list")
+	.description("list sequences (interactive by default; use --plain for text output)")
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const tasks = await core.filesystem.listTasks();
+		const sequences = computeSequences(tasks);
+
+		// Workaround for bun compile issue with commander options
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		if (isPlainFlag) {
+			for (const seq of sequences) {
+				console.log(`Sequence ${seq.index}:`);
+				for (const t of seq.tasks) {
+					console.log(`  ${t.id} - ${t.title}`);
+				}
+			}
+			return;
+		}
+
+		// Interactive default: show in a scrollable viewer for now (rich TUI in 215.x)
+		let content = "Sequences\n\n";
+		for (const seq of sequences) {
+			content += `Sequence ${seq.index}:\n`;
+			for (const t of seq.tasks) {
+				content += `  ${t.id} - ${t.title}\n`;
+			}
+			content += "\n";
+		}
+		await scrollableViewer(content.trimEnd());
+	});
 
 configCmd
 	.command("get <key>")
