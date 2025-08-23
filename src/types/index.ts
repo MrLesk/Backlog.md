@@ -49,6 +49,13 @@ export interface Document {
 	lastModified?: string;
 }
 
+export interface Sequence {
+	/** 1-based sequence index */
+	index: number;
+	/** Tasks that can be executed in parallel within this sequence */
+	tasks: Task[];
+}
+
 export interface BacklogConfig {
 	projectName: string;
 	defaultAssignee?: string;
