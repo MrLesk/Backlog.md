@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { computeSequences } from "../core/sequences.ts";
-import type { Task } from "../types/index.ts";
+import type { Sequence, Task } from "../types/index.ts";
 
 function task(id: string, deps: string[] = []): Task {
 	return {
@@ -16,21 +16,27 @@ function task(id: string, deps: string[] = []): Task {
 }
 
 describe("computeSequences", () => {
+	function mustGet<T>(arr: T[], idx: number): T {
+		const v = arr[idx];
+		if (v === undefined) throw new Error(`expected element at index ${idx}`);
+		return v;
+	}
 	it("groups all independent tasks into sequence 1", () => {
 		const tasks = [task("task-1"), task("task-2"), task("task-3")];
 		const seqs = computeSequences(tasks);
 		expect(seqs.length).toBe(1);
-		expect(seqs[0].index).toBe(1);
-		expect(seqs[0].tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
+		const s1: Sequence = mustGet(seqs, 0);
+		expect(s1.index).toBe(1);
+		expect(s1.tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
 	});
 
 	it("handles a simple chain A -> B -> C", () => {
 		const tasks = [task("task-1"), task("task-2", ["task-1"]), task("task-3", ["task-2"])];
 		const seqs = computeSequences(tasks);
 		expect(seqs.length).toBe(3);
-		expect(seqs[0].tasks.map((t) => t.id)).toEqual(["task-1"]);
-		expect(seqs[1].tasks.map((t) => t.id)).toEqual(["task-2"]);
-		expect(seqs[2].tasks.map((t) => t.id)).toEqual(["task-3"]);
+		expect(mustGet(seqs, 0).tasks.map((t) => t.id)).toEqual(["task-1"]);
+		expect(mustGet(seqs, 1).tasks.map((t) => t.id)).toEqual(["task-2"]);
+		expect(mustGet(seqs, 2).tasks.map((t) => t.id)).toEqual(["task-3"]);
 	});
 
 	it("groups parallel branches (A -> C, B -> C) into same sequence", () => {
@@ -38,9 +44,9 @@ describe("computeSequences", () => {
 		const seqs = computeSequences(tasks);
 		expect(seqs.length).toBe(2);
 		// First layer contains 1 and 2 in id order
-		expect(seqs[0].tasks.map((t) => t.id)).toEqual(["task-1", "task-2"]);
+		expect(mustGet(seqs, 0).tasks.map((t) => t.id)).toEqual(["task-1", "task-2"]);
 		// Second layer contains 3
-		expect(seqs[1].tasks.map((t) => t.id)).toEqual(["task-3"]);
+		expect(mustGet(seqs, 1).tasks.map((t) => t.id)).toEqual(["task-3"]);
 	});
 
 	it("handles a more complex graph", () => {
@@ -55,17 +61,17 @@ describe("computeSequences", () => {
 		];
 		const seqs = computeSequences(tasks);
 		expect(seqs.length).toBe(3);
-		expect(seqs[0].tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
+		expect(mustGet(seqs, 0).tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
 		// Second layer should include 4 and 5 (order by id)
-		expect(seqs[1].tasks.map((t) => t.id)).toEqual(["task-4", "task-5"]);
+		expect(mustGet(seqs, 1).tasks.map((t) => t.id)).toEqual(["task-4", "task-5"]);
 		// Final layer 6
-		expect(seqs[2].tasks.map((t) => t.id)).toEqual(["task-6"]);
+		expect(mustGet(seqs, 2).tasks.map((t) => t.id)).toEqual(["task-6"]);
 	});
 
 	it("ignores external dependencies not present in the task set", () => {
 		const tasks = [task("task-1", ["task-999"])];
 		const seqs = computeSequences(tasks);
 		expect(seqs.length).toBe(1);
-		expect(seqs[0].tasks.map((t) => t.id)).toEqual(["task-1"]);
+		expect(mustGet(seqs, 0).tasks.map((t) => t.id)).toEqual(["task-1"]);
 	});
 });

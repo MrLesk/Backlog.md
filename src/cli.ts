@@ -2028,16 +2028,9 @@ sequenceCmd
 			return;
 		}
 
-		// Interactive default: show in a scrollable viewer for now (rich TUI in 215.x)
-		let content = "Sequences\n\n";
-		for (const seq of sequences) {
-			content += `Sequence ${seq.index}:\n`;
-			for (const t of seq.tasks) {
-				content += `  ${t.id} - ${t.title}\n`;
-			}
-			content += "\n";
-		}
-		await scrollableViewer(content.trimEnd());
+		// Interactive default: read-only TUI view (215.01)
+		const { runSequencesView } = await import("./ui/sequences.ts");
+		await runSequencesView(sequences);
 	});
 
 configCmd
