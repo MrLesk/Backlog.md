@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-07-27'
-updated_date: '2025-08-23 21:53'
+updated_date: '2025-08-24 15:08'
 labels:
   - sequences
   - cli
@@ -24,6 +24,7 @@ Provide a command to inspect computed sequences. The command is interactive by d
 - [x] #3 Reuse core compute function from task-213; do not duplicate logic in CLI
 - [x] #4 CLI help text explains usage and --plain flag
 - [x] #5 Tests verify plain output format
+- [x] #6 Exclude tasks with status Done from sequences
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -39,3 +40,7 @@ Provide a command to inspect computed sequences. The command is interactive by d
 ## Implementation Notes
 
 Implemented sequence CLI command with interactive default and --plain format. Reused computeSequences, printed sequences deterministically, and added tests asserting plain output. Command help describes usage/flags. All tests pass locally.
+
+Exclude Done tasks from sequences:
+- CLI filters Done before computeSequences.
+- Added test to assert Done tasks are excluded from --plain output.

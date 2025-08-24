@@ -139,4 +139,65 @@ describe("CLI sequences --plain output", () => {
 		expect(out).not.toContain("[?1049h");
 		expect(out).not.toContain("\x1b");
 	});
+
+	it("excludes Done tasks from sequences", async () => {
+		const cliPath = join(process.cwd(), "src", "cli.ts");
+		const TEST_DIR2 = createUniqueTestDir("test-cli-sequences-done");
+		await rm(TEST_DIR2, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR2, { recursive: true });
+
+		await $`git init -b main`.cwd(TEST_DIR2).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR2).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR2).quiet();
+
+		const core = new Core(TEST_DIR2);
+		await core.initializeProject("Sequences Exclude Done Test");
+
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "A",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-18",
+				labels: [],
+				dependencies: [],
+				body: "Test",
+			},
+			false,
+		);
+		await core.createTask(
+			{
+				id: "task-2",
+				title: "B",
+				status: "Done",
+				assignee: [],
+				createdDate: "2025-06-18",
+				labels: [],
+				dependencies: [],
+				body: "Test",
+			},
+			false,
+		);
+		await core.createTask(
+			{
+				id: "task-3",
+				title: "C",
+				status: "In Progress",
+				assignee: [],
+				createdDate: "2025-06-18",
+				labels: [],
+				dependencies: ["task-1"],
+				body: "Test",
+			},
+			false,
+		);
+
+		const result = await $`bun ${cliPath} sequence list --plain`.cwd(TEST_DIR2).quiet();
+		expect(result.exitCode).toBe(0);
+		const out = result.stdout.toString();
+		expect(out).toContain("task-1 - A");
+		expect(out).toContain("task-3 - C");
+		expect(out).not.toContain("task-2 - B");
+	});
 });
