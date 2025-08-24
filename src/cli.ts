@@ -2014,7 +2014,9 @@ sequenceCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const tasks = await core.filesystem.listTasks();
-		const sequences = computeSequences(tasks);
+		// Exclude tasks marked as Done from sequences (case-insensitive)
+		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
+		const sequences = computeSequences(activeTasks);
 
 		// Workaround for bun compile issue with commander options
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
@@ -2028,9 +2030,9 @@ sequenceCmd
 			return;
 		}
 
-		// Interactive default: read-only TUI view (215.01)
+		// Interactive default: TUI view (215.01 + 215.02 navigation/detail)
 		const { runSequencesView } = await import("./ui/sequences.ts");
-		await runSequencesView(sequences);
+		await runSequencesView(sequences, core);
 	});
 
 configCmd
