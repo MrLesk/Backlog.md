@@ -91,6 +91,7 @@ export async function runSequencesView(
 		for (let t = 0; t < data.unsequenced.length; t++) {
 			const lineTop = t + 1;
 			const task = data.unsequenced[t];
+			if (!task) continue;
 			const node = box({
 				parent: block,
 				top: lineTop,

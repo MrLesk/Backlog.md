@@ -530,36 +530,55 @@ export class FileSystem {
 	}
 
 	private async loadUserSettings(global = false): Promise<Record<string, string> | null> {
-		const filePath = global
+		const primaryPath = global
 			? join(homedir(), "backlog", DEFAULT_FILES.USER)
 			: join(this.projectRoot, DEFAULT_FILES.USER);
-		try {
-			const content = await Bun.file(filePath).text();
-			const result: Record<string, string> = {};
-			for (const line of content.split(/\r?\n/)) {
-				const trimmed = line.trim();
-				if (!trimmed || trimmed.startsWith("#")) continue;
-				const idx = trimmed.indexOf(":");
-				if (idx === -1) continue;
-				const k = trimmed.substring(0, idx).trim();
-				result[k] = trimmed
-					.substring(idx + 1)
-					.trim()
-					.replace(/^['"]|['"]$/g, "");
+		const fallbackPath = global ? join(this.projectRoot, "backlog", DEFAULT_FILES.USER) : undefined;
+		const tryPaths = fallbackPath ? [primaryPath, fallbackPath] : [primaryPath];
+		for (const filePath of tryPaths) {
+			try {
+				const content = await Bun.file(filePath).text();
+				const result: Record<string, string> = {};
+				for (const line of content.split(/\r?\n/)) {
+					const trimmed = line.trim();
+					if (!trimmed || trimmed.startsWith("#")) continue;
+					const idx = trimmed.indexOf(":");
+					if (idx === -1) continue;
+					const k = trimmed.substring(0, idx).trim();
+					result[k] = trimmed
+						.substring(idx + 1)
+						.trim()
+						.replace(/^['"]|['"]$/g, "");
+				}
+				return result;
+			} catch {
+				// Try next path (if any)
 			}
-			return result;
-		} catch {
-			return null;
 		}
+		return null;
 	}
 
 	private async saveUserSettings(settings: Record<string, string>, global = false): Promise<void> {
-		const filePath = global
+		const primaryPath = global
 			? join(homedir(), "backlog", DEFAULT_FILES.USER)
 			: join(this.projectRoot, DEFAULT_FILES.USER);
-		await this.ensureDirectoryExists(dirname(filePath));
+		const fallbackPath = global ? join(this.projectRoot, "backlog", DEFAULT_FILES.USER) : undefined;
+
 		const lines = Object.entries(settings).map(([k, v]) => `${k}: ${v}`);
-		await Bun.write(filePath, `${lines.join("\n")}\n`);
+		const data = `${lines.join("\n")}\n`;
+
+		try {
+			await this.ensureDirectoryExists(dirname(primaryPath));
+			await Bun.write(primaryPath, data);
+			return;
+		} catch {
+			// Fall through to fallback when global write fails (e.g., sandboxed env)
+		}
+
+		if (fallbackPath) {
+			await this.ensureDirectoryExists(dirname(fallbackPath));
+			await Bun.write(fallbackPath, data);
+		}
 	}
 
 	// Utility methods
