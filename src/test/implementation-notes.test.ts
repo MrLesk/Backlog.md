@@ -139,7 +139,7 @@ describe("Implementation Notes CLI", () => {
 			expect(updatedTask?.body).toContain("## Implementation Notes");
 			expect(updatedTask?.body).toContain("Fixed the bug by updating the validation logic");
 
-			// Test 2: append to existing implementation notes
+			// Test 2: overwrite existing implementation notes
 			const task2: Task = {
 				id: "task-2",
 				title: "Test Task 2",
@@ -163,11 +163,8 @@ describe("Implementation Notes CLI", () => {
 
 			updatedTask = await core.filesystem.loadTask("task-2");
 			expect(updatedTask).not.toBeNull();
-			expect(updatedTask?.body).toContain("Initial implementation completed");
-			expect(updatedTask?.body).toContain("Added error handling");
-			// Check that both notes are present in the section
 			const notesSection = updatedTask?.body.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i);
-			expect(notesSection?.[1]).toContain("Initial implementation completed");
+			expect(notesSection?.[1]).not.toContain("Initial implementation completed");
 			expect(notesSection?.[1]).toContain("Added error handling");
 
 			// Test 3: work together with status update when marking as Done

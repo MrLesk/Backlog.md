@@ -141,6 +141,72 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.body).toContain("- [ ] #2 New criterion 2");
 		});
 
+		it("consolidates duplicate Acceptance Criteria sections with markers into one", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-9",
+					title: "Dup AC Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-19",
+					labels: [],
+					dependencies: [],
+					body: "## Description\n\nX\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old A\n<!-- AC:END -->\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old B\n<!-- AC:END -->",
+				},
+				false,
+			);
+
+			// Add a new criterion via CLI; this triggers consolidation
+			const result = await $`bun ${CLI_PATH} task edit 9 --ac "New C"`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+
+			const task = await core.filesystem.loadTask("task-9");
+			expect(task).not.toBeNull();
+			const body = task?.body || "";
+			// Only one header and one marker pair should remain
+			expect((body.match(/## Acceptance Criteria/g) || []).length).toBe(1);
+			expect((body.match(/<!-- AC:BEGIN -->/g) || []).length).toBe(1);
+			expect((body.match(/<!-- AC:END -->/g) || []).length).toBe(1);
+			// New content should be present and renumbered
+			expect(body).toContain("- [ ] #1 Old A");
+			expect(body).toContain("- [ ] #2 Old B");
+			expect(body).toContain("- [ ] #3 New C");
+		});
+
+		it("consolidates legacy and marked AC sections to a single marked section", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-10",
+					title: "Mixed AC Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-19",
+					labels: [],
+					dependencies: [],
+					body: "## Description\n\nY\n\n## Acceptance Criteria\n\n- [ ] Legacy 1\n- [ ] Legacy 2\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Marked 1\n<!-- AC:END -->",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task edit 10 --ac "Marked 2"`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+
+			const task = await core.filesystem.loadTask("task-10");
+			expect(task).not.toBeNull();
+			const body = task?.body || "";
+			expect((body.match(/## Acceptance Criteria/g) || []).length).toBe(1);
+			expect((body.match(/<!-- AC:BEGIN -->/g) || []).length).toBe(1);
+			expect((body.match(/<!-- AC:END -->/g) || []).length).toBe(1);
+			// Final section should be marked format and renumbered
+			expect(body).toContain("- [ ] #1 Marked 1");
+			expect(body).toContain("- [ ] #2 Marked 2");
+			// No legacy-only lines remaining
+			expect(body).not.toContain("Legacy 1");
+			expect(body).not.toContain("Legacy 2");
+		});
+
 		it("should add to existing acceptance criteria", async () => {
 			// First add some criteria
 			const core = new Core(TEST_DIR);
@@ -301,9 +367,10 @@ Test task with acceptance criteria
 			try {
 				await $`bun ${CLI_PATH} task edit 1 --remove-ac 10`.cwd(TEST_DIR).quiet();
 				expect(true).toBe(false); // Should not reach here
-			} catch (error: any) {
-				expect(error.exitCode).not.toBe(0);
-				expect(error.stderr.toString()).toContain("Acceptance criterion #10 not found");
+			} catch (error) {
+				const e = error as { exitCode?: number; stderr?: unknown };
+				expect(e.exitCode).not.toBe(0);
+				expect(String((e.stderr as any)?.toString?.() ?? "")).toContain("Acceptance criterion #10 not found");
 			}
 		});
 
@@ -311,9 +378,10 @@ Test task with acceptance criteria
 			try {
 				await $`bun ${CLI_PATH} task edit 1 --check-ac 10`.cwd(TEST_DIR).quiet();
 				expect(true).toBe(false); // Should not reach here
-			} catch (error: any) {
-				expect(error.exitCode).not.toBe(0);
-				expect(error.stderr.toString()).toContain("Acceptance criterion #10 not found");
+			} catch (error) {
+				const e = error as { exitCode?: number; stderr?: unknown };
+				expect(e.exitCode).not.toBe(0);
+				expect(String((e.stderr as any)?.toString?.() ?? "")).toContain("Acceptance criterion #10 not found");
 			}
 		});
 

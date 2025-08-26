@@ -179,7 +179,7 @@ describe("Task edit section preservation", () => {
 		await $`bun ${cliPath} task edit 4 --plan "Test plan"`.cwd(TEST_DIR).quiet();
 		await $`bun ${cliPath} task edit 4 --notes "Original notes"`.cwd(TEST_DIR).quiet();
 
-		// Update implementation notes (should append to existing)
+		// Update implementation notes (should overwrite existing)
 		await $`bun ${cliPath} task edit 4 --notes "Additional notes"`.cwd(TEST_DIR).quiet();
 
 		// Verify all sections are preserved and notes are appended
@@ -188,7 +188,7 @@ describe("Task edit section preservation", () => {
 		expect(result).toContain("Test description");
 		expect(result).toContain("Test criterion");
 		expect(result).toContain("Test plan");
-		expect(result).toContain("Original notes");
+		expect(result).not.toContain("Original notes");
 		expect(result).toContain("Additional notes");
 	});
 

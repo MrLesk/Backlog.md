@@ -126,9 +126,8 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	const match = content.match(notesRegex);
 
 	if (match) {
-		// Append to existing section
-		const existingNotes = match[1]?.trim() || "";
-		const newNotes = existingNotes ? `${existingNotes}\n\n${notes}` : notes;
+		// Overwrite existing Implementation Notes section with the new notes
+		const newNotes = notes;
 		const hasFollowingSection = /\n## /.test(content.slice((match.index || 0) + match[0].length));
 		const replacement = hasFollowingSection
 			? `## Implementation Notes\n\n${newNotes}\n`
