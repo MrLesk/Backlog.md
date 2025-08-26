@@ -1,5 +1,5 @@
 import type { TaskStatistics } from "../../core/statistics.ts";
-import type { BacklogConfig, Decision, Document, Task, TaskStatus } from "../../types/index.ts";
+import type { BacklogConfig, Decision, Document, Sequence, Task, TaskStatus } from "../../types/index.ts";
 
 const API_BASE = "/api";
 
@@ -288,6 +288,10 @@ export class ApiClient {
 			throw new Error("Failed to create decision");
 		}
 		return response.json();
+	}
+
+	async fetchSequences(): Promise<{ unsequenced: Task[]; sequences: Sequence[] }> {
+		return this.fetchJson<{ unsequenced: Task[]; sequences: Sequence[] }>(`${API_BASE}/sequences`);
 	}
 
 	async fetchStatistics(): Promise<

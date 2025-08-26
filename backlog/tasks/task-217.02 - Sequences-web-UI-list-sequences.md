@@ -1,10 +1,11 @@
 ---
 id: task-217.02
 title: 'Sequences web UI: list sequences'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2025-08-23 19:13'
-updated_date: '2025-08-26 16:46'
+updated_date: '2025-08-26 20:30'
 labels:
   - sequences
 dependencies: []
@@ -17,9 +18,9 @@ Add a Sequences page that fetches data from the server and displays sequences ve
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sequences page reachable from navigation
-- [ ] #2 Displays sequences from server with task titles
-- [ ] #3 Handles empty/large datasets gracefully
-- [ ] #4 Page renders Unsequenced bucket first (when present), then numbered sequences
-- [ ] #5 Handles large/empty datasets; no layout jitter when Unsequenced is absent
+ - [x] #1 Sequences page reachable from navigation
+ - [x] #2 Displays sequences from server with task titles
+ - [x] #3 Handles empty/large datasets gracefully
+ - [x] #4 Page renders Unsequenced bucket first (when present), then numbered sequences
+ - [x] #5 Handles large/empty datasets; no layout jitter when Unsequenced is absent
 <!-- AC:END -->

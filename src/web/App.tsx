@@ -6,6 +6,7 @@ import DocumentationDetail from './components/DocumentationDetail';
 import DecisionDetail from './components/DecisionDetail';
 import TaskList from './components/TaskList';
 import DraftsList from './components/DraftsList';
+import Sequences from './components/Sequences';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import Modal from './components/Modal';
@@ -231,6 +232,7 @@ function App() {
           >
             <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} onRefreshData={refreshData} />} />
             <Route path="tasks" element={<TaskList onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
+            <Route path="sequences" element={<Sequences />} />
             <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
             <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
