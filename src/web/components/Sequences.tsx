@@ -94,7 +94,7 @@ export default function Sequences() {
         </div>
         <div className="space-y-8">
           {data.unsequenced.length > 0 && (
-            <div>
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Unsequenced</h2>
               <ul className="space-y-2">
                 {data.unsequenced.map((task) => (
@@ -112,7 +112,10 @@ export default function Sequences() {
             </div>
           )}
           {data.sequences.map((seq) => (
-            <div key={seq.index}>
+            <div
+              key={seq.index}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+            >
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
                 Sequence {seq.index}
               </h2>
