@@ -402,10 +402,8 @@ export async function runSequencesView(
 		const tgt = moveTargets[targetPos];
 		if (tgt?.kind === "unsequenced") {
 			// Only allow if isolated (no deps and no dependents)
-			const allIds = new Set(allTasks.map((t) => t.id));
-			const hasDeps = (task.dependencies || []).some((d) => allIds.has(d));
-			const hasDependents = allTasks.some((t) => (t.dependencies || []).includes(task.id));
-			if (hasDeps || hasDependents) {
+			const { canMoveToUnsequenced } = await import("../core/sequences.ts");
+			if (!canMoveToUnsequenced(allTasks, task.id)) {
 				footer.setContent(" Cannot move to Unsequenced: task has dependencies or dependents · Esc cancel ");
 				screen.render();
 				return;

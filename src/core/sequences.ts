@@ -91,6 +91,21 @@ export function computeSequences(tasks: Task[]): { unsequenced: Task[]; sequence
 }
 
 /**
+ * Return true if the task has no dependencies and no dependents among the provided set.
+ * Note: Ordinal is intentionally ignored here; computeSequences handles ordinal when grouping.
+ */
+export function canMoveToUnsequenced(tasks: Task[], taskId: string): boolean {
+	const byId = new Map<string, Task>(tasks.map((t) => [t.id, t]));
+	const t = byId.get(taskId);
+	if (!t) return false;
+	const allIds = new Set(byId.keys());
+	const hasDeps = (t.dependencies || []).some((d) => allIds.has(d));
+	if (hasDeps) return false;
+	const hasDependents = tasks.some((x) => (x.dependencies || []).includes(taskId));
+	return !hasDependents;
+}
+
+/**
  * Adjust dependencies when moving a task to a target sequence index.
  *
  * Rules:
