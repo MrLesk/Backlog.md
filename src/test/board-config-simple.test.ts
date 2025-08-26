@@ -64,7 +64,7 @@ describe("Board loading with checkActiveBranches config", () => {
 			// Should NOT have done cross-branch checking
 			const crossBranchMessage = progressMessages.find((msg) => msg.includes("Resolving task states across branches"));
 			expect(crossBranchMessage).toBeUndefined();
-		} catch (error) {
+		} catch (_error) {
 			// Expected since we're using mocked operations
 			// The important part is checking the progress messages
 		}
@@ -120,7 +120,7 @@ describe("Board loading with checkActiveBranches config", () => {
 				msg.includes("Skipping cross-branch check (disabled in config)"),
 			);
 			expect(skipMessage).toBeUndefined();
-		} catch (error) {
+		} catch (_error) {
 			// Expected since we're using mocked operations
 			// The important part is checking the progress messages
 		}
@@ -169,7 +169,7 @@ describe("Board loading with checkActiveBranches config", () => {
 			// Should default to performing cross-branch checking
 			const crossBranchMessage = progressMessages.find((msg) => msg.includes("Resolving task states across branches"));
 			expect(crossBranchMessage).toBeDefined();
-		} catch (error) {
+		} catch (_error) {
 			// Expected since we're using mocked operations
 		}
 	});

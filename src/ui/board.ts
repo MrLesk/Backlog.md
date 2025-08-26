@@ -1,4 +1,5 @@
-import blessed from "blessed";
+import type { BoxInterface, ListInterface } from "neo-neo-bblessed";
+import { box, list } from "neo-neo-bblessed";
 import { type BoardLayout, generateKanbanBoardWithMetadata } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
@@ -69,22 +70,21 @@ export async function renderBoardTui(
 	await new Promise<void>((resolve) => {
 		const screen = createScreen({ title: "Backlog Board" });
 
-		const container = blessed.box({
+		const container = box({
 			parent: screen,
 			width: "100%",
 			height: "100%",
 		});
 
 		const columnWidth = Math.floor(100 / nonEmptyStatuses.length);
-		// biome-ignore lint/suspicious/noExplicitAny: blessed types are lax
-		const columns: any[] = [];
+		const columns: Array<{ list: ListInterface; tasks: Task[]; box: BoxInterface }> = [];
 
 		nonEmptyStatuses.forEach((status, idx) => {
 			const left = idx * columnWidth;
 			const isLast = idx === nonEmptyStatuses.length - 1;
 			const width = isLast ? `${100 - left}%` : `${columnWidth}%`;
 
-			const column = blessed.box({
+			const column = box({
 				parent: container,
 				left: `${left}%`,
 				top: 0,
@@ -95,7 +95,7 @@ export async function renderBoardTui(
 				label: `\u00A0${getStatusIcon(status)} ${status || "No Status"} (${tasksByStatus.get(status)?.length ?? 0})\u00A0`,
 			});
 
-			const taskList = blessed.list({
+			const taskList = list({
 				parent: column,
 				top: 1,
 				left: 1,
@@ -136,22 +136,30 @@ export async function renderBoardTui(
 		const focusColumn = (idx: number) => {
 			if (popupOpen || idx === currentCol || idx < 0 || idx >= columns.length) return;
 			const prev = columns[currentCol];
-			prev.list.style.selected.bg = undefined;
-			prev.box.style.border.fg = "gray";
+			if (!prev) return;
+			const prevListStyle = prev.list.style as { selected?: { bg?: string } };
+			if (prevListStyle.selected) prevListStyle.selected.bg = undefined;
+			const prevBoxStyle = prev.box.style as { border?: { fg?: string } };
+			if (prevBoxStyle.border) prevBoxStyle.border.fg = "gray";
 
 			currentCol = idx;
 			const curr = columns[currentCol];
+			if (!curr) return;
 			curr.list.focus();
-			curr.list.style.selected.bg = "blue";
-			curr.box.style.border.fg = "yellow";
+			const currListStyle = curr.list.style as { selected?: { bg?: string } };
+			if (currListStyle.selected) currListStyle.selected.bg = "blue";
+			const currBoxStyle = curr.box.style as { border?: { fg?: string } };
+			if (currBoxStyle.border) currBoxStyle.border.fg = "yellow";
 			screen.render();
 		};
 
 		if (columns.length) {
-			columns[0].list.focus();
-			columns[0].list.select(0);
-			columns[0].list.style.selected.bg = "blue";
-			columns[0].box.style.border.fg = "yellow";
+			columns[0]?.list.focus();
+			columns[0]?.list.select(0);
+			const firstListStyle = columns[0]?.list.style as { selected?: { bg?: string } } | undefined;
+			if (firstListStyle?.selected) firstListStyle.selected.bg = "blue";
+			const firstBoxStyle = columns[0]?.box.style as { border?: { fg?: string } } | undefined;
+			if (firstBoxStyle?.border) firstBoxStyle.border.fg = "yellow";
 		}
 
 		screen.key(["left", "h"], () => focusColumn(currentCol - 1));
@@ -159,7 +167,8 @@ export async function renderBoardTui(
 
 		screen.key(["up", "k"], () => {
 			if (popupOpen) return;
-			const list = columns[currentCol].list;
+			const list = columns[currentCol]?.list;
+			if (!list) return;
 			const sel = list.selected ?? 0;
 			if (sel > 0) list.select(sel - 1);
 			screen.render();
@@ -167,7 +176,8 @@ export async function renderBoardTui(
 
 		screen.key(["down", "j"], () => {
 			if (popupOpen) return;
-			const list = columns[currentCol].list;
+			const list = columns[currentCol]?.list;
+			if (!list) return;
 			const sel = list.selected ?? 0;
 			if (sel < list.items.length - 1) list.select(sel + 1);
 			screen.render();
@@ -175,11 +185,14 @@ export async function renderBoardTui(
 
 		screen.key(["enter"], async () => {
 			if (popupOpen) return;
-			const { list, tasks } = columns[currentCol];
+			const col = columns[currentCol];
+			if (!col) return;
+			const { list, tasks } = col;
 			const idx = list.selected ?? 0;
 			if (idx < 0 || idx >= tasks.length) return;
 
 			const task = tasks[idx];
+			if (!task) return;
 			popupOpen = true;
 
 			let content = "";
@@ -203,16 +216,32 @@ export async function renderBoardTui(
 			contentArea.key(["escape", "q"], () => {
 				popupOpen = false;
 				close();
-				columns[currentCol].list.focus();
+				columns[currentCol]?.list.focus();
 			});
 
-			// Add edit key handler for popup
+			// Add edit key handler for popup with proper TUI handoff
 			contentArea.key(["e", "E"], async () => {
 				try {
 					const core = new Core(process.cwd());
 					const filePath = await getTaskPath(task.id, core);
-					if (filePath) {
-						await core.openEditor(filePath, screen);
+					if (!filePath) return;
+					type ProgWithPause = { pause?: () => () => void };
+					const scr = screen as unknown as { program?: ProgWithPause; leave?: () => void; enter?: () => void };
+					const prog = scr.program;
+					const resumeProgram = typeof prog?.pause === "function" ? prog.pause() : undefined;
+					try {
+						scr.leave?.();
+					} catch {}
+					try {
+						await core.openEditor(filePath);
+					} finally {
+						try {
+							scr.enter?.();
+						} catch {}
+						try {
+							if (typeof resumeProgram === "function") resumeProgram();
+						} catch {}
+						screen.render();
 					}
 				} catch (_error) {
 					// Silently handle errors
@@ -224,23 +253,42 @@ export async function renderBoardTui(
 
 		screen.key(["e", "E"], async () => {
 			if (popupOpen) return;
-			const { list, tasks } = columns[currentCol];
+			const col = columns[currentCol];
+			if (!col) return;
+			const { list, tasks } = col;
 			const idx = list.selected ?? 0;
 			if (idx < 0 || idx >= tasks.length) return;
 
 			const task = tasks[idx];
+			if (!task) return;
 			try {
 				const core = new Core(process.cwd());
 				const filePath = await getTaskPath(task.id, core);
-				if (filePath) {
-					await core.openEditor(filePath, screen);
+				if (!filePath) return;
+				type ProgWithPause = { pause?: () => () => void };
+				const scr = screen as unknown as { program?: ProgWithPause; leave?: () => void; enter?: () => void };
+				const prog = scr.program;
+				const resumeProgram = typeof prog?.pause === "function" ? prog.pause() : undefined;
+				try {
+					scr.leave?.();
+				} catch {}
+				try {
+					await core.openEditor(filePath);
+				} finally {
+					try {
+						scr.enter?.();
+					} catch {}
+					try {
+						if (typeof resumeProgram === "function") resumeProgram();
+					} catch {}
+					screen.render();
 				}
 			} catch (_error) {
 				// Silently handle errors
 			}
 		});
 
-		blessed.box({
+		box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
@@ -255,10 +303,13 @@ export async function renderBoardTui(
 			if (popupOpen) return;
 			if (options?.onTabPress) {
 				// Get currently selected task
-				const { list, tasks } = columns[currentCol];
+				const col2 = columns[currentCol];
+				if (!col2) return;
+				const { list, tasks } = col2;
 				const idx = list.selected ?? 0;
 				if (idx >= 0 && idx < tasks.length) {
 					const selectedTask = tasks[idx];
+					if (!selectedTask) return;
 					options.onTaskSelect?.(selectedTask);
 				}
 
@@ -268,10 +319,13 @@ export async function renderBoardTui(
 				resolve();
 			} else if (options?.viewSwitcher) {
 				// Get currently selected task
-				const { list, tasks } = columns[currentCol];
+				const col3 = columns[currentCol];
+				if (!col3) return;
+				const { list, tasks } = col3;
 				const idx = list.selected ?? 0;
 				if (idx >= 0 && idx < tasks.length) {
 					const selectedTask = tasks[idx];
+					if (!selectedTask) return;
 					options.onTaskSelect?.(selectedTask);
 				}
 

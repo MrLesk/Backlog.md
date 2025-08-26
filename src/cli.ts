@@ -6,7 +6,6 @@ import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
-import type { TaskWithMetadata } from "./core/remote-tasks.ts";
 import { computeSequences } from "./core/sequences.ts";
 import {
 	type AgentInstructionFile,
@@ -2016,23 +2015,31 @@ sequenceCmd
 		const tasks = await core.filesystem.listTasks();
 		// Exclude tasks marked as Done from sequences (case-insensitive)
 		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
-		const sequences = computeSequences(activeTasks);
+		const { unsequenced, sequences } = computeSequences(activeTasks);
 
 		// Workaround for bun compile issue with commander options
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
+			if (unsequenced.length > 0) {
+				console.log("Unsequenced:");
+				for (const t of unsequenced) {
+					console.log(`  ${t.id} - ${t.title}`);
+				}
+				console.log("");
+			}
 			for (const seq of sequences) {
 				console.log(`Sequence ${seq.index}:`);
 				for (const t of seq.tasks) {
 					console.log(`  ${t.id} - ${t.title}`);
 				}
+				console.log("");
 			}
 			return;
 		}
 
 		// Interactive default: TUI view (215.01 + 215.02 navigation/detail)
 		const { runSequencesView } = await import("./ui/sequences.ts");
-		await runSequencesView(sequences, core);
+		await runSequencesView({ unsequenced, sequences }, core);
 	});
 
 configCmd

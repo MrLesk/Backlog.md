@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { type ViewState, ViewSwitcher } from "../ui/view-switcher.ts";
@@ -207,8 +206,12 @@ describe("View Switcher", () => {
 			});
 
 			expect(callbackState).toBeTruthy();
-			expect((callbackState as any)?.type).toBe("task-detail");
-			expect((callbackState as any)?.selectedTask).toEqual(newTask);
+			if (!callbackState) {
+				throw new Error("callbackState should not be null");
+			}
+			const state = callbackState as unknown as ViewState;
+			expect(state.type).toBe("task-detail");
+			expect(state.selectedTask).toEqual(newTask);
 		});
 	});
 });

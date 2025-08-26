@@ -98,9 +98,9 @@ export async function hydrateTasks(
 				const task = parseTask(content);
 				if (task) {
 					// Mark as remote source and branch
-					(task as any).source = "remote";
+					task.source = "remote";
 					// Extract branch name from ref (e.g., "origin/main" -> "main")
-					(task as any).branch = w.ref.replace("origin/", "");
+					task.branch = w.ref.replace("origin/", "");
 					result.push(task);
 				}
 			} catch (error) {

@@ -5,14 +5,13 @@
  * directly and only fall back to plain text when not running in a TTY.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { stdin as input, stdout as output } from "node:process";
-import blessed from "blessed";
+import type { ProgramInterface, ScreenInterface, ScreenOptions } from "neo-neo-bblessed";
+import { screen as blessedScreen, box, program as createProgram } from "neo-neo-bblessed";
 
-// biome-ignore lint/suspicious/noExplicitAny: blessed types are loosely defined
-export function createScreen(options: any = {}): any {
-	const program = blessed.program({ tput: false });
-	return new blessed.screen({ smartCSR: true, program, ...options });
+export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
+	const program: ProgramInterface = createProgram({ tput: false });
+	return blessedScreen({ smartCSR: true, program, ...options });
 }
 
 // Ask the user for a single line of input.  Falls back to readline.
@@ -37,7 +36,7 @@ export async function scrollableViewer(content: string): Promise<void> {
 			style: { fg: "white", bg: "black" },
 		});
 
-		const box = blessed.box({
+		const viewer = box({
 			parent: screen,
 			content,
 			scrollable: true,
@@ -56,7 +55,7 @@ export async function scrollableViewer(content: string): Promise<void> {
 			resolve();
 		});
 
-		box.focus();
+		viewer.focus();
 		screen.render();
 	});
 }

@@ -110,15 +110,19 @@ describe("exportKanbanBoardToFile", () => {
 		const task4Row = lines.find((line) => line.includes("TASK-4"));
 		const task5Row = lines.find((line) => line.includes("TASK-5"));
 
+		if (!task1Row || !task2Row || !task3Row || !task4Row || !task5Row) {
+			throw new Error("Expected task rows not found in exported board content");
+		}
+
 		// Check that To Do tasks are ordered by updatedDate (task-3 has newer date than task-1)
-		const task3Index = lines.indexOf(task3Row!);
-		const task1Index = lines.indexOf(task1Row!);
+		const task3Index = lines.indexOf(task3Row);
+		const task1Index = lines.indexOf(task1Row);
 		expect(task3Index).toBeLessThan(task1Index);
 
 		// Check that Done tasks are ordered by updatedDate
-		const task5Index = lines.indexOf(task5Row!);
-		const task2Index = lines.indexOf(task2Row!);
-		const task4Index = lines.indexOf(task4Row!);
+		const task5Index = lines.indexOf(task5Row);
+		const task2Index = lines.indexOf(task2Row);
+		const task4Index = lines.indexOf(task4Row);
 		expect(task5Index).toBeLessThan(task2Index); // task-5 before task-2
 		expect(task2Index).toBeLessThan(task4Index); // task-2 before task-4
 

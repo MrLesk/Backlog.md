@@ -21,7 +21,7 @@
 		"@types/react-dom": "19.1.7",
 		"@types/react-router-dom": "5.3.3",
 		"@uiw/react-md-editor": "4.0.8",
-		"blessed": "npm:neo-neo-bblessed@1.0.3",
+		"neo-neo-bblessed": "1.0.6",
 		"commander": "14.0.0",
 		"fuse.js": "7.1.0",
 		"gray-matter": "4.0.3",

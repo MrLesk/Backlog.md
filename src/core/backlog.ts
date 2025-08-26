@@ -16,6 +16,7 @@ interface BlessedScreen {
 		hideCursor(): void;
 		showCursor(): void;
 		input: NodeJS.EventEmitter;
+		pause?: () => (() => void) | undefined;
 	};
 	leave(): void;
 	enter(): void;
@@ -267,10 +268,9 @@ export class Core {
 		}
 
 		// Normalize assignee to array if it's a string (YAML allows both string and array)
-		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
-		if (typeof (task as any).assignee === "string") {
-			// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
-			(task as any).assignee = [(task as any).assignee];
+		const asg1 = task as unknown as { assignee?: string | string[] };
+		if (typeof asg1.assignee === "string") {
+			(task as unknown as { assignee?: string[] }).assignee = [asg1.assignee];
 		}
 
 		task.body = ensureDescriptionHeader(task.body);
@@ -288,10 +288,9 @@ export class Core {
 		task.status = "Draft";
 
 		// Normalize assignee to array if it's a string (YAML allows both string and array)
-		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
-		if (typeof (task as any).assignee === "string") {
-			// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
-			(task as any).assignee = [(task as any).assignee];
+		const asg2 = task as unknown as { assignee?: string | string[] };
+		if (typeof asg2.assignee === "string") {
+			(task as unknown as { assignee?: string[] }).assignee = [asg2.assignee];
 		}
 
 		task.body = ensureDescriptionHeader(task.body);
@@ -307,10 +306,9 @@ export class Core {
 
 	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
 		// Normalize assignee to array if it's a string (YAML allows both string and array)
-		// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
-		if (typeof (task as any).assignee === "string") {
-			// biome-ignore lint/suspicious/noExplicitAny: Required for YAML flexibility
-			(task as any).assignee = [(task as any).assignee];
+		const asg3 = task as unknown as { assignee?: string | string[] };
+		if (typeof asg3.assignee === "string") {
+			(task as unknown as { assignee?: string[] }).assignee = [asg3.assignee];
 		}
 
 		// Always set updatedDate when updating a task
@@ -597,47 +595,32 @@ export class Core {
 		}
 
 		// Store all event listeners before removing them
-		const inputListeners = new Map<string, ((...args: any[]) => void)[]>();
+		const inputListeners = new Map<string, Array<(...args: unknown[]) => void>>();
 		const eventNames = ["keypress", "data", "readable"];
 
 		for (const eventName of eventNames) {
-			const listeners = screen.program.input.listeners(eventName);
+			const listeners = screen.program.input.listeners(eventName) as Array<(...args: unknown[]) => void>;
 			if (listeners.length > 0) {
-				inputListeners.set(eventName, [...listeners] as ((...args: any[]) => void)[]);
+				inputListeners.set(eventName, [...listeners]);
 			}
 		}
 
+		// Properly pause the terminal (raw mode off, normal buffer) if supported
+		const resume = typeof screen.program.pause === "function" ? screen.program.pause() : undefined;
 		try {
-			// Suspend blessed screen
-			screen.program.disableMouse();
-			screen.program.hideCursor();
+			// Ensure we are out of alt buffer
 			screen.leave();
-
-			// Remove input listeners temporarily
-			for (const eventName of eventNames) {
-				screen.program.input.removeAllListeners(eventName);
-			}
-
-			// Use the original working editor function (Bun shell API)
 			return await openInEditor(filePath, config);
 		} finally {
-			// Restore blessed screen
-			screen.enter();
-			screen.program.enableMouse();
-			screen.program.showCursor();
-
-			// Restore all the original listeners
-			for (const [eventName, listeners] of inputListeners) {
-				for (const listener of listeners) {
-					screen.program.input.on(eventName, listener);
-				}
+			// Resume terminal state
+			if (typeof resume === "function") {
+				resume();
+			} else {
+				screen.enter();
 			}
-
-			// Clear the screen buffer completely and force full redraw
+			// Full redraw
 			screen.clearRegion(0, screen.width, 0, screen.height);
 			screen.render();
-
-			// Also trigger a resize event to ensure proper layout recalculation
 			process.nextTick(() => {
 				screen.emit("resize");
 			});

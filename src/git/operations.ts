@@ -242,7 +242,8 @@ export class GitOperations {
 					return { ref, t: Date.parse(iso || "") };
 				})
 				.filter((x) => Number.isFinite(x.t) && x.t >= since && x.ref)
-				.map((x) => x.ref!.replace(`${remote}/`, "")); // return short like "feature-foo"
+				.map((x) => x.ref?.replace(`${remote}/`, ""))
+				.filter((b): b is string => Boolean(b)); // return short like "feature-foo"
 		} catch {
 			return [];
 		}
@@ -370,7 +371,7 @@ export class GitOperations {
 					i++;
 
 					// Process files until we hit another timestamp or end
-					while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i]!)) {
+					while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i] || "")) {
 						const file = parts[i];
 						// First time we see a file is its last modification
 						if (file && !out.has(file)) {
@@ -435,11 +436,14 @@ export class GitOperations {
 
 			const { stdout, stderr } = await $`git ${args}`.cwd(this.projectRoot).env(env).quiet();
 			return { stdout: stdout.toString(), stderr: stderr.toString() };
-		} catch (error: any) {
-			if (error.exitCode !== undefined) {
-				throw new Error(`Git command failed (exit code ${error.exitCode}): git ${args.join(" ")}\n${error.stderr}`);
+		} catch (error: unknown) {
+			const e = error as { exitCode?: number; stderr?: unknown };
+			if (e && typeof e === "object" && e.exitCode !== undefined) {
+				throw new Error(
+					`Git command failed (exit code ${e.exitCode}): git ${args.join(" ")}\n${String(e.stderr ?? "")}`,
+				);
 			}
-			throw error;
+			throw error as Error;
 		}
 	}
 }

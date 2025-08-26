@@ -140,6 +140,30 @@ describe("CLI sequences --plain output", () => {
 		expect(out).not.toContain("\x1b");
 	});
 
+	it("prints Unsequenced when isolated tasks exist", async () => {
+		// Add isolated task (no deps, no dependents)
+		const cliPath = join(process.cwd(), "src", "cli.ts");
+		const core = new Core(TEST_DIR);
+		await core.createTask(
+			{
+				id: "task-7",
+				title: "Isolated",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-18",
+				labels: [],
+				dependencies: [],
+				body: "Test Isolated",
+			},
+			false,
+		);
+		const result = await $`bun ${cliPath} sequence list --plain`.cwd(TEST_DIR).quiet();
+		expect(result.exitCode).toBe(0);
+		const out = result.stdout.toString();
+		expect(out).toContain("Unsequenced:");
+		expect(out).toContain("  task-7 - Isolated");
+	});
+
 	it("excludes Done tasks from sequences", async () => {
 		const cliPath = join(process.cwd(), "src", "cli.ts");
 		const TEST_DIR2 = createUniqueTestDir("test-cli-sequences-done");

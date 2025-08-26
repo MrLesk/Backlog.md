@@ -5,12 +5,13 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-08-23 18:46'
-updated_date: '2025-08-23 18:53'
+updated_date: '2025-08-26 16:41'
 labels:
   - refactoring
   - backend
   - cli
 dependencies: []
+ordinal: 0
 ---
 
 ## Description
@@ -24,5 +25,3 @@ Both the CLI task list command and the web server handlers implement their own t
 - [ ] #3 Server task listing uses the shared filtering mechanism
 - [ ] #4 Unit tests cover filtering for status and assignee
 <!-- AC:END -->
-
- 

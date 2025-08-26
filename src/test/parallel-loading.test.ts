@@ -5,12 +5,6 @@ import type { GitOperations } from "../git/operations.ts";
 
 // Mock GitOperations for testing
 class MockGitOperations implements Partial<GitOperations> {
-	private tasks: Record<string, { content: string; timestamp: Date }>[] = [];
-
-	constructor(tasks: Record<string, { content: string; timestamp: Date }>[]) {
-		this.tasks = tasks;
-	}
-
 	async fetch(): Promise<void> {
 		// Mock fetch
 	}
@@ -89,7 +83,7 @@ dependencies: []
 
 describe("Parallel remote task loading", () => {
 	it("should load tasks from multiple branches in parallel", async () => {
-		const mockGitOperations = new MockGitOperations([]) as unknown as GitOperations;
+		const mockGitOperations = new MockGitOperations() as unknown as GitOperations;
 
 		// Track progress messages
 		const progressMessages: string[] = [];

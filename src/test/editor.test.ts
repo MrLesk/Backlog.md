@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
-import { platform } from "node:os";
 import { join } from "node:path";
 import type { BacklogConfig } from "../types/index.ts";
 import { isEditorAvailable, openInEditor, resolveEditor } from "../utils/editor.ts";

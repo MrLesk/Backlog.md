@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-07-27'
-updated_date: '2025-08-24 15:08'
+updated_date: '2025-08-26 16:45'
 labels:
   - sequences
   - cli
@@ -25,6 +25,7 @@ Provide a command to inspect computed sequences. The command is interactive by d
 - [x] #4 CLI help text explains usage and --plain flag
 - [x] #5 Tests verify plain output format
 - [x] #6 Exclude tasks with status Done from sequences
+- [x] #7 --plain prints Unsequenced first (if present), then numbered sequences; Done tasks excluded
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -44,3 +45,5 @@ Implemented sequence CLI command with interactive default and --plain format. Re
 Exclude Done tasks from sequences:
 - CLI filters Done before computeSequences.
 - Added test to assert Done tasks are excluded from --plain output.
+
+Updated to print Unsequenced bucket first in --plain and TUI path consumes { unsequenced, sequences } from core.

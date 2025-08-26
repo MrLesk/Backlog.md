@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
+import type { BacklogConfig } from "../types/index.ts";
 
 describe("Config Loading & Migration", () => {
 	const testRoot = "/tmp/test-config-migration";
@@ -36,7 +37,7 @@ auto_commit: false`;
 			setTimeout(() => reject(new Error("Config loading timed out - infinite loop detected!")), 5000);
 		});
 
-		const loadedConfig = (await Promise.race([fs.loadConfig(), timeoutPromise])) as any;
+		const loadedConfig = (await Promise.race([fs.loadConfig(), timeoutPromise])) as BacklogConfig | null;
 
 		expect(loadedConfig).toBeTruthy();
 		expect(loadedConfig?.projectName).toBe("Test Project");

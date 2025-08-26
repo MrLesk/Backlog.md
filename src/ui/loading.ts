@@ -1,4 +1,5 @@
-import blessed from "blessed";
+import type { BoxInterface, ScreenInterface } from "neo-neo-bblessed";
+import { box, log } from "neo-neo-bblessed";
 import { createScreen } from "./tui.ts";
 
 /**
@@ -44,9 +45,8 @@ interface LoadingScreenConfig {
  * @returns Base loading screen components and control functions
  */
 function createLoadingScreenBase(config: LoadingScreenConfig): {
-	screen: any | null;
-	loadingBox: any | null;
-	spinner: any | null;
+	screen: ScreenInterface | null;
+	loadingBox: BoxInterface | null;
 	spinnerInterval: NodeJS.Timeout | null;
 	closed: boolean;
 	update: (message: string) => void;
@@ -60,7 +60,6 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 		return {
 			screen: null,
 			loadingBox: null,
-			spinner: null,
 			spinnerInterval: null,
 			closed: false,
 			update: (msg) => console.log(`  ${msg}...`),
@@ -76,7 +75,7 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 	const terminalWidth = process.stdout.columns || 80;
 	const boxWidth = Math.min(70, terminalWidth - 8); // Larger width to prevent text wrapping
 
-	const loadingBox = blessed.box({
+	const loadingBox = box({
 		parent: screen,
 		top: "center",
 		left: "center",
@@ -112,12 +111,12 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 		spinnerInterval = setInterval(() => {
 			spinnerIndex = (spinnerIndex + 1) % SPINNER_CHARS.length;
 			const spinnerChar = SPINNER_CHARS[spinnerIndex];
-			loadingBox.setLabel(` ${spinnerChar} Loading `);
+			loadingBox.setLabel?.(` ${spinnerChar} Loading `);
 			screen.render();
 		}, SPINNER_INTERVAL_MS);
 
 		// Set initial spinner in label
-		loadingBox.setLabel(` ${SPINNER_CHARS[0]} Loading `);
+		loadingBox.setLabel?.(` ${SPINNER_CHARS[0]} Loading `);
 	}
 
 	// Handle escape/Ctrl+C to close AND exit process immediately
@@ -143,7 +142,6 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 	return {
 		screen,
 		loadingBox,
-		spinner: null, // No longer used - spinner is in the title
 		spinnerInterval,
 		closed,
 		update: () => {}, // Will be overridden by specific implementations
@@ -180,7 +178,8 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
 
 	// Add message text to loading box - ensure it doesn't overlap borders
 	if (base.loadingBox) {
-		blessed.text({
+		// Use a simple box for message line
+		box({
 			parent: base.loadingBox,
 			top: 0,
 			left: 2, // More space from left border
@@ -249,7 +248,7 @@ export async function createLoadingScreen(initialMessage: string): Promise<Loadi
 		};
 	}
 
-	const messages = blessed.log({
+	const messages = log({
 		parent: base.loadingBox,
 		top: 0,
 		left: 2, // More space from left border

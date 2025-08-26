@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
@@ -67,8 +66,9 @@ describe("Board Loading with checkActiveBranches", () => {
 		it("should skip cross-branch checking when checkActiveBranches is false", async () => {
 			// Update config to disable cross-branch checking
 			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Config not loaded");
 			const updatedConfig: BacklogConfig = {
-				...config!,
+				...config,
 				checkActiveBranches: false,
 			};
 			await core.filesystem.saveConfig(updatedConfig);
@@ -96,8 +96,9 @@ describe("Board Loading with checkActiveBranches", () => {
 		it("should perform cross-branch checking when checkActiveBranches is true", async () => {
 			// Update config to enable cross-branch checking (default)
 			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Config not loaded");
 			const updatedConfig: BacklogConfig = {
-				...config!,
+				...config,
 				checkActiveBranches: true,
 				activeBranchDays: 7,
 			};
@@ -141,8 +142,9 @@ describe("Board Loading with checkActiveBranches", () => {
 
 			// Set activeBranchDays to 30 (should exclude the old branch)
 			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Config not loaded");
 			const updatedConfig: BacklogConfig = {
-				...config!,
+				...config,
 				checkActiveBranches: true,
 				activeBranchDays: 30,
 			};
@@ -160,7 +162,7 @@ describe("Board Loading with checkActiveBranches", () => {
 			expect(tasks.find((t) => t.id === "task-4")).toBeUndefined();
 
 			// Check that branch checking happened with the right days
-			const branchCheckMessage = progressMessages.find(
+			const _branchCheckMessage = progressMessages.find(
 				(msg) => msg.includes("branches") && (msg.includes("30 days") || msg.includes("from 30 days")),
 			);
 			// The message format might vary, so we just check that some branch-related message exists
@@ -250,8 +252,9 @@ describe("Board Loading with checkActiveBranches", () => {
 
 		it("should handle config with checkActiveBranches explicitly set to false", async () => {
 			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Config not loaded");
 			await core.filesystem.saveConfig({
-				...config!,
+				...config,
 				checkActiveBranches: false,
 			});
 

@@ -4,7 +4,7 @@ title: Implement TUI view for sequences
 status: To Do
 assignee: []
 created_date: '2025-07-27'
-updated_date: '2025-08-23 19:12'
+updated_date: '2025-08-26 16:46'
 labels:
   - sequences
   - tui
@@ -25,4 +25,9 @@ Create a dedicated TUI interface for visualising sequences so human users can in
 - [ ] #3 Move tasks within/between sequences updates dependencies accordingly
 - [ ] #4 Create new sequences via drop positions; dependencies updated to maintain correctness
 - [ ] #5 Tests cover rendering, navigation, moves, and no-crash behavior
+- [ ] #6 TUI shows an Unsequenced bucket (tasks with no deps/dependees/ordinal) before numbered sequences
 <!-- AC:END -->
+
+## Implementation Notes
+
+TUI updated to render Unsequenced first; move mode uses join semantics; insert-between via drop zones is tracked in 215.04.

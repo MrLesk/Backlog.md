@@ -10,12 +10,12 @@ import type { BacklogConfig } from "../types/index.ts";
 describe("Offline Mode Configuration", () => {
 	let tempDir: string;
 	let gitOps: GitOperations;
-	let mockFileSystem: FileSystem;
+	let _mockFileSystem: FileSystem;
 
 	beforeEach(async () => {
 		tempDir = await mkdtemp(join(tmpdir(), "backlog-offline-test-"));
 		gitOps = new GitOperations(tempDir);
-		mockFileSystem = {
+		_mockFileSystem = {
 			loadConfig: async () => ({ backlogDirectory: "backlog" }),
 		} as unknown as FileSystem;
 	});

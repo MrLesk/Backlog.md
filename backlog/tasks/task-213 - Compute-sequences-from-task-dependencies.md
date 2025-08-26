@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-07-27'
-updated_date: '2025-08-23 21:13'
+updated_date: '2025-08-26 16:45'
 labels:
   - sequences
   - core
@@ -18,12 +18,14 @@ Introduce core logic to compute sequences (parallelizable groups of tasks) solel
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Add a pure function (e.g., computeSequences(tasks: Task[]) → Sequence[]) that takes all tasks and returns an ordered list of sequences. Each sequence contains tasks whose dependencies are satisfied by earlier sequences.
-- [x] #2 Sequence 1 contains all tasks with no dependencies; subsequent sequences contain tasks whose dependencies appear in earlier sequences.
-- [x] #3 Tasks with no dependencies between them are grouped into the same sequence.
-- [x] #4 Sequence numbering starts at 1 and increases monotonically; every task appears exactly once.
-- [x] #5 Provide an appropriate Sequence type/interface and export it so it can be reused by CLI, TUI and web layers.
-- [x] #6 Add unit tests covering scenarios such as: no dependencies, simple chains, parallel branches and complex graphs.
+- [x] #1 Tasks with no dependencies between them are grouped into the same sequence.
+- [x] #2 Sequence numbering starts at 1 and increases monotonically; every task appears exactly once.
+- [x] #3 Provide an appropriate Sequence type/interface and export it so it can be reused by CLI, TUI and web layers.
+- [x] #4 Add unit tests covering scenarios such as: no dependencies, simple chains, parallel branches and complex graphs.
+- [x] #5 computeSequences(tasks) returns { unsequenced: Task[], sequences: Sequence[] }
+- [x] #6 Unsequenced = tasks with no dependencies, no dependents, and no ordinal; excluded from layered sequences
+- [x] #7 Every task appears exactly once across either Unsequenced or one numbered sequence
+- [x] #8 Layered sequences computed via topological grouping on remaining tasks; stable ordering by task id; cycles emitted as final layer
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -40,3 +42,5 @@ Introduce core logic to compute sequences (parallelizable groups of tasks) solel
 ## Implementation Notes
 
 Implemented computeSequences with layered topological sort (Kahn). Added Sequence type and tests covering no-deps, chains, parallel branches, complex graphs, and external-dep ignore. Stable ordering by task ID; cycles emitted as final deterministic layer (surfaced for UIs). All tests pass locally.
+
+Updated core to return { unsequenced, sequences }; adjusted tests and downstream callers (CLI/TUI). Unsequenced definition: no deps, no dependents, no ordinal.

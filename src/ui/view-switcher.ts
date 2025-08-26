@@ -179,7 +179,6 @@ export class ViewSwitcher {
 	private state: ViewState;
 	private backgroundLoader: BackgroundLoader;
 	private onViewChange?: (newState: ViewState) => void;
-	private onProgress?: (message: string) => void;
 
 	constructor(options: ViewSwitcherOptions) {
 		this.state = options.initialState;
@@ -325,7 +324,6 @@ export class ViewSwitcher {
 	 * Set progress callback for loading updates
 	 */
 	setProgressCallback(callback: (message: string) => void): void {
-		this.onProgress = callback;
 		this.backgroundLoader.setProgressCallback(callback);
 	}
 

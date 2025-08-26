@@ -1,7 +1,8 @@
 /* Enhanced task viewer for displaying task details in a structured format */
 
 import { stdout as output } from "node:process";
-import blessed from "blessed";
+import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterface } from "neo-neo-bblessed";
+import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
@@ -130,7 +131,7 @@ export async function viewTaskEnhanced(
 	const screen = createScreen({ title: options.title || "Backlog Tasks" });
 
 	// Main container using grid layout
-	const container = blessed.box({
+	const container = box({
 		parent: screen,
 		width: "100%",
 		height: "100%",
@@ -138,7 +139,7 @@ export async function viewTaskEnhanced(
 	});
 
 	// Task list pane (left 40%) with border
-	const taskListPane = blessed.box({
+	const taskListPane = box({
 		parent: container,
 		top: 0,
 		left: 0,
@@ -154,7 +155,7 @@ export async function viewTaskEnhanced(
 	});
 
 	// Detail pane (right 60%) with border
-	const detailPane = blessed.box({
+	const detailPane = box({
 		parent: container,
 		top: 0,
 		left: "40%",
@@ -220,12 +221,9 @@ export async function viewTaskEnhanced(
 	});
 
 	// Detail pane components
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let headerBox: any;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let divider: any;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	let descriptionBox: any;
+	let headerBox: BoxInterface | undefined;
+	let divider: LineInterface | undefined;
+	let descriptionBox: ScrollableTextInterface | undefined;
 
 	function refreshDetailPane() {
 		// Clear existing detail pane content
@@ -237,7 +235,7 @@ export async function viewTaskEnhanced(
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
 		// Header section with task ID, title, and status
-		headerBox = blessed.box({
+		headerBox = box({
 			parent: detailPane,
 			top: 0,
 			left: 0,
@@ -255,9 +253,9 @@ export async function viewTaskEnhanced(
 		headerBox.setContent(headerContent);
 
 		// Create a divider line
-		divider = blessed.line({
+		divider = line({
 			parent: detailPane,
-			top: headerBox.bottom,
+			top: typeof headerBox.bottom === "number" ? headerBox.bottom : 0,
 			left: 0,
 			width: "100%-2", // Account for left and right borders
 			orientation: "horizontal",
@@ -267,14 +265,12 @@ export async function viewTaskEnhanced(
 		});
 
 		// Scrollable body container beneath the header
-		const bodyContainer = blessed.box({
+		const bodyContainer = scrollabletext({
 			parent: detailPane,
-			top: headerBox.bottom + 1,
+			top: (typeof headerBox.bottom === "number" ? headerBox.bottom : 0) + 1,
 			left: 0,
 			width: "100%-2", // Account for left and right borders
 			bottom: 1, // Leave space for bottom border
-			scrollable: true,
-			alwaysScroll: true,
 			keys: true,
 			vi: true,
 			mouse: true,
@@ -411,7 +407,7 @@ export async function viewTaskEnhanced(
 		bodyContainer.setContent(bodyContent.join("\n"));
 
 		// Reset scroll position to top
-		bodyContainer.setScrollPerc(0);
+		bodyContainer.setScrollPerc?.(0);
 
 		// Store reference to body container for focus management
 		descriptionBox = bodyContainer;
@@ -426,7 +422,7 @@ export async function viewTaskEnhanced(
 
 	return new Promise<void>((resolve) => {
 		// Footer hint line
-		const _helpBar = blessed.box({
+		const _helpBar = box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
@@ -454,15 +450,15 @@ export async function viewTaskEnhanced(
 
 			// Update border colors
 			if (focusIndex === 0) {
-				taskListPane.style.border.fg = "yellow";
-				detailPane.style.border.fg = "gray";
+				(taskListPane.style as { border: { fg?: string } }).border.fg = "yellow";
+				(detailPane.style as { border: { fg?: string } }).border.fg = "gray";
 				listBox.focus();
 			} else {
-				taskListPane.style.border.fg = "gray";
-				detailPane.style.border.fg = "yellow";
-				descriptionBox.focus();
+				(taskListPane.style as { border: { fg?: string } }).border.fg = "gray";
+				(detailPane.style as { border: { fg?: string } }).border.fg = "yellow";
+				descriptionBox?.focus();
 				// Ensure we start at the top when focusing detail pane
-				descriptionBox.setScrollPerc(0);
+				descriptionBox?.setScrollPerc?.(0);
 			}
 
 			screen.render();
@@ -508,15 +504,32 @@ export async function viewTaskEnhanced(
 			updateFocus(1); // Always go to detail pane
 		});
 
-		// Edit in external editor
+		// Edit in external editor with proper TUI handoff
 		screen.key(["e", "E"], async () => {
 			if (!currentSelectedTask) return;
 			try {
 				const filePath = await getTaskPath(currentSelectedTask.id, core);
-				if (filePath) {
-					await core.openEditor(filePath, screen);
+				if (!filePath) return;
+
+				type ProgWithPause = { pause?: () => () => void };
+				const scr = screen as unknown as { program?: ProgWithPause; leave?: () => void; enter?: () => void };
+				const prog = scr.program;
+				const resumeProgram = typeof prog?.pause === "function" ? prog.pause() : undefined;
+				try {
+					scr.leave?.();
+				} catch {}
+				try {
+					await core.openEditor(filePath);
+				} finally {
+					try {
+						scr.enter?.();
+					} catch {}
+					try {
+						if (typeof resumeProgram === "function") resumeProgram();
+					} catch {}
+					screen.render();
 				}
-			} catch (_error) {
+			} catch {
 				// Silently handle errors
 			}
 		});
@@ -664,12 +677,20 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 /**
  * Display task details in a popup (for board view) using enhanced detail structure
  */
-// biome-ignore lint/suspicious/noExplicitAny: blessed types
-export async function createTaskPopup(screen: any, task: Task, content: string): Promise<any> {
+export async function createTaskPopup(
+	screen: ScreenInterface,
+	task: Task,
+	content: string,
+): Promise<{
+	background: BoxInterface;
+	popup: BoxInterface;
+	contentArea: BoxInterface;
+	close: () => void;
+} | null> {
 	if (output.isTTY === false) return null;
 
 	// Create main popup first
-	const popup = blessed.box({
+	const popup = box({
 		parent: screen,
 		top: "center",
 		left: "center",
@@ -686,25 +707,25 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 
 	// Create background overlay positioned relative to popup
 	// Using offset positioning: -2 chars left/right, -1 char top/bottom
-	const background = blessed.box({
+	const background = box({
 		parent: screen,
-		top: popup.top - 1,
-		left: popup.left - 2,
-		width: popup.width + 4,
-		height: popup.height + 2,
+		top: Number(popup.top ?? 0) - 1,
+		left: Number(popup.left ?? 0) - 2,
+		width: Number(popup.width ?? 0) + 4,
+		height: Number(popup.height ?? 0) + 2,
 		style: {
 			bg: "black",
 		},
 	});
 
 	// Move popup to front
-	popup.setFront();
+	popup.setFront?.();
 
 	// Generate enhanced detail content
 	const { headerContent, bodyContent } = generateDetailContent(task, content);
 
 	// Header section with task info
-	const headerBox = blessed.box({
+	const headerBox = box({
 		parent: popup,
 		top: 0,
 		left: 0,
@@ -718,7 +739,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	});
 
 	// Divider line
-	const _dividerLine = blessed.line({
+	const _dividerLine = line({
 		parent: popup,
 		top: headerBox.bottom,
 		left: 0,
@@ -730,7 +751,7 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	});
 
 	// Escape indicator
-	const _escIndicator = blessed.box({
+	const _escIndicator = box({
 		parent: popup,
 		content: " Esc ",
 		top: -1,
@@ -744,9 +765,9 @@ export async function createTaskPopup(screen: any, task: Task, content: string):
 	});
 
 	// Scrollable body container beneath the header
-	const contentArea = blessed.box({
+	const contentArea = box({
 		parent: popup,
-		top: headerBox.bottom + 1,
+		top: (typeof headerBox.bottom === "number" ? headerBox.bottom : 0) + 1,
 		left: 0,
 		width: "100%",
 		bottom: 0,

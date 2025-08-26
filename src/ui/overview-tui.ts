@@ -1,4 +1,4 @@
-import blessed from "blessed";
+import { box } from "neo-neo-bblessed";
 import type { TaskStatistics } from "../core/statistics.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
@@ -17,14 +17,14 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		const screen = createScreen({ title: `${projectName} - Overview` });
 
 		// Main container
-		const container = blessed.box({
+		const container = box({
 			parent: screen,
 			width: "100%",
 			height: "100%",
 		});
 
 		// Title
-		blessed.box({
+		box({
 			parent: container,
 			top: 0,
 			left: "center",
@@ -38,7 +38,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		});
 
 		// Status Overview Section (Top Left)
-		const statusBox = blessed.box({
+		const statusBox = box({
 			parent: container,
 			top: 3,
 			left: 0,
@@ -71,7 +71,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		statusBox.setContent(statusContent);
 
 		// Priority Breakdown Section (Top Right)
-		const priorityBox = blessed.box({
+		const priorityBox = box({
 			parent: container,
 			top: 3,
 			left: "50%",
@@ -109,7 +109,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		priorityBox.setContent(priorityContent);
 
 		// Recent Activity Section (Bottom Left)
-		const activityBox = blessed.box({
+		const activityBox = box({
 			parent: container,
 			top: "43%",
 			left: 0,
@@ -148,7 +148,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		activityBox.setContent(activityContent);
 
 		// Project Health Section (Bottom Right)
-		const healthBox = blessed.box({
+		const healthBox = box({
 			parent: container,
 			top: "43%",
 			left: "50%",
@@ -189,7 +189,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		healthBox.setContent(healthContent);
 
 		// Instructions at bottom
-		blessed.box({
+		box({
 			parent: container,
 			bottom: 0,
 			left: 0,

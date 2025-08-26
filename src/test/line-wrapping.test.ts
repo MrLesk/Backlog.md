@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import blessed from "blessed";
+import { box, list } from "neo-neo-bblessed";
 import { WRAP_LIMIT } from "../constants/index.ts";
 import { createScreen } from "../ui/tui.ts";
 
@@ -15,7 +15,7 @@ describe("Line Wrapping", () => {
 		const longText =
 			"This is a very long line of text that should definitely wrap when displayed in a blessed box because it exceeds the 72 character limit that we have set";
 
-		const box = blessed.box({
+		const b = box({
 			parent: screen,
 			content: longText,
 			width: WRAP_LIMIT,
@@ -24,8 +24,8 @@ describe("Line Wrapping", () => {
 		});
 
 		// Verify wrap is enabled
-		expect(box.options.wrap).toBe(true);
-		expect(box.width).toBe(WRAP_LIMIT);
+		expect(b.options.wrap).toBe(true);
+		expect(b.width).toBe(WRAP_LIMIT);
 
 		screen.destroy();
 	});
@@ -37,7 +37,7 @@ describe("Line Wrapping", () => {
 		const textWithLongWords =
 			"Supercalifragilisticexpialidocious is a very extraordinarily long word that should not be broken in the middle when wrapping";
 
-		const box = blessed.box({
+		const b2 = box({
 			parent: screen,
 			content: textWithLongWords,
 			width: 50,
@@ -47,15 +47,19 @@ describe("Line Wrapping", () => {
 
 		screen.render();
 
-		const lines = box.getLines();
+		const lines = b2.getLines?.() ?? [];
 
 		// Check that words are not broken mid-word
 		// This is a simplified check - blessed should handle word boundaries
 		for (let i = 0; i < lines.length - 1; i++) {
-			// biome-ignore lint/suspicious/noControlCharactersInRegex: testing ANSI escape sequences
-			const currentLine = lines[i].replace(/\x1b\[[0-9;]*m/g, "").trim();
-			// biome-ignore lint/suspicious/noControlCharactersInRegex: testing ANSI escape sequences
-			const nextLine = lines[i + 1]?.replace(/\x1b\[[0-9;]*m/g, "").trim();
+			const currentLine = String(lines[i] ?? "")
+				/* biome-ignore lint/suspicious/noControlCharactersInRegex: testing ANSI escape sequences */
+				.replace(/\x1b\[[0-9;]*m/g, "")
+				.trim();
+			const nextLine = String(lines[i + 1] ?? "")
+				/* biome-ignore lint/suspicious/noControlCharactersInRegex: testing ANSI escape sequences */
+				.replace(/\x1b\[[0-9;]*m/g, "")
+				.trim();
 
 			if (currentLine && nextLine) {
 				// If a line doesn't end with a space or punctuation, and the next line
@@ -64,10 +68,10 @@ describe("Line Wrapping", () => {
 				const firstChar = nextLine[0];
 
 				// Basic check: if both characters are letters, it might be mid-word
-				if (/[a-zA-Z]/.test(lastChar) && /[a-zA-Z]/.test(firstChar)) {
+				if (/[a-zA-Z]/.test(String(lastChar)) && /[a-zA-Z]/.test(String(firstChar))) {
 					// This is acceptable for blessed as it handles word wrapping internally
 					// We're mainly checking that wrap:true is set
-					expect(box.options.wrap).toBe(true);
+					expect(b2.options.wrap).toBe(true);
 				}
 			}
 		}
@@ -82,7 +86,7 @@ describe("Line Wrapping", () => {
 		const testBoxes = [
 			{
 				name: "header",
-				box: blessed.box({
+				box: box({
 					parent: screen,
 					content: "Task-123 - This is a very long task title that should wrap properly",
 					wrap: true,
@@ -90,7 +94,7 @@ describe("Line Wrapping", () => {
 			},
 			{
 				name: "tagBox",
-				box: blessed.box({
+				box: box({
 					parent: screen,
 					content: "[label1] [label2] [label3] [label4] [label5] [label6] [label7] [label8]",
 					wrap: true,
@@ -98,7 +102,7 @@ describe("Line Wrapping", () => {
 			},
 			{
 				name: "metadata",
-				box: blessed.box({
+				box: box({
 					parent: screen,
 					content: "Status: In Progress\nAssignee: @user1, @user2, @user3\nCreated: 2024-01-01",
 					wrap: true,
@@ -106,7 +110,7 @@ describe("Line Wrapping", () => {
 			},
 			{
 				name: "description",
-				box: blessed.box({
+				box: box({
 					parent: screen,
 					content:
 						"This is a very long description that contains multiple sentences and should wrap properly without breaking words in the middle.",
@@ -127,7 +131,7 @@ describe("Line Wrapping", () => {
 		const screen = createScreen({ smartCSR: false });
 
 		// Simulate board column
-		const column = blessed.box({
+		const column = box({
 			parent: screen,
 			width: "33%",
 			height: "100%",
@@ -135,7 +139,7 @@ describe("Line Wrapping", () => {
 		});
 
 		// Task list items should fit within column
-		const taskList = blessed.list({
+		const taskList = list({
 			parent: column,
 			width: "100%-2",
 			items: [
@@ -157,19 +161,19 @@ describe("Line Wrapping", () => {
 		const screen = createScreen({ smartCSR: false });
 
 		// Simulate popup boxes
-		const statusLine = blessed.box({
+		const statusLine = box({
 			parent: screen,
 			content: "● In Progress • @user1, @user2 • 2024-01-01",
 			wrap: true,
 		});
 
-		const metadataLine = blessed.box({
+		const metadataLine = box({
 			parent: screen,
 			content: "[label1] [label2] [label3]",
 			wrap: true,
 		});
 
-		const contentArea = blessed.box({
+		const contentArea = box({
 			parent: screen,
 			content: "Task content goes here with descriptions and acceptance criteria",
 			wrap: true,

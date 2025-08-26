@@ -49,7 +49,7 @@ export async function isEditorAvailable(editor: string): Promise<boolean> {
 		// Try to run the editor with --version or --help to check if it exists
 		// Split the editor command in case it has arguments
 		const parts = editor.split(" ");
-		const command = parts[0]!;
+		const command = parts[0] ?? editor;
 
 		// For Windows, just check if the command exists
 		if (platform() === "win32") {
@@ -82,7 +82,7 @@ export async function openInEditor(filePath: string, config?: BacklogConfig | nu
 	try {
 		// Split the editor command in case it has arguments
 		const parts = editor.split(" ");
-		const command = parts[0]!;
+		const command = parts[0] ?? editor;
 		const args = [...parts.slice(1), filePath];
 
 		// Use the new Bun shell API

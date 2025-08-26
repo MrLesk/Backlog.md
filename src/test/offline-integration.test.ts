@@ -157,16 +157,18 @@ remote_operations: false
 		expect(initialConfig?.remoteOperations).toBe(false);
 
 		// Simulate config set command
-		const updatedConfig = { ...initialConfig, remoteOperations: true };
-		await core.filesystem.saveConfig(updatedConfig as any);
+		if (!initialConfig) throw new Error("Config not loaded");
+		const updatedConfig: BacklogConfig = { ...initialConfig, remoteOperations: true };
+		await core.filesystem.saveConfig(updatedConfig);
 
 		// Verify config was updated
 		const newConfig = await core.filesystem.loadConfig();
 		expect(newConfig?.remoteOperations).toBe(true);
 
 		// Test changing it back
-		const finalConfig = { ...newConfig, remoteOperations: false };
-		await core.filesystem.saveConfig(finalConfig as any);
+		if (!newConfig) throw new Error("Config not loaded");
+		const finalConfig: BacklogConfig = { ...newConfig, remoteOperations: false };
+		await core.filesystem.saveConfig(finalConfig);
 
 		const verifyConfig = await core.filesystem.loadConfig();
 		expect(verifyConfig?.remoteOperations).toBe(false);

@@ -22,7 +22,8 @@ export function parseTaskId(taskId: string): number[] {
 	// Otherwise, try to extract trailing number (e.g., "draft2" -> 2)
 	const trailingNumberMatch = numericPart.match(/(\d+)$/);
 	if (trailingNumberMatch) {
-		return [Number.parseInt(trailingNumberMatch[1]!, 10)];
+		const [, num] = trailingNumberMatch;
+		return [Number.parseInt(num ?? "0", 10)];
 	}
 
 	// No numeric parts found, return 0 for consistent sorting

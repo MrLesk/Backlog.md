@@ -134,7 +134,7 @@ export class BacklogServer {
 			}
 		} catch (error) {
 			// Handle port already in use error
-			const errorCode = (error as any)?.code;
+			const errorCode = (error as { code?: string })?.code;
 			const errorMessage = (error as Error)?.message;
 			if (errorCode === "EADDRINUSE" || errorMessage?.includes("address already in use")) {
 				console.error(`\n❌ Error: Port ${finalPort} is already in use.\n`);

@@ -1,5 +1,5 @@
 /* Heading helper component for consistent terminal UI styling */
-import blessed from "blessed";
+import { box } from "neo-neo-bblessed";
 
 export type HeadingLevel = 1 | 2 | 3;
 
@@ -29,14 +29,12 @@ export function formatHeading(text: string, level: HeadingLevel): string {
  * Stays compatible with previous async API by returning a resolved Promise.
  */
 export async function createHeading(
-	// biome-ignore lint/suspicious/noExplicitAny: blessed element type
-	parent: any,
+	parent: unknown,
 	text: string,
 	level: HeadingLevel,
 	opts: { top?: number | string; left?: number | string; width?: number | string } = {},
-	// biome-ignore lint/suspicious/noExplicitAny: blessed types are not available
-): Promise<any> {
-	return blessed.box({
+): Promise<unknown> {
+	return box({
 		parent,
 		content: formatHeading(text, level),
 		top: opts.top ?? 0,
@@ -53,14 +51,12 @@ export async function createHeading(
  * except when at the very top).
  */
 export async function addHeadingWithSpacing(
-	// biome-ignore lint/suspicious/noExplicitAny: blessed types are not available
-	parent: any,
+	parent: unknown,
 	text: string,
 	level: HeadingLevel,
 	currentTop: number,
 	opts: { left?: number | string; width?: number | string } = {},
-	// biome-ignore lint/suspicious/noExplicitAny: blessed types are not available
-): Promise<{ element: any; nextTop: number }> {
+): Promise<{ element: unknown; nextTop: number }> {
 	const actualTop = currentTop === 0 ? 0 : currentTop + 1;
 	const element = await createHeading(parent, text, level, { top: actualTop, ...opts });
 	return { element, nextTop: actualTop + 1 };

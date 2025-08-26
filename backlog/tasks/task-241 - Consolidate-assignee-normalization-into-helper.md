@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-08-23 20:42'
+updated_date: '2025-08-26 16:41'
 labels: []
 dependencies: []
 ---
@@ -23,4 +24,3 @@ Notes:
 - [ ] #2 Replace duplicated normalization in `Core.createTask`, `Core.createDraft`, and `Core.updateTask` with the helper.
 - [ ] #3 Tests cover task creation, draft creation, and task updates with both string and array `assignee` inputs.
 <!-- AC:END -->
-

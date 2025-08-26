@@ -4,19 +4,17 @@
  */
 
 import { stdout as output } from "node:process";
-import blessed from "blessed";
+import type { ElementInterface, ListInterface, ScreenInterface } from "neo-neo-bblessed";
+import { list } from "neo-neo-bblessed";
 import { formatHeading } from "../heading.ts";
 import { createScreen } from "../tui.ts";
 
 export interface GenericListItem {
 	id: string;
-	// biome-ignore lint/suspicious/noExplicitAny: Generic list item needs flexible typing
-	[key: string]: any;
 }
 
 export interface GenericListOptions<T extends GenericListItem> {
-	// biome-ignore lint/suspicious/noExplicitAny: blessed parent element
-	parent?: any;
+	parent?: ElementInterface | ScreenInterface;
 	title?: string;
 	items: T[];
 	multiSelect?: boolean;
@@ -53,16 +51,13 @@ export interface GenericListController<T extends GenericListItem> {
 	getSelectedIndex(): number | number[];
 	updateItems(items: T[]): void;
 	focus(): void;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	getListBox(): any;
+	getListBox(): ListInterface;
 	destroy(): void;
 }
 
 export class GenericList<T extends GenericListItem> implements GenericListController<T> {
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	private listBox: any;
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	private screen: any;
+	private listBox!: ListInterface;
+	private screen?: ScreenInterface;
 	private items: T[];
 	private filteredItems: T[];
 	private selectedIndex: number;
@@ -89,9 +84,8 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		this.itemRenderer =
 			options.itemRenderer ||
 			((item: T) => {
-				if ("title" in item) {
-					// biome-ignore lint/suspicious/noExplicitAny: flexible item renderer needs any
-					return `${item.id} - ${(item as any).title}`;
+				if ("title" in item && (item as Record<string, unknown>).title) {
+					return `${item.id} - ${String((item as Record<string, unknown>).title)}`;
 				}
 				return item.id;
 			});
@@ -136,7 +130,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 		const style = { ...defaultStyle, ...this.options.style };
 
-		this.listBox = blessed.list({
+		this.listBox = list({
 			parent,
 			label: this.options.title ? `\u00A0${this.options.title}\u00A0` : undefined,
 			top: this.options.top || 0,
@@ -260,7 +254,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		// Selection/Toggle
 		if (this.isMultiSelect) {
 			this.listBox.key(keys.toggle || ["space"], () => {
-				this.toggleSelection(this.listBox.selected);
+				this.toggleSelection(this.listBox.selected ?? 0);
 			});
 
 			this.listBox.key(keys.select || ["enter"], () => {
@@ -295,8 +289,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 		// Handle search input
 		if (this.options.searchable) {
-			// biome-ignore lint/suspicious/noExplicitAny: blessed event handler parameter
-			this.listBox.on("keypress", (ch: string, key: any) => {
+			this.listBox.on("keypress", (ch: string, key: { name: string; ctrl?: boolean; meta?: boolean }) => {
 				if (this.isSearchMode && key.name !== "escape" && key.name !== "enter") {
 					if (key.name === "backspace") {
 						this.searchTerm = this.searchTerm.slice(0, -1);
@@ -363,8 +356,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		if (this.isMultiSelect) {
 			this.onSelect?.([], []);
 		} else {
-			// biome-ignore lint/suspicious/noExplicitAny: compatible with onSelect callback signature
-			this.onSelect?.(null as any, -1);
+			this.onSelect?.(null as unknown as T, -1);
 		}
 	}
 
@@ -396,8 +388,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		}
 	}
 
-	// biome-ignore lint/suspicious/noExplicitAny: blessed components don't have proper types
-	public getListBox(): any {
+	public getListBox(): ListInterface {
 		return this.listBox;
 	}
 

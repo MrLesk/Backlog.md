@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import type { BacklogConfig } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Enhanced init command", () => {
@@ -31,14 +32,15 @@ describe("Enhanced init command", () => {
 
 		// Modify some config values to test preservation
 		expect(initialConfig).toBeTruthy();
-		const modifiedConfig = {
+		if (!initialConfig) throw new Error("Config not loaded");
+		const modifiedConfig: BacklogConfig = {
 			...initialConfig,
 			projectName: initialConfig?.projectName ?? "Test Project",
 			autoCommit: true,
 			defaultEditor: "vim",
 			defaultPort: 8080,
 		};
-		await core.filesystem.saveConfig(modifiedConfig as any);
+		await core.filesystem.saveConfig(modifiedConfig);
 
 		// Re-initialization should detect existing config
 		const existingConfig = await core.filesystem.loadConfig();
