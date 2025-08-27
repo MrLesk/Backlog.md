@@ -11,6 +11,7 @@ import Statistics from './components/Statistics';
 import Modal from './components/Modal';
 import TaskForm from './components/TaskForm';
 import { SuccessToast } from './components/SuccessToast';
+import SequencesPage from './components/SequencesPage';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { type Task, type Document, type Decision } from '../types';
 import { apiClient } from './lib/api';
@@ -242,6 +243,7 @@ function App() {
           >
             <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} onRefreshData={refreshData} />} />
             <Route path="tasks" element={<TaskList onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
+            <Route path="sequences" element={<SequencesPage onEditTask={handleEditTask} />} />
             <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
             <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />

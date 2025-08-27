@@ -1,10 +1,11 @@
 ---
 id: task-217
 title: Create web UI for sequences with drag-and-drop
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2025-07-27'
-updated_date: '2025-08-26 16:46'
+updated_date: '2025-08-27 01:06'
 labels:
   - sequences
   - web-ui
@@ -19,15 +20,16 @@ Implement sequences in the web UI together with minimal local server endpoints s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Server exposes GET /sequences and POST /sequences/move using computeSequences; updates persisted
-- [ ] #2 Web page lists sequences clearly using server data
-- [ ] #3 Users can move tasks within/between sequences; dependencies update via server
-- [ ] #4 Frontend tests cover rendering and move flows
-- [ ] #5 Server and UI adopt { unsequenced, sequences } shape; Unsequenced rendered first
-- [ ] #6 Join semantics in web UI: moving into a sequence sets moved deps to previous sequence only; do not modify other tasks
-- [ ] #7 Moving to Unsequenced allowed only if task is isolated; show clear error otherwise
+- [x] #1 Server exposes GET /sequences and POST /sequences/move using computeSequences; updates persisted
+- [x] #2 Web page lists sequences clearly using server data
+- [x] #3 Users can move tasks within/between sequences; dependencies update via server
+- [x] #4 Frontend tests cover rendering and move flows
+- [x] #5 Server and UI adopt { unsequenced, sequences } shape; Unsequenced rendered first
+- [x] #6 Join semantics in web UI: moving into a sequence sets moved deps to previous sequence only; do not modify other tasks
+- [x] #7 Moving to Unsequenced allowed only if task is isolated; show clear error otherwise
 <!-- AC:END -->
+
 
 ## Implementation Notes
 
-Align web UI with TUI/CLI: Unsequenced bucket, join semantics, blocked moves to Unsequenced unless isolated. Insert-between drop zones tracked separately.
+Completed sequences web UI with tests
