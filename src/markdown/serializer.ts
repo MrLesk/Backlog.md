@@ -96,22 +96,22 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 		return content;
 	}
 
-	// Find if there's already an Implementation Plan section
-	const planRegex = /## Implementation Plan\s*\n([\s\S]*?)(?=\n## |$)/i;
+	// Find if there's already an Implementation Plan section (support both \n and \r\n)
+	const planRegex = /## Implementation Plan\s*\r?\n([\s\S]*?)(?=\r?\n## |$)/i;
 	const match = content.match(planRegex);
 
 	const newSection = `## Implementation Plan\n\n${plan}`;
 
 	if (match) {
 		// Replace existing section, ensuring proper spacing after
-		const hasFollowingSection = /\n## /.test(content.slice((match.index || 0) + match[0].length));
+		const hasFollowingSection = /\r?\n## /.test(content.slice((match.index || 0) + match[0].length));
 		const replacement = hasFollowingSection ? `${newSection}\n` : newSection;
 		return content.replace(planRegex, replacement);
 	}
 
 	// Find where to insert the new section
 	// It should come after Acceptance Criteria if it exists, otherwise after Description
-	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
+	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
 	const acceptanceMatch = content.match(acceptanceCriteriaRegex);
 
 	if (acceptanceMatch && acceptanceMatch.index !== undefined) {
@@ -121,7 +121,7 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 	}
 
 	// Otherwise insert after Description
-	const descriptionRegex = /## Description\s*\n[\s\S]*?(?=\n## |$)/i;
+	const descriptionRegex = /## Description\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
 	const descMatch = content.match(descriptionRegex);
 
 	if (descMatch && descMatch.index !== undefined) {
@@ -139,14 +139,14 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 		return content;
 	}
 
-	// Find if there's already an Implementation Notes section
-	const notesRegex = /## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i;
+	// Find if there's already an Implementation Notes section (support both \n and \r\n)
+	const notesRegex = /## Implementation Notes\s*\r?\n([\s\S]*?)(?=\r?\n## |$)/i;
 	const match = content.match(notesRegex);
 
 	if (match) {
 		// Overwrite existing Implementation Notes section with the new notes
 		const newNotes = notes;
-		const hasFollowingSection = /\n## /.test(content.slice((match.index || 0) + match[0].length));
+		const hasFollowingSection = /\r?\n## /.test(content.slice((match.index || 0) + match[0].length));
 		const replacement = hasFollowingSection
 			? `## Implementation Notes\n\n${newNotes}\n`
 			: `## Implementation Notes\n\n${newNotes}`;
@@ -158,7 +158,7 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 
 	// Find where to insert the new section
 	// It should come after Implementation Plan if it exists
-	const planRegex = /## Implementation Plan\s*\n[\s\S]*?(?=\n## |$)/i;
+	const planRegex = /## Implementation Plan\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
 	const planMatch = content.match(planRegex);
 
 	if (planMatch && planMatch.index !== undefined) {
@@ -168,7 +168,7 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	}
 
 	// Otherwise after Acceptance Criteria
-	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
+	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
 	const acceptanceMatch = content.match(acceptanceCriteriaRegex);
 
 	if (acceptanceMatch && acceptanceMatch.index !== undefined) {
@@ -178,7 +178,7 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	}
 
 	// Otherwise after Description
-	const descriptionRegex = /## Description\s*\n[\s\S]*?(?=\n## |$)/i;
+	const descriptionRegex = /## Description\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
 	const descMatch = content.match(descriptionRegex);
 
 	if (descMatch && descMatch.index !== undefined) {
@@ -192,7 +192,7 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 
 export function updateTaskDescription(content: string, description: string): string {
 	// Find if there's already a Description section
-	const descriptionRegex = /## Description\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const descriptionRegex = /## Description\s*\r?\n([\s\S]*?)(?=\r?\n## |$)/i;
 	const match = content.match(descriptionRegex);
 
 	const newSection = `## Description\n\n${description}`;
@@ -204,7 +204,7 @@ export function updateTaskDescription(content: string, description: string): str
 
 	// If no Description section found, add at the beginning after any frontmatter
 	// Look for the end of frontmatter (after ---)
-	const frontmatterRegex = /^---\n[\s\S]*?\n---\n\n?/;
+	const frontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n\n?/;
 	const frontmatterMatch = content.match(frontmatterRegex);
 
 	if (frontmatterMatch && frontmatterMatch.index !== undefined) {
