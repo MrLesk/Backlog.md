@@ -272,12 +272,16 @@ async function editTaskViaCore(
 		if (options.notes) {
 			const { updateTaskImplementationNotes } = await import("../markdown/serializer.ts");
 			updatedTask.body = updateTaskImplementationNotes(updatedTask.body, options.notes);
+			// Keep first-party field in sync so serializer doesn't re-insert old notes
+			(updatedTask as any).implementationNotes = options.notes;
 		}
 
 		// Update implementation plan if provided
 		if (options.plan) {
 			const { updateTaskImplementationPlan } = await import("../markdown/serializer.ts");
 			updatedTask.body = updateTaskImplementationPlan(updatedTask.body, options.plan);
+			// Keep first-party field in sync so serializer doesn't re-insert old plan
+			(updatedTask as any).implementationPlan = options.plan;
 		}
 
 		// Save updated task
