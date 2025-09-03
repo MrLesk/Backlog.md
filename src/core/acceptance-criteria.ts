@@ -68,18 +68,21 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static updateContent(content: string, criteria: AcceptanceCriterion[]): string {
+		// Normalize to LF while computing, preserve original EOL at return
+		const useCRLF = /\r\n/.test(content);
+		const src = content.replace(/\r\n/g, "\n");
 		const newSection = AcceptanceCriteriaManager.formatAcceptanceCriteria(criteria);
 
 		// Remove ALL existing Acceptance Criteria sections (legacy header blocks)
 		const legacyBlockRegex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/gi;
-		const matches = Array.from(content.matchAll(legacyBlockRegex));
+		const matches = Array.from(src.matchAll(legacyBlockRegex));
 		let insertionIndex: number | null = null;
 		const firstMatch = matches[0];
 		if (firstMatch && firstMatch.index !== undefined) {
 			insertionIndex = firstMatch.index;
 		}
 
-		let stripped = content.replace(legacyBlockRegex, "").trimEnd();
+		let stripped = src.replace(legacyBlockRegex, "").trimEnd();
 		// Also remove any stray marker-only blocks (defensive)
 		const markerBlockRegex = new RegExp(
 			`${AcceptanceCriteriaManager.BEGIN_MARKER.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}[\\s\\S]*?${AcceptanceCriteriaManager.END_MARKER.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`,
@@ -96,11 +99,15 @@ export class AcceptanceCriteriaManager {
 		if (insertionIndex !== null) {
 			const before = stripped.slice(0, insertionIndex).trimEnd();
 			const after = stripped.slice(insertionIndex);
-			return `${before}${before ? "\n\n" : ""}${newSection}${after ? `\n\n${after}` : ""}`;
+			const out = `${before}${before ? "\n\n" : ""}${newSection}${after ? `\n\n${after}` : ""}`;
+			return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 		}
 
 		// No existing section found: append at end
-		return `${stripped}${stripped ? "\n\n" : ""}${newSection}`;
+		{
+			const out = `${stripped}${stripped ? "\n\n" : ""}${newSection}`;
+			return useCRLF ? out.replace(/\n/g, "\r\n") : out;
+		}
 	}
 
 	private static parseAllBlocks(content: string): AcceptanceCriterion[] {

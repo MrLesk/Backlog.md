@@ -75,19 +75,25 @@ export function serializeDocument(document: Document): string {
 }
 
 export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {
+	// Normalize to LF while computing, preserve original EOL at return
+	const useCRLF = /\r\n/.test(content);
+	const src = content.replace(/\r\n/g, "\n");
 	// Find if there's already an Acceptance Criteria section
 	const criteriaRegex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/i;
-	const match = content.match(criteriaRegex);
+	const match = src.match(criteriaRegex);
 
 	const newCriteria = criteria.map((criterion) => `- [ ] ${criterion}`).join("\n");
 	const newSection = `## Acceptance Criteria\n\n${newCriteria}`;
 
+	let out: string;
 	if (match) {
 		// Replace existing section
-		return content.replace(criteriaRegex, newSection);
+		out = src.replace(criteriaRegex, newSection);
+	} else {
+		// Add new section at the end
+		out = `${src}\n\n${newSection}`;
 	}
-	// Add new section at the end
-	return `${content}\n\n${newSection}`;
+	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 }
 
 export function updateTaskImplementationPlan(content: string, plan: string): string {
@@ -96,41 +102,46 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 		return content;
 	}
 
-	// Find if there's already an Implementation Plan section (support both \n and \r\n)
-	const planRegex = /## Implementation Plan\s*\r?\n([\s\S]*?)(?=\r?\n## |$)/i;
-	const match = content.match(planRegex);
+	// Normalize to LF while computing, preserve original EOL at return
+	const useCRLF = /\r\n/.test(content);
+	const src = content.replace(/\r\n/g, "\n");
+
+	// Find if there's already an Implementation Plan section
+	const planRegex = /## Implementation Plan\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = src.match(planRegex);
 
 	const newSection = `## Implementation Plan\n\n${plan}`;
 
+	let out: string;
 	if (match) {
 		// Replace existing section, ensuring proper spacing after
-		const hasFollowingSection = /\r?\n## /.test(content.slice((match.index || 0) + match[0].length));
+		const hasFollowingSection = /\n## /.test(src.slice((match.index || 0) + match[0].length));
 		const replacement = hasFollowingSection ? `${newSection}\n` : newSection;
-		return content.replace(planRegex, replacement);
+		out = src.replace(planRegex, replacement);
 	}
-
 	// Find where to insert the new section
 	// It should come after Acceptance Criteria if it exists, otherwise after Description
-	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
-	const acceptanceMatch = content.match(acceptanceCriteriaRegex);
+	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
+	const acceptanceMatch = src.match(acceptanceCriteriaRegex);
 
-	if (acceptanceMatch && acceptanceMatch.index !== undefined) {
+	if (!out && acceptanceMatch && acceptanceMatch.index !== undefined) {
 		// Insert after Acceptance Criteria
 		const insertIndex = acceptanceMatch.index + acceptanceMatch[0].length;
-		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
 	}
 
 	// Otherwise insert after Description
-	const descriptionRegex = /## Description\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
-	const descMatch = content.match(descriptionRegex);
+	const descriptionRegex = /## Description\s*\n[\s\S]*?(?=\n## |$)/i;
+	const descMatch = src.match(descriptionRegex);
 
-	if (descMatch && descMatch.index !== undefined) {
+	if (!out && descMatch && descMatch.index !== undefined) {
 		const insertIndex = descMatch.index + descMatch[0].length;
-		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
 	}
 
-	// If no Description section found, add at the end
-	return `${content}\n\n${newSection}`;
+	// If still not inserted, add at the end
+	if (!out) out = `${src}\n\n${newSection}`;
+	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 }
 
 export function updateTaskImplementationNotes(content: string, notes: string): string {
@@ -139,18 +150,23 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 		return content;
 	}
 
-	// Find if there's already an Implementation Notes section (support both \n and \r\n)
-	const notesRegex = /## Implementation Notes\s*\r?\n([\s\S]*?)(?=\r?\n## |$)/i;
-	const match = content.match(notesRegex);
+	// Normalize to LF while computing, preserve original EOL at return
+	const useCRLF = /\r\n/.test(content);
+	const src = content.replace(/\r\n/g, "\n");
 
+	// Find if there's already an Implementation Notes section
+	const notesRegex = /## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = src.match(notesRegex);
+
+	let out: string;
 	if (match) {
 		// Overwrite existing Implementation Notes section with the new notes
 		const newNotes = notes;
-		const hasFollowingSection = /\r?\n## /.test(content.slice((match.index || 0) + match[0].length));
+		const hasFollowingSection = /\n## /.test(src.slice((match.index || 0) + match[0].length));
 		const replacement = hasFollowingSection
 			? `## Implementation Notes\n\n${newNotes}\n`
 			: `## Implementation Notes\n\n${newNotes}`;
-		return content.replace(notesRegex, replacement);
+		out = src.replace(notesRegex, replacement);
 	}
 
 	// Add new section - Implementation Notes should come after Implementation Plan if it exists
@@ -158,60 +174,66 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 
 	// Find where to insert the new section
 	// It should come after Implementation Plan if it exists
-	const planRegex = /## Implementation Plan\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
-	const planMatch = content.match(planRegex);
+	const planRegex = /## Implementation Plan\s*\n[\s\S]*?(?=\n## |$)/i;
+	const planMatch = src.match(planRegex);
 
-	if (planMatch && planMatch.index !== undefined) {
+	if (!out && planMatch && planMatch.index !== undefined) {
 		// Insert after Implementation Plan
 		const insertIndex = planMatch.index + planMatch[0].length;
-		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
 	}
 
 	// Otherwise after Acceptance Criteria
-	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
-	const acceptanceMatch = content.match(acceptanceCriteriaRegex);
+	const acceptanceCriteriaRegex = /## Acceptance Criteria\s*\n[\s\S]*?(?=\n## |$)/i;
+	const acceptanceMatch = src.match(acceptanceCriteriaRegex);
 
-	if (acceptanceMatch && acceptanceMatch.index !== undefined) {
+	if (!out && acceptanceMatch && acceptanceMatch.index !== undefined) {
 		// Insert after Acceptance Criteria
 		const insertIndex = acceptanceMatch.index + acceptanceMatch[0].length;
-		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
 	}
 
 	// Otherwise after Description
-	const descriptionRegex = /## Description\s*\r?\n[\s\S]*?(?=\r?\n## |$)/i;
-	const descMatch = content.match(descriptionRegex);
+	const descriptionRegex = /## Description\s*\n[\s\S]*?(?=\n## |$)/i;
+	const descMatch = src.match(descriptionRegex);
 
-	if (descMatch && descMatch.index !== undefined) {
+	if (!out && descMatch && descMatch.index !== undefined) {
 		const insertIndex = descMatch.index + descMatch[0].length;
-		return `${content.slice(0, insertIndex)}\n\n${newSection}${content.slice(insertIndex)}`;
+		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
 	}
 
 	// If no other sections found, add at the end
-	return `${content}\n\n${newSection}`;
+	if (!out) out = `${src}\n\n${newSection}`;
+	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 }
 
 export function updateTaskDescription(content: string, description: string): string {
+	// Normalize to LF while computing, preserve original EOL at return
+	const useCRLF = /\r\n/.test(content);
+	const src = content.replace(/\r\n/g, "\n");
 	// Find if there's already a Description section
-	const descriptionRegex = /## Description\s*\r?\n([\s\S]*?)(?=\r?\n## |$)/i;
-	const match = content.match(descriptionRegex);
+	const descriptionRegex = /## Description\s*\n([\s\S]*?)(?=\n## |$)/i;
+	const match = src.match(descriptionRegex);
 
 	const newSection = `## Description\n\n${description}`;
 
+	let out: string | null = null;
 	if (match) {
 		// Replace existing section
-		return content.replace(descriptionRegex, newSection);
+		out = src.replace(descriptionRegex, newSection);
 	}
 
 	// If no Description section found, add at the beginning after any frontmatter
 	// Look for the end of frontmatter (after ---)
-	const frontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n\n?/;
-	const frontmatterMatch = content.match(frontmatterRegex);
+	const frontmatterRegex = /^---\n[\s\S]*?\n---\n\n?/;
+	const frontmatterMatch = src.match(frontmatterRegex);
 
-	if (frontmatterMatch && frontmatterMatch.index !== undefined) {
+	if (!out && frontmatterMatch && frontmatterMatch.index !== undefined) {
 		const insertIndex = frontmatterMatch.index + frontmatterMatch[0].length;
-		return `${content.slice(0, insertIndex)}${newSection}\n\n${content.slice(insertIndex)}`;
+		out = `${src.slice(0, insertIndex)}${newSection}\n\n${src.slice(insertIndex)}`;
 	}
 
 	// If no frontmatter found, add at the beginning
-	return `${newSection}\n\n${content}`;
+	if (!out) out = `${newSection}\n\n${src}`;
+	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 }
