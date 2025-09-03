@@ -191,7 +191,9 @@ function extractAcceptanceCriteria(content: string): string[] {
 }
 
 function extractSection(content: string, sectionTitle: string): string | undefined {
+	// Normalize to LF for reliable matching across platforms
+	const src = content.replace(/\r\n/g, "\n");
 	const regex = new RegExp(`## ${sectionTitle}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
-	const match = content.match(regex);
+	const match = src.match(regex);
 	return match?.[1]?.trim();
 }

@@ -7,8 +7,9 @@ export class AcceptanceCriteriaManager {
 	static readonly SECTION_HEADER = "## Acceptance Criteria";
 
 	private static parseOldFormat(content: string): AcceptanceCriterion[] {
+		const src = content.replace(/\r\n/g, "\n");
 		const criteriaRegex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/i;
-		const match = content.match(criteriaRegex);
+		const match = src.match(criteriaRegex);
 		if (!match || !match[1]) {
 			return [];
 		}
@@ -29,12 +30,13 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static parseAcceptanceCriteria(content: string): AcceptanceCriterion[] {
-		const beginIndex = content.indexOf(AcceptanceCriteriaManager.BEGIN_MARKER);
-		const endIndex = content.indexOf(AcceptanceCriteriaManager.END_MARKER);
+		const src = content.replace(/\r\n/g, "\n");
+		const beginIndex = src.indexOf(AcceptanceCriteriaManager.BEGIN_MARKER);
+		const endIndex = src.indexOf(AcceptanceCriteriaManager.END_MARKER);
 		if (beginIndex === -1 || endIndex === -1) {
-			return AcceptanceCriteriaManager.parseOldFormat(content);
+			return AcceptanceCriteriaManager.parseOldFormat(src);
 		}
-		const acContent = content.substring(beginIndex + AcceptanceCriteriaManager.BEGIN_MARKER.length, endIndex);
+		const acContent = src.substring(beginIndex + AcceptanceCriteriaManager.BEGIN_MARKER.length, endIndex);
 		const lines = acContent.split("\n").filter((line) => line.trim());
 		const criteria: AcceptanceCriterion[] = [];
 		for (const line of lines) {
@@ -113,9 +115,11 @@ export class AcceptanceCriteriaManager {
 	private static parseAllBlocks(content: string): AcceptanceCriterion[] {
 		const marked: AcceptanceCriterion[] = [];
 		const legacy: AcceptanceCriterion[] = [];
+		// Normalize to LF to make matching platform-agnostic
+		const src = content.replace(/\r\n/g, "\n");
 		// Find all Acceptance Criteria blocks (legacy header blocks)
 		const blockRegex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/gi;
-		let m: RegExpExecArray | null = blockRegex.exec(content);
+		let m: RegExpExecArray | null = blockRegex.exec(src);
 		while (m !== null) {
 			const block = m[1] || "";
 			if (
@@ -147,7 +151,7 @@ export class AcceptanceCriteriaManager {
 					lm = lineRegex.exec(block);
 				}
 			}
-			m = blockRegex.exec(content);
+			m = blockRegex.exec(src);
 		}
 		// Prefer marked content when present; otherwise fall back to legacy
 		return marked.length > 0 ? marked : legacy;
