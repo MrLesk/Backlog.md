@@ -36,74 +36,6 @@ function createMultiValueAccumulator() {
 }
 
 // Helper function to process multiple AC operations
-async function processAcceptanceCriteriaOperations(
-	taskBody: string,
-	operations: {
-		remove?: string | string[];
-		check?: string | string[];
-		uncheck?: string | string[];
-	},
-): Promise<string> {
-	const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
-	let updatedBody = taskBody;
-
-	// Process removal operations (do these first to avoid index shifting issues)
-	if (operations.remove) {
-		const removeIndices = Array.isArray(operations.remove) ? operations.remove : [operations.remove];
-		// Validate indices first
-		for (const indexStr of removeIndices) {
-			const index = Number.parseInt(String(indexStr), 10);
-			if (Number.isNaN(index) || index < 1) {
-				throw new Error(`Invalid index: ${indexStr}. Index must be a positive number (1-based).`);
-			}
-		}
-		// Sort indices in descending order so we remove from highest to lowest
-		const sortedIndices = removeIndices.map((idx) => Number.parseInt(String(idx), 10)).sort((a, b) => b - a);
-
-		for (const index of sortedIndices) {
-			try {
-				updatedBody = AcceptanceCriteriaManager.removeCriterionByIndex(updatedBody, index);
-			} catch (error) {
-				throw new Error(`Failed to remove AC #${index}: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		}
-	}
-
-	// Process check operations
-	if (operations.check) {
-		const checkIndices = Array.isArray(operations.check) ? operations.check : [operations.check];
-		for (const indexStr of checkIndices) {
-			const index = Number.parseInt(String(indexStr), 10);
-			if (Number.isNaN(index) || index < 1) {
-				throw new Error(`Invalid index: ${indexStr}. Index must be a positive number (1-based).`);
-			}
-			try {
-				updatedBody = AcceptanceCriteriaManager.checkCriterionByIndex(updatedBody, index, true);
-			} catch (error) {
-				throw new Error(`Failed to check AC #${index}: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		}
-	}
-
-	// Process uncheck operations
-	if (operations.uncheck) {
-		const uncheckIndices = Array.isArray(operations.uncheck) ? operations.uncheck : [operations.uncheck];
-		for (const indexStr of uncheckIndices) {
-			const index = Number.parseInt(String(indexStr), 10);
-			if (Number.isNaN(index) || index < 1) {
-				throw new Error(`Invalid index: ${indexStr}. Index must be a positive number (1-based).`);
-			}
-			try {
-				updatedBody = AcceptanceCriteriaManager.checkCriterionByIndex(updatedBody, index, false);
-			} catch (error) {
-				throw new Error(`Failed to uncheck AC #${index}: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		}
-	}
-
-	return updatedBody;
-}
-
 /**
  * Processes --ac and --acceptance-criteria options to extract acceptance criteria
  * Handles both single values and arrays from multi-value accumulators
@@ -1015,23 +947,21 @@ taskCmd
 			task.dependencies = valid;
 		}
 
-		// Handle acceptance criteria with new stable format (for create command)
-		const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
+		// Handle acceptance criteria for create command (structured only)
 		const criteria = processAcceptanceCriteriaOptions(options);
 		if (criteria.length > 0) {
-			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria);
+			let idx = 1;
+			task.acceptanceCriteriaItems = criteria.map((text) => ({ index: idx++, text, checked: false }));
 		}
 
 		// Handle implementation plan
 		if (options.plan) {
-			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
-			task.body = updateTaskImplementationPlan(task.body, String(options.plan));
+			task.implementationPlan = String(options.plan);
 		}
 
 		// Handle implementation notes
 		if (options.notes) {
-			const { updateTaskImplementationNotes } = await import("./markdown/serializer.ts");
-			task.body = updateTaskImplementationNotes(task.body, String(options.notes));
+			task.implementationNotes = String(options.notes);
 		}
 
 		// Workaround for bun compile issue with commander options
@@ -1288,8 +1218,7 @@ taskCmd
 			task.title = String(options.title);
 		}
 		if (options.description || options.desc) {
-			const { updateTaskDescription } = await import("./markdown/serializer.ts");
-			task.body = updateTaskDescription(task.body, String(options.description || options.desc));
+			task.description = String(options.description || options.desc);
 		}
 		if (typeof options.assignee !== "undefined") {
 			task.assignee = [String(options.assignee)];
@@ -1371,17 +1300,50 @@ taskCmd
 		// Handle adding new acceptance criteria (unified handling for both --ac and --acceptance-criteria)
 		const criteria = processAcceptanceCriteriaOptions(options);
 		if (criteria.length > 0) {
-			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria);
+			// Merge new criteria into structured list (fallback to parsing body for legacy)
+			const current =
+				task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0
+					? task.acceptanceCriteriaItems
+					: AcceptanceCriteriaManager.parseAcceptanceCriteria(task.body);
+			let nextIndex = current.length > 0 ? Math.max(...current.map((c) => c.index)) + 1 : 1;
+			const merged = [...current, ...criteria.map((text) => ({ index: nextIndex++, text, checked: false }))];
+			task.acceptanceCriteriaItems = merged;
 		}
 
 		// Handle AC operations (remove, check, uncheck) with support for multiple values
 		if (options.removeAc || options.checkAc || options.uncheckAc) {
 			try {
-				task.body = await processAcceptanceCriteriaOperations(task.body, {
-					remove: options.removeAc,
-					check: options.checkAc,
-					uncheck: options.uncheckAc,
-				});
+				let list =
+					task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0
+						? task.acceptanceCriteriaItems
+						: AcceptanceCriteriaManager.parseAcceptanceCriteria(task.body);
+				const toNums = (v: unknown): number[] => {
+					const arr = Array.isArray(v) ? v : v ? [v] : [];
+					return arr.map((x) => {
+						const n = Number.parseInt(String(x), 10);
+						if (!Number.isFinite(n) || Number.isNaN(n) || n < 1) {
+							throw new Error(`Invalid index: ${String(x)}. Index must be a positive number (1-based).`);
+						}
+						return n;
+					});
+				};
+				const removes = toNums(options.removeAc).sort((a: number, b: number) => b - a);
+				for (const idx of removes) {
+					const before = list.length;
+					list = list.filter((c) => c.index !== idx).map((c, i) => ({ ...c, index: i + 1 }));
+					if (list.length === before) throw new Error(`Acceptance criterion #${idx} not found`);
+				}
+				for (const idx of toNums(options.checkAc)) {
+					if (!list.some((c) => c.index === idx))
+						throw new Error(`Failed to check AC #${idx}: Acceptance criterion #${idx} not found`);
+					list = list.map((c) => (c.index === idx ? { ...c, checked: true } : c));
+				}
+				for (const idx of toNums(options.uncheckAc)) {
+					if (!list.some((c) => c.index === idx))
+						throw new Error(`Failed to uncheck AC #${idx}: Acceptance criterion #${idx} not found`);
+					list = list.map((c) => (c.index === idx ? { ...c, checked: false } : c));
+				}
+				task.acceptanceCriteriaItems = list;
 			} catch (error) {
 				console.error(error instanceof Error ? error.message : String(error));
 				process.exitCode = 1;
@@ -1391,14 +1353,12 @@ taskCmd
 
 		// Handle implementation plan
 		if (options.plan) {
-			const { updateTaskImplementationPlan } = await import("./markdown/serializer.ts");
-			task.body = updateTaskImplementationPlan(task.body, String(options.plan));
+			task.implementationPlan = String(options.plan);
 		}
 
 		// Handle implementation notes
 		if (options.notes) {
-			const { updateTaskImplementationNotes } = await import("./markdown/serializer.ts");
-			task.body = updateTaskImplementationNotes(task.body, String(options.notes));
+			task.implementationNotes = String(options.notes);
 		}
 
 		await core.updateTask(task);

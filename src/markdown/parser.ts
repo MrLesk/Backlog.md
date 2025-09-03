@@ -117,6 +117,11 @@ export function parseTask(content: string): Task {
 	// Parse structured acceptance criteria (checked/text/index)
 	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAcceptanceCriteria(body);
 
+	// Parse other sections
+	const descriptionSection = extractSection(body, "Description") || "";
+	const planSection = extractSection(body, "Implementation Plan") || undefined;
+	const notesSection = extractSection(body, "Implementation Notes") || undefined;
+
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
@@ -135,6 +140,9 @@ export function parseTask(content: string): Task {
 		body: body,
 		acceptanceCriteria: extractAcceptanceCriteria(body),
 		acceptanceCriteriaItems: structuredCriteria,
+		description: descriptionSection,
+		implementationPlan: planSection,
+		implementationNotes: notesSection,
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
 		priority: validatedPriority,

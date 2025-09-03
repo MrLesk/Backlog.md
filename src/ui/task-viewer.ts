@@ -349,10 +349,11 @@ export async function viewTaskEnhanced(
 		// Description section
 		bodyContent.push(formatHeading("Description", 2));
 		// Extract only the Description section content, not the full markdown
-		const extractedDescription = extractDescriptionSection(currentSelectedTask.body);
-		const descriptionContent = extractedDescription
-			? transformCodePaths(extractedDescription)
-			: "{gray-fg}No description provided{/}";
+		const extractedDescription = currentSelectedTask.description ?? extractDescriptionSection(currentSelectedTask.body);
+		const descriptionContent =
+			extractedDescription && extractedDescription.trim() !== ""
+				? transformCodePaths(extractedDescription)
+				: "{gray-fg}No description provided{/}";
 		bodyContent.push(descriptionContent);
 		bodyContent.push("");
 
@@ -619,7 +620,7 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	// Description section
 	bodyContent.push(formatHeading("Description", 2));
 	// Extract only the Description section content, not the full markdown
-	const extractedDescription = extractDescriptionSection(task.body);
+	const extractedDescription = task.description ?? extractDescriptionSection(task.body);
 	const descriptionContent = extractedDescription
 		? transformCodePaths(extractedDescription)
 		: "{gray-fg}No description provided{/}";
@@ -660,7 +661,7 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	bodyContent.push("");
 
 	// Implementation Plan section
-	const implementationPlan = extractImplementationPlanSection(rawContent);
+	const implementationPlan = task.implementationPlan ?? extractImplementationPlanSection(rawContent);
 	if (implementationPlan) {
 		bodyContent.push(formatHeading("Implementation Plan", 2));
 		bodyContent.push(transformCodePaths(implementationPlan));
@@ -668,7 +669,7 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	}
 
 	// Implementation Notes section
-	const implementationNotes = extractImplementationNotesSection(rawContent);
+	const implementationNotes = task.implementationNotes ?? extractImplementationNotesSection(rawContent);
 	if (implementationNotes) {
 		bodyContent.push(formatHeading("Implementation Notes", 2));
 		bodyContent.push(transformCodePaths(implementationNotes));
@@ -833,7 +834,7 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	// Description section
 	lines.push("Description:");
 	lines.push("-".repeat(50));
-	const description = extractDescriptionSection(content);
+	const description = task.description ?? extractDescriptionSection(content);
 	lines.push(transformCodePathsPlain(description || "No description provided"));
 	lines.push("");
 
@@ -861,7 +862,7 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	lines.push("");
 
 	// Implementation Plan section
-	const implementationPlan = extractImplementationPlanSection(content);
+	const implementationPlan = task.implementationPlan ?? extractImplementationPlanSection(content);
 	if (implementationPlan) {
 		lines.push("Implementation Plan:");
 		lines.push("-".repeat(50));
@@ -870,7 +871,7 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	}
 
 	// Implementation Notes section
-	const implementationNotes = extractImplementationNotesSection(content);
+	const implementationNotes = task.implementationNotes ?? extractImplementationNotesSection(content);
 	if (implementationNotes) {
 		lines.push("Implementation Notes:");
 		lines.push("-".repeat(50));

@@ -1,4 +1,5 @@
 import matter from "gray-matter";
+import { AcceptanceCriteriaManager } from "../core/acceptance-criteria.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 
@@ -21,7 +22,22 @@ export function serializeTask(task: Task): string {
 		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
 	};
 
-	const serialized = matter.stringify(task.body, frontmatter);
+	// Compose from first-party fields when present, preserving other content
+	let contentBody = task.body;
+	if (typeof task.description === "string") {
+		contentBody = updateTaskDescription(contentBody, task.description);
+	}
+	if (Array.isArray(task.acceptanceCriteriaItems) && task.acceptanceCriteriaItems.length > 0) {
+		contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
+	}
+	if (typeof task.implementationPlan === "string") {
+		contentBody = updateTaskImplementationPlan(contentBody, task.implementationPlan);
+	}
+	if (typeof task.implementationNotes === "string") {
+		contentBody = updateTaskImplementationNotes(contentBody, task.implementationNotes);
+	}
+
+	const serialized = matter.stringify(contentBody, frontmatter);
 	// Ensure there's a blank line between frontmatter and content
 	return serialized.replace(/^(---\n(?:.*\n)*?---)\n(?!$)/, "$1\n\n");
 }

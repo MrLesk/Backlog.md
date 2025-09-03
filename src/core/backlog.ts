@@ -303,7 +303,6 @@ export class Core {
 		// Always set updatedDate when updating a task
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
-		task.body = ensureDescriptionHeader(task.body);
 		await this.fs.saveTask(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {

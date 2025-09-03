@@ -19,6 +19,9 @@ export interface Task {
 	milestone?: string;
 	dependencies: string[];
 	body: string; // Raw markdown content without frontmatter
+	description?: string;
+	implementationPlan?: string;
+	implementationNotes?: string;
 	acceptanceCriteria?: string[];
 	/** Structured acceptance criteria parsed from body (checked state + text + index) */
 	acceptanceCriteriaItems?: AcceptanceCriterion[];

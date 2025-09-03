@@ -575,7 +575,7 @@ describe("CLI Integration", () => {
 
 			if (task) {
 				task.title = "Updated Title";
-				task.body = "Updated description";
+				task.description = "Updated description";
 				task.status = "In Progress";
 
 				await core.updateTask(task, false);
