@@ -11,7 +11,7 @@ import { screen as blessedScreen, box, program as createProgram } from "neo-neo-
 
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
-	return blessedScreen({ smartCSR: true, program, ...options });
+	return blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
 }
 
 // Ask the user for a single line of input.  Falls back to readline.
