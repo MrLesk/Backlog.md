@@ -114,8 +114,8 @@ export function parseTask(content: string): Task {
 	const validatedPriority =
 		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
 
-	// Parse structured acceptance criteria (checked/text/index)
-	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAcceptanceCriteria(body);
+	// Parse structured acceptance criteria (checked/text/index) from all sections
+	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(body);
 
 	// Parse other sections
 	const descriptionSection = extractSection(body, "Description") || "";

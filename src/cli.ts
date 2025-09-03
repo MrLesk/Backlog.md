@@ -1304,7 +1304,7 @@ taskCmd
 			const current =
 				task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0
 					? task.acceptanceCriteriaItems
-					: AcceptanceCriteriaManager.parseAcceptanceCriteria(task.body);
+					: AcceptanceCriteriaManager.parseAllCriteria(task.body);
 			let nextIndex = current.length > 0 ? Math.max(...current.map((c) => c.index)) + 1 : 1;
 			const merged = [...current, ...criteria.map((text) => ({ index: nextIndex++, text, checked: false }))];
 			task.acceptanceCriteriaItems = merged;
@@ -1316,7 +1316,7 @@ taskCmd
 				let list =
 					task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0
 						? task.acceptanceCriteriaItems
-						: AcceptanceCriteriaManager.parseAcceptanceCriteria(task.body);
+						: AcceptanceCriteriaManager.parseAllCriteria(task.body);
 				const toNums = (v: unknown): number[] => {
 					const arr = Array.isArray(v) ? v : v ? [v] : [];
 					return arr.map((x) => {

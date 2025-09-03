@@ -235,6 +235,11 @@ export class Core {
 			dependencies?: string[];
 			parentTaskId?: string;
 			priority?: "high" | "medium" | "low";
+			// First-party structured fields from Web UI / CLI
+			description?: string;
+			acceptanceCriteriaItems?: import("../types/index.ts").AcceptanceCriterion[];
+			implementationPlan?: string;
+			implementationNotes?: string;
 		},
 		autoCommit?: boolean,
 	): Promise<Task> {
@@ -251,6 +256,14 @@ export class Core {
 			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
 			...(taskData.priority && { priority: taskData.priority }),
+			// Carry through structured fields so serializer composes body correctly
+			...(typeof taskData.description === "string" && { description: taskData.description }),
+			...(Array.isArray(taskData.acceptanceCriteriaItems) &&
+				taskData.acceptanceCriteriaItems.length > 0 && {
+					acceptanceCriteriaItems: taskData.acceptanceCriteriaItems,
+				}),
+			...(typeof taskData.implementationPlan === "string" && { implementationPlan: taskData.implementationPlan }),
+			...(typeof taskData.implementationNotes === "string" && { implementationNotes: taskData.implementationNotes }),
 		};
 
 		// Check if this should be a draft based on status

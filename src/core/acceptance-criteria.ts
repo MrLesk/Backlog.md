@@ -146,14 +146,17 @@ export class AcceptanceCriteriaManager {
 		return marked.length > 0 ? marked : legacy;
 	}
 
-	private static parseAll(content: string): AcceptanceCriterion[] {
+	/**
+	 * Parse acceptance criteria from ALL sections (both legacy and marked),
+	 * normalizing into a single ordered list.
+	 */
+	static parseAllCriteria(content: string): AcceptanceCriterion[] {
 		const list = AcceptanceCriteriaManager.parseAllBlocks(content);
-		// Normalize indices
 		return list.map((c, i) => ({ ...c, index: i + 1 }));
 	}
 
 	static addCriteria(content: string, newCriteria: string[]): string {
-		const existing = AcceptanceCriteriaManager.parseAll(content);
+		const existing = AcceptanceCriteriaManager.parseAllCriteria(content);
 		let nextIndex = existing.length > 0 ? Math.max(...existing.map((c) => c.index)) + 1 : 1;
 		for (const text of newCriteria) {
 			existing.push({ checked: false, text: text.trim(), index: nextIndex++ });
@@ -162,7 +165,7 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static removeCriterionByIndex(content: string, index: number): string {
-		const criteria = AcceptanceCriteriaManager.parseAll(content);
+		const criteria = AcceptanceCriteriaManager.parseAllCriteria(content);
 		const filtered = criteria.filter((c) => c.index !== index);
 		if (filtered.length === criteria.length) {
 			throw new Error(`Acceptance criterion #${index} not found`);
@@ -172,7 +175,7 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static checkCriterionByIndex(content: string, index: number, checked: boolean): string {
-		const criteria = AcceptanceCriteriaManager.parseAll(content);
+		const criteria = AcceptanceCriteriaManager.parseAllCriteria(content);
 		const criterion = criteria.find((c) => c.index === index);
 		if (!criterion) {
 			throw new Error(`Acceptance criterion #${index} not found`);
@@ -182,7 +185,7 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static migrateToStableFormat(content: string): string {
-		const criteria = AcceptanceCriteriaManager.parseAll(content);
+		const criteria = AcceptanceCriteriaManager.parseAllCriteria(content);
 		if (criteria.length === 0) {
 			return content;
 		}
