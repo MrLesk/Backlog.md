@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-08-17 15:51'
-updated_date: '2025-08-24 16:05'
+updated_date: '2025-09-03 21:30'
 labels:
   - cli
   - bug
@@ -29,6 +29,24 @@ Expected: the CLI preserves literal newline characters when provided by the shel
 - [x] #5 Add tests: creating and editing a task with multi-paragraph descriptions preserves newlines in saved file
 <!-- AC:END -->
 
+
+## Implementation Plan
+
+1. Reproduce newline issue with --desc showing literal \n in output
+2. Define expected behavior: literal newlines preserved; do not interpret \n sequences
+3. Update CLI help for create/edit/draft to include multi-line examples
+4. Document multi-line input patterns in README (Bash/Zsh, POSIX, PowerShell)
+5. Add tests to ensure multi-paragraph descriptions are preserved
+6. Run Biome checks and full test suite
+
+
 ## Implementation Notes
 
-Documented newline handling for descriptions
+Implemented newline handling clarifications:
+- CLI help updated for --description/--desc across create/edit/draft commands with multi-line examples
+- README adds "Multi-line descriptions" section (Bash/Zsh ...', POSIX printf, PowerShell `n)
+- Tests added: src/test/description-newlines.test.ts, desc-alias, cli-plain-create-edit
+- Verified literal newlines preserved and \n sequences not interpreted
+- Ran bun run check and bun test to verify
+
+Covers ACs #1–#5 for task-234

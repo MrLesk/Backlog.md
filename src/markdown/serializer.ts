@@ -114,9 +114,10 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 
 	let out: string;
 	if (match) {
-		// Replace existing section, ensuring proper spacing after
-		const hasFollowingSection = /\n## /.test(src.slice((match.index || 0) + match[0].length));
-		const replacement = hasFollowingSection ? `${newSection}\n` : newSection;
+		// Replace existing section, ensuring exactly one blank line after when followed by other content
+		const afterIdx = (match.index || 0) + match[0].length;
+		const hasFollowingSection = /\n## /.test(src.slice(afterIdx));
+		const replacement = hasFollowingSection ? `${newSection}\n\n` : newSection;
 		out = src.replace(planRegex, replacement);
 	}
 	// Find where to insert the new section
@@ -125,9 +126,11 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 	const acceptanceMatch = src.match(acceptanceCriteriaRegex);
 
 	if (!out && acceptanceMatch && acceptanceMatch.index !== undefined) {
-		// Insert after Acceptance Criteria
+		// Insert after Acceptance Criteria, normalizing surrounding blank lines
 		const insertIndex = acceptanceMatch.index + acceptanceMatch[0].length;
-		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
+		const before = src.slice(0, insertIndex).replace(/\n+$/, "");
+		const after = src.slice(insertIndex).replace(/^\n+/, "");
+		out = `${before}\n\n${newSection}${after ? "\n\n" : ""}${after}`;
 	}
 
 	// Otherwise insert after Description
@@ -136,11 +139,13 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 
 	if (!out && descMatch && descMatch.index !== undefined) {
 		const insertIndex = descMatch.index + descMatch[0].length;
-		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
+		const before = src.slice(0, insertIndex).replace(/\n+$/, "");
+		const after = src.slice(insertIndex).replace(/^\n+/, "");
+		out = `${before}\n\n${newSection}${after ? "\n\n" : ""}${after}`;
 	}
 
 	// If still not inserted, add at the end
-	if (!out) out = `${src}\n\n${newSection}`;
+	if (!out) out = `${src.replace(/\n+$/, "")}\n\n${newSection}`;
 	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 }
 
@@ -160,11 +165,12 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 
 	let out: string;
 	if (match) {
-		// Overwrite existing Implementation Notes section with the new notes
+		// Overwrite existing Implementation Notes section with the new notes and normalize spacing
 		const newNotes = notes;
-		const hasFollowingSection = /\n## /.test(src.slice((match.index || 0) + match[0].length));
+		const afterIdx = (match.index || 0) + match[0].length;
+		const hasFollowingSection = /\n## /.test(src.slice(afterIdx));
 		const replacement = hasFollowingSection
-			? `## Implementation Notes\n\n${newNotes}\n`
+			? `## Implementation Notes\n\n${newNotes}\n\n`
 			: `## Implementation Notes\n\n${newNotes}`;
 		out = src.replace(notesRegex, replacement);
 	}
@@ -178,9 +184,11 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	const planMatch = src.match(planRegex);
 
 	if (!out && planMatch && planMatch.index !== undefined) {
-		// Insert after Implementation Plan
+		// Insert after Implementation Plan, normalizing surrounding blank lines
 		const insertIndex = planMatch.index + planMatch[0].length;
-		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
+		const before = src.slice(0, insertIndex).replace(/\n+$/, "");
+		const after = src.slice(insertIndex).replace(/^\n+/, "");
+		out = `${before}\n\n${newSection}${after ? "\n\n" : ""}${after}`;
 	}
 
 	// Otherwise after Acceptance Criteria
@@ -188,9 +196,11 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	const acceptanceMatch = src.match(acceptanceCriteriaRegex);
 
 	if (!out && acceptanceMatch && acceptanceMatch.index !== undefined) {
-		// Insert after Acceptance Criteria
+		// Insert after Acceptance Criteria, normalizing surrounding blank lines
 		const insertIndex = acceptanceMatch.index + acceptanceMatch[0].length;
-		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
+		const before = src.slice(0, insertIndex).replace(/\n+$/, "");
+		const after = src.slice(insertIndex).replace(/^\n+/, "");
+		out = `${before}\n\n${newSection}${after ? "\n\n" : ""}${after}`;
 	}
 
 	// Otherwise after Description
@@ -199,11 +209,13 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 
 	if (!out && descMatch && descMatch.index !== undefined) {
 		const insertIndex = descMatch.index + descMatch[0].length;
-		out = `${src.slice(0, insertIndex)}\n\n${newSection}${src.slice(insertIndex)}`;
+		const before = src.slice(0, insertIndex).replace(/\n+$/, "");
+		const after = src.slice(insertIndex).replace(/^\n+/, "");
+		out = `${before}\n\n${newSection}${after ? "\n\n" : ""}${after}`;
 	}
 
 	// If no other sections found, add at the end
-	if (!out) out = `${src}\n\n${newSection}`;
+	if (!out) out = `${src.replace(/\n+$/, "")}\n\n${newSection}`;
 	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 }
 
