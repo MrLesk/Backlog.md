@@ -427,6 +427,8 @@ A task is **Done** only when **ALL** of the following are complete:
 | Add notes        | `backlog task edit 42 --notes "Implementation details"`  |
 | Add dependencies | `backlog task edit 42 --dep task-1 --dep task-2`         |
 
+Descriptions support literal newlines; shell examples may show escaped `\\n`, but enter a single `\n` to create a newline.
+
 ### Task Operations
 
 | Action             | Command                                      |
