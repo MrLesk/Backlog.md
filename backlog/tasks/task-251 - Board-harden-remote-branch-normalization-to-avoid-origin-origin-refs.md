@@ -1,9 +1,11 @@
 ---
 id: task-251
 title: 'Board: harden remote branch normalization to avoid origin/origin refs'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-04 19:34'
+updated_date: '2025-09-04 20:17'
 labels:
   - bug
   - board
@@ -26,3 +28,10 @@ Goal: Harden normalization so only canonical remote refs are used and invalid en
 - [ ] #4 listRecentRemoteBranches filters out origin/HEAD and entries that normalize to empty or origin; add a small test if needed.
 - [ ] #5 With remoteOperations=false, board loads using local tasks without attempting remote refs.
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Harden normalization in listRecentRemoteBranches (drop HEAD/origin)
+2. Keep normalizeRemoteBranch robust (already filters origin/HEAD)
+3. Add tests covering invalid entries and canonical refs
+4. Verify remoteOperations=false path remains local only

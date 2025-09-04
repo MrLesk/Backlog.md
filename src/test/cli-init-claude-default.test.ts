@@ -9,7 +9,7 @@ let TEST_DIR: string;
 
 describe("init Claude agent default", () => {
 	beforeEach(async () => {
-		TEST_DIR = join(process.cwd(), ".tmp-test-init-claude-" + Math.random().toString(36).slice(2));
+		TEST_DIR = join(process.cwd(), `.tmp-test-init-claude-${Math.random().toString(36).slice(2)}`);
 		await rm(TEST_DIR, { recursive: true, force: true });
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();

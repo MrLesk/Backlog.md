@@ -20,7 +20,8 @@ function normalizeRemoteBranch(branch: string): string | null {
 	br = br.replace(/^refs\/remotes\//, "");
 	if (br === "origin" || br === "HEAD" || br === "origin/HEAD") return null;
 	if (br.startsWith("origin/")) br = br.slice("origin/".length);
-	if (!br || br === "HEAD") return null;
+	// Filter weird cases like "origin" again after stripping prefix
+	if (!br || br === "HEAD" || br === "origin") return null;
 	return br;
 }
 

@@ -24,7 +24,14 @@ describe("buildRemoteTaskIndex branch handling", () => {
 
 	it("filters out invalid branch entries", async () => {
 		const git = new MockGit();
-		await buildRemoteTaskIndex(git as unknown as GitOperations, ["main", "origin", "origin/HEAD", "HEAD"]);
+		await buildRemoteTaskIndex(git as unknown as GitOperations, [
+			"main",
+			"origin",
+			"origin/HEAD",
+			"HEAD",
+			"origin/origin",
+			"refs/remotes/origin/origin",
+		]);
 		expect(git.refs).toEqual(["origin/main"]);
 	});
 });

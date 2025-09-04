@@ -233,17 +233,21 @@ export class GitOperations {
 				{ readOnly: true },
 			);
 			const since = Date.now() - daysAgo * 24 * 60 * 60 * 1000;
-			return stdout
-				.split("\n")
-				.map((l) => l.trim())
-				.filter(Boolean)
-				.map((line) => {
-					const [ref, iso] = line.split("|");
-					return { ref, t: Date.parse(iso || "") };
-				})
-				.filter((x) => Number.isFinite(x.t) && x.t >= since && x.ref)
-				.map((x) => x.ref?.replace(`${remote}/`, ""))
-				.filter((b): b is string => Boolean(b)); // return short like "feature-foo"
+			return (
+				stdout
+					.split("\n")
+					.map((l) => l.trim())
+					.filter(Boolean)
+					.map((line) => {
+						const [ref, iso] = line.split("|");
+						return { ref, t: Date.parse(iso || "") };
+					})
+					.filter((x) => Number.isFinite(x.t) && x.t >= since && x.ref)
+					.map((x) => x.ref?.replace(`${remote}/`, ""))
+					// Filter out invalid/ambiguous entries that would normalize to empty or "origin"
+					.filter((b): b is string => Boolean(b))
+					.filter((b) => b !== "HEAD" && b !== remote && b !== `${remote}`)
+			);
 		} catch {
 			return [];
 		}
