@@ -1,9 +1,11 @@
 ---
 id: task-254
 title: 'Init: default ''No'' for Claude agent installation'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-04 19:53'
+updated_date: '2025-09-04 20:14'
 labels:
   - cli
   - init
@@ -26,3 +28,11 @@ Goal: Make Claude agent an explicit opt-in during initialization, with clear pro
 - [ ] #4 Update documentation/help to reflect the default change and the flag usage.
 - [ ] #5 Add/adjust a minimal test to assert the prompt initial value is false and flag parsing still works.
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Change init prompt default to No
+2. Update prompt copy per spec
+3. Ensure non-interactive flag parsing unchanged
+4. Add minimal test to ensure default=false and flag true works
+5. Update docs/help text

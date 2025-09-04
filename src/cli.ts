@@ -617,9 +617,9 @@ program
 						{
 							type: "confirm",
 							name: "installClaudeAgent",
-							message: "Install Claude Code Backlog.md agent for enhanced task management?",
-							hint: "Adds specialized agent to .claude/agents for better Backlog.md integration",
-							initial: true,
+							message: "Install Claude Code Backlog.md agent? (y/N)",
+							hint: "Adds to .claude/agents/ (opt-in)",
+							initial: false,
 						},
 						{
 							onCancel: () => {
