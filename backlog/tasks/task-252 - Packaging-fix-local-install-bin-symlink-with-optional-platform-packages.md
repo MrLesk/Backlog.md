@@ -23,7 +23,7 @@ Goal: Ensure local installs create a stable `node_modules/.bin/backlog` that rem
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Local install: `npm i -D backlog.md` produces `./node_modules/.bin/backlog`; `npx backlog --help` works.
-- [ ] #2 Platform-specific packages (backlog.md-*-*) do not declare a `bin`; only contain the binary in `files`.
+- [x] #2 Platform-specific packages (backlog.md-*-*) do not declare a `bin`; only contain the binary in `files`.
 - [x] #3 Root package `bin` points to the Node wrapper (cli/index.js or scripts/cli.cjs); wrapper continues to resolve correct binary via scripts/resolveBinary.cjs.
 - [x] #4 Global install continues to work; `backlog` resolves and runs.
 - [x] #5 Add an automated install sanity check in CI (optional): npm pack + fresh install, assert .bin/backlog exists and runs `--help`.
