@@ -1,9 +1,11 @@
 ---
 id: task-252
 title: 'Packaging: fix local install bin symlink with optional platform packages'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-04 19:41'
+updated_date: '2025-09-04 20:13'
 labels:
   - bug
   - packaging
@@ -26,3 +28,11 @@ Goal: Ensure local installs create a stable `node_modules/.bin/backlog` that rem
 - [ ] #4 Global install continues to work; `backlog` resolves and runs.
 - [ ] #5 Add an automated install sanity check in CI (optional): npm pack + fresh install, assert .bin/backlog exists and runs `--help`.
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Point root bin to scripts/cli.cjs
+2. Ensure wrapper resolves platform binary via resolveBinary.cjs
+3. Verify local install flow preserves .bin/backlog
+4. Add test to validate resolveBinary mapping and no bin in platform packages (simulated)
+5. Update docs if needed

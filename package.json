@@ -3,7 +3,7 @@
 	"version": "1.9.2",
 	"type": "module",
 	"bin": {
-		"backlog": "cli/index.js"
+		"backlog": "scripts/cli.cjs"
 	},
 	"optionalDependencies": {
 		"backlog.md-darwin-arm64": "*",
