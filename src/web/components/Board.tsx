@@ -145,10 +145,17 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
     );
   }
 
-  // Dynamic layout using flexbox:
-  // - Columns are flex items with equal growth (flex-1) to divide space evenly
-  // - A minimum width keeps columns readable; beyond available space, container scrolls horizontally
-  // - Works uniformly for any number of columns without per-count conditionals
+  const getGridClasses = () => {
+    const columnCount = statuses.length;
+    // For 1–3 columns keep responsive fixed columns to avoid oversized min widths
+    if (isMobile || columnCount <= 1) return 'grid grid-cols-1 gap-6';
+    if (columnCount === 2) return 'grid grid-cols-2 gap-6';
+    if (columnCount === 3) return 'grid grid-cols-3 gap-6';
+    // For 4+ columns, prefer flow-by-column with fixed min column width to stabilize scrolling
+    // Using Tailwind arbitrary values for auto-cols: minmax(20rem,1fr)
+    // This avoids min-w-fit jitter seen on Safari/Chrome during horizontal scroll with dynamic counts
+    return 'grid grid-flow-col auto-cols-[minmax(20rem,1fr)] gap-6';
+  };
 
   return (
     <div className="w-full">
@@ -161,19 +168,18 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
           + New Task
         </button>
       </div>
-      <div className="overflow-x-auto pb-2">
-        <div className="flex flex-row flex-nowrap gap-4 w-full">
-          {statuses.map((status) => (
-            <div key={status} className="flex-1 min-w-[16rem]">
-              <TaskColumn
-                title={status}
-                tasks={getTasksByStatus(status)}
-                onTaskUpdate={handleTaskUpdate}
-                onStatusChange={handleStatusChange}
-                onEditTask={onEditTask}
-                onTaskReorder={handleTaskReorder}
-              />
-            </div>
+      <div className={statuses.length > 3 ? 'overflow-x-auto pb-4' : ''}>
+        <div className={`${getGridClasses()} ${statuses.length > 3 ? 'min-w-max' : ''}`}>
+          {statuses.map(status => (
+            <TaskColumn
+              key={status}
+              title={status}
+              tasks={getTasksByStatus(status)}
+              onTaskUpdate={handleTaskUpdate}
+              onStatusChange={handleStatusChange}
+              onEditTask={onEditTask}
+              onTaskReorder={handleTaskReorder}
+            />
           ))}
         </div>
       </div>
