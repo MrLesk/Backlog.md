@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Import official MDEditor and Markdown preview styles before our overrides */
+@import "@uiw/react-md-editor/markdown-editor.css";
+@import "@uiw/react-markdown-preview/markdown.css";
 @source not inline("{rounded-full}");
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -128,10 +131,9 @@
     min-height: 200px;
   }
 
-  /* Fix for long content in markdown preview - apply to all nested markdown content */
-  .prose pre,
-  .prose .wmde-markdown pre,
-  .wmde-markdown pre {
+  /* Fix for long content in markdown preview - scope to preview containers only */
+  .wmde-markdown pre,
+  .wmde-markdown .wmde-markdown pre {
     white-space: pre-wrap !important;
     word-break: break-word !important;
     overflow-wrap: break-word !important;
@@ -139,9 +141,7 @@
     max-width: 100% !important;
   }
   
-  /* Ensure code blocks don't overflow */
-  .prose pre code,
-  .prose .wmde-markdown pre code,
+  /* Ensure code blocks don't overflow in preview */
   .wmde-markdown pre code,
   .wmde-markdown code.code-highlight {
     white-space: pre-wrap !important;
@@ -169,5 +169,10 @@
     white-space: pre-wrap !important;
     word-break: break-word !important;
     overflow-wrap: break-word !important;
+  }
+
+  /* Prevent resizing of the editor's textarea to avoid overlay misalignment */
+  .w-md-editor textarea {
+    resize: none !important;
   }
 }
