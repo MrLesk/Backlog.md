@@ -1,10 +1,11 @@
 ---
 id: task-238
 title: Fix web editor selection/cursor issues (MDEditor integration)
-status: To Do
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-08-17 16:48'
+updated_date: '2025-09-04 20:24'
 labels:
   - web
   - bug
@@ -38,3 +39,10 @@ Note: Confirm against the live docs for @uiw/react-md-editor and align with the 
 - [ ] #4 Manual verification: text selection and cursor behave correctly in editor on Chrome/Safari (macOS)
 - [ ] #5 Document integration notes: required CSS imports, theme data-color-mode, and what not to override
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Import official CSS for MDEditor and Markdown preview into web bundle
+2. Scope pre/code wrapping overrides to preview-only (wmde-markdown), avoid editor overlay
+3. Ensure .w-md-editor textarea { resize: none }
+4. Manual verification guidance; add brief docs note
