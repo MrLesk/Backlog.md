@@ -251,6 +251,23 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			this.selectedIndex = this.listBox.selected ?? 0;
 		});
 
+		// Circular navigation for Up/Down arrows using tracked index to avoid double-handling
+		this.listBox.key(["up"], () => {
+			const total = this.filteredItems.length;
+			if (total === 0) return;
+			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
+			const nextIndex = sel > 0 ? sel - 1 : total - 1;
+			this.listBox.select(nextIndex);
+		});
+
+		this.listBox.key(["down"], () => {
+			const total = this.filteredItems.length;
+			if (total === 0) return;
+			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
+			const nextIndex = sel < total - 1 ? sel + 1 : 0;
+			this.listBox.select(nextIndex);
+		});
+
 		// Selection/Toggle
 		if (this.isMultiSelect) {
 			this.listBox.key(keys.toggle || ["space"], () => {
