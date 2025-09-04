@@ -114,10 +114,6 @@ The `backlog init` command provides comprehensive project setup with interactive
 - **Agent guidelines** - AI agent instruction files (CLAUDE.md, .cursorrules, etc.)
 - **Claude Code agent** - optional Backlog.md agent for enhanced task management (defaults to not installed; opt-in during `init` or pass `--install-claude-agent true`)
 
-### Documentation
-
-- Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree. Example: `backlog doc create -p guides "New Guide"`.
-
 When re-initializing an existing project, all current configuration values are preserved and pre-populated in prompts, allowing you to update only what you need.
 
 ### Task Management
