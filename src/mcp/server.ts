@@ -124,26 +124,6 @@ class BacklogMCPServer {
 						},
 					},
 					{
-						name: "cleanup_tasks",
-						description: "Clean up completed tasks older than specified days",
-						inputSchema: {
-							type: "object",
-							properties: {
-								minAge: {
-									type: "number",
-									description: "Minimum age in days for tasks to be cleaned up",
-									minimum: 1,
-								},
-								dryRun: {
-									type: "boolean",
-									description: "Show what would be cleaned without actually doing it",
-									default: false,
-								},
-							},
-							required: ["minAge"],
-						},
-					},
-					{
 						name: "get_task",
 						description: "Get details for a specific task",
 						inputSchema: {
@@ -173,8 +153,6 @@ class BacklogMCPServer {
 						return await this.listTasks(args);
 					case "update_task":
 						return await this.updateTask(args);
-					case "cleanup_tasks":
-						return await this.cleanupTasks(args);
 					case "get_task":
 						return await this.getTask(args);
 					default:
@@ -280,35 +258,6 @@ class BacklogMCPServer {
 				{
 					type: "text",
 					text: `Task ${id} updated successfully`,
-				},
-			],
-		};
-	}
-
-	private async cleanupTasks(args: any) {
-		const { minAge, dryRun = false } = args;
-
-		const doneTasks = await this.core.getDoneTasksByAge(minAge);
-		const count = doneTasks.length;
-
-		if (dryRun) {
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Would clean up ${count} tasks older than ${minAge} days:\n${doneTasks.map((t) => `- ${t.id}: ${t.title}`).join("\n")}`,
-					},
-				],
-			};
-		}
-
-		// For now, just return info about what would be cleaned
-		// TODO: Implement actual cleanup in Core class
-		return {
-			content: [
-				{
-					type: "text",
-					text: `Found ${count} tasks older than ${minAge} days that could be cleaned up. Actual cleanup implementation needed.`,
 				},
 			],
 		};
