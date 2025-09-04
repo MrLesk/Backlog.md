@@ -169,8 +169,14 @@ export async function renderBoardTui(
 			if (popupOpen) return;
 			const list = columns[currentCol]?.list;
 			if (!list) return;
+			const total = list.items.length;
+			if (total === 0) return;
 			const sel = list.selected ?? 0;
-			if (sel > 0) list.select(sel - 1);
+			if (sel > 0) {
+				list.select(sel - 1);
+			} else {
+				list.select(total - 1);
+			}
 			screen.render();
 		});
 
@@ -178,8 +184,14 @@ export async function renderBoardTui(
 			if (popupOpen) return;
 			const list = columns[currentCol]?.list;
 			if (!list) return;
+			const total = list.items.length;
+			if (total === 0) return;
 			const sel = list.selected ?? 0;
-			if (sel < list.items.length - 1) list.select(sel + 1);
+			if (sel < total - 1) {
+				list.select(sel + 1);
+			} else {
+				list.select(0);
+			}
 			screen.render();
 		});
 

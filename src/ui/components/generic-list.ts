@@ -258,6 +258,17 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
 			const nextIndex = sel > 0 ? sel - 1 : total - 1;
 			this.listBox.select(nextIndex);
+		// Circular navigation for up/down
+		this.listBox.key(["up"], () => {
+			const total = this.filteredItems.length;
+			if (total === 0) return; // nothing to do
+			const sel = this.listBox.selected ?? 0;
+			if (sel > 0) {
+				this.listBox.select(sel - 1);
+			} else {
+				// wrap to last
+				this.listBox.select(total - 1);
+			}
 		});
 
 		this.listBox.key(["down"], () => {
@@ -266,6 +277,14 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
 			const nextIndex = sel < total - 1 ? sel + 1 : 0;
 			this.listBox.select(nextIndex);
+			if (total === 0) return; // nothing to do
+			const sel = this.listBox.selected ?? 0;
+			if (sel < total - 1) {
+				this.listBox.select(sel + 1);
+			} else {
+				// wrap to first
+				this.listBox.select(0);
+			}
 		});
 
 		// Selection/Toggle

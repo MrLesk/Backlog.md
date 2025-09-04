@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-08-17 16:48'
-updated_date: '2025-09-04 20:24'
+updated_date: '2025-09-04 20:26'
 labels:
   - web
   - bug
@@ -33,12 +33,13 @@ Note: Confirm against the live docs for @uiw/react-md-editor and align with the 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Import official CSS for @uiw/react-md-editor and @uiw/react-markdown-preview in the web UI build
-- [ ] #2 Restrict pre/code wrapping overrides to preview-only; do not affect editor\'s overlay/highlighter
-- [ ] #3 Ensure the editor\'s textarea is not resizable; scope global textarea rules accordingly
+- [x] #1 Import official CSS for @uiw/react-md-editor and @uiw/react-markdown-preview in the web UI build
+- [x] #2 Restrict pre/code wrapping overrides to preview-only; do not affect editor\'s overlay/highlighter
+- [x] #3 Ensure the editor\'s textarea is not resizable; scope global textarea rules accordingly
 - [ ] #4 Manual verification: text selection and cursor behave correctly in editor on Chrome/Safari (macOS)
-- [ ] #5 Document integration notes: required CSS imports, theme data-color-mode, and what not to override
+- [x] #5 Document integration notes: required CSS imports, theme data-color-mode, and what not to override
 <!-- AC:END -->
+
 
 ## Implementation Plan
 
@@ -46,3 +47,8 @@ Note: Confirm against the live docs for @uiw/react-md-editor and align with the 
 2. Scope pre/code wrapping overrides to preview-only (wmde-markdown), avoid editor overlay
 3. Ensure .w-md-editor textarea { resize: none }
 4. Manual verification guidance; add brief docs note
+
+
+## Implementation Notes
+
+Imported official md-editor/preview CSS and narrowed our overrides to preview-only to avoid overlay mismatch. Editor textarea is non-resizable to keep overlay/textarea in sync. Manual verification recommended across Chrome/Safari.

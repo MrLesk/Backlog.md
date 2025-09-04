@@ -1,9 +1,11 @@
 ---
 id: task-248
 title: Circular navigation in TUI list and Kanban board
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-02 20:42'
+updated_date: '2025-09-04 20:26'
 labels:
   - ui
   - tui
@@ -26,3 +28,10 @@ In the TUI task list, navigating up from the first item should wrap to the last 
 - [ ] #7 Kanban board: Columns with a single item keep the selection stable on up/down (no errors).
 - [ ] #8 Kanban board: Empty column navigation does not crash and leaves selection state consistent.
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Add circular up/down in GenericList (wrap at ends)
+2. Add circular up/down in Kanban columns (board.ts)
+3. Handle single/empty edge cases without errors
+4. Minimal tests for list/board selection wrap
