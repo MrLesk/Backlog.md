@@ -1,7 +1,4 @@
 @import "tailwindcss";
-/* Import official MDEditor and Markdown preview styles before our overrides */
-@import "@uiw/react-md-editor/markdown-editor.css";
-@import "@uiw/react-markdown-preview/markdown.css";
 @source not inline("{rounded-full}");
 
 @custom-variant dark (&:where(.dark, .dark *));
