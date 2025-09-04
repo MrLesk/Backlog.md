@@ -268,10 +268,38 @@ export async function viewTaskEnhanced(
 		}
 	}
 
-	// Bind Shift+Arrow keys for moving
+	// Bind Shift+Arrow keys for moving and manage Move Mode indicator
 	const lb = taskList.getListBox();
-	lb.key(["S-up" as unknown as string], () => void reorderSelected(-1));
-	lb.key(["S-down" as unknown as string], () => void reorderSelected(1));
+	let moveMode = false;
+	let moveModeTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function setMoveMode(on: boolean, transientMs?: number) {
+		moveMode = on;
+		updateHelpBar();
+		if (moveModeTimer) {
+			clearTimeout(moveModeTimer);
+			moveModeTimer = null;
+		}
+		if (on && transientMs && transientMs > 0) {
+			moveModeTimer = setTimeout(() => {
+				moveMode = false;
+				updateHelpBar();
+				screen.render();
+			}, transientMs);
+		}
+	}
+
+	lb.key(["S-up" as unknown as string], () => {
+		setMoveMode(true, 1500);
+		void reorderSelected(-1);
+	});
+	lb.key(["S-down" as unknown as string], () => {
+		setMoveMode(true, 1500);
+		void reorderSelected(1);
+	});
+
+	// Allow manual toggle to keep the indicator visible
+	lb.key(["m", "M"], () => setMoveMode(!moveMode));
 
 	// Detail pane components
 	let headerBox: BoxInterface | undefined;
@@ -476,20 +504,28 @@ export async function viewTaskEnhanced(
 
 	return new Promise<void>((resolve) => {
 		// Footer hint line
-		const _helpBar = box({
+		const helpBar = box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
 			width: "100%",
 			height: 1,
-			content: options.filterDescription
-				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · Shift+↑/↓ move · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `
-				: ` ↑/↓ navigate · Shift+↑/↓ move · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `,
+			content: "",
 			style: {
 				fg: "gray",
 				bg: "black",
 			},
 		});
+
+		function updateHelpBar() {
+			const moveBadge = moveMode ? "{green-fg}Move: ON{/}" : "{gray-fg}Move: OFF{/}";
+			const base = options.filterDescription
+				? ` Filter: ${options.filterDescription} · ${moveBadge} · ↑/↓ navigate · Shift+↑/↓ move · m toggle · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `
+				: ` ${moveBadge} · ↑/↓ navigate · Shift+↑/↓ move · m toggle · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `;
+			helpBar.setContent(base);
+		}
+
+		updateHelpBar();
 
 		// Focus management
 		let focusIndex = 0; // 0 = task list, 1 = detail pane
