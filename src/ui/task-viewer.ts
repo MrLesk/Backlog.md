@@ -220,6 +220,59 @@ export async function viewTaskEnhanced(
 		showHelp: false, // We'll show help in the footer
 	});
 
+	// Shift+Arrow reordering within the same status using ordinal
+	async function reorderSelected(delta: -1 | 1) {
+		try {
+			const listBox = taskList.getListBox();
+			const selIndex = listBox.selected ?? 0;
+			const selected = allTasks[selIndex] || currentSelectedTask;
+			if (!selected) return;
+			const status = (selected.status || "").trim();
+			// Build sibling list in current in-memory order
+			const siblings = allTasks.filter((t) => (t.status || "").trim() === status);
+			if (siblings.length <= 1) return; // nothing to reorder
+
+			const idxInSiblings = siblings.findIndex((t) => t.id === selected.id);
+			if (idxInSiblings < 0) return;
+			const target = idxInSiblings + delta;
+			if (target < 0 || target >= siblings.length) return; // keep within bounds
+
+			// Compute new order
+			const newOrder = [...siblings];
+			const [moved] = newOrder.splice(idxInSiblings, 1);
+			newOrder.splice(target, 0, moved);
+
+			// Reassign ordinals in steps to avoid collisions
+			let ordinal = 1000;
+			const toUpdate: Task[] = [];
+			for (const t of newOrder) {
+				if ((t.ordinal ?? -1) !== ordinal) {
+					toUpdate.push({ ...t, ordinal });
+				}
+				ordinal += 1000;
+			}
+
+			if (toUpdate.length > 0) {
+				await (options.core || new Core(process.cwd())).updateTasksBulk(toUpdate, `Reorder within status ${status}`);
+				// Refresh in-memory tasks so UI stays consistent
+				const updated = await (options.core || new Core(process.cwd())).filesystem.listTasks();
+				// Preserve filtering used for initial list if any
+				allTasks.splice(0, allTasks.length, ...updated);
+				// Maintain selection on the moved task
+				const newIndex = allTasks.findIndex((t) => t.id === selected.id);
+				if (newIndex >= 0) listBox.select(newIndex);
+				screen.render();
+			}
+		} catch {
+			// ignore
+		}
+	}
+
+	// Bind Shift+Arrow keys for moving
+	const lb = taskList.getListBox();
+	lb.key(["S-up" as unknown as string], () => void reorderSelected(-1));
+	lb.key(["S-down" as unknown as string], () => void reorderSelected(1));
+
 	// Detail pane components
 	let headerBox: BoxInterface | undefined;
 	let divider: LineInterface | undefined;
@@ -430,8 +483,8 @@ export async function viewTaskEnhanced(
 			width: "100%",
 			height: 1,
 			content: options.filterDescription
-				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `
-				: ` ↑/↓ navigate · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `,
+				? ` Filter: ${options.filterDescription} · ↑/↓ navigate · Shift+↑/↓ move · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `
+				: ` ↑/↓ navigate · Shift+↑/↓ move · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `,
 			style: {
 				fg: "gray",
 				bg: "black",
