@@ -1881,7 +1881,6 @@ docCmd
 		}
 
 		// Plain text output
-		// Workaround for bun compile issue with commander options
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
 			for (const d of docs) {
@@ -1893,9 +1892,11 @@ docCmd
 		// Interactive UI
 		const selected = await genericSelectList("Select a document", docs);
 		if (selected) {
-			// Show document details
-			const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
-			const docFile = files.find((f) => f.startsWith(`${selected.id} -`) || f === `${selected.id}.md`);
+			// Show document details (recursive search)
+			const files = await Array.fromAsync(new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.docsDir }));
+			const docFile = files.find(
+				(f) => f.startsWith(`${selected.id} -`) || f.endsWith(`/${selected.id}.md`) || f === `${selected.id}.md`,
+			);
 			if (docFile) {
 				const filePath = join(core.filesystem.docsDir, docFile);
 				const content = await Bun.file(filePath).text();
@@ -1911,9 +1912,11 @@ docCmd
 	.action(async (docId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }));
+		const files = await Array.fromAsync(new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.docsDir }));
 		const normalizedId = docId.startsWith("doc-") ? docId : `doc-${docId}`;
-		const docFile = files.find((f) => f.startsWith(`${normalizedId} -`) || f === `${normalizedId}.md`);
+		const docFile = files.find(
+			(f) => f.startsWith(`${normalizedId} -`) || f.endsWith(`/${normalizedId}.md`) || f === `${normalizedId}.md`,
+		);
 
 		if (!docFile) {
 			console.error(`Document ${docId} not found.`);
@@ -1923,7 +1926,6 @@ docCmd
 		const filePath = join(core.filesystem.docsDir, docFile);
 		const content = await Bun.file(filePath).text();
 
-		// Use scrollableViewer which falls back to console.log if blessed is not available
 		await scrollableViewer(content);
 	});
 

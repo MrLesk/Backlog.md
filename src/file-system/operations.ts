@@ -473,17 +473,19 @@ export class FileSystem {
 	async listDocuments(): Promise<Document[]> {
 		try {
 			const docsDir = await this.getDocsDir();
-			const docFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: docsDir }));
+			// Recursively include all markdown files under docs, excluding README.md variants
+			const glob = new Bun.Glob("**/*.md");
+			const docFiles = await Array.fromAsync(glob.scan({ cwd: docsDir }));
 			const docs: Document[] = [];
 			for (const file of docFiles) {
-				// Filter out README files as they're just instruction files
-				if (file.toLowerCase().match(/^readme\.md$/i)) {
-					continue;
-				}
+				const base = file.split("/").pop() || file;
+				if (base.toLowerCase() === "readme.md") continue;
 				const filepath = join(docsDir, file);
 				const content = await Bun.file(filepath).text();
 				docs.push(parseDocument(content));
 			}
+
+			// Stable sort by title for UI/CLI listing
 			return docs.sort((a, b) => a.title.localeCompare(b.title));
 		} catch {
 			return [];

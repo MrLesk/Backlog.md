@@ -1,9 +1,11 @@
 ---
 id: task-250
 title: 'Docs: fix subpath documents listing/view + unique IDs'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-04 19:18'
+updated_date: '2025-09-04 20:19'
 labels:
   - docs
   - bug
@@ -27,3 +29,11 @@ Goal: Support documents stored in subdirectories end-to-end (list, view, ID gene
 - [ ] #5 Add tests covering: (a) recursive listing with subdirectories, (b) ID generation offline with subdir docs present, (c) view by id for a subdir doc.
 - [ ] #6 Update docs explaining that document IDs are global across subdirectories and provide examples with -p and nested paths.
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Make filesystem.listDocuments recursive and stable
+2. Update CLI doc list/view to use recursive search by ID
+3. Ensure generateNextDocId sees all local docs (offline)
+4. Add tests for recursive listing, offline ID generation, view by id
+5. Update docs to note global IDs across subpaths
