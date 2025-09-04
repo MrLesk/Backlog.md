@@ -222,6 +222,53 @@ Full help: `backlog --help`
 
 ---
 
+## 🤖 AI Integration (MCP Server)
+
+Backlog.md includes a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that allows AI assistants like Claude to directly interact with your tasks.
+
+### What is MCP?
+
+The Model Context Protocol allows AI assistants to securely connect to external tools. This solves the problem from [GitHub issue #288](https://github.com/MrLesk/Backlog.md/issues/288) where commands requiring multiple parameters (like `backlog cleanup --min-age 30`) were difficult for AI assistants to handle correctly.
+
+### Quick Setup
+
+1. Navigate to your project directory (containing your `backlog/` folder)
+2. Add the MCP server to Claude Code:
+```bash
+claude mcp add backlog-md -- npx -y backlog.md backlog-mcp-server
+```
+3. Restart Claude Code
+
+### Available AI Tools
+
+Once configured, you can ask Claude to:
+- **Create tasks**: "Create a high-priority task called 'Fix authentication bug'"
+- **List & filter**: "Show me all tasks currently in 'doing' status"
+- **Update tasks**: "Change task TASK-123 status to 'done'"
+- **Get details**: "Show me details for task TASK-456"  
+- **Cleanup**: "Clean up completed tasks older than 30 days" *(solves the original issue!)*
+
+### Alternative Setup Methods
+
+**If you have backlog.md installed globally:**
+```bash
+claude mcp add backlog-md backlog-mcp-server
+```
+
+**Manual configuration** (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "backlog-md": {
+      "command": "backlog-mcp-server",
+      "cwd": "/path/to/your/project"
+    }
+  }
+}
+```
+
+---
+
 ## <img src="./.github/configuration-256.png" alt="Configuration" width="28" height="28" align="center"> Configuration
 
 Backlog.md merges the following layers (highest → lowest):

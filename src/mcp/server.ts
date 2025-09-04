@@ -1,0 +1,353 @@
+#!/usr/bin/env node
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { Core } from "../index.ts";
+
+class BacklogMCPServer {
+	private server: Server;
+	private core: Core;
+
+	constructor() {
+		this.server = new Server(
+			{
+				name: "backlog-mcp-server",
+				version: "1.0.0",
+			},
+			{
+				capabilities: {
+					tools: {},
+				},
+			},
+		);
+
+		// Use current working directory as project root
+		this.core = new Core(process.cwd());
+		this.setupHandlers();
+	}
+
+	private setupHandlers() {
+		// Handle list_tools requests
+		this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+			return {
+				tools: [
+					{
+						name: "create_task",
+						description: "Create a new task in the backlog",
+						inputSchema: {
+							type: "object",
+							properties: {
+								title: {
+									type: "string",
+									description: "The task title",
+								},
+								description: {
+									type: "string",
+									description: "The task description (markdown supported)",
+								},
+								priority: {
+									type: "string",
+									enum: ["low", "medium", "high", "critical"],
+									description: "Task priority level",
+								},
+								status: {
+									type: "string",
+									enum: ["backlog", "todo", "doing", "done"],
+									description: "Initial task status",
+								},
+								parentId: {
+									type: "string",
+									description: "Parent task ID if this is a subtask",
+								},
+							},
+							required: ["title"],
+						},
+					},
+					{
+						name: "list_tasks",
+						description: "List tasks with optional filtering",
+						inputSchema: {
+							type: "object",
+							properties: {
+								status: {
+									type: "string",
+									enum: ["backlog", "todo", "doing", "done"],
+									description: "Filter by task status",
+								},
+								priority: {
+									type: "string",
+									enum: ["low", "medium", "high", "critical"],
+									description: "Filter by task priority",
+								},
+								parentId: {
+									type: "string",
+									description: "Filter by parent task ID",
+								},
+								search: {
+									type: "string",
+									description: "Search term to filter tasks",
+								},
+							},
+						},
+					},
+					{
+						name: "update_task",
+						description: "Update an existing task",
+						inputSchema: {
+							type: "object",
+							properties: {
+								id: {
+									type: "string",
+									description: "Task ID to update",
+								},
+								title: {
+									type: "string",
+									description: "New task title",
+								},
+								description: {
+									type: "string",
+									description: "New task description",
+								},
+								status: {
+									type: "string",
+									enum: ["backlog", "todo", "doing", "done"],
+									description: "New task status",
+								},
+								priority: {
+									type: "string",
+									enum: ["low", "medium", "high", "critical"],
+									description: "New task priority",
+								},
+							},
+							required: ["id"],
+						},
+					},
+					{
+						name: "cleanup_tasks",
+						description: "Clean up completed tasks older than specified days",
+						inputSchema: {
+							type: "object",
+							properties: {
+								minAge: {
+									type: "number",
+									description: "Minimum age in days for tasks to be cleaned up",
+									minimum: 1,
+								},
+								dryRun: {
+									type: "boolean",
+									description: "Show what would be cleaned without actually doing it",
+									default: false,
+								},
+							},
+							required: ["minAge"],
+						},
+					},
+					{
+						name: "get_task",
+						description: "Get details for a specific task",
+						inputSchema: {
+							type: "object",
+							properties: {
+								id: {
+									type: "string",
+									description: "Task ID to retrieve",
+								},
+							},
+							required: ["id"],
+						},
+					},
+				],
+			};
+		});
+
+		// Handle call_tool requests
+		this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+			const { name, arguments: args } = request.params;
+
+			try {
+				switch (name) {
+					case "create_task":
+						return await this.createTask(args);
+					case "list_tasks":
+						return await this.listTasks(args);
+					case "update_task":
+						return await this.updateTask(args);
+					case "cleanup_tasks":
+						return await this.cleanupTasks(args);
+					case "get_task":
+						return await this.getTask(args);
+					default:
+						throw new Error(`Unknown tool: ${name}`);
+				}
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+						},
+					],
+				};
+			}
+		});
+	}
+
+	private async createTask(args: any) {
+		const { title, description, priority, status, parentId } = args;
+
+		const task = {
+			id: "", // Will be generated by Core
+			title,
+			description: description || "",
+			priority: priority || "medium",
+			status: status || "backlog",
+			parentId,
+		};
+
+		const taskId = await this.core.createTask(task);
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Task "${title}" created successfully with ID: ${taskId}`,
+				},
+			],
+		};
+	}
+
+	private async listTasks(args: any) {
+		const { status, priority, parentId, search } = args;
+		const tasks = await this.core.fs.listTasks();
+
+		let filteredTasks = tasks;
+
+		if (status) {
+			filteredTasks = filteredTasks.filter((task) => task.status === status);
+		}
+		if (priority) {
+			filteredTasks = filteredTasks.filter((task) => task.priority === priority);
+		}
+		if (parentId) {
+			filteredTasks = filteredTasks.filter((task) => task.parentId === parentId);
+		}
+		if (search) {
+			const searchLower = search.toLowerCase();
+			filteredTasks = filteredTasks.filter(
+				(task) =>
+					task.title.toLowerCase().includes(searchLower) ||
+					(task.description && task.description.toLowerCase().includes(searchLower)),
+			);
+		}
+
+		const taskList = filteredTasks
+			.map((task) => `- ${task.id}: ${task.title} [${task.status}] (${task.priority || "medium"})`)
+			.join("\n");
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Found ${filteredTasks.length} tasks:\n${taskList}`,
+				},
+			],
+		};
+	}
+
+	private async updateTask(args: any) {
+		const { id, title, description, status, priority } = args;
+
+		// First get the existing task
+		const tasks = await this.core.fs.listTasks();
+		const existingTask = tasks.find((t) => t.id === id);
+
+		if (!existingTask) {
+			throw new Error(`Task ${id} not found`);
+		}
+
+		// Update fields
+		const updatedTask = { ...existingTask };
+		if (title) updatedTask.title = title;
+		if (description !== undefined) updatedTask.description = description;
+		if (status) updatedTask.status = status;
+		if (priority) updatedTask.priority = priority;
+
+		await this.core.updateTask(updatedTask);
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Task ${id} updated successfully`,
+				},
+			],
+		};
+	}
+
+	private async cleanupTasks(args: any) {
+		const { minAge, dryRun = false } = args;
+
+		const doneTasks = await this.core.getDoneTasksByAge(minAge);
+		const count = doneTasks.length;
+
+		if (dryRun) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Would clean up ${count} tasks older than ${minAge} days:\n${doneTasks.map((t) => `- ${t.id}: ${t.title}`).join("\n")}`,
+					},
+				],
+			};
+		}
+
+		// For now, just return info about what would be cleaned
+		// TODO: Implement actual cleanup in Core class
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Found ${count} tasks older than ${minAge} days that could be cleaned up. Actual cleanup implementation needed.`,
+				},
+			],
+		};
+	}
+
+	private async getTask(args: any) {
+		const { id } = args;
+		const tasks = await this.core.fs.listTasks();
+		const task = tasks.find((t) => t.id === id);
+
+		if (!task) {
+			throw new Error(`Task ${id} not found`);
+		}
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Task ${task.id}: ${task.title}
+Status: ${task.status || "backlog"}
+Priority: ${task.priority || "medium"}
+${task.description ? `Description: ${task.description}` : "No description"}
+${task.parentId ? `Parent: ${task.parentId}` : "No parent task"}`,
+				},
+			],
+		};
+	}
+
+	async run() {
+		const transport = new StdioServerTransport();
+		await this.server.connect(transport);
+		console.error("Backlog MCP Server running on stdio");
+	}
+}
+
+// Run the server if this file is executed directly
+if (import.meta.main) {
+	const server = new BacklogMCPServer();
+	server.run().catch(console.error);
+}
+
+export { BacklogMCPServer };
