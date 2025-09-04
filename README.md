@@ -112,7 +112,7 @@ The `backlog init` command provides comprehensive project setup with interactive
 - **Remote operations** - enable/disable fetching tasks from remote branches
 - **Web UI settings** - port and browser auto-open preferences
 - **Agent guidelines** - AI agent instruction files (CLAUDE.md, .cursorrules, etc.)
-- **Claude Code agent** - optional Backlog.md agent for enhanced task management
+- **Claude Code agent** - optional Backlog.md agent for enhanced task management (defaults to not installed; opt-in during `init` or pass `--install-claude-agent true`)
 
 When re-initializing an existing project, all current configuration values are preserved and pre-populated in prompts, allowing you to update only what you need.
 
