@@ -145,25 +145,16 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
     );
   }
 
-  const getGridStyle = () => {
+  const getGridClasses = () => {
     const columnCount = statuses.length;
-    
-    // For mobile screens, always use single column
-    if (isMobile) {
-      return { gridTemplateColumns: '1fr' };
-    }
-    
-    // For larger screens, adapt based on number of statuses
-    if (columnCount <= 1) {
-      return { gridTemplateColumns: '1fr' };
-    } else if (columnCount === 2) {
-      return { gridTemplateColumns: 'repeat(2, minmax(20rem, 1fr))' };
-    } else if (columnCount === 3) {
-      return { gridTemplateColumns: 'repeat(3, minmax(22rem, 1fr))' };
-    } else {
-      // For 4+ columns, use all available with minimum width
-      return { gridTemplateColumns: `repeat(${columnCount}, minmax(20rem, 1fr))` };
-    }
+    // For 1–3 columns keep responsive fixed columns to avoid oversized min widths
+    if (isMobile || columnCount <= 1) return 'grid grid-cols-1 gap-6';
+    if (columnCount === 2) return 'grid grid-cols-2 gap-6';
+    if (columnCount === 3) return 'grid grid-cols-3 gap-6';
+    // For 4+ columns, prefer flow-by-column with fixed min column width to stabilize scrolling
+    // Using Tailwind arbitrary values for auto-cols: minmax(20rem,1fr)
+    // This avoids min-w-fit jitter seen on Safari/Chrome during horizontal scroll with dynamic counts
+    return 'grid grid-flow-col auto-cols-[minmax(20rem,1fr)] gap-6';
   };
 
   return (
@@ -178,10 +169,7 @@ const Board: React.FC<BoardProps> = ({ onEditTask, onNewTask, highlightTaskId, t
         </button>
       </div>
       <div className={statuses.length > 3 ? 'overflow-x-auto pb-4' : ''}>
-        <div 
-          className="grid gap-6 min-w-fit"
-          style={getGridStyle()}
-        >
+        <div className={`${getGridClasses()} ${statuses.length > 3 ? 'min-w-max' : ''}`}>
           {statuses.map(status => (
             <TaskColumn
               key={status}

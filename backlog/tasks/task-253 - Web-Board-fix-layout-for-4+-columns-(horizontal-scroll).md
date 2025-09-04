@@ -1,9 +1,11 @@
 ---
 id: task-253
 title: 'Web Board: fix layout for 4+ columns (horizontal scroll)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-04 19:48'
+updated_date: '2025-09-04 20:23'
 labels:
   - web
   - ui
@@ -26,3 +28,10 @@ Goal: Make the web Kanban board robust for 4+ columns with smooth horizontal scr
 - [ ] #4 Regression: 1–3 column layouts remain unchanged and responsive.
 - [ ] #5 Document the CSS choices in a brief comment near Board.tsx.
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Replace min-w-fit + repeat grid with grid-flow-col + auto-cols for 4+
+2. Keep 1–3 columns responsive with grid-cols classes
+3. Ensure overflow-x container and smooth scroll
+4. Brief comment near Board.tsx about CSS choice
