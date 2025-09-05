@@ -251,20 +251,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			this.selectedIndex = this.listBox.selected ?? 0;
 		});
 
-		// Circular navigation for Up/Down arrows using tracked index to avoid double-handling
-<<<<<<< HEAD
+		// Circular navigation for up/down using tracked index to avoid double-handling
 		this.listBox.key(["up"], () => {
 			const total = this.filteredItems.length;
 			if (total === 0) return;
-			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
-			const nextIndex = sel > 0 ? sel - 1 : total - 1;
-			this.listBox.select(nextIndex);
-		// Circular navigation for up/down
-=======
->>>>>>> fe45ae2 (TASK-248 - GenericList: use tracked index for arrow-key circular navigation to avoid double-handling)
-		this.listBox.key(["up"], () => {
-			const total = this.filteredItems.length;
-			if (total === 0) return; // nothing to do
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
 			const nextIndex = sel > 0 ? sel - 1 : total - 1;
 			this.listBox.select(nextIndex);
@@ -273,10 +263,6 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		this.listBox.key(["down"], () => {
 			const total = this.filteredItems.length;
 			if (total === 0) return;
-			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
-			const nextIndex = sel < total - 1 ? sel + 1 : 0;
-			this.listBox.select(nextIndex);
-			if (total === 0) return; // nothing to do
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
 			const nextIndex = sel < total - 1 ? sel + 1 : 0;
 			this.listBox.select(nextIndex);
