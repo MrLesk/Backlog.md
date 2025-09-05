@@ -81,6 +81,46 @@ if (process.env.BUN_OPTIONS) {
 // Get version from package.json
 const version = await getVersion();
 
+// Bare-run splash screen handling (before Commander parses commands)
+// Show a welcome splash when invoked without subcommands, unless help/version requested
+try {
+	const rawArgs = process.argv.slice(2);
+	const wantsHelp = rawArgs.includes("-h") || rawArgs.includes("--help");
+	const wantsVersion = rawArgs.includes("-v") || rawArgs.includes("--version");
+	// Treat only --plain as allowed flag for splash; any other args means use normal CLI parsing
+	const onlyPlain = rawArgs.length === 1 && rawArgs[0] === "--plain";
+	const isBare = rawArgs.length === 0 || onlyPlain;
+	if (isBare && !wantsHelp && !wantsVersion) {
+		const isTTY = !!process.stdout.isTTY;
+		const forcePlain = rawArgs.includes("--plain");
+		const noColor = !!process.env.NO_COLOR || !isTTY;
+
+		let initialized = false;
+		try {
+			const core = new Core(process.cwd());
+			const cfg = await core.filesystem.loadConfig();
+			initialized = !!cfg;
+		} catch {
+			initialized = false;
+		}
+
+		const { printSplash } = await import("./ui/splash.ts");
+		// Auto-fallback to plain when non-TTY, or explicit --plain, or if terminal very narrow
+		const termWidth = Math.max(0, Number(process.stdout.columns || 0));
+		const autoPlain = !isTTY || (termWidth > 0 && termWidth < 60);
+		await printSplash({
+			version,
+			initialized,
+			plain: forcePlain || autoPlain,
+			color: !noColor,
+		});
+		// Ensure we don't enter Commander command parsing
+		process.exit(0);
+	}
+} catch {
+	// Fall through to normal CLI parsing on any splash error
+}
+
 // Global config migration - run before any command processing
 // Only run if we're in a backlog project (skip for init, help, version)
 const shouldRunMigration =

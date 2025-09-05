@@ -1,9 +1,11 @@
 ---
 id: task-255
 title: Add TUI splash screen for bare backlog command
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-05 14:59'
+updated_date: '2025-09-05 15:07'
 labels:
   - cli
   - ui
@@ -36,3 +38,13 @@ Notes: standard help should remain on -h/--help. Plain/AI mode must avoid ASCII 
 - [ ] #12 Add tests covering: initialized vs not initialized, plain vs styled, TTY vs non-TTY fallback, and that `--help` shows Commander help not the splash.
 - [ ] #13 Update README with a brief screenshot/code block of the splash, and a one-paragraph explanation of the default behavior.
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Research splash UX of modern CLIs (OpenCode, Claude Code, AMP CLI, etc.) and common patterns.
+2. Add global bare-run handling in CLI (no subcommand): detect `--help`/`--version` bypass, handle `--plain`.
+3. Implement splash renderer with ASCII logo, version, docs link, and dynamic quickstart/init tips.
+4. Add color-aware output: detect TTY, honor NO_COLOR, fallback to plain when non-TTY or `--plain`.
+5. Add tests: bare run initialized vs not, plain vs styled, TTY vs non-TTY fallback, `--help` shows Commander help.
+6. Update README with splash example and explanation.
+7. Verify formatting/lint, run tests, and open PR.
