@@ -171,6 +171,24 @@ export async function viewTaskEnhanced(
 	});
 
 	// Create task list using generic list component
+	async function applySelection(selectedTask: Task | null) {
+		if (!selectedTask) return;
+		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id) return;
+		currentSelectedTask = selectedTask;
+		// Notify view switcher of task change
+		options.onTaskChange?.(selectedTask);
+		try {
+			const filePath = await getTaskPath(selectedTask.id, core);
+			if (filePath) {
+				currentSelectedContent = await Bun.file(filePath).text();
+			} else {
+				currentSelectedContent = "";
+			}
+		} catch {
+			currentSelectedContent = "";
+		}
+		refreshDetailPane();
+	}
 	const taskList = createGenericList<Task>({
 		parent: taskListPane,
 		title: "", // Empty title since pane has label
@@ -194,28 +212,10 @@ export async function viewTaskEnhanced(
 		},
 		onSelect: (selected: Task | Task[]) => {
 			const selectedTask = Array.isArray(selected) ? selected[0] : selected;
-			if (!selectedTask) return;
-			currentSelectedTask = selectedTask;
-
-			// Notify view switcher of task change
-			options.onTaskChange?.(selectedTask);
-
-			// Load the content for the selected task asynchronously
-			(async () => {
-				try {
-					const filePath = await getTaskPath(selectedTask.id, core);
-					if (filePath) {
-						currentSelectedContent = await Bun.file(filePath).text();
-					} else {
-						currentSelectedContent = "";
-					}
-				} catch (_error) {
-					currentSelectedContent = "";
-				}
-
-				// Refresh the detail pane
-				refreshDetailPane();
-			})();
+			void applySelection(selectedTask || null);
+		},
+		onHighlight: (selected: Task | null) => {
+			void applySelection(selected);
 		},
 		showHelp: false, // We'll show help in the footer
 	});

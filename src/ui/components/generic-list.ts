@@ -24,6 +24,8 @@ export interface GenericListOptions<T extends GenericListItem> {
 	selectedIndex?: number;
 	selectedIndices?: number[];
 	onSelect?: (selected: T | T[], index?: number | number[]) => void;
+	// Called whenever the highlighted item changes (live navigation)
+	onHighlight?: (selected: T | null, index: number) => void;
 	width?: string | number;
 	height?: string | number;
 	top?: string | number;
@@ -64,6 +66,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private selectedIndices: Set<number>;
 	private isMultiSelect: boolean;
 	private onSelect?: (selected: T | T[], index?: number | number[]) => void;
+	private onHighlight?: (selected: T | null, index: number) => void;
 	private itemRenderer: (item: T, index: number, selected: boolean) => string;
 	private groupBy?: (item: T) => string;
 	private searchTerm = "";
@@ -78,6 +81,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		this.selectedIndex = options.selectedIndex || 0;
 		this.selectedIndices = new Set(options.selectedIndices || []);
 		this.onSelect = options.onSelect;
+		this.onHighlight = options.onHighlight;
 		this.groupBy = options.groupBy;
 
 		// Default item renderer
@@ -140,8 +144,8 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			border: this.options.border !== false ? "line" : undefined,
 			style,
 			tags: true,
-			keys: true,
-			vi: true,
+			// Disable built-in key handling to avoid double-processing with our custom handlers
+			keys: false,
 			mouse: true,
 			scrollable: true,
 			alwaysScroll: false,
@@ -245,28 +249,31 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		// Custom key bindings
 		const keys = this.options.keys || {};
 
-		// Let blessed handle navigation automatically with keys: true
-		// Add listener to track selection changes
-		this.listBox.on("select", () => {
-			this.selectedIndex = this.listBox.selected ?? 0;
-		});
-
-		// Circular navigation for up/down using tracked index to avoid double-handling
-		this.listBox.key(["up"], () => {
+		// Circular navigation for up/down (including vim-style keys)
+		const moveUp = () => {
 			const total = this.filteredItems.length;
 			if (total === 0) return;
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
 			const nextIndex = sel > 0 ? sel - 1 : total - 1;
 			this.listBox.select(nextIndex);
-		});
+			this.selectedIndex = nextIndex;
+			this.onHighlight?.(this.filteredItems[nextIndex] ?? null, nextIndex);
+			this.listBox.screen?.render();
+		};
 
-		this.listBox.key(["down"], () => {
+		const moveDown = () => {
 			const total = this.filteredItems.length;
 			if (total === 0) return;
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
 			const nextIndex = sel < total - 1 ? sel + 1 : 0;
 			this.listBox.select(nextIndex);
-		});
+			this.selectedIndex = nextIndex;
+			this.onHighlight?.(this.filteredItems[nextIndex] ?? null, nextIndex);
+			this.listBox.screen?.render();
+		};
+
+		this.listBox.key(["up", "k"], moveUp);
+		this.listBox.key(["down", "j"], moveDown);
 
 		// Selection/Toggle
 		if (this.isMultiSelect) {
@@ -323,10 +330,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		if (this.filteredItems.length > 0) {
 			const validIndex = Math.min(this.selectedIndex, this.filteredItems.length - 1);
 			this.listBox.select(validIndex);
-
-			if (!this.isMultiSelect) {
-				this.selectedIndex = validIndex;
-			}
+			this.selectedIndex = validIndex;
+			// Emit initial highlight so hosts can synchronize detail panes
+			this.onHighlight?.(this.filteredItems[validIndex] ?? null, validIndex);
+			// For multi-select, keep internal selectedIndex aligned with highlight
 		}
 	}
 
