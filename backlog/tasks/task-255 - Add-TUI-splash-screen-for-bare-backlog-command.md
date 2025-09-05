@@ -1,11 +1,11 @@
 ---
 id: task-255
 title: Add TUI splash screen for bare backlog command
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-05 14:59'
-updated_date: '2025-09-05 15:13'
+updated_date: '2025-09-05 21:19'
 labels:
   - cli
   - ui
@@ -25,7 +25,7 @@ Notes: standard help should remain on -h/--help. Plain/AI mode must avoid ASCII 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Running `backlog` with no args prints a splash (not Commander help).
-- [ ] #2 Splash shows a TUI-compatible ASCII Backlog.md logo that renders in common terminals (80x24) and degrades for narrow widths.
+- [x] #2 Splash shows a TUI-compatible ASCII Backlog.md logo that renders in common terminals (80x24) and degrades for narrow widths.
 - [x] #3 Splash displays the CLI version (same as `backlog -v`).
 - [x] #4 If project NOT initialized (no backlog/config), show an init tip: `backlog init` (plus a one-liner explaining initialization).
 - [x] #5 If project IS initialized, show 4–6 quickstart commands with one-line hints (e.g., task create, task list --plain, board, browser, overview).
@@ -49,6 +49,7 @@ Notes: standard help should remain on -h/--help. Plain/AI mode must avoid ASCII 
 5. Add tests: bare run initialized vs not, plain vs styled, TTY vs non-TTY fallback, `--help` shows Commander help.
 6. Update README with splash example and explanation.
 7. Verify formatting/lint, run tests, and open PR.
+
 
 ## Implementation Notes
 

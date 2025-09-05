@@ -13,26 +13,6 @@
 > **Backlog.md** turns any folder with a Git repo into a **self‑contained project board**  
 > powered by plain Markdown files and a zero‑config CLI.
 
-### Splash screen (bare `backlog`)
-
-Running `backlog` with no subcommand shows a friendly splash:
-
-```
-Backlog.md vX.Y.Z
-
-Quickstart
-  backlog task create "Title" -d "Description"  Create a new task
-  backlog task list --plain                       List tasks (plain text)
-  backlog board                                  Open the TUI Kanban board
-  backlog browser                                Start the web UI
-  backlog overview                               Show project statistics
-
-Docs: https://backlog.md
-```
-
-Notes: When stdout is not a TTY (e.g. CI or piping) or when using `--plain`, the splash prints a minimal, no‑ASCII, no‑color version. Colors are used in terminals that support them and are disabled when `NO_COLOR` is set.
-
-
 ## Features
 
 * 📝 **Markdown-native tasks** -- manage every issue as a plain `.md` file

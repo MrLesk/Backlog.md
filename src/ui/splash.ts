@@ -19,37 +19,56 @@ const cyan = (c: boolean | undefined, s: string) => colorize(c, "36", s);
 const green = (c: boolean | undefined, s: string) => colorize(c, "32", s);
 const _magenta = (c: boolean | undefined, s: string) => colorize(c, "35", s);
 
-function getAsciiLogo(color: boolean | undefined): string[] {
-	// 71–75 columns wide, ASCII-only characters for broad terminal support
-	// Avoid heavy unicode; borders kept simple for compatibility
-	const lines = [
-		"  ____            _            _                 __  __        ",
-		" |  _ \\          | |          | |               |  \\/  |       ",
-		" | |_) | __ _  __| | ___   ___| | ___   __ _    | \\  / | ___  ",
-		" |  _ < / _` |/ _` |/ _ \\ / __| |/ _ \\/ _` |   | |\\/| |/ _ \\ ",
-		" | |_) | (_| | (_| |  __/ \\__ \\ | (_) | (_| |   | |  | | (_) | ",
-		" |____/ \\__,_|\\__,_|\\___| |___/_|\\___/ \\__, |   |_|  |_|\\___/  ",
-		"                                       __/ |                    ",
-		"                                      |___/   Backlog.md        ",
+// Removed terminal theme heuristics; keep splash accent simple and consistent
+
+function getWideLogoLines(): string[] {
+	// 79 columns wide banner using block characters (fits 80x24)
+	return [
+		"██████╗░░█████╗░░█████╗░██╗░░██╗██╗░░░░░░█████╗░░██████╗░░░░███╗░░░███╗██████╗░",
+		"██╔══██╗██╔══██╗██╔══██╗██║░██╔╝██║░░░░░██╔══██╗██╔════╝░░░░████╗░████║██╔══██╗",
+		"██████╦╝███████║██║░░╚═╝█████═╝░██║░░░░░██║░░██║██║░░██╗░░░░██╔████╔██║██║░░██║",
+		"██╔══██╗██╔══██║██║░░██╗██╔═██╗░██║░░░░░██║░░██║██║░░╚██╗░░░██║╚██╔╝██║██║░░██║",
+		"██████╦╝██║░░██║╚█████╔╝██║░╚██╗███████╗╚█████╔╝╚██████╔╝██╗██║░╚═╝░██║██████╔╝",
+		"╚═════╝░╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝╚══════╝░╚════╝░░╚═════╝░╚═╝╚═╝░░░░░╚═╝╚═════╝░",
 	];
-	// Accent the final Backlog.md label
-	const out = lines.slice(0, -1);
-	out.push(lines[lines.length - 1].replace("Backlog.md", bold(color, cyan(color, "Backlog.md"))));
-	return out;
+}
+
+function getNarrowLogoLines(color: boolean | undefined): string[] {
+	// Minimal fallback for very narrow terminals
+	return [bold(color, "Backlog.md")];
+}
+
+// Terminal hyperlinks (OSC 8). Safely ignored by terminals that don't support them.
+function osc8(text: string, url: string, enabled: boolean): string {
+	if (!enabled) return text;
+	const start = `\u001B]8;;${url}\u0007`;
+	const end = "\u001B]8;;\u0007";
+	return `${start}${text}${end}`;
 }
 
 export async function printSplash(opts: SplashOptions): Promise<void> {
 	const { version, initialized, plain, color } = opts;
 
 	const width = Math.max(0, Number(process.stdout.columns || 0));
-	const useWide = !plain && (width === 0 || width >= 60);
+	// Fixed accent color; no terminal theme detection
+	const accent = cyan;
+
+	// Use wide banner only for proper widths; otherwise keep it minimal
+	const useWide = !plain && (width === 0 || width >= 80);
 
 	const lines: string[] = [];
 
 	if (useWide) {
-		lines.push(...getAsciiLogo(color));
+		// Add an empty line before the logo for breathing room
+		lines.push("");
+		lines.push(...getWideLogoLines());
 		lines.push("");
 		lines.push(`${bold(color, "Backlog.md")} ${dim(color, `v${version}`)}`);
+	} else if (!plain && (width === 0 || width >= 20)) {
+		// Also add space before the narrow logo variant
+		lines.push("");
+		lines.push(...getNarrowLogoLines(color));
+		lines.push(dim(color, `v${version}`));
 	} else {
 		lines.push(`${bold(color, "Backlog.md")} v${version}`);
 	}
@@ -61,15 +80,23 @@ export async function printSplash(opts: SplashOptions): Promise<void> {
 		lines.push(`  ${green(color, "backlog init")}  ${dim(color, "Initialize Backlog.md in this repo")}`);
 	} else {
 		lines.push(bold(color, "Quickstart"));
-		lines.push(`  ${cyan(color, 'backlog task create "Title" -d "Description"')}  ${dim(color, "Create a new task")}`);
-		lines.push(`  ${cyan(color, "backlog task list --plain")}  ${dim(color, "List tasks (plain text)")}`);
-		lines.push(`  ${cyan(color, "backlog board")}  ${dim(color, "Open the TUI Kanban board")}`);
-		lines.push(`  ${cyan(color, "backlog browser")}  ${dim(color, "Start the web UI")}`);
-		lines.push(`  ${cyan(color, "backlog overview")}  ${dim(color, "Show project statistics")}`);
+		lines.push(
+			`  ${accent(color, 'backlog task create "Title" -d "Description"')}  ${dim(color, "Create a new task")}`,
+		);
+		lines.push(`  ${accent(color, "backlog task list --plain")}  ${dim(color, "List tasks (plain text)")}`);
+		lines.push(`  ${accent(color, "backlog board")}  ${dim(color, "Open the TUI Kanban board")}`);
+		lines.push(`  ${accent(color, "backlog browser")}  ${dim(color, "Start the web UI")}`);
+		lines.push(`  ${accent(color, "backlog overview")}  ${dim(color, "Show project statistics")}`);
 	}
 
 	lines.push("");
-	lines.push(`${bold(color, "Docs:")} https://backlog.md`);
+	const linkTarget = "https://backlog.md";
+	// Enable hyperlink on TTY regardless of color; respect --plain
+	const hyperlinkEnabled = !!process.stdout.isTTY && !plain;
+	const clickable = osc8(linkTarget, linkTarget, hyperlinkEnabled);
+	lines.push(`${bold(color, "Docs:")} ${clickable}`);
+	// Add a trailing blank line for visual spacing
+	lines.push("");
 
 	// Print and return; do not start any UI loop
 	for (const l of lines) process.stdout.write(`${l}\n`);
