@@ -28,6 +28,9 @@ describe("Task path utilities", () => {
 		await writeFile(join(tasksDir, "task-123 - Test Task.md"), "# Test Task 123");
 		await writeFile(join(tasksDir, "task-456 - Another Task.md"), "# Another Task 456");
 		await writeFile(join(tasksDir, "task-789 - Final Task.md"), "# Final Task 789");
+		// Additional: padded and dotted ids
+		await writeFile(join(tasksDir, "task-0001 - Padded One.md"), "# Padded One");
+		await writeFile(join(tasksDir, "task-3.01 - Subtask Padded.md"), "# Subtask Padded 3.01");
 	});
 
 	afterEach(async () => {
@@ -68,6 +71,18 @@ describe("Task path utilities", () => {
 			expect(path).toContain("task-456 - Another Task.md");
 		});
 
+		it("should resolve zero-padded numeric IDs to the same task", async () => {
+			// File exists as task-0001; query with 1
+			const path1 = await getTaskPath("1", core);
+			expect(path1).toBeTruthy();
+			expect(path1).toContain("task-0001 - Padded One.md");
+
+			// Query with zero-padded input for non-padded file (123)
+			const path2 = await getTaskPath("0123", core);
+			expect(path2).toBeTruthy();
+			expect(path2).toContain("task-123 - Test Task.md");
+		});
+
 		it("should return null for non-existent task", async () => {
 			const path = await getTaskPath("999", core);
 			expect(path).toBeNull();
@@ -84,6 +99,11 @@ describe("Task path utilities", () => {
 		it("should return filename for existing task", async () => {
 			const filename = await getTaskFilename("789", core);
 			expect(filename).toBe("task-789 - Final Task.md");
+		});
+
+		it("should resolve dotted IDs ignoring leading zeros in segments", async () => {
+			const filename = await getTaskFilename("3.1", core);
+			expect(filename).toBe("task-3.01 - Subtask Padded.md");
 		});
 
 		it("should return null for non-existent task", async () => {
