@@ -14,6 +14,7 @@ export class BacklogServer {
 	private server: Server | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
+	private stopTaskWatcher: (() => void) | null = null;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath);
@@ -28,6 +29,11 @@ export class BacklogServer {
 	}
 
 	async start(port?: number, openBrowser = true): Promise<void> {
+		// Prevent duplicate starts (e.g., accidental re-entry)
+		if (this.server) {
+			console.log("Server already running");
+			return;
+		}
 		// Load config (migration is handled globally by CLI)
 		const config = await this.core.filesystem.loadConfig();
 
@@ -40,7 +46,7 @@ export class BacklogServer {
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
 		try {
-			this.server = Bun.serve({
+			const serveOptions = {
 				port: finalPort,
 				development: process.env.NODE_ENV === "development",
 				routes: {
@@ -56,54 +62,55 @@ export class BacklogServer {
 
 					// API Routes using Bun's native route syntax
 					"/api/tasks": {
-						GET: async (req) => await this.handleListTasks(req),
-						POST: async (req) => await this.handleCreateTask(req),
+						GET: async (req: Request) => await this.handleListTasks(req),
+						POST: async (req: Request) => await this.handleCreateTask(req),
 					},
 					"/api/task/:id": {
-						GET: async (req) => await this.handleGetTask(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
 					},
 					"/api/tasks/:id": {
-						GET: async (req) => await this.handleGetTask(req.params.id),
-						PUT: async (req) => await this.handleUpdateTask(req, req.params.id),
-						DELETE: async (req) => await this.handleDeleteTask(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
+						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
 					},
 					"/api/statuses": {
 						GET: async () => await this.handleGetStatuses(),
 					},
 					"/api/config": {
 						GET: async () => await this.handleGetConfig(),
-						PUT: async (req) => await this.handleUpdateConfig(req),
+						PUT: async (req: Request) => await this.handleUpdateConfig(req),
 					},
 					"/api/docs": {
 						GET: async () => await this.handleListDocs(),
-						POST: async (req) => await this.handleCreateDoc(req),
+						POST: async (req: Request) => await this.handleCreateDoc(req),
 					},
 					"/api/doc/:id": {
-						GET: async (req) => await this.handleGetDoc(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
 					},
 					"/api/docs/:id": {
-						GET: async (req) => await this.handleGetDoc(req.params.id),
-						PUT: async (req) => await this.handleUpdateDoc(req, req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
 					},
 					"/api/decisions": {
 						GET: async () => await this.handleListDecisions(),
-						POST: async (req) => await this.handleCreateDecision(req),
+						POST: async (req: Request) => await this.handleCreateDecision(req),
 					},
 					"/api/decision/:id": {
-						GET: async (req) => await this.handleGetDecision(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
 					},
 					"/api/decisions/:id": {
-						GET: async (req) => await this.handleGetDecision(req.params.id),
-						PUT: async (req) => await this.handleUpdateDecision(req, req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) =>
+							await this.handleUpdateDecision(req, req.params.id),
 					},
 					"/api/drafts": {
 						GET: async () => await this.handleListDrafts(),
 					},
 					"/api/drafts/:id/promote": {
-						POST: async (req) => await this.handlePromoteDraft(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
 					},
 					"/api/tasks/reorder": {
-						POST: async (req) => await this.handleReorderTask(req),
+						POST: async (req: Request) => await this.handleReorderTask(req),
 					},
 					"/api/version": {
 						GET: async () => await this.handleGetVersion(),
@@ -115,36 +122,39 @@ export class BacklogServer {
 						GET: async () => await this.handleGetSequences(),
 					},
 					"/sequences/move": {
-						POST: async (req) => await this.handleMoveSequence(req),
+						POST: async (req: Request) => await this.handleMoveSequence(req),
 					},
 					"/api/sequences": {
 						GET: async () => await this.handleGetSequences(),
 					},
 					"/api/sequences/move": {
-						POST: async (req) => await this.handleMoveSequence(req),
+						POST: async (req: Request) => await this.handleMoveSequence(req),
 					},
 				},
-				fetch: async (req, server) => {
+				fetch: async (req: Request, server: Server) => {
 					return await this.handleRequest(req, server);
 				},
 				error: this.handleError.bind(this),
 				websocket: {
-					open: (ws) => {
+					open: (ws: ServerWebSocket) => {
 						this.sockets.add(ws);
 					},
-					message(ws) {
+					message(ws: ServerWebSocket) {
 						ws.send("pong");
 					},
-					close: (ws) => {
+					close: (ws: ServerWebSocket) => {
 						this.sockets.delete(ws);
 					},
 				},
-			});
-			watchTasks(this.core, {
+				/* biome-ignore format: keep cast on single line below for type narrowing */
+			};
+			this.server = Bun.serve(serveOptions as unknown as Parameters<typeof Bun.serve>[0]);
+			const watcher = watchTasks(this.core, {
 				onTaskAdded: () => this.broadcastTasksUpdated(),
 				onTaskChanged: () => this.broadcastTasksUpdated(),
 				onTaskRemoved: () => this.broadcastTasksUpdated(),
 			});
+			this.stopTaskWatcher = watcher.stop;
 
 			const url = `http://localhost:${finalPort}`;
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
@@ -182,12 +192,41 @@ export class BacklogServer {
 		}
 	}
 
+	private _stopping = false;
+
 	async stop(): Promise<void> {
+		if (this._stopping) return;
+		this._stopping = true;
+
+		// Stop filesystem watcher first to reduce churn
+		try {
+			this.stopTaskWatcher?.();
+			this.stopTaskWatcher = null;
+		} catch {}
+
+		// Proactively close WebSocket connections
+		for (const ws of this.sockets) {
+			try {
+				ws.close();
+			} catch {}
+		}
+		this.sockets.clear();
+
+		// Attempt to stop the server but don't hang forever
 		if (this.server) {
-			await this.server.stop();
+			const serverRef = this.server;
+			const stopPromise = (async () => {
+				try {
+					await serverRef.stop();
+				} catch {}
+			})();
+			const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+			await Promise.race([stopPromise, timeout]);
 			this.server = null;
 			console.log("Server stopped");
 		}
+
+		this._stopping = false;
 	}
 
 	private async openBrowser(url: string): Promise<void> {

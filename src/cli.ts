@@ -2489,12 +2489,24 @@ program
 
 			await server.start(port, options.open !== false);
 
-			// Keep the process running
-			process.on("SIGINT", async () => {
-				console.log("\nShutting down server...");
-				await server.stop();
-				process.exit(0);
-			});
+			// Graceful shutdown on common termination signals (register once)
+			let shuttingDown = false;
+			const shutdown = async (signal: string) => {
+				if (shuttingDown) return;
+				shuttingDown = true;
+				console.log(`\nReceived ${signal}. Shutting down server...`);
+				try {
+					const stopPromise = server.stop();
+					const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+					await Promise.race([stopPromise, timeout]);
+				} finally {
+					process.exit(0);
+				}
+			};
+
+			process.once("SIGINT", () => void shutdown("SIGINT"));
+			process.once("SIGTERM", () => void shutdown("SIGTERM"));
+			process.once("SIGQUIT", () => void shutdown("SIGQUIT"));
 		} catch (err) {
 			console.error("Failed to start browser interface", err);
 			process.exitCode = 1;

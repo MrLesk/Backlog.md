@@ -111,8 +111,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     <div 
       className={`rounded-lg p-4 min-h-96 transition-colors duration-200 ${
         isDragOver 
-          ? 'bg-green-50 dark:bg-green-900/20 border-2 border-green-300 dark:border-green-600 border-dashed' 
-          : 'bg-gray-50 dark:bg-gray-800 border-2 border-transparent'
+          ? 'bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 border-dashed' 
+          : 'bg-gray-50 dark:bg-gray-800 border border-transparent'
       }`}
       onDrop={handleDrop}
       onDragOver={handleDragOverColumn}
