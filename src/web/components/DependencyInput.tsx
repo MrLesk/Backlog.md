@@ -103,16 +103,16 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
         </label>
       ) : null}
       <div className="relative w-full">
-        <div className="w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200">
+        <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200 max-h-60 overflow-auto pr-2">
           {/* Display selected dependencies */}
           {value.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {value.map((taskId, index) => (
                 <span
                   key={index}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200 min-w-0 max-w-full"
                 >
-                  <span className="max-w-xs truncate">{getTaskDisplay(taskId)}</span>
+                  <span className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]">{getTaskDisplay(taskId)}</span>
                   <button
                     type="button"
                     onClick={() => removeDependency(index)}
@@ -147,7 +147,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
 
         {/* Suggestions dropdown */}
         {suggestions.length > 0 && (
-          <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-auto transition-colors duration-200">
+          <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-64 overflow-auto overscroll-contain transition-colors duration-200">
             {suggestions.map((task, index) => (
               <button
                 key={task.id}
@@ -158,7 +158,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                 }`}
               >
                 <div className="font-medium text-gray-900 dark:text-white">{task.id}</div>
-                <div className="text-gray-600 dark:text-gray-300 truncate">{task.title}</div>
+                <div className="text-gray-600 dark:text-gray-300 break-words whitespace-normal">{task.title}</div>
               </button>
             ))}
           </div>

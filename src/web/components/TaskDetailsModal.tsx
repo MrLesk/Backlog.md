@@ -42,7 +42,6 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
   const [status, setStatus] = useState(task.status);
   const [assignee, setAssignee] = useState<string[]>(task.assignee || []);
   const [labels, setLabels] = useState<string[]>(task.labels || []);
-  const [labelsText, setLabelsText] = useState<string>((task.labels || []).join("\n"));
   const [priority, setPriority] = useState<string>(task.priority || "");
   const [dependencies, setDependencies] = useState<string[]>(task.dependencies || []);
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
@@ -101,7 +100,6 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     setStatus(task.status);
     setAssignee(task.assignee || []);
     setLabels(task.labels || []);
-    setLabelsText((task.labels || []).join("\n"));
     setPriority(task.priority || "");
     setDependencies(task.dependencies || []);
     setMode("preview");
@@ -161,10 +159,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
       // Optimistic UI
       if (updates.status !== undefined) setStatus(String(updates.status));
       if (updates.assignee !== undefined) setAssignee(updates.assignee as string[]);
-      if (updates.labels !== undefined) {
-        setLabels(updates.labels as string[]);
-        setLabelsText(((updates.labels as string[]) || []).join("\n"));
-      }
+      if (updates.labels !== undefined) setLabels(updates.labels as string[]);
       if (updates.priority !== undefined) setPriority(String(updates.priority));
       if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
 
@@ -176,17 +171,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     }
   };
 
-  const parseLabels = (text: string): string[] => {
-    return Array.from(new Set(text
-      .split(/\n|,/)
-      .map(s => s.trim())
-      .filter(Boolean)));
-  };
-
-  const handleLabelsBlur = async () => {
-    const next = parseLabels(labelsText);
-    await handleInlineMetaUpdate({ labels: next });
-  };
+  // labels handled via ChipInput; no textarea parsing
 
   const handleComplete = async () => {
     if (!window.confirm("Complete this task? It will be moved to the completed archive.")) return;
@@ -216,39 +201,52 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
         onClose();
       }}
       title={`${displayId} — ${task.title}`}
-      maxWidthClass="max-w-4xl"
+      maxWidthClass="max-w-5xl"
       disableEscapeClose={mode === "edit"}
       actions={
         <div className="flex items-center gap-2">
           {isDoneStatus && mode === "preview" && (
             <button
               onClick={handleComplete}
-              className="inline-flex items-center px-2.5 py-1 text-xs bg-emerald-600 dark:bg-emerald-700 text-white font-medium rounded-md hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-emerald-400 dark:focus:ring-emerald-500 transition-colors duration-200 cursor-pointer"
-              title="Complete (archive from board)"
+              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
+              title="Mark as completed (archive from board)"
             >
-              Complete
+              Mark as completed
             </button>
           )}
           {mode === "preview" ? (
             <button
               onClick={() => setMode("edit")}
-              className="inline-flex items-center px-2.5 py-1 text-xs bg-blue-600 dark:bg-blue-700 text-white font-medium rounded-md hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200 cursor-pointer"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
+              title="Edit"
             >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
               Edit
             </button>
           ) : (
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCancelEdit}
-                className="inline-flex items-center px-2.5 py-1 text-xs bg-gray-500 dark:bg-gray-600 text-white font-medium rounded-md hover:bg-gray-600 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-gray-400 dark:focus:ring-gray-500 transition-colors duration-200 cursor-pointer"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
+                title="Cancel"
               >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
                 Cancel
               </button>
               <button
                 onClick={() => void handleSave()}
                 disabled={saving}
-                className="inline-flex items-center px-2.5 py-1 text-xs bg-blue-600 dark:bg-blue-700 text-white font-medium rounded-md hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                title="Save"
               >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>
@@ -275,12 +273,12 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
                 <div className="text-sm text-gray-500 dark:text-gray-400">No description</div>
               )
             ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
                 <MDEditor
                   value={description}
                   onChange={(val) => setDescription(val || "")}
                   preview="edit"
-                  height={240}
+                  height={320}
                   data-color-mode={theme}
                 />
               </div>
@@ -329,12 +327,12 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
                 <div className="text-sm text-gray-500 dark:text-gray-400">No plan</div>
               )
             ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
                 <MDEditor
                   value={plan}
                   onChange={(val) => setPlan(val || "")}
                   preview="edit"
-                  height={220}
+                  height={280}
                   data-color-mode={theme}
                 />
               </div>
@@ -353,12 +351,12 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
                 <div className="text-sm text-gray-500 dark:text-gray-400">No notes</div>
               )
             ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
                 <MDEditor
                   value={notes}
                   onChange={(val) => setNotes(val || "")}
                   preview="edit"
-                  height={220}
+                  height={280}
                   data-color-mode={theme}
                 />
               </div>
@@ -370,8 +368,10 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
         <div className="md:col-span-1 space-y-4">
           {/* Dates */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
-            <div className="font-semibold text-gray-800 dark:text-gray-100">Created: {task.createdDate}</div>
-            {task.updatedDate && <div className="font-semibold text-gray-800 dark:text-gray-100">Updated: {task.updatedDate}</div>}
+            <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{task.createdDate}</span></div>
+            {task.updatedDate && (
+              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{task.updatedDate}</span></div>
+            )}
           </div>
           {/* Status */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
@@ -394,11 +394,12 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
           {/* Labels */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Labels" />
-            <AutoResizeTextarea
-              value={labelsText}
-              onChange={setLabelsText}
-              onBlur={handleLabelsBlur}
-              placeholder="Comma or newline separated"
+            <ChipInput
+              name="labels"
+              label=""
+              value={labels}
+              onChange={(value) => handleInlineMetaUpdate({ labels: value })}
+              placeholder="Type label and press Enter or comma"
             />
           </div>
 
@@ -406,7 +407,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Priority" />
             <select
-              className="w-full px-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
+              className="w-full px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
               value={priority}
               onChange={(e) => handleInlineMetaUpdate({ priority: e.target.value as any })}
             >
@@ -429,12 +430,12 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
             />
           </div>
 
-          {/* Metadata */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-            {task.milestone && <div>Milestone: {task.milestone}</div>}
-            <div>Created: {task.createdDate}</div>
-            {task.updatedDate && <div>Updated: {task.updatedDate}</div>}
-          </div>
+          {/* Metadata (render only if content exists) */}
+          {task.milestone ? (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+              <div>Milestone: {task.milestone}</div>
+            </div>
+          ) : null}
         </div>
       </div>
     </Modal>
@@ -448,7 +449,7 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void }>
   }, []);
   return (
     <select
-      className="w-full px-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
+      className="w-full px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
       value={current}
       onChange={(e) => onChange(e.target.value)}
     >

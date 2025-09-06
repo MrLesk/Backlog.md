@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-02 20:19'
-updated_date: '2025-09-06 21:00'
+updated_date: '2025-09-06 22:06'
 labels:
   - web-ui
   - editor
@@ -66,8 +66,5 @@ Notes
 
 ## Implementation Notes
 
-More fixes
-- Moved Edit/Save/Cancel/Complete into modal header as compact actions, freeing vertical space.
-- Dates (Created/Updated) now at the top of the right column and emphasized with bold text.
-- Replaced Labels chip input with an auto-resizing textarea (comma/newline-separated); updates on blur.
-- Kept Dependencies label hidden within section to avoid duplication.
+Button sizing
+- Matched "Mark as completed" button height/size to other actions (px-4 py-2, text-sm, rounded-lg) for a consistent header row.
