@@ -137,14 +137,31 @@ export async function renderBoardTui(
 			if (popupOpen || idx === currentCol || idx < 0 || idx >= columns.length) return;
 			const prev = columns[currentCol];
 			if (!prev) return;
+
+			// Capture the previously selected row index to preserve row on horizontal move
+			const prevSelectedIndex = typeof prev.list.selected === "number" ? prev.list.selected : 0;
+
+			// Reset previous column styles
 			const prevListStyle = prev.list.style as { selected?: { bg?: string } };
 			if (prevListStyle.selected) prevListStyle.selected.bg = undefined;
 			const prevBoxStyle = prev.box.style as { border?: { fg?: string } };
 			if (prevBoxStyle.border) prevBoxStyle.border.fg = "gray";
 
+			// Switch current column
 			currentCol = idx;
 			const curr = columns[currentCol];
 			if (!curr) return;
+
+			// Determine the target row index in the new column:
+			// - If destination has at least as many tasks, keep the same row
+			// - Otherwise clamp to last task in that column
+			const destCount = curr.tasks.length;
+			if (destCount > 0) {
+				const targetIndex = prevSelectedIndex < destCount ? prevSelectedIndex : destCount - 1;
+				curr.list.select(targetIndex);
+			}
+
+			// Focus and update styles for the current column
 			curr.list.focus();
 			const currListStyle = curr.list.style as { selected?: { bg?: string } };
 			if (currListStyle.selected) currListStyle.selected.bg = "blue";

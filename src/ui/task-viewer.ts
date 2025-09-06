@@ -240,6 +240,7 @@ export async function viewTaskEnhanced(
 			// Compute new order
 			const newOrder = [...siblings];
 			const [moved] = newOrder.splice(idxInSiblings, 1);
+			if (!moved) return; // type guard, should not happen due to bounds checks
 			newOrder.splice(target, 0, moved);
 
 			// Reassign ordinals in steps to avoid collisions
@@ -272,6 +273,8 @@ export async function viewTaskEnhanced(
 	const lb = taskList.getListBox();
 	let moveMode = false;
 	let moveModeTimer: ReturnType<typeof setTimeout> | null = null;
+	// Help bar updater placeholder; will be initialized once help bar is created
+	let updateHelpBar: () => void = () => {};
 
 	function setMoveMode(on: boolean, transientMs?: number) {
 		moveMode = on;
@@ -517,13 +520,14 @@ export async function viewTaskEnhanced(
 			},
 		});
 
-		function updateHelpBar() {
+		// Initialize help bar updater now that help bar exists
+		updateHelpBar = function updateHelpBar() {
 			const moveBadge = moveMode ? "{green-fg}Move: ON{/}" : "{gray-fg}Move: OFF{/}";
 			const base = options.filterDescription
 				? ` Filter: ${options.filterDescription} · ${moveBadge} · ↑/↓ navigate · Shift+↑/↓ move · m toggle · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `
 				: ` ${moveBadge} · ↑/↓ navigate · Shift+↑/↓ move · m toggle · ← task list · → detail · ${options.viewSwitcher ? "Tab kanban · " : ""}E edit · q/Esc quit `;
 			helpBar.setContent(base);
-		}
+		};
 
 		updateHelpBar();
 

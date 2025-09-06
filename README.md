@@ -361,4 +361,3 @@ Generated on: 2025-09-05 21:30:12
 ### License
 
 Backlog.md is released under the **MIT License** – do anything, just give credit. See [LICENSE](LICENSE).
-Note on the web editor: the UI uses `@uiw/react-md-editor` with `@uiw/react-markdown-preview`. The web bundle imports their official CSS and scopes our code/preview overrides to `.wmde-markdown` only to keep the editor overlay/textarea aligned.

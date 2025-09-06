@@ -6,6 +6,7 @@
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import type { Task } from "../types/index.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 const isWindows = process.platform === "win32";
@@ -247,7 +248,7 @@ async function editTaskViaCore(
 		}
 
 		// Update task with new values
-		const updatedTask = {
+		const updatedTask: Task = {
 			...existingTask,
 			...(options.title && { title: options.title }),
 			...(options.description && { body: options.description }),
@@ -273,7 +274,7 @@ async function editTaskViaCore(
 			const { updateTaskImplementationNotes } = await import("../markdown/serializer.ts");
 			updatedTask.body = updateTaskImplementationNotes(updatedTask.body, options.notes);
 			// Keep first-party field in sync so serializer doesn't re-insert old notes
-			(updatedTask as any).implementationNotes = options.notes;
+			updatedTask.implementationNotes = options.notes;
 		}
 
 		// Update implementation plan if provided
@@ -281,7 +282,7 @@ async function editTaskViaCore(
 			const { updateTaskImplementationPlan } = await import("../markdown/serializer.ts");
 			updatedTask.body = updateTaskImplementationPlan(updatedTask.body, options.plan);
 			// Keep first-party field in sync so serializer doesn't re-insert old plan
-			(updatedTask as any).implementationPlan = options.plan;
+			updatedTask.implementationPlan = options.plan;
 		}
 
 		// Save updated task

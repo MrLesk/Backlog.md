@@ -258,7 +258,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			this.listBox.select(nextIndex);
 			this.selectedIndex = nextIndex;
 			this.onHighlight?.(this.filteredItems[nextIndex] ?? null, nextIndex);
-			this.listBox.screen?.render();
+			this.getScreen()?.render?.();
 		};
 
 		const moveDown = () => {
@@ -269,7 +269,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			this.listBox.select(nextIndex);
 			this.selectedIndex = nextIndex;
 			this.onHighlight?.(this.filteredItems[nextIndex] ?? null, nextIndex);
-			this.listBox.screen?.render();
+			this.getScreen()?.render?.();
 		};
 
 		this.listBox.key(["up", "k"], moveUp);
@@ -420,6 +420,12 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		if (this.screen) {
 			this.screen.destroy();
 		}
+	}
+
+	private getScreen(): ScreenInterface | undefined {
+		if (this.screen) return this.screen;
+		const maybeHasScreen = this.listBox as unknown as { screen?: ScreenInterface };
+		return maybeHasScreen?.screen;
 	}
 }
 
