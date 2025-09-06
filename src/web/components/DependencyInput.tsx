@@ -6,9 +6,10 @@ interface DependencyInputProps {
   onChange: (values: string[]) => void;
   availableTasks: Task[];
   currentTaskId?: string;
+  label?: string; // optional label; render only if provided
 }
 
-const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, currentTaskId }) => {
+const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, currentTaskId, label = 'Dependencies' }) => {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -96,9 +97,11 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
 
   return (
     <div>
-      <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
-        Dependencies
-      </label>
+      {label ? (
+        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
+          {label}
+        </label>
+      ) : null}
       <div className="relative w-full">
         <div className="w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200">
           {/* Display selected dependencies */}

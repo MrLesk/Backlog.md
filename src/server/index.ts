@@ -73,6 +73,9 @@ export class BacklogServer {
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
 						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
 					},
+					"/api/tasks/:id/complete": {
+						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+					},
 					"/api/statuses": {
 						GET: async () => await this.handleGetStatuses(),
 					},
@@ -335,6 +338,27 @@ export class BacklogServer {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
 		return Response.json({ success: true });
+	}
+
+	private async handleCompleteTask(taskId: string): Promise<Response> {
+		try {
+			const task = await this.core.filesystem.loadTask(taskId);
+			if (!task) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+
+			const success = await this.core.completeTask(taskId);
+			if (!success) {
+				return Response.json({ error: "Failed to complete task" }, { status: 500 });
+			}
+
+			// Notify listeners to refresh
+			this.broadcastTasksUpdated();
+			return Response.json({ success: true });
+		} catch (error) {
+			console.error("Error completing task:", error);
+			return Response.json({ error: "Failed to complete task" }, { status: 500 });
+		}
 	}
 
 	private async handleGetStatuses(): Promise<Response> {

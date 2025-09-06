@@ -10,6 +10,7 @@ import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import Modal from './components/Modal';
 import TaskForm from './components/TaskForm';
+import TaskDetailsModal from './components/TaskDetailsModal';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { type Task, type Document, type Decision } from '../types';
@@ -254,20 +255,29 @@ function App() {
           </Route>
         </Routes>
 
-        <Modal
-          isOpen={showModal}
-          onClose={handleCloseModal}
-          title={editingTask ? `Edit Task ${editingTask.id.replace('task-', '')}` : (isDraftMode ? 'Create New Draft' : 'Create New Task')}
-        >
-          <TaskForm
-            task={editingTask || undefined}
-            onSubmit={handleSubmitTask}
-            onCancel={handleCloseModal}
-            onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-            availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
-            MDEditor={MDEditor}
+        {editingTask ? (
+          <TaskDetailsModal
+            task={editingTask}
+            isOpen={showModal}
+            onClose={handleCloseModal}
+            onSaved={refreshData}
           />
-        </Modal>
+        ) : (
+          <Modal
+            isOpen={showModal}
+            onClose={handleCloseModal}
+            title={isDraftMode ? 'Create New Draft' : 'Create New Task'}
+            maxWidthClass="max-w-2xl"
+          >
+            <TaskForm
+              task={undefined}
+              onSubmit={handleSubmitTask}
+              onCancel={handleCloseModal}
+              availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+              MDEditor={MDEditor}
+            />
+          </Modal>
+        )}
 
         {/* Task Creation Confirmation Toast */}
         {taskConfirmation && (

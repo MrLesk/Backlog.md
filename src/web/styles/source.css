@@ -157,6 +157,27 @@
         overflow-x: hidden !important;
     }
 
+    /* Restore list styles inside markdown preview (Tailwind preflight resets list-style) */
+    .wmde-markdown ul {
+        list-style: disc !important;
+        padding-left: 1.5rem !important;
+        margin: 0 0 1rem !important;
+    }
+    .wmde-markdown ol {
+        list-style: decimal !important;
+        padding-left: 1.5rem !important;
+        margin: 0 0 1rem !important;
+    }
+    .wmde-markdown li {
+        margin: 0.25rem 0 !important;
+    }
+    .wmde-markdown ul ul {
+        list-style: circle !important;
+    }
+    .wmde-markdown ul ul ul {
+        list-style: square !important;
+    }
+
     /* Fix for inline code that might be too long */
     .wmde-markdown code {
         word-break: break-word !important;

@@ -154,6 +154,12 @@ export class ApiClient {
 		});
 	}
 
+	async completeTask(id: string): Promise<void> {
+		await this.fetchWithRetry(`${API_BASE}/tasks/${id}/complete`, {
+			method: "POST",
+		});
+	}
+
 	async updateTaskStatus(id: string, status: TaskStatus): Promise<Task> {
 		return this.updateTask(id, { status });
 	}
