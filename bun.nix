@@ -644,21 +644,33 @@
   };
   "@uiw/react-markdown-preview" = {
     out_path = "@uiw/react-markdown-preview";
-    name = "@uiw/react-markdown-preview@5.1.4";
-    url = "https://registry.npmjs.org/@uiw/react-markdown-preview/-/react-markdown-preview-5.1.4.tgz";
-    hash = "sha512-6k13WVNHCEaamz3vh54OQ1tseIXneKlir1+E/VFQBPq8PRod+gwLfYtiitDBWu+ZFttoiKPLZ7flgHrVM+JNOg==";
-  };
-  "@uiw/react-markdown-preview/rehype-prism-plus" = {
-    out_path = "@uiw/react-markdown-preview/node_modules/rehype-prism-plus";
-    name = "rehype-prism-plus@2.0.0";
-    url = "https://registry.npmjs.org/rehype-prism-plus/-/rehype-prism-plus-2.0.0.tgz";
-    hash = "sha512-FeM/9V2N7EvDZVdR2dqhAzlw5YI49m9Tgn7ZrYJeYHIahM6gcXpH0K1y2gNnKanZCydOMluJvX2cB9z3lhY8XQ==";
+    name = "@uiw/react-markdown-preview@5.1.5";
+    url = "https://registry.npmjs.org/@uiw/react-markdown-preview/-/react-markdown-preview-5.1.5.tgz";
+    hash = "sha512-DNOqx1a6gJR7Btt57zpGEKTfHRlb7rWbtctMRO2f82wWcuoJsxPBrM+JWebDdOD0LfD8oe2CQvW2ICQJKHQhZg==";
   };
   "@uiw/react-md-editor" = {
     out_path = "@uiw/react-md-editor";
     name = "@uiw/react-md-editor@4.0.8";
     url = "https://registry.npmjs.org/@uiw/react-md-editor/-/react-md-editor-4.0.8.tgz";
     hash = "sha512-S3mOzZeGmJNhzdXJxRTCwsFMDp8nBWeQUf59cK3L6QHzDUHnRoHpcmWpfVRyKGKSg8zaI2+meU5cYWf8kYn3mQ==";
+  };
+  "@uiw/react-md-editor/@uiw/react-markdown-preview" = {
+    out_path = "@uiw/react-md-editor/node_modules/@uiw/node_modules/react-markdown-preview";
+    name = "@uiw/react-markdown-preview@5.1.4";
+    url = "https://registry.npmjs.org/@uiw/react-markdown-preview/-/react-markdown-preview-5.1.4.tgz";
+    hash = "sha512-6k13WVNHCEaamz3vh54OQ1tseIXneKlir1+E/VFQBPq8PRod+gwLfYtiitDBWu+ZFttoiKPLZ7flgHrVM+JNOg==";
+  };
+  "@uiw/react-md-editor/@uiw/react-markdown-preview/rehype-prism-plus" = {
+    out_path = "@uiw/react-md-editor/node_modules/@uiw/node_modules/react-markdown-preview/node_modules/rehype-prism-plus";
+    name = "rehype-prism-plus@2.0.0";
+    url = "https://registry.npmjs.org/rehype-prism-plus/-/rehype-prism-plus-2.0.0.tgz";
+    hash = "sha512-FeM/9V2N7EvDZVdR2dqhAzlw5YI49m9Tgn7ZrYJeYHIahM6gcXpH0K1y2gNnKanZCydOMluJvX2cB9z3lhY8XQ==";
+  };
+  "@uiw/react-md-editor/rehype-prism-plus" = {
+    out_path = "@uiw/react-md-editor/node_modules/rehype-prism-plus";
+    name = "rehype-prism-plus@2.0.1";
+    url = "https://registry.npmjs.org/rehype-prism-plus/-/rehype-prism-plus-2.0.1.tgz";
+    hash = "sha512-Wglct0OW12tksTUseAPyWPo3srjBOY7xKlql/DPKi7HbsdZTyaLCAoO58QBKSczFQxElTsQlOY3JDOFzB/K++Q==";
   };
   "@ungap/structured-clone" = {
     out_path = "@ungap/structured-clone";
@@ -2067,9 +2079,9 @@
   };
   "rehype-prism-plus" = {
     out_path = "rehype-prism-plus";
-    name = "rehype-prism-plus@2.0.1";
-    url = "https://registry.npmjs.org/rehype-prism-plus/-/rehype-prism-plus-2.0.1.tgz";
-    hash = "sha512-Wglct0OW12tksTUseAPyWPo3srjBOY7xKlql/DPKi7HbsdZTyaLCAoO58QBKSczFQxElTsQlOY3JDOFzB/K++Q==";
+    name = "rehype-prism-plus@2.0.0";
+    url = "https://registry.npmjs.org/rehype-prism-plus/-/rehype-prism-plus-2.0.0.tgz";
+    hash = "sha512-FeM/9V2N7EvDZVdR2dqhAzlw5YI49m9Tgn7ZrYJeYHIahM6gcXpH0K1y2gNnKanZCydOMluJvX2cB9z3lhY8XQ==";
   };
   "rehype-raw" = {
     out_path = "rehype-raw";
