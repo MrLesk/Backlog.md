@@ -160,7 +160,6 @@ jobs:
             "version": "${TAG}",
             "os": ["${{ matrix.os }}"],
             "cpu": ["${{ matrix.cpu }}"],
-            "bin": {"backlog": "backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}"},
             "files": ["backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}","package.json","LICENSE"]
           }
           EOF
@@ -174,6 +173,40 @@ jobs:
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+
+  install-sanity:
+    name: install-sanity-${{ matrix.os }}
+    needs: [publish-binaries, npm-publish]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Install and run backlog -v (Unix)
+        if: ${{ matrix.os != 'windows-latest' }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          VERSION="${GITHUB_REF##refs/tags/v}"
+          mkdir sanity && cd sanity
+          npm init -y >/dev/null 2>&1
+          npm i "backlog.md@${VERSION}"
+          npx backlog -v
+      - name: Install and run backlog -v (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = $env:GITHUB_REF_NAME.TrimStart('v')
+          mkdir sanity | Out-Null
+          Set-Location sanity
+          npm init -y | Out-Null
+          npm i "backlog.md@$Version"
+          npx backlog -v
 
   github-release:
     needs: build
