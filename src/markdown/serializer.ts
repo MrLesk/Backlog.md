@@ -85,7 +85,7 @@ export function updateTaskAcceptanceCriteria(content: string, criteria: string[]
 	const newCriteria = criteria.map((criterion) => `- [ ] ${criterion}`).join("\n");
 	const newSection = `## Acceptance Criteria\n\n${newCriteria}`;
 
-	let out: string;
+	let out: string | undefined;
 	if (match) {
 		// Replace existing section
 		out = src.replace(criteriaRegex, newSection);
@@ -112,7 +112,7 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 
 	const newSection = `## Implementation Plan\n\n${plan}`;
 
-	let out: string;
+	let out: string | undefined;
 	if (match) {
 		// Replace existing section, ensuring exactly one blank line after when followed by other content
 		const afterIdx = (match.index || 0) + match[0].length;
@@ -144,9 +144,9 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 		out = `${before}\n\n${newSection}${after ? "\n\n" : ""}${after}`;
 	}
 
-	// If still not inserted, add at the end
-	if (!out) out = `${src.replace(/\n+$/, "")}\n\n${newSection}`;
-	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
+	// If still not inserted, compute default insertion at the end
+	const finalOut = out ?? `${src.replace(/\n+$/, "")}\n\n${newSection}`;
+	return useCRLF ? finalOut.replace(/\n/g, "\r\n") : finalOut;
 }
 
 export function updateTaskImplementationNotes(content: string, notes: string): string {
@@ -163,7 +163,7 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	const notesRegex = /## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i;
 	const match = src.match(notesRegex);
 
-	let out: string;
+	let out: string | undefined;
 	if (match) {
 		// Overwrite existing Implementation Notes section with the new notes and normalize spacing
 		const newNotes = notes;
@@ -214,9 +214,9 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 		out = `${before}\n\n${newSection}${after ? "\n\n" : ""}${after}`;
 	}
 
-	// If no other sections found, add at the end
-	if (!out) out = `${src.replace(/\n+$/, "")}\n\n${newSection}`;
-	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
+	// If no other sections found, compute default insertion at the end
+	const finalOut2 = out ?? `${src.replace(/\n+$/, "")}\n\n${newSection}`;
+	return useCRLF ? finalOut2.replace(/\n/g, "\r\n") : finalOut2;
 }
 
 export function updateTaskDescription(content: string, description: string): string {

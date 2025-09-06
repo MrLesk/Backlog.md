@@ -14,14 +14,14 @@ try {
 // Clean up unexpected args some global shims pass (e.g. bun) like the binary path itself
 const rawArgs = process.argv.slice(2);
 const cleanedArgs = rawArgs.filter((arg) => {
-  if (arg === binaryPath) return false;
-  // Filter any accidental deep path to our platform package binary
-  try {
-    const pattern = /node_modules[\/\\]backlog\.md-(darwin|linux|windows)-[^\/\\]+[\/\\]backlog(\.exe)?$/i;
-    return !pattern.test(arg);
-  } catch {
-    return true;
-  }
+	if (arg === binaryPath) return false;
+	// Filter any accidental deep path to our platform package binary
+	try {
+		const pattern = /node_modules[/\\]backlog\.md-(darwin|linux|windows)-[^/\\]+[/\\]backlog(\.exe)?$/i;
+		return !pattern.test(arg);
+	} catch {
+		return true;
+	}
 });
 
 // Spawn the binary with cleaned arguments

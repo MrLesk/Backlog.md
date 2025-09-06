@@ -8,7 +8,7 @@ describe("Unicode rendering", () => {
 		const content = "测试中文";
 		const b = box({ parent: screen, content });
 		screen.render();
-		const rendered = b.getContent().replaceAll("\u0003", "");
+		const rendered = String((b as unknown as { getContent: () => string }).getContent()).replaceAll("\u0003", "");
 		expect(rendered).toBe(content);
 		screen.destroy();
 	});

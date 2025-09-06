@@ -7,10 +7,9 @@ Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
 ### Development
 
 - `bun i` - Install dependencies
-- `bun test` - Run tests
-- `bun run format` - Format code with Biome
-- `bun run lint` - Lint and auto-fix with Biome
-- `bun run check` - Run all Biome checks (format + lint)
+- `bun test` - Run all tests
+- `bunx tsc --noEmit` - Type-check code
+- `bun run check .` - Run all Biome checks (format + lint)
 - `bun run build` - Build the CLI tool
 - `bun run cli` - Uses the CLI tool directly
 

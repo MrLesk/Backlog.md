@@ -8,10 +8,9 @@ When you're working on a task, you should assign it yourself: -a @codex
 ### Development
 
 - `bun i` - Install dependencies
-- `bun test` - Run tests
-- `bun run format` - Format code with Biome
-- `bun run lint` - Lint and auto-fix with Biome
-- `bun run check` - Run all Biome checks (format + lint)
+- `bun test` - Run all tests
+- `bunx tsc --noEmit` - Type-check code
+- `bun run check .` - Run all Biome checks (format + lint)
 - `bun run build` - Build the CLI tool
 - `bun run cli` - Uses the CLI tool directly
 

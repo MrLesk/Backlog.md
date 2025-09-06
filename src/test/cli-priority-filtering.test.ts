@@ -130,12 +130,12 @@ describe("CLI Priority Filtering", () => {
 			lowerResult.stdout.toString(),
 			mixedResult.stdout.toString(),
 		];
-		const taskLists = [upperOutput, lowerOutput, mixedOutput].map((out) =>
-			out.split("\n").filter((line) => line.includes("task-")),
-		);
-		if (taskLists[1].length > 0) {
-			expect(taskLists[0]).toEqual(taskLists[1]);
-			expect(taskLists[2]).toEqual(taskLists[1]);
+		const listUpper = upperOutput.split("\n").filter((line) => line.includes("task-"));
+		const listLower = lowerOutput.split("\n").filter((line) => line.includes("task-"));
+		const listMixed = mixedOutput.split("\n").filter((line) => line.includes("task-"));
+		if (listLower.length > 0) {
+			expect(listUpper).toEqual(listLower);
+			expect(listMixed).toEqual(listLower);
 		}
 
 		for (const output of [upperOutput, lowerOutput, mixedOutput]) {
