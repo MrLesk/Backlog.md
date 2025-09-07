@@ -701,6 +701,25 @@ program
 					await installClaudeAgent(cwd);
 					console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
 				}
+
+				// Final warning if remote operations were enabled but no git remotes are configured
+				try {
+					if (config.remoteOperations) {
+						// Ensure git ops are ready (config not strictly required for this check)
+						const hasRemotes = await core.gitOps.hasAnyRemote();
+						if (!hasRemotes) {
+							console.warn(
+								[
+									"Warning: remoteOperations is enabled but no git remotes are configured.",
+									"Remote features will be skipped until a remote is added (e.g., 'git remote add origin <url>')",
+									"or disable remoteOperations via 'backlog config set remoteOperations false'.",
+								].join(" "),
+							);
+						}
+					}
+				} catch {
+					// Ignore failures in final advisory warning
+				}
 			} catch (err) {
 				console.error("Failed to initialize project", err);
 				process.exitCode = 1;

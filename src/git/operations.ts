@@ -128,6 +128,13 @@ export class GitOperations {
 			return;
 		}
 
+		// Preflight: skip if repository has no remotes configured
+		const hasRemotes = await this.hasAnyRemote();
+		if (!hasRemotes) {
+			// No remotes configured; silently skip fetch. A consolidated warning is shown during init if applicable.
+			return;
+		}
+
 		try {
 			// Use --prune to remove dead refs and reduce later scans
 			await this.execGit(["fetch", remote, "--prune", "--quiet"]);
@@ -209,6 +216,8 @@ export class GitOperations {
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
 		try {
+			// Fast-path: if no remotes, return empty
+			if (!(await this.hasAnyRemote())) return [];
 			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:short)"], { readOnly: true });
 			return stdout
 				.split("\n")
@@ -228,6 +237,8 @@ export class GitOperations {
 	 */
 	async listRecentRemoteBranches(daysAgo: number, remote = "origin"): Promise<string[]> {
 		try {
+			// Fast-path: if no remotes, return empty
+			if (!(await this.hasAnyRemote())) return [];
 			const { stdout } = await this.execGit(
 				["for-each-ref", "--format=%(refname:short)|%(committerdate:iso8601)", `refs/remotes/${remote}`],
 				{ readOnly: true },
@@ -324,6 +335,35 @@ export class GitOperations {
 				.filter((b) => !b.includes("HEAD"));
 		} catch {
 			return [];
+		}
+	}
+
+	/**
+	 * Returns true if the current repository has any remotes configured
+	 */
+	async hasAnyRemote(): Promise<boolean> {
+		try {
+			const { stdout } = await this.execGit(["remote"], { readOnly: true });
+			return (
+				stdout
+					.split("\n")
+					.map((s) => s.trim())
+					.filter(Boolean).length > 0
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Returns true if a specific remote exists (default: origin)
+	 */
+	async hasRemote(remote = "origin"): Promise<boolean> {
+		try {
+			const { stdout } = await this.execGit(["remote"], { readOnly: true });
+			return stdout.split("\n").some((r) => r.trim() === remote);
+		} catch {
+			return false;
 		}
 	}
 
