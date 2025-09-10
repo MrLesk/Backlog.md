@@ -122,16 +122,10 @@ describe("Implementation Plan CLI", () => {
 			expect(task?.body).toContain("- Step B");
 
 			// Test 2: replace existing implementation plan
-			// First manually add an old plan to the task by updating it directly
+			// First add an old plan via structured field (serializer will compose)
 			task = await core.filesystem.loadTask("task-1");
 			if (task) {
-				task.body = `${task.body.replace(/## Implementation Plan[\s\S]*?$/, "")}
-
-## Implementation Plan
-
-Old plan:
-1. Old step 1
-2. Old step 2`;
+				task.implementationPlan = "Old plan:\n1. Old step 1\n2. Old step 2";
 				await core.updateTask(task, false);
 			}
 

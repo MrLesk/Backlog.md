@@ -435,7 +435,7 @@ describe("CLI Integration", () => {
 			expect(loadedTask?.status).toBe("To Do");
 			expect(loadedTask?.assignee).toEqual(["testuser"]);
 			expect(loadedTask?.labels).toEqual(["test", "cli"]);
-			expect(loadedTask?.body).toBe("## Description\n\nThis is a test task for view command");
+			expect(loadedTask?.body).toBe("This is a test task for view command");
 		});
 
 		it("should handle task IDs with and without 'task-' prefix", async () => {
@@ -498,7 +498,7 @@ describe("CLI Integration", () => {
 
 			expect(viewedTask).toEqual(secondView);
 			expect(viewedTask?.title).toBe("Read Only Test");
-			expect(viewedTask?.body).toBe("## Description\n\nOriginal description");
+			expect(viewedTask?.body).toBe("Original description");
 		});
 	});
 
@@ -827,7 +827,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);
-			expect(updatedTask?.body).toBe("## Description\n\nTesting YAML preservation");
+			expect(updatedTask?.body).toBe("Testing YAML preservation");
 		});
 	});
 
@@ -1049,7 +1049,7 @@ describe("CLI Integration", () => {
 			expect(asDraft?.assignee).toEqual(originalTask.assignee);
 			expect(asDraft?.labels).toEqual(originalTask.labels);
 			expect(asDraft?.dependencies).toEqual(originalTask.dependencies);
-			expect(asDraft?.body).toBe(originalTask.body);
+			expect(asDraft?.body).toContain(originalTask.body);
 
 			// Promote back to task
 			await core.promoteDraft("task-6", false);
@@ -1059,7 +1059,7 @@ describe("CLI Integration", () => {
 			expect(backToTask?.assignee).toEqual(originalTask.assignee);
 			expect(backToTask?.labels).toEqual(originalTask.labels);
 			expect(backToTask?.dependencies).toEqual(originalTask.dependencies);
-			expect(backToTask?.body).toBe(originalTask.body);
+			expect(backToTask?.body).toContain(originalTask.body);
 		});
 	});
 

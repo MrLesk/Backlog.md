@@ -154,7 +154,7 @@ describe("Core", () => {
 			expect(loadedTask?.status).toBe("In Progress");
 		});
 
-		it("should add description header when missing", async () => {
+		it("should not add description header when missing", async () => {
 			const taskNoHeader: Task = {
 				...sampleTask,
 				id: "task-2",
@@ -163,7 +163,7 @@ describe("Core", () => {
 
 			await core.createTask(taskNoHeader, false);
 			const loaded = await core.filesystem.loadTask("task-2");
-			expect(loaded?.body.startsWith("## Description")).toBe(true);
+			expect(loaded?.body).toBe("Just text");
 		});
 
 		it("should not duplicate description header", async () => {

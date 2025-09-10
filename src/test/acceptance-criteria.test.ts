@@ -208,19 +208,18 @@ describe("Acceptance Criteria CLI", () => {
 		});
 
 		it("should add to existing acceptance criteria", async () => {
-			// First add some criteria
-			const core = new Core(TEST_DIR);
-			let task = await core.filesystem.loadTask("task-1");
-			if (task) {
-				task.body = `${task.body}\n\n## Acceptance Criteria\n\n- [ ] Old criterion 1\n- [ ] Old criterion 2`;
-				await core.updateTask(task, false);
-			}
+			// First add some criteria via CLI to avoid direct body mutation
+			const res = await $`bun ${CLI_PATH} task edit 1 --ac "Old criterion 1" --ac "Old criterion 2"`
+				.cwd(TEST_DIR)
+				.quiet();
+			expect(res.exitCode).toBe(0);
 
-			// Now add new criteria
+			// Now add new criterion
 			const result = await $`bun ${CLI_PATH} task edit 1 --ac "New criterion"`.cwd(TEST_DIR).quiet();
 			expect(result.exitCode).toBe(0);
 
-			task = await core.filesystem.loadTask("task-1");
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.body).toContain("## Acceptance Criteria");
 			expect(task?.body).toContain("- [ ] #1 Old criterion 1");

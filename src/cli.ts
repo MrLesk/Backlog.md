@@ -945,7 +945,8 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 					.filter(Boolean)
 			: [],
 		dependencies,
-		body: options.description || options.desc ? String(options.description || options.desc) : "",
+		body: "",
+		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
 		...(normalizedParent && { parentTaskId: normalizedParent }),
 		...(validatedPriority && { priority: validatedPriority }),
 	};
@@ -1451,12 +1452,15 @@ taskCmd
 
 		if (options.appendNotes) {
 			const appends = Array.isArray(options.appendNotes) ? options.appendNotes : [options.appendNotes];
-			const { appendTaskImplementationNotes } = await import("./markdown/serializer.ts");
-			const updatedBody = appendTaskImplementationNotes(task.body, appends);
-			// Update body directly and prevent serializer from overwriting with old parsed field
-			task.body = updatedBody;
-			// Clear field so serializer leaves Implementation Notes as in body
-			(task as { implementationNotes?: string }).implementationNotes = undefined;
+			const combined = appends
+				.map((v: string) => String(v))
+				.filter(Boolean)
+				.join("\n\n");
+			// Merge into existing implementation notes (normalize spacing at the join)
+			const existing = (task.implementationNotes || "").replace(/\s+$/, "").trim();
+			const addition = String(combined).replace(/^\s+|\s+$/g, "");
+			const merged = existing ? `${existing}\n\n${addition}` : addition;
+			(task as { implementationNotes?: string }).implementationNotes = merged;
 		}
 
 		await core.updateTask(task);

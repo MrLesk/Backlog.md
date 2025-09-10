@@ -24,7 +24,7 @@ export function serializeTask(task: Task): string {
 
 	// Compose from first-party fields when present, preserving other content
 	let contentBody = task.body;
-	if (typeof task.description === "string") {
+	if (typeof task.description === "string" && task.description.trim() !== "") {
 		contentBody = updateTaskDescription(contentBody, task.description);
 	}
 	if (Array.isArray(task.acceptanceCriteriaItems) && task.acceptanceCriteriaItems.length > 0) {
@@ -316,16 +316,23 @@ export function updateTaskDescription(content: string, description: string): str
 	}
 
 	// If no Description section found, add at the beginning after any frontmatter
-	// Look for the end of frontmatter (after ---)
+	// and drop any leading unsectioned text (to avoid duplicating old raw body).
 	const frontmatterRegex = /^---\n[\s\S]*?\n---\n\n?/;
 	const frontmatterMatch = src.match(frontmatterRegex);
 
 	if (!out && frontmatterMatch && frontmatterMatch.index !== undefined) {
 		const insertIndex = frontmatterMatch.index + frontmatterMatch[0].length;
-		out = `${src.slice(0, insertIndex)}${newSection}\n\n${src.slice(insertIndex)}`;
+		const afterFm = src.slice(insertIndex);
+		const firstHeaderIdx = afterFm.search(/^##\s+/m);
+		const rest = firstHeaderIdx >= 0 ? afterFm.slice(firstHeaderIdx).replace(/^\n+/, "") : "";
+		out = `${src.slice(0, insertIndex)}${newSection}${rest ? `\n\n${rest}` : ""}`;
 	}
 
-	// If no frontmatter found, add at the beginning
-	if (!out) out = `${newSection}\n\n${src}`;
+	// If no frontmatter found, add at the beginning and preserve other sections
+	if (!out) {
+		const firstHeaderIdx = src.search(/^##\s+/m);
+		const rest = firstHeaderIdx >= 0 ? src.slice(firstHeaderIdx).replace(/^\n+/, "") : "";
+		out = `${newSection}${rest ? `\n\n${rest}` : ""}`;
+	}
 	return useCRLF ? out.replace(/\n/g, "\r\n") : out;
 }

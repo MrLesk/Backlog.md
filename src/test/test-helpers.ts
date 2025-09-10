@@ -105,6 +105,8 @@ async function createTaskViaCore(
 						.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`))
 				: [],
 			body: options.description || "",
+			// Prefer first-party fields; serializer will compose the body
+			...(options.description && { description: options.description }),
 			...(options.parent && {
 				parentTaskId: options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`,
 			}),
@@ -113,16 +115,16 @@ async function createTaskViaCore(
 
 		// Handle acceptance criteria
 		if (options.ac) {
-			const { AcceptanceCriteriaManager } = await import("../core/acceptance-criteria.ts");
 			// Treat the entire ac string as a single criterion (matching current CLI behavior)
-			const criteria = [options.ac.trim()];
-			task.body = AcceptanceCriteriaManager.addCriteria(task.body, criteria);
+			const trimmed = options.ac.trim();
+			if (trimmed) {
+				(task as Task).acceptanceCriteriaItems = [{ index: 1, text: trimmed, checked: false }];
+			}
 		}
 
 		// Handle implementation plan
 		if (options.plan) {
-			const { updateTaskImplementationPlan } = await import("../markdown/serializer.ts");
-			task.body = updateTaskImplementationPlan(task.body, options.plan);
+			(task as Task).implementationPlan = options.plan;
 		}
 
 		// Validate dependencies exist
@@ -251,7 +253,7 @@ async function editTaskViaCore(
 		const updatedTask: Task = {
 			...existingTask,
 			...(options.title && { title: options.title }),
-			...(options.description && { body: options.description }),
+			...(options.description && { description: options.description }),
 			...(options.status && { status: options.status }),
 			...(options.assignee && { assignee: [options.assignee] }),
 			...(options.labels && {
@@ -271,17 +273,11 @@ async function editTaskViaCore(
 
 		// Update implementation notes if provided
 		if (options.notes) {
-			const { updateTaskImplementationNotes } = await import("../markdown/serializer.ts");
-			updatedTask.body = updateTaskImplementationNotes(updatedTask.body, options.notes);
-			// Keep first-party field in sync so serializer doesn't re-insert old notes
 			updatedTask.implementationNotes = options.notes;
 		}
 
 		// Update implementation plan if provided
 		if (options.plan) {
-			const { updateTaskImplementationPlan } = await import("../markdown/serializer.ts");
-			updatedTask.body = updateTaskImplementationPlan(updatedTask.body, options.plan);
-			// Keep first-party field in sync so serializer doesn't re-insert old plan
 			updatedTask.implementationPlan = options.plan;
 		}
 

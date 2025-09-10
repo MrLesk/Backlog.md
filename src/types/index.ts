@@ -18,7 +18,7 @@ export interface Task {
 	labels: string[];
 	milestone?: string;
 	dependencies: string[];
-	body: string; // Raw markdown content without frontmatter
+	readonly body: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;

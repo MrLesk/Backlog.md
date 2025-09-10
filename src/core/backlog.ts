@@ -29,14 +29,6 @@ interface BlessedScreen {
 	emit(event: string): void;
 }
 
-function ensureDescriptionHeader(body: string): string {
-	const trimmed = (body || "").trim();
-	if (trimmed === "") {
-		return "## Description";
-	}
-	return /^##\s+Description/i.test(trimmed) ? trimmed : `## Description\n\n${trimmed}`;
-}
-
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
@@ -284,7 +276,6 @@ export class Core {
 
 		normalizeAssignee(task);
 
-		task.body = ensureDescriptionHeader(task.body);
 		const filepath = await this.fs.saveTask(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -299,7 +290,6 @@ export class Core {
 		task.status = "Draft";
 		normalizeAssignee(task);
 
-		task.body = ensureDescriptionHeader(task.body);
 		const filepath = await this.fs.saveDraft(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {

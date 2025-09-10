@@ -28,7 +28,7 @@ Test plan`;
 		expect(result).not.toContain("Old description");
 	});
 
-	it("should add description section if none exists", () => {
+	it("should add description section if none exists and preserve other sections", () => {
 		const content = `---
 id: task-1
 title: Test task
@@ -46,7 +46,7 @@ title: Test task
 		expect(result.indexOf("## Description")).toBeLessThan(result.indexOf("## Acceptance Criteria"));
 	});
 
-	it("should handle content without frontmatter", () => {
+	it("should handle content without frontmatter and preserve other sections", () => {
 		const content = `## Acceptance Criteria
 
 - [ ] Test criterion`;

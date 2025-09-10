@@ -3,6 +3,12 @@
 Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)  
 When you're working on a task, you should assign it yourself: -a @codex
 
+In addition to the rules above, please consider the following:
+At the end of every task implementation, try to take a moment to see if you can simplify it. 
+When you are done implementing, you know much more about a task than when you started.
+At this point you can better judge retrospectively what can be the simplest architecture to solve the problem.
+If you can simplify the code, do it.
+
 ## Commands
 
 ### Development

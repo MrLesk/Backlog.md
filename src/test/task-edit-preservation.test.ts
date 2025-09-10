@@ -46,6 +46,7 @@ describe("Task edit section preservation", () => {
 				labels: [],
 				dependencies: [],
 				body: "Original description",
+				description: "Original description",
 			},
 			false,
 		);
@@ -98,6 +99,7 @@ describe("Task edit section preservation", () => {
 				labels: [],
 				dependencies: [],
 				body: "Test description",
+				description: "Test description",
 			},
 			false,
 		);
@@ -134,6 +136,7 @@ describe("Task edit section preservation", () => {
 				labels: [],
 				dependencies: [],
 				body: "Test description",
+				description: "Test description",
 			},
 			false,
 		);
@@ -170,6 +173,7 @@ describe("Task edit section preservation", () => {
 				labels: [],
 				dependencies: [],
 				body: "Test description",
+				description: "Test description",
 			},
 			false,
 		);

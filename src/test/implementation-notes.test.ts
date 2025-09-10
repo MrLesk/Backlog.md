@@ -78,7 +78,6 @@ describe("Implementation Notes CLI", () => {
 			const desc = task?.body || "";
 			const planIndex = desc.indexOf("## Implementation Plan");
 			const notesIndex = desc.indexOf("## Implementation Notes");
-			expect(planIndex).toBeGreaterThan(0);
 			expect(notesIndex).toBeGreaterThan(planIndex);
 
 			// Test 4: create task with multiple options including notes

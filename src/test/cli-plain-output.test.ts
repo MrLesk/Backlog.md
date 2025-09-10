@@ -39,6 +39,7 @@ describe("CLI plain output for AI agents", () => {
 				labels: [],
 				dependencies: [],
 				body: "Test description",
+				description: "Test description",
 			},
 			false,
 		);
@@ -54,6 +55,7 @@ describe("CLI plain output for AI agents", () => {
 				labels: [],
 				dependencies: [],
 				body: "Test draft description",
+				description: "Test draft description",
 			},
 			false,
 		);
