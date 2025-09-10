@@ -38,9 +38,7 @@
     },
   },
   "trustedDependencies": [
-    "@tailwindcss/oxide",
     "@biomejs/biome",
-    "@parcel/watcher",
   ],
   "packages": {
     "@babel/runtime": ["@babel/runtime@7.27.6", "", {}, "sha512-vbavdySgbTTrmFE+EsiqUTzlOr5bzlnJtUv9PynGCAKvfQqjIXbvFdumPM/GxMDfyuGMJaJAU6TO4zc1Jf1i8Q=="],

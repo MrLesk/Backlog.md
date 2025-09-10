@@ -441,6 +441,7 @@ The CLI preserves input literally. Shells do not convert `\n` inside normal quot
   - Description: `backlog task edit 42 --desc $'Line1\nLine2\n\nFinal'`
   - Plan: `backlog task edit 42 --plan $'1. A\n2. B'`
   - Notes: `backlog task edit 42 --notes $'Done A\nDoing B'`
+  - Append notes: `backlog task edit 42 --append-notes $'Progress update line 1\nLine 2'`
 - POSIX portable (printf):
   - `backlog task edit 42 --notes "$(printf 'Line1\nLine2')"`
 - PowerShell (backtick n):

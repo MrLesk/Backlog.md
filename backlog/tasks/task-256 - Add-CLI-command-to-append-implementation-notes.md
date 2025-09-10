@@ -1,11 +1,11 @@
 ---
 id: task-256
 title: Add CLI command to append implementation notes
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-06 21:34'
-updated_date: '2025-09-10 12:00'
+updated_date: '2025-09-10 18:43'
 labels: []
 dependencies: []
 ---
@@ -49,14 +49,14 @@ Non-goals
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Add edit alias: backlog task edit <id> --append-notes "..."
-- [ ] #2 If Implementation Notes exists, append with a single blank line between chunks (normalize spacing)
-- [ ] #3 If missing, create Implementation Notes section at correct position (after Plan, else AC, else Description, else end)
-- [ ] #4 Preserve literal newlines and spacing; do not add timestamps or bullets
-- [ ] #5 Keep existing --notes (create/edit) behavior as replace/set
-- [ ] #6 Support multiple --append-notes flags in one call; append all in given order
-- [ ] #7 Add tests for append via edit (existing notes, no notes, with plan present, multi-line, multiple appends)
-- [ ] #8 Update README and Agent Guidelines with examples and clarifications
+- [x] #1 Add edit alias: backlog task edit <id> --append-notes "..."
+- [x] #2 If Implementation Notes exists, append with a single blank line between chunks (normalize spacing)
+- [x] #3 If missing, create Implementation Notes section at correct position (after Plan, else AC, else Description, else end)
+- [x] #4 Preserve literal newlines and spacing; do not add timestamps or bullets
+- [x] #5 Keep existing --notes (create/edit) behavior as replace/set
+- [x] #6 Support multiple --append-notes flags in one call; append all in given order
+- [x] #7 Add tests for append via edit (existing notes, no notes, with plan present, multi-line, multiple appends)
+- [x] #8 Update README and Agent Guidelines with examples and clarifications
 <!-- AC:END -->
 
 
@@ -67,3 +67,19 @@ Non-goals
 3. Support multiple --append-notes flags per call; append in given order; preserve literal newlines; keep --notes existing create/edit behavior as replace/set
 4. Add tests: existing notes, no notes, with Plan present, multi-line content, multiple appends (via edit)
 5. Update README + Agent Guidelines with examples and newline guidance
+
+
+## Implementation Notes
+
+Implemented append behavior for Implementation Notes via `task edit --append-notes` (append-only).
+
+- Preserves literal newlines; normalizes a single blank line between appended chunks
+- Creates section at correct position: after Plan > AC > Description > end
+- Supports multiple --append-notes flags per call and repeated invocations
+- Prevents mixing replace (`--notes`) with append (`--append-notes`)
+
+Added comprehensive tests for: existing notes append, create-when-missing (with Plan), multi-line content, multiple appends, and flag conflict.
+
+Updated README and Agent Guidelines with examples and newline handling guidance.
+
+Validation: bun test (all green), bunx tsc --noEmit, and bun run check . passed.

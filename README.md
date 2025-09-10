@@ -162,17 +162,13 @@ The CLI preserves input literally; `\n` sequences are not auto‑converted. Use 
   - Description: `backlog task create "Feature" --desc $'Line1\nLine2\n\nFinal paragraph'`
   - Plan: `backlog task edit 7 --plan $'1. Research\n2. Implement'`
   - Notes: `backlog task edit 7 --notes $'Completed A\nWorking on B'`
+  - Append notes: `backlog task edit 7 --append-notes $'Added X\nAdded Y'`
 - **POSIX sh (printf)**
   - `backlog task create "Feature" --desc "$(printf 'Line1\nLine2\n\nFinal paragraph')"`
 - **PowerShell (backtick)**
   - `backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"`
 
 Tip: Help text shows Bash examples with escaped `\\n` for readability; when typing, `$'\n'` expands to a newline.
-
-#### Implementation Notes: Replace vs Append
-
-- Replace: `backlog task edit <id> --notes "..."` replaces the entire Implementation Notes section.
-- Append: `backlog task edit <id> --append-notes "..."` appends without overwriting. Supports multiple `--append-notes` flags; chunks are appended in order with a single blank line between them.
 
 ### Draft Workflow
 
