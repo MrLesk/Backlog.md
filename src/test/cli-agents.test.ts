@@ -50,15 +50,15 @@ describe("CLI agents command", () => {
 		const core = new Core(TEST_DIR);
 		const { addAgentInstructions } = await import("../index.ts");
 
-		// Test updating .cursorrules file (correct parameter order: projectRoot, git, files)
+		// Update AGENTS.md file
 		await expect(async () => {
-			await addAgentInstructions(TEST_DIR, core.gitOps, [".cursorrules"]);
+			await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"]);
 		}).not.toThrow();
 
 		// Verify the file was created
-		const cursorrules = Bun.file(join(TEST_DIR, ".cursorrules"));
-		expect(await cursorrules.exists()).toBe(true);
-		const content = await cursorrules.text();
+		const agents = Bun.file(join(TEST_DIR, "AGENTS.md"));
+		expect(await agents.exists()).toBe(true);
+		const content = await agents.text();
 		expect(content).toContain("Backlog.md");
 	});
 
@@ -73,8 +73,8 @@ describe("CLI agents command", () => {
 		}).not.toThrow();
 
 		// No files should be created when selection is empty
-		const cursorrules = Bun.file(join(TEST_DIR, ".cursorrules"));
-		expect(await cursorrules.exists()).toBe(false);
+		const agents = Bun.file(join(TEST_DIR, "AGENTS.md"));
+		expect(await agents.exists()).toBe(false);
 	});
 
 	it("should fail when not in a backlog project", async () => {
@@ -108,20 +108,20 @@ describe("CLI agents command", () => {
 
 		// Test updating multiple files
 		await expect(async () => {
-			await addAgentInstructions(TEST_DIR, core.gitOps, [".cursorrules", "CLAUDE.md"]);
+			await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md", "CLAUDE.md"]);
 		}).not.toThrow();
 
 		// Verify both files were created
-		const cursorrules = Bun.file(join(TEST_DIR, ".cursorrules"));
+		const agents2 = Bun.file(join(TEST_DIR, "AGENTS.md"));
 		const claudeMd = Bun.file(join(TEST_DIR, "CLAUDE.md"));
 
-		expect(await cursorrules.exists()).toBe(true);
+		expect(await agents2.exists()).toBe(true);
 		expect(await claudeMd.exists()).toBe(true);
 
-		const cursorContent = await cursorrules.text();
+		const agentsContent = await agents2.text();
 		const claudeContent = await claudeMd.text();
 
-		expect(cursorContent).toContain("Backlog.md");
+		expect(agentsContent).toContain("Backlog.md");
 		expect(claudeContent).toContain("Backlog.md");
 	});
 
@@ -131,20 +131,20 @@ describe("CLI agents command", () => {
 		const { addAgentInstructions } = await import("../index.ts");
 
 		// First, create a file
-		await addAgentInstructions(TEST_DIR, core.gitOps, [".cursorrules"]);
+		await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"]);
 
-		const cursorrules = Bun.file(join(TEST_DIR, ".cursorrules"));
-		expect(await cursorrules.exists()).toBe(true);
-		const _originalContent = await cursorrules.text();
+		const agents3 = Bun.file(join(TEST_DIR, "AGENTS.md"));
+		expect(await agents3.exists()).toBe(true);
+		const _originalContent = await agents3.text();
 
 		// Update it again - should be idempotent
 		await expect(async () => {
-			await addAgentInstructions(TEST_DIR, core.gitOps, [".cursorrules"]);
+			await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"]);
 		}).not.toThrow();
 
 		// File should still exist and have consistent content
-		expect(await cursorrules.exists()).toBe(true);
-		const updatedContent = await cursorrules.text();
+		expect(await agents3.exists()).toBe(true);
+		const updatedContent = await agents3.text();
 		expect(updatedContent).toContain("Backlog.md");
 		// Should be idempotent - content should be similar (may have minor differences)
 		expect(updatedContent.length).toBeGreaterThan(0);

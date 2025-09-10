@@ -7,7 +7,6 @@ import {
 	CLAUDE_AGENT_CONTENT,
 	CLAUDE_GUIDELINES,
 	COPILOT_GUIDELINES,
-	CURSOR_GUIDELINES,
 	GEMINI_GUIDELINES,
 	README_GUIDELINES,
 } from "./constants/index.ts";
@@ -16,7 +15,6 @@ import type { GitOperations } from "./git/operations.ts";
 export type AgentInstructionFile =
 	| "AGENTS.md"
 	| "CLAUDE.md"
-	| ".cursorrules"
 	| "GEMINI.md"
 	| ".github/copilot-instructions.md"
 	| "README.md";
@@ -70,19 +68,12 @@ function wrapWithMarkers(content: string, fileName: string): string {
 export async function addAgentInstructions(
 	projectRoot: string,
 	git?: GitOperations,
-	files: AgentInstructionFile[] = [
-		"AGENTS.md",
-		"CLAUDE.md",
-		".cursorrules",
-		"GEMINI.md",
-		".github/copilot-instructions.md",
-	],
+	files: AgentInstructionFile[] = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"],
 	autoCommit = false,
 ): Promise<void> {
 	const mapping: Record<AgentInstructionFile, string> = {
 		"AGENTS.md": AGENT_GUIDELINES,
 		"CLAUDE.md": CLAUDE_GUIDELINES,
-		".cursorrules": CURSOR_GUIDELINES,
 		"GEMINI.md": GEMINI_GUIDELINES,
 		".github/copilot-instructions.md": COPILOT_GUIDELINES,
 		"README.md": README_GUIDELINES,

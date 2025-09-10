@@ -148,25 +148,22 @@ describe("CLI Integration", () => {
 			// Verify agent files were created
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-			const cursorFile = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
+			// .cursorrules removed; Cursor now uses AGENTS.md
 			const geminiFile = await Bun.file(join(TEST_DIR, "GEMINI.md")).exists();
 			const copilotFile = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).exists();
 
 			expect(agentsFile).toBe(true);
 			expect(claudeFile).toBe(true);
-			expect(cursorFile).toBe(true);
 			expect(geminiFile).toBe(true);
 			expect(copilotFile).toBe(true);
 
 			// Verify content
 			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 			const claudeContent = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
-			const cursorContent = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
 			const geminiContent = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
 			const copilotContent = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
 			expect(agentsContent.length).toBeGreaterThan(0);
 			expect(claudeContent.length).toBeGreaterThan(0);
-			expect(cursorContent.length).toBeGreaterThan(0);
 			expect(geminiContent.length).toBeGreaterThan(0);
 			expect(copilotContent.length).toBeGreaterThan(0);
 		});
@@ -189,12 +186,29 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions .cursorrules,none`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions agents,none`.cwd(TEST_DIR).quiet();
 
-			const cursorFile = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
-			expect(cursorFile).toBe(true);
-			expect(agentsFile).toBe(false);
+			expect(agentsFile).toBe(true);
+		});
+
+		it("should error on invalid agent instruction value", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			let failed = false;
+			try {
+				await $`bun ${CLI_PATH} init InvalidProj --defaults --agent-instructions notreal`.cwd(TEST_DIR).quiet();
+			} catch (e) {
+				failed = true;
+				const err = e as { stdout?: unknown; stderr?: unknown };
+				const out = String(err.stdout ?? "") + String(err.stderr ?? "");
+				expect(out).toContain("Invalid agent instruction: notreal");
+				expect(out).toContain("Valid options are: cursor, claude, agents, gemini, copilot, none");
+			}
+
+			expect(failed).toBe(true);
 		});
 	});
 

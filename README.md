@@ -111,7 +111,7 @@ The `backlog init` command provides comprehensive project setup with interactive
 - **Default editor** - editor command for opening tasks (detects from environment)
 - **Remote operations** - enable/disable fetching tasks from remote branches
 - **Web UI settings** - port and browser auto-open preferences
-- **Agent guidelines** - AI agent instruction files (CLAUDE.md, .cursorrules, etc.)
+- **Agent guidelines** - AI agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot)
 - **Claude Code agent** - optional Backlog.md agent for enhanced task management (defaults to not installed; opt-in during `init` or pass `--install-claude-agent true`)
 
 ### Documentation
@@ -220,7 +220,7 @@ Tip: Help text shows Bash examples with escaped `\\n` for readability; when typi
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Update agent files | `backlog agents --update-instructions` (updates .cursorrules, CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
+| Update agent files | `backlog agents --update-instructions` (updates CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
 
 ### Maintenance
 

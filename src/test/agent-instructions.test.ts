@@ -7,7 +7,6 @@ import {
 	addAgentInstructions,
 	CLAUDE_GUIDELINES,
 	COPILOT_GUIDELINES,
-	CURSOR_GUIDELINES,
 	GEMINI_GUIDELINES,
 	README_GUIDELINES,
 } from "../index.ts";
@@ -34,7 +33,6 @@ describe("addAgentInstructions", () => {
 		await addAgentInstructions(TEST_DIR);
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		const claude = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
-		const cursor = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
 		const gemini = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
 		const copilot = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
 
@@ -46,10 +44,6 @@ describe("addAgentInstructions", () => {
 		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
 		expect(claude).toContain(await _loadAgentGuideline(CLAUDE_GUIDELINES));
-
-		expect(cursor).toContain("# === BACKLOG.MD GUIDELINES START ===");
-		expect(cursor).toContain("# === BACKLOG.MD GUIDELINES END ===");
-		expect(cursor).toContain(await _loadAgentGuideline(CURSOR_GUIDELINES));
 
 		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
@@ -75,14 +69,12 @@ describe("addAgentInstructions", () => {
 
 		const agentsExists = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 		const claudeExists = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-		const cursorExists = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
 		const geminiExists = await Bun.file(join(TEST_DIR, "GEMINI.md")).exists();
 		const copilotExists = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).exists();
 		const readme = await Bun.file(join(TEST_DIR, "README.md")).text();
 
 		expect(agentsExists).toBe(true);
 		expect(claudeExists).toBe(false);
-		expect(cursorExists).toBe(false);
 		expect(geminiExists).toBe(false);
 		expect(copilotExists).toBe(false);
 		expect(readme).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
@@ -134,13 +126,6 @@ describe("addAgentInstructions", () => {
 
 	it("handles different file types with appropriate markers", async () => {
 		const existingContent = "existing content\n";
-
-		// Test .cursorrules (no HTML comments)
-		await Bun.write(join(TEST_DIR, ".cursorrules"), existingContent);
-		await addAgentInstructions(TEST_DIR, undefined, [".cursorrules"]);
-		const cursorContent = await Bun.file(join(TEST_DIR, ".cursorrules")).text();
-		expect(cursorContent).toContain("# === BACKLOG.MD GUIDELINES START ===");
-		expect(cursorContent).toContain("# === BACKLOG.MD GUIDELINES END ===");
 
 		// Test AGENTS.md (markdown with HTML comments)
 		await Bun.write(join(TEST_DIR, "AGENTS.md"), existingContent);
