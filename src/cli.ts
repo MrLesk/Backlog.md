@@ -545,17 +545,19 @@ program
 					".github/copilot-instructions.md",
 				] as const;
 
-				let files: AgentInstructionFile[] = [];
+				type AgentSelection = AgentInstructionFile | "none";
+				let files: AgentSelection[] = [];
 
 				// Use --agent-instructions if provided, otherwise prompt
 				if (options.agentInstructions) {
 					// Map friendly names to actual file names
-					const nameMap: Record<string, string> = {
+					const nameMap: Record<string, AgentSelection> = {
 						cursor: ".cursorrules",
 						claude: "CLAUDE.md",
 						agents: "AGENTS.md",
 						gemini: "GEMINI.md",
 						copilot: ".github/copilot-instructions.md",
+						none: "none",
 						// Also support the full file names
 						".cursorrules": ".cursorrules",
 						"CLAUDE.md": "CLAUDE.md",
@@ -566,46 +568,70 @@ program
 
 					// Parse comma-separated agent instructions
 					const requestedInstructions = options.agentInstructions.split(",").map((f) => f.trim().toLowerCase());
-					const mappedFiles: string[] = [];
+					const mappedFiles: AgentSelection[] = [];
 
 					// Validate and map instruction names
 					for (const instruction of requestedInstructions) {
 						const mappedFile = nameMap[instruction];
 						if (!mappedFile) {
 							console.error(`Invalid agent instruction: ${instruction}`);
-							console.error("Valid options are: cursor, claude, agents, gemini, copilot");
+							console.error("Valid options are: cursor, claude, agents, gemini, copilot, none");
 							process.exit(1);
 						}
 						mappedFiles.push(mappedFile);
 					}
 
-					files = mappedFiles as AgentInstructionFile[];
+					files = mappedFiles;
 				} else if (isNonInteractive) {
 					// No agent instructions in non-interactive mode if not specified
 					files = [];
 				} else {
 					// Interactive prompt
-					const { files: selected } = await prompts(
-						{
-							type: "multiselect",
-							name: "files",
-							message: "Select agent instruction files to update (space to select)",
-							choices: agentOptions.map((name) => ({
-								title: name === ".github/copilot-instructions.md" ? "Copilot" : name,
-								value: name,
-							})),
-							hint: "Space to select, Enter to confirm",
-							instructions: false,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
+					while (true) {
+						const { files: selected } = await prompts(
+							{
+								type: "multiselect",
+								name: "files",
+								message: "Select one or more agent instruction files to update (space to toggle)",
+								choices: [
+									...agentOptions.map((name) => ({
+										title: name === ".github/copilot-instructions.md" ? "Copilot" : name,
+										value: name,
+									})),
+									{
+										title: "Do not add instructions (danger, this will make backlog not usable with ai agents)",
+										value: "none",
+									},
+								],
+								hint: "Space to select, Enter to confirm. Multiple selections allowed",
+								instructions: false,
 							},
-						},
-					);
-					files = (selected ?? []) as AgentInstructionFile[];
+							{
+								onCancel: () => {
+									console.log("Aborting initialization.");
+									process.exit(1);
+								},
+							},
+						);
+
+						const chosen = (selected ?? []) as AgentSelection[];
+						if (!chosen.length) {
+							console.log("Please select at least one option (press space to select).");
+							continue;
+						}
+						files = chosen;
+						break;
+					}
 				}
+
+				if (files.includes("none")) {
+					if (files.length > 1) {
+						files = files.filter((f) => f !== "none");
+					} else {
+						files = [];
+					}
+				}
+				const agentFiles = files as AgentInstructionFile[];
 
 				// 7. Claude agent installation prompt
 				let claudeAgentPrompt: { installClaudeAgent: boolean };
@@ -691,9 +717,9 @@ program
 				}
 
 				// Add agent instruction files if selected
-				if (files.length > 0) {
-					await addAgentInstructions(cwd, core.gitOps, files, config.autoCommit);
-					console.log(`✓ Created agent instruction files: ${files.join(", ")}`);
+				if (agentFiles.length > 0) {
+					await addAgentInstructions(cwd, core.gitOps, agentFiles, config.autoCommit);
+					console.log(`✓ Created agent instruction files: ${agentFiles.join(", ")}`);
 				}
 
 				// Install Claude agent if selected

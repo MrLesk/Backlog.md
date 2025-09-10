@@ -170,6 +170,32 @@ describe("CLI Integration", () => {
 			expect(geminiContent.length).toBeGreaterThan(0);
 			expect(copilotContent.length).toBeGreaterThan(0);
 		});
+
+		it("should allow skipping agent instructions with 'none' selection", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`.cwd(TEST_DIR).quiet();
+
+			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
+			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
+			expect(agentsFile).toBe(false);
+			expect(claudeFile).toBe(false);
+		});
+
+		it("should ignore 'none' when other agent instructions are provided", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions .cursorrules,none`.cwd(TEST_DIR).quiet();
+
+			const cursorFile = await Bun.file(join(TEST_DIR, ".cursorrules")).exists();
+			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
+			expect(cursorFile).toBe(true);
+			expect(agentsFile).toBe(false);
+		});
 	});
 
 	describe("git integration", () => {
