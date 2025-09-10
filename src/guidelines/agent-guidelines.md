@@ -146,7 +146,7 @@ Summary of what was done.
 | Remove AC #3            | `backlog task edit 42 --remove-ac 3`                     |
 | Add Plan                | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
 | Add Notes (replace)     | `backlog task edit 42 --notes "What I did"`              |
-| Append Notes            | `backlog task notes append 42 --notes "Another note"` or `backlog task edit 42 --append-notes "Another note"` |
+| Append Notes            | `backlog task edit 42 --append-notes "Another note"` |
 
 ---
 
@@ -281,12 +281,10 @@ finish them.
 
 When you are done implementing a tasks you need to prepare a PR description for it.
 Because you cannot create PRs directly, write the PR as a clean description in the task notes.
-Use append commands to add notes progressively during implementation:
+Append notes progressively during implementation using `--append-notes`:
 
 ```
-backlog task notes append 42 --notes "Implemented X" --notes "Added tests"
-# or
-backlog task edit 42 --append-notes "Implemented X"
+backlog task edit 42 --append-notes "Implemented X" --append-notes "Added tests"
 ```
 
 ```bash
@@ -301,7 +299,7 @@ implementation.
 - When you begin work, switch to edit, set the task in progress and assign to yourself
   `backlog task edit <id> -s "In Progress" -a "..."`.
 - Think about how you would solve the task and add the plan: `backlog task edit <id> --plan "..."`.
-- Add Implementation Notes only after completing the work: `backlog task edit <id> --notes "..."` (replace) or append progressively using `task notes append` / `--append-notes`.
+- Add Implementation Notes only after completing the work: `backlog task edit <id> --notes "..."` (replace) or append progressively using `--append-notes`.
 
 ## Phase discipline: What goes where
 

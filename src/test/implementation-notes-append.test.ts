@@ -39,7 +39,7 @@ describe("Implementation Notes - append", () => {
 		};
 		await core.createTask(task, false);
 
-		const result = await $`bun ${[CLI_PATH, "task", "notes", "append", "1", "--notes", "Second block"]}`
+		const result = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Second block"]}`
 			.cwd(TEST_DIR)
 			.quiet();
 		expect(result.exitCode).toBe(0);
@@ -62,7 +62,7 @@ describe("Implementation Notes - append", () => {
 		};
 		await core.createTask(t, false);
 
-		const res = await $`bun ${[CLI_PATH, "task", "notes", "append", "1", "--notes", "Followed plan"]}`
+		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Followed plan"]}`
 			.cwd(TEST_DIR)
 			.quiet();
 		expect(res.exitCode).toBe(0);
@@ -75,7 +75,7 @@ describe("Implementation Notes - append", () => {
 		expect(notesIdx).toBeGreaterThan(planIdx);
 	});
 
-	it("supports multiple --notes flags in order and alias 'add'", async () => {
+	it("supports multiple --append-notes flags in order", async () => {
 		const core = new Core(TEST_DIR);
 		const task: Task = {
 			id: "task-1",
@@ -89,7 +89,7 @@ describe("Implementation Notes - append", () => {
 		};
 		await core.createTask(task, false);
 
-		const res = await $`bun ${[CLI_PATH, "task", "notes", "add", "1", "--notes", "First", "--notes", "Second"]}`
+		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "First", "--append-notes", "Second"]}`
 			.cwd(TEST_DIR)
 			.quiet();
 		expect(res.exitCode).toBe(0);

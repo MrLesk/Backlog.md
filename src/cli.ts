@@ -1475,51 +1475,7 @@ taskCmd
 		console.log(`Updated task ${task.id}`);
 	});
 
-// Task notes subcommand group
-const notesCmd = taskCmd.command("notes");
-
-notesCmd
-	.command("append <taskId>")
-	.alias("add")
-	.description("append to Implementation Notes section")
-	.option("--notes <text>", "note chunk to append (can be used multiple times)", createMultiValueAccumulator())
-	.option("--plain", "use plain text output")
-	.action(async (taskId: string, options) => {
-		const cwd = process.cwd();
-		const core = new Core(cwd);
-		const task = await core.filesystem.loadTask(taskId);
-		if (!task) {
-			console.error(`Task ${taskId} not found.`);
-			process.exitCode = 1;
-			return;
-		}
-
-		const chunks = options.notes ? (Array.isArray(options.notes) ? options.notes : [options.notes]) : [];
-		if (chunks.length === 0) {
-			console.error("Please provide at least one --notes value to append.");
-			process.exitCode = 1;
-			return;
-		}
-
-		const { appendTaskImplementationNotes } = await import("./markdown/serializer.ts");
-		const updatedBody = appendTaskImplementationNotes(task.body, chunks);
-		task.body = updatedBody;
-		(task as { implementationNotes?: string }).implementationNotes = undefined;
-
-		await core.updateTask(task);
-
-		const isPlainFlag = options.plain || process.argv.includes("--plain");
-		if (isPlainFlag) {
-			const filePath = await getTaskPath(task.id, core);
-			if (filePath) {
-				const content = await Bun.file(filePath).text();
-				console.log(formatTaskPlainText(task, content, filePath));
-				return;
-			}
-		}
-
-		console.log(`Updated task ${task.id}`);
-	});
+// Note: Implementation notes appending is handled via `task edit --append-notes` only.
 
 taskCmd
 	.command("view <taskId>")
