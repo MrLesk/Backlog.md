@@ -3,6 +3,10 @@
 Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)  
 When you're working on a task, you should assign it yourself: -a @codex
 
+In addition to the rules above, please follow these guidelines when working on tasks:
+1) After you add the implementation plan, ask Gemini CLI to review it by running `gemini "review plan <task-id>"`.
+2) After you finish the implementation, ask Gemini CLI to review it by running `gemini "review code <task-id>"`.
+
 ## Commands
 
 ### Development

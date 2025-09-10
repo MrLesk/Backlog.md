@@ -149,7 +149,8 @@ When re-initializing an existing project, all current configuration values are p
 | Check multiple ACs | `backlog task edit 7 --check-ac 1 --check-ac 3` (marks AC #1 and #3 as done) |
 | Uncheck AC  | `backlog task edit 7 --uncheck-ac 3` (marks AC #3 as not done) |
 | Mixed AC operations | `backlog task edit 7 --check-ac 1 --uncheck-ac 2 --remove-ac 4` |
-| Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` |
+| Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` (replaces existing) |
+| Append notes | `backlog task notes append 7 --notes "New findings"` or `backlog task edit 7 --append-notes "New findings"` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Archive     | `backlog task archive 7`                             |
 
@@ -167,6 +168,12 @@ The CLI preserves input literally; `\n` sequences are not auto‑converted. Use 
   - `backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"`
 
 Tip: Help text shows Bash examples with escaped `\\n` for readability; when typing, `$'\n'` expands to a newline.
+
+#### Implementation Notes: Replace vs Append
+
+- Use `backlog task edit <id> --notes "..."` to replace the entire Implementation Notes section.
+- Use `backlog task notes append <id> --notes "..."` (alias: `add`) to append without overwriting. Supports multiple `--notes` flags; chunks are appended in order with a single blank line between them.
+- Alternatively, `backlog task edit <id> --append-notes "..."` appends via the edit command.
 
 ### Draft Workflow
 

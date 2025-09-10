@@ -1267,7 +1267,12 @@ taskCmd
 	)
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "set implementation plan")
-	.option("--notes <text>", "add implementation notes")
+	.option("--notes <text>", "set implementation notes (replaces existing)")
+	.option(
+		"--append-notes <text>",
+		"append to implementation notes (can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--depends-on <taskIds>",
 		"set task dependencies (comma-separated or use multiple times)",
@@ -1432,14 +1437,77 @@ taskCmd
 			task.implementationPlan = String(options.plan);
 		}
 
-		// Handle implementation notes
+		// Handle implementation notes - replace or append
+		if (options.appendNotes && options.notes) {
+			console.error("Cannot use --notes (replace) together with --append-notes (append). Choose one.");
+			process.exitCode = 1;
+			return;
+		}
+
 		if (options.notes) {
+			// Replace semantics
 			task.implementationNotes = String(options.notes);
+		}
+
+		if (options.appendNotes) {
+			const appends = Array.isArray(options.appendNotes) ? options.appendNotes : [options.appendNotes];
+			const { appendTaskImplementationNotes } = await import("./markdown/serializer.ts");
+			const updatedBody = appendTaskImplementationNotes(task.body, appends);
+			// Update body directly and prevent serializer from overwriting with old parsed field
+			task.body = updatedBody;
+			// Clear field so serializer leaves Implementation Notes as in body
+			(task as { implementationNotes?: string }).implementationNotes = undefined;
 		}
 
 		await core.updateTask(task);
 
 		// Workaround for bun compile issue with commander options
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		if (isPlainFlag) {
+			const filePath = await getTaskPath(task.id, core);
+			if (filePath) {
+				const content = await Bun.file(filePath).text();
+				console.log(formatTaskPlainText(task, content, filePath));
+				return;
+			}
+		}
+
+		console.log(`Updated task ${task.id}`);
+	});
+
+// Task notes subcommand group
+const notesCmd = taskCmd.command("notes");
+
+notesCmd
+	.command("append <taskId>")
+	.alias("add")
+	.description("append to Implementation Notes section")
+	.option("--notes <text>", "note chunk to append (can be used multiple times)", createMultiValueAccumulator())
+	.option("--plain", "use plain text output")
+	.action(async (taskId: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const task = await core.filesystem.loadTask(taskId);
+		if (!task) {
+			console.error(`Task ${taskId} not found.`);
+			process.exitCode = 1;
+			return;
+		}
+
+		const chunks = options.notes ? (Array.isArray(options.notes) ? options.notes : [options.notes]) : [];
+		if (chunks.length === 0) {
+			console.error("Please provide at least one --notes value to append.");
+			process.exitCode = 1;
+			return;
+		}
+
+		const { appendTaskImplementationNotes } = await import("./markdown/serializer.ts");
+		const updatedBody = appendTaskImplementationNotes(task.body, chunks);
+		task.body = updatedBody;
+		(task as { implementationNotes?: string }).implementationNotes = undefined;
+
+		await core.updateTask(task);
+
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
 			const filePath = await getTaskPath(task.id, core);

@@ -1,9 +1,11 @@
 ---
 id: task-256
 title: Add CLI command to append implementation notes
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-06 21:34'
+updated_date: '2025-09-10 11:25'
 labels: []
 dependencies: []
 ---
@@ -58,3 +60,12 @@ Non-goals
 - [ ] #9 Add tests for append behavior (existing notes, no notes, with plan present, multi-line, multiple appends, alias parity)
 - [ ] #10 Update README and Agent Guidelines with examples and clarifications
 <!-- AC:END -->
+
+## Implementation Plan
+
+1. Add `task notes append` command + alias `add`
+2. Add `--append-notes` to `task edit` (append, not replace)
+3. Implement append logic: detect/insert Implementation Notes after Plan, else AC, else Description, else end; normalize with exactly one blank line between chunks
+4. Support multiple `--notes` flags per call; append in given order; preserve literal newlines; keep `--notes` existing create/edit behavior as replace/set
+5. Add tests: existing notes, no notes, with Plan present, multi-line content, multiple appends, alias parity
+6. Update README + Agent Guidelines with examples and newline guidance
