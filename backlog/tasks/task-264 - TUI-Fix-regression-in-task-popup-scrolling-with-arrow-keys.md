@@ -1,11 +1,11 @@
 ---
 id: task-264
 title: 'TUI: Fix regression in task popup scrolling with arrow keys'
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-12 20:42'
-updated_date: '2025-09-12 21:04'
+updated_date: '2025-09-12 21:06'
 labels:
   - bug
   - tui
@@ -24,7 +24,7 @@ There is a regression in the task popup in the TUI where scrolling with up and d
 - [x] #2 Down arrow key scrolls content down in task popup
 - [x] #3 Esc key still closes the popup
 - [x] #4 Scrolling behavior matches task detail view
-- [ ] #5 No regression in other TUI functionality
+- [x] #5 No regression in other TUI functionality
 <!-- AC:END -->
 
 
