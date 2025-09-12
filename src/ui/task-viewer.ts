@@ -779,7 +779,7 @@ export async function createTaskPopup(
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
-	contentArea: BoxInterface;
+	contentArea: ScrollableTextInterface;
 	close: () => void;
 } | null> {
 	if (output.isTTY === false) return null;
@@ -860,14 +860,12 @@ export async function createTaskPopup(
 	});
 
 	// Scrollable body container beneath the header
-	const contentArea = box({
+	const contentArea = scrollabletext({
 		parent: popup,
 		top: (typeof headerBox.bottom === "number" ? headerBox.bottom : 0) + 1,
 		left: 0,
 		width: "100%",
 		bottom: 0,
-		scrollable: true,
-		alwaysScroll: true,
 		keys: true,
 		vi: true,
 		mouse: true,
