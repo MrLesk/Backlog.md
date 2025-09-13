@@ -204,6 +204,11 @@ export class FileSystem {
 				tasks = tasks.filter((t) => t.assignee.includes(assignee));
 			}
 
+			if (filter?.priority) {
+				const priorityLower = filter.priority.toLowerCase();
+				tasks = tasks.filter((t) => t.priority?.toLowerCase() === priorityLower);
+			}
+
 			return sortByTaskId(tasks);
 		} catch (_error) {
 			return [];

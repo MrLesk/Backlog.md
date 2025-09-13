@@ -9,6 +9,7 @@ import { getTaskPath } from "../utils/task-path.ts";
 import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
 import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
 import { createGenericList } from "./components/generic-list.ts";
+import { createTaskFilters, type FilterState } from "./components/task-filters.ts";
 import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
@@ -119,7 +120,7 @@ export async function viewTaskEnhanced(
 	// Get project root and load tasks
 	const cwd = process.cwd();
 	const core = options.core || new Core(cwd);
-	const allTasks = (options.tasks || (await core.filesystem.listTasks()))
+	let allTasks = (options.tasks || (await core.filesystem.listTasks()))
 		// Extra safeguard: filter out any tasks without proper IDs
 		.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
 
@@ -170,6 +171,58 @@ export async function viewTaskEnhanced(
 		label: "\u00A0Details\u00A0",
 	});
 
+	// Create filters component (initially hidden)
+	const taskFilters = createTaskFilters({
+		parent: container,
+		core,
+		left: "20%",
+		top: "30%",
+		width: "60%",
+		height: 8,
+		onFilterChange: async (filter: FilterState) => {
+			await applyFilters(filter);
+		},
+		initialFilter: {
+			status: options.viewSwitcher?.getState().filter?.status,
+			priority: options.viewSwitcher?.getState().filter?.priority,
+		},
+	});
+
+	// Create task list variable (will be initialized below)
+	let taskList: ReturnType<typeof createGenericList<Task>>;
+
+	// Apply filters to task list
+	async function applyFilters(filter: FilterState) {
+		try {
+			// Create filter for filesystem query
+			const fsFilter: { status?: string; priority?: string } = {};
+			if (filter.status) fsFilter.status = filter.status;
+			if (filter.priority) fsFilter.priority = filter.priority;
+
+			// Reload tasks with filter
+			const filteredTasks = await core.filesystem.listTasks(fsFilter);
+			allTasks = filteredTasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+
+			// Update task list
+			taskList.updateItems(allTasks);
+
+			// Update view switcher state
+			if (options.viewSwitcher) {
+				options.viewSwitcher.updateState({
+					filter: {
+						...options.viewSwitcher.getState().filter,
+						status: filter.status,
+						priority: filter.priority,
+					},
+				});
+			}
+
+			screen.render();
+		} catch {
+			// Handle error silently
+		}
+	}
+
 	// Create task list using generic list component
 	async function applySelection(selectedTask: Task | null) {
 		if (!selectedTask) return;
@@ -189,7 +242,7 @@ export async function viewTaskEnhanced(
 		}
 		refreshDetailPane();
 	}
-	const taskList = createGenericList<Task>({
+	taskList = createGenericList<Task>({
 		parent: taskListPane,
 		title: "", // Empty title since pane has label
 		items: allTasks,
@@ -522,8 +575,8 @@ export async function viewTaskEnhanced(
 
 		// Initialize help bar updater now that help bar exists
 		updateHelpBar = function updateHelpBar() {
-			// Minimal footer: hide filter/move badges and extra controls
-			helpBar.setContent(" ↑/↓ navigate · ← task list · → detail · E edit · q/Esc quit ");
+			// Updated footer to include filter controls
+			helpBar.setContent(" ↑/↓ navigate · ← task list · → detail · F filters · E edit · q/Esc quit ");
 		};
 
 		updateHelpBar();
@@ -595,6 +648,17 @@ export async function viewTaskEnhanced(
 			updateFocus(1); // Always go to detail pane
 		});
 
+		// Toggle filters
+		screen.key(["f", "F"], () => {
+			if (taskFilters.isVisible()) {
+				taskFilters.hide();
+				// Return focus to previous pane
+				updateFocus(focusIndex);
+			} else {
+				taskFilters.show();
+			}
+		});
+
 		// Edit in external editor with proper TUI handoff
 		screen.key(["e", "E"], async () => {
 			if (!currentSelectedTask) return;
@@ -627,6 +691,12 @@ export async function viewTaskEnhanced(
 
 		// Exit keys
 		screen.key(["escape", "q", "C-c"], () => {
+			// If filters are visible, hide them instead of exiting
+			if (taskFilters.isVisible()) {
+				taskFilters.hide();
+				updateFocus(focusIndex);
+				return;
+			}
 			screen.destroy();
 			resolve();
 		});

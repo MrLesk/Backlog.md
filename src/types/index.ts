@@ -38,6 +38,7 @@ export interface Task {
 export interface TaskListFilter {
 	status?: string;
 	assignee?: string;
+	priority?: string;
 }
 
 export interface Decision {
