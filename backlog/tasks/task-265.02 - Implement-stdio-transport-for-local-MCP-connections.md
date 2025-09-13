@@ -1,237 +1,164 @@
 ---
 id: task-265.02
-title: Create MCP test infrastructure following TDD principles
+title: Implement stdio transport for local MCP connections
 status: To Do
 assignee: []
 created_date: '2025-09-13 18:52'
+updated_date: '2025-09-13 21:15'
 labels:
   - mcp
-  - testing
-  - infrastructure
-  - tdd
+  - transport
+  - stdio
+  - local
 dependencies: ['task-265.01']
 parent_task_id: task-265
 ---
 
 ## Description
 
-Create comprehensive test infrastructure for MCP development following true TDD principles. Write failing tests first, then create test utilities and mock clients for automated verification.
+Implement stdio transport for the existing MCP server to enable local AI agents to connect via stdin/stdout. Leverage the comprehensive server infrastructure already built in task-265.01.
+
+**Note**: Test infrastructure already exists at `/src/test/mcp-server.test.ts` with 14 passing tests, so this task focuses on adding real transport functionality to the existing server.
 
 ### Implementation Details
 
-**Test Infrastructure Structure (`/src/mcp/__tests__/`):**
-```
-/src/mcp/__tests__/
-├── test-utils.ts           # MCP-specific test utilities
-├── mcp-test-client.ts      # Mock MCP client for testing (no CLI dependency)
-├── mock-agent.ts           # Mock AI agent for testing workflows
-├── fixtures/               # Test data and scenarios
-│   ├── test-tasks.json
-│   ├── test-board-states.json
-│   └── test-scenarios.ts
-├── unit/                   # Unit tests
-│   └── server.test.ts
-└── integration/            # Integration tests (implemented later)
-    └── workflows.test.ts
-```
+Build on the existing comprehensive MCP server infrastructure to add stdio transport capabilities.
 
-**TDD Approach - Write Failing Tests First:**
+**Current Foundation (from task-265.01):**
+- Complete `McpServer` class with handler setup
+- Request schema handlers for tools/resources/prompts
+- Maps for managing handlers
+- Comprehensive test suite with 14 passing tests
 
-**1. Server Unit Tests (`/src/mcp/__tests__/unit/server.test.ts`):**
+**1. Update Server Transport Methods (`/src/mcp/server.ts`):**
 ```typescript
-import { describe, test, expect, beforeEach } from 'bun:test';
-import { McpServer } from '../../server.ts';
-import { createMcpTestProject } from '../test-utils.ts';
+// Add to existing McpServer class
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-describe('McpServer', () => {
-  let server: McpServer;
-  let projectPath: string;
+export class McpServer extends Core {
+	// ... existing code ...
+	private transport?: StdioServerTransport;
 
-  beforeEach(async () => {
-    const project = await createMcpTestProject();
-    projectPath = project.path;
-    server = new McpServer(projectPath);
-  });
+	// Replace the stub method with real implementation
+	public async connect(transportType: TransportType, options?: Record<string, unknown>): Promise<void> {
+		if (transportType === "stdio") {
+			await this.startStdioTransport();
+		} else if (transportType === "sse") {
+			throw new Error("SSE transport not yet implemented - will be added in task 265.08");
+		} else {
+			throw new Error(`Unknown transport type: ${transportType}`);
+		}
+	}
 
-  test('can be instantiated with project path', () => {
-    expect(server).toBeInstanceOf(McpServer);
-    expect(server).toHaveProperty('getConfig'); // Inherited from Core
-  });
+	private async startStdioTransport(): Promise<void> {
+		this.transport = new StdioServerTransport();
+		await this.server.connect(this.transport);
+		console.error("MCP server running on stdio"); // Log to stderr to avoid stdout interference
+	}
 
-  test('has MCP server capabilities', async () => {
-    const capabilities = await server.getCapabilities();
-    expect(capabilities).toHaveProperty('tools');
-    expect(capabilities).toHaveProperty('resources');
-  });
+	public async start(): Promise<void> {
+		if (!this.transport) {
+			throw new Error("No transport connected. Call connect() first.");
+		}
+		// Server automatically starts when transport connects
+	}
 
-  test('can initialize without errors', async () => {
-    await expect(server.initialize()).resolves.toBeUndefined();
-  });
+	public async stop(): Promise<void> {
+		if (this.server) {
+			await this.server.close();
+		}
+	}
+}
+```
 
-  test('transport methods throw appropriate errors when not implemented', async () => {
-    await expect(server.startTransport('stdio')).rejects.toThrow('Transport not implemented yet');
-    await expect(server.startTransport('http')).rejects.toThrow('Transport not implemented yet');
-  });
+**2. Add CLI Command for MCP Server (`/src/cli.ts`):**
+```typescript
+// Add to existing CLI structure
+import { McpServer } from './mcp/server.ts';
+
+// Add MCP command group
+program
+	.command('mcp')
+	.description('MCP server management')
+	.addCommand(
+		new Command('start')
+			.description('Start MCP server with stdio transport')
+			.option('-d, --debug', 'Enable debug logging', false)
+			.action(async (options) => {
+				try {
+					const server = new McpServer(process.cwd());
+					if (options.debug) {
+						console.error('Starting MCP server in debug mode');
+					}
+					await server.connect('stdio');
+					await server.start();
+				} catch (error) {
+					console.error('Failed to start MCP server:', error.message);
+					process.exit(1);
+				}
+			})
+	);
+```
+
+**3. Update Tests for Transport (`/src/test/mcp-server.test.ts`):**
+```typescript
+// Add to existing test file
+describe('transport methods', () => {
+	it('should connect with stdio transport', async () => {
+		// Test will verify that stdio transport can be connected
+		// without actually starting the server (to avoid blocking tests)
+		const server = new McpServer(TEST_DIR);
+
+		// Mock the transport for testing
+		const connectSpy = jest.fn();
+		server.getServer().connect = connectSpy;
+
+		await server.connect('stdio');
+		expect(connectSpy).toHaveBeenCalled();
+	});
+
+	it('should throw error for unimplemented SSE transport', async () => {
+		const server = new McpServer(TEST_DIR);
+		await expect(server.connect('sse')).rejects.toThrow('SSE transport not yet implemented');
+	});
+
+	it('should require transport before starting', async () => {
+		const server = new McpServer(TEST_DIR);
+		await expect(server.start()).rejects.toThrow('No transport connected');
+	});
 });
 ```
 
-**2. Mock MCP Client (No CLI Dependency) (`/src/mcp/__tests__/mcp-test-client.ts`):**
-```typescript
-import type { McpToolRequest, McpToolResponse, McpResourceRequest, McpResourceResponse } from '../types.ts';
+**4. Usage Example:**
+```bash
+# Start MCP server with stdio transport
+backlog mcp start
 
-/**
- * Mock MCP client for testing - does not depend on CLI or transport
- * Directly calls server methods for unit testing
- */
-export class MockMcpClient {
-  constructor(private server: any) {} // McpServer instance
+# With debug logging
+backlog mcp start --debug
 
-  async callTool(name: string, params: any): Promise<McpToolResponse> {
-    try {
-      // This will be implemented when tools are added
-      return {
-        success: false,
-        error: {
-          code: 'NOT_IMPLEMENTED',
-          message: `Tool '${name}' not implemented yet`
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: error.message
-        }
-      };
-    }
-  }
-
-  async readResource(uri: string): Promise<McpResourceResponse> {
-    try {
-      // This will be implemented when resources are added
-      return {
-        contents: [{
-          uri,
-          mimeType: 'application/json',
-          text: JSON.stringify({ error: 'Resource not implemented yet' })
-        }]
-      };
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async initialize(): Promise<any> {
-    return this.server.getCapabilities();
-  }
-}
+# Server will run and listen on stdin/stdout for MCP protocol messages
+# AI agents can connect using MCP client libraries
 ```
 
-**3. Test Utilities (`/src/mcp/__tests__/test-utils.ts`):**
-```typescript
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { Core } from '../../core/backlog.ts';
-import { $ } from 'bun';
-
-let testCounter = 0;
-
-export function createUniqueTestDir(prefix = 'mcp-test'): string {
-  return join(tmpdir(), `${prefix}-${Date.now()}-${++testCounter}`);
-}
-
-export async function createMcpTestProject(): Promise<{ path: string, core: Core }> {
-  const testDir = createUniqueTestDir('mcp-test');
-  await $`mkdir -p ${testDir}`.quiet();
-
-  // Initialize git (required for backlog.md)
-  await $`git init`.cwd(testDir).quiet();
-  await $`git config user.email test@example.com`.cwd(testDir).quiet();
-  await $`git config user.name "MCP Test"`.cwd(testDir).quiet();
-
-  const core = new Core(testDir);
-  await core.initializeProject('MCP Test Project');
-
-  // Create some test tasks for scenarios
-  await core.createTask({
-    title: 'Sample Task 1',
-    status: 'To Do',
-    description: 'A sample task for MCP testing'
-  });
-
-  return { path: testDir, core };
-}
-
-export async function cleanupTestProject(projectPath: string): Promise<void> {
-  try {
-    await rm(projectPath, { recursive: true, force: true });
-  } catch {
-    // Ignore cleanup errors in tests
-  }
-}
-```
-
-**4. Mock Agent (`/src/mcp/__tests__/mock-agent.ts`):**
-```typescript
-import { MockMcpClient } from './mcp-test-client.ts';
-
-export class MockAgent {
-  constructor(private client: MockMcpClient) {}
-
-  async createTaskScenario(requirement: string): Promise<any> {
-    // Simulate agent workflow: analyze requirement -> create task
-    // This will fail initially until tools are implemented
-    const result = await this.client.callTool('task_create', {
-      title: `Implement: ${requirement}`,
-      description: `Task created by mock agent for: ${requirement}`,
-      priority: 'medium',
-      labels: ['agent-created']
-    });
-
-    return result;
-  }
-
-  async boardAnalysisScenario(): Promise<any> {
-    // Simulate agent analyzing project state
-    // This will fail initially until resources are implemented
-    const board = await this.client.readResource('board/current');
-    const config = await this.client.readResource('config/current');
-
-    return {
-      board: board.contents[0]?.text || 'No board data',
-      config: config.contents[0]?.text || 'No config data',
-      analysis: 'Mock analysis completed'
-    };
-  }
-}
-```
-
-**TDD Cycle:**
-1. **Red**: Write failing tests for server, client, and agent interactions
-2. **Green**: Tests pass because they expect "not implemented" errors
-3. **Red**: Add tests for actual functionality (will fail)
-4. **Green**: Implement functionality to make tests pass
-
-**Key TDD Principles:**
-- Tests written before implementation exists
-- Mock client eliminates transport dependencies
-- Test utilities provide consistent project setup
-- Failing tests guide implementation priorities
+**Integration with Existing Infrastructure:**
+- Leverages existing comprehensive server architecture
+- Uses established handler setup and Maps
+- Builds on existing 14-test suite
+- Adds real transport functionality to replace stubs
 
 **Next Steps:**
-- All tests initially pass because they expect "not implemented" errors
-- Later tasks will add functionality and make tests expect real behavior
-- Transport implementation can use this test infrastructure
+- Once stdio transport is working, tools/resources/prompts can be added
+- Later tasks will implement SSE transport for HTTP connections
+- Agent integration testing can use real transport connections
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] Test infrastructure directory created at /src/mcp/__tests__/
-- [ ] MockMcpClient class implemented for testing (no CLI dependency)
-- [ ] MockAgent class created for workflow scenario testing
-- [ ] MCP test utilities extend existing test patterns
-- [ ] Server unit tests written (expecting appropriate errors)
-- [ ] Test command `bun test src/mcp/__tests__/unit` passes
-- [ ] All test infrastructure follows existing codebase patterns
+- [ ] Stdio transport implementation added to McpServer class
+- [ ] connect() method supports 'stdio' transport type
+- [ ] CLI command 'backlog mcp start' launches server with stdio transport
+- [ ] Server logs to stderr (not stdout) to avoid protocol interference
+- [ ] Existing test suite extended with transport-specific tests
+- [ ] Error handling for missing transport before start()
+- [ ] SSE transport still throws "not implemented" error for future task
 <!-- AC:END -->

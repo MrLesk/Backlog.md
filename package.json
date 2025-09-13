@@ -87,5 +87,8 @@
 	"trustedDependencies": [
 		"@biomejs/biome",
 		"node-pty"
-	]
+	],
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.18.0"
+	}
 }

@@ -1,44 +1,39 @@
 ---
 id: task-265.10
-title: Create comprehensive test suite for MCP functionality
+title: Extend existing MCP test suite with comprehensive coverage
 status: To Do
 assignee: []
 created_date: '2025-09-13 18:53'
+updated_date: '2025-09-13 21:25'
 labels:
   - mcp
   - testing
-  - quality
-dependencies: []
+  - extend
+  - coverage
+dependencies: ['task-265.03']
 parent_task_id: task-265
 ---
 
 ## Description
 
-Develop thorough unit and integration tests for all MCP components to ensure reliability and maintainability of the agent integration features.
+Extend the existing comprehensive MCP test suite (currently 14 passing tests at `/src/test/mcp-server.test.ts`) with additional coverage for tools, resources, prompts, and integration scenarios.
+
+**Current Foundation:**
+- 14 existing tests covering server initialization, capabilities, and basic functionality
+- Complete test infrastructure with setup/teardown
+- MockMcpClient for testing without transport dependencies
+- Test utilities for project creation and cleanup
 
 ### Implementation Details
 
-**Test Structure (`/src/mcp/__tests__/`):**
-```
-/src/mcp/__tests__/
-├── unit/
-│   ├── tools/
-│   │   ├── task-tools.test.ts
-│   │   ├── board-tools.test.ts
-│   │   └── config-tools.test.ts
-│   ├── resources/
-│   │   └── data-resources.test.ts
-│   ├── validation/
-│   │   └── validators.test.ts
-│   └── server.test.ts
-├── integration/
-│   ├── workflows.test.ts
-│   ├── transports.test.ts
-│   └── end-to-end.test.ts
-└── mocks/
-    ├── mock-agent.ts
-    └── test-fixtures.ts
-```
+**Current Test Infrastructure (`/src/test/mcp-server.test.ts`):**
+- Server instantiation and Core inheritance tests
+- Tool, resource, and prompt management tests
+- Handler registration and error handling tests
+- Test interface for accessing protected methods
+
+**Extensions Needed:**
+Build on existing infrastructure rather than creating new directories.
 
 **Unit Test Example (`task-tools.test.ts`):**
 ```typescript
@@ -248,25 +243,26 @@ describe('MCP Performance', () => {
 });
 ```
 
-**Test Configuration:**
-- Use Bun's built-in test runner
-- Set up test databases/projects for isolation
-- Mock file system operations where needed
-- Use temporary directories for integration tests
-- Clean up test resources after each test
+**Implementation Approach:**
+- Extend existing test infrastructure at `/src/test/mcp-server.test.ts`
+- Use established patterns from current 14-test suite
+- Leverage existing test utilities and setup functions
+- Maintain compatibility with existing test runner configuration
 
-**Coverage Requirements:**
-- Minimum 80% code coverage for MCP components
-- 100% coverage for critical security/validation code
-- Integration test coverage for all major workflows
-- Performance benchmarks for concurrent usage
+**Focus Areas:**
+- Enhanced error handling and edge case coverage
+- Performance testing for concurrent operations
+- Mock agent simulation for workflow validation
+- Integration scenarios when tools connect to Core methods
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] Unit tests for all MCP tools and resources
-- [ ] Integration tests for full MCP workflows
-- [ ] Mock agents for automated testing
-- [ ] Transport layer testing for both stdio and HTTP
-- [ ] Performance tests for concurrent agent connections
-- [ ] Test coverage reports show adequate coverage
+- [ ] Extended test coverage added to existing `/src/test/mcp-server.test.ts`
+- [ ] Tool validation and error handling tests implemented
+- [ ] Resource and prompt management edge case tests added
+- [ ] Performance and concurrent load testing implemented
+- [ ] Mock agent simulation tests for workflow validation
+- [ ] Integration scenarios for when tools connect to Core methods
+- [ ] All tests pass: `bun test src/test/mcp-server.test.ts`
+- [ ] Test count increases significantly from current 14 tests
 <!-- AC:END -->

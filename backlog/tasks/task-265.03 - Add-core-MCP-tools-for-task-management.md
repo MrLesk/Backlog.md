@@ -1,25 +1,34 @@
 ---
 id: task-265.03
-title: Implement stdio transport for local MCP connections
+title: Add core MCP tools for task management
 status: To Do
 assignee: []
 created_date: '2025-09-13 18:52'
+updated_date: '2025-09-13 21:20'
 labels:
   - mcp
-  - transport
-  - stdio
-  - tdd
+  - tools
+  - task-management
+  - core
 dependencies: ['task-265.02']
 parent_task_id: task-265
 ---
 
 ## Description
 
-Implement stdio transport for MCP server enabling local AI agents to connect via stdin/stdout. Add basic CLI command for starting the server and update test infrastructure to support real transport testing.
+Add core MCP tools for task management to the existing comprehensive MCP server infrastructure. Implement tools that allow AI agents to create, read, update, and list tasks through the MCP protocol.
+
+**Foundation**: Builds on the comprehensive McpServer class from task-265.01 which includes handler Maps, request schemas, and a complete test suite.
 
 ### Implementation Details
 
-**1. Server Transport Implementation (`/src/mcp/server.ts`):**
+**Current Foundation:**
+- Complete `McpServer` class with handler setup and Maps
+- `addTool()` method for registering tools
+- Request handling via `CallToolRequestSchema`
+- 14 existing tests covering server functionality
+
+**1. Core Task Tools (`/src/mcp/tools/task-tools.ts`):**
 ```typescript
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -193,23 +202,24 @@ describe('MCP Stdio Transport Integration', () => {
 ```
 
 **Implementation Steps:**
-1. **Update server to support stdio transport**
-2. **Add basic CLI command integration**
-3. **Create integration tests with real process spawning**
-4. **Verify handshake protocol works correctly**
+1. **Create task tool definitions** with proper schema validation
+2. **Implement tool registration system** using existing handler Maps
+3. **Add tool tests** to extend existing 14-test suite
+4. **Integrate with Core methods** for actual task operations
 
 **Next Steps:**
-- CLI command enables manual testing and real agent connections
-- Transport tests verify protocol compliance
-- Foundation ready for adding tools and resources
+- Tools provide foundation for agent task management
+- Real Core integration enables actual task CRUD operations
+- Additional tools can follow the same handler pattern
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] Stdio transport implemented in McpServer
-- [ ] CLI command `backlog mcp start` added and functional
-- [ ] MCP initialize handshake working correctly
-- [ ] JSON-RPC message handling functional
-- [ ] Integration tests verify CLI and transport work together
-- [ ] All tests pass: `bun test src/mcp/__tests__/integration/stdio-transport.test.ts`
-- [ ] Manual verification: `backlog mcp start --transport stdio` starts successfully
+- [ ] Task creation tool (`task_create`) implemented with proper schema
+- [ ] Task listing tool (`task_list`) with filtering capabilities
+- [ ] Task update tool (`task_update`) for modifying existing tasks
+- [ ] Tools registered with existing McpServer handler system
+- [ ] Tool registration function exports all task management tools
+- [ ] Extended test suite covers tool registration and basic functionality
+- [ ] Tools validate input parameters and return appropriate responses
+- [ ] All tests pass: `bun test src/test/mcp-server.test.ts`
 <!-- AC:END -->
