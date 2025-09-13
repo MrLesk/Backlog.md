@@ -53,10 +53,14 @@ export const useTaskFilters = (): UseTaskFiltersResult => {
 			assignee: searchParams.get("assignee") || undefined,
 		};
 
-		// Only update if filters actually changed to prevent infinite loops
-		if (JSON.stringify(newFilters) !== JSON.stringify(filters)) {
-			setFilters(newFilters);
-		}
+		// Use a functional update to avoid adding filters to dependency array
+		setFilters((currentFilters) => {
+			// Only update if filters actually changed to prevent infinite loops
+			if (JSON.stringify(newFilters) !== JSON.stringify(currentFilters)) {
+				return newFilters;
+			}
+			return currentFilters;
+		});
 	}, [searchParams]);
 
 	// Update individual filter functions
