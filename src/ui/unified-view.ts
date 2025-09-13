@@ -5,11 +5,11 @@
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
-import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { viewTaskEnhanced } from "./task-viewer.ts";
 import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
+import { WatchManager } from "./watch-manager.ts";
 
 export interface UnifiedViewOptions {
 	core: Core;
@@ -29,6 +29,7 @@ export interface UnifiedViewOptions {
 		tasks: Task[];
 		statuses: string[];
 	};
+	enableLiveUpdates?: boolean;
 }
 
 type ViewResult = "switch" | "exit";
@@ -76,7 +77,10 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			core: options.core,
 			initialState,
 		});
-		const watcher = watchTasks(options.core, {
+		// Set up watch manager for live updates
+		const watchManager = new WatchManager(options.core, {
+			enabled: options.enableLiveUpdates ?? true,
+			showIndicator: true,
 			onTaskAdded(task) {
 				tasks.push(task);
 				const state = viewSwitcher?.getState();
@@ -110,7 +114,10 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				});
 			},
 		});
-		process.on("exit", () => watcher.stop());
+
+		// Initialize watching if enabled
+		await watchManager.initialize();
+		process.on("exit", () => watchManager.destroy());
 
 		// Function to show task view
 		const showTaskView = async (): Promise<ViewResult> => {

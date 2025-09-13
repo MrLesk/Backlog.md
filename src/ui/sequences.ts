@@ -15,6 +15,7 @@ import { createScreen } from "./tui.ts";
 export async function runSequencesView(
 	data: { unsequenced: Task[]; sequences: Sequence[] },
 	core?: Core,
+	options?: { enableLiveUpdates?: boolean },
 ): Promise<void> {
 	// Build content string first so we can also support headless environments (CI/tests)
 	const lines: string[] = [];

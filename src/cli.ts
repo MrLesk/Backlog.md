@@ -1805,12 +1805,13 @@ const boardCmd = program.command("board");
 function addBoardOptions(cmd: Command) {
 	return cmd
 		.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
-		.option("--vertical", "use vertical layout (shortcut for --layout vertical)");
+		.option("--vertical", "use vertical layout (shortcut for --layout vertical)")
+		.option("--no-watch", "disable live updates in TUI");
 }
 
 // TaskWithMetadata and resolveTaskConflict are now imported from remote-tasks.ts
 
-async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
+async function handleBoardView(options: { layout?: string; vertical?: boolean; watch?: boolean }) {
 	const cwd = process.cwd();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
@@ -1852,6 +1853,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			tasks: allTasks,
 			statuses,
 		},
+		enableLiveUpdates: options.watch !== false, // Default true unless --no-watch
 	});
 }
 
@@ -2097,7 +2099,8 @@ sequenceCmd
 	.command("list")
 	.description("list sequences (interactive by default; use --plain for text output)")
 	.option("--plain", "use plain text output instead of interactive UI")
-	.action(async (options) => {
+	.option("--no-watch", "disable live updates in TUI")
+	.action(async (options: { plain?: boolean; watch?: boolean }) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const tasks = await core.filesystem.listTasks();
@@ -2127,7 +2130,9 @@ sequenceCmd
 
 		// Interactive default: TUI view (215.01 + 215.02 navigation/detail)
 		const { runSequencesView } = await import("./ui/sequences.ts");
-		await runSequencesView({ unsequenced, sequences }, core);
+		await runSequencesView({ unsequenced, sequences }, core, {
+			enableLiveUpdates: options.watch !== false, // Default true unless --no-watch
+		});
 	});
 
 configCmd
