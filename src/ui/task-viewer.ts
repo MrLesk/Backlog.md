@@ -426,10 +426,14 @@ export async function viewTaskEnhanced(
 				await (options.core || new Core(process.cwd())).updateTasksBulk(toUpdate, `Reorder within status ${status}`);
 				// Refresh in-memory tasks so UI stays consistent
 				const updated = await (options.core || new Core(process.cwd())).filesystem.listTasks();
-				// Preserve filtering used for initial list if any
+				// Update allTasks with the new data
 				allTasks.splice(0, allTasks.length, ...updated);
-				// Maintain selection on the moved task
-				const newIndex = allTasks.findIndex((t) => t.id === selected.id);
+				// Reapply filters to get the new filtered list
+				applyFilters();
+				// Update the task list display with filtered tasks
+				updateTaskList();
+				// Maintain selection on the moved task in the filtered list
+				const newIndex = filteredTasks.findIndex((t) => t.id === selected.id);
 				if (newIndex >= 0) listBox.select(newIndex);
 				screen.render();
 			}
