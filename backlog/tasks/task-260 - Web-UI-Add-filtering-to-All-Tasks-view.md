@@ -1,11 +1,11 @@
 ---
 id: task-260
 title: 'Web UI: Add filtering to All Tasks view'
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-07 19:42'
-updated_date: '2025-09-13 19:30'
+updated_date: '2025-09-13 20:20'
 labels:
   - web-ui
   - filters
@@ -28,3 +28,7 @@ Add filter controls to the All Tasks page to quickly narrow the list by common f
 - [ ] #6 Filter state persists in URL query parameters and restores on reload
 - [ ] #7 Type-check and lint pass; filtering logic has tests
 <!-- AC:END -->
+
+## Implementation Notes
+
+Web UI All Tasks filtering implemented with comprehensive filter controls. Added status, priority, assignee, and text search filters with instant updates, URL state persistence, clear all functionality, and full test coverage. Clean UX that integrates perfectly with existing components.

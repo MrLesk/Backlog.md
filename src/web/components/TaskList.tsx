@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { type Task } from '../../types';
+import { useTaskFilters } from '../hooks/useTaskFilters';
+import TaskFilters from './TaskFilters';
+import { filterTasks } from '../utils/taskFiltering';
+import { apiClient } from '../lib/api';
 
 interface TaskListProps {
   onEditTask: (task: Task) => void;
@@ -9,16 +13,45 @@ interface TaskListProps {
 
 const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks }) => {
   const [error] = useState<string | null>(null);
+  const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
+  
+  // Initialize filters with URL synchronization
+  const {
+    filters,
+    setStatusFilter,
+    setPriorityFilter,
+    setSearchFilter,
+    setAssigneeFilter,
+    clearAllFilters,
+    hasActiveFilters,
+  } = useTaskFilters();
 
-  // Sort tasks by ID descending (newest first)
-  const sortedTasks = React.useMemo(() => {
-    return [...tasks].sort((a, b) => {
+  // Load available statuses
+  React.useEffect(() => {
+    const loadStatuses = async () => {
+      try {
+        const statuses = await apiClient.fetchStatuses();
+        setAvailableStatuses(statuses);
+      } catch (error) {
+        console.error('Failed to fetch statuses:', error);
+      }
+    };
+    loadStatuses();
+  }, []);
+
+  // Apply filters and sort tasks
+  const filteredAndSortedTasks = useMemo(() => {
+    // First filter the tasks
+    const filtered = filterTasks(tasks, filters);
+    
+    // Then sort by ID descending (newest first)
+    return filtered.sort((a, b) => {
       // Extract numeric part from task IDs (task-1, task-2, etc.)
       const idA = parseInt(a.id.replace('task-', ''), 10);
       const idB = parseInt(b.id.replace('task-', ''), 10);
       return idB - idA; // Highest ID first (newest)
     });
-  }, [tasks]);
+  }, [tasks, filters]);
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'to do':
@@ -59,7 +92,12 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks }) => 
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
           <div className="flex items-center space-x-4">
             <div className="text-sm text-gray-600 dark:text-gray-300">
-              {sortedTasks.length} task{sortedTasks.length !== 1 ? 's' : ''}
+              {filteredAndSortedTasks.length} task{filteredAndSortedTasks.length !== 1 ? 's' : ''}
+              {hasActiveFilters && tasks.length !== filteredAndSortedTasks.length && (
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                  (of {tasks.length} total)
+                </span>
+              )}
             </div>
             <button 
               className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer" 
@@ -70,17 +108,42 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks }) => 
           </div>
         </div>
 
-        {sortedTasks.length === 0 ? (
+        <TaskFilters
+          filters={filters}
+          onStatusChange={setStatusFilter}
+          onPriorityChange={setPriorityFilter}
+          onSearchChange={setSearchFilter}
+          onAssigneeChange={setAssigneeFilter}
+          onClearAll={clearAllFilters}
+          availableStatuses={availableStatuses}
+          hasActiveFilters={hasActiveFilters}
+        />
+
+        {filteredAndSortedTasks.length === 0 ? (
           <div className="text-center py-12">
             <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No tasks</h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating a new task.</p>
+            <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+              {hasActiveFilters ? 'No matching tasks' : 'No tasks'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {hasActiveFilters 
+                ? 'Try adjusting your filters or clear them to see all tasks.' 
+                : 'Get started by creating a new task.'}
+            </p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="mt-3 inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+              >
+                Clear all filters
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
-            {sortedTasks.map((task) => (
+            {filteredAndSortedTasks.map((task) => (
               <div 
                 key={task.id}
                 className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
