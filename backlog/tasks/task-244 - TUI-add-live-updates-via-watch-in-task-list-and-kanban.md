@@ -1,11 +1,11 @@
 ---
 id: task-244
 title: 'TUI: add live updates via watch in task list and kanban'
-status: To Do
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-08-26 21:05'
-updated_date: '2025-08-26 21:12'
+updated_date: '2025-09-13 19:30'
 labels:
   - tui
   - watcher

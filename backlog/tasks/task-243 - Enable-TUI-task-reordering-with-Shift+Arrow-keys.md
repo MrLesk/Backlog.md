@@ -1,11 +1,11 @@
 ---
 id: task-243
 title: Enable TUI task reordering with Shift+Arrow keys
-status: To Do
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-08-24 18:55'
-updated_date: '2025-08-24 18:55'
+updated_date: '2025-09-13 19:30'
 labels:
   - tui
   - ui

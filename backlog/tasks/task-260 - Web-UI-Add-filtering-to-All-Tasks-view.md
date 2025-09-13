@@ -1,10 +1,11 @@
 ---
 id: task-260
 title: 'Web UI: Add filtering to All Tasks view'
-status: To Do
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-09-07 19:42'
+updated_date: '2025-09-13 19:30'
 labels:
   - web-ui
   - filters

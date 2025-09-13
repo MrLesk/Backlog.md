@@ -1,9 +1,11 @@
 ---
 id: task-259
 title: Add task list filters for Status and Priority
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-09-06 23:39'
+updated_date: '2025-09-13 19:30'
 labels:
   - tui
   - filters

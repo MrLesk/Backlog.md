@@ -1,10 +1,11 @@
 ---
 id: task-262
 title: 'TUI: Show all configured status columns in Kanban'
-status: To Do
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-09-07 19:58'
+updated_date: '2025-09-13 19:30'
 labels:
   - tui
   - board
