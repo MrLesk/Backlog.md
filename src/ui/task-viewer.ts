@@ -522,8 +522,9 @@ export async function viewTaskEnhanced(
 
 		// Initialize help bar updater now that help bar exists
 		updateHelpBar = function updateHelpBar() {
-			// Minimal footer: hide filter/move badges and extra controls
-			helpBar.setContent(" ↑/↓ navigate · ← task list · → detail · E edit · q/Esc quit ");
+			const moveModeIndicator = moveMode ? " {yellow-bg}{black-fg} MOVE {/} " : "";
+			const moveHint = moveMode ? " Shift+↑/↓ move tasks · m toggle" : " Shift+↑/↓ or m move mode";
+			helpBar.setContent(`${moveModeIndicator}↑/↓ navigate · ← task list · → detail · E edit ·${moveHint} · q/Esc quit`);
 		};
 
 		updateHelpBar();
