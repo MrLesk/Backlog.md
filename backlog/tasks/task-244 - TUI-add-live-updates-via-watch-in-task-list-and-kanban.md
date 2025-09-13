@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-08-26 21:05'
-updated_date: '2025-09-13 20:21'
+updated_date: '2025-09-13 21:03'
 labels:
   - tui
   - watcher
@@ -19,18 +19,19 @@ Add live updates to the TUI task list and kanban views using the shared file-wat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 TUI updates in-place on file events: create/edit/archive (no restart)
-- [ ] #2 Active filters and sort stay applied after every update; no filter reset
-- [ ] #3 New task that matches current filter appears within 1s without losing selection
-- [ ] #4 Edits that change filter membership move the task accordingly (add/remove/move between statuses)
-- [ ] #5 Removal/archive: removed task disappears; if selected, selection falls back to nearest neighbor
-- [ ] #6 Incremental updates only; avoid full dataset reload for single-file changes
-- [ ] #7 Default ON in interactive TTY; footer shows "Live: ON/OFF"; hotkey toggles watch (e.g., 'w')
-- [ ] #8 CLI flag to disable for the session (e.g., --no-watch); defaults to enabled
-- [ ] #9 Graceful fallback when file watching is unavailable; show indicator and keep UI usable
-- [ ] #10 Tests simulate watch events (stub) to verify list/kanban update flows, filter/selection preservation
-- [ ] #11 Docs updated: behavior, indicator, toggle hotkey, CLI flag, limitations
+- [x] #1 TUI updates in-place on file events: create/edit/archive (no restart)
+- [x] #2 Active filters and sort stay applied after every update; no filter reset
+- [x] #3 New task that matches current filter appears within 1s without losing selection
+- [x] #4 Edits that change filter membership move the task accordingly (add/remove/move between statuses)
+- [x] #5 Removal/archive: removed task disappears; if selected, selection falls back to nearest neighbor
+- [x] #6 Incremental updates only; avoid full dataset reload for single-file changes
+- [x] #7 Default ON in interactive TTY; footer shows "Live: ON/OFF"; hotkey toggles watch (e.g., 'w')
+- [x] #8 CLI flag to disable for the session (e.g., --no-watch); defaults to enabled
+- [x] #9 Graceful fallback when file watching is unavailable; show indicator and keep UI usable
+- [x] #10 Tests simulate watch events (stub) to verify list/kanban update flows, filter/selection preservation
+- [x] #11 Docs updated: behavior, indicator, toggle hotkey, CLI flag, limitations
 <!-- AC:END -->
+
 
 ## Implementation Notes
 
