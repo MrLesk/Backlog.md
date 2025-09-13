@@ -18,6 +18,7 @@ import {
 	updateReadmeWithBoard,
 } from "./index.ts";
 import { McpServer } from "./mcp/server.ts";
+import { registerTaskTools } from "./mcp/tools/task-tools.ts";
 import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
@@ -2621,9 +2622,15 @@ mcpCmd
 	.action(async (options) => {
 		try {
 			const server = new McpServer(process.cwd());
+
+			// Register task management tools
+			registerTaskTools(server);
+
 			if (options.debug) {
 				console.error("Starting MCP server in debug mode");
+				console.error("Registered task management tools: task_create, task_list, task_update");
 			}
+
 			await server.connect("stdio");
 			await server.start();
 		} catch (error) {

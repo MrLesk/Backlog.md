@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
+import { registerTaskTools } from "../mcp/tools/task-tools.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -210,6 +211,304 @@ describe("McpServer", () => {
 
 		it("should throw error for unknown transport type", async () => {
 			await expect(mcpServer.connect("unknown" as "stdio")).rejects.toThrow("Unknown transport type: unknown");
+		});
+	});
+
+	describe("task tools integration", () => {
+		beforeEach(() => {
+			registerTaskTools(mcpServer);
+		});
+
+		it("should register task management tools", async () => {
+			const result = await mcpServer.testInterface.listTools();
+			const toolNames = result.tools.map((tool) => tool.name);
+
+			expect(toolNames).toContain("task_create");
+			expect(toolNames).toContain("task_list");
+			expect(toolNames).toContain("task_update");
+			expect(result.tools).toHaveLength(3);
+		});
+
+		it("should create task with task_create tool", async () => {
+			const request = {
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Test Task",
+						description: "A test task for validation",
+						labels: ["test", "validation"],
+						priority: "high",
+					},
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content).toHaveLength(1);
+			expect(result.content[0]?.text).toContain("Successfully created task:");
+			expect(result.content[0]?.text).toContain("task-");
+		});
+
+		it("should list tasks with task_list tool", async () => {
+			// First create a task
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "First Task",
+						description: "First test task",
+						labels: ["test"],
+					},
+				},
+			});
+
+			// Then list tasks
+			const request = {
+				params: {
+					name: "task_list",
+					arguments: {},
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content).toHaveLength(1);
+			expect(result.content[0]?.text).toContain("Found 1 task(s):");
+			expect(result.content[0]?.text).toContain("First Task");
+		});
+
+		it("should filter tasks by status", async () => {
+			// Create tasks with different statuses
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: { title: "Ready Task" },
+				},
+			});
+
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_update",
+					arguments: { id: "task-1", status: "🚧 In Progress" },
+				},
+			});
+
+			// Filter by status
+			const request = {
+				params: {
+					name: "task_list",
+					arguments: { status: "🚧 In Progress" },
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content[0]?.text).toContain("Found 1 task(s):");
+			expect(result.content[0]?.text).toContain("🚧 In Progress");
+		});
+
+		it("should filter tasks by labels", async () => {
+			// Create tasks with different labels
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Frontend Task",
+						labels: ["frontend", "ui"],
+					},
+				},
+			});
+
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Backend Task",
+						labels: ["backend", "api"],
+					},
+				},
+			});
+
+			// Filter by labels
+			const request = {
+				params: {
+					name: "task_list",
+					arguments: { labels: ["frontend"] },
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content[0]?.text).toContain("Found 1 task(s):");
+			expect(result.content[0]?.text).toContain("Frontend Task");
+		});
+
+		it("should update task with task_update tool", async () => {
+			// Create a task first
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: { title: "Original Title" },
+				},
+			});
+
+			// Update the task
+			const request = {
+				params: {
+					name: "task_update",
+					arguments: {
+						id: "task-1",
+						title: "Updated Title",
+						status: "✔ Done",
+						description: "Updated description",
+					},
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content).toHaveLength(1);
+			expect(result.content[0]?.text).toContain("Successfully updated task: task-1");
+
+			// Verify update by listing
+			const listResult = await mcpServer.testInterface.callTool({
+				params: { name: "task_list", arguments: {} },
+			});
+			expect(listResult.content[0]?.text).toContain("Updated Title");
+			expect(listResult.content[0]?.text).toContain("✔ Done");
+		});
+
+		it("should search tasks by title and description", async () => {
+			// Create tasks with searchable content
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Authentication System",
+						description: "Implement user login and registration",
+					},
+				},
+			});
+
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Database Migration",
+						description: "Update database schema",
+					},
+				},
+			});
+
+			// Search by title
+			const titleSearch = await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_list",
+					arguments: { search: "Authentication" },
+				},
+			});
+			expect(titleSearch.content[0]?.text).toContain("Found 1 task(s):");
+			expect(titleSearch.content[0]?.text).toContain("Authentication System");
+
+			// Search by description
+			const descSearch = await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_list",
+					arguments: { search: "schema" },
+				},
+			});
+			expect(descSearch.content[0]?.text).toContain("Found 1 task(s):");
+			expect(descSearch.content[0]?.text).toContain("Database Migration");
+		});
+
+		it("should handle errors gracefully for non-existent task updates", async () => {
+			const request = {
+				params: {
+					name: "task_update",
+					arguments: { id: "non-existent-task", title: "New Title" },
+				},
+			};
+
+			await expect(mcpServer.testInterface.callTool(request)).rejects.toThrow("Task not found: non-existent-task");
+		});
+
+		it("should validate required fields for task creation", async () => {
+			const request = {
+				params: {
+					name: "task_create",
+					arguments: { description: "Missing title" },
+				},
+			};
+
+			// This should work since our handler doesn't validate schema (that would be done by MCP layer)
+			// But the title will be undefined, causing issues
+			await expect(mcpServer.testInterface.callTool(request)).rejects.toThrow();
+		});
+
+		it("should limit task list results", async () => {
+			// Create multiple tasks
+			for (let i = 1; i <= 5; i++) {
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_create",
+						arguments: { title: `Task ${i}` },
+					},
+				});
+			}
+
+			// Request with limit
+			const request = {
+				params: {
+					name: "task_list",
+					arguments: { limit: 3 },
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content[0]?.text).toContain("Found 3 task(s):");
+		});
+
+		it("should handle task creation with parent task", async () => {
+			// Create parent task
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: { title: "Parent Task" },
+				},
+			});
+
+			// Create subtask
+			const request = {
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Subtask",
+						parentTaskId: "task-1",
+					},
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content[0]?.text).toContain("Successfully created task:");
+		});
+
+		it("should update task implementation notes", async () => {
+			// Create task
+			await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: { title: "Implementation Task" },
+				},
+			});
+
+			// Update with implementation notes
+			const request = {
+				params: {
+					name: "task_update",
+					arguments: {
+						id: "task-1",
+						implementationNotes: "Added user authentication flow",
+					},
+				},
+			};
+
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content[0]?.text).toContain("Successfully updated task: task-1");
 		});
 	});
 });
