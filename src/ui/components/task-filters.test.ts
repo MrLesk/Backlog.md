@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { Core } from "../../core/backlog.ts";
-import type { Task } from "../../types/index.ts";
+import type { Task, TaskListFilter } from "../../types/index.ts";
 
 // Mock Core with filesystem operations
 const mockCore: Partial<Core> = {
 	filesystem: {
-		async listTasks(filter) {
+		async listTasks(filter?: TaskListFilter) {
 			// Mock tasks for testing
 			const mockTasks: Task[] = [
 				{
@@ -16,6 +16,8 @@ const mockCore: Partial<Core> = {
 					assignee: [],
 					labels: [],
 					acceptanceCriteria: [],
+					dependencies: [],
+					body: "",
 					createdDate: "2025-01-01",
 				},
 				{
@@ -26,6 +28,8 @@ const mockCore: Partial<Core> = {
 					assignee: [],
 					labels: [],
 					acceptanceCriteria: [],
+					dependencies: [],
+					body: "",
 					createdDate: "2025-01-01",
 				},
 				{
@@ -36,6 +40,8 @@ const mockCore: Partial<Core> = {
 					assignee: [],
 					labels: [],
 					acceptanceCriteria: [],
+					dependencies: [],
+					body: "",
 					createdDate: "2025-01-01",
 				},
 				{
@@ -45,6 +51,8 @@ const mockCore: Partial<Core> = {
 					assignee: [],
 					labels: [],
 					acceptanceCriteria: [],
+					dependencies: [],
+					body: "",
 					createdDate: "2025-01-01",
 				},
 			];
