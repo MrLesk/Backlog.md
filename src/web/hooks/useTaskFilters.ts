@@ -44,6 +44,21 @@ export const useTaskFilters = (): UseTaskFiltersResult => {
 		setSearchParams(newParams);
 	}, [filters, setSearchParams]);
 
+	// Sync filters from URL when search params change (browser back/forward, direct links)
+	useEffect(() => {
+		const newFilters = {
+			status: searchParams.get("status") || undefined,
+			priority: searchParams.get("priority") || undefined,
+			search: searchParams.get("search") || undefined,
+			assignee: searchParams.get("assignee") || undefined,
+		};
+
+		// Only update if filters actually changed to prevent infinite loops
+		if (JSON.stringify(newFilters) !== JSON.stringify(filters)) {
+			setFilters(newFilters);
+		}
+	}, [searchParams]);
+
 	// Update individual filter functions
 	const setStatusFilter = useCallback((status?: string) => {
 		setFilters((prev) => ({ ...prev, status: status || undefined }));
