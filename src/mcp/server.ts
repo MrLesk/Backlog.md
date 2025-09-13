@@ -1,4 +1,5 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
 	CallToolRequestSchema,
 	GetPromptRequestSchema,
@@ -23,6 +24,7 @@ import type {
 
 export class McpServer extends Core {
 	private server: Server;
+	private transport?: StdioServerTransport;
 	private tools: Map<string, McpToolHandler>;
 	private resources: Map<string, McpResourceHandler>;
 	private prompts: Map<string, McpPromptHandler>;
@@ -150,16 +152,27 @@ export class McpServer extends Core {
 		this.prompts.set(prompt.name, prompt);
 	}
 
+	private async startStdioTransport(): Promise<void> {
+		this.transport = new StdioServerTransport();
+		await this.server.connect(this.transport);
+		console.error("MCP server running on stdio"); // Log to stderr to avoid stdout interference
+	}
+
 	public async connect(transportType: TransportType, _options?: Record<string, unknown>): Promise<void> {
-		throw new Error(
-			`Transport ${transportType} is not yet implemented. Available transports will be added in future tasks.`,
-		);
+		if (transportType === "stdio") {
+			await this.startStdioTransport();
+		} else if (transportType === "sse") {
+			throw new Error("SSE transport not yet implemented - will be added in task 265.08");
+		} else {
+			throw new Error(`Unknown transport type: ${transportType}`);
+		}
 	}
 
 	public async start(): Promise<void> {
-		throw new Error(
-			"MCP server start method is not yet implemented. Transport-specific start methods will be added in future tasks.",
-		);
+		if (!this.transport) {
+			throw new Error("No transport connected. Call connect() first.");
+		}
+		// Server automatically starts when transport connects
 	}
 
 	public async stop(): Promise<void> {

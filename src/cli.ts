@@ -17,6 +17,7 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
+import { McpServer } from "./mcp/server.ts";
 import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
@@ -2607,6 +2608,27 @@ program
 		} catch (err) {
 			console.error("Failed to display project overview", err);
 			process.exitCode = 1;
+		}
+	});
+
+// MCP command group
+const mcpCmd = program.command("mcp");
+
+mcpCmd
+	.command("start")
+	.description("Start MCP server with stdio transport")
+	.option("-d, --debug", "Enable debug logging", false)
+	.action(async (options) => {
+		try {
+			const server = new McpServer(process.cwd());
+			if (options.debug) {
+				console.error("Starting MCP server in debug mode");
+			}
+			await server.connect("stdio");
+			await server.start();
+		} catch (error) {
+			console.error("Failed to start MCP server:", error instanceof Error ? error.message : error);
+			process.exit(1);
 		}
 	});
 

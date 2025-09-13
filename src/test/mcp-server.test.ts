@@ -200,13 +200,16 @@ describe("McpServer", () => {
 	});
 
 	describe("transport methods", () => {
-		it("should throw error for connect method (not yet implemented)", async () => {
-			await expect(mcpServer.connect("stdio")).rejects.toThrow("Transport stdio is not yet implemented");
-			await expect(mcpServer.connect("sse")).rejects.toThrow("Transport sse is not yet implemented");
+		it("should throw error for unimplemented SSE transport", async () => {
+			await expect(mcpServer.connect("sse")).rejects.toThrow("SSE transport not yet implemented");
 		});
 
-		it("should throw error for start method (not yet implemented)", async () => {
-			await expect(mcpServer.start()).rejects.toThrow("MCP server start method is not yet implemented");
+		it("should require transport before starting", async () => {
+			await expect(mcpServer.start()).rejects.toThrow("No transport connected");
+		});
+
+		it("should throw error for unknown transport type", async () => {
+			await expect(mcpServer.connect("unknown" as "stdio")).rejects.toThrow("Unknown transport type: unknown");
 		});
 	});
 });
