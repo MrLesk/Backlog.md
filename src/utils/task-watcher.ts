@@ -19,7 +19,10 @@ export interface TaskWatcherCallbacks {
 export function watchTasks(core: Core, callbacks: TaskWatcherCallbacks): { stop: () => void } {
 	const tasksDir = core.filesystem.tasksDir;
 
-	const watcher: FSWatcher = watch(tasksDir, { recursive: false }, async (eventType, filename) => {
+	let watcher: FSWatcher | null = null;
+	
+	try {
+		watcher = watch(tasksDir, { recursive: false }, async (eventType, filename) => {
 		// Normalize filename to a string when available
 		let fileName: string | undefined;
 		if (typeof filename === "string") {
@@ -63,13 +66,19 @@ export function watchTasks(core: Core, callbacks: TaskWatcherCallbacks): { stop:
 				// Ignore transient errors
 			}
 		}
-	});
+		});
+	} catch (error) {
+		// File watching not available or directory doesn't exist
+		console.warn(`File watching unavailable: ${error instanceof Error ? error.message : String(error)}`);
+	}
 
 	return {
 		stop() {
-			try {
-				watcher.close();
-			} catch {}
+			if (watcher) {
+				try {
+					watcher.close();
+				} catch {}
+			}
 		},
 	};
 }
