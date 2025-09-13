@@ -120,7 +120,10 @@ export async function viewTaskEnhanced(
 	// Get project root and load tasks
 	const cwd = process.cwd();
 	const core = options.core || new Core(cwd);
-	let allTasks = (options.tasks || (await core.filesystem.listTasks()))
+
+	// Apply persisted filters when loading tasks
+	const persistedFilter = options.viewSwitcher?.getState().filter;
+	let allTasks = (options.tasks || (await core.filesystem.listTasks(persistedFilter)))
 		// Extra safeguard: filter out any tasks without proper IDs
 		.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
 
