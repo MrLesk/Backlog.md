@@ -22,8 +22,17 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks }) => 
   const [filters, setFilters] = useState<Filters>({ status: '', priority: '', textSearch: '' });
   const [showDoneTasks, setShowDoneTasks] = useState<boolean>(() => {
     // Check sessionStorage for toggle state, default to false (hide done tasks)
-    const saved = sessionStorage.getItem('showDoneTasks');
-    return saved ? JSON.parse(saved) : false;
+    // Guard against environments without sessionStorage (SSR, tests)
+    if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('showDoneTasks');
+        return saved ? JSON.parse(saved) : false;
+      } catch (error) {
+        // Fallback if sessionStorage is blocked or throws
+        console.warn('Could not access sessionStorage:', error);
+      }
+    }
+    return false;
   });
 
   // Load statuses from API
@@ -62,7 +71,15 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks }) => 
 
   // Persist showDoneTasks to sessionStorage
   useEffect(() => {
-    sessionStorage.setItem('showDoneTasks', JSON.stringify(showDoneTasks));
+    // Guard against environments without sessionStorage (SSR, tests)
+    if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+      try {
+        sessionStorage.setItem('showDoneTasks', JSON.stringify(showDoneTasks));
+      } catch (error) {
+        // Silently fail if sessionStorage is blocked or throws
+        console.warn('Could not save to sessionStorage:', error);
+      }
+    }
   }, [showDoneTasks]);
 
   // Filter and sort tasks
