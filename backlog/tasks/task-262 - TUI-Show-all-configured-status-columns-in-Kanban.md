@@ -1,11 +1,11 @@
 ---
 id: task-262
 title: 'TUI: Show all configured status columns in Kanban'
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-07 19:58'
-updated_date: '2025-09-13 19:30'
+updated_date: '2025-09-13 20:20'
 labels:
   - tui
   - board
@@ -30,3 +30,7 @@ Web UI shows all statuses from config as columns in Kanban. The TUI board curren
 - [ ] #6 Web UI behavior unchanged; change applies only to TUI
 - [ ] #7 Type-check and lint pass; tests cover empty-column rendering and navigation
 <!-- AC:END -->
+
+## Implementation Notes
+
+TUI Kanban now shows all configured status columns achieving parity with Web UI. Empty columns display properly with (0) counts, maintains configured order, handles unknown statuses, and includes comprehensive test coverage. Navigation works safely in all scenarios.

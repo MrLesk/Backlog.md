@@ -52,15 +52,14 @@ export async function renderBoardTui(
 		tasksByStatus.set(canonical, list);
 	}
 
-	// Determine displayed columns: configured statuses with tasks, then any unknown statuses with tasks
-	const nonEmptyConfigured = statuses.filter((s) => (tasksByStatus.get(s) ?? []).length > 0);
+	// Determine displayed columns: all configured statuses (regardless of task count), then any unknown statuses with tasks
 	const unknownWithTasks = Array.from(tasksByStatus.keys()).filter(
 		(s) => !statuses.includes(s) && (tasksByStatus.get(s) ?? []).length > 0,
 	);
-	const nonEmptyStatuses = [...nonEmptyConfigured, ...unknownWithTasks];
+	const displayedStatuses = [...statuses, ...unknownWithTasks];
 
-	if (nonEmptyStatuses.length === 0) {
-		console.log("No tasks found in any status.");
+	if (displayedStatuses.length === 0) {
+		console.log("No statuses configured.");
 		return;
 	}
 
@@ -76,12 +75,12 @@ export async function renderBoardTui(
 			height: "100%",
 		});
 
-		const columnWidth = Math.floor(100 / nonEmptyStatuses.length);
+		const columnWidth = Math.floor(100 / displayedStatuses.length);
 		const columns: Array<{ list: ListInterface; tasks: Task[]; box: BoxInterface }> = [];
 
-		nonEmptyStatuses.forEach((status, idx) => {
+		displayedStatuses.forEach((status, idx) => {
 			const left = idx * columnWidth;
-			const isLast = idx === nonEmptyStatuses.length - 1;
+			const isLast = idx === displayedStatuses.length - 1;
 			const width = isLast ? `${100 - left}%` : `${columnWidth}%`;
 
 			const column = box({
@@ -172,7 +171,9 @@ export async function renderBoardTui(
 
 		if (columns.length) {
 			columns[0]?.list.focus();
-			columns[0]?.list.select(0);
+			if (columns[0]?.tasks.length && columns[0]?.tasks.length > 0) {
+				columns[0]?.list.select(0);
+			}
 			const firstListStyle = columns[0]?.list.style as { selected?: { bg?: string } } | undefined;
 			if (firstListStyle?.selected) firstListStyle.selected.bg = "blue";
 			const firstBoxStyle = columns[0]?.box.style as { border?: { fg?: string } } | undefined;
