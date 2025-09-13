@@ -29,6 +29,7 @@ export interface UnifiedViewOptions {
 		tasks: Task[];
 		statuses: string[];
 	};
+	watchEnabled?: boolean;
 }
 
 type ViewResult = "switch" | "exit";
@@ -71,46 +72,94 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let selectedTask: Task | undefined = options.selectedTask;
 		let tasks = baseTasks;
 
+		// Watch state management - default enabled in TTY unless explicitly disabled
+		const shouldEnableWatch = options.watchEnabled !== false && process.stdout.isTTY;
+		let watchEnabled = shouldEnableWatch;
+		let watcher: { stop: () => void } | null = null;
+
 		// Create view switcher (without problematic onViewChange callback)
 		viewSwitcher = new ViewSwitcher({
 			core: options.core,
 			initialState,
 		});
-		const watcher = watchTasks(options.core, {
-			onTaskAdded(task) {
-				tasks.push(task);
-				const state = viewSwitcher?.getState();
-				viewSwitcher?.updateState({
-					tasks,
-					kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
+
+		// Function to start watching
+		const startWatcher = () => {
+			if (watcher) return; // Already watching
+			try {
+				watcher = watchTasks(options.core, {
+					onTaskAdded(task) {
+						tasks.push(task);
+						const state = viewSwitcher?.getState();
+						viewSwitcher?.updateState({
+							tasks,
+							kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
+						});
+					},
+					onTaskChanged(task) {
+						const idx = tasks.findIndex((t) => t.id === task.id);
+						if (idx >= 0) {
+							tasks[idx] = task;
+						} else {
+							tasks.push(task);
+						}
+						const state = viewSwitcher?.getState();
+						viewSwitcher?.updateState({
+							tasks,
+							kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
+						});
+					},
+					onTaskRemoved(taskId) {
+						tasks = tasks.filter((t) => t.id !== taskId);
+						if (selectedTask?.id === taskId) {
+							selectedTask = tasks[0];
+						}
+						const state = viewSwitcher?.getState();
+						viewSwitcher?.updateState({
+							tasks,
+							kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
+						});
+					},
 				});
-			},
-			onTaskChanged(task) {
-				const idx = tasks.findIndex((t) => t.id === task.id);
-				if (idx >= 0) {
-					tasks[idx] = task;
-				} else {
-					tasks.push(task);
-				}
-				const state = viewSwitcher?.getState();
-				viewSwitcher?.updateState({
-					tasks,
-					kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
-				});
-			},
-			onTaskRemoved(taskId) {
-				tasks = tasks.filter((t) => t.id !== taskId);
-				if (selectedTask?.id === taskId) {
-					selectedTask = tasks[0];
-				}
-				const state = viewSwitcher?.getState();
-				viewSwitcher?.updateState({
-					tasks,
-					kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
-				});
-			},
+				watchEnabled = true;
+			} catch (_error) {
+				// Graceful fallback - watching unavailable
+				watchEnabled = false;
+				watcher = null;
+			}
+		};
+
+		// Function to stop watching
+		const stopWatcher = () => {
+			if (watcher) {
+				watcher.stop();
+				watcher = null;
+			}
+			watchEnabled = false;
+		};
+
+		// Function to get current watch state
+		const getWatchState = () => watchEnabled;
+
+		// Function to toggle watching
+		const toggleWatch = () => {
+			if (watchEnabled && watcher) {
+				stopWatcher();
+			} else {
+				startWatcher();
+			}
+		};
+
+		// Start watching if enabled
+		if (shouldEnableWatch) {
+			startWatcher();
+		}
+
+		process.on("exit", () => {
+			if (watcher) {
+				watcher.stop();
+			}
 		});
-		process.on("exit", () => watcher.stop());
 
 		// Function to show task view
 		const showTaskView = async (): Promise<ViewResult> => {
@@ -165,6 +214,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentView = "task-detail";
 					},
 					onTabPress,
+					getWatchState,
+					onToggleWatch: toggleWatch,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
@@ -242,6 +293,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						selectedTask = task;
 					},
 					onTabPress,
+					getWatchState,
+					onToggleWatch: toggleWatch,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

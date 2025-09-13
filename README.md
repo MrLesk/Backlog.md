@@ -183,8 +183,28 @@ Tip: Help text shows Bash examples with escaped `\\n` for readability; when typi
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
 | Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
+| Board without live updates | `backlog board --no-watch` (disables file watching) |
 | Export board | `backlog board export [file]` (exports Kanban board to markdown) |
 | Export with version | `backlog board export --export-version "v1.0.0"` (includes version in export) |
+
+#### Live Updates
+
+Both the task list and Kanban board feature **live updates** that automatically refresh when tasks change:
+
+- **Auto-enabled**: Live updates are enabled by default in interactive terminals
+- **Toggle hotkey**: Press `W` to toggle live updates on/off while in the TUI
+- **Status indicator**: Footer shows "Live: ON/OFF" to indicate current state  
+- **Disable option**: Use `--no-watch` flag to disable for the entire session
+- **Incremental updates**: Only changed tasks are updated, preserving your current selection and filters
+- **Graceful fallback**: If file watching is unavailable, the UI continues to work normally
+
+```bash
+# Examples
+backlog board              # Live updates enabled by default
+backlog board --no-watch   # Disable live updates
+backlog task list          # Task list with live updates
+backlog task list --no-watch  # Task list without live updates
+```
 
 ### Statistics & Overview
 

@@ -1101,6 +1101,7 @@ taskCmd
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
 	.option("--sort <field>", "sort tasks by field (priority, id)")
 	.option("--plain", "use plain text output instead of interactive UI")
+	.option("--no-watch", "disable live file watching for this session")
 	.action(async (options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
@@ -1259,6 +1260,7 @@ taskCmd
 					title,
 					filterDescription,
 				},
+				watchEnabled: !options.noWatch,
 			});
 		}
 	});
@@ -1805,12 +1807,13 @@ const boardCmd = program.command("board");
 function addBoardOptions(cmd: Command) {
 	return cmd
 		.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
-		.option("--vertical", "use vertical layout (shortcut for --layout vertical)");
+		.option("--vertical", "use vertical layout (shortcut for --layout vertical)")
+		.option("--no-watch", "disable live file watching for this session");
 }
 
 // TaskWithMetadata and resolveTaskConflict are now imported from remote-tasks.ts
 
-async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
+async function handleBoardView(options: { layout?: string; vertical?: boolean; noWatch?: boolean }) {
 	const cwd = process.cwd();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
@@ -1852,6 +1855,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 			tasks: allTasks,
 			statuses,
 		},
+		watchEnabled: !options.noWatch,
 	});
 }
 

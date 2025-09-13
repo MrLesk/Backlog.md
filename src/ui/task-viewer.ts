@@ -109,6 +109,9 @@ export async function viewTaskEnhanced(
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskChange?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
+		watchEnabled?: boolean;
+		getWatchState?: () => boolean;
+		onToggleWatch?: () => void;
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
@@ -522,8 +525,15 @@ export async function viewTaskEnhanced(
 
 		// Initialize help bar updater now that help bar exists
 		updateHelpBar = function updateHelpBar() {
-			// Minimal footer: hide filter/move badges and extra controls
-			helpBar.setContent(" ↑/↓ navigate · ← task list · → detail · E edit · q/Esc quit ");
+			// Show watch status and controls
+			const currentWatchState = options.getWatchState?.() ?? options.watchEnabled;
+			const watchStatus = typeof currentWatchState === "boolean" ? (currentWatchState ? "Live: ON" : "Live: OFF") : "";
+			const watchToggle = options.onToggleWatch ? " · W toggle watch" : "";
+
+			const baseContent = " ↑/↓ navigate · ← task list · → detail · E edit · q/Esc quit";
+			const watchContent = watchStatus ? ` · ${watchStatus}${watchToggle}` : "";
+
+			helpBar.setContent(baseContent + watchContent);
 		};
 
 		updateHelpBar();
@@ -622,6 +632,15 @@ export async function viewTaskEnhanced(
 				}
 			} catch {
 				// Silently handle errors
+			}
+		});
+
+		// Watch toggle key
+		screen.key(["w", "W"], () => {
+			if (options.onToggleWatch) {
+				options.onToggleWatch();
+				updateHelpBar();
+				screen.render();
 			}
 		});
 

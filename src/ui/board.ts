@@ -23,6 +23,9 @@ export async function renderBoardTui(
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskSelect?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
+		watchEnabled?: boolean;
+		getWatchState?: () => boolean;
+		onToggleWatch?: () => void;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -317,13 +320,27 @@ export async function renderBoardTui(
 			}
 		});
 
-		box({
+		// Footer with watch status
+		const footerContent = () => {
+			const baseContent = " ←/→ columns · ↑/↓ tasks · Enter view · E edit · Tab tasks · q/Esc quit";
+
+			const currentWatchState = options?.getWatchState?.() ?? options?.watchEnabled;
+			if (typeof currentWatchState === "boolean") {
+				const watchStatus = currentWatchState ? "Live: ON" : "Live: OFF";
+				const watchToggle = options?.onToggleWatch ? " · W toggle watch" : "";
+				return `${baseContent} · ${watchStatus}${watchToggle}`;
+			}
+
+			return baseContent;
+		};
+
+		const helpBar = box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
 			height: 1,
 			width: "100%",
-			content: " ←/→ columns · ↑/↓ tasks · Enter view · E edit · Tab tasks · q/Esc quit ",
+			content: footerContent(),
 			style: { fg: "gray", bg: "black" },
 		});
 
@@ -362,6 +379,16 @@ export async function renderBoardTui(
 				screen.destroy();
 				await options.viewSwitcher.switchView();
 				resolve();
+			}
+		});
+
+		// Watch toggle key
+		screen.key(["w", "W"], () => {
+			if (popupOpen) return;
+			if (options?.onToggleWatch) {
+				options.onToggleWatch();
+				helpBar.setContent(footerContent());
+				screen.render();
 			}
 		});
 
