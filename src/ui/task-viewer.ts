@@ -95,6 +95,14 @@ function extractImplementationNotesSection(content: string): string | null {
 }
 
 /**
+ * Filter state interface for task list filters
+ */
+interface TaskFilters {
+	status?: string;
+	priority?: "high" | "medium" | "low";
+}
+
+/**
  * Display task details in a split-pane UI with task list on left and detail on right
  */
 export async function viewTaskEnhanced(
@@ -123,10 +131,57 @@ export async function viewTaskEnhanced(
 		// Extra safeguard: filter out any tasks without proper IDs
 		.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
 
-	// Find the initial selected task index
-	const initialIndex = allTasks.findIndex((t) => t.id === task.id);
+	// Load configuration for status options
+	const config = await core.filesystem.loadConfig();
+	const availableStatuses = config?.statuses || ["To Do", "In Progress", "Done"];
+	const availablePriorities: ("high" | "medium" | "low")[] = ["high", "medium", "low"];
+
+	// Initialize filter state
+	const currentFilters: TaskFilters = {};
+	let filteredTasks = [...allTasks];
+
+	// Apply filters to task list
+	function applyFilters() {
+		filteredTasks = allTasks.filter((task) => {
+			// Status filter
+			if (currentFilters.status && task.status !== currentFilters.status) {
+				return false;
+			}
+			// Priority filter
+			if (currentFilters.priority && task.priority !== currentFilters.priority) {
+				return false;
+			}
+			return true;
+		});
+	}
+
+	// Initial filter application
+	applyFilters();
+
+	// Find the initial selected task index in filtered list
+	let initialIndex = filteredTasks.findIndex((t) => t.id === task.id);
 	let currentSelectedTask = task;
 	let currentSelectedContent = content;
+
+	if (initialIndex === -1) {
+		// If the current task is filtered out, reset to first task or original task
+		if (filteredTasks.length > 0) {
+			const firstTask = filteredTasks[0];
+			if (firstTask) {
+				currentSelectedTask = firstTask;
+				// Load content for the new task
+				try {
+					const filePath = await getTaskPath(firstTask.id, core);
+					if (filePath) {
+						currentSelectedContent = await Bun.file(filePath).text();
+					}
+				} catch {
+					currentSelectedContent = "";
+				}
+				initialIndex = 0;
+			}
+		}
+	}
 
 	const screen = createScreen({ title: options.title || "Backlog Tasks" });
 
@@ -153,6 +208,35 @@ export async function viewTaskEnhanced(
 		},
 		label: `\u00A0${options.title || "Tasks"}\u00A0`,
 	});
+
+	// Filter status display line
+	const filterStatusBox = box({
+		parent: taskListPane,
+		top: 0,
+		left: 1,
+		width: "100%-4",
+		height: 1,
+		content: "",
+		tags: true,
+		style: {
+			fg: "gray",
+		},
+	});
+
+	// Update filter status display
+	function updateFilterStatus() {
+		const filterParts = [];
+		if (currentFilters.status) {
+			filterParts.push(`Status: ${currentFilters.status}`);
+		}
+		if (currentFilters.priority) {
+			filterParts.push(`Priority: ${currentFilters.priority}`);
+		}
+
+		const filterText = filterParts.length > 0 ? `Filters: ${filterParts.join(", ")}` : "No filters";
+		const taskCount = `${filteredTasks.length}/${allTasks.length} tasks`;
+		filterStatusBox.setContent(`{gray-fg}${filterText} • ${taskCount}{/}`);
+	}
 
 	// Detail pane (right 60%) with border
 	const detailPane = box({
@@ -189,16 +273,26 @@ export async function viewTaskEnhanced(
 		}
 		refreshDetailPane();
 	}
-	const taskList = createGenericList<Task>({
+	// Function to update task list with current filters
+	let taskList: ReturnType<typeof createGenericList<Task>>;
+
+	function updateTaskList() {
+		if (taskList) {
+			taskList.updateItems(filteredTasks);
+		}
+		updateFilterStatus();
+	}
+
+	taskList = createGenericList<Task>({
 		parent: taskListPane,
 		title: "", // Empty title since pane has label
-		items: allTasks,
+		items: filteredTasks,
 		selectedIndex: Math.max(0, initialIndex),
 		border: false, // Disable border since pane has one
-		top: 1,
+		top: 2, // Account for filter status line
 		left: 1,
 		width: "100%-4",
-		height: "100%-3",
+		height: "100%-4", // Account for filter status line
 		itemRenderer: (task: Task) => {
 			const statusIcon = formatStatusWithIcon(task.status);
 			const statusColor = getStatusColor(task.status);
@@ -220,12 +314,87 @@ export async function viewTaskEnhanced(
 		showHelp: false, // We'll show help in the footer
 	});
 
+	// Filter selection functions
+	async function selectStatusFilter() {
+		const statusOptions = [
+			{ id: "_clear", title: "Clear Status Filter" },
+			...availableStatuses.map((status) => ({ id: status, title: status })),
+		];
+
+		const { genericSelectList } = await import("./components/generic-list.ts");
+		const selectedStatus = await genericSelectList("Select Status Filter", statusOptions, {
+			parent: screen,
+			width: "50%",
+			height: "60%",
+			top: "center",
+			left: "center",
+		});
+
+		if (selectedStatus) {
+			if (selectedStatus.id === "_clear") {
+				currentFilters.status = undefined;
+			} else {
+				currentFilters.status = selectedStatus.id;
+			}
+			applyFilters();
+			updateTaskList();
+			// Ensure we have a task selected
+			if (filteredTasks.length > 0) {
+				const firstTask = filteredTasks[0];
+				if (firstTask) {
+					await applySelection(firstTask);
+				}
+			}
+			screen.render();
+		}
+	}
+
+	async function selectPriorityFilter() {
+		const priorityOptions = [
+			{ id: "_clear", title: "Clear Priority Filter" },
+			...availablePriorities.map((priority) => ({
+				id: priority,
+				title: priority.charAt(0).toUpperCase() + priority.slice(1),
+			})),
+		];
+
+		const { genericSelectList } = await import("./components/generic-list.ts");
+		const selectedPriority = await genericSelectList("Select Priority Filter", priorityOptions, {
+			parent: screen,
+			width: "50%",
+			height: "60%",
+			top: "center",
+			left: "center",
+		});
+
+		if (selectedPriority) {
+			if (selectedPriority.id === "_clear") {
+				currentFilters.priority = undefined;
+			} else {
+				currentFilters.priority = selectedPriority.id as "high" | "medium" | "low";
+			}
+			applyFilters();
+			updateTaskList();
+			// Ensure we have a task selected
+			if (filteredTasks.length > 0) {
+				const firstTask = filteredTasks[0];
+				if (firstTask) {
+					await applySelection(firstTask);
+				}
+			}
+			screen.render();
+		}
+	}
+
+	// Initialize filter status display
+	updateFilterStatus();
+
 	// Shift+Arrow reordering within the same status using ordinal
 	async function reorderSelected(delta: -1 | 1) {
 		try {
 			const listBox = taskList.getListBox();
 			const selIndex = listBox.selected ?? 0;
-			const selected = allTasks[selIndex] || currentSelectedTask;
+			const selected = filteredTasks[selIndex] || currentSelectedTask;
 			if (!selected) return;
 			const status = (selected.status || "").trim();
 			// Build sibling list in current in-memory order
@@ -522,8 +691,10 @@ export async function viewTaskEnhanced(
 
 		// Initialize help bar updater now that help bar exists
 		updateHelpBar = function updateHelpBar() {
-			// Minimal footer: hide filter/move badges and extra controls
-			helpBar.setContent(" ↑/↓ navigate · ← task list · → detail · E edit · q/Esc quit ");
+			// Include filter shortcuts in minimal footer
+			helpBar.setContent(
+				" ↑/↓ navigate · ← task list · → detail · S status filter · P priority filter · E edit · q/Esc quit ",
+			);
 		};
 
 		updateHelpBar();
@@ -593,6 +764,16 @@ export async function viewTaskEnhanced(
 
 		screen.key(["right", "l"], () => {
 			updateFocus(1); // Always go to detail pane
+		});
+
+		// Filter controls - Status filter
+		screen.key(["s", "S"], async () => {
+			await selectStatusFilter();
+		});
+
+		// Filter controls - Priority filter
+		screen.key(["p", "P"], async () => {
+			await selectPriorityFilter();
 		});
 
 		// Edit in external editor with proper TUI handoff
