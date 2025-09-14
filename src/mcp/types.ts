@@ -22,7 +22,7 @@ export interface McpResourceHandler {
 	name?: string;
 	description?: string;
 	mimeType?: string;
-	handler: () => Promise<ReadResourceResult>;
+	handler: (uri: string) => Promise<ReadResourceResult>;
 }
 
 export interface McpPromptHandler {

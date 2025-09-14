@@ -117,13 +117,21 @@ export class McpServer extends Core {
 
 	protected async readResource(request: { params: { uri: string } }): Promise<ReadResourceResult> {
 		const { uri } = request.params;
-		const resource = this.resources.get(uri);
+
+		// First try exact match
+		let resource = this.resources.get(uri);
+
+		// If not found, try to match by base URI (for parameterized resources)
+		if (!resource) {
+			const baseUri = uri.split("?")[0] || uri; // Remove query parameters
+			resource = this.resources.get(baseUri);
+		}
 
 		if (!resource) {
 			throw new Error(`Resource not found: ${uri}`);
 		}
 
-		return await resource.handler();
+		return await resource.handler(uri);
 	}
 
 	protected async listPrompts(): Promise<ListPromptsResult> {

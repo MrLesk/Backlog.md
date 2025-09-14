@@ -19,8 +19,20 @@ export class TaskToolHandlers {
 		priority?: "high" | "medium" | "low";
 		status?: string;
 		parentTaskId?: string;
+		acceptanceCriteria?: string[];
+		dependencies?: string[];
 	}): Promise<CallToolResult> {
-		const { title, description, labels = [], assignee = [], priority, status, parentTaskId } = args;
+		const {
+			title,
+			description,
+			labels = [],
+			assignee = [],
+			priority,
+			status,
+			parentTaskId,
+			acceptanceCriteria = [],
+			dependencies = [],
+		} = args;
 
 		try {
 			// Generate task ID (simple implementation, real one uses more complex logic)
@@ -31,6 +43,13 @@ export class TaskToolHandlers {
 			}, 0);
 			const newId = `task-${highestId + 1}`;
 
+			// Convert acceptance criteria strings to structured format
+			const acceptanceCriteriaItems = acceptanceCriteria.map((text, index) => ({
+				index: index + 1,
+				text,
+				checked: false,
+			}));
+
 			const task: Task = {
 				id: newId,
 				title,
@@ -38,11 +57,12 @@ export class TaskToolHandlers {
 				assignee,
 				createdDate: new Date().toISOString(),
 				labels,
-				dependencies: [],
+				dependencies,
 				body: description || "",
 				description,
 				parentTaskId,
 				priority,
+				acceptanceCriteriaItems,
 			};
 
 			const taskId = await this.server.createTask(task, false);

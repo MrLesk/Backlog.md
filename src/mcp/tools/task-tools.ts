@@ -44,6 +44,14 @@ const taskCreateSchema: JsonSchema = {
 			type: "string",
 			maxLength: 50,
 		},
+		acceptanceCriteria: {
+			type: "array",
+			items: { type: "string", maxLength: 500 },
+		},
+		dependencies: {
+			type: "array",
+			items: { type: "string", maxLength: 50 },
+		},
 	},
 	required: ["title"],
 };
@@ -164,6 +172,8 @@ const createTaskCreateTool = (handlers: TaskToolHandlers, server: McpServer): Mc
 				priority: input.priority as "high" | "medium" | "low",
 				status: input.status as string,
 				parentTaskId: input.parentTaskId as string,
+				acceptanceCriteria: (input.acceptanceCriteria as string[]) || [],
+				dependencies: (input.dependencies as string[]) || [],
 			});
 		},
 	);

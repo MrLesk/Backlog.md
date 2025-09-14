@@ -1,16 +1,18 @@
 ---
 id: task-265.10
 title: Extend existing MCP test suite with comprehensive coverage
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@agent-claude'
 created_date: '2025-09-13 18:53'
-updated_date: '2025-09-13 21:25'
+updated_date: '2025-09-14 13:40'
 labels:
   - mcp
   - testing
   - extend
   - coverage
-dependencies: ['task-265.03']
+dependencies:
+  - task-265.03
 parent_task_id: task-265
 ---
 
@@ -257,12 +259,70 @@ describe('MCP Performance', () => {
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] Extended test coverage added to existing `/src/test/mcp-server.test.ts`
-- [ ] Tool validation and error handling tests implemented
-- [ ] Resource and prompt management edge case tests added
-- [ ] Performance and concurrent load testing implemented
-- [ ] Mock agent simulation tests for workflow validation
-- [ ] Integration scenarios for when tools connect to Core methods
-- [ ] All tests pass: `bun test src/test/mcp-server.test.ts`
-- [ ] Test count increases significantly from current 14 tests
+- [ ] #1 Extended test coverage added to existing `/src/test/mcp-server.test.ts`
+- [ ] #2 Tool validation and error handling tests implemented
+- [ ] #3 Resource and prompt management edge case tests added
+- [ ] #4 Performance and concurrent load testing implemented
+- [ ] #5 Mock agent simulation tests for workflow validation
+- [ ] #6 Integration scenarios for when tools connect to Core methods
+- [ ] #7 All tests pass: `bun test src/test/mcp-server.test.ts`
+- [ ] #8 Test count increases significantly from current 14 tests
 <!-- AC:END -->
+
+
+## Implementation Plan
+
+## Current State Analysis
+- Actual state: 27 tests exist in /src/test/mcp-server.test.ts (22 passing, 5 failing)
+- Test failures relate to status validation and SSE transport expectations
+- Existing unit tests in /src/mcp/__tests__/unit/ directory
+- Test count discrepancy: Task description mentions 14 tests but there are actually 27
+
+
+## Implementation Approach
+
+### Phase 1: Fix Existing Test Failures
+- Fix SSE transport test expectation (SSE is now implemented)
+- Fix status validation tests by initializing project config with emoji statuses
+- Fix task update error handling to match wrapped responses
+- Fix task creation validation to expect wrapped error response
+- Fix non-existent task update to expect wrapped error response
+
+### Phase 2: Extend Tool Coverage
+- Add comprehensive tool validation tests (invalid schemas, missing params, type mismatches)
+- Add error handling tests (network failures, malformed requests, concurrent calls)
+- Add circuit breaker pattern tests
+- Add board and sequence tool tests
+
+### Phase 3: Implement Resources
+- Create /src/mcp/resources/data-resources.ts
+- Implement task list resource
+- Implement board state resource
+- Implement project statistics resource
+- Add comprehensive resource tests
+
+### Phase 4: Enhance Prompt Tests
+- Add argument validation tests
+- Add dynamic prompt generation tests
+- Add multi-step workflow prompt tests
+- Add conditional prompt tests
+
+### Phase 5: Integration & Performance Tests
+- Complete workflow integration (task creation to completion)
+- Multi-tool coordination tests
+- Resource-tool interaction tests
+- Mock agent simulation tests
+- Concurrent request handling
+- Large payload processing
+- Memory usage monitoring
+
+### Phase 6: Transport Layer Tests
+- HTTP transport integration
+- WebSocket upgrade scenarios
+- Connection recovery tests
+
+## Expected Outcomes
+- Fix 5 failing tests
+- Increase test count from 27 to ~80+ tests
+- Comprehensive coverage of all MCP features
+- All tests passing with: bun test src/test/mcp-server.test.ts
