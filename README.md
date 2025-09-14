@@ -104,6 +104,7 @@ The web interface provides:
 |-------------|------------------------------------------------------|
 | Initialize project | `backlog init [project-name]` (creates backlog structure with interactive configuration) |
 | Re-initialize | `backlog init` (preserves existing config, allows updates) |
+| No‑Git mode | `backlog init "My Project" --no-git --defaults` (initialize without requiring a Git repo; disables cross‑branch checks, remote operations, and auto‑commit) |
 
 The `backlog init` command provides comprehensive project setup with interactive prompts for:
 - **Project name** - identifier for your backlog
@@ -113,6 +114,21 @@ The `backlog init` command provides comprehensive project setup with interactive
 - **Web UI settings** - port and browser auto-open preferences
 - **Agent guidelines** - AI agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot)
 - **Claude Code agent** - optional Backlog.md agent for enhanced task management (defaults to not installed; opt-in during `init` or pass `--install-claude-agent true`)
+
+#### Filesystem‑only Mode (No Git)
+
+You can initialize Backlog.md without Git by passing `--no-git` to `init`:
+
+```bash
+backlog init "My Project" --no-git --defaults
+```
+
+This skips any Git requirement and configures the project to operate purely on disk:
+- `checkActiveBranches: false`
+- `remoteOperations: false`
+- `autoCommit: false`
+
+You can still create tasks/docs/decisions normally; Git features remain off until you choose to enable them.
 
 ### Documentation
 

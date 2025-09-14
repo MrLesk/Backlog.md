@@ -1,4 +1,4 @@
-project_name: "Backlog.md"
+project_name: "NoGit Project"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
@@ -11,8 +11,6 @@ default_port: 6420
 remote_operations: true
 auto_commit: false
 zero_padded_ids: 3
-timezone_preference: "UTC"
-include_datetime_in_dates: true
 bypass_git_hooks: false
 check_active_branches: true
 active_branch_days: 10

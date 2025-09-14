@@ -20,6 +20,16 @@ npx biome check .
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Filesystem-only Mode (No Git)
+
+For local testing without a Git repository, you can initialize a project in filesystem-only mode:
+
+```bash
+bun src/cli.ts init "Dev Project" --no-git --defaults
+```
+
+This disables cross-branch checks and remote Git operations, and forces `autoCommit: false`. You can still run all core commands (task/doc/decision creation) without Git installed.
+
 ## Release
 
 To publish a new version to npm:
@@ -34,4 +44,3 @@ To publish a new version to npm:
    publish the package to npm using the repository `NPM_TOKEN` secret.
 
 [← Back to README](README.md)
-

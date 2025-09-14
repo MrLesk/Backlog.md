@@ -166,6 +166,7 @@ program
 program
 	.command("init [projectName]")
 	.description("initialize backlog project in the current repository")
+	.option("--no-git", "initialize without Git integration")
 	.option(
 		"--agent-instructions <instructions>",
 		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (alias of agents), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
@@ -184,6 +185,7 @@ program
 		async (
 			projectName: string | undefined,
 			options: {
+				git?: boolean;
 				agentInstructions?: string;
 				checkBranches?: string;
 				includeRemote?: string;
@@ -200,8 +202,10 @@ program
 			try {
 				const cwd = process.cwd();
 				const isRepo = await isGitRepository(cwd);
+				const noGit = options.git === false; // Commander sets --no-git as git=false
 
-				if (!isRepo) {
+				// If not a git repo, only prompt to initialize when --no-git is NOT set
+				if (!isRepo && !noGit) {
 					const rl = createInterface({ input, output });
 					const answer = (await rl.question("No git repository found. Initialize one here? [y/N] "))
 						.trim()
@@ -345,6 +349,12 @@ program
 						);
 						activeBranchDays = daysPrompt.activeBranchDays || 30;
 					}
+				}
+
+				// Apply no-git overrides: disable cross-branch checks and remote operations
+				if (noGit) {
+					crossBranchPrompt.checkActiveBranches = false;
+					remoteOperations = false;
 				}
 
 				// 2. Git hooks bypass prompt
@@ -669,10 +679,10 @@ program
 					defaultStatus: existingConfig?.defaultStatus || "To Do",
 					dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
 					maxColumnWidth: existingConfig?.maxColumnWidth || 20,
-					autoCommit: existingConfig?.autoCommit ?? false, // Keep autoCommit as hidden/advanced setting
-					remoteOperations,
+					autoCommit: noGit ? false : (existingConfig?.autoCommit ?? false), // Force off in no-git mode
+					remoteOperations: noGit ? false : remoteOperations,
 					bypassGitHooks,
-					checkActiveBranches: crossBranchPrompt.checkActiveBranches ?? true,
+					checkActiveBranches: noGit ? false : (crossBranchPrompt.checkActiveBranches ?? true),
 					activeBranchDays,
 					...(defaultEditor && { defaultEditor }),
 					// Web UI config: use new values, preserve existing, or set defaults
