@@ -33,7 +33,7 @@ export class ConfigToolHandlers {
 
 			// Handle specific config keys
 			const key = args.key;
-			let value: any;
+			let value: unknown;
 
 			switch (key) {
 				case "defaultEditor":
@@ -308,7 +308,7 @@ export class ConfigToolHandlers {
 							],
 						};
 					}
-					(updatedConfig as any)[key] = value;
+					(updatedConfig as Record<string, unknown>)[key] = value;
 					break;
 				}
 				case "zeroPaddedIds": {
@@ -374,9 +374,9 @@ export class ConfigToolHandlers {
 					{
 						type: "text" as const,
 						text: `Successfully updated ${key} to: ${
-							typeof (updatedConfig as any)[key] === "object"
-								? JSON.stringify((updatedConfig as any)[key], null, 2)
-								: String((updatedConfig as any)[key])
+							typeof (updatedConfig as Record<string, unknown>)[key] === "object"
+								? JSON.stringify((updatedConfig as Record<string, unknown>)[key], null, 2)
+								: String((updatedConfig as Record<string, unknown>)[key])
 						}`,
 					},
 				],

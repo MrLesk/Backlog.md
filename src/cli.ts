@@ -23,6 +23,7 @@ import { registerBoardTools } from "./mcp/tools/board-tools.ts";
 import { registerConfigTools } from "./mcp/tools/config-tools.ts";
 import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
 import { registerTaskTools } from "./mcp/tools/task-tools.ts";
+import type { TransportType } from "./mcp/types.ts";
 import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
@@ -2673,9 +2674,15 @@ mcpCmd
 	.command("start")
 	.description("Start MCP server")
 	.option("-d, --debug", "Enable debug logging", false)
-	.option("-t, --transport <type>", "Transport type (stdio|http)", "stdio")
-	.option("-p, --port <port>", "Port number for HTTP transport", "8080")
-	.option("--daemon", "Run as daemon process (HTTP transport only)", false)
+	.option("-t, --transport <type>", "Transport type (stdio|http|sse)", "stdio")
+	.option("-p, --port <port>", "Port number for HTTP/SSE transport", "8080")
+	.option("--host <host>", "Host to bind to for HTTP/SSE transport", "localhost")
+	.option("--auth-type <type>", "Authentication type (none|bearer|basic)", "none")
+	.option("--auth-token <token>", "Authentication token for bearer auth")
+	.option("--auth-user <username>", "Username for basic auth")
+	.option("--auth-pass <password>", "Password for basic auth")
+	.option("--cors-origin <origin>", "CORS allowed origins (comma-separated or *)", "*")
+	.option("--daemon", "Run as daemon process (HTTP/SSE transport only)", false)
 	.action(async (options) => {
 		try {
 			// Check if server is already running
@@ -2689,18 +2696,28 @@ mcpCmd
 			cleanupStaleProcess();
 
 			// Validate transport options
-			if (options.transport === "http") {
-				console.error("HTTP transport is not yet implemented. Only stdio transport is supported.");
-				console.error("Use: backlog mcp start --transport stdio");
+			if (options.daemon && !["http", "sse"].includes(options.transport)) {
+				console.error("Daemon mode is only supported with HTTP/SSE transport");
 				process.exit(1);
 			}
 
-			if (options.daemon && options.transport !== "http") {
-				console.error("Daemon mode is only supported with HTTP transport");
-				process.exit(1);
+			// Validate authentication options
+			if (options.authType !== "none") {
+				if (options.authType === "bearer" && !options.authToken) {
+					console.error("Bearer authentication requires --auth-token");
+					process.exit(1);
+				}
+				if (options.authType === "basic" && (!options.authUser || !options.authPass)) {
+					console.error("Basic authentication requires both --auth-user and --auth-pass");
+					process.exit(1);
+				}
 			}
 
 			const server = new McpServer(process.cwd());
+
+			// Load config for defaults
+			await server.ensureConfigLoaded();
+			const config = await server.filesystem.loadConfig();
 
 			// Register all MCP tools
 			registerTaskTools(server);
@@ -2737,12 +2754,62 @@ mcpCmd
 			process.on("SIGTERM", cleanup);
 			process.on("SIGINT", cleanup);
 
-			if (options.debug) {
-				console.error(`MCP server running on ${options.transport} transport`);
+			// Prepare transport options for HTTP/SSE using CLI options with config defaults
+			let transportOptions:
+				| import("./mcp/transports/sse.ts").SseTransportOptions
+				| import("./mcp/transports/http.ts").HttpTransportOptions
+				| undefined;
+			if (options.transport === "sse" || options.transport === "http") {
+				const mcpConfig = config?.mcp?.http;
+				transportOptions = {
+					host: options.host || mcpConfig?.host || "localhost",
+					port: Number.parseInt(options.port || mcpConfig?.port?.toString() || "8080", 10),
+					cors: {
+						origin: options.corsOrigin || mcpConfig?.cors?.origin || "*",
+						credentials: options.authType !== "none" || (mcpConfig?.cors?.credentials ?? false),
+					},
+					auth: {
+						type: options.authType || mcpConfig?.auth?.type || "none",
+						token: options.authToken || mcpConfig?.auth?.token,
+						username: options.authUser || mcpConfig?.auth?.username,
+						password: options.authPass || mcpConfig?.auth?.password,
+					},
+					enableDnsRebindingProtection: mcpConfig?.enableDnsRebindingProtection ?? false,
+					allowedHosts: mcpConfig?.allowedHosts || [],
+					allowedOrigins: mcpConfig?.allowedOrigins || [],
+					// HTTP transport specific option (only if transport is http)
+					...(options.transport === "http" && {
+						enableJsonResponse: (mcpConfig as Record<string, unknown>)?.enableJsonResponse ?? false,
+					}),
+				};
+
+				// Handle CORS origin string splitting
+				if (
+					transportOptions.cors &&
+					typeof transportOptions.cors.origin === "string" &&
+					transportOptions.cors.origin !== "*"
+				) {
+					transportOptions.cors.origin = transportOptions.cors.origin.split(",").map((o: string) => o.trim());
+				}
 			}
 
-			await server.connect(options.transport);
-			await server.start();
+			if (options.debug) {
+				console.error(`MCP server running on ${options.transport} transport`);
+				if ((options.transport === "sse" || options.transport === "http") && transportOptions) {
+					console.error(`  Host: ${transportOptions.host}:${transportOptions.port}`);
+					console.error(`  Auth: ${transportOptions.auth?.type || "none"}`);
+					const corsOrigin = transportOptions.cors?.origin;
+					console.error(`  CORS: ${Array.isArray(corsOrigin) ? corsOrigin.join(", ") : corsOrigin || "*"}`);
+					if (transportOptions.enableDnsRebindingProtection) {
+						console.error("  DNS Protection: enabled");
+					}
+				}
+			}
+
+			await server.connect(options.transport as TransportType, transportOptions);
+			if (options.transport === "stdio") {
+				await server.start();
+			}
 		} catch (error) {
 			removePidFile();
 			console.error("Failed to start MCP server:", error instanceof Error ? error.message : error);

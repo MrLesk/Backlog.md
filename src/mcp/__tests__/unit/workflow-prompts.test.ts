@@ -222,9 +222,9 @@ describe("workflow prompts", () => {
 
 	describe("registerWorkflowPrompts", () => {
 		test("should register all workflow prompts on server", () => {
-			const callHistory: any[] = [];
+			const callHistory: unknown[] = [];
 			const mockServer = {
-				addPrompt: (prompt: any) => {
+				addPrompt: (prompt: unknown) => {
 					callHistory.push(prompt);
 				},
 			};

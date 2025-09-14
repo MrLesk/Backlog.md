@@ -9,6 +9,8 @@ import {
 	ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
+import { BacklogHttpTransport, type HttpTransportOptions } from "./transports/http.ts";
+import { BacklogSseTransport, type SseTransportOptions } from "./transports/sse.ts";
 import type {
 	CallToolResult,
 	GetPromptResult,
@@ -24,7 +26,7 @@ import type {
 
 export class McpServer extends Core {
 	private server: Server;
-	private transport?: StdioServerTransport;
+	private transport?: StdioServerTransport | BacklogSseTransport | BacklogHttpTransport;
 	private tools: Map<string, McpToolHandler>;
 	private resources: Map<string, McpResourceHandler>;
 	private prompts: Map<string, McpPromptHandler>;
@@ -158,11 +160,26 @@ export class McpServer extends Core {
 		console.error("MCP server running on stdio"); // Log to stderr to avoid stdout interference
 	}
 
-	public async connect(transportType: TransportType, _options?: Record<string, unknown>): Promise<void> {
+	private async startSseTransport(options?: SseTransportOptions): Promise<void> {
+		this.transport = new BacklogSseTransport(options);
+		await this.transport.start(this.server);
+	}
+
+	private async startHttpTransport(options?: HttpTransportOptions): Promise<void> {
+		this.transport = new BacklogHttpTransport(options);
+		await this.transport.start(this.server);
+	}
+
+	public async connect(
+		transportType: TransportType,
+		options?: SseTransportOptions | HttpTransportOptions,
+	): Promise<void> {
 		if (transportType === "stdio") {
 			await this.startStdioTransport();
 		} else if (transportType === "sse") {
-			throw new Error("SSE transport not yet implemented - will be added in task 265.08");
+			await this.startSseTransport(options as SseTransportOptions);
+		} else if (transportType === "http") {
+			await this.startHttpTransport(options as HttpTransportOptions);
 		} else {
 			throw new Error(`Unknown transport type: ${transportType}`);
 		}
@@ -176,6 +193,9 @@ export class McpServer extends Core {
 	}
 
 	public async stop(): Promise<void> {
+		if (this.transport && "stop" in this.transport) {
+			await this.transport.stop();
+		}
 		if (this.server) {
 			await this.server.close();
 		}
