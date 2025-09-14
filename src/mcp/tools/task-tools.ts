@@ -1,6 +1,6 @@
-import type { Task } from "../../types/index.ts";
 import type { McpServer } from "../server.ts";
 import type { McpToolHandler } from "../types.ts";
+import { TaskToolHandlers } from "./task-handlers.ts";
 
 /**
  * Task creation tool schema
@@ -122,197 +122,75 @@ const taskUpdateSchema = {
 /**
  * Create task tool handler
  */
-const taskCreateTool: McpToolHandler = {
+const createTaskCreateTool = (handlers: TaskToolHandlers): McpToolHandler => ({
 	name: "task_create",
 	description: "Create a new task in the backlog",
 	inputSchema: taskCreateSchema,
 	handler: async (args: Record<string, unknown>) => {
-		const server = args._server as McpServer;
-		if (!server) {
-			throw new Error("Server instance not available");
-		}
-
 		const { title, description, labels = [], assignee = [], priority, parentTaskId } = args;
-
-		try {
-			// Generate task ID (simple implementation, real one uses more complex logic)
-			const tasks = await server.fs.listTasks();
-			const highestId = tasks.reduce((max, task) => {
-				const numericId = Number.parseInt(task.id.replace("task-", ""), 10);
-				return Number.isNaN(numericId) ? max : Math.max(max, numericId);
-			}, 0);
-			const newId = `task-${highestId + 1}`;
-
-			const task: Task = {
-				id: newId,
-				title: title as string,
-				status: "📋 Ready",
-				assignee: assignee as string[],
-				createdDate: new Date().toISOString(),
-				labels: labels as string[],
-				dependencies: [],
-				body: description ? (description as string) : "",
-				description: description as string,
-				parentTaskId: parentTaskId as string,
-				priority: priority as "high" | "medium" | "low",
-			};
-
-			const taskId = await server.createTask(task, false);
-
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: `Successfully created task: ${taskId}`,
-					},
-				],
-			};
-		} catch (error) {
-			throw new Error(`Failed to create task: ${error instanceof Error ? error.message : String(error)}`);
-		}
+		return handlers.createTask({
+			title: title as string,
+			description: description as string,
+			labels: labels as string[],
+			assignee: assignee as string[],
+			priority: priority as "high" | "medium" | "low",
+			parentTaskId: parentTaskId as string,
+		});
 	},
-};
+});
 
 /**
  * List tasks tool handler
  */
-const taskListTool: McpToolHandler = {
+const createTaskListTool = (handlers: TaskToolHandlers): McpToolHandler => ({
 	name: "task_list",
 	description: "List tasks with optional filtering",
 	inputSchema: taskListSchema,
 	handler: async (args: Record<string, unknown>) => {
-		const server = args._server as McpServer;
-		if (!server) {
-			throw new Error("Server instance not available");
-		}
-
 		const { status, assignee, labels, search, limit = 50 } = args;
-
-		try {
-			const tasks = await server.fs.listTasks();
-			let filteredTasks = tasks;
-
-			// Apply filters
-			if (status) {
-				filteredTasks = filteredTasks.filter((task) => task.status === status);
-			}
-
-			if (assignee) {
-				filteredTasks = filteredTasks.filter((task) => task.assignee.includes(assignee as string));
-			}
-
-			if (labels && Array.isArray(labels)) {
-				filteredTasks = filteredTasks.filter((task) =>
-					(labels as string[]).every((label) => task.labels.includes(label)),
-				);
-			}
-
-			if (search) {
-				const searchTerm = (search as string).toLowerCase();
-				filteredTasks = filteredTasks.filter(
-					(task) =>
-						task.title.toLowerCase().includes(searchTerm) || task.description?.toLowerCase().includes(searchTerm),
-				);
-			}
-
-			// Apply limit
-			filteredTasks = filteredTasks.slice(0, limit as number);
-
-			const tasksText = filteredTasks
-				.map(
-					(task) => `**${task.id}**: ${task.title}
-- Status: ${task.status}
-- Assignee: ${task.assignee.join(", ") || "Unassigned"}
-- Labels: ${task.labels.join(", ") || "None"}
-- Created: ${task.createdDate}${task.description ? `\n- Description: ${task.description}` : ""}`,
-				)
-				.join("\n\n");
-
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: `Found ${filteredTasks.length} task(s):\n\n${tasksText || "No tasks found."}`,
-					},
-				],
-			};
-		} catch (error) {
-			throw new Error(`Failed to list tasks: ${error instanceof Error ? error.message : String(error)}`);
-		}
+		return handlers.listTasks({
+			status: status as string,
+			assignee: assignee as string,
+			labels: labels as string[],
+			search: search as string,
+			limit: limit as number,
+		});
 	},
-};
+});
 
 /**
  * Update task tool handler
  */
-const taskUpdateTool: McpToolHandler = {
+const createTaskUpdateTool = (handlers: TaskToolHandlers): McpToolHandler => ({
 	name: "task_update",
 	description: "Update an existing task",
 	inputSchema: taskUpdateSchema,
 	handler: async (args: Record<string, unknown>) => {
-		const server = args._server as McpServer;
-		if (!server) {
-			throw new Error("Server instance not available");
-		}
-
 		const { id, title, status, description, labels, assignee, priority, implementationNotes } = args;
-
-		try {
-			const tasks = await server.fs.listTasks();
-			const existingTask = tasks.find((task) => task.id === id);
-
-			if (!existingTask) {
-				throw new Error(`Task not found: ${id}`);
-			}
-
-			// Create updated task
-			const updatedTask: Task = {
-				...existingTask,
-				updatedDate: new Date().toISOString(),
-			};
-
-			// Apply updates conditionally
-			if (title) updatedTask.title = title as string;
-			if (status) updatedTask.status = status as string;
-			if (description !== undefined) updatedTask.description = description as string;
-			if (labels) updatedTask.labels = labels as string[];
-			if (assignee) updatedTask.assignee = assignee as string[];
-			if (priority) updatedTask.priority = priority as "high" | "medium" | "low";
-			if (implementationNotes !== undefined) updatedTask.implementationNotes = implementationNotes as string;
-
-			await server.updateTask(updatedTask, false);
-
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: `Successfully updated task: ${id}`,
-					},
-				],
-			};
-		} catch (error) {
-			throw new Error(`Failed to update task: ${error instanceof Error ? error.message : String(error)}`);
-		}
+		return handlers.updateTask({
+			id: id as string,
+			title: title as string,
+			status: status as string,
+			description: description as string,
+			labels: labels as string[],
+			assignee: assignee as string[],
+			priority: priority as "high" | "medium" | "low",
+			implementationNotes: implementationNotes as string,
+		});
 	},
-};
+});
 
 /**
  * Register all task management tools with the MCP server
  * @param server The McpServer instance to register tools with
  */
 export function registerTaskTools(server: McpServer): void {
-	// Add server reference to tools for access to Core methods
-	const createToolWithServer = (tool: McpToolHandler): McpToolHandler => ({
-		...tool,
-		handler: async (args: Record<string, unknown>) => {
-			return tool.handler({ ...args, _server: server });
-		},
-	});
+	const handlers = new TaskToolHandlers(server);
 
-	server.addTool(createToolWithServer(taskCreateTool));
-	server.addTool(createToolWithServer(taskListTool));
-	server.addTool(createToolWithServer(taskUpdateTool));
+	server.addTool(createTaskCreateTool(handlers));
+	server.addTool(createTaskListTool(handlers));
+	server.addTool(createTaskUpdateTool(handlers));
 }
 
-// Export individual tools for testing
-export { taskCreateTool, taskListTool, taskUpdateTool };
+// Export tool creators for testing
+export { createTaskCreateTool, createTaskListTool, createTaskUpdateTool };
