@@ -18,6 +18,9 @@ import {
 	updateReadmeWithBoard,
 } from "./index.ts";
 import { McpServer } from "./mcp/server.ts";
+import { registerBoardTools } from "./mcp/tools/board-tools.ts";
+import { registerConfigTools } from "./mcp/tools/config-tools.ts";
+import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
 import { registerTaskTools } from "./mcp/tools/task-tools.ts";
 import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
@@ -2623,12 +2626,19 @@ mcpCmd
 		try {
 			const server = new McpServer(process.cwd());
 
-			// Register task management tools
+			// Register all MCP tools
 			registerTaskTools(server);
+			registerBoardTools(server);
+			registerConfigTools(server);
+			registerSequenceTools(server);
 
 			if (options.debug) {
 				console.error("Starting MCP server in debug mode");
-				console.error("Registered task management tools: task_create, task_list, task_update");
+				console.error("Registered tools:");
+				console.error("  Task management: task_create, task_list, task_update");
+				console.error("  Board management: board_view");
+				console.error("  Configuration: config_get, config_set");
+				console.error("  Sequence planning: sequence_create, sequence_plan");
 			}
 
 			await server.connect("stdio");
