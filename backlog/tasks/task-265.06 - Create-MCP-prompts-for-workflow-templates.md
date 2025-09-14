@@ -1,9 +1,10 @@
 ---
 id: task-265.06
 title: Create MCP prompts for workflow templates
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-09-13 18:52'
+updated_date: '2025-09-14 00:50'
 labels:
   - mcp
   - prompts
@@ -120,10 +121,10 @@ Use task_list tool to gather current status data.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] Task creation prompt with context gathering
-- [ ] Sprint planning workflow template
-- [ ] Code review integration prompt
-- [ ] Daily standup template prompt
-- [ ] Prompts include parameter schemas
-- [ ] Templates guide agents through best practices
+- [ ] #1 Task creation prompt with context gathering
+- [ ] #2 Sprint planning workflow template
+- [ ] #3 Code review integration prompt
+- [ ] #4 Daily standup template prompt
+- [ ] #5 Prompts include parameter schemas
+- [ ] #6 Templates guide agents through best practices
 <!-- AC:END -->

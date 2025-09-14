@@ -17,6 +17,7 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
+import { registerWorkflowPrompts } from "./mcp/prompts/workflow-prompts.ts";
 import { McpServer } from "./mcp/server.ts";
 import { registerBoardTools } from "./mcp/tools/board-tools.ts";
 import { registerConfigTools } from "./mcp/tools/config-tools.ts";
@@ -2632,6 +2633,9 @@ mcpCmd
 			registerConfigTools(server);
 			registerSequenceTools(server);
 
+			// Register workflow prompts
+			registerWorkflowPrompts(server);
+
 			if (options.debug) {
 				console.error("Starting MCP server in debug mode");
 				console.error("Registered tools:");
@@ -2639,6 +2643,10 @@ mcpCmd
 				console.error("  Board management: board_view");
 				console.error("  Configuration: config_get, config_set");
 				console.error("  Sequence planning: sequence_create, sequence_plan");
+				console.error("Registered prompts:");
+				console.error("  Workflow templates: task_creation_workflow, sprint_planning_workflow");
+				console.error("  Code review: code_review_workflow");
+				console.error("  Daily standup: daily_standup_workflow");
 			}
 
 			await server.connect("stdio");
