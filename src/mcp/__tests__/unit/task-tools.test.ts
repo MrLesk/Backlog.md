@@ -18,6 +18,9 @@ describe("Task Tools", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+		// Initialize the project to create config with default statuses
+		await mcpServer.initializeProject("Test Project");
+
 		registerTaskTools(mcpServer);
 	});
 
@@ -111,9 +114,13 @@ describe("Task Tools", () => {
 				},
 			};
 
-			// This should work since our handler doesn't validate schema (that would be done by MCP layer)
-			// But the title will be undefined, causing issues
-			await expect(mcpServer.testInterface.callTool(request)).rejects.toThrow();
+			// Validation errors should be returned as error responses, not thrown
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content).toHaveLength(1);
+			const response = JSON.parse(result.content[0]?.text as string);
+			expect(response.success).toBe(false);
+			expect(response.error.code).toBe("VALIDATION_ERROR");
+			expect(response.error.message).toContain("Required field 'title'");
 		});
 	});
 
@@ -163,7 +170,7 @@ describe("Task Tools", () => {
 			await mcpServer.testInterface.callTool({
 				params: {
 					name: "task_update",
-					arguments: { id: "task-1", status: "🚧 In Progress" },
+					arguments: { id: "task-1", status: "In Progress" },
 				},
 			});
 
@@ -171,13 +178,13 @@ describe("Task Tools", () => {
 			const request = {
 				params: {
 					name: "task_list",
-					arguments: { status: "🚧 In Progress" },
+					arguments: { status: "In Progress" },
 				},
 			};
 
 			const result = await mcpServer.testInterface.callTool(request);
 			expect(result.content[0]?.text).toContain("Found 1 task(s):");
-			expect(result.content[0]?.text).toContain("🚧 In Progress");
+			expect(result.content[0]?.text).toContain("In Progress");
 		});
 
 		it("should filter tasks by labels", async () => {
@@ -259,7 +266,7 @@ describe("Task Tools", () => {
 					arguments: {
 						id: "task-1",
 						title: "Updated Title",
-						status: "✔ Done",
+						status: "Done",
 						description: "Updated description",
 					},
 				},
@@ -274,7 +281,7 @@ describe("Task Tools", () => {
 				params: { name: "task_list", arguments: {} },
 			});
 			expect(listResult.content[0]?.text).toContain("Updated Title");
-			expect(listResult.content[0]?.text).toContain("✔ Done");
+			expect(listResult.content[0]?.text).toContain("Done");
 		});
 
 		it("should update task implementation notes", async () => {
@@ -301,7 +308,11 @@ describe("Task Tools", () => {
 				},
 			};
 
-			await expect(mcpServer.testInterface.callTool(request)).rejects.toThrow("Task not found: non-existent-task");
+			const result = await mcpServer.testInterface.callTool(request);
+			expect(result.content).toHaveLength(1);
+			const response = JSON.parse(result.content[0]?.text as string);
+			expect(response.success).toBe(false);
+			expect(response.error.message).toContain("Task not found: non-existent-task");
 		});
 	});
 });

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import type { ConnectionManager } from "../connection/manager.ts";
 
 export interface SseTransportOptions {
 	host?: string;
@@ -24,6 +25,7 @@ export interface SseTransportOptions {
 export class BacklogSseTransport {
 	private server?: { stop(): void };
 	private sseTransports: Map<string, SSEServerTransport> = new Map();
+	private connectionManager?: ConnectionManager;
 	private options: Required<SseTransportOptions>;
 
 	constructor(options: SseTransportOptions = {}) {
@@ -103,7 +105,8 @@ export class BacklogSseTransport {
 		});
 	}
 
-	async start(mcpServer: Server): Promise<void> {
+	async start(mcpServer: Server, connectionManager?: ConnectionManager): Promise<void> {
+		this.connectionManager = connectionManager;
 		this.server = Bun.serve({
 			hostname: this.options.host,
 			port: this.options.port,
@@ -174,6 +177,19 @@ export class BacklogSseTransport {
 								allowedOrigins: this.options.allowedOrigins,
 							});
 
+							// Register connection with ConnectionManager
+							if (this.connectionManager) {
+								this.connectionManager
+									.registerConnection(sessionId, transport, undefined, {
+										transportType: "sse",
+										host: this.options.host,
+										port: this.options.port,
+									})
+									.catch((error) => {
+										console.error(`Failed to register SSE connection: ${error}`);
+									});
+							}
+
 							// Store transport for message routing
 							this.sseTransports.set(sessionId, transport);
 
@@ -183,9 +199,15 @@ export class BacklogSseTransport {
 								.then(() => {
 									// Transport automatically starts when connected
 								})
-								.catch((error) => {
+								.catch(async (error) => {
 									console.error("Failed to connect transport:", error);
 									this.sseTransports.delete(sessionId);
+
+									// Remove from ConnectionManager
+									if (this.connectionManager) {
+										await this.connectionManager.removeConnection(sessionId, "Connection failed");
+									}
+
 									try {
 										controller.error(error);
 									} catch {
@@ -194,8 +216,14 @@ export class BacklogSseTransport {
 								});
 
 							// Cleanup on connection close
-							req.signal?.addEventListener("abort", () => {
+							req.signal?.addEventListener("abort", async () => {
 								this.sseTransports.delete(sessionId);
+
+								// Remove from ConnectionManager
+								if (this.connectionManager) {
+									await this.connectionManager.removeConnection(sessionId, "Client disconnected");
+								}
+
 								transport.close().catch((error) => {
 									console.error("Error closing transport:", error);
 								});

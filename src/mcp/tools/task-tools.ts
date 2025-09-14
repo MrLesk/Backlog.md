@@ -1,184 +1,223 @@
+import { getValidStatuses } from "../../utils/status.ts";
 import type { McpServer } from "../server.ts";
 import type { McpToolHandler } from "../types.ts";
+import {
+	createAsyncValidatedTool,
+	createSimpleValidatedTool,
+	type ValidationContext,
+} from "../validation/tool-wrapper.ts";
+import type { JsonSchema } from "../validation/validators.ts";
 import { TaskToolHandlers } from "./task-handlers.ts";
 
 /**
  * Task creation tool schema
  */
-const taskCreateSchema = {
+const taskCreateSchema: JsonSchema = {
 	type: "object",
 	properties: {
 		title: {
 			type: "string",
-			description: "The title of the task",
 			minLength: 1,
+			maxLength: 200,
 		},
 		description: {
 			type: "string",
-			description: "Optional description of the task",
+			maxLength: 10000,
 		},
 		labels: {
 			type: "array",
-			items: { type: "string" },
-			description: "Optional array of labels for the task",
+			items: { type: "string", maxLength: 50 },
 		},
 		assignee: {
 			type: "array",
-			items: { type: "string" },
-			description: "Optional array of assignees for the task",
+			items: { type: "string", maxLength: 100 },
 		},
 		priority: {
 			type: "string",
 			enum: ["high", "medium", "low"],
-			description: "Optional priority level for the task",
+		},
+		status: {
+			type: "string",
+			maxLength: 100,
 		},
 		parentTaskId: {
 			type: "string",
-			description: "Optional parent task ID to create this as a subtask",
+			maxLength: 50,
 		},
 	},
 	required: ["title"],
-} as const;
+};
 
 /**
  * Task listing tool schema
  */
-const taskListSchema = {
+const taskListSchema: JsonSchema = {
 	type: "object",
 	properties: {
 		status: {
 			type: "string",
-			description: "Filter tasks by status",
+			maxLength: 100,
 		},
 		assignee: {
 			type: "string",
-			description: "Filter tasks by assignee",
+			maxLength: 100,
 		},
 		labels: {
 			type: "array",
-			items: { type: "string" },
-			description: "Filter tasks by labels (tasks must have all specified labels)",
+			items: { type: "string", maxLength: 50 },
 		},
 		search: {
 			type: "string",
-			description: "Search term to filter tasks by title or description",
+			maxLength: 200,
 		},
 		limit: {
 			type: "number",
-			description: "Maximum number of tasks to return (default: 50)",
 			minimum: 1,
 			maximum: 1000,
 		},
 	},
 	required: [],
-} as const;
+};
 
 /**
  * Task update tool schema
  */
-const taskUpdateSchema = {
+const taskUpdateSchema: JsonSchema = {
 	type: "object",
 	properties: {
 		id: {
 			type: "string",
-			description: "The ID of the task to update",
 			minLength: 1,
+			maxLength: 50,
 		},
 		title: {
 			type: "string",
-			description: "New title for the task",
+			maxLength: 200,
 		},
 		status: {
 			type: "string",
-			description: "New status for the task",
+			maxLength: 100,
 		},
 		description: {
 			type: "string",
-			description: "New description for the task",
+			maxLength: 10000,
 		},
 		labels: {
 			type: "array",
-			items: { type: "string" },
-			description: "New labels array for the task",
+			items: { type: "string", maxLength: 50 },
 		},
 		assignee: {
 			type: "array",
-			items: { type: "string" },
-			description: "New assignees array for the task",
+			items: { type: "string", maxLength: 100 },
 		},
 		priority: {
 			type: "string",
 			enum: ["high", "medium", "low"],
-			description: "New priority level for the task",
 		},
 		implementationNotes: {
 			type: "string",
-			description: "Implementation notes for the task",
+			maxLength: 10000,
 		},
 	},
 	required: ["id"],
-} as const;
+};
+
+/**
+ * Status validator for task creation and updates
+ */
+async function validateTaskStatus(input: Record<string, unknown>, context?: ValidationContext): Promise<string[]> {
+	const errors: string[] = [];
+
+	if (input.status && context?.core) {
+		const validStatuses = await getValidStatuses(context.core);
+		const status = input.status as string;
+
+		if (!validStatuses.includes(status)) {
+			errors.push(`Status '${status}' is not valid. Valid statuses: ${validStatuses.join(", ")}`);
+		}
+	}
+
+	return errors;
+}
 
 /**
  * Create task tool handler
  */
-const createTaskCreateTool = (handlers: TaskToolHandlers): McpToolHandler => ({
-	name: "task_create",
-	description: "Create a new task in the backlog",
-	inputSchema: taskCreateSchema,
-	handler: async (args: Record<string, unknown>) => {
-		const { title, description, labels = [], assignee = [], priority, parentTaskId } = args;
-		return handlers.createTask({
-			title: title as string,
-			description: description as string,
-			labels: labels as string[],
-			assignee: assignee as string[],
-			priority: priority as "high" | "medium" | "low",
-			parentTaskId: parentTaskId as string,
-		});
-	},
-});
+const createTaskCreateTool = (handlers: TaskToolHandlers, server: McpServer): McpToolHandler =>
+	createAsyncValidatedTool(
+		{
+			name: "task_create",
+			description: "Create a new task in the backlog",
+			inputSchema: taskCreateSchema,
+		},
+		taskCreateSchema,
+		async (input, context) => {
+			const newContext = { ...context, core: server, timestamp: context?.timestamp || Date.now() };
+			return validateTaskStatus(input, newContext);
+		},
+		async (input, _context) => {
+			return handlers.createTask({
+				title: input.title as string,
+				description: input.description as string,
+				labels: (input.labels as string[]) || [],
+				assignee: (input.assignee as string[]) || [],
+				priority: input.priority as "high" | "medium" | "low",
+				status: input.status as string,
+				parentTaskId: input.parentTaskId as string,
+			});
+		},
+	);
 
 /**
  * List tasks tool handler
  */
-const createTaskListTool = (handlers: TaskToolHandlers): McpToolHandler => ({
-	name: "task_list",
-	description: "List tasks with optional filtering",
-	inputSchema: taskListSchema,
-	handler: async (args: Record<string, unknown>) => {
-		const { status, assignee, labels, search, limit = 50 } = args;
-		return handlers.listTasks({
-			status: status as string,
-			assignee: assignee as string,
-			labels: labels as string[],
-			search: search as string,
-			limit: limit as number,
-		});
-	},
-});
+const createTaskListTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "task_list",
+			description: "List tasks with optional filtering",
+			inputSchema: taskListSchema,
+		},
+		taskListSchema,
+		async (input, _context) => {
+			return handlers.listTasks({
+				status: input.status as string,
+				assignee: input.assignee as string,
+				labels: input.labels as string[],
+				search: input.search as string,
+				limit: (input.limit as number) || 50,
+			});
+		},
+	);
 
 /**
  * Update task tool handler
  */
-const createTaskUpdateTool = (handlers: TaskToolHandlers): McpToolHandler => ({
-	name: "task_update",
-	description: "Update an existing task",
-	inputSchema: taskUpdateSchema,
-	handler: async (args: Record<string, unknown>) => {
-		const { id, title, status, description, labels, assignee, priority, implementationNotes } = args;
-		return handlers.updateTask({
-			id: id as string,
-			title: title as string,
-			status: status as string,
-			description: description as string,
-			labels: labels as string[],
-			assignee: assignee as string[],
-			priority: priority as "high" | "medium" | "low",
-			implementationNotes: implementationNotes as string,
-		});
-	},
-});
+const createTaskUpdateTool = (handlers: TaskToolHandlers, server: McpServer): McpToolHandler =>
+	createAsyncValidatedTool(
+		{
+			name: "task_update",
+			description: "Update an existing task",
+			inputSchema: taskUpdateSchema,
+		},
+		taskUpdateSchema,
+		async (input, context) => {
+			const newContext = { ...context, core: server, timestamp: context?.timestamp || Date.now() };
+			return validateTaskStatus(input, newContext);
+		},
+		async (input, _context) => {
+			return handlers.updateTask({
+				id: input.id as string,
+				title: input.title as string,
+				status: input.status as string,
+				description: input.description as string,
+				labels: input.labels as string[],
+				assignee: input.assignee as string[],
+				priority: input.priority as "high" | "medium" | "low",
+				implementationNotes: input.implementationNotes as string,
+			});
+		},
+	);
 
 /**
  * Register all task management tools with the MCP server
@@ -187,10 +226,17 @@ const createTaskUpdateTool = (handlers: TaskToolHandlers): McpToolHandler => ({
 export function registerTaskTools(server: McpServer): void {
 	const handlers = new TaskToolHandlers(server);
 
-	server.addTool(createTaskCreateTool(handlers));
+	server.addTool(createTaskCreateTool(handlers, server));
 	server.addTool(createTaskListTool(handlers));
-	server.addTool(createTaskUpdateTool(handlers));
+	server.addTool(createTaskUpdateTool(handlers, server));
 }
 
-// Export tool creators for testing
-export { createTaskCreateTool, createTaskListTool, createTaskUpdateTool };
+// Export tool creators and schemas for testing
+export {
+	createTaskCreateTool,
+	createTaskListTool,
+	createTaskUpdateTool,
+	taskCreateSchema,
+	taskListSchema,
+	taskUpdateSchema,
+};

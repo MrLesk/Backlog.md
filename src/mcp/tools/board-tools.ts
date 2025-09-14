@@ -2,6 +2,8 @@ import { generateKanbanBoardWithMetadata } from "../../board.ts";
 import type { Task } from "../../types/index.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
+import { createSimpleValidatedTool } from "../validation/tool-wrapper.ts";
+import type { JsonSchema } from "../validation/validators.ts";
 
 export class BoardToolHandlers {
 	constructor(private server: McpServer) {}
@@ -88,34 +90,34 @@ export class BoardToolHandlers {
 	}
 }
 
-const boardViewTool = {
-	name: "board_view",
-	description: "Get current kanban board state with task distribution and optional metadata",
-	inputSchema: {
-		type: "object",
-		properties: {
-			includeMetadata: {
-				type: "boolean",
-				description: "Include additional metadata like completion rates and project info (default: true)",
-			},
+const boardViewSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		includeMetadata: {
+			type: "boolean",
 		},
-		required: [],
 	},
+	required: [],
 };
 
-const createBoardViewTool = (handlers: BoardToolHandlers): McpToolHandler => ({
-	...boardViewTool,
-	handler: async (args: Record<string, unknown>) => {
-		const { includeMetadata } = args;
-		return handlers.getBoardView({
-			includeMetadata: includeMetadata as boolean,
-		});
-	},
-});
+const createBoardViewTool = (handlers: BoardToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "board_view",
+			description: "Get current kanban board state with task distribution and optional metadata",
+			inputSchema: boardViewSchema,
+		},
+		boardViewSchema,
+		async (input, _context) => {
+			return handlers.getBoardView({
+				includeMetadata: input.includeMetadata as boolean,
+			});
+		},
+	);
 
 export function registerBoardTools(server: McpServer): void {
 	const handlers = new BoardToolHandlers(server);
 	server.addTool(createBoardViewTool(handlers));
 }
 
-export { createBoardViewTool };
+export { createBoardViewTool, boardViewSchema };

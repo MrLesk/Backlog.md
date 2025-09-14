@@ -108,7 +108,7 @@ describe("BacklogHttpTransport", () => {
 			expect(response.status).toBe(401);
 
 			const data = await response.json();
-			expect(data.error).toBe("Unauthorized");
+			expect(data.error.message).toBe("Unauthorized");
 
 			await authTransport.stop();
 		});
@@ -212,7 +212,7 @@ describe("BacklogHttpTransport", () => {
 			expect(response.status).toBe(404);
 
 			const data = await response.json();
-			expect(data.error).toBe("Not found");
+			expect(data.error.message).toBe("Not found");
 		});
 
 		it("should handle POST requests to root endpoint", async () => {
@@ -275,7 +275,7 @@ describe("BacklogHttpTransport", () => {
 
 			expect(response.status).toBe(405);
 			const data = await response.json();
-			expect(data.error).toBe("Method not allowed");
+			expect(data.error.message).toBe("Method not allowed");
 		});
 
 		it("should handle GET requests for SSE with valid session", async () => {

@@ -17,9 +17,10 @@ export class TaskToolHandlers {
 		labels?: string[];
 		assignee?: string[];
 		priority?: "high" | "medium" | "low";
+		status?: string;
 		parentTaskId?: string;
 	}): Promise<CallToolResult> {
-		const { title, description, labels = [], assignee = [], priority, parentTaskId } = args;
+		const { title, description, labels = [], assignee = [], priority, status, parentTaskId } = args;
 
 		try {
 			// Generate task ID (simple implementation, real one uses more complex logic)
@@ -33,7 +34,7 @@ export class TaskToolHandlers {
 			const task: Task = {
 				id: newId,
 				title,
-				status: "📋 Ready",
+				status: status || "📋 Ready",
 				assignee,
 				createdDate: new Date().toISOString(),
 				labels,

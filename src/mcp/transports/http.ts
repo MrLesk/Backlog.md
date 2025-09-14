@@ -3,6 +3,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { ConnectionManager } from "../connection/manager.ts";
+import { McpAuthenticationError, McpConnectionError } from "../errors/mcp-errors.ts";
 
 export interface HttpTransportOptions {
 	host?: string;
@@ -26,6 +28,7 @@ export interface HttpTransportOptions {
 export class BacklogHttpTransport {
 	private server?: { stop(): void };
 	private transports: Map<string, StreamableHTTPServerTransport> = new Map();
+	private connectionManager?: ConnectionManager;
 	private options: Required<HttpTransportOptions>;
 
 	constructor(options: HttpTransportOptions = {}) {
@@ -97,8 +100,20 @@ export class BacklogHttpTransport {
 		});
 	}
 
-	private createErrorResponse(status: number, message: string): Response {
-		return new Response(JSON.stringify({ error: message }), {
+	private createErrorResponse(status: number, message: string, code?: string): Response {
+		const errorBody = {
+			success: false,
+			error: {
+				code: code || "HTTP_ERROR",
+				message,
+				statusCode: status,
+			},
+		};
+
+		// Log error for debugging
+		console.error(`HTTP Transport Error [${status}]:`, message, code ? `(${code})` : "");
+
+		return new Response(JSON.stringify(errorBody), {
 			status,
 			headers: {
 				"Content-Type": "application/json",
@@ -107,7 +122,8 @@ export class BacklogHttpTransport {
 		});
 	}
 
-	async start(mcpServer: Server): Promise<void> {
+	async start(mcpServer: Server, connectionManager?: ConnectionManager): Promise<void> {
+		this.connectionManager = connectionManager;
 		this.server = Bun.serve({
 			hostname: this.options.host,
 			port: this.options.port,
@@ -142,6 +158,11 @@ export class BacklogHttpTransport {
 									throw new Error(`Transport not found for session: ${sessionId}`);
 								}
 								transport = existingTransport;
+
+								// Update connection activity
+								if (this.connectionManager) {
+									this.connectionManager.updateActivity(sessionId);
+								}
 							} else {
 								// Create new transport for initialization requests
 								transport = new StreamableHTTPServerTransport({
@@ -150,13 +171,27 @@ export class BacklogHttpTransport {
 									enableDnsRebindingProtection: this.options.enableDnsRebindingProtection,
 									allowedHosts: this.options.allowedHosts,
 									allowedOrigins: this.options.allowedOrigins,
-									onsessioninitialized: (sessionId: string) => {
+									onsessioninitialized: async (sessionId: string) => {
 										console.error(`HTTP session initialized: ${sessionId}`);
 										this.transports.set(sessionId, transport);
+
+										// Register connection with ConnectionManager
+										if (this.connectionManager) {
+											await this.connectionManager.registerConnection(sessionId, transport, undefined, {
+												transportType: "http",
+												host: this.options.host,
+												port: this.options.port,
+											});
+										}
 									},
-									onsessionclosed: (sessionId: string) => {
+									onsessionclosed: async (sessionId: string) => {
 										console.error(`HTTP session closed: ${sessionId}`);
 										this.transports.delete(sessionId);
+
+										// Remove connection from ConnectionManager
+										if (this.connectionManager) {
+											await this.connectionManager.removeConnection(sessionId, "Session closed");
+										}
 									},
 								});
 
@@ -252,7 +287,21 @@ export class BacklogHttpTransport {
 						return this.createErrorResponse(405, "Method not allowed");
 					} catch (error) {
 						console.error("HTTP transport error:", error);
-						return this.createErrorResponse(500, "Internal server error");
+
+						if (error instanceof McpConnectionError) {
+							return this.createErrorResponse(400, error.message, error.code);
+						}
+						if (error instanceof McpAuthenticationError) {
+							return this.createErrorResponse(401, error.message, error.code);
+						}
+
+						// Handle network/connection errors
+						if (error instanceof Error && error.message.includes("Connection")) {
+							return this.createErrorResponse(503, "Connection error occurred", "CONNECTION_ERROR");
+						}
+
+						// Generic server error
+						return this.createErrorResponse(500, "Internal server error", "INTERNAL_ERROR");
 					}
 				}
 

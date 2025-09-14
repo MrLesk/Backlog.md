@@ -1,6 +1,8 @@
 import { computeSequences } from "../../core/sequences.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
+import { createSimpleValidatedTool } from "../validation/tool-wrapper.ts";
+import type { JsonSchema } from "../validation/validators.ts";
 
 export class SequenceToolHandlers {
 	constructor(private server: McpServer) {}
@@ -139,7 +141,7 @@ export class SequenceToolHandlers {
 						title: task.title,
 						status: task.status || "No Status",
 						dependencies: task.dependencies || [],
-						estimatedEffort: (task as any).estimatedEffort || null,
+						estimatedEffort: null,
 						assignee: task.assignee || [],
 					})),
 					canRunInParallel: true,
@@ -180,66 +182,65 @@ export class SequenceToolHandlers {
 	}
 }
 
-const sequenceCreateTool = {
-	name: "sequence_create",
-	description: "Compute execution sequences from task dependencies",
-	inputSchema: {
-		type: "object",
-		properties: {
-			includeCompleted: {
-				type: "boolean",
-				description: "Include completed tasks in sequence computation (default: false)",
-			},
-			filterStatus: {
-				type: "string",
-				description: "Filter tasks by status (partial match, case-insensitive)",
-			},
+const sequenceCreateSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		includeCompleted: {
+			type: "boolean",
 		},
-		required: [],
+		filterStatus: {
+			type: "string",
+			maxLength: 100,
+		},
 	},
+	required: [],
 };
 
-const sequencePlanTool = {
-	name: "sequence_plan",
-	description: "Create execution plan from task sequences with detailed phase information",
-	inputSchema: {
-		type: "object",
-		properties: {
-			taskIds: {
-				type: "array",
-				items: { type: "string" },
-				description: "Specific task IDs to include in planning (optional - includes all if omitted)",
-			},
-			includeCompleted: {
-				type: "boolean",
-				description: "Include completed tasks in planning (default: false)",
-			},
+const sequencePlanSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		taskIds: {
+			type: "array",
+			items: { type: "string", maxLength: 50 },
 		},
-		required: [],
+		includeCompleted: {
+			type: "boolean",
+		},
 	},
+	required: [],
 };
 
-const createSequenceCreateTool = (handlers: SequenceToolHandlers): McpToolHandler => ({
-	...sequenceCreateTool,
-	handler: async (args: Record<string, unknown>) => {
-		const { includeCompleted, filterStatus } = args;
-		return handlers.createSequence({
-			includeCompleted: includeCompleted as boolean,
-			filterStatus: filterStatus as string,
-		});
-	},
-});
+const createSequenceCreateTool = (handlers: SequenceToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "sequence_create",
+			description: "Compute execution sequences from task dependencies",
+			inputSchema: sequenceCreateSchema,
+		},
+		sequenceCreateSchema,
+		async (input, _context) => {
+			return handlers.createSequence({
+				includeCompleted: input.includeCompleted as boolean,
+				filterStatus: input.filterStatus as string,
+			});
+		},
+	);
 
-const createSequencePlanTool = (handlers: SequenceToolHandlers): McpToolHandler => ({
-	...sequencePlanTool,
-	handler: async (args: Record<string, unknown>) => {
-		const { taskIds, includeCompleted } = args;
-		return handlers.planSequence({
-			taskIds: taskIds as string[],
-			includeCompleted: includeCompleted as boolean,
-		});
-	},
-});
+const createSequencePlanTool = (handlers: SequenceToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "sequence_plan",
+			description: "Create execution plan from task sequences with detailed phase information",
+			inputSchema: sequencePlanSchema,
+		},
+		sequencePlanSchema,
+		async (input, _context) => {
+			return handlers.planSequence({
+				taskIds: input.taskIds as string[],
+				includeCompleted: input.includeCompleted as boolean,
+			});
+		},
+	);
 
 export function registerSequenceTools(server: McpServer): void {
 	const handlers = new SequenceToolHandlers(server);
@@ -247,4 +248,4 @@ export function registerSequenceTools(server: McpServer): void {
 	server.addTool(createSequencePlanTool(handlers));
 }
 
-export { createSequenceCreateTool, createSequencePlanTool };
+export { createSequenceCreateTool, createSequencePlanTool, sequenceCreateSchema, sequencePlanSchema };

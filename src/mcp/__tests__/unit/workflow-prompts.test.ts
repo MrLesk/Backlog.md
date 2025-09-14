@@ -223,13 +223,13 @@ describe("workflow prompts", () => {
 	describe("registerWorkflowPrompts", () => {
 		test("should register all workflow prompts on server", () => {
 			const callHistory: unknown[] = [];
-			const mockServer = {
+			const mockServer: Pick<McpServer, "addPrompt"> = {
 				addPrompt: (prompt: unknown) => {
 					callHistory.push(prompt);
 				},
 			};
 
-			registerWorkflowPrompts(mockServer as any);
+			registerWorkflowPrompts(mockServer as McpServer);
 
 			expect(callHistory).toHaveLength(4);
 			expect(callHistory).toContain(taskCreationPrompt);

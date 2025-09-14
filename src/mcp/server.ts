@@ -9,6 +9,7 @@ import {
 	ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
+import { ConnectionManager } from "./connection/manager.ts";
 import { BacklogHttpTransport, type HttpTransportOptions } from "./transports/http.ts";
 import { BacklogSseTransport, type SseTransportOptions } from "./transports/sse.ts";
 import type {
@@ -27,6 +28,8 @@ import type {
 export class McpServer extends Core {
 	private server: Server;
 	private transport?: StdioServerTransport | BacklogSseTransport | BacklogHttpTransport;
+	private connectionManager: ConnectionManager;
+	private cleanupInterval?: NodeJS.Timeout;
 	private tools: Map<string, McpToolHandler>;
 	private resources: Map<string, McpResourceHandler>;
 	private prompts: Map<string, McpPromptHandler>;
@@ -34,6 +37,10 @@ export class McpServer extends Core {
 	constructor(projectRoot: string) {
 		super(projectRoot);
 
+		this.connectionManager = new ConnectionManager({
+			inactivity: 30000, // 30 seconds
+			absolute: 3600000, // 1 hour
+		});
 		this.tools = new Map();
 		this.resources = new Map();
 		this.prompts = new Map();
@@ -162,12 +169,12 @@ export class McpServer extends Core {
 
 	private async startSseTransport(options?: SseTransportOptions): Promise<void> {
 		this.transport = new BacklogSseTransport(options);
-		await this.transport.start(this.server);
+		await this.transport.start(this.server, this.connectionManager);
 	}
 
 	private async startHttpTransport(options?: HttpTransportOptions): Promise<void> {
 		this.transport = new BacklogHttpTransport(options);
-		await this.transport.start(this.server);
+		await this.transport.start(this.server, this.connectionManager);
 	}
 
 	public async connect(
@@ -189,10 +196,23 @@ export class McpServer extends Core {
 		if (!this.transport) {
 			throw new Error("No transport connected. Call connect() first.");
 		}
+
+		// Start periodic connection cleanup
+		this.cleanupInterval = this.connectionManager.startPeriodicCleanup(60000); // Every minute
+
 		// Server automatically starts when transport connects
 	}
 
 	public async stop(): Promise<void> {
+		// Stop periodic cleanup
+		if (this.cleanupInterval) {
+			clearInterval(this.cleanupInterval);
+			this.cleanupInterval = undefined;
+		}
+
+		// Clean up all connections
+		await this.connectionManager.removeAllConnections("Server shutdown");
+
 		if (this.transport && "stop" in this.transport) {
 			await this.transport.stop();
 		}
@@ -203,6 +223,10 @@ export class McpServer extends Core {
 
 	public getServer(): Server {
 		return this.server;
+	}
+
+	public getConnectionManager(): ConnectionManager {
+		return this.connectionManager;
 	}
 
 	// Test interface for accessing protected methods

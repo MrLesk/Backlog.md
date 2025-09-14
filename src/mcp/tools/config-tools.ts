@@ -1,5 +1,7 @@
 import type { McpServer } from "../server.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
+import { createSimpleValidatedTool } from "../validation/tool-wrapper.ts";
+import type { JsonSchema } from "../validation/validators.ts";
 
 export class ConfigToolHandlers {
 	constructor(private server: McpServer) {}
@@ -394,59 +396,60 @@ export class ConfigToolHandlers {
 	}
 }
 
-const configGetTool = {
-	name: "config_get",
-	description: "Retrieve configuration values (returns all config if no key specified)",
-	inputSchema: {
-		type: "object",
-		properties: {
-			key: {
-				type: "string",
-				description: "Specific config key to retrieve (optional - returns all if omitted)",
-			},
+const configGetSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		key: {
+			type: "string",
+			maxLength: 100,
 		},
-		required: [],
 	},
+	required: [],
 };
 
-const configSetTool = {
-	name: "config_set",
-	description: "Update configuration values with validation",
-	inputSchema: {
-		type: "object",
-		properties: {
-			key: {
-				type: "string",
-				description: "Configuration key to update",
-			},
-			value: {
-				description: "New value (type varies by key: string, boolean, number, or array)",
-			},
+const configSetSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		key: {
+			type: "string",
+			minLength: 1,
+			maxLength: 100,
 		},
-		required: ["key", "value"],
+		value: {}, // Can be any type - will be validated by the handler
 	},
+	required: ["key", "value"],
 };
 
-const createConfigGetTool = (handlers: ConfigToolHandlers): McpToolHandler => ({
-	...configGetTool,
-	handler: async (args: Record<string, unknown>) => {
-		const { key } = args;
-		return handlers.getConfig({
-			key: key as string,
-		});
-	},
-});
+const createConfigGetTool = (handlers: ConfigToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "config_get",
+			description: "Retrieve configuration values (returns all config if no key specified)",
+			inputSchema: configGetSchema,
+		},
+		configGetSchema,
+		async (input, _context) => {
+			return handlers.getConfig({
+				key: input.key as string,
+			});
+		},
+	);
 
-const createConfigSetTool = (handlers: ConfigToolHandlers): McpToolHandler => ({
-	...configSetTool,
-	handler: async (args: Record<string, unknown>) => {
-		const { key, value } = args;
-		return handlers.setConfig({
-			key: key as string,
-			value,
-		});
-	},
-});
+const createConfigSetTool = (handlers: ConfigToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "config_set",
+			description: "Update configuration values with validation",
+			inputSchema: configSetSchema,
+		},
+		configSetSchema,
+		async (input, _context) => {
+			return handlers.setConfig({
+				key: input.key as string,
+				value: input.value,
+			});
+		},
+	);
 
 export function registerConfigTools(server: McpServer): void {
 	const handlers = new ConfigToolHandlers(server);
@@ -454,4 +457,4 @@ export function registerConfigTools(server: McpServer): void {
 	server.addTool(createConfigSetTool(handlers));
 }
 
-export { createConfigGetTool, createConfigSetTool };
+export { createConfigGetTool, createConfigSetTool, configGetSchema, configSetSchema };
