@@ -1,4 +1,3 @@
-import type { BacklogConfig } from "../../types/index.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
 

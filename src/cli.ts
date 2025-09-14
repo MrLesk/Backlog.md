@@ -2619,12 +2619,87 @@ program
 // MCP command group
 const mcpCmd = program.command("mcp");
 
+// PID file management utilities
+const MCP_PID_FILE = "/tmp/backlog-mcp-server.pid";
+
+const writePidFile = (pid: number): void => {
+	try {
+		const fs = require("node:fs");
+		fs.writeFileSync(MCP_PID_FILE, pid.toString(), "utf8");
+	} catch (error) {
+		console.error("Warning: Failed to write PID file:", error instanceof Error ? error.message : error);
+	}
+};
+
+const readPidFile = (): number | null => {
+	try {
+		const fs = require("node:fs");
+		const pidString = fs.readFileSync(MCP_PID_FILE, "utf8").trim();
+		return Number.parseInt(pidString, 10);
+	} catch {
+		return null;
+	}
+};
+
+const removePidFile = (): void => {
+	try {
+		const fs = require("node:fs");
+		fs.unlinkSync(MCP_PID_FILE);
+	} catch {
+		// Ignore errors when removing PID file
+	}
+};
+
+const isProcessRunning = (pid: number): boolean => {
+	try {
+		// process.kill with signal 0 checks if process exists without killing it
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+const cleanupStaleProcess = (): boolean => {
+	const pid = readPidFile();
+	if (pid && !isProcessRunning(pid)) {
+		removePidFile();
+		return true;
+	}
+	return false;
+};
+
 mcpCmd
 	.command("start")
-	.description("Start MCP server with stdio transport")
+	.description("Start MCP server")
 	.option("-d, --debug", "Enable debug logging", false)
+	.option("-t, --transport <type>", "Transport type (stdio|http)", "stdio")
+	.option("-p, --port <port>", "Port number for HTTP transport", "8080")
+	.option("--daemon", "Run as daemon process (HTTP transport only)", false)
 	.action(async (options) => {
 		try {
+			// Check if server is already running
+			const existingPid = readPidFile();
+			if (existingPid && isProcessRunning(existingPid)) {
+				console.error(`MCP server is already running with PID ${existingPid}`);
+				process.exit(1);
+			}
+
+			// Clean up stale PID file if needed
+			cleanupStaleProcess();
+
+			// Validate transport options
+			if (options.transport === "http") {
+				console.error("HTTP transport is not yet implemented. Only stdio transport is supported.");
+				console.error("Use: backlog mcp start --transport stdio");
+				process.exit(1);
+			}
+
+			if (options.daemon && options.transport !== "http") {
+				console.error("Daemon mode is only supported with HTTP transport");
+				process.exit(1);
+			}
+
 			const server = new McpServer(process.cwd());
 
 			// Register all MCP tools
@@ -2649,10 +2724,93 @@ mcpCmd
 				console.error("  Daily standup: daily_standup_workflow");
 			}
 
-			await server.connect("stdio");
+			// Write PID file
+			writePidFile(process.pid);
+
+			// Set up graceful shutdown
+			const cleanup = () => {
+				console.error("Shutting down MCP server...");
+				removePidFile();
+				process.exit(0);
+			};
+
+			process.on("SIGTERM", cleanup);
+			process.on("SIGINT", cleanup);
+
+			if (options.debug) {
+				console.error(`MCP server running on ${options.transport} transport`);
+			}
+
+			await server.connect(options.transport);
 			await server.start();
 		} catch (error) {
+			removePidFile();
 			console.error("Failed to start MCP server:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("stop")
+	.description("Stop running MCP server")
+	.action(() => {
+		try {
+			const pid = readPidFile();
+
+			if (!pid) {
+				console.error("No MCP server PID file found. Server may not be running.");
+				process.exit(1);
+			}
+
+			if (!isProcessRunning(pid)) {
+				console.error(`Process ${pid} is not running. Cleaning up stale PID file.`);
+				removePidFile();
+				process.exit(1);
+			}
+
+			console.log(`Stopping MCP server (PID ${pid})...`);
+			process.kill(pid, "SIGTERM");
+
+			// Wait a moment for graceful shutdown
+			setTimeout(() => {
+				if (isProcessRunning(pid)) {
+					console.log("Forcing shutdown...");
+					try {
+						process.kill(pid, "SIGKILL");
+					} catch {
+						// Process may have already stopped
+					}
+				}
+				removePidFile();
+				console.log("MCP server stopped.");
+			}, 2000);
+		} catch (error) {
+			console.error("Failed to stop MCP server:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("status")
+	.description("Check MCP server status")
+	.action(() => {
+		try {
+			const pid = readPidFile();
+
+			if (!pid) {
+				console.log("MCP server: Not running (no PID file found)");
+				return;
+			}
+
+			if (isProcessRunning(pid)) {
+				console.log(`MCP server: Running (PID ${pid})`);
+			} else {
+				console.log(`MCP server: Not running (stale PID file found for ${pid})`);
+				console.log("Cleaning up stale PID file...");
+				removePidFile();
+			}
+		} catch (error) {
+			console.error("Failed to check server status:", error instanceof Error ? error.message : error);
 			process.exit(1);
 		}
 	});

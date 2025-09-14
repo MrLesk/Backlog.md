@@ -51,7 +51,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.unsequenced).toEqual([]);
 				expect(data.sequences).toEqual([]);
@@ -103,7 +103,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.sequences).toHaveLength(3); // 3 sequence levels
 				expect(data.metadata.totalTasks).toBe(3);
@@ -142,7 +142,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.metadata.filteredTasks).toBe(1); // Only non-completed task
 				expect(data.unsequenced).toHaveLength(1);
@@ -181,7 +181,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.metadata.filteredTasks).toBe(2); // Both tasks included
 				expect(data.sequences).toHaveLength(2); // 2 sequence levels
@@ -219,7 +219,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.metadata.filteredTasks).toBe(1);
 				expect(data.unsequenced[0].id).toBe("task-1");
@@ -246,7 +246,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.unsequenced).toHaveLength(1);
 				expect(data.sequences).toHaveLength(0);
@@ -312,7 +312,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.phases).toHaveLength(3); // 3 phases of execution
 				expect(data.summary.totalPhases).toBe(3);
@@ -338,7 +338,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.phases).toHaveLength(2); // Foundation + Feature A
 				expect(data.summary.totalTasksInPlan).toBe(2);
@@ -354,7 +354,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Tasks not found");
+			expect(result.content[0]?.text).toContain("Tasks not found");
 		});
 
 		it("should include task details in plan", async () => {
@@ -366,7 +366,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				// task-1 has no dependencies or dependents when selected alone, so it goes to unsequenced
 				expect(data.unsequenced).toHaveLength(1);
@@ -387,7 +387,7 @@ describe("Sequence Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			if (result.success) {
 				expect(data.phases).toHaveLength(3); // All tasks since empty array means all
 			}

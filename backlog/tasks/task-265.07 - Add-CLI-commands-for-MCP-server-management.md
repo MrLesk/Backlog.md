@@ -1,9 +1,10 @@
 ---
 id: task-265.07
 title: Add CLI commands for MCP server management
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-09-13 18:52'
+updated_date: '2025-09-14 01:15'
 labels:
   - mcp
   - cli
@@ -132,10 +133,10 @@ backlog mcp stop
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] backlog mcp start command launches MCP server
-- [ ] backlog mcp stop command terminates running server
-- [ ] backlog mcp status command shows server state
-- [ ] Commands integrate with existing CLI structure
-- [ ] Server process management is robust
-- [ ] Configuration options are exposed through CLI
+- [ ] #1 backlog mcp start command launches MCP server
+- [ ] #2 backlog mcp stop command terminates running server
+- [ ] #3 backlog mcp status command shows server state
+- [ ] #4 Commands integrate with existing CLI structure
+- [ ] #5 Server process management is robust
+- [ ] #6 Configuration options are exposed through CLI
 <!-- AC:END -->

@@ -16,10 +16,10 @@ describe("workflow prompts", () => {
 			expect(taskCreationPrompt.arguments).toBeDefined();
 			expect(taskCreationPrompt.arguments).toHaveLength(2);
 
-			const userRequirementArg = taskCreationPrompt.arguments!.find((arg) => arg.name === "userRequirement");
+			const userRequirementArg = taskCreationPrompt.arguments?.find((arg) => arg.name === "userRequirement");
 			expect(userRequirementArg?.required).toBe(true);
 
-			const projectContextArg = taskCreationPrompt.arguments!.find((arg) => arg.name === "projectContext");
+			const projectContextArg = taskCreationPrompt.arguments?.find((arg) => arg.name === "projectContext");
 			expect(projectContextArg?.required).toBe(false);
 		});
 
@@ -70,7 +70,7 @@ describe("workflow prompts", () => {
 			expect(sprintPlanningPrompt.arguments).toHaveLength(3);
 
 			// All arguments should be optional for sprint planning
-			sprintPlanningPrompt.arguments!.forEach((arg) => {
+			sprintPlanningPrompt.arguments?.forEach((arg) => {
 				expect(arg.required).toBe(false);
 			});
 		});
@@ -118,13 +118,13 @@ describe("workflow prompts", () => {
 			expect(codeReviewPrompt.arguments).toBeDefined();
 			expect(codeReviewPrompt.arguments).toHaveLength(3);
 
-			const taskIdArg = codeReviewPrompt.arguments!.find((arg) => arg.name === "taskId");
+			const taskIdArg = codeReviewPrompt.arguments?.find((arg) => arg.name === "taskId");
 			expect(taskIdArg?.required).toBe(true);
 
-			const prUrlArg = codeReviewPrompt.arguments!.find((arg) => arg.name === "prUrl");
+			const prUrlArg = codeReviewPrompt.arguments?.find((arg) => arg.name === "prUrl");
 			expect(prUrlArg?.required).toBe(false);
 
-			const changesArg = codeReviewPrompt.arguments!.find((arg) => arg.name === "changes");
+			const changesArg = codeReviewPrompt.arguments?.find((arg) => arg.name === "changes");
 			expect(changesArg?.required).toBe(false);
 		});
 
@@ -175,7 +175,7 @@ describe("workflow prompts", () => {
 			expect(dailyStandupPrompt.arguments).toHaveLength(2);
 
 			// Both arguments should be optional
-			dailyStandupPrompt.arguments!.forEach((arg) => {
+			dailyStandupPrompt.arguments?.forEach((arg) => {
 				expect(arg.required).toBe(false);
 			});
 		});

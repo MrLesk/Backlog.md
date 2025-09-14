@@ -51,7 +51,7 @@ describe("Board Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			expect(data.columns).toEqual({});
 			expect(data.metadata.totalTasks).toBe(0);
 			expect(data.metadata.completionRate).toBe(0);
@@ -101,14 +101,14 @@ describe("Board Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const boardData = JSON.parse(result.content[0]!.text as string);
+			const boardData = JSON.parse(result.content[0]?.text as string);
 			expect(Object.keys(boardData.columns)).toContain("To Do");
 			expect(Object.keys(boardData.columns)).toContain("In Progress");
 			expect(Object.keys(boardData.columns)).toContain("Done");
 
 			expect(boardData.columns["To Do"]).toHaveLength(1);
 			expect(boardData.columns["In Progress"]).toHaveLength(1);
-			expect(boardData.columns["Done"]).toHaveLength(1);
+			expect(boardData.columns.Done).toHaveLength(1);
 
 			expect(boardData.metadata.totalTasks).toBe(3);
 			expect(boardData.metadata.completionRate).toBe(33); // 1/3 tasks done
@@ -140,7 +140,7 @@ describe("Board Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			expect(data.columns).toBeDefined();
 			expect(data.metadata).toBeUndefined();
 		});
@@ -165,7 +165,7 @@ describe("Board Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			expect(data.columns["No Status"]).toHaveLength(1);
 		});
 
@@ -182,7 +182,7 @@ describe("Board Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Configuration not found");
+			expect(result.content[0]?.text).toContain("Configuration not found");
 		});
 	});
 });

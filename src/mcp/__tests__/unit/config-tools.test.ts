@@ -60,7 +60,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			expect(data.projectName).toBe("Test Project");
 			expect(data.statuses).toEqual(["To Do", "In Progress", "Done"]);
 		});
@@ -74,7 +74,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toBe("Test Project");
+			expect(result.content[0]?.text).toBe("Test Project");
 		});
 
 		it("should return array config values", async () => {
@@ -86,7 +86,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			const data = JSON.parse(result.content[0]!.text as string);
+			const data = JSON.parse(result.content[0]?.text as string);
 			expect(data).toEqual(["To Do", "In Progress", "Done"]);
 		});
 
@@ -99,7 +99,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toBe("false");
+			expect(result.content[0]?.text).toBe("false");
 		});
 
 		it("should return null for unset optional values", async () => {
@@ -121,7 +121,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toBe("null");
+			expect(result.content[0]?.text).toBe("null");
 		});
 
 		it("should handle unknown config key", async () => {
@@ -133,7 +133,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Unknown config key");
+			expect(result.content[0]?.text).toContain("Unknown config key");
 		});
 
 		it("should handle missing config", async () => {
@@ -148,7 +148,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("No backlog project found");
+			expect(result.content[0]?.text).toContain("No backlog project found");
 		});
 	});
 
@@ -162,7 +162,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Successfully updated projectName to: Updated Project");
+			expect(result.content[0]?.text).toContain("Successfully updated projectName to: Updated Project");
 
 			// Verify the config was actually saved
 			const config = await mcpServer.filesystem.loadConfig();
@@ -179,7 +179,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Successfully updated");
+			expect(result.content[0]?.text).toContain("Successfully updated");
 
 			const config = await mcpServer.filesystem.loadConfig();
 			expect(config?.statuses).toEqual(newStatuses);
@@ -194,7 +194,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Successfully updated");
+			expect(result.content[0]?.text).toContain("Successfully updated");
 			const config = await mcpServer.filesystem.loadConfig();
 			expect(config?.autoCommit).toBe(true);
 		});
@@ -208,7 +208,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Successfully updated");
+			expect(result.content[0]?.text).toContain("Successfully updated");
 			const config = await mcpServer.filesystem.loadConfig();
 			expect(config?.defaultPort).toBe(8080);
 		});
@@ -222,7 +222,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("must be a non-empty string");
+			expect(result.content[0]?.text).toContain("must be a non-empty string");
 		});
 
 		it("should validate array inputs", async () => {
@@ -234,7 +234,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("At least one status must be provided");
+			expect(result.content[0]?.text).toContain("At least one status must be provided");
 		});
 
 		it("should validate numeric ranges", async () => {
@@ -246,7 +246,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("must be an integer between 1 and 65535");
+			expect(result.content[0]?.text).toContain("must be an integer between 1 and 65535");
 		});
 
 		it("should validate boolean inputs", async () => {
@@ -258,7 +258,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("must be a boolean value");
+			expect(result.content[0]?.text).toContain("must be a boolean value");
 		});
 
 		it("should validate defaultStatus against existing statuses", async () => {
@@ -270,7 +270,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("not found in configured statuses");
+			expect(result.content[0]?.text).toContain("not found in configured statuses");
 		});
 
 		it("should handle unknown config key", async () => {
@@ -282,7 +282,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("Unknown config key");
+			expect(result.content[0]?.text).toContain("Unknown config key");
 		});
 
 		it("should handle missing config", async () => {
@@ -297,7 +297,7 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]!.text).toContain("No backlog project found");
+			expect(result.content[0]?.text).toContain("No backlog project found");
 		});
 	});
 });
