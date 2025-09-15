@@ -2695,6 +2695,18 @@ mcpCmd
 			// Clean up stale PID file if needed
 			cleanupStaleProcess();
 
+			// Check if .mcp.json exists for Claude Code integration
+			const { existsSync } = await import("node:fs");
+			const { resolve } = await import("node:path");
+			const mcpConfigPath = resolve(process.cwd(), ".mcp.json");
+
+			if (!existsSync(mcpConfigPath)) {
+				console.log("💡 No .mcp.json configuration found");
+				console.log("   For Claude Code integration, run: backlog mcp setup");
+				console.log("   The MCP server will still start without it.");
+				console.log("");
+			}
+
 			// Validate transport options
 			if (options.daemon && !["http", "sse"].includes(options.transport)) {
 				console.error("Daemon mode is only supported with HTTP/SSE transport");
@@ -2878,6 +2890,192 @@ mcpCmd
 			}
 		} catch (error) {
 			console.error("Failed to check server status:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("setup")
+	.description("Set up MCP configuration for this project")
+	.option("--force", "Overwrite existing .mcp.json file", false)
+	.option("--global", "Force global installation template (skip auto-detection)", false)
+	.action(async (options) => {
+		try {
+			const { writeFileSync, existsSync, readFileSync } = await import("node:fs");
+			const { resolve } = await import("node:path");
+			const projectRoot = process.cwd();
+
+			// Check if .mcp.json already exists
+			const mcpConfigPath = resolve(projectRoot, ".mcp.json");
+			if (existsSync(mcpConfigPath) && !options.force) {
+				console.error("❌ .mcp.json already exists. Use --force to overwrite.");
+				console.log("💡 To recreate the configuration, run: backlog mcp setup --force");
+				process.exit(1);
+			}
+
+			// Determine which template to use
+			const { getInstallationContext } = await import("./utils/installation-detector.ts");
+			const context = getInstallationContext(projectRoot);
+
+			let templateFile: string;
+			let templatePath: string;
+			let configType: string;
+
+			if (options.global || (!context.isDevelopment && context.isGlobalInstall)) {
+				// Use global template
+				templateFile = ".mcp.global.template.json";
+				configType = "global installation";
+			} else {
+				// Use development template
+				templateFile = ".mcp.template.json";
+				configType = "development mode";
+			}
+
+			// Try to find template file
+			templatePath = resolve(projectRoot, templateFile);
+			if (!existsSync(templatePath)) {
+				// If not in current directory, try resolving relative to this script
+				// This handles the case where we're running from a different directory
+				const scriptDir = resolve(import.meta.url.replace("file://", ""), "..", "..");
+				templatePath = resolve(scriptDir, templateFile);
+
+				if (!existsSync(templatePath)) {
+					console.error(`❌ Template file not found: ${templateFile}`);
+					console.log("💡 Make sure you're running this command from the backlog.md project root");
+					console.log("💡 Available templates should be:");
+					console.log("   • .mcp.template.json (for development)");
+					console.log("   • .mcp.global.template.json (for end users)");
+					process.exit(1);
+				}
+			}
+
+			console.log(`🔧 Setting up MCP configuration for ${configType}`);
+			console.log(`📋 Using template: ${templateFile}`);
+
+			// Read and copy template
+			const templateContent = readFileSync(templatePath, "utf8");
+			writeFileSync(mcpConfigPath, templateContent);
+
+			console.log("✅ Created .mcp.json configuration");
+			console.log(`📁 Project root: ${projectRoot}`);
+			console.log("");
+			console.log("💡 Next steps:");
+			console.log("   • Open this project in Claude Code");
+			console.log("   • Claude Code will automatically detect the MCP server");
+			console.log("   • Test with: backlog mcp test");
+		} catch (error) {
+			console.error("❌ Failed to set up MCP configuration:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("test")
+	.description("Test MCP server connection and functionality")
+	.option("--verbose", "Show detailed test results", false)
+	.action(async (options) => {
+		try {
+			console.log("🧪 Testing MCP connection...");
+			console.log("");
+
+			const { testMcpConnection } = await import("./mcp/test-connection.ts");
+			const result = await testMcpConnection(process.cwd());
+
+			// Show context info
+			console.log(`📁 Project: ${result.context.projectRoot}`);
+			console.log(
+				`🔧 Mode: ${result.context.isDevelopment ? "Development" : result.context.isGlobalInstall ? "Global" : "Unknown"}`,
+			);
+			console.log(`⚡ Entry point: ${result.context.mcpEntryPoint}`);
+			console.log("");
+
+			// Show results
+			if (result.success) {
+				console.log("✅ MCP connection test passed!");
+				console.log(`🚀 Server startup time: ${result.serverInfo?.startupTime}ms`);
+				console.log(`🛠️  Available tools: ${result.tools.length}`);
+				console.log(`📊 Available resources: ${result.resources.length}`);
+				console.log(`💡 Available prompts: ${result.prompts.length}`);
+
+				if (options.verbose) {
+					console.log("");
+					console.log("📋 Tools:", result.tools.join(", "));
+					console.log("📋 Resources:", result.resources.join(", "));
+					console.log("📋 Prompts:", result.prompts.join(", "));
+				}
+			} else {
+				console.log("❌ MCP connection test failed");
+				console.log("");
+				console.log("🔥 Errors:");
+				for (const error of result.errors) {
+					console.log(`   • ${error}`);
+				}
+			}
+
+			// Show warnings
+			if (result.warnings.length > 0) {
+				console.log("");
+				console.log("⚠️  Warnings:");
+				for (const warning of result.warnings) {
+					console.log(`   • ${warning}`);
+				}
+			}
+
+			if (!result.success) {
+				console.log("");
+				console.log("💡 Try running 'backlog mcp doctor' for detailed diagnostics");
+				process.exit(1);
+			}
+		} catch (error) {
+			console.error("❌ Test failed:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("doctor")
+	.description("Diagnose MCP configuration and setup issues")
+	.action(async () => {
+		try {
+			console.log("🏥 Running MCP diagnostics...");
+			console.log("");
+
+			const { runMcpDoctor } = await import("./mcp/test-connection.ts");
+			const result = await runMcpDoctor(process.cwd());
+
+			// Show overall status
+			const statusEmoji = result.overall === "healthy" ? "✅" : result.overall === "warning" ? "⚠️" : "❌";
+			console.log(`${statusEmoji} Overall status: ${result.overall.toUpperCase()}`);
+			console.log(`📁 Project: ${result.context.projectRoot}`);
+			console.log(
+				`🔧 Installation: ${result.context.isDevelopment ? "Development" : result.context.isGlobalInstall ? "Global" : "None detected"}`,
+			);
+			console.log("");
+
+			// Show detailed checks
+			console.log("🔍 Diagnostic Results:");
+			for (const check of result.checks) {
+				const emoji = check.status === "pass" ? "✅" : check.status === "warn" ? "⚠️" : "❌";
+				console.log(`${emoji} ${check.name}: ${check.message}`);
+				if (check.suggestion && check.status !== "pass") {
+					console.log(`   💡 ${check.suggestion}`);
+				}
+			}
+
+			// Show recommendations
+			if (result.recommendations.length > 0) {
+				console.log("");
+				console.log("📋 Recommendations:");
+				for (const rec of result.recommendations) {
+					console.log(`${rec}`);
+				}
+			}
+
+			if (result.overall === "error") {
+				process.exit(1);
+			}
+		} catch (error) {
+			console.error("❌ Doctor failed:", error instanceof Error ? error.message : error);
 			process.exit(1);
 		}
 	});

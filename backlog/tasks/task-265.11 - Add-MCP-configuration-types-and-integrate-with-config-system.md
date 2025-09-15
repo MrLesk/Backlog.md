@@ -34,6 +34,25 @@ export interface BacklogConfig {
       enabled?: boolean; // Default: false
       port?: number; // Default: 3000
       host?: string; // Default: 'localhost'
+      auth?: {
+        type?: 'none' | 'bearer' | 'oauth2'; // Default: 'none'
+        token?: string;
+        oauth?: {
+          clientId?: string;
+          clientSecret?: string;
+          tokenUrl?: string;
+          refreshToken?: string;
+        };
+      };
+      cors?: {
+        origin?: string | string[]; // Default: '*'
+        credentials?: boolean; // Default: false
+      };
+    };
+    rateLimiting?: {
+      enabled?: boolean; // Default: true
+      maxRequestsPerMinute?: number; // Default: 100
+      maxOutputTokens?: number; // Default: 25000
     };
   };
 }
@@ -55,10 +74,29 @@ export interface McpConfig {
     enabled: boolean;
     port: number;
     host: string;
-    cors?: {
+    auth: {
+      type: 'none' | 'bearer' | 'oauth2';
+      token?: string;
+      oauth?: {
+        clientId: string;
+        clientSecret: string;
+        tokenUrl: string;
+        refreshToken?: string;
+        accessToken?: string;
+        tokenExpiry?: number;
+      };
+    };
+    cors: {
       enabled: boolean;
       origins: string[];
+      credentials: boolean;
     };
+  };
+  rateLimiting: {
+    enabled: boolean;
+    maxRequestsPerMinute: number;
+    maxOutputTokens: number;
+    windowSizeMs: number;
   };
   server: {
     name: string;
@@ -108,10 +146,20 @@ export const DEFAULT_MCP_CONFIG: McpConfig = {
     enabled: false,
     port: 3000,
     host: 'localhost',
+    auth: {
+      type: 'none'
+    },
     cors: {
       enabled: true,
-      origins: ['*']
+      origins: ['*'],
+      credentials: false
     }
+  },
+  rateLimiting: {
+    enabled: true,
+    maxRequestsPerMinute: 100,
+    maxOutputTokens: 25000,
+    windowSizeMs: 60000
   },
   server: {
     name: 'backlog-md-mcp',
@@ -133,10 +181,24 @@ export function getMcpConfig(config: BacklogConfig): McpConfig {
       enabled: config.mcp.http?.enabled ?? DEFAULT_MCP_CONFIG.http.enabled,
       port: config.mcp.http?.port ?? DEFAULT_MCP_CONFIG.http.port,
       host: config.mcp.http?.host ?? DEFAULT_MCP_CONFIG.http.host,
+      auth: {
+        type: config.mcp.http?.auth?.type ?? DEFAULT_MCP_CONFIG.http.auth.type,
+        token: config.mcp.http?.auth?.token,
+        oauth: config.mcp.http?.auth?.oauth
+      },
       cors: {
         enabled: DEFAULT_MCP_CONFIG.http.cors.enabled,
-        origins: DEFAULT_MCP_CONFIG.http.cors.origins
+        origins: typeof config.mcp.http?.cors?.origin === 'string'
+          ? [config.mcp.http.cors.origin]
+          : config.mcp.http?.cors?.origin ?? DEFAULT_MCP_CONFIG.http.cors.origins,
+        credentials: config.mcp.http?.cors?.credentials ?? DEFAULT_MCP_CONFIG.http.cors.credentials
       }
+    },
+    rateLimiting: {
+      enabled: config.mcp.rateLimiting?.enabled ?? DEFAULT_MCP_CONFIG.rateLimiting.enabled,
+      maxRequestsPerMinute: config.mcp.rateLimiting?.maxRequestsPerMinute ?? DEFAULT_MCP_CONFIG.rateLimiting.maxRequestsPerMinute,
+      maxOutputTokens: config.mcp.rateLimiting?.maxOutputTokens ?? DEFAULT_MCP_CONFIG.rateLimiting.maxOutputTokens,
+      windowSizeMs: DEFAULT_MCP_CONFIG.rateLimiting.windowSizeMs
     },
     server: DEFAULT_MCP_CONFIG.server
   };
@@ -201,13 +263,34 @@ export class McpServer extends Core {
 - **Opt-in**: MCP must be explicitly enabled
 - **Flexible**: Easy to extend with additional options
 
+## Implementation Progress
+
+### Approach Change
+The implementation approach has been modified to prioritize Claude Code integration first before building comprehensive configuration types. The current focus is on getting a working MCP integration with Claude Code using the wrapper script pattern.
+
+### Current Status
+- **Deferred**: Full BacklogConfig integration is deferred until after Claude Code validation
+- **Alternative Approach**: Using environment variables and direct configuration for initial testing
+- **Wrapper Script**: The `scripts/mcp-server.cjs` handles configuration detection without requiring BacklogConfig changes
+- **Future Work**: Will implement proper configuration types after Claude Code integration is validated
+
+### Next Steps
+1. Complete Claude Code integration testing
+2. Gather feedback on the approach
+3. Implement minimal configuration extension to BacklogConfig
+4. Add proper TypeScript types for MCP functionality
+
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] Minimal MCP configuration extension added to BacklogConfig
-- [ ] Detailed MCP types defined in /src/mcp/types.ts
-- [ ] getMcpConfig helper function with sensible defaults
-- [ ] McpServer updated to use configuration system
-- [ ] Configuration integration doesn't break existing patterns
-- [ ] MCP is opt-in (disabled by default)
-- [ ] All types remain consistent and type-safe
+- [ ] Minimal MCP configuration extension added to BacklogConfig (deferred)
+- [ ] Detailed MCP types defined in /src/mcp/types.ts (deferred)
+- [ ] getMcpConfig helper function with sensible defaults (deferred)
+- [ ] McpServer updated to use configuration system (deferred)
+- [ ] Configuration integration doesn't break existing patterns (deferred)
+- [ ] MCP is opt-in (disabled by default) (deferred)
+- [ ] All types remain consistent and type-safe (deferred)
+- [ ] OAuth2 configuration support with token refresh (enhanced)
+- [ ] Rate limiting configuration with MAX_MCP_OUTPUT_TOKENS (enhanced)
+- [ ] Installation scope flags (local/project/user) support (enhanced)
+- [ ] Secure token storage mechanism integrated (enhanced)
 <!-- AC:END -->

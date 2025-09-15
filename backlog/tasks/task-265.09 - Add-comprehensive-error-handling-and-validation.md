@@ -211,6 +211,10 @@ export class ConnectionManager {
 - [ ] #3 Input sanitization for security
 - [ ] #4 Connection timeout handling
 - [ ] #5 Graceful degradation when services unavailable
+- [ ] #6 Implement connection retry logic with exponential backoff
+- [ ] #7 Add circuit breaker pattern for failed services
+- [ ] #8 Include troubleshooting steps in error messages
+- [ ] #9 Add performance metrics tracking for MCP operations
 <!-- AC:END -->
 
 ## Implementation Notes

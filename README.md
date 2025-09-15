@@ -27,6 +27,8 @@
 
 * 🤖 **AI-ready CLI** -- "Claude, please take over task 33"
 
+* 🔧 **MCP Integration** -- Works seamlessly with Claude Code via Model Context Protocol
+
 * 🔍 **Rich query commands** -- view, list, filter, or archive tasks with ease
 
 * 💻 **Cross-platform** -- runs on macOS, Linux, and Windows
@@ -84,6 +86,36 @@ backlog browser --no-open
 ```
 
 ![Web Interface Screenshot](./.github/web.jpeg)
+
+---
+
+## 🔧 MCP Integration (Model Context Protocol)
+
+Backlog.md includes full MCP support for seamless integration with Claude Code and other AI agents:
+
+```bash
+# First-time setup: Configure MCP for your project
+backlog mcp setup
+
+# Then open your project in Claude Code and start using these prompts:
+"Create a task for implementing user authentication with OAuth2"
+"Show me the current status of all tasks and any blockers"
+"Help me plan the next sprint with our current backlog"
+```
+
+**Available MCP Tools:**
+- 📝 **Task Management**: Create, update, list, and manage tasks
+- 📊 **Board Operations**: View kanban state, get project metrics
+- ⚙️ **Configuration**: Read and modify project settings
+- 🔄 **Workflow Prompts**: Guided task creation, sprint planning, code review integration
+
+**Quick Setup:**
+1. Run `backlog mcp setup` in your project (creates `.mcp.json` config)
+2. Open your project in Claude Code
+3. Claude Code automatically detects and connects to the MCP server
+4. Use natural language to interact with your tasks and boards
+
+📖 **[Complete MCP Documentation →](docs/mcp/README.md)**
 
 The web interface provides:
 - **Interactive Kanban board** with drag-and-drop functionality

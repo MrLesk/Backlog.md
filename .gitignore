@@ -48,6 +48,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 example-project/
 
 # blessed resources
+
+# MCP configuration (local only)
+.mcp.json
 resources
 result
 
@@ -56,3 +59,4 @@ result
 .tmp-test-*
 test-cli-*
 test-cli-sequences-*
+mcp-dual-mode-*
