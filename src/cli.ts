@@ -22,6 +22,7 @@ import { registerDataResources } from "./mcp/resources/data-resources.ts";
 import { McpServer } from "./mcp/server.ts";
 import { registerBoardTools } from "./mcp/tools/board-tools.ts";
 import { registerConfigTools } from "./mcp/tools/config-tools.ts";
+import { registerDraftTools } from "./mcp/tools/draft-tools.ts";
 import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
 import { registerTaskTools } from "./mcp/tools/task-tools.ts";
 import type { TransportType } from "./mcp/types.ts";
@@ -2734,6 +2735,7 @@ mcpCmd
 
 			// Register all MCP tools
 			registerTaskTools(server);
+			registerDraftTools(server);
 			registerBoardTools(server);
 			registerConfigTools(server);
 			registerSequenceTools(server);
