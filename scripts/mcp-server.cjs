@@ -78,11 +78,10 @@ async function main() {
 		if (isIsolated) {
 			console.error(`🏷️  Workspace ID: ${workspaceId}`);
 		}
-		console.error(`🚀 Starting MCP server...`);
+		console.error("🚀 Starting MCP server...");
 
 		// Start the appropriate MCP server
 		await startMcpServer(context, projectRoot);
-
 	} catch (error) {
 		console.error("❌ Failed to start MCP server:", error.message);
 		console.error("");
