@@ -1,7 +1,7 @@
 ---
 id: task-265.10
 title: Extend existing MCP test suite with comprehensive coverage
-status: In Progress
+status: Done
 assignee:
   - '@agent-claude'
 created_date: '2025-09-13 18:53'

@@ -1,7 +1,7 @@
 ---
 id: task-265.12
 title: Create MCP documentation and usage examples
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-09-13 18:53'
 labels:
