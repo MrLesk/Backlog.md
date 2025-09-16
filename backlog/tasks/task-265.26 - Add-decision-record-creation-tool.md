@@ -11,7 +11,7 @@ labels:
   - adr
   - enhancement
 dependencies:
-  - task-266
+  - task-265.22
 parent_task_id: task-265
 priority: medium
 ---

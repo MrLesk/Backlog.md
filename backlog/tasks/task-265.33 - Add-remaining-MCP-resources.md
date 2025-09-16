@@ -10,10 +10,10 @@ labels:
   - data-access
   - enhancement
 dependencies:
-  - task-266
-  - task-267
-  - task-269
-  - task-270
+  - task-265.22
+  - task-265.23
+  - task-265.25
+  - task-265.26
 parent_task_id: task-265
 priority: medium
 ---

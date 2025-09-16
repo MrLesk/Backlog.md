@@ -11,7 +11,7 @@ labels:
   - validation
   - enhancement
 dependencies:
-  - task-268
+  - task-265.24
 parent_task_id: task-265
 priority: medium
 ---
