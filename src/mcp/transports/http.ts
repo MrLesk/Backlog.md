@@ -172,7 +172,9 @@ export class BacklogHttpTransport {
 									allowedHosts: this.options.allowedHosts,
 									allowedOrigins: this.options.allowedOrigins,
 									onsessioninitialized: async (sessionId: string) => {
-										console.error(`HTTP session initialized: ${sessionId}`);
+										if (process.env.DEBUG) {
+											console.error(`HTTP session initialized: ${sessionId}`);
+										}
 										this.transports.set(sessionId, transport);
 
 										// Register connection with ConnectionManager
@@ -185,7 +187,9 @@ export class BacklogHttpTransport {
 										}
 									},
 									onsessionclosed: async (sessionId: string) => {
-										console.error(`HTTP session closed: ${sessionId}`);
+										if (process.env.DEBUG) {
+											console.error(`HTTP session closed: ${sessionId}`);
+										}
 										this.transports.delete(sessionId);
 
 										// Remove connection from ConnectionManager
@@ -320,7 +324,7 @@ export class BacklogHttpTransport {
 			},
 		});
 
-		console.error(`MCP server running on ${this.options.host}:${this.options.port} (HTTP transport)`);
+		console.log(`MCP server running on ${this.options.host}:${this.options.port} (HTTP transport)`);
 	}
 
 	private bunRequestToNodeRequest(req: Request, body?: unknown): IncomingMessage & { auth?: AuthInfo | undefined } {
@@ -423,9 +427,7 @@ export class BacklogHttpTransport {
 
 	async stop(): Promise<void> {
 		if (this.server) {
-			this.server.stop();
-
-			// Close all HTTP transports
+			// First close all HTTP transports
 			for (const transport of this.transports.values()) {
 				try {
 					await transport.close();
@@ -435,6 +437,15 @@ export class BacklogHttpTransport {
 			}
 
 			this.transports.clear();
+
+			// Then stop the server - wrap in Promise since Bun.serve().stop() is synchronous
+			await new Promise<void>((resolve) => {
+				this.server?.stop();
+				// Small delay to ensure server has fully stopped
+				setTimeout(resolve, 10);
+			});
+
+			this.server = undefined;
 		}
 	}
 

@@ -65,9 +65,11 @@ export class ConnectionManager {
 
 		this.connections.set(connectionId, connection);
 
-		console.log(
-			`Connection registered: ${connectionId}${clientId ? ` (client: ${clientId})` : ""} - Total connections: ${this.connections.size}`,
-		);
+		if (process.env.DEBUG) {
+			console.log(
+				`Connection registered: ${connectionId}${clientId ? ` (client: ${clientId})` : ""} - Total connections: ${this.connections.size}`,
+			);
+		}
 	}
 
 	/**
@@ -165,7 +167,9 @@ export class ConnectionManager {
 
 		this.connections.delete(connectionId);
 
-		console.log(`Connection removed: ${connectionId} (${reason}) - Remaining connections: ${this.connections.size}`);
+		if (process.env.DEBUG) {
+			console.log(`Connection removed: ${connectionId} (${reason}) - Remaining connections: ${this.connections.size}`);
+		}
 
 		return true;
 	}
@@ -178,7 +182,9 @@ export class ConnectionManager {
 
 		await Promise.all(connectionIds.map((id) => this.removeConnection(id, reason)));
 
-		console.log(`All connections removed (${reason})`);
+		if (process.env.DEBUG) {
+			console.log(`All connections removed (${reason})`);
+		}
 	}
 
 	/**
@@ -202,7 +208,7 @@ export class ConnectionManager {
 			await this.removeConnection(id, "Expired due to inactivity or timeout");
 		}
 
-		if (expiredConnections.length > 0) {
+		if (expiredConnections.length > 0 && process.env.DEBUG) {
 			console.log(`Cleaned up ${expiredConnections.length} expired connections`);
 		}
 
@@ -285,6 +291,8 @@ export class ConnectionManager {
 			...this.timeouts,
 			...timeouts,
 		};
-		console.log("Connection timeouts updated:", this.timeouts);
+		if (process.env.DEBUG) {
+			console.log("Connection timeouts updated:", this.timeouts);
+		}
 	}
 }

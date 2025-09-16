@@ -115,7 +115,7 @@ function recordFailure(toolName: string): void {
 
 function resetCircuitBreaker(toolName: string): void {
 	const breaker = getCircuitBreaker(toolName);
-	if (breaker.failures > 0) {
+	if (breaker.failures > 0 && process.env.DEBUG) {
 		console.log(`Circuit breaker reset for tool '${toolName}' - service recovered`);
 	}
 	breaker.failures = 0;

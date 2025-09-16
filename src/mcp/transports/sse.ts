@@ -307,14 +307,12 @@ export class BacklogSseTransport {
 			},
 		});
 
-		console.error(`MCP server running on ${this.options.host}:${this.options.port} (SSE transport)`);
+		console.log(`MCP server running on ${this.options.host}:${this.options.port} (SSE transport)`);
 	}
 
 	async stop(): Promise<void> {
 		if (this.server) {
-			this.server.stop();
-
-			// Close all SSE transports
+			// First close all SSE transports
 			for (const transport of this.sseTransports.values()) {
 				try {
 					await transport.close();
@@ -324,6 +322,15 @@ export class BacklogSseTransport {
 			}
 
 			this.sseTransports.clear();
+
+			// Then stop the server - wrap in Promise since Bun.serve().stop() is synchronous
+			await new Promise<void>((resolve) => {
+				this.server?.stop();
+				// Small delay to ensure server has fully stopped
+				setTimeout(resolve, 10);
+			});
+
+			this.server = undefined;
 		}
 	}
 
