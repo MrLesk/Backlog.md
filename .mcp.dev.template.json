@@ -1,0 +1,16 @@
+{
+	"mcpServers": {
+		"backlog-md-dev-{{WORKSPACE_ID}}": {
+			"command": "bun",
+			"args": ["run", "${workspaceFolder}/src/mcp-stdio-server.ts"],
+			"env": {
+				"BACKLOG_PROJECT_ROOT": "${workspaceFolder}",
+				"BACKLOG_MCP_DEBUG": "true",
+				"BACKLOG_MCP_WORKSPACE_ID": "{{WORKSPACE_ID}}",
+				"BACKLOG_MCP_LOG_LEVEL": "debug",
+				"BACKLOG_MCP_ISOLATED": "true",
+				"BACKLOG_MCP_DEV_MODE": "true"
+			}
+		}
+	}
+}

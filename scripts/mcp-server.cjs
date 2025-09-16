@@ -12,7 +12,47 @@
 
 const { spawn } = require("node:child_process");
 const { resolve } = require("node:path");
-const { existsSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
+
+/**
+ * Loads workspace environment variables from .env.mcp if it exists
+ */
+function loadWorkspaceEnvironment(projectRoot) {
+	const envPath = resolve(projectRoot, ".env.mcp");
+
+	if (!existsSync(envPath)) {
+		return;
+	}
+
+	try {
+		const envContent = readFileSync(envPath, "utf8");
+		const lines = envContent.split("\n");
+
+		for (const line of lines) {
+			// Skip comments and empty lines
+			if (line.trim() === "" || line.trim().startsWith("#")) {
+				continue;
+			}
+
+			// Parse KEY=value format
+			const match = line.match(/^([^=]+)=(.*)$/);
+			if (match) {
+				const [, key, value] = match;
+				// Only set if not already defined (existing env vars take precedence)
+				if (!process.env[key.trim()]) {
+					process.env[key.trim()] = value.trim();
+				}
+			}
+		}
+
+		// Log successful load
+		if (process.env.BACKLOG_MCP_DEBUG === "true") {
+			console.error(`🔧 Loaded workspace environment from ${envPath}`);
+		}
+	} catch (error) {
+		console.error(`⚠️  Warning: Failed to load workspace environment: ${error.message}`);
+	}
+}
 
 /**
  * Main wrapper function
@@ -22,12 +62,22 @@ async function main() {
 		// Get the project root from environment or current directory
 		const projectRoot = process.env.BACKLOG_PROJECT_ROOT || process.cwd();
 
+		// Load workspace environment if available
+		loadWorkspaceEnvironment(projectRoot);
+
 		// Detect installation context
 		const context = detectInstallationContext(projectRoot);
+
+		// Get workspace info for logging
+		const workspaceId = process.env.BACKLOG_MCP_WORKSPACE_ID || "unknown";
+		const isIsolated = process.env.BACKLOG_MCP_ISOLATED === "true";
 
 		// Log startup information to stderr (won't interfere with MCP protocol)
 		console.error(`🔧 Backlog.md MCP Wrapper: ${context.description}`);
 		console.error(`📁 Project root: ${projectRoot}`);
+		if (isIsolated) {
+			console.error(`🏷️  Workspace ID: ${workspaceId}`);
+		}
 		console.error(`🚀 Starting MCP server...`);
 
 		// Start the appropriate MCP server
@@ -39,6 +89,7 @@ async function main() {
 		console.error("💡 Troubleshooting:");
 		console.error("   • For development: ensure 'bun' is installed and run from project root");
 		console.error("   • For global install: run 'npm install -g backlog.md'");
+		console.error("   • Run './scripts/setup-mcp-dev.sh' for local development setup");
 		console.error("   • Run 'backlog mcp doctor' for detailed diagnostics");
 		process.exit(1);
 	}
@@ -167,6 +218,7 @@ function showHelp() {
 	console.error("  • Detected when src/mcp-stdio-server.ts exists");
 	console.error("  • Uses: bun run src/mcp-stdio-server.ts");
 	console.error("  • Requires: Bun runtime");
+	console.error("  • Supports workspace isolation via .env.mcp");
 	console.error("");
 	console.error("Global Installation:");
 	console.error("  • Detected when 'backlog' command is available");
@@ -174,7 +226,13 @@ function showHelp() {
 	console.error("  • Requires: npm install -g backlog.md");
 	console.error("");
 	console.error("Environment Variables:");
-	console.error("  BACKLOG_PROJECT_ROOT  Override project root directory");
+	console.error("  BACKLOG_PROJECT_ROOT       Override project root directory");
+	console.error("  BACKLOG_MCP_WORKSPACE_ID   Unique workspace identifier");
+	console.error("  BACKLOG_MCP_DEBUG          Enable debug logging");
+	console.error("  BACKLOG_MCP_ISOLATED       Enable workspace isolation");
+	console.error("");
+	console.error("Workspace Setup:");
+	console.error("  ./scripts/setup-mcp-dev.sh  Set up isolated development environment");
 	console.error("");
 	console.error("For troubleshooting, run: backlog mcp doctor");
 }

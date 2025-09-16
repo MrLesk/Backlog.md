@@ -51,6 +51,8 @@ example-project/
 
 # MCP configuration (local only)
 .mcp.json
+.env.mcp
+MCP_DEV_README.md
 resources
 result
 
