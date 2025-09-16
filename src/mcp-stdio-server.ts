@@ -5,6 +5,7 @@
  */
 
 import { registerWorkflowPrompts } from "./mcp/prompts/workflow-prompts.ts";
+import { registerDataResources } from "./mcp/resources/data-resources.ts";
 import { McpServer } from "./mcp/server.ts";
 import { registerBoardTools } from "./mcp/tools/board-tools.ts";
 import { registerConfigTools } from "./mcp/tools/config-tools.ts";
@@ -24,6 +25,7 @@ async function main() {
 		registerBoardTools(mcpServer);
 		registerConfigTools(mcpServer);
 		registerSequenceTools(mcpServer);
+		registerDataResources(mcpServer);
 		registerWorkflowPrompts(mcpServer);
 
 		// Connect via stdio transport for Claude Code

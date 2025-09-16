@@ -18,6 +18,7 @@ import {
 	updateReadmeWithBoard,
 } from "./index.ts";
 import { registerWorkflowPrompts } from "./mcp/prompts/workflow-prompts.ts";
+import { registerDataResources } from "./mcp/resources/data-resources.ts";
 import { McpServer } from "./mcp/server.ts";
 import { registerBoardTools } from "./mcp/tools/board-tools.ts";
 import { registerConfigTools } from "./mcp/tools/config-tools.ts";
@@ -2736,6 +2737,7 @@ mcpCmd
 			registerBoardTools(server);
 			registerConfigTools(server);
 			registerSequenceTools(server);
+			registerDataResources(server);
 
 			// Register workflow prompts
 			registerWorkflowPrompts(server);

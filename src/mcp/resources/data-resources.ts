@@ -47,8 +47,8 @@ function createTaskListResource(server: McpServer): McpResourceHandler {
 				let filteredTasks = allTasks;
 
 				if (params.status) {
-					filteredTasks = filteredTasks.filter(
-						(task) => (task.status || "").toLowerCase() === params.status.toLowerCase(),
+					filteredTasks = filteredTasks.filter((task) =>
+						(task.status || "").toLowerCase().includes((params.status as string).toLowerCase()),
 					);
 				}
 
@@ -57,12 +57,12 @@ function createTaskListResource(server: McpServer): McpResourceHandler {
 						(task) =>
 							task.assignee &&
 							Array.isArray(task.assignee) &&
-							task.assignee.some((a) => a.toLowerCase().includes(params.assignee.toLowerCase())),
+							task.assignee.some((a) => a.toLowerCase().includes((params.assignee as string).toLowerCase())),
 					);
 				}
 
 				if (params.search) {
-					const searchTerm = params.search.toLowerCase();
+					const searchTerm = (params.search as string).toLowerCase();
 					filteredTasks = filteredTasks.filter(
 						(task) =>
 							(task.title || "").toLowerCase().includes(searchTerm) ||
@@ -70,18 +70,18 @@ function createTaskListResource(server: McpServer): McpResourceHandler {
 					);
 				}
 
-				if (params.labels && params.labels.length > 0) {
+				if (params.labels && (params.labels as string[]).length > 0) {
 					filteredTasks = filteredTasks.filter(
 						(task) =>
 							task.labels &&
 							Array.isArray(task.labels) &&
-							params.labels.some((label: string) => task.labels.includes(label)),
+							(params.labels as string[]).some((label: string) => task.labels.includes(label)),
 					);
 				}
 
 				// Apply limit
 				if (params.limit) {
-					filteredTasks = filteredTasks.slice(0, params.limit);
+					filteredTasks = filteredTasks.slice(0, params.limit as number);
 				}
 
 				// Prepare response with expected structure
@@ -90,11 +90,11 @@ function createTaskListResource(server: McpServer): McpResourceHandler {
 					metadata: {
 						totalTasks: filteredTasks.length,
 						filters: {
-							...(params.status && { status: params.status }),
-							...(params.assignee && { assignee: params.assignee }),
-							...(params.search && { search: params.search }),
-							...(params.labels && { labels: params.labels }),
-							...(params.limit && { limit: params.limit }),
+							...(params.status ? { status: params.status as string } : {}),
+							...(params.assignee ? { assignee: params.assignee as string } : {}),
+							...(params.search ? { search: params.search as string } : {}),
+							...(params.labels ? { labels: params.labels as string[] } : {}),
+							...(params.limit ? { limit: params.limit as number } : {}),
 						},
 					},
 				};
