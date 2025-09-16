@@ -1,7 +1,7 @@
 ---
 id: task-265.32
 title: Implement batch task update tool
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:26:26.048Z'
 labels:

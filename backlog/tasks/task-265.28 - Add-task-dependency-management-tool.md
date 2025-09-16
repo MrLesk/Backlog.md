@@ -1,7 +1,7 @@
 ---
 id: task-265.28
 title: Add task dependency management tool
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:24:39.614Z'
 labels:

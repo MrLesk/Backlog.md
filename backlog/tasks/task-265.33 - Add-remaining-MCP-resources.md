@@ -1,7 +1,7 @@
 ---
 id: task-265.33
 title: Add remaining MCP resources
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:26:52.992Z'
 labels:

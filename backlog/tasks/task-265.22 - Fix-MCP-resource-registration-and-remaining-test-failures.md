@@ -1,7 +1,7 @@
 ---
 id: task-265.22
 title: Fix MCP resource registration and remaining test failures
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:22:05.034Z'
 labels:

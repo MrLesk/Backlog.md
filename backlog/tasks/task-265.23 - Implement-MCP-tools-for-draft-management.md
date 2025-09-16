@@ -1,7 +1,7 @@
 ---
 id: task-265.23
 title: Implement MCP tools for draft management
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:22:24.627Z'
 labels:

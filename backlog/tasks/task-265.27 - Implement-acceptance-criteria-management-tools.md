@@ -1,7 +1,7 @@
 ---
 id: task-265.27
 title: Implement acceptance criteria management tools
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:24:16.134Z'
 labels:

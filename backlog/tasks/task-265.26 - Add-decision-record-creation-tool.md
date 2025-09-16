@@ -1,7 +1,7 @@
 ---
 id: task-265.26
 title: Add decision record creation tool
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:23:42.541Z'
 labels:

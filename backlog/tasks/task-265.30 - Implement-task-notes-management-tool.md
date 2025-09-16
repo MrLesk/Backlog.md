@@ -1,7 +1,7 @@
 ---
 id: task-265.30
 title: Implement task notes management tool
-status: "\U0001F4CB Ready"
+status: To Do
 assignee: []
 created_date: '2025-09-16T17:25:32.070Z'
 labels:
