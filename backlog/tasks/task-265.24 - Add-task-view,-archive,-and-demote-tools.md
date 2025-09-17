@@ -1,9 +1,11 @@
 ---
 id: task-265.24
 title: 'Add task view, archive, and demote tools'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@agent-claude'
 created_date: '2025-09-16T17:22:46.621Z'
+updated_date: '2025-09-17 00:01'
 labels:
   - mcp
   - tools
@@ -18,7 +20,6 @@ priority: high
 ## Description
 
 Expand MCP task management capabilities with essential operations that agents need for complete task lifecycle management.
-
 ## Current Gap
 The MCP server has task_create, task_list, and task_update, but is missing key operations available in the CLI:
 - `task view <taskId>` - Get detailed task information
@@ -165,3 +166,38 @@ The MCP server has task_create, task_list, and task_update, but is missing key o
 - [ ] #6 All tools follow existing MCP response format patterns
 - [ ] #7 Comprehensive test coverage for all three operations
 <!-- AC:END -->
+
+
+## Implementation Plan
+
+Implementation Plan:
+
+Step 1: Add Tool Schemas (/src/mcp/tools/task-tools.ts)
+- Add task_view schema: Returns complete task details including metadata and relationships
+- Add task_archive schema: Moves completed tasks to archive folder  
+- Add task_demote schema: Converts tasks back to drafts
+- Follow existing parameter validation patterns (taskId as required string)
+
+Step 2: Implement Handler Methods (/src/mcp/tools/task-handlers.ts)
+- Add handleTaskView(): Call core.filesystem.loadTask(taskId) and return full task object
+- Add handleTaskArchive(): Validate task status is "Done", then call core.archiveTask(taskId)
+- Add handleTaskDemote(): Call core.demoteTask(taskId) to convert to draft
+- Implement proper error handling for non-existent task IDs
+- Follow existing MCP response format patterns
+
+Step 3: Register Tools (registerTaskTools function)
+- Register all three new tools in the tools array
+- Ensure proper tool name mapping to handlers
+
+Step 4: Add Comprehensive Tests (/src/test/mcp-server.test.ts)
+- Test successful operations with valid task IDs
+- Test error handling for non-existent tasks
+- Test validation (archiving non-completed tasks should fail)
+- Test edge cases and response format consistency
+
+Step 5: Validation & Quality Assurance
+- Run all tests: bun test
+- Type check: bunx tsc --noEmit  
+- Lint and format: bun run check
+
+Technical Decisions: Follow existing MCP patterns for consistency, use exact status matching for archive validation, leverage established validation wrapper patterns

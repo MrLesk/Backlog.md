@@ -140,6 +140,146 @@ export class TaskToolHandlers {
 	}
 
 	/**
+	 * View a task with complete details
+	 */
+	async viewTask(args: { id: string }): Promise<CallToolResult> {
+		const { id } = args;
+
+		try {
+			const task = await this.server.fs.loadTask(id);
+
+			if (!task) {
+				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Format task details with all metadata and relationships
+			const taskDetails = [];
+			taskDetails.push(`**${task.id}**: ${task.title}`);
+			taskDetails.push(`- Status: ${task.status}`);
+			taskDetails.push(`- Assignee: ${task.assignee?.join(", ") || "Unassigned"}`);
+			taskDetails.push(`- Priority: ${task.priority || "Not set"}`);
+			taskDetails.push(`- Labels: ${task.labels?.join(", ") || "None"}`);
+			taskDetails.push(`- Created: ${task.createdDate}`);
+
+			if (task.updatedDate) {
+				taskDetails.push(`- Updated: ${task.updatedDate}`);
+			}
+
+			if (task.parentTaskId) {
+				taskDetails.push(`- Parent Task: ${task.parentTaskId}`);
+			}
+
+			if (task.dependencies && task.dependencies.length > 0) {
+				taskDetails.push(`- Dependencies: ${task.dependencies.join(", ")}`);
+			}
+
+			if (task.description) {
+				taskDetails.push(`\n**Description:**\n${task.description}`);
+			}
+
+			if (task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0) {
+				taskDetails.push("\n**Acceptance Criteria:**");
+				for (const criteria of task.acceptanceCriteriaItems) {
+					const checkMark = criteria.checked ? "✅" : "❌";
+					taskDetails.push(`${checkMark} #${criteria.index} ${criteria.text}`);
+				}
+			}
+
+			if (task.implementationPlan) {
+				taskDetails.push(`\n**Implementation Plan:**\n${task.implementationPlan}`);
+			}
+
+			if (task.implementationNotes) {
+				taskDetails.push(`\n**Implementation Notes:**\n${task.implementationNotes}`);
+			}
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: taskDetails.join("\n"),
+					},
+				],
+			};
+		} catch (error) {
+			throw new Error(`Failed to view task: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Archive a completed task
+	 */
+	async archiveTask(args: { id: string }): Promise<CallToolResult> {
+		const { id } = args;
+
+		try {
+			// First check if task exists and validate status
+			const task = await this.server.fs.loadTask(id);
+
+			if (!task) {
+				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Validate task is completed
+			if (task.status !== "Done") {
+				throw new Error(`Cannot archive task '${id}': task status must be 'Done' but is '${task.status}'`);
+			}
+
+			// Archive the task
+			const success = await this.server.archiveTask(id, false);
+
+			if (!success) {
+				throw new Error(`Failed to archive task: ${id}`);
+			}
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `Successfully archived task: ${id}`,
+					},
+				],
+			};
+		} catch (error) {
+			throw new Error(`Failed to archive task: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Demote a task back to draft status
+	 */
+	async demoteTask(args: { id: string }): Promise<CallToolResult> {
+		const { id } = args;
+
+		try {
+			// Check if task exists
+			const task = await this.server.fs.loadTask(id);
+
+			if (!task) {
+				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Demote the task
+			const success = await this.server.demoteTask(id, false);
+
+			if (!success) {
+				throw new Error(`Failed to demote task: ${id}`);
+			}
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `Successfully demoted task: ${id}`,
+					},
+				],
+			};
+		} catch (error) {
+			throw new Error(`Failed to demote task: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
 	 * Update an existing task
 	 */
 	async updateTask(args: {

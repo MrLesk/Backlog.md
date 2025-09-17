@@ -177,7 +177,10 @@ describe("McpServer", () => {
 			expect(toolNames).toContain("task_create");
 			expect(toolNames).toContain("task_list");
 			expect(toolNames).toContain("task_update");
-			expect(result.tools).toHaveLength(3);
+			expect(toolNames).toContain("task_view");
+			expect(toolNames).toContain("task_archive");
+			expect(toolNames).toContain("task_demote");
+			expect(result.tools).toHaveLength(6);
 		});
 
 		it("should create task with task_create tool", async () => {
@@ -466,6 +469,221 @@ describe("McpServer", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 			expect(result.content[0]?.text).toContain("Successfully updated task: task-1");
+		});
+
+		describe("task view, archive, and demote tools", () => {
+			it("should view task with complete details using task_view", async () => {
+				// Create a task with comprehensive details
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_create",
+						arguments: {
+							title: "Complex Task",
+							description: "A task with all metadata",
+							labels: ["frontend", "ui"],
+							assignee: ["developer1"],
+							priority: "high",
+							acceptanceCriteria: ["Criterion 1", "Criterion 2"],
+							dependencies: ["task-0"],
+						},
+					},
+				});
+
+				// View the task
+				const request = {
+					params: {
+						name: "task_view",
+						arguments: { id: "task-1" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				const taskText = result.content[0]?.text || "";
+
+				expect(taskText).toContain("**task-1**: Complex Task");
+				expect(taskText).toContain("Status: 📋 Ready");
+				expect(taskText).toContain("Assignee: developer1");
+				expect(taskText).toContain("Priority: high");
+				expect(taskText).toContain("Labels: frontend, ui");
+				expect(taskText).toContain("Dependencies: task-0");
+				expect(taskText).toContain("**Description:**");
+				expect(taskText).toContain("A task with all metadata");
+				expect(taskText).toContain("**Acceptance Criteria:**");
+				expect(taskText).toContain("❌ #1 Criterion 1");
+				expect(taskText).toContain("❌ #2 Criterion 2");
+			});
+
+			it("should handle task_view for non-existent task", async () => {
+				const request = {
+					params: {
+						name: "task_view",
+						arguments: { id: "non-existent-task" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain('"success":false');
+				expect(result.content[0]?.text).toContain("Task not found: non-existent-task");
+			});
+
+			it("should archive completed task successfully", async () => {
+				// Create a task
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_create",
+						arguments: { title: "Task to Archive" },
+					},
+				});
+
+				// Update task to Done status
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_update",
+						arguments: { id: "task-1", status: "Done" },
+					},
+				});
+
+				// Archive the task
+				const request = {
+					params: {
+						name: "task_archive",
+						arguments: { id: "task-1" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain("Successfully archived task: task-1");
+			});
+
+			it("should prevent archiving non-completed task", async () => {
+				// Create a task (default status is Ready)
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_create",
+						arguments: { title: "Non-completed Task" },
+					},
+				});
+
+				// Try to archive the task (should fail)
+				const request = {
+					params: {
+						name: "task_archive",
+						arguments: { id: "task-1" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain('"success":false');
+				expect(result.content[0]?.text).toContain("task status must be 'Done'");
+			});
+
+			it("should handle task_archive for non-existent task", async () => {
+				const request = {
+					params: {
+						name: "task_archive",
+						arguments: { id: "non-existent-task" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain('"success":false');
+				expect(result.content[0]?.text).toContain("Task not found: non-existent-task");
+			});
+
+			it("should demote task successfully", async () => {
+				// Create a task
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_create",
+						arguments: { title: "Task to Demote" },
+					},
+				});
+
+				// Demote the task
+				const request = {
+					params: {
+						name: "task_demote",
+						arguments: { id: "task-1" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain("Successfully demoted task: task-1");
+			});
+
+			it("should handle task_demote for non-existent task", async () => {
+				const request = {
+					params: {
+						name: "task_demote",
+						arguments: { id: "non-existent-task" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain('"success":false');
+				expect(result.content[0]?.text).toContain("Task not found: non-existent-task");
+			});
+
+			it("should validate required id parameter for new tools", async () => {
+				const tools = ["task_view", "task_archive", "task_demote"];
+
+				for (const toolName of tools) {
+					const request = {
+						params: {
+							name: toolName,
+							arguments: {}, // Missing required id parameter
+						},
+					};
+
+					const result = await mcpServer.testInterface.callTool(request);
+					expect(result.content).toHaveLength(1);
+					expect(result.content[0]?.text).toContain('"success":false');
+					expect(result.content[0]?.text).toContain("Required field 'id' is missing or null");
+				}
+			});
+
+			it("should show implementation plan and notes in task_view", async () => {
+				// Create task
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_create",
+						arguments: { title: "Task with Plan and Notes" },
+					},
+				});
+
+				// Update task with implementation plan and notes
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_update",
+						arguments: {
+							id: "task-1",
+							implementationNotes: "Implemented user authentication using JWT tokens",
+						},
+					},
+				});
+
+				// View the task
+				const request = {
+					params: {
+						name: "task_view",
+						arguments: { id: "task-1" },
+					},
+				};
+
+				const result = await mcpServer.testInterface.callTool(request);
+				expect(result.content).toHaveLength(1);
+				const taskText = result.content[0]?.text || "";
+
+				expect(taskText).toContain("**Implementation Notes:**");
+				expect(taskText).toContain("Implemented user authentication using JWT tokens");
+			});
 		});
 	});
 

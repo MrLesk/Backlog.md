@@ -88,6 +88,51 @@ const taskListSchema: JsonSchema = {
 };
 
 /**
+ * Task view tool schema
+ */
+const taskViewSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+	},
+	required: ["id"],
+};
+
+/**
+ * Task archive tool schema
+ */
+const taskArchiveSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+	},
+	required: ["id"],
+};
+
+/**
+ * Task demote tool schema
+ */
+const taskDemoteSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+	},
+	required: ["id"],
+};
+
+/**
  * Task update tool schema
  */
 const taskUpdateSchema: JsonSchema = {
@@ -201,6 +246,60 @@ const createTaskListTool = (handlers: TaskToolHandlers): McpToolHandler =>
 	);
 
 /**
+ * View task tool handler
+ */
+const createTaskViewTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "task_view",
+			description: "Get complete task details including all metadata and relationships",
+			inputSchema: taskViewSchema,
+		},
+		taskViewSchema,
+		async (input, _context) => {
+			return handlers.viewTask({
+				id: input.id as string,
+			});
+		},
+	);
+
+/**
+ * Archive task tool handler
+ */
+const createTaskArchiveTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "task_archive",
+			description: "Archive a completed task by moving it to the archive folder",
+			inputSchema: taskArchiveSchema,
+		},
+		taskArchiveSchema,
+		async (input, _context) => {
+			return handlers.archiveTask({
+				id: input.id as string,
+			});
+		},
+	);
+
+/**
+ * Demote task tool handler
+ */
+const createTaskDemoteTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "task_demote",
+			description: "Convert a task back to draft status",
+			inputSchema: taskDemoteSchema,
+		},
+		taskDemoteSchema,
+		async (input, _context) => {
+			return handlers.demoteTask({
+				id: input.id as string,
+			});
+		},
+	);
+
+/**
  * Update task tool handler
  */
 const createTaskUpdateTool = (handlers: TaskToolHandlers, server: McpServer): McpToolHandler =>
@@ -239,6 +338,9 @@ export function registerTaskTools(server: McpServer): void {
 	server.addTool(createTaskCreateTool(handlers, server));
 	server.addTool(createTaskListTool(handlers));
 	server.addTool(createTaskUpdateTool(handlers, server));
+	server.addTool(createTaskViewTool(handlers));
+	server.addTool(createTaskArchiveTool(handlers));
+	server.addTool(createTaskDemoteTool(handlers));
 }
 
 // Export tool creators and schemas for testing
@@ -246,7 +348,13 @@ export {
 	createTaskCreateTool,
 	createTaskListTool,
 	createTaskUpdateTool,
+	createTaskViewTool,
+	createTaskArchiveTool,
+	createTaskDemoteTool,
 	taskCreateSchema,
 	taskListSchema,
 	taskUpdateSchema,
+	taskViewSchema,
+	taskArchiveSchema,
+	taskDemoteSchema,
 };
