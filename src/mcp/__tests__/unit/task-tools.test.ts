@@ -41,7 +41,10 @@ describe("Task Tools", () => {
 			expect(toolNames).toContain("task_create");
 			expect(toolNames).toContain("task_list");
 			expect(toolNames).toContain("task_update");
-			expect(result.tools).toHaveLength(3);
+			expect(toolNames).toContain("task_view");
+			expect(toolNames).toContain("task_archive");
+			expect(toolNames).toContain("task_demote");
+			expect(result.tools).toHaveLength(6);
 		});
 
 		it("should have proper tool schemas", async () => {

@@ -77,6 +77,10 @@ describe("Error Response Handling", () => {
 	});
 
 	test("handleMcpError should handle non-MCP errors", () => {
+		// Mock console.error to suppress expected error output
+		const originalConsoleError = console.error;
+		console.error = () => {};
+
 		const error = new Error("Regular error");
 		const result = handleMcpError(error);
 
@@ -86,9 +90,16 @@ describe("Error Response Handling", () => {
 		expect(responseData.error.code).toBe("INTERNAL_ERROR");
 		expect(responseData.error.message).toBe("An unexpected error occurred");
 		expect(responseData.error.details).toBeUndefined();
+
+		// Restore console.error
+		console.error = originalConsoleError;
 	});
 
 	test("handleMcpError should handle non-Error objects", () => {
+		// Mock console.error to suppress expected error output
+		const originalConsoleError = console.error;
+		console.error = () => {};
+
 		const error = "String error";
 		const result = handleMcpError(error);
 
@@ -96,6 +107,9 @@ describe("Error Response Handling", () => {
 		const responseData = JSON.parse(result.content[0]?.text as string);
 		expect(responseData.success).toBe(false);
 		expect(responseData.error.code).toBe("INTERNAL_ERROR");
+
+		// Restore console.error
+		console.error = originalConsoleError;
 	});
 
 	test("handleMcpSuccess should format success responses", () => {
