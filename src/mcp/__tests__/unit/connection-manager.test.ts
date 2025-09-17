@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { ConnectionManager } from "../../connection/manager.ts";
 import { McpConnectionError } from "../../errors/mcp-errors.ts";
 
 describe("ConnectionManager", () => {
 	let manager: ConnectionManager;
+	let consoleErrorSpy: ReturnType<typeof spyOn>;
 
 	beforeEach(() => {
+		consoleErrorSpy = spyOn(console, "error");
 		manager = new ConnectionManager({
 			inactivity: 100, // 100ms for faster testing
 			absolute: 1000, // 1s for faster testing
@@ -14,6 +16,7 @@ describe("ConnectionManager", () => {
 
 	afterEach(async () => {
 		await manager.removeAllConnections("Test cleanup");
+		consoleErrorSpy?.mockRestore();
 	});
 
 	test("should register new connections", async () => {
@@ -161,10 +164,6 @@ describe("ConnectionManager", () => {
 	});
 
 	test("should handle transport cleanup errors gracefully", async () => {
-		// Mock console.error to suppress expected error output
-		const originalConsoleError = console.error;
-		console.error = () => {};
-
 		const transport = {
 			close: async () => {
 				throw new Error("Cleanup failed");
@@ -179,8 +178,9 @@ describe("ConnectionManager", () => {
 		expect(removed).toBe(true);
 		expect(manager.hasActiveConnection("conn-1")).toBe(false);
 
-		// Restore console.error
-		console.error = originalConsoleError;
+		// Verify that the error was logged to console
+		expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+		expect(consoleErrorSpy).toHaveBeenCalledWith("Error closing transport for connection conn-1:", expect.any(Error));
 	});
 
 	test("should update timeout configuration", () => {

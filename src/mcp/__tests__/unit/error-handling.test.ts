@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
 	handleMcpError,
 	handleMcpSuccess,
@@ -61,6 +61,16 @@ describe("MCP Error Classes", () => {
 });
 
 describe("Error Response Handling", () => {
+	let consoleErrorSpy: ReturnType<typeof spyOn>;
+
+	beforeEach(() => {
+		consoleErrorSpy = spyOn(console, "error");
+	});
+
+	afterEach(() => {
+		consoleErrorSpy?.mockRestore();
+	});
+
 	test("handleMcpError should format MCP errors correctly", () => {
 		const error = new McpValidationError("Invalid input", { field: "title" });
 		const result = handleMcpError(error);
@@ -74,13 +84,12 @@ describe("Error Response Handling", () => {
 		expect(responseData.error.code).toBe("VALIDATION_ERROR");
 		expect(responseData.error.message).toBe("Invalid input");
 		expect(responseData.error.details).toEqual({ field: "title" });
+
+		// MCP errors should not trigger console.error
+		expect(consoleErrorSpy).not.toHaveBeenCalled();
 	});
 
 	test("handleMcpError should handle non-MCP errors", () => {
-		// Mock console.error to suppress expected error output
-		const originalConsoleError = console.error;
-		console.error = () => {};
-
 		const error = new Error("Regular error");
 		const result = handleMcpError(error);
 
@@ -91,15 +100,12 @@ describe("Error Response Handling", () => {
 		expect(responseData.error.message).toBe("An unexpected error occurred");
 		expect(responseData.error.details).toBeUndefined();
 
-		// Restore console.error
-		console.error = originalConsoleError;
+		// Verify console.error was called with the unexpected error
+		expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+		expect(consoleErrorSpy).toHaveBeenCalledWith("Unexpected MCP error:", error);
 	});
 
 	test("handleMcpError should handle non-Error objects", () => {
-		// Mock console.error to suppress expected error output
-		const originalConsoleError = console.error;
-		console.error = () => {};
-
 		const error = "String error";
 		const result = handleMcpError(error);
 
@@ -108,8 +114,9 @@ describe("Error Response Handling", () => {
 		expect(responseData.success).toBe(false);
 		expect(responseData.error.code).toBe("INTERNAL_ERROR");
 
-		// Restore console.error
-		console.error = originalConsoleError;
+		// Verify console.error was called with the string error
+		expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+		expect(consoleErrorSpy).toHaveBeenCalledWith("Unexpected MCP error:", error);
 	});
 
 	test("handleMcpSuccess should format success responses", () => {
