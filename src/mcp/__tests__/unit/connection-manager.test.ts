@@ -161,6 +161,10 @@ describe("ConnectionManager", () => {
 	});
 
 	test("should handle transport cleanup errors gracefully", async () => {
+		// Mock console.error to suppress expected error output
+		const originalConsoleError = console.error;
+		console.error = () => {};
+
 		const transport = {
 			close: async () => {
 				throw new Error("Cleanup failed");
@@ -170,9 +174,13 @@ describe("ConnectionManager", () => {
 		await manager.registerConnection("conn-1", transport);
 
 		// Should not throw despite transport cleanup error
+		// The error should be caught and logged, but not propagate
 		const removed = await manager.removeConnection("conn-1");
 		expect(removed).toBe(true);
 		expect(manager.hasActiveConnection("conn-1")).toBe(false);
+
+		// Restore console.error
+		console.error = originalConsoleError;
 	});
 
 	test("should update timeout configuration", () => {
