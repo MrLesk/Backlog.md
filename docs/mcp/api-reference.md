@@ -787,6 +787,193 @@ Generate standup reports and updates.
 }
 ```
 
+### Project Analytics
+
+#### `project_overview`
+
+Generate comprehensive project overview with metrics, analytics, and actionable recommendations. This tool provides AI agents with complete project status insights for data-driven decision making.
+
+**Parameters:**
+```json
+{
+  "timeframe": {
+    "type": "preset|days|weeks|months|custom",
+    "value": "string|number (depends on type)",
+    "start": "string (ISO date, only for custom type)",
+    "end": "string (ISO date, only for custom type)"
+  },
+  "includeMetrics": ["string (overview|trends|team|capacity|quality|dependencies|velocity)"],
+  "securityLevel": "public|internal|confidential (optional, default: internal)",
+  "refreshCache": "boolean (optional, default: false)",
+  "teamFilter": ["string (optional, filter by assignees)"],
+  "priorityFilter": ["string (optional, filter by priority: high|medium|low)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "overview": {
+    "metadata": {
+      "projectName": "My Project",
+      "analysisTimestamp": "2025-09-17T22:00:00Z",
+      "timePeriod": {
+        "start": "2025-08-17T22:00:00Z",
+        "end": "2025-09-17T22:00:00Z",
+        "description": "Last 30 days"
+      },
+      "dataFreshness": "Fresh (updated within last week)",
+      "metricsIncluded": ["overview", "velocity", "quality"],
+      "taskCount": 42
+    },
+    "summary": {
+      "totalTasks": 42,
+      "completedTasks": 28,
+      "completionRate": "67%",
+      "inProgressTasks": 8,
+      "blockedTasks": 2,
+      "averageCompletionTime": "5.2 days"
+    },
+    "metrics": {
+      "velocity": {
+        "weekly": 6,
+        "monthly": 24,
+        "trend": "increasing",
+        "predictedCompletion": "2025-10-15"
+      },
+      "quality": {
+        "documentationRate": "85%",
+        "acceptanceCriteriaRate": "72%",
+        "averageComplexity": "2.3"
+      },
+      "team": {
+        "size": 4,
+        "activeContributors": 3,
+        "workloadDistribution": [
+          {
+            "assignee": "alice",
+            "tasks": 15,
+            "completionRate": "80%"
+          },
+          {
+            "assignee": "bob",
+            "tasks": 12,
+            "completionRate": "75%"
+          }
+        ]
+      },
+      "dependencies": {
+        "dependencyRate": "35%",
+        "blockedTasks": 3,
+        "criticalPath": ["task-123", "task-456"]
+      },
+      "capacity": {
+        "currentCapacity": 3,
+        "utilizationRate": "65%",
+        "bottlenecks": [
+          {
+            "area": "Team Workload",
+            "severity": "medium",
+            "description": "Alice is overloaded with 15 tasks"
+          }
+        ]
+      }
+    },
+    "recommendations": [
+      {
+        "type": "performance",
+        "priority": "high",
+        "title": "Improve Task Completion Rate",
+        "description": "Current completion rate is 67%, which is below the recommended 80% threshold.",
+        "actionItems": [
+          "Review blocked tasks and remove impediments",
+          "Break down large tasks into smaller pieces",
+          "Implement daily standups to track progress"
+        ],
+        "expectedImpact": "Increase completion rate by 15-20% within 2 sprints"
+      }
+    ],
+    "insights": [
+      {
+        "category": "trend",
+        "title": "Improving Team Velocity",
+        "description": "Team velocity is trending upward with current weekly velocity of 6 tasks.",
+        "confidence": "85%"
+      }
+    ],
+    "trends": {
+      "velocity": [
+        {
+          "period": "2025-09-10",
+          "value": 4,
+          "change": 1,
+          "changeDirection": "up"
+        }
+      ],
+      "qualityMetrics": [...],
+      "completionRate": [...],
+      "taskCreation": [...]
+    }
+  }
+}
+```
+
+**Timeframe Examples:**
+```json
+// Preset timeframes
+{"type": "preset", "value": "last7days"}
+{"type": "preset", "value": "last30days"}
+{"type": "preset", "value": "last90days"}
+{"type": "preset", "value": "thisMonth"}
+{"type": "preset", "value": "thisQuarter"}
+
+// Relative timeframes
+{"type": "days", "value": 14}
+{"type": "weeks", "value": 4}
+{"type": "months", "value": 3}
+
+// Custom date range
+{
+  "type": "custom",
+  "start": "2025-08-01T00:00:00Z",
+  "end": "2025-08-31T23:59:59Z"
+}
+```
+
+**Full Example Request:**
+```json
+{
+  "timeframe": {"type": "preset", "value": "last30days"},
+  "includeMetrics": ["overview", "velocity", "quality", "team", "capacity"],
+  "securityLevel": "internal",
+  "refreshCache": false,
+  "teamFilter": ["alice", "bob"],
+  "priorityFilter": ["high", "medium"]
+}
+```
+
+**Security Levels:**
+- **`public`**: Excludes tasks with sensitive labels (confidential, internal, private, security)
+- **`internal`**: Excludes only highly confidential tasks (confidential, secret, classified)
+- **`confidential`**: Includes all tasks (default for internal use)
+
+**Available Metrics:**
+- **`overview`**: Basic project statistics and completion rates (always included)
+- **`velocity`**: Team velocity, trends, and completion predictions
+- **`quality`**: Documentation rates, acceptance criteria, task complexity
+- **`team`**: Team size, workload distribution, productivity trends
+- **`capacity`**: Current capacity, utilization rates, bottleneck analysis
+- **`dependencies`**: Dependency analysis, critical path, blocked tasks
+- **`trends`**: Historical trend analysis across all metrics
+
+**Use Cases:**
+- **Daily Standups**: Quick overview with basic metrics
+- **Sprint Planning**: Velocity and capacity analysis
+- **Retrospectives**: Quality and team metrics for improvement areas
+- **Management Reports**: Comprehensive analysis with all metrics
+- **Risk Assessment**: Dependencies and bottleneck identification
+
 ## Error Handling
 
 All tools return structured error responses:

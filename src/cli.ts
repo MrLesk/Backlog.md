@@ -24,6 +24,7 @@ import { registerConfigTools } from "./mcp/tools/config-tools.ts";
 import { registerDecisionTools } from "./mcp/tools/decision-tools.ts";
 import { registerDependencyTools } from "./mcp/tools/dependency-tools.ts";
 import { registerDraftTools } from "./mcp/tools/draft-tools.ts";
+import { registerProjectOverviewTools } from "./mcp/tools/project-overview-tool.ts";
 import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
 import { registerTaskTools } from "./mcp/tools/task-tools.ts";
 import type { TransportType } from "./mcp/types.ts";
@@ -2607,6 +2608,7 @@ mcpCmd
 			registerBoardTools(server);
 			registerConfigTools(server);
 			registerSequenceTools(server);
+			registerProjectOverviewTools(server);
 			registerDataResources(server);
 
 			// Register workflow prompts

@@ -12,6 +12,7 @@ import { registerConfigTools } from "./mcp/tools/config-tools.ts";
 import { registerDecisionTools } from "./mcp/tools/decision-tools.ts";
 import { registerDocumentTools } from "./mcp/tools/document-tools.ts";
 import { registerDraftTools } from "./mcp/tools/draft-tools.ts";
+import { registerProjectOverviewTools } from "./mcp/tools/project-overview-tool.ts";
 import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
 import { registerTaskTools } from "./mcp/tools/task-tools.ts";
 
@@ -31,6 +32,7 @@ async function main() {
 		registerBoardTools(mcpServer);
 		registerConfigTools(mcpServer);
 		registerSequenceTools(mcpServer);
+		registerProjectOverviewTools(mcpServer);
 		registerDataResources(mcpServer);
 		registerWorkflowPrompts(mcpServer);
 
