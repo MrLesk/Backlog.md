@@ -21,10 +21,10 @@ GitHub issue #356 (https://github.com/MrLesk/Backlog.md/issues/356) reports that
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 H2 or deeper headings inside Implementation Notes render fully in the task modal preview and edit modes.
-- [ ] #2 Parser prefers Implementation Notes sentinel markers and still supports legacy tasks without them.
-- [ ] #3 Serializer emits a single sentinel-wrapped Implementation Notes block; append/replace flows do not duplicate markers.
-- [ ] #4 Automated tests cover nested heading scenarios for parser, serializer, and web UI.
+- [x] #1 H2 or deeper headings inside Implementation Notes render fully in the task modal preview and edit modes.
+- [x] #2 Parser prefers Implementation Notes sentinel markers and still supports legacy tasks without them.
+- [x] #3 Serializer emits a single sentinel-wrapped Implementation Notes block; append/replace flows do not duplicate markers.
+- [x] #4 Automated tests cover nested heading scenarios for parser, serializer, and web UI.
 <!-- AC:END -->
 
 ## Implementation Plan
