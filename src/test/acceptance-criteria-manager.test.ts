@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { AcceptanceCriteriaManager } from "../core/acceptance-criteria.ts";
+import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
 
 describe("AcceptanceCriteriaManager", () => {
 	it("removes a single criterion without affecting other sections", () => {

@@ -1407,7 +1407,7 @@ taskCmd
 		}
 
 		// Handle acceptance criteria with new stable format
-		const { AcceptanceCriteriaManager } = await import("./core/acceptance-criteria.ts");
+		const { AcceptanceCriteriaManager } = await import("./markdown/structured-sections.ts");
 
 		// Handle adding new acceptance criteria (unified handling for both --ac and --acceptance-criteria)
 		const criteria = processAcceptanceCriteriaOptions(options);

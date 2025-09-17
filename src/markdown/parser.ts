@@ -1,6 +1,6 @@
 import matter from "gray-matter";
-import { AcceptanceCriteriaManager } from "../core/acceptance-criteria.ts";
 import type { AcceptanceCriterion, Decision, Document, ParsedMarkdown, Task } from "../types/index.ts";
+import { AcceptanceCriteriaManager, extractStructuredSection, STRUCTURED_SECTION_KEYS } from "./structured-sections.ts";
 
 function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
@@ -118,9 +118,9 @@ export function parseTask(content: string): Task {
 	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(body);
 
 	// Parse other sections
-	const descriptionSection = extractSection(body, "Description") || "";
-	const planSection = extractSection(body, "Implementation Plan") || undefined;
-	const notesSection = extractSection(body, "Implementation Notes") || undefined;
+	const descriptionSection = extractStructuredSection(body, STRUCTURED_SECTION_KEYS.description) || "";
+	const planSection = extractStructuredSection(body, STRUCTURED_SECTION_KEYS.implementationPlan) || undefined;
+	const notesSection = extractStructuredSection(body, STRUCTURED_SECTION_KEYS.implementationNotes) || undefined;
 
 	return {
 		id: String(frontmatter.id || ""),

@@ -3,6 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -59,11 +60,8 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		const updated = await core.filesystem.loadTask("task-1");
 		expect(updated).not.toBeNull();
 
-		const m = updated?.body.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i);
-		expect(m).not.toBeNull();
-		const body = (m?.[1] || "").trimEnd();
-		// Expect exactly one blank line between chunks
-		expect(body).toContain("Original notes\n\nFirst addition\n\nSecond addition\n\nThird addition");
+		const body = extractStructuredSection(updated?.body || "", "implementationNotes") || "";
+		expect(body).toBe("Original notes\n\nFirst addition\n\nSecond addition\n\nThird addition");
 	});
 
 	it("creates Implementation Notes at correct position when missing (after Plan)", async () => {
@@ -87,10 +85,12 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 
 		const updated = await core.filesystem.loadTask("task-2");
 		const content = updated?.body || "";
-		const planIndex = content.indexOf("## Implementation Plan");
-		const notesIndex = content.indexOf("## Implementation Notes");
-		expect(planIndex).toBeGreaterThan(0);
-		expect(notesIndex).toBeGreaterThan(planIndex);
+		const notesContent = extractStructuredSection(content, "implementationNotes") || "";
+		expect(notesContent).toBe("Notes after plan");
+		const planMarker = "<!-- SECTION:PLAN:BEGIN -->";
+		const notesMarker = "<!-- SECTION:NOTES:BEGIN -->";
+		expect(content.indexOf(planMarker)).toBeGreaterThan(-1);
+		expect(content.indexOf(notesMarker)).toBeGreaterThan(content.indexOf(planMarker));
 	});
 
 	it("supports multi-line appended content and preserves literal newlines", async () => {
@@ -118,8 +118,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		expect(res.exitCode).toBe(0);
 
 		const updated = await core.filesystem.loadTask("task-3");
-		const m = updated?.body.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i);
-		const body = m?.[1] || "";
+		const body = extractStructuredSection(updated?.body || "", "implementationNotes") || "";
 		expect(body).toContain("Line1\nLine2\n\nPara2");
 	});
 

@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -45,7 +46,7 @@ describe("Implementation Notes - append", () => {
 		expect(result.exitCode).toBe(0);
 
 		const updated = await core.filesystem.loadTask("task-1");
-		expect(updated?.body).toMatch(/## Implementation Notes[\s\S]*First block\n\nSecond block/);
+		expect(extractStructuredSection(updated?.body || "", "implementationNotes")).toBe("First block\n\nSecond block");
 	});
 
 	it("creates Implementation Notes at correct position when missing (after plan, else AC, else Description)", async () => {
@@ -70,9 +71,9 @@ describe("Implementation Notes - append", () => {
 		const updated = await core.filesystem.loadTask("task-1");
 		const body = updated?.body || "";
 		const planIdx = body.indexOf("## Implementation Plan");
-		const notesIdx = body.indexOf("## Implementation Notes");
+		const notesContent = extractStructuredSection(body, "implementationNotes") || "";
 		expect(planIdx).toBeGreaterThan(0);
-		expect(notesIdx).toBeGreaterThan(planIdx);
+		expect(notesContent).toContain("Followed plan");
 	});
 
 	it("supports multiple --append-notes flags in order", async () => {
@@ -95,8 +96,7 @@ describe("Implementation Notes - append", () => {
 		expect(res.exitCode).toBe(0);
 
 		const updated = await core.filesystem.loadTask("task-1");
-		const notesBody = (updated?.body.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || "").trim();
-		expect(notesBody).toBe("First\n\nSecond");
+		expect(extractStructuredSection(updated?.body || "", "implementationNotes")).toBe("First\n\nSecond");
 	});
 
 	it("edit --append-notes works and errors if combined with --notes", async () => {
@@ -110,8 +110,7 @@ describe("Implementation Notes - append", () => {
 
 		const core = new Core(TEST_DIR);
 		const task = await core.filesystem.loadTask("task-1");
-		const notesBody = (task?.body.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i)?.[1] || "").trim();
-		expect(notesBody).toBe("Alpha\n\nBeta");
+		expect(extractStructuredSection(task?.body || "", "implementationNotes")).toBe("Alpha\n\nBeta");
 
 		const bad = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "X", "--notes", "Y"]}`
 			.cwd(TEST_DIR)

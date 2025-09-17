@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { editTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -43,8 +44,10 @@ describe("Implementation Notes CLI", () => {
 			const core = new Core(TEST_DIR);
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Implementation Notes");
-			expect(task?.body).toContain("Initial implementation completed");
+			expect(task?.body).toContain("<!-- SECTION:NOTES:BEGIN -->");
+			expect(extractStructuredSection(task?.body || "", "implementationNotes")).toContain(
+				"Initial implementation completed",
+			);
 
 			// Test 2: create task with multi-line implementation notes
 			const result2 =
@@ -56,9 +59,9 @@ describe("Implementation Notes CLI", () => {
 
 			task = await core.filesystem.loadTask("task-2");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Implementation Notes");
-			expect(task?.body).toContain("Step 1: Analysis completed");
-			expect(task?.body).toContain("Step 2: Implementation in progress");
+			const notes2 = extractStructuredSection(task?.body || "", "implementationNotes") || "";
+			expect(notes2).toContain("Step 1: Analysis completed");
+			expect(notes2).toContain("Step 2: Implementation in progress");
 
 			// Test 3: create task with both plan and notes (notes should come after plan)
 			const result3 =
@@ -70,9 +73,10 @@ describe("Implementation Notes CLI", () => {
 
 			task = await core.filesystem.loadTask("task-3");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Implementation Plan");
-			expect(task?.body).toContain("## Implementation Notes");
-			expect(task?.body).toContain("Following the plan step by step");
+			expect(extractStructuredSection(task?.body || "", "implementationPlan")).toContain("1. Design");
+			expect(extractStructuredSection(task?.body || "", "implementationNotes")).toContain(
+				"Following the plan step by step",
+			);
 
 			// Check that Implementation Notes comes after Implementation Plan
 			const desc = task?.body || "";
@@ -91,10 +95,7 @@ describe("Implementation Notes CLI", () => {
 			task = await core.filesystem.loadTask("task-4");
 			expect(task).not.toBeNull();
 			expect(task?.body).toContain("Complex task description");
-			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("Must work correctly");
-			expect(task?.body).toContain("## Implementation Notes");
-			expect(task?.body).toContain("Using TDD approach");
+			expect(extractStructuredSection(task?.body || "", "implementationNotes")).toContain("Using TDD approach");
 
 			// Test 5: create task without notes should not add the section
 			const result5 = await $`bun ${[CLI_PATH, "task", "create", "Test Task 5"]}`.cwd(TEST_DIR).quiet().nothrow();
@@ -292,6 +293,36 @@ Technical decisions:
 			expect(updatedTask).not.toBeNull();
 			// Should not add Implementation Notes section for empty notes
 			expect(updatedTask?.body).not.toContain("## Implementation Notes");
+		});
+
+		it("preserves nested H2 headings when migrating legacy implementation notes", async () => {
+			const core = new Core(TEST_DIR);
+			const task: Task = {
+				id: "task-7",
+				title: "Legacy Notes",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-07-03",
+				labels: [],
+				dependencies: [],
+				body: "Initial description\n\n## Implementation Notes\n\nSummary of work\n\n## Follow-up\n\nCapture additional findings",
+			};
+			await core.createTask(task, false);
+
+			const appendResult = await $`bun ${CLI_PATH} task edit 7 --append-notes "Added verification details"`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(appendResult.exitCode).toBe(0);
+
+			const updated = await core.filesystem.loadTask("task-7");
+			expect(updated).not.toBeNull();
+			const body = updated?.body || "";
+			expect(body).toContain("<!-- SECTION:NOTES:BEGIN -->");
+			const notesContent = extractStructuredSection(body, "implementationNotes") || "";
+			expect(notesContent).toContain("## Follow-up");
+			expect(notesContent).toContain("Summary of work");
+			expect(notesContent).toContain("Added verification details");
 		});
 	});
 });

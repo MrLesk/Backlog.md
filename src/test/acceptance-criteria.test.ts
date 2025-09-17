@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { AcceptanceCriteriaManager } from "../core/acceptance-criteria.ts";
 import { Core } from "../core/backlog.ts";
+import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -491,6 +491,43 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		expect(formatted).toContain("- [ ] #1 First");
 		expect(formatted).toContain("- [x] #2 Second");
 		expect(formatted).toContain("<!-- AC:END -->");
+	});
+
+	test("preserves markdown headings inside acceptance criteria when updating", () => {
+		const base = `## Acceptance Criteria
+<!-- AC:BEGIN -->
+### Critical
+- [ ] #1 Must pass authentication
+
+### Optional
+- [ ] #2 Show detailed logs
+<!-- AC:END -->`;
+
+		const updated = AcceptanceCriteriaManager.updateContent(base, [
+			{ index: 1, text: "Must pass authentication", checked: true },
+			{ index: 2, text: "Show detailed logs", checked: false },
+			{ index: 3, text: "Document audit trail", checked: false },
+		]);
+
+		const bodyMatch = updated.match(/<!-- AC:BEGIN -->([\s\S]*?)<!-- AC:END -->/);
+		expect(bodyMatch).not.toBeNull();
+		const body = bodyMatch?.[1] || "";
+		expect(body).toContain("### Critical");
+		expect(body).toContain("### Optional");
+		expect(body).toContain("- [x] #1 Must pass authentication");
+		expect(body).toContain("- [ ] #2 Show detailed logs");
+		expect(body).toContain("- [ ] #3 Document audit trail");
+		const orderIndex = body.indexOf("- [ ] #3 Document audit trail");
+		expect(orderIndex).toBeGreaterThan(body.indexOf("### Optional"));
+
+		const reduced = AcceptanceCriteriaManager.updateContent(updated, [
+			{ index: 1, text: "Must pass authentication", checked: false },
+		]);
+		const reducedBody = reduced.match(/<!-- AC:BEGIN -->([\s\S]*?)<!-- AC:END -->/)?.[1] || "";
+		expect(reducedBody).toContain("### Critical");
+		expect(reducedBody).toContain("### Optional");
+		expect(reducedBody).toContain("- [ ] #1 Must pass authentication");
+		expect(reducedBody).not.toContain("Show detailed logs");
 	});
 
 	describe("Multi-value CLI operations", () => {

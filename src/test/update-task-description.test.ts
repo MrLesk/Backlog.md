@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { updateTaskDescription } from "../markdown/serializer.ts";
+import { extractStructuredSection } from "../markdown/structured-sections.ts";
 
 describe("updateTaskDescription", () => {
 	it("should replace existing description section", () => {
@@ -22,9 +23,9 @@ Test plan`;
 
 		const result = updateTaskDescription(content, "New description");
 
-		expect(result).toContain("## Description\n\nNew description");
-		expect(result).toContain("## Acceptance Criteria");
-		expect(result).toContain("## Implementation Plan");
+		expect(result).toContain("<!-- SECTION:DESCRIPTION:BEGIN -->");
+		expect(extractStructuredSection(result, "description")).toBe("New description");
+		expect(extractStructuredSection(result, "implementationPlan")).toBe("Test plan");
 		expect(result).not.toContain("Old description");
 	});
 
@@ -40,7 +41,7 @@ title: Test task
 
 		const result = updateTaskDescription(content, "New description");
 
-		expect(result).toContain("## Description\n\nNew description");
+		expect(extractStructuredSection(result, "description")).toBe("New description");
 		expect(result).toContain("## Acceptance Criteria");
 		// Description should come before acceptance criteria
 		expect(result.indexOf("## Description")).toBeLessThan(result.indexOf("## Acceptance Criteria"));
@@ -53,7 +54,7 @@ title: Test task
 
 		const result = updateTaskDescription(content, "New description");
 
-		expect(result).toContain("## Description\n\nNew description");
+		expect(extractStructuredSection(result, "description")).toBe("New description");
 		expect(result).toContain("## Acceptance Criteria");
 		// Description should come first
 		expect(result.indexOf("## Description")).toBeLessThan(result.indexOf("## Acceptance Criteria"));
@@ -69,7 +70,7 @@ title: Test task
 
 		const result = updateTaskDescription(content, "New description");
 
-		expect(result).toContain("## Description\n\nNew description");
+		expect(extractStructuredSection(result, "description")).toBe("New description");
 	});
 
 	it("should preserve complex sections", () => {
@@ -102,13 +103,13 @@ More detailed notes.`;
 
 		const result = updateTaskDescription(content, "Updated description");
 
-		expect(result).toContain("## Description\n\nUpdated description");
+		expect(extractStructuredSection(result, "description")).toBe("Updated description");
 		expect(result).toContain("- [x] Completed criterion");
 		expect(result).toContain("- [ ] Pending criterion");
-		expect(result).toContain("1. Step one");
-		expect(result).toContain("2. Step two");
-		expect(result).toContain("**bold** and *italic*");
-		expect(result).toContain("### Subsection");
+		expect(extractStructuredSection(result, "implementationPlan")).toContain("1. Step one");
+		expect(extractStructuredSection(result, "implementationPlan")).toContain("2. Step two");
+		expect(extractStructuredSection(result, "implementationNotes")).toContain("**bold** and *italic*");
+		expect(extractStructuredSection(result, "implementationNotes")).toContain("### Subsection");
 		expect(result).not.toContain("Old description");
 	});
 });

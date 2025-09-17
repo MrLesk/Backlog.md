@@ -57,22 +57,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     }
   };
 
-  const extractDescription = (body: string): string => {
-    if (!body) return '';
-    
-    // Extract the Description section content
-    const regex = /## Description\s*\n([\s\S]*?)(?=\n## |$)/i;
-    const match = body.match(regex);
-    
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-    
-    // If no Description header found, return the body as-is
-    // but remove any headers that might be at the start
-    return body.replace(/^##\s+\w+.*\n/i, '').trim();
-  };
-
   const truncateText = (text: string, maxLength: number = 120): string => {
     if (!text || text.length <= maxLength) return text;
     return text.substring(0, maxLength).trim() + '...';
@@ -95,9 +79,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">{task.id}</span>
       </div>
       
-      {task.body && (
+      {task.description?.trim() && (
         <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-3 transition-colors duration-200">
-          {truncateText(extractDescription(task.body))}
+          {truncateText(task.description.trim())}
         </p>
       )}
       

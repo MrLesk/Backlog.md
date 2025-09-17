@@ -42,18 +42,6 @@ function formatDateForDisplay(dateStr: string): string {
 }
 
 /**
- * Extract only the Description section content from markdown, avoiding duplication
- */
-function extractDescriptionSection(content: string): string | null {
-	if (!content) return null;
-
-	// Look for ## Description section
-	const regex = /## Description\s*\n([\s\S]*?)(?=\n## |$)/i;
-	const match = content.match(regex);
-	return match?.[1]?.trim() || null;
-}
-
-/**
  * Extract checkbox lines from Acceptance Criteria section for display
  */
 function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
@@ -68,30 +56,6 @@ function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
 		.split("\n")
 		.map((line) => line.trim())
 		.filter((line) => line.startsWith("- [ ]") || line.startsWith("- [x]"));
-}
-
-/**
- * Extract Implementation Plan section content from markdown
- */
-function extractImplementationPlanSection(content: string): string | null {
-	if (!content) return null;
-
-	// Look for ## Implementation Plan section
-	const regex = /## Implementation Plan\s*\n([\s\S]*?)(?=\n## |$)/i;
-	const match = content.match(regex);
-	return match?.[1]?.trim() || null;
-}
-
-/**
- * Extract Implementation Notes section content from markdown
- */
-function extractImplementationNotesSection(content: string): string | null {
-	if (!content) return null;
-
-	// Look for ## Implementation Notes section
-	const regex = /## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i;
-	const match = content.match(regex);
-	return match?.[1]?.trim() || null;
 }
 
 /**
@@ -322,8 +286,8 @@ export async function viewTaskEnhanced(
 		headerBox = box({
 			parent: detailPane,
 			top: 0,
-			left: 0,
-			width: "100%-2", // Account for left and right borders
+			left: 1,
+			right: 1,
 			height: "shrink",
 			tags: true,
 			wrap: true,
@@ -340,8 +304,8 @@ export async function viewTaskEnhanced(
 		divider = line({
 			parent: detailPane,
 			top: typeof headerBox.bottom === "number" ? headerBox.bottom : 0,
-			left: 0,
-			width: "100%-2", // Account for left and right borders
+			left: 1,
+			right: 1,
 			orientation: "horizontal",
 			style: {
 				fg: "gray",
@@ -352,8 +316,8 @@ export async function viewTaskEnhanced(
 		const bodyContainer = scrollabletext({
 			parent: detailPane,
 			top: (typeof headerBox.bottom === "number" ? headerBox.bottom : 0) + 1,
-			left: 0,
-			width: "100%-2", // Account for left and right borders
+			left: 1,
+			right: 1,
 			bottom: 1, // Leave space for bottom border
 			keys: true,
 			vi: true,
@@ -432,12 +396,10 @@ export async function viewTaskEnhanced(
 
 		// Description section
 		bodyContent.push(formatHeading("Description", 2));
-		// Extract only the Description section content, not the full markdown
-		const extractedDescription = currentSelectedTask.description ?? extractDescriptionSection(currentSelectedTask.body);
-		const descriptionContent =
-			extractedDescription && extractedDescription.trim() !== ""
-				? transformCodePaths(extractedDescription)
-				: "{gray-fg}No description provided{/}";
+		const descriptionText = currentSelectedTask.description?.trim();
+		const descriptionContent = descriptionText
+			? transformCodePaths(descriptionText)
+			: "{gray-fg}No description provided{/}";
 		bodyContent.push(descriptionContent);
 		bodyContent.push("");
 
@@ -473,7 +435,7 @@ export async function viewTaskEnhanced(
 		bodyContent.push("");
 
 		// Implementation Plan section
-		const implementationPlan = extractImplementationPlanSection(currentSelectedContent);
+		const implementationPlan = currentSelectedTask.implementationPlan?.trim();
 		if (implementationPlan) {
 			bodyContent.push(formatHeading("Implementation Plan", 2));
 			bodyContent.push(transformCodePaths(implementationPlan));
@@ -481,7 +443,7 @@ export async function viewTaskEnhanced(
 		}
 
 		// Implementation Notes section
-		const implementationNotes = extractImplementationNotesSection(currentSelectedContent);
+		const implementationNotes = currentSelectedTask.implementationNotes?.trim();
 		if (implementationNotes) {
 			bodyContent.push(formatHeading("Implementation Notes", 2));
 			bodyContent.push(transformCodePaths(implementationNotes));
@@ -709,10 +671,9 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 
 	// Description section
 	bodyContent.push(formatHeading("Description", 2));
-	// Extract only the Description section content, not the full markdown
-	const extractedDescription = task.description ?? extractDescriptionSection(task.body);
-	const descriptionContent = extractedDescription
-		? transformCodePaths(extractedDescription)
+	const descriptionText = task.description?.trim();
+	const descriptionContent = descriptionText
+		? transformCodePaths(descriptionText)
 		: "{gray-fg}No description provided{/}";
 	bodyContent.push(descriptionContent);
 	bodyContent.push("");
@@ -751,7 +712,7 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	bodyContent.push("");
 
 	// Implementation Plan section
-	const implementationPlan = task.implementationPlan ?? extractImplementationPlanSection(rawContent);
+	const implementationPlan = task.implementationPlan?.trim();
 	if (implementationPlan) {
 		bodyContent.push(formatHeading("Implementation Plan", 2));
 		bodyContent.push(transformCodePaths(implementationPlan));
@@ -759,7 +720,7 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	}
 
 	// Implementation Notes section
-	const implementationNotes = task.implementationNotes ?? extractImplementationNotesSection(rawContent);
+	const implementationNotes = task.implementationNotes?.trim();
 	if (implementationNotes) {
 		bodyContent.push(formatHeading("Implementation Notes", 2));
 		bodyContent.push(transformCodePaths(implementationNotes));
@@ -823,8 +784,8 @@ export async function createTaskPopup(
 	const headerBox = box({
 		parent: popup,
 		top: 0,
-		left: 0,
-		width: "100%",
+		left: 1,
+		right: 1,
 		height: "shrink",
 		tags: true,
 		wrap: true,
@@ -837,8 +798,8 @@ export async function createTaskPopup(
 	const _dividerLine = line({
 		parent: popup,
 		top: headerBox.bottom,
-		left: 0,
-		width: "100%",
+		left: 1,
+		right: 1,
 		orientation: "horizontal",
 		style: {
 			fg: "gray",
@@ -863,9 +824,9 @@ export async function createTaskPopup(
 	const contentArea = scrollabletext({
 		parent: popup,
 		top: (typeof headerBox.bottom === "number" ? headerBox.bottom : 0) + 1,
-		left: 0,
-		width: "100%",
-		bottom: 0,
+		left: 1,
+		right: 1,
+		bottom: 1,
 		keys: true,
 		vi: true,
 		mouse: true,
@@ -922,8 +883,8 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	// Description section
 	lines.push("Description:");
 	lines.push("-".repeat(50));
-	const description = task.description ?? extractDescriptionSection(content);
-	lines.push(transformCodePathsPlain(description || "No description provided"));
+	const description = task.description?.trim();
+	lines.push(transformCodePathsPlain(description && description.length > 0 ? description : "No description provided"));
 	lines.push("");
 
 	// Acceptance Criteria section with checkboxes
@@ -950,7 +911,7 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	lines.push("");
 
 	// Implementation Plan section
-	const implementationPlan = task.implementationPlan ?? extractImplementationPlanSection(content);
+	const implementationPlan = task.implementationPlan?.trim();
 	if (implementationPlan) {
 		lines.push("Implementation Plan:");
 		lines.push("-".repeat(50));
@@ -959,7 +920,7 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	}
 
 	// Implementation Notes section
-	const implementationNotes = task.implementationNotes ?? extractImplementationNotesSection(content);
+	const implementationNotes = task.implementationNotes?.trim();
 	if (implementationNotes) {
 		lines.push("Implementation Notes:");
 		lines.push("-".repeat(50));

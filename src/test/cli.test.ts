@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
+import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -624,7 +625,7 @@ describe("CLI Integration", () => {
 			// Verify changes were persisted
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask?.title).toBe("Updated Title");
-			expect(updatedTask?.body).toBe("## Description\n\nUpdated description");
+			expect(extractStructuredSection(updatedTask?.body || "", "description")).toBe("Updated description");
 			expect(updatedTask?.status).toBe("In Progress");
 			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
 			expect(updatedTask?.updatedDate).toBe(today);
