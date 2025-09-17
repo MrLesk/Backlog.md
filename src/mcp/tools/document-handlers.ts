@@ -20,8 +20,8 @@ export class DocumentToolHandlers {
 		const { title, content, type, tags } = args;
 
 		try {
-			// Generate document ID using existing CLI logic
-			const { generateNextDocId } = await import("../../cli.js");
+			// Generate document ID using utility function
+			const { generateNextDocId } = await import("../../utils/id-generators.js");
 			const id = await generateNextDocId(this.server);
 
 			const document: Document = {
