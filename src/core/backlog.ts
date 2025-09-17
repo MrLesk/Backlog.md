@@ -527,6 +527,10 @@ export class Core {
 		return decision;
 	}
 
+	async getDocument(id: string): Promise<Document> {
+		return await this.fs.loadDocument(id);
+	}
+
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
 		await this.fs.saveDocument(doc, subPath);
 
