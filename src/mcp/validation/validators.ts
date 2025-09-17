@@ -15,6 +15,7 @@ export interface JsonSchema {
 	maxLength?: number;
 	minimum?: number;
 	maximum?: number;
+	maxItems?: number;
 }
 
 /**
@@ -144,6 +145,11 @@ function validateField(
 			if (!Array.isArray(value)) {
 				errors.push(`Field '${fieldName}' must be an array`);
 				break;
+			}
+
+			// Validate maxItems
+			if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+				errors.push(`Field '${fieldName}' must have at most ${schema.maxItems} items`);
 			}
 
 			const sanitizedArray: unknown[] = [];

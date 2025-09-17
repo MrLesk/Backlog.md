@@ -5,7 +5,6 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
-import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { computeSequences } from "./core/sequences.ts";
 import {
 	type AgentInstructionFile,

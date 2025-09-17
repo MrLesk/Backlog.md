@@ -7,7 +7,7 @@ describe("ConnectionManager", () => {
 	let consoleErrorSpy: ReturnType<typeof spyOn>;
 
 	beforeEach(() => {
-		consoleErrorSpy = spyOn(console, "error");
+		consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
 		manager = new ConnectionManager({
 			inactivity: 100, // 100ms for faster testing
 			absolute: 1000, // 1s for faster testing

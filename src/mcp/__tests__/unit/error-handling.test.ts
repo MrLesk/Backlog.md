@@ -64,7 +64,7 @@ describe("Error Response Handling", () => {
 	let consoleErrorSpy: ReturnType<typeof spyOn>;
 
 	beforeEach(() => {
-		consoleErrorSpy = spyOn(console, "error");
+		consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
 	});
 
 	afterEach(() => {

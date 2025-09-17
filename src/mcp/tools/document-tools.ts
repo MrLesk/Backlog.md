@@ -26,6 +26,7 @@ const docCreateSchema: JsonSchema = {
 		tags: {
 			type: "array",
 			items: { type: "string", maxLength: 50 },
+			maxItems: 10,
 		},
 	},
 	required: ["title", "content"],
@@ -44,6 +45,7 @@ const docListSchema: JsonSchema = {
 		tags: {
 			type: "array",
 			items: { type: "string", maxLength: 50 },
+			maxItems: 10,
 		},
 		limit: {
 			type: "number",
