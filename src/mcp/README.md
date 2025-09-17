@@ -4,16 +4,29 @@ This directory contains the MCP implementation for backlog.md, enabling AI agent
 
 ## Current Status
 
-### ✅ Completed (Task 265.01)
+### ✅ Completed Tasks
+
+#### Task 265.01 - MCP Server Foundation
 - **Comprehensive MCP Server**: Full `McpServer` class extending `Core` with handler infrastructure
 - **MCP SDK Integration**: Using `@modelcontextprotocol/sdk@^1.18.0`
 - **Handler System**: Maps for tools, resources, and prompts with registration APIs
 - **Type Definitions**: Complete interfaces for `McpToolHandler`, `McpResourceHandler`, `McpPromptHandler`
 - **Test Suite**: 14 comprehensive tests covering all server functionality
 
+#### Task 265.25 - Document Management Tools
+- **Document Tools**: `doc_create`, `doc_list`, `doc_view` for managing project documentation
+- **Full CRUD Support**: Create, read, and list operations for markdown documents
+- **Type Classification**: Support for readme, guide, specification, and other document types
+
+#### Task 265.27 - Acceptance Criteria Management Tools
+- **AC Tools**: `criteria_add`, `criteria_remove`, `criteria_check`, `criteria_list` for managing task acceptance criteria
+- **Batch Operations**: Support for multiple criteria operations in single calls
+- **Status Tracking**: Check/uncheck individual criteria with visual status indicators
+- **Order Preservation**: Maintains proper numbering and formatting of acceptance criteria
+
 ### 🔄 Next Steps
 - **Task 265.02**: Implement stdio transport for local connections
-- **Task 265.03**: Add core task management tools (create, list, update)
+- **Task 265.03**: Add core task management tools (create, list, update) ✅ **Completed**
 - **Task 265.04**: Implement resources for data access
 - **Task 265.05**: Add board management tools
 - **Task 265.06**: Create workflow prompts
@@ -55,14 +68,18 @@ Comprehensive interfaces for extensible MCP functionality:
 /src/mcp/
 ├── server.ts              # Main MCP server class (✅ Complete)
 ├── types.ts               # MCP-specific types (✅ Complete)
-├── tools/                 # Tool implementations (📁 Ready for task 265.03)
+├── tools/                 # Tool implementations (✅ Partially Complete)
+│   ├── task-tools.ts      # Task management tools (✅ Complete - 10 tools)
+│   ├── task-handlers.ts   # Task operation handlers (✅ Complete)
+│   ├── document-tools.ts  # Document management tools (✅ Complete - 3 tools)
+│   └── document-handlers.ts # Document operation handlers (✅ Complete)
 ├── resources/             # Resource handlers (📁 Ready for task 265.04)
 ├── prompts/               # Prompt templates (📁 Ready for task 265.06)
 ├── transports/            # Transport handlers (📁 Ready for task 265.02)
 └── README.md              # This file
 
 /src/test/
-└── mcp-server.test.ts     # Comprehensive test suite (✅ 14 tests passing)
+└── mcp-server.test.ts     # Comprehensive test suite (✅ Tests passing)
 ```
 
 ## Key Design Decisions
@@ -82,17 +99,40 @@ Provides `testInterface` property for accessing protected methods during testing
 ### 5. Comprehensive Foundation
 The implementation went beyond initial minimal specifications to provide a production-ready foundation that subsequent tasks can build upon.
 
+## Available Tools
+
+### Task Management Tools (10 tools)
+- **`task_create`**: Create new tasks with title, description, labels, and acceptance criteria
+- **`task_list`**: List tasks with filtering by status, assignee, labels, and search
+- **`task_update`**: Update existing task properties
+- **`task_view`**: Get complete task details with metadata and relationships
+- **`task_archive`**: Archive completed tasks
+- **`task_demote`**: Convert tasks back to draft status
+
+### Acceptance Criteria Tools (4 tools)
+- **`criteria_add`**: Add new acceptance criteria to tasks (supports batch operations)
+- **`criteria_remove`**: Remove acceptance criteria by index (supports batch operations)
+- **`criteria_check`**: Check/uncheck acceptance criteria items (supports batch operations)
+- **`criteria_list`**: List all acceptance criteria with completion status
+
+### Document Management Tools (3 tools)
+- **`doc_create`**: Create new documentation with type classification
+- **`doc_list`**: List documents with filtering by type and tags
+- **`doc_view`**: Get complete document content and metadata
+
 ## Usage Example
 
 ```typescript
 import { McpServer } from './mcp/server.ts';
+import { registerTaskTools } from './mcp/tools/task-tools.ts';
+import { registerDocumentTools } from './mcp/tools/document-tools.ts';
 
 // Create server instance
 const server = new McpServer(process.cwd());
 
-// Add tools (when implemented in task 265.03)
-// server.addTool(taskCreateTool);
-// server.addTool(taskListTool);
+// Register tool suites
+registerTaskTools(server);     // Adds 10 task management tools
+registerDocumentTools(server); // Adds 3 document management tools
 
 // Connect transport (when implemented in task 265.02)
 // await server.connect('stdio');

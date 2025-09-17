@@ -1,4 +1,6 @@
+import { AcceptanceCriteriaManager } from "../../core/acceptance-criteria.ts";
 import type { Task } from "../../types/index.ts";
+import { getTaskPath } from "../../utils/task-path.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult } from "../types.ts";
 
@@ -329,6 +331,235 @@ export class TaskToolHandlers {
 			};
 		} catch (error) {
 			throw new Error(`Failed to update task: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Add acceptance criteria to a task
+	 */
+	async addCriteria(args: { id: string; criteria: string[] }): Promise<CallToolResult> {
+		const { id, criteria } = args;
+
+		try {
+			const task = await this.server.fs.loadTask(id);
+
+			if (!task) {
+				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Create context for getTaskPath utility
+			const tasksDir = this.server.fs.tasksDir;
+			const context = { filesystem: { tasksDir } };
+			const taskPath = await getTaskPath(id, context);
+
+			if (!taskPath) {
+				throw new Error(`Task file not found: ${id}`);
+			}
+
+			const taskFile = Bun.file(taskPath);
+			const content = await taskFile.text();
+
+			// Use AcceptanceCriteriaManager to add criteria
+			const updatedContent = AcceptanceCriteriaManager.addCriteria(content, criteria);
+
+			// Write the updated content back to file
+			await Bun.write(taskPath, updatedContent);
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `Successfully added ${criteria.length} acceptance criteria to task: ${id}`,
+					},
+				],
+			};
+		} catch (error) {
+			throw new Error(`Failed to add criteria: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Remove acceptance criteria by indices (supports batch operations)
+	 */
+	async removeCriteria(args: { id: string; indices: number[] }): Promise<CallToolResult> {
+		const { id, indices } = args;
+
+		try {
+			const task = await this.server.fs.loadTask(id);
+
+			if (!task) {
+				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Create context for getTaskPath utility
+			const tasksDir = this.server.fs.tasksDir;
+			const context = { filesystem: { tasksDir } };
+			const taskPath = await getTaskPath(id, context);
+
+			if (!taskPath) {
+				throw new Error(`Task file not found: ${id}`);
+			}
+
+			const taskFile = Bun.file(taskPath);
+			let content = await taskFile.text();
+
+			// Remove criteria in descending order to maintain indices validity
+			const sortedIndices = [...indices].sort((a, b) => b - a);
+			const removedIndices: number[] = [];
+
+			for (const index of sortedIndices) {
+				try {
+					content = AcceptanceCriteriaManager.removeCriterionByIndex(content, index);
+					removedIndices.push(index);
+				} catch (error) {
+					// Continue with other indices even if one fails
+					console.warn(
+						`Failed to remove criteria #${index}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
+
+			if (removedIndices.length === 0) {
+				throw new Error(`No criteria were removed. Invalid indices: ${indices.join(", ")}`);
+			}
+
+			// Write the updated content back to file
+			await Bun.write(taskPath, content);
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `Successfully removed ${removedIndices.length} acceptance criteria from task: ${id}`,
+					},
+				],
+			};
+		} catch (error) {
+			throw new Error(`Failed to remove criteria: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Check/uncheck acceptance criteria by indices (supports batch operations)
+	 */
+	async checkCriteria(args: { id: string; indices: number[]; checked: boolean }): Promise<CallToolResult> {
+		const { id, indices, checked } = args;
+
+		try {
+			const task = await this.server.fs.loadTask(id);
+
+			if (!task) {
+				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Create context for getTaskPath utility
+			const tasksDir = this.server.fs.tasksDir;
+			const context = { filesystem: { tasksDir } };
+			const taskPath = await getTaskPath(id, context);
+
+			if (!taskPath) {
+				throw new Error(`Task file not found: ${id}`);
+			}
+
+			const taskFile = Bun.file(taskPath);
+			let content = await taskFile.text();
+
+			// Check/uncheck criteria for each index
+			const updatedIndices: number[] = [];
+
+			for (const index of indices) {
+				try {
+					content = AcceptanceCriteriaManager.checkCriterionByIndex(content, index, checked);
+					updatedIndices.push(index);
+				} catch (error) {
+					// Continue with other indices even if one fails
+					console.warn(
+						`Failed to ${checked ? "check" : "uncheck"} criteria #${index}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
+
+			if (updatedIndices.length === 0) {
+				throw new Error(`No criteria were updated. Invalid indices: ${indices.join(", ")}`);
+			}
+
+			// Write the updated content back to file
+			await Bun.write(taskPath, content);
+
+			const action = checked ? "checked" : "unchecked";
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `Successfully ${action} ${updatedIndices.length} acceptance criteria for task: ${id}`,
+					},
+				],
+			};
+		} catch (error) {
+			throw new Error(`Failed to check criteria: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * List all acceptance criteria with status
+	 */
+	async listCriteria(args: { id: string }): Promise<CallToolResult> {
+		const { id } = args;
+
+		try {
+			const task = await this.server.fs.loadTask(id);
+
+			if (!task) {
+				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Create context for getTaskPath utility
+			const tasksDir = this.server.fs.tasksDir;
+			const context = { filesystem: { tasksDir } };
+			const taskPath = await getTaskPath(id, context);
+
+			if (!taskPath) {
+				throw new Error(`Task file not found: ${id}`);
+			}
+
+			const taskFile = Bun.file(taskPath);
+			const content = await taskFile.text();
+
+			// Parse acceptance criteria using AcceptanceCriteriaManager
+			const criteria = AcceptanceCriteriaManager.parseAllCriteria(content);
+
+			if (criteria.length === 0) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Task ${id} has no acceptance criteria.`,
+						},
+					],
+				};
+			}
+
+			// Format criteria list with status
+			const criteriaList = criteria
+				.map((criterion) => {
+					const status = criterion.checked ? "✅" : "❌";
+					return `${status} #${criterion.index} ${criterion.text}`;
+				})
+				.join("\n");
+
+			const checkedCount = criteria.filter((c) => c.checked).length;
+			const totalCount = criteria.length;
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `**Acceptance Criteria for ${id}** (${checkedCount}/${totalCount} completed):\n\n${criteriaList}`,
+					},
+				],
+			};
+		} catch (error) {
+			throw new Error(`Failed to list criteria: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 }

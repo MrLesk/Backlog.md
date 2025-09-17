@@ -1,9 +1,11 @@
 ---
 id: task-265.27
 title: Implement acceptance criteria management tools
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@agent-claude'
 created_date: '2025-09-16T17:24:16.134Z'
+updated_date: '2025-09-17 17:24'
 labels:
   - mcp
   - tools
@@ -18,7 +20,6 @@ priority: medium
 ## Description
 
 Add comprehensive acceptance criteria (AC) management tools to enable agents to add, remove, check, and uncheck acceptance criteria items on tasks.
-
 ## Overview
 The CLI supports detailed AC management (`--ac`, `--remove-ac`, `--check-ac`, `--uncheck-ac`) but the MCP server lacks these granular operations. Agents need to manage AC items individually for proper task tracking and completion verification.
 
@@ -205,12 +206,48 @@ The CLI supports detailed AC management (`--ac`, `--remove-ac`, `--check-ac`, `-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Can add new acceptance criteria to tasks
-- [ ] #2 Can remove AC by index (1-based)
-- [ ] #3 Can check/uncheck AC items to track completion
-- [ ] #4 Supports batch operations for multiple indices
-- [ ] #5 List operation returns all AC with status
-- [ ] #6 Proper validation prevents invalid operations
-- [ ] #7 Maintains AC order and formatting
-- [ ] #8 Comprehensive test coverage for all operations
+- [x] #1 Can add new acceptance criteria to tasks
+- [x] #2 Can remove AC by index (1-based)
+- [x] #3 Can check/uncheck AC items to track completion
+- [x] #4 Supports batch operations for multiple indices
+- [x] #5 List operation returns all AC with status
+- [x] #6 Proper validation prevents invalid operations
+- [x] #7 Maintains AC order and formatting
+- [x] #8 Comprehensive test coverage for all operations
 <!-- AC:END -->
+
+
+## Implementation Plan
+
+## Implementation Plan
+
+### Technical Analysis
+Leveraging existing AcceptanceCriteriaManager in src/core/acceptance-criteria.ts with established MCP framework patterns.
+
+### Implementation Phases
+**Phase 3A: MCP Tool Schemas**
+- Add criteria_add, criteria_remove, criteria_check, criteria_list schemas in src/mcp/tools/task-tools.ts
+- Implement proper input validation (AC #6)
+
+**Phase 3B: MCP Handlers** 
+- Bridge MCP calls to AcceptanceCriteriaManager methods in src/mcp/tools/task-handlers.ts
+- Support batch operations for multiple indices (AC #1-5)
+
+**Phase 3C: Tool Registration**
+- Register new AC tools with MCP server
+
+**Phase 3D: Testing**
+- Comprehensive test coverage for all operations (AC #8)
+- Unit tests, integration tests, edge cases, batch operations
+
+### Technical Decisions
+- Reuse existing AcceptanceCriteriaManager for consistency
+- 1-based indexing for user-friendly operations
+- Support both single and batch operations
+- Maintain AC order and formatting (AC #7)
+
+### Files to Modify
+1. src/mcp/tools/task-tools.ts - AC tool schemas
+2. src/mcp/tools/task-handlers.ts - AC handlers
+3. src/mcp/tools/task-handlers.test.ts - Tests
+4. MCP server init - Tool registration

@@ -180,7 +180,11 @@ describe("McpServer", () => {
 			expect(toolNames).toContain("task_view");
 			expect(toolNames).toContain("task_archive");
 			expect(toolNames).toContain("task_demote");
-			expect(result.tools).toHaveLength(6);
+			expect(toolNames).toContain("criteria_add");
+			expect(toolNames).toContain("criteria_remove");
+			expect(toolNames).toContain("criteria_check");
+			expect(toolNames).toContain("criteria_list");
+			expect(result.tools).toHaveLength(10);
 		});
 
 		it("should create task with task_create tool", async () => {

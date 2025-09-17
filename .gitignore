@@ -57,8 +57,4 @@ resources
 result
 
 # Test temp directories created by bun tests
-.tmp-*
-.tmp-test-*
-test-cli-*
-test-cli-sequences-*
-mcp-dual-mode-*
+tmp/

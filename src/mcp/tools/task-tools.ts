@@ -176,6 +176,81 @@ const taskUpdateSchema: JsonSchema = {
 };
 
 /**
+ * Criteria add tool schema
+ */
+const criteriaAddSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+		criteria: {
+			type: "array",
+			items: { type: "string", minLength: 1, maxLength: 500 },
+		},
+	},
+	required: ["id", "criteria"],
+};
+
+/**
+ * Criteria remove tool schema
+ */
+const criteriaRemoveSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+		indices: {
+			type: "array",
+			items: { type: "number", minimum: 1 },
+		},
+	},
+	required: ["id", "indices"],
+};
+
+/**
+ * Criteria check tool schema
+ */
+const criteriaCheckSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+		indices: {
+			type: "array",
+			items: { type: "number", minimum: 1 },
+		},
+		checked: {
+			type: "boolean",
+		},
+	},
+	required: ["id", "indices", "checked"],
+};
+
+/**
+ * Criteria list tool schema
+ */
+const criteriaListSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+	},
+	required: ["id"],
+};
+
+/**
  * Status validator for task creation and updates
  */
 async function validateTaskStatus(input: Record<string, unknown>, context?: ValidationContext): Promise<string[]> {
@@ -329,6 +404,82 @@ const createTaskUpdateTool = (handlers: TaskToolHandlers, server: McpServer): Mc
 	);
 
 /**
+ * Criteria add tool handler
+ */
+const createCriteriaAddTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "criteria_add",
+			description: "Add new acceptance criteria to tasks",
+			inputSchema: criteriaAddSchema,
+		},
+		criteriaAddSchema,
+		async (input, _context) => {
+			return handlers.addCriteria({
+				id: input.id as string,
+				criteria: input.criteria as string[],
+			});
+		},
+	);
+
+/**
+ * Criteria remove tool handler
+ */
+const createCriteriaRemoveTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "criteria_remove",
+			description: "Remove AC by index (1-based)",
+			inputSchema: criteriaRemoveSchema,
+		},
+		criteriaRemoveSchema,
+		async (input, _context) => {
+			return handlers.removeCriteria({
+				id: input.id as string,
+				indices: input.indices as number[],
+			});
+		},
+	);
+
+/**
+ * Criteria check tool handler
+ */
+const createCriteriaCheckTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "criteria_check",
+			description: "Check/uncheck AC items to track completion",
+			inputSchema: criteriaCheckSchema,
+		},
+		criteriaCheckSchema,
+		async (input, _context) => {
+			return handlers.checkCriteria({
+				id: input.id as string,
+				indices: input.indices as number[],
+				checked: input.checked as boolean,
+			});
+		},
+	);
+
+/**
+ * Criteria list tool handler
+ */
+const createCriteriaListTool = (handlers: TaskToolHandlers): McpToolHandler =>
+	createSimpleValidatedTool(
+		{
+			name: "criteria_list",
+			description: "List operation returns all AC with status",
+			inputSchema: criteriaListSchema,
+		},
+		criteriaListSchema,
+		async (input, _context) => {
+			return handlers.listCriteria({
+				id: input.id as string,
+			});
+		},
+	);
+
+/**
  * Register all task management tools with the MCP server
  * @param server The McpServer instance to register tools with
  */
@@ -341,6 +492,10 @@ export function registerTaskTools(server: McpServer): void {
 	server.addTool(createTaskViewTool(handlers));
 	server.addTool(createTaskArchiveTool(handlers));
 	server.addTool(createTaskDemoteTool(handlers));
+	server.addTool(createCriteriaAddTool(handlers));
+	server.addTool(createCriteriaRemoveTool(handlers));
+	server.addTool(createCriteriaCheckTool(handlers));
+	server.addTool(createCriteriaListTool(handlers));
 }
 
 // Export tool creators and schemas for testing
@@ -351,10 +506,18 @@ export {
 	createTaskViewTool,
 	createTaskArchiveTool,
 	createTaskDemoteTool,
+	createCriteriaAddTool,
+	createCriteriaRemoveTool,
+	createCriteriaCheckTool,
+	createCriteriaListTool,
 	taskCreateSchema,
 	taskListSchema,
 	taskUpdateSchema,
 	taskViewSchema,
 	taskArchiveSchema,
 	taskDemoteSchema,
+	criteriaAddSchema,
+	criteriaRemoveSchema,
+	criteriaCheckSchema,
+	criteriaListSchema,
 };
