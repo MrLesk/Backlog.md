@@ -1,9 +1,11 @@
 ---
 id: task-265.26
 title: Add decision record creation tool
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@agent-claude'
 created_date: '2025-09-16T17:23:42.541Z'
+updated_date: '2025-09-17 16:25'
 labels:
   - mcp
   - tools
@@ -19,7 +21,6 @@ priority: medium
 ## Description
 
 Implement MCP tool for creating Architecture Decision Records (ADRs) and other project decisions, enabling agents to document important project choices and their rationale.
-
 ## Overview
 The CLI supports decision creation (`decision create <title>`) but this functionality is missing from the MCP server. Decision records are crucial for documenting architectural choices, process decisions, and other important project determinations that agents may need to create.
 
@@ -240,3 +241,56 @@ tags: [architecture, process, tooling]
 - [ ] #6 Validation ensures required fields and proper structure
 - [ ] #7 Comprehensive test coverage for decision creation scenarios
 <!-- AC:END -->
+
+
+## Implementation Plan
+
+## Implementation Plan
+
+### Overview
+Implement MCP tool for creating Architecture Decision Records (ADRs) by following the established pattern from document-tools, leveraging existing core decision functionality.
+
+### Step-by-Step Implementation Plan
+
+#### Step 1: Create MCP Decision Tools (src/mcp/tools/decision-tools.ts)
+- Define decision_create tool following document-tools pattern
+- Create comprehensive JSON schema for decision creation
+- Support all ADR fields: title, context, decision, consequences, alternatives, status
+- Include proper parameter validation and descriptions
+
+#### Step 2: Create MCP Decision Handlers (src/mcp/tools/decision-handlers.ts)
+- Implement DecisionHandlers class following DocumentHandlers pattern
+- Add handleDecisionCreate method using existing createDecision core functionality
+- Include proper error handling and validation
+- Return structured response with decision ID and file path
+
+#### Step 3: Register Tools in MCP Servers
+- Add decision tools to CLI server (src/cli.ts)
+- Add decision tools to stdio server (src/mcp-stdio-server.ts)
+- Follow existing registration patterns
+
+#### Step 4: Comprehensive Test Coverage
+- Create src/mcp/__tests__/unit/decision-tools.test.ts
+- Follow document-tools test pattern
+- Test all acceptance criteria scenarios
+- Include error handling and validation tests
+
+#### Step 5: Quality Assurance
+- Run all tests, type check, lint check
+- Verify integration with existing MCP infrastructure
+
+### Files to Create/Modify
+**New Files:**
+1. src/mcp/tools/decision-tools.ts - MCP tool definitions
+2. src/mcp/tools/decision-handlers.ts - Handler implementation  
+3. src/mcp/__tests__/unit/decision-tools.test.ts - Test coverage
+
+**Modified Files:**
+1. src/cli.ts - Register decision tools in CLI server
+2. src/mcp-stdio-server.ts - Register decision tools in stdio server
+
+### Technical Decisions
+- Schema Design: Comprehensive JSON schema with all optional fields
+- Error Handling: Follow existing MCP error handling patterns
+- ID Generation: Use existing generateNextDecisionId() for sequential numbering
+- File Storage: Leverage existing saveDecision() for consistent file management

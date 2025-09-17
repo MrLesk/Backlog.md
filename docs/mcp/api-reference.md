@@ -325,6 +325,48 @@ List all available configuration options.
 {}
 ```
 
+### Decision Management
+
+#### `decision_create`
+
+Create a new Architecture Decision Record (ADR) with structured content and frontmatter.
+
+**Parameters:**
+```json
+{
+  "title": "string (required, max 200 chars)",
+  "context": "string (optional, max 10000 chars)",
+  "decision": "string (optional, max 10000 chars)",
+  "consequences": "string (optional, max 10000 chars)",
+  "alternatives": "string (optional, max 10000 chars)",
+  "status": "proposed|accepted|rejected|superseded (optional, default: proposed)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "decision-001",
+    "title": "Use PostgreSQL for primary database",
+    "filePath": "/decisions/decision-001 - use-postgresql-for-primary-database.md"
+  }
+}
+```
+
+**Example:**
+```json
+{
+  "title": "Adopt TypeScript for Frontend Development",
+  "context": "We need better type safety and IDE support for our growing frontend codebase",
+  "decision": "Migrate all JavaScript files to TypeScript over the next sprint",
+  "consequences": "Better developer experience, compile-time error catching, but requires team training",
+  "alternatives": "Flow type checker was considered but has less community support",
+  "status": "accepted"
+}
+```
+
 ### Sequence Management
 
 #### `sequence_start`

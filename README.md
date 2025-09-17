@@ -105,6 +105,7 @@ backlog mcp setup
 
 **Available MCP Tools:**
 - 📝 **Task Management**: Create, update, list, and manage tasks
+- 📑 **Decision Management**: Create Architecture Decision Records (ADRs) with structured format
 - 📊 **Board Operations**: View kanban state, get project metrics
 - ⚙️ **Configuration**: Read and modify project settings
 - 🔄 **Workflow Prompts**: Guided task creation, sprint planning, code review integration

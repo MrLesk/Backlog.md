@@ -9,6 +9,7 @@ import { registerDataResources } from "./mcp/resources/data-resources.ts";
 import { McpServer } from "./mcp/server.ts";
 import { registerBoardTools } from "./mcp/tools/board-tools.ts";
 import { registerConfigTools } from "./mcp/tools/config-tools.ts";
+import { registerDecisionTools } from "./mcp/tools/decision-tools.ts";
 import { registerDocumentTools } from "./mcp/tools/document-tools.ts";
 import { registerDraftTools } from "./mcp/tools/draft-tools.ts";
 import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
@@ -25,6 +26,7 @@ async function main() {
 		// Register all tools and prompts
 		registerTaskTools(mcpServer);
 		registerDraftTools(mcpServer);
+		registerDecisionTools(mcpServer);
 		registerDocumentTools(mcpServer);
 		registerBoardTools(mcpServer);
 		registerConfigTools(mcpServer);

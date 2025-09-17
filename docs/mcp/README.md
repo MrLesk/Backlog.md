@@ -60,6 +60,9 @@ and want to focus on bug fixes and performance improvements.
 - `task_view` - Get detailed task information
 - `task_delete` - Archive/delete tasks
 
+### 📑 **Decision Management Tools**
+- `decision_create` - Create Architecture Decision Records (ADRs) with structured format
+
 ### 📊 **Board Management Tools**
 - `board_view` - Get current kanban board state
 - `board_create` - Create new boards
@@ -122,6 +125,12 @@ We have 3 developers and can handle about 25 story points.
 ```
 I just opened PR #123 for the authentication refactor.
 Link it to the relevant tasks and update their status.
+```
+
+### Architecture Decision Workflow
+```
+We need to decide on a state management solution for our React app.
+Create an ADR documenting our choice of Redux Toolkit over Context API.
 ```
 
 ## Transport Options
