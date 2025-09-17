@@ -237,7 +237,7 @@ describe("Draft Tools", () => {
 			const createResult = await mcpServer.testInterface.callTool(createRequest);
 
 			// Extract draft ID from the response
-			const match = (createResult.content[0] as any).text.match(/draft-\d+/);
+			const match = (createResult.content[0] as { text: string }).text?.match(/draft-\d+/);
 			expect(match).toBeDefined();
 			draftId = (match as RegExpMatchArray)[0];
 		});
@@ -280,7 +280,7 @@ describe("Draft Tools", () => {
 			};
 
 			const createResult = await mcpServer.testInterface.callTool(createRequest);
-			const match = (createResult.content[0] as any).text.match(/draft-\d+/);
+			const match = (createResult.content[0] as { text: string }).text.match(/draft-\d+/);
 			expect(match).toBeDefined();
 			const draftId = (match as RegExpMatchArray)[0];
 
@@ -329,7 +329,7 @@ describe("Draft Tools", () => {
 			};
 
 			const createResult = await mcpServer.testInterface.callTool(createRequest);
-			const match = (createResult.content[0] as any).text.match(/draft-\d+/);
+			const match = (createResult.content[0] as { text: string }).text.match(/draft-\d+/);
 			expect(match).toBeDefined();
 			const draftId = (match as RegExpMatchArray)[0];
 
@@ -376,7 +376,7 @@ describe("Draft Tools", () => {
 			};
 
 			const createResult = await mcpServer.testInterface.callTool(createRequest);
-			const match = (createResult.content[0] as any).text.match(/draft-\d+/);
+			const match = (createResult.content[0] as { text: string }).text.match(/draft-\d+/);
 			expect(match).toBeDefined();
 			const draftId = (match as RegExpMatchArray)[0];
 

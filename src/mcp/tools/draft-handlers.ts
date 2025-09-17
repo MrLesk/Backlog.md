@@ -180,7 +180,7 @@ export class DraftToolHandlers {
 			const draftsDir = await this.server.fs.getDraftsDir();
 			const core = { filesystem: { tasksDir: draftsDir } };
 			const { getTaskPath } = await import("../../utils/task-path.ts");
-			const draftPath = await getTaskPath(id, core as any);
+			const draftPath = await getTaskPath(id, core);
 
 			if (draftPath) {
 				const { unlink } = await import("node:fs/promises");
