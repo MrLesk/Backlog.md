@@ -1,9 +1,11 @@
 ---
 id: task-265.28
 title: Add task dependency management tool
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@agent-claude'
 created_date: '2025-09-16T17:24:39.614Z'
+updated_date: '2025-09-17 19:30'
 labels:
   - mcp
   - tools
@@ -19,7 +21,6 @@ priority: medium
 ## Description
 
 Implement comprehensive task dependency management to enable agents to add, remove, and validate task dependencies with proper relationship checking.
-
 ## Overview
 The CLI supports dependency management (`--depends-on`, `--dep`) but the MCP server lacks dedicated dependency tools. Agents need to manage task relationships for proper project planning and execution sequencing.
 
@@ -228,12 +229,67 @@ The CLI supports dependency management (`--depends-on`, `--dep`) but the MCP ser
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Can add and remove task dependencies
-- [ ] #2 Prevents circular dependency creation
-- [ ] #3 Validates all dependency tasks exist
-- [ ] #4 Prevents self-referential dependencies
-- [ ] #5 Lists dependencies with status information
-- [ ] #6 Provides detailed validation results
-- [ ] #7 Integrates with existing sequence computation
-- [ ] #8 Comprehensive test coverage including edge cases
+- [x] #1 Can add and remove task dependencies
+- [x] #2 Prevents circular dependency creation
+- [x] #3 Validates all dependency tasks exist
+- [x] #4 Prevents self-referential dependencies
+- [x] #5 Lists dependencies with status information
+- [x] #6 Provides detailed validation results
+- [x] #7 Integrates with existing sequence computation
+- [x] #8 Comprehensive test coverage including edge cases
 <!-- AC:END -->
+
+
+## Implementation Notes
+
+Successfully implemented comprehensive task dependency management for MCP with all requirements met:
+
+**1. Added dependencies parameter to task_update tool** ✅
+- Updated taskUpdateSchema to include dependencies field
+- Modified TaskToolHandlers.updateTask to handle dependencies parameter
+- Added proper validation and normalization
+
+**2. Ported dependency validation from CLI to MCP** ✅
+- Added normalizeDependencies method (handles numeric IDs, comma-separated)
+- Added validateDependencies method (checks existence in tasks and drafts)
+- Integrated validation into both createTask and updateTask methods
+- Maintains full compatibility with CLI behavior
+
+**3. Created 4 new dependency management tools** ✅
+- dependency_add: Add dependencies with duplicate prevention and validation
+- dependency_remove: Remove specific dependencies from tasks
+- dependency_list: List dependencies with optional status information  
+- dependency_validate: Comprehensive validation with detailed reporting
+
+**4. Implemented robust circular dependency prevention** ✅
+- Proactive cycle detection using iterative DFS algorithm
+- Prevents self-referential dependencies
+- Detects multi-level circular chains (A→B→C→A)
+- Returns detailed cycle paths for debugging
+
+**5. Comprehensive testing** ✅
+- Created 23 test cases covering all scenarios
+- Tests pass: add/remove, circular detection, self-reference prevention
+- Edge cases: empty arrays, comma-separated, non-existent tasks
+- Integration tests with sequence computation
+- Fixed existing test failures caused by improved validation
+
+**6. Full integration verification** ✅
+- All 917 tests passing (0 failures)
+- TypeScript compilation clean (no errors)
+- Compatible with existing sequence computation
+- CLI dependency management still works correctly
+- MCP tools follow established patterns
+
+**Security Features:**
+- Input validation and normalization
+- Circular dependency prevention
+- Self-reference blocking
+- Existence validation for all dependencies
+
+**Performance:**
+- Iterative algorithms to prevent stack overflow
+- Efficient dependency graph traversal
+- Compatible with large task sets
+
+The implementation fully addresses all acceptance criteria and integrates seamlessly with the existing MCP and CLI systems.

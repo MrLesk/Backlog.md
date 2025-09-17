@@ -22,6 +22,7 @@ import { McpServer } from "./mcp/server.ts";
 import { registerBoardTools } from "./mcp/tools/board-tools.ts";
 import { registerConfigTools } from "./mcp/tools/config-tools.ts";
 import { registerDecisionTools } from "./mcp/tools/decision-tools.ts";
+import { registerDependencyTools } from "./mcp/tools/dependency-tools.ts";
 import { registerDraftTools } from "./mcp/tools/draft-tools.ts";
 import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
 import { registerTaskTools } from "./mcp/tools/task-tools.ts";
@@ -2602,6 +2603,7 @@ mcpCmd
 			registerTaskTools(server);
 			registerDraftTools(server);
 			registerDecisionTools(server);
+			registerDependencyTools(server);
 			registerBoardTools(server);
 			registerConfigTools(server);
 			registerSequenceTools(server);

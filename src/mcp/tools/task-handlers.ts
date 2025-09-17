@@ -11,6 +11,49 @@ export class TaskToolHandlers {
 	constructor(private server: McpServer) {}
 
 	/**
+	 * Normalize dependencies to proper task-X format
+	 */
+	private normalizeDependencies(dependencies: string[]): string[] {
+		if (!dependencies || dependencies.length === 0) return [];
+
+		return dependencies
+			.flatMap((dep) =>
+				String(dep)
+					.split(",")
+					.map((d) => d.trim()),
+			)
+			.filter(Boolean)
+			.map((dep) => (dep.startsWith("task-") ? dep : `task-${dep}`));
+	}
+
+	/**
+	 * Validate that all dependencies exist (ported from CLI)
+	 */
+	private async validateDependencies(dependencies: string[]): Promise<{ valid: string[]; invalid: string[] }> {
+		const valid: string[] = [];
+		const invalid: string[] = [];
+
+		if (dependencies.length === 0) {
+			return { valid, invalid };
+		}
+
+		// Load both tasks and drafts to validate dependencies
+		const [tasks, drafts] = await Promise.all([this.server.fs.listTasks(), this.server.fs.listDrafts()]);
+
+		const allTaskIds = new Set([...tasks.map((t) => t.id), ...drafts.map((d) => d.id)]);
+
+		for (const dep of dependencies) {
+			if (allTaskIds.has(dep)) {
+				valid.push(dep);
+			} else {
+				invalid.push(dep);
+			}
+		}
+
+		return { valid, invalid };
+	}
+
+	/**
 	 * Create a new task
 	 */
 	async createTask(args: {
@@ -45,6 +88,14 @@ export class TaskToolHandlers {
 			}, 0);
 			const newId = `task-${highestId + 1}`;
 
+			// Normalize and validate dependencies
+			const normalizedDependencies = this.normalizeDependencies(dependencies);
+			const { valid, invalid } = await this.validateDependencies(normalizedDependencies);
+
+			if (invalid.length > 0) {
+				throw new Error(`The following dependencies do not exist: ${invalid.join(", ")}`);
+			}
+
 			// Convert acceptance criteria strings to structured format
 			const acceptanceCriteriaItems = acceptanceCriteria.map((text, index) => ({
 				index: index + 1,
@@ -59,7 +110,7 @@ export class TaskToolHandlers {
 				assignee,
 				createdDate: new Date().toISOString(),
 				labels,
-				dependencies,
+				dependencies: valid,
 				body: description || "",
 				description,
 				parentTaskId,
@@ -293,8 +344,9 @@ export class TaskToolHandlers {
 		assignee?: string[];
 		priority?: "high" | "medium" | "low";
 		implementationNotes?: string;
+		dependencies?: string[];
 	}): Promise<CallToolResult> {
-		const { id, title, status, description, labels, assignee, priority, implementationNotes } = args;
+		const { id, title, status, description, labels, assignee, priority, implementationNotes, dependencies } = args;
 
 		try {
 			const tasks = await this.server.fs.listTasks();
@@ -302,6 +354,19 @@ export class TaskToolHandlers {
 
 			if (!existingTask) {
 				throw new Error(`Task not found: ${id}`);
+			}
+
+			// Validate dependencies if provided
+			let validatedDependencies: string[] | undefined;
+			if (dependencies !== undefined) {
+				const normalizedDependencies = this.normalizeDependencies(dependencies);
+				const { valid, invalid } = await this.validateDependencies(normalizedDependencies);
+
+				if (invalid.length > 0) {
+					throw new Error(`The following dependencies do not exist: ${invalid.join(", ")}`);
+				}
+
+				validatedDependencies = valid;
 			}
 
 			// Create updated task
@@ -318,6 +383,7 @@ export class TaskToolHandlers {
 			if (assignee) updatedTask.assignee = assignee;
 			if (priority) updatedTask.priority = priority;
 			if (implementationNotes !== undefined) updatedTask.implementationNotes = implementationNotes;
+			if (validatedDependencies !== undefined) updatedTask.dependencies = validatedDependencies;
 
 			await this.server.updateTask(updatedTask, false);
 

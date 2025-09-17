@@ -171,6 +171,10 @@ const taskUpdateSchema: JsonSchema = {
 			type: "string",
 			maxLength: 10000,
 		},
+		dependencies: {
+			type: "array",
+			items: { type: "string", maxLength: 50 },
+		},
 	},
 	required: ["id"],
 };

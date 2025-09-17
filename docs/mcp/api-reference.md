@@ -325,6 +325,253 @@ List all available configuration options.
 {}
 ```
 
+### Dependency Management
+
+#### `dependency_add`
+
+Add dependencies to a task with validation and circular dependency prevention.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "dependencies": ["string (required, task IDs to add as dependencies)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully added 2 dependencies to task task-123: task-456, task-789"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "dependencies": ["task-456", "789", "task-101"]
+}
+```
+
+**Features:**
+- Automatically normalizes numeric IDs to `task-X` format
+- Supports comma-separated dependency strings
+- Prevents duplicate dependencies
+- Validates that all dependencies exist
+- Prevents self-referential dependencies
+- Detects and prevents circular dependencies
+- Returns detailed error messages for validation failures
+
+#### `dependency_remove`
+
+Remove specific dependencies from a task.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "dependencies": ["string (required, dependency IDs to remove)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully removed 1 dependencies from task task-123: task-456"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "dependencies": ["task-456", "task-789"]
+}
+```
+
+#### `dependency_list`
+
+List all dependencies of a task with optional status information.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "includeStatus": "boolean (optional, default: false, include dependency status)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Task task-123 has 2 dependencies:\n  - task-456 (To Do)\n  - task-789 (In Progress)"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "includeStatus": true
+}
+```
+
+#### `dependency_validate`
+
+Validate dependencies and analyze the dependency graph for potential issues.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "proposedDependencies": ["string (optional, dependencies to validate without adding)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Dependency validation for task task-123:\n\n✅ All dependencies exist\n✅ No self-reference\n✅ No circular dependencies\n\nDependency analysis:\n- Direct dependencies: 2\n- Sequence position: 1\n\n✅ Overall validation: PASSED"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "proposedDependencies": ["task-456", "task-789"]
+}
+```
+
+**Validation Checks:**
+- **Existence**: All dependencies must be valid task or draft IDs
+- **Self-reference**: Task cannot depend on itself
+- **Circular dependencies**: Prevents dependency cycles using DFS detection
+- **Sequence analysis**: Shows task position in execution sequences
+
+### Acceptance Criteria Management
+
+#### `criteria_add`
+
+Add new acceptance criteria to tasks.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "criteria": ["string (required, max 500 chars each, criteria to add)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully added 2 acceptance criteria to task task-123"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "criteria": [
+    "User can login with OAuth2",
+    "Session tokens expire after 24 hours",
+    "Failed login attempts are logged"
+  ]
+}
+```
+
+#### `criteria_remove`
+
+Remove acceptance criteria by index (1-based).
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "indices": ["number (required, 1-based indices of criteria to remove)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully removed 1 acceptance criteria from task task-123"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "indices": [2, 4]
+}
+```
+
+#### `criteria_check`
+
+Check/uncheck acceptance criteria items to track completion.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "indices": ["number (required, 1-based indices of criteria to check/uncheck)"],
+  "checked": "boolean (required, true to check, false to uncheck)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully updated 2 acceptance criteria for task task-123"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "indices": [1, 3],
+  "checked": true
+}
+```
+
+#### `criteria_list`
+
+List all acceptance criteria with their completion status.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Acceptance criteria for task task-123:\n  1. ✅ User can login with OAuth2\n  2. ❌ Session tokens expire after 24 hours\n  3. ✅ Failed login attempts are logged\n\nProgress: 2/3 completed (67%)"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123"
+}
+```
+
 ### Decision Management
 
 #### `decision_create`

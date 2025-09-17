@@ -211,6 +211,63 @@ Tip: Help text shows Bash examples with escaped `\\n` for readability; when typi
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
 
+### Dependency Management
+
+Manage task dependencies to create execution sequences and prevent circular relationships:
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Add dependencies | `backlog task edit 7 --dep task-1 --dep task-2`     |
+| Add multiple deps | `backlog task edit 7 --dep task-1,task-5,task-9`    |
+| Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
+| View dependencies | `backlog task 7` (shows dependencies in task view)  |
+| Validate dependencies | Use task commands to automatically validate dependencies |
+
+**Dependency Features:**
+- **Automatic validation**: Prevents circular dependencies and validates task existence
+- **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
+- **Visual sequences**: Dependencies create visual execution sequences in board view
+- **Completion tracking**: See which dependencies are blocking task progress
+
+**MCP Integration (AI Agents):**
+```javascript
+// Add dependencies via MCP
+{
+  "tool": "dependency_add",
+  "arguments": {
+    "id": "task-123",
+    "dependencies": ["task-456", "789", "task-101"]
+  }
+}
+
+// Remove dependencies
+{
+  "tool": "dependency_remove",
+  "arguments": {
+    "id": "task-123",
+    "dependencies": ["task-456"]
+  }
+}
+
+// Validate dependency graph
+{
+  "tool": "dependency_validate",
+  "arguments": {
+    "id": "task-123",
+    "proposedDependencies": ["task-999"] // Optional: test before adding
+  }
+}
+
+// List all dependencies with status
+{
+  "tool": "dependency_list",
+  "arguments": {
+    "id": "task-123",
+    "includeStatus": true
+  }
+}
+```
+
 ### Board Operations
 
 | Action      | Example                                              |

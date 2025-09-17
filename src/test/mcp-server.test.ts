@@ -477,6 +477,17 @@ describe("McpServer", () => {
 
 		describe("task view, archive, and demote tools", () => {
 			it("should view task with complete details using task_view", async () => {
+				// First create the dependency task
+				await mcpServer.testInterface.callTool({
+					params: {
+						name: "task_create",
+						arguments: {
+							title: "Dependency Task",
+							description: "A dependency task",
+						},
+					},
+				});
+
 				// Create a task with comprehensive details
 				await mcpServer.testInterface.callTool({
 					params: {
@@ -488,7 +499,7 @@ describe("McpServer", () => {
 							assignee: ["developer1"],
 							priority: "high",
 							acceptanceCriteria: ["Criterion 1", "Criterion 2"],
-							dependencies: ["task-0"],
+							dependencies: ["task-1"],
 						},
 					},
 				});
@@ -497,7 +508,7 @@ describe("McpServer", () => {
 				const request = {
 					params: {
 						name: "task_view",
-						arguments: { id: "task-1" },
+						arguments: { id: "task-2" },
 					},
 				};
 
@@ -505,12 +516,12 @@ describe("McpServer", () => {
 				expect(result.content).toHaveLength(1);
 				const taskText = result.content[0]?.text || "";
 
-				expect(taskText).toContain("**task-1**: Complex Task");
+				expect(taskText).toContain("**task-2**: Complex Task");
 				expect(taskText).toContain("Status: 📋 Ready");
 				expect(taskText).toContain("Assignee: developer1");
 				expect(taskText).toContain("Priority: high");
 				expect(taskText).toContain("Labels: frontend, ui");
-				expect(taskText).toContain("Dependencies: task-0");
+				expect(taskText).toContain("Dependencies: task-1");
 				expect(taskText).toContain("**Description:**");
 				expect(taskText).toContain("A task with all metadata");
 				expect(taskText).toContain("**Acceptance Criteria:**");
