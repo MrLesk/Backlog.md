@@ -1,10 +1,11 @@
 ---
 id: task-270
 title: Prevent command substitution in task creation inputs
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-17 21:20'
+updated_date: '2025-09-18 21:01'
 labels: []
 dependencies: []
 ---
