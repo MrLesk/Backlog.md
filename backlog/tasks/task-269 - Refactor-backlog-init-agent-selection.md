@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-17 21:19'
-updated_date: '2025-09-18 17:41'
+updated_date: '2025-09-18 18:10'
 labels: []
 dependencies: []
 ---
@@ -30,3 +30,5 @@ Users often skip reading the prompts in backlog init and simply press enter thro
 Enter now auto-selects the highlighted agent during interactive init, with space still toggling multi-select.
 Selection processing requires at least one agent file, rejecting only-"none" submissions.
 Added utility + tests for the selection normalization logic and updated CLI tests pass.
+
+Highlight fallback only triggers after actual cursor movement, so pressing Enter immediately no longer selects CLAUDE.md by default.

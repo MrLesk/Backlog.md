@@ -22,7 +22,7 @@ import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
-import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
+import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -579,15 +579,22 @@ program
 				} else if (isNonInteractive) {
 					agentFiles = [];
 				} else {
-					const defaultHint = "Enter selects highlighted agent; space toggles additional selections\n";
+					const defaultHint = "Enter selects highlighted agent (after moving); space toggles selections\n";
 					while (true) {
 						let highlighted: AgentSelection | undefined;
+						let initialCursor: number | undefined;
+						let cursorMoved = false;
 						const response = await prompts(
 							{
 								type: "multiselect",
 								name: "files",
 								message: "Select one or more agent instruction files to update",
 								choices: [
+									{
+										title: "↓ Select an agent instruction from the list below",
+										value: PLACEHOLDER_AGENT_VALUE,
+										disabled: true,
+									},
 									{ title: "CLAUDE.md (Claude Code)", value: "CLAUDE.md" },
 									{
 										title: "AGENTS.md (Codex, Jules, Amp, Cursor, Zed, Warp, Aider, GitHub, RooCode)",
@@ -609,6 +616,12 @@ program
 											value: Array<{ value: AgentSelection }>;
 											hint: string;
 										};
+										if (initialCursor === undefined) {
+											initialCursor = promptInstance.cursor;
+										}
+										if (initialCursor !== undefined && promptInstance.cursor !== initialCursor) {
+											cursorMoved = true;
+										}
 										const focus = promptInstance.value?.[promptInstance.cursor];
 										highlighted = focus?.value;
 										promptInstance.hint = defaultHint;
@@ -625,7 +638,11 @@ program
 						);
 
 						const selected = (response?.files ?? []) as AgentSelection[];
-						const { files, needsRetry } = processAgentSelection({ selected, highlighted });
+						const { files, needsRetry } = processAgentSelection({
+							selected,
+							highlighted,
+							useHighlightFallback: cursorMoved,
+						});
 						if (needsRetry) {
 							console.log("Please select at least one agent instruction file before continuing.");
 							continue;

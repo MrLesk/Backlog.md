@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type AgentSelectionValue, processAgentSelection } from "../utils/agent-selection.ts";
+import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "../utils/agent-selection.ts";
 
 const AGENTS_MD = "AGENTS.md" as const;
 const CLAUDE_MD = "CLAUDE.md" as const;
@@ -12,10 +12,26 @@ describe("processAgentSelection", () => {
 		expect(result.files).toEqual([AGENTS_MD, CLAUDE_MD]);
 	});
 
-	it("auto-selects highlighted item when none selected", () => {
-		const result = processAgentSelection({ selected: [], highlighted: GEMINI_MD });
+	it("auto-selects highlighted item when none selected and fallback enabled", () => {
+		const result = processAgentSelection({ selected: [], highlighted: GEMINI_MD, useHighlightFallback: true });
 		expect(result.needsRetry).toBe(false);
 		expect(result.files).toEqual([GEMINI_MD]);
+	});
+
+	it("does not auto-select highlight when fallback disabled", () => {
+		const result = processAgentSelection({ selected: [], highlighted: CLAUDE_MD });
+		expect(result.needsRetry).toBe(true);
+		expect(result.files).toEqual([]);
+	});
+
+	it("ignores placeholder highlight even when fallback enabled", () => {
+		const result = processAgentSelection({
+			selected: [],
+			highlighted: PLACEHOLDER_AGENT_VALUE,
+			useHighlightFallback: true,
+		});
+		expect(result.needsRetry).toBe(true);
+		expect(result.files).toEqual([]);
 	});
 
 	it("requires retry when nothing highlighted or selected", () => {
