@@ -324,6 +324,20 @@ Test task with acceptance criteria
 			expect(task?.body).toContain("- [ ] #2 Third criterion"); // Renumbered
 		});
 
+		it("removes acceptance criteria section after deleting all items", async () => {
+			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 1 --remove-ac 2 --remove-ac 3`
+				.cwd(TEST_DIR)
+				.quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			const body = task?.body || "";
+			expect(body).not.toContain("## Acceptance Criteria");
+			expect(body).not.toContain("<!-- AC:BEGIN -->");
+			expect(body).not.toContain("<!-- AC:END -->");
+		});
+
 		it("should check acceptance criterion by index with --check-ac", async () => {
 			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 2`.cwd(TEST_DIR).quiet();
 			expect(result.exitCode).toBe(0);

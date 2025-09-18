@@ -27,8 +27,12 @@ export function serializeTask(task: Task): string {
 	if (typeof task.description === "string" && task.description.trim() !== "") {
 		contentBody = updateTaskDescription(contentBody, task.description);
 	}
-	if (Array.isArray(task.acceptanceCriteriaItems) && task.acceptanceCriteriaItems.length > 0) {
-		contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
+	if (Array.isArray(task.acceptanceCriteriaItems)) {
+		const existingCriteria = AcceptanceCriteriaManager.parseAllCriteria(task.body);
+		const hasExistingStructuredCriteria = existingCriteria.length > 0;
+		if (task.acceptanceCriteriaItems.length > 0 || hasExistingStructuredCriteria) {
+			contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
+		}
 	}
 	if (typeof task.implementationPlan === "string") {
 		contentBody = updateTaskImplementationPlan(contentBody, task.implementationPlan);

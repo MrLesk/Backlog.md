@@ -1,10 +1,11 @@
 ---
 id: task-271
 title: Fix acceptance criteria section removal when list emptied
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-17 21:21'
+updated_date: '2025-09-18 16:39'
 labels: []
 dependencies: []
 ---
@@ -17,7 +18,16 @@ Codex review on PR 358 notes that serializer only updates the acceptance-criteri
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Serializer updates the acceptance criteria section even when the list is empty, removing the block from the task file.
-- [ ] #2 Add or update automated coverage to confirm removing all acceptance criteria leaves no acceptance-criteria section in saved markdown.
-- [ ] #3 Verify backlog task edit removing all acceptance criteria no longer leaves stale content.
+- [x] #1 Serializer updates the acceptance criteria section even when the list is empty, removing the block from the task file.
+- [x] #2 Add or update automated coverage to confirm removing all acceptance criteria leaves no acceptance-criteria section in saved markdown.
+- [x] #3 Verify backlog task edit removing all acceptance criteria no longer leaves stale content.
 <!-- AC:END -->
+
+
+## Implementation Notes
+
+Serializer now updates even when acceptanceCriteriaItems is empty.
+Added regression tests covering serializer and CLI removal flow.
+Validated with bun test.
+
+Restored guard to avoid stripping legacy/freeform acceptance criteria and added regression coverage for that case.

@@ -393,6 +393,50 @@ describe("Markdown Serializer", () => {
 			expect(result).not.toContain("reporter:");
 			expect(result).not.toContain("updated_date:");
 		});
+
+		it("removes acceptance criteria section when list becomes empty", () => {
+			const body =
+				"## Description\n\nSome details\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old criterion\n<!-- AC:END -->";
+			const task: Task = {
+				id: "task-clean",
+				title: "Cleanup Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-10",
+				labels: [],
+				dependencies: [],
+				body,
+				acceptanceCriteriaItems: [],
+			};
+
+			const result = serializeTask(task);
+
+			expect(result).not.toContain("## Acceptance Criteria");
+			expect(result).not.toContain("<!-- AC:BEGIN -->");
+			expect(result).toContain("## Description");
+			expect(result).toContain("Some details");
+		});
+
+		it("preserves freeform acceptance criteria text when no structured items exist", () => {
+			const body =
+				"## Description\n\nSome details\n\n## Acceptance Criteria\nPlease see the product spec for success measures.";
+			const task: Task = {
+				id: "task-freeform",
+				title: "Legacy Criteria Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-11",
+				labels: [],
+				dependencies: [],
+				body,
+				acceptanceCriteriaItems: [],
+			};
+
+			const result = serializeTask(task);
+
+			expect(result).toContain("## Acceptance Criteria");
+			expect(result).toContain("Please see the product spec for success measures.");
+		});
 	});
 
 	describe("serializeDecision", () => {
