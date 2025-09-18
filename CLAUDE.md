@@ -17,6 +17,9 @@ Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
 
 - `bun test` - Run all tests
 - `bun test <filename>` - Run specific test file
+- `bun test src/**/*.test.ts` - Run only unit tests (or use `npm run test:unit`)
+- `bun test src/mcp/**/*.test.ts` - Run only MCP tests (or use `npm run test:mcp`)
+- `bun test --watch` - Run tests in watch mode (or use `npm run test:watch`)
 
 ### Configuration Management
 
@@ -41,6 +44,12 @@ Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
 
 The pre-commit hook automatically runs `biome check --write` on staged files to ensure code quality. If linting errors
 are found, the commit will be blocked until fixed.
+
+## Architecture Guidelines
+
+- **Separation of Concerns**: CLI logic and utility functions are kept separate to avoid side effects during testing
+- **Utility Functions**: Reusable utility functions (like ID generators) are placed in `src/utils/` directory
+- **No Side Effects on Import**: Modules should not execute CLI code when imported by other modules or tests
 
 ## Git Workflow
 

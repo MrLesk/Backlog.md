@@ -48,11 +48,13 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 example-project/
 
 # blessed resources
+
+# MCP configuration (local only)
+.mcp.json
+.env.mcp
+MCP_DEV_README.md
 resources
 result
 
 # Test temp directories created by bun tests
-.tmp-*
-.tmp-test-*
-test-cli-*
-test-cli-sequences-*
+tmp/

@@ -44,6 +44,9 @@
 	},
 	"scripts": {
 		"test": "bun test",
+		"test:unit": "bun test src/**/*.test.ts",
+		"test:mcp": "bun test src/mcp/**/*.test.ts",
+		"test:watch": "bun test --watch",
 		"format": "biome format --write .",
 		"lint": "biome lint --write .",
 		"check": "biome check .",
@@ -87,5 +90,8 @@
 	"trustedDependencies": [
 		"@biomejs/biome",
 		"node-pty"
-	]
+	],
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.18.0"
+	}
 }

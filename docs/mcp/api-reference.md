@@ -1,0 +1,1027 @@
+# MCP API Reference
+
+Complete reference for all tools, resources, and prompts available in the Backlog.md MCP server.
+
+## Tools
+
+### Task Management
+
+#### `task_create`
+
+Create a new task in the backlog with optional metadata.
+
+**Parameters:**
+```json
+{
+  "title": "string (required, max 200 chars)",
+  "description": "string (optional, max 10000 chars)",
+  "labels": ["string (optional, max 50 chars each)"],
+  "assignee": ["string (optional, max 100 chars each)"],
+  "priority": "high|medium|low (optional)",
+  "status": "string (optional, max 100 chars)",
+  "parentTaskId": "string (optional, max 50 chars)",
+  "acceptanceCriteria": ["string (optional, max 500 chars each)"],
+  "dependencies": ["string (optional, max 50 chars each)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "task-123",
+    "title": "Task title",
+    "status": "To Do",
+    "createdDate": "2025-09-15T10:30:00Z",
+    "filePath": "backlog/tasks/task-123.md"
+  }
+}
+```
+
+**Example:**
+```javascript
+{
+  "title": "Implement OAuth2 authentication",
+  "description": "Add OAuth2 support for Google and GitHub login",
+  "priority": "high",
+  "labels": ["backend", "security", "authentication"],
+  "assignee": ["john.doe"],
+  "acceptanceCriteria": [
+    "Users can login with Google account",
+    "Users can login with GitHub account",
+    "OAuth tokens are stored securely",
+    "Existing users can link OAuth accounts"
+  ]
+}
+```
+
+#### `task_update`
+
+Update an existing task's properties.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars)",
+  "title": "string (optional, max 200 chars)",
+  "description": "string (optional, max 10000 chars)",
+  "labels": ["string (optional)"],
+  "assignee": ["string (optional)"],
+  "priority": "high|medium|low (optional)",
+  "status": "string (optional)",
+  "acceptanceCriteria": ["string (optional)"],
+  "dependencies": ["string (optional)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "task-123",
+    "title": "Updated title",
+    "updatedDate": "2025-09-15T11:30:00Z"
+  }
+}
+```
+
+#### `task_list`
+
+List tasks with optional filtering.
+
+**Parameters:**
+```json
+{
+  "status": "string (optional, filter by status)",
+  "assignee": "string (optional, filter by assignee)",
+  "labels": ["string (optional, filter by labels)"],
+  "search": "string (optional, search in title/description)",
+  "limit": "number (optional, 1-1000, default: 50)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "tasks": [
+      {
+        "id": "task-123",
+        "title": "Task title",
+        "status": "To Do",
+        "assignee": ["john.doe"],
+        "labels": ["backend"],
+        "priority": "high",
+        "createdDate": "2025-09-15T10:30:00Z"
+      }
+    ],
+    "total": 1,
+    "filtered": 1
+  }
+}
+```
+
+#### `task_view`
+
+Get detailed information about a specific task.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, task ID)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "task-123",
+    "title": "Complete task title",
+    "description": "Full task description...",
+    "status": "To Do",
+    "assignee": ["john.doe"],
+    "labels": ["backend", "security"],
+    "priority": "high",
+    "createdDate": "2025-09-15T10:30:00Z",
+    "updatedDate": "2025-09-15T11:30:00Z",
+    "acceptanceCriteria": ["Criterion 1", "Criterion 2"],
+    "dependencies": ["task-456"],
+    "parentTaskId": "task-789"
+  }
+}
+```
+
+#### `task_delete`
+
+Archive or delete a task.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, task ID)",
+  "permanent": "boolean (optional, default: false)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "task-123",
+    "action": "archived",
+    "timestamp": "2025-09-15T12:00:00Z"
+  }
+}
+```
+
+### Board Management
+
+#### `board_view`
+
+Get the current kanban board state.
+
+**Parameters:**
+```json
+{
+  "includeMetadata": "boolean (optional, default: true)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "board": {
+      "To Do": [
+        {
+          "id": "task-123",
+          "title": "Task title",
+          "assignee": ["john.doe"],
+          "priority": "high"
+        }
+      ],
+      "In Progress": [],
+      "Done": []
+    },
+    "metadata": {
+      "totalTasks": 1,
+      "completionRate": 0.0,
+      "statusCounts": {
+        "To Do": 1,
+        "In Progress": 0,
+        "Done": 0
+      },
+      "lastUpdated": "2025-09-15T12:00:00Z"
+    }
+  }
+}
+```
+
+#### `board_create`
+
+Create a new board configuration.
+
+**Parameters:**
+```json
+{
+  "name": "string (required, max 100 chars)",
+  "description": "string (optional, max 500 chars)",
+  "columns": ["string (required, status names)"],
+  "defaultColumn": "string (optional, default status)"
+}
+```
+
+#### `board_update`
+
+Update board configuration.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, board ID)",
+  "name": "string (optional)",
+  "description": "string (optional)",
+  "columns": ["string (optional)"],
+  "defaultColumn": "string (optional)"
+}
+```
+
+#### `board_list`
+
+List all available boards.
+
+**Parameters:**
+```json
+{}
+```
+
+### Configuration Management
+
+#### `config_get`
+
+Retrieve configuration values.
+
+**Parameters:**
+```json
+{
+  "key": "string (optional, specific config key)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "defaultAssignee": "john.doe",
+    "defaultLabels": ["feature"],
+    "mcp": {
+      "enabled": true,
+      "rateLimiting": {
+        "maxRequestsPerMinute": 100
+      }
+    }
+  }
+}
+```
+
+#### `config_set`
+
+Update configuration values.
+
+**Parameters:**
+```json
+{
+  "key": "string (required, config key)",
+  "value": "any (required, config value)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "key": "defaultAssignee",
+    "value": "jane.doe",
+    "previousValue": "john.doe"
+  }
+}
+```
+
+#### `config_list`
+
+List all available configuration options.
+
+**Parameters:**
+```json
+{}
+```
+
+### Dependency Management
+
+#### `dependency_add`
+
+Add dependencies to a task with validation and circular dependency prevention.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "dependencies": ["string (required, task IDs to add as dependencies)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully added 2 dependencies to task task-123: task-456, task-789"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "dependencies": ["task-456", "789", "task-101"]
+}
+```
+
+**Features:**
+- Automatically normalizes numeric IDs to `task-X` format
+- Supports comma-separated dependency strings
+- Prevents duplicate dependencies
+- Validates that all dependencies exist
+- Prevents self-referential dependencies
+- Detects and prevents circular dependencies
+- Returns detailed error messages for validation failures
+
+#### `dependency_remove`
+
+Remove specific dependencies from a task.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "dependencies": ["string (required, dependency IDs to remove)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully removed 1 dependencies from task task-123: task-456"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "dependencies": ["task-456", "task-789"]
+}
+```
+
+#### `dependency_list`
+
+List all dependencies of a task with optional status information.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "includeStatus": "boolean (optional, default: false, include dependency status)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Task task-123 has 2 dependencies:\n  - task-456 (To Do)\n  - task-789 (In Progress)"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "includeStatus": true
+}
+```
+
+#### `dependency_validate`
+
+Validate dependencies and analyze the dependency graph for potential issues.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "proposedDependencies": ["string (optional, dependencies to validate without adding)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Dependency validation for task task-123:\n\n✅ All dependencies exist\n✅ No self-reference\n✅ No circular dependencies\n\nDependency analysis:\n- Direct dependencies: 2\n- Sequence position: 1\n\n✅ Overall validation: PASSED"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "proposedDependencies": ["task-456", "task-789"]
+}
+```
+
+**Validation Checks:**
+- **Existence**: All dependencies must be valid task or draft IDs
+- **Self-reference**: Task cannot depend on itself
+- **Circular dependencies**: Prevents dependency cycles using DFS detection
+- **Sequence analysis**: Shows task position in execution sequences
+
+### Acceptance Criteria Management
+
+#### `criteria_add`
+
+Add new acceptance criteria to tasks.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "criteria": ["string (required, max 500 chars each, criteria to add)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully added 2 acceptance criteria to task task-123"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "criteria": [
+    "User can login with OAuth2",
+    "Session tokens expire after 24 hours",
+    "Failed login attempts are logged"
+  ]
+}
+```
+
+#### `criteria_remove`
+
+Remove acceptance criteria by index (1-based).
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "indices": ["number (required, 1-based indices of criteria to remove)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully removed 1 acceptance criteria from task task-123"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "indices": [2, 4]
+}
+```
+
+#### `criteria_check`
+
+Check/uncheck acceptance criteria items to track completion.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)",
+  "indices": ["number (required, 1-based indices of criteria to check/uncheck)"],
+  "checked": "boolean (required, true to check, false to uncheck)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully updated 2 acceptance criteria for task task-123"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123",
+  "indices": [1, 3],
+  "checked": true
+}
+```
+
+#### `criteria_list`
+
+List all acceptance criteria with their completion status.
+
+**Parameters:**
+```json
+{
+  "id": "string (required, max 50 chars, task ID)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Acceptance criteria for task task-123:\n  1. ✅ User can login with OAuth2\n  2. ❌ Session tokens expire after 24 hours\n  3. ✅ Failed login attempts are logged\n\nProgress: 2/3 completed (67%)"
+}
+```
+
+**Example:**
+```json
+{
+  "id": "task-123"
+}
+```
+
+### Decision Management
+
+#### `decision_create`
+
+Create a new Architecture Decision Record (ADR) with structured content and frontmatter.
+
+**Parameters:**
+```json
+{
+  "title": "string (required, max 200 chars)",
+  "context": "string (optional, max 10000 chars)",
+  "decision": "string (optional, max 10000 chars)",
+  "consequences": "string (optional, max 10000 chars)",
+  "alternatives": "string (optional, max 10000 chars)",
+  "status": "proposed|accepted|rejected|superseded (optional, default: proposed)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "decision-001",
+    "title": "Use PostgreSQL for primary database",
+    "filePath": "/decisions/decision-001 - use-postgresql-for-primary-database.md"
+  }
+}
+```
+
+**Example:**
+```json
+{
+  "title": "Adopt TypeScript for Frontend Development",
+  "context": "We need better type safety and IDE support for our growing frontend codebase",
+  "decision": "Migrate all JavaScript files to TypeScript over the next sprint",
+  "consequences": "Better developer experience, compile-time error catching, but requires team training",
+  "alternatives": "Flow type checker was considered but has less community support",
+  "status": "accepted"
+}
+```
+
+### Sequence Management
+
+#### `sequence_start`
+
+Begin a new task sequence.
+
+**Parameters:**
+```json
+{
+  "name": "string (required, sequence name)",
+  "tasks": ["string (required, task IDs)"],
+  "description": "string (optional)"
+}
+```
+
+#### `sequence_continue`
+
+Progress to the next task in a sequence.
+
+**Parameters:**
+```json
+{
+  "sequenceId": "string (required, sequence ID)",
+  "currentTaskId": "string (required, current task ID)"
+}
+```
+
+#### `sequence_complete`
+
+Mark a sequence as completed.
+
+**Parameters:**
+```json
+{
+  "sequenceId": "string (required, sequence ID)"
+}
+```
+
+## Resources
+
+Resources provide read-only access to project data.
+
+### Task Resources
+
+#### `task/{id}`
+
+Get individual task details in JSON format.
+
+**URI Pattern:** `task/123` or `task/123.01` (for sub-tasks)
+
+**Response:**
+```json
+{
+  "contents": [{
+    "uri": "task/123",
+    "mimeType": "application/json",
+    "text": "{\"id\":\"task-123\",\"title\":\"...\",\"status\":\"...\"}"
+  }]
+}
+```
+
+#### `tasks/status/{status}`
+
+Get all tasks with a specific status.
+
+**URI Pattern:** `tasks/status/To Do`
+
+#### `tasks/assignee/{assignee}`
+
+Get all tasks assigned to a specific person.
+
+**URI Pattern:** `tasks/assignee/john.doe`
+
+### Board Resources
+
+#### `board/current`
+
+Get current active board state with task distribution.
+
+**Response includes:**
+- Tasks organized by status columns
+- Task counts per status
+- Completion metrics
+- Board metadata
+
+#### `board/{id}`
+
+Get specific board configuration.
+
+**URI Pattern:** `board/default`
+
+#### `boards/list`
+
+Get all available boards.
+
+### Configuration Resources
+
+#### `config/current`
+
+Get complete project configuration.
+
+#### `config/section/{section}`
+
+Get specific configuration section.
+
+**URI Pattern:** `config/section/mcp`
+
+## Prompts
+
+Workflow templates that provide guided assistance.
+
+### `task_creation_workflow`
+
+Guided task creation with context gathering and structured output.
+
+**Arguments:**
+```json
+{
+  "projectContext": "string (optional, current project state)",
+  "userRequirement": "string (required, requirement description)"
+}
+```
+
+**Usage:**
+```
+Use the task creation workflow to analyze this requirement:
+"Users need to be able to export their data in PDF format"
+```
+
+### `sprint_planning`
+
+Sprint planning assistance with capacity management.
+
+**Arguments:**
+```json
+{
+  "boardState": "string (optional, current board state)",
+  "capacity": "string (optional, team capacity)",
+  "priorities": "string (optional, priority guidance)"
+}
+```
+
+**Usage:**
+```
+Help me plan a 2-week sprint with the sprint planning workflow.
+We have 3 developers available for 40 hours each.
+```
+
+### `code_review_integration`
+
+Code review workflow integration.
+
+**Arguments:**
+```json
+{
+  "taskId": "string (optional, related task ID)",
+  "prUrl": "string (optional, pull request URL)",
+  "changes": "string (optional, description of changes)"
+}
+```
+
+### `daily_standup`
+
+Generate standup reports and updates.
+
+**Arguments:**
+```json
+{
+  "date": "string (optional, specific date)",
+  "assignee": "string (optional, specific team member)"
+}
+```
+
+### Project Analytics
+
+#### `project_overview`
+
+Generate comprehensive project overview with metrics, analytics, and actionable recommendations. This tool provides AI agents with complete project status insights for data-driven decision making.
+
+**Parameters:**
+```json
+{
+  "timeframe": {
+    "type": "preset|days|weeks|months|custom",
+    "value": "string|number (depends on type)",
+    "start": "string (ISO date, only for custom type)",
+    "end": "string (ISO date, only for custom type)"
+  },
+  "includeMetrics": ["string (overview|trends|team|capacity|quality|dependencies|velocity)"],
+  "securityLevel": "public|internal|confidential (optional, default: internal)",
+  "refreshCache": "boolean (optional, default: false)",
+  "teamFilter": ["string (optional, filter by assignees)"],
+  "priorityFilter": ["string (optional, filter by priority: high|medium|low)"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "overview": {
+    "metadata": {
+      "projectName": "My Project",
+      "analysisTimestamp": "2025-09-17T22:00:00Z",
+      "timePeriod": {
+        "start": "2025-08-17T22:00:00Z",
+        "end": "2025-09-17T22:00:00Z",
+        "description": "Last 30 days"
+      },
+      "dataFreshness": "Fresh (updated within last week)",
+      "metricsIncluded": ["overview", "velocity", "quality"],
+      "taskCount": 42
+    },
+    "summary": {
+      "totalTasks": 42,
+      "completedTasks": 28,
+      "completionRate": "67%",
+      "inProgressTasks": 8,
+      "blockedTasks": 2,
+      "averageCompletionTime": "5.2 days"
+    },
+    "metrics": {
+      "velocity": {
+        "weekly": 6,
+        "monthly": 24,
+        "trend": "increasing",
+        "predictedCompletion": "2025-10-15"
+      },
+      "quality": {
+        "documentationRate": "85%",
+        "acceptanceCriteriaRate": "72%",
+        "averageComplexity": "2.3"
+      },
+      "team": {
+        "size": 4,
+        "activeContributors": 3,
+        "workloadDistribution": [
+          {
+            "assignee": "alice",
+            "tasks": 15,
+            "completionRate": "80%"
+          },
+          {
+            "assignee": "bob",
+            "tasks": 12,
+            "completionRate": "75%"
+          }
+        ]
+      },
+      "dependencies": {
+        "dependencyRate": "35%",
+        "blockedTasks": 3,
+        "criticalPath": ["task-123", "task-456"]
+      },
+      "capacity": {
+        "currentCapacity": 3,
+        "utilizationRate": "65%",
+        "bottlenecks": [
+          {
+            "area": "Team Workload",
+            "severity": "medium",
+            "description": "Alice is overloaded with 15 tasks"
+          }
+        ]
+      }
+    },
+    "recommendations": [
+      {
+        "type": "performance",
+        "priority": "high",
+        "title": "Improve Task Completion Rate",
+        "description": "Current completion rate is 67%, which is below the recommended 80% threshold.",
+        "actionItems": [
+          "Review blocked tasks and remove impediments",
+          "Break down large tasks into smaller pieces",
+          "Implement daily standups to track progress"
+        ],
+        "expectedImpact": "Increase completion rate by 15-20% within 2 sprints"
+      }
+    ],
+    "insights": [
+      {
+        "category": "trend",
+        "title": "Improving Team Velocity",
+        "description": "Team velocity is trending upward with current weekly velocity of 6 tasks.",
+        "confidence": "85%"
+      }
+    ],
+    "trends": {
+      "velocity": [
+        {
+          "period": "2025-09-10",
+          "value": 4,
+          "change": 1,
+          "changeDirection": "up"
+        }
+      ],
+      "qualityMetrics": [...],
+      "completionRate": [...],
+      "taskCreation": [...]
+    }
+  }
+}
+```
+
+**Timeframe Examples:**
+```json
+// Preset timeframes
+{"type": "preset", "value": "last7days"}
+{"type": "preset", "value": "last30days"}
+{"type": "preset", "value": "last90days"}
+{"type": "preset", "value": "thisMonth"}
+{"type": "preset", "value": "thisQuarter"}
+
+// Relative timeframes
+{"type": "days", "value": 14}
+{"type": "weeks", "value": 4}
+{"type": "months", "value": 3}
+
+// Custom date range
+{
+  "type": "custom",
+  "start": "2025-08-01T00:00:00Z",
+  "end": "2025-08-31T23:59:59Z"
+}
+```
+
+**Full Example Request:**
+```json
+{
+  "timeframe": {"type": "preset", "value": "last30days"},
+  "includeMetrics": ["overview", "velocity", "quality", "team", "capacity"],
+  "securityLevel": "internal",
+  "refreshCache": false,
+  "teamFilter": ["alice", "bob"],
+  "priorityFilter": ["high", "medium"]
+}
+```
+
+**Security Levels:**
+- **`public`**: Excludes tasks with sensitive labels (confidential, internal, private, security)
+- **`internal`**: Excludes only highly confidential tasks (confidential, secret, classified)
+- **`confidential`**: Includes all tasks (default for internal use)
+
+**Available Metrics:**
+- **`overview`**: Basic project statistics and completion rates (always included)
+- **`velocity`**: Team velocity, trends, and completion predictions
+- **`quality`**: Documentation rates, acceptance criteria, task complexity
+- **`team`**: Team size, workload distribution, productivity trends
+- **`capacity`**: Current capacity, utilization rates, bottleneck analysis
+- **`dependencies`**: Dependency analysis, critical path, blocked tasks
+- **`trends`**: Historical trend analysis across all metrics
+
+**Use Cases:**
+- **Daily Standups**: Quick overview with basic metrics
+- **Sprint Planning**: Velocity and capacity analysis
+- **Retrospectives**: Quality and team metrics for improvement areas
+- **Management Reports**: Comprehensive analysis with all metrics
+- **Risk Assessment**: Dependencies and bottleneck identification
+
+## Error Handling
+
+All tools return structured error responses:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Validation failed: Required field 'title' is missing",
+    "details": {
+      "field": "title",
+      "value": null,
+      "constraint": "required"
+    },
+    "timestamp": "2025-09-15T12:00:00Z"
+  }
+}
+```
+
+### Common Error Codes
+
+- `VALIDATION_ERROR` - Input validation failed
+- `NOT_FOUND` - Requested resource not found
+- `PERMISSION_DENIED` - Insufficient permissions
+- `RATE_LIMITED` - Too many requests
+- `INTERNAL_ERROR` - Server error
+
+## Rate Limiting
+
+Default limits (configurable):
+- 100 requests per minute per client
+- 1000 requests per hour per client
+- Burst limit: 10 requests per second
+
+Rate limit headers are included in HTTP responses:
+- `X-RateLimit-Limit`
+- `X-RateLimit-Remaining`
+- `X-RateLimit-Reset`
+
+## Validation
+
+All tool inputs are validated against JSON schemas:
+
+- **String lengths**: Enforced as specified
+- **Required fields**: Must be present and non-null
+- **Enum values**: Must match allowed options
+- **Array items**: Each item validated individually
+- **Date formats**: ISO 8601 format required
+
+Invalid inputs return `VALIDATION_ERROR` with specific field information.

@@ -27,6 +27,8 @@
 
 * 🤖 **AI-ready CLI** -- "Claude, please take over task 33"
 
+* 🔧 **MCP Integration** -- Works seamlessly with Claude Code via Model Context Protocol
+
 * 🔍 **Rich query commands** -- view, list, filter, or archive tasks with ease
 
 * 💻 **Cross-platform** -- runs on macOS, Linux, and Windows
@@ -84,6 +86,37 @@ backlog browser --no-open
 ```
 
 ![Web Interface Screenshot](./.github/web.jpeg)
+
+---
+
+## 🔧 MCP Integration (Model Context Protocol)
+
+Backlog.md includes full MCP support for seamless integration with Claude Code and other AI agents:
+
+```bash
+# First-time setup: Configure MCP for your project
+backlog mcp setup
+
+# Then open your project in Claude Code and start using these prompts:
+"Create a task for implementing user authentication with OAuth2"
+"Show me the current status of all tasks and any blockers"
+"Help me plan the next sprint with our current backlog"
+```
+
+**Available MCP Tools:**
+- 📝 **Task Management**: Create, update, list, and manage tasks
+- 📑 **Decision Management**: Create Architecture Decision Records (ADRs) with structured format
+- 📊 **Board Operations**: View kanban state, get project metrics
+- ⚙️ **Configuration**: Read and modify project settings
+- 🔄 **Workflow Prompts**: Guided task creation, sprint planning, code review integration
+
+**Quick Setup:**
+1. Run `backlog mcp setup` in your project (creates `.mcp.json` config)
+2. Open your project in Claude Code
+3. Claude Code automatically detects and connects to the MCP server
+4. Use natural language to interact with your tasks and boards
+
+📖 **[Complete MCP Documentation →](docs/mcp/README.md)**
 
 The web interface provides:
 - **Interactive Kanban board** with drag-and-drop functionality
@@ -177,6 +210,63 @@ Tip: Help text shows Bash examples with escaped `\\n` for readability; when typi
 | Create draft | `backlog task create "Feature" --draft`             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
+
+### Dependency Management
+
+Manage task dependencies to create execution sequences and prevent circular relationships:
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Add dependencies | `backlog task edit 7 --dep task-1 --dep task-2`     |
+| Add multiple deps | `backlog task edit 7 --dep task-1,task-5,task-9`    |
+| Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
+| View dependencies | `backlog task 7` (shows dependencies in task view)  |
+| Validate dependencies | Use task commands to automatically validate dependencies |
+
+**Dependency Features:**
+- **Automatic validation**: Prevents circular dependencies and validates task existence
+- **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
+- **Visual sequences**: Dependencies create visual execution sequences in board view
+- **Completion tracking**: See which dependencies are blocking task progress
+
+**MCP Integration (AI Agents):**
+```javascript
+// Add dependencies via MCP
+{
+  "tool": "dependency_add",
+  "arguments": {
+    "id": "task-123",
+    "dependencies": ["task-456", "789", "task-101"]
+  }
+}
+
+// Remove dependencies
+{
+  "tool": "dependency_remove",
+  "arguments": {
+    "id": "task-123",
+    "dependencies": ["task-456"]
+  }
+}
+
+// Validate dependency graph
+{
+  "tool": "dependency_validate",
+  "arguments": {
+    "id": "task-123",
+    "proposedDependencies": ["task-999"] // Optional: test before adding
+  }
+}
+
+// List all dependencies with status
+{
+  "tool": "dependency_list",
+  "arguments": {
+    "id": "task-123",
+    "includeStatus": true
+  }
+}
+```
 
 ### Board Operations
 

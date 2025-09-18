@@ -5,7 +5,6 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
-import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { computeSequences } from "./core/sequences.ts";
 import {
 	type AgentInstructionFile,
@@ -17,11 +16,24 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
+import { registerWorkflowPrompts } from "./mcp/prompts/workflow-prompts.ts";
+import { registerDataResources } from "./mcp/resources/data-resources.ts";
+import { McpServer } from "./mcp/server.ts";
+import { registerBoardTools } from "./mcp/tools/board-tools.ts";
+import { registerConfigTools } from "./mcp/tools/config-tools.ts";
+import { registerDecisionTools } from "./mcp/tools/decision-tools.ts";
+import { registerDependencyTools } from "./mcp/tools/dependency-tools.ts";
+import { registerDraftTools } from "./mcp/tools/draft-tools.ts";
+import { registerProjectOverviewTools } from "./mcp/tools/project-overview-tool.ts";
+import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
+import { registerTaskTools } from "./mcp/tools/task-tools.ts";
+import type { TransportType } from "./mcp/types.ts";
 import type { Decision, Document as DocType, Task } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
+import { generateNextDecisionId, generateNextDocId } from "./utils/id-generators.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -756,142 +768,6 @@ program
 			}
 		},
 	);
-
-export async function generateNextDocId(core: Core): Promise<string> {
-	const config = await core.filesystem.loadConfig();
-	// Load local documents
-	const docs = await core.filesystem.listDocuments();
-	const allIds: string[] = [];
-
-	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local documents only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
-		const branches = await core.gitOps.listAllBranches();
-
-		// Load files from all branches in parallel
-		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/docs`);
-			return files
-				.map((file) => {
-					const match = file.match(/doc-(\d+)/);
-					return match ? `doc-${match[1]}` : null;
-				})
-				.filter((id): id is string => id !== null);
-		});
-
-		const branchResults = await Promise.all(branchFilePromises);
-		for (const branchIds of branchResults) {
-			allIds.push(...branchIds);
-		}
-	} catch (error) {
-		// Suppress errors for offline mode or other git issues
-		if (process.env.DEBUG) {
-			console.error("Could not fetch remote document IDs:", error);
-		}
-	}
-
-	// Add local document IDs
-	for (const doc of docs) {
-		allIds.push(doc.id);
-	}
-
-	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^doc-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `doc-${paddedId}`;
-	}
-
-	return `doc-${nextIdNumber}`;
-}
-
-export async function generateNextDecisionId(core: Core): Promise<string> {
-	const config = await core.filesystem.loadConfig();
-	// Load local decisions
-	const decisions = await core.filesystem.listDecisions();
-	const allIds: string[] = [];
-
-	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local decisions only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
-		const branches = await core.gitOps.listAllBranches();
-
-		// Load files from all branches in parallel
-		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/decisions`);
-			return files
-				.map((file) => {
-					const match = file.match(/decision-(\d+)/);
-					return match ? `decision-${match[1]}` : null;
-				})
-				.filter((id): id is string => id !== null);
-		});
-
-		const branchResults = await Promise.all(branchFilePromises);
-		for (const branchIds of branchResults) {
-			allIds.push(...branchIds);
-		}
-	} catch (error) {
-		// Suppress errors for offline mode or other git issues
-		if (process.env.DEBUG) {
-			console.error("Could not fetch remote decision IDs:", error);
-		}
-	}
-
-	// Add local decision IDs
-	for (const decision of decisions) {
-		allIds.push(decision.id);
-	}
-
-	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^decision-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `decision-${paddedId}`;
-	}
-
-	return `decision-${nextIdNumber}`;
-}
 
 function normalizeDependencies(dependencies: unknown): string[] {
 	if (!dependencies) return [];
@@ -2607,6 +2483,474 @@ program
 		} catch (err) {
 			console.error("Failed to display project overview", err);
 			process.exitCode = 1;
+		}
+	});
+
+// MCP command group
+const mcpCmd = program.command("mcp");
+
+// PID file management utilities
+const MCP_PID_FILE = "/tmp/backlog-mcp-server.pid";
+
+const writePidFile = (pid: number): void => {
+	try {
+		const fs = require("node:fs");
+		fs.writeFileSync(MCP_PID_FILE, pid.toString(), "utf8");
+	} catch (error) {
+		console.error("Warning: Failed to write PID file:", error instanceof Error ? error.message : error);
+	}
+};
+
+const readPidFile = (): number | null => {
+	try {
+		const fs = require("node:fs");
+		const pidString = fs.readFileSync(MCP_PID_FILE, "utf8").trim();
+		return Number.parseInt(pidString, 10);
+	} catch {
+		return null;
+	}
+};
+
+const removePidFile = (): void => {
+	try {
+		const fs = require("node:fs");
+		fs.unlinkSync(MCP_PID_FILE);
+	} catch {
+		// Ignore errors when removing PID file
+	}
+};
+
+const isProcessRunning = (pid: number): boolean => {
+	try {
+		// process.kill with signal 0 checks if process exists without killing it
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+const cleanupStaleProcess = (): boolean => {
+	const pid = readPidFile();
+	if (pid && !isProcessRunning(pid)) {
+		removePidFile();
+		return true;
+	}
+	return false;
+};
+
+mcpCmd
+	.command("start")
+	.description("Start MCP server")
+	.option("-d, --debug", "Enable debug logging", false)
+	.option("-t, --transport <type>", "Transport type (stdio|http|sse)", "stdio")
+	.option("-p, --port <port>", "Port number for HTTP/SSE transport", "8080")
+	.option("--host <host>", "Host to bind to for HTTP/SSE transport", "localhost")
+	.option("--auth-type <type>", "Authentication type (none|bearer|basic)", "none")
+	.option("--auth-token <token>", "Authentication token for bearer auth")
+	.option("--auth-user <username>", "Username for basic auth")
+	.option("--auth-pass <password>", "Password for basic auth")
+	.option("--cors-origin <origin>", "CORS allowed origins (comma-separated or *)", "*")
+	.option("--daemon", "Run as daemon process (HTTP/SSE transport only)", false)
+	.action(async (options) => {
+		try {
+			// Check if server is already running
+			const existingPid = readPidFile();
+			if (existingPid && isProcessRunning(existingPid)) {
+				console.error(`MCP server is already running with PID ${existingPid}`);
+				process.exit(1);
+			}
+
+			// Clean up stale PID file if needed
+			cleanupStaleProcess();
+
+			// Check if .mcp.json exists for Claude Code integration
+			const { existsSync } = await import("node:fs");
+			const { resolve } = await import("node:path");
+			const mcpConfigPath = resolve(process.cwd(), ".mcp.json");
+
+			if (!existsSync(mcpConfigPath)) {
+				console.log("💡 No .mcp.json configuration found");
+				console.log("   For Claude Code integration, run: backlog mcp setup");
+				console.log("   The MCP server will still start without it.");
+				console.log("");
+			}
+
+			// Validate transport options
+			if (options.daemon && !["http", "sse"].includes(options.transport)) {
+				console.error("Daemon mode is only supported with HTTP/SSE transport");
+				process.exit(1);
+			}
+
+			// Validate authentication options
+			if (options.authType !== "none") {
+				if (options.authType === "bearer" && !options.authToken) {
+					console.error("Bearer authentication requires --auth-token");
+					process.exit(1);
+				}
+				if (options.authType === "basic" && (!options.authUser || !options.authPass)) {
+					console.error("Basic authentication requires both --auth-user and --auth-pass");
+					process.exit(1);
+				}
+			}
+
+			const server = new McpServer(process.cwd());
+
+			// Load config for defaults
+			await server.ensureConfigLoaded();
+			const config = await server.filesystem.loadConfig();
+
+			// Register all MCP tools
+			registerTaskTools(server);
+			registerDraftTools(server);
+			registerDecisionTools(server);
+			registerDependencyTools(server);
+			registerBoardTools(server);
+			registerConfigTools(server);
+			registerSequenceTools(server);
+			registerProjectOverviewTools(server);
+			registerDataResources(server);
+
+			// Register workflow prompts
+			registerWorkflowPrompts(server);
+
+			if (options.debug) {
+				console.error("Starting MCP server in debug mode");
+				console.error("Registered tools:");
+				console.error("  Task management: task_create, task_list, task_update");
+				console.error("  Board management: board_view");
+				console.error("  Configuration: config_get, config_set");
+				console.error("  Sequence planning: sequence_create, sequence_plan");
+				console.error("Registered prompts:");
+				console.error("  Workflow templates: task_creation_workflow, sprint_planning_workflow");
+				console.error("  Code review: code_review_workflow");
+				console.error("  Daily standup: daily_standup_workflow");
+			}
+
+			// Write PID file
+			writePidFile(process.pid);
+
+			// Set up graceful shutdown
+			const cleanup = () => {
+				console.error("Shutting down MCP server...");
+				removePidFile();
+				process.exit(0);
+			};
+
+			process.on("SIGTERM", cleanup);
+			process.on("SIGINT", cleanup);
+
+			// Prepare transport options for HTTP/SSE using CLI options with config defaults
+			let transportOptions:
+				| import("./mcp/transports/sse.ts").SseTransportOptions
+				| import("./mcp/transports/http.ts").HttpTransportOptions
+				| undefined;
+			if (options.transport === "sse" || options.transport === "http") {
+				const mcpConfig = config?.mcp?.http;
+				transportOptions = {
+					host: options.host || mcpConfig?.host || "localhost",
+					port: Number.parseInt(options.port || mcpConfig?.port?.toString() || "8080", 10),
+					cors: {
+						origin: options.corsOrigin || mcpConfig?.cors?.origin || "*",
+						credentials: options.authType !== "none" || (mcpConfig?.cors?.credentials ?? false),
+					},
+					auth: {
+						type: options.authType || mcpConfig?.auth?.type || "none",
+						token: options.authToken || mcpConfig?.auth?.token,
+						username: options.authUser || mcpConfig?.auth?.username,
+						password: options.authPass || mcpConfig?.auth?.password,
+					},
+					enableDnsRebindingProtection: mcpConfig?.enableDnsRebindingProtection ?? false,
+					allowedHosts: mcpConfig?.allowedHosts || [],
+					allowedOrigins: mcpConfig?.allowedOrigins || [],
+					// HTTP transport specific option (only if transport is http)
+					...(options.transport === "http" && {
+						enableJsonResponse: (mcpConfig as Record<string, unknown>)?.enableJsonResponse ?? false,
+					}),
+				};
+
+				// Handle CORS origin string splitting
+				if (
+					transportOptions.cors &&
+					typeof transportOptions.cors.origin === "string" &&
+					transportOptions.cors.origin !== "*"
+				) {
+					transportOptions.cors.origin = transportOptions.cors.origin.split(",").map((o: string) => o.trim());
+				}
+			}
+
+			if (options.debug) {
+				console.error(`MCP server running on ${options.transport} transport`);
+				if ((options.transport === "sse" || options.transport === "http") && transportOptions) {
+					console.error(`  Host: ${transportOptions.host}:${transportOptions.port}`);
+					console.error(`  Auth: ${transportOptions.auth?.type || "none"}`);
+					const corsOrigin = transportOptions.cors?.origin;
+					console.error(`  CORS: ${Array.isArray(corsOrigin) ? corsOrigin.join(", ") : corsOrigin || "*"}`);
+					if (transportOptions.enableDnsRebindingProtection) {
+						console.error("  DNS Protection: enabled");
+					}
+				}
+			}
+
+			await server.connect(options.transport as TransportType, transportOptions);
+			if (options.transport === "stdio") {
+				await server.start();
+			}
+		} catch (error) {
+			removePidFile();
+			console.error("Failed to start MCP server:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("stop")
+	.description("Stop running MCP server")
+	.action(() => {
+		try {
+			const pid = readPidFile();
+
+			if (!pid) {
+				console.error("No MCP server PID file found. Server may not be running.");
+				process.exit(1);
+			}
+
+			if (!isProcessRunning(pid)) {
+				console.error(`Process ${pid} is not running. Cleaning up stale PID file.`);
+				removePidFile();
+				process.exit(1);
+			}
+
+			console.log(`Stopping MCP server (PID ${pid})...`);
+			process.kill(pid, "SIGTERM");
+
+			// Wait a moment for graceful shutdown
+			setTimeout(() => {
+				if (isProcessRunning(pid)) {
+					console.log("Forcing shutdown...");
+					try {
+						process.kill(pid, "SIGKILL");
+					} catch {
+						// Process may have already stopped
+					}
+				}
+				removePidFile();
+				console.log("MCP server stopped.");
+			}, 2000);
+		} catch (error) {
+			console.error("Failed to stop MCP server:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("status")
+	.description("Check MCP server status")
+	.action(() => {
+		try {
+			const pid = readPidFile();
+
+			if (!pid) {
+				console.log("MCP server: Not running (no PID file found)");
+				return;
+			}
+
+			if (isProcessRunning(pid)) {
+				console.log(`MCP server: Running (PID ${pid})`);
+			} else {
+				console.log(`MCP server: Not running (stale PID file found for ${pid})`);
+				console.log("Cleaning up stale PID file...");
+				removePidFile();
+			}
+		} catch (error) {
+			console.error("Failed to check server status:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("setup")
+	.description("Set up MCP configuration for this project")
+	.option("--force", "Overwrite existing .mcp.json file", false)
+	.option("--global", "Force global installation template (skip auto-detection)", false)
+	.action(async (options) => {
+		try {
+			const { writeFileSync, existsSync, readFileSync } = await import("node:fs");
+			const { resolve } = await import("node:path");
+			const projectRoot = process.cwd();
+
+			// Check if .mcp.json already exists
+			const mcpConfigPath = resolve(projectRoot, ".mcp.json");
+			if (existsSync(mcpConfigPath) && !options.force) {
+				console.error("❌ .mcp.json already exists. Use --force to overwrite.");
+				console.log("💡 To recreate the configuration, run: backlog mcp setup --force");
+				process.exit(1);
+			}
+
+			// Determine which template to use
+			const { getInstallationContext } = await import("./utils/installation-detector.ts");
+			const context = getInstallationContext(projectRoot);
+
+			let templateFile: string;
+			let templatePath: string;
+			let configType: string;
+
+			if (options.global || (!context.isDevelopment && context.isGlobalInstall)) {
+				// Use global template
+				templateFile = ".mcp.global.template.json";
+				configType = "global installation";
+			} else {
+				// Use development template
+				templateFile = ".mcp.template.json";
+				configType = "development mode";
+			}
+
+			// Try to find template file
+			templatePath = resolve(projectRoot, templateFile);
+			if (!existsSync(templatePath)) {
+				// If not in current directory, try resolving relative to this script
+				// This handles the case where we're running from a different directory
+				const scriptDir = resolve(import.meta.url.replace("file://", ""), "..", "..");
+				templatePath = resolve(scriptDir, templateFile);
+
+				if (!existsSync(templatePath)) {
+					console.error(`❌ Template file not found: ${templateFile}`);
+					console.log("💡 Make sure you're running this command from the backlog.md project root");
+					console.log("💡 Available templates should be:");
+					console.log("   • .mcp.template.json (for development)");
+					console.log("   • .mcp.global.template.json (for end users)");
+					process.exit(1);
+				}
+			}
+
+			console.log(`🔧 Setting up MCP configuration for ${configType}`);
+			console.log(`📋 Using template: ${templateFile}`);
+
+			// Read and copy template
+			const templateContent = readFileSync(templatePath, "utf8");
+			writeFileSync(mcpConfigPath, templateContent);
+
+			console.log("✅ Created .mcp.json configuration");
+			console.log(`📁 Project root: ${projectRoot}`);
+			console.log("");
+			console.log("💡 Next steps:");
+			console.log("   • Open this project in Claude Code");
+			console.log("   • Claude Code will automatically detect the MCP server");
+			console.log("   • Test with: backlog mcp test");
+		} catch (error) {
+			console.error("❌ Failed to set up MCP configuration:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("test")
+	.description("Test MCP server connection and functionality")
+	.option("--verbose", "Show detailed test results", false)
+	.action(async (options) => {
+		try {
+			console.log("🧪 Testing MCP connection...");
+			console.log("");
+
+			const { testMcpConnection } = await import("./mcp/test-connection.ts");
+			const result = await testMcpConnection(process.cwd());
+
+			// Show context info
+			console.log(`📁 Project: ${result.context.projectRoot}`);
+			console.log(
+				`🔧 Mode: ${result.context.isDevelopment ? "Development" : result.context.isGlobalInstall ? "Global" : "Unknown"}`,
+			);
+			console.log(`⚡ Entry point: ${result.context.mcpEntryPoint}`);
+			console.log("");
+
+			// Show results
+			if (result.success) {
+				console.log("✅ MCP connection test passed!");
+				console.log(`🚀 Server startup time: ${result.serverInfo?.startupTime}ms`);
+				console.log(`🛠️  Available tools: ${result.tools.length}`);
+				console.log(`📊 Available resources: ${result.resources.length}`);
+				console.log(`💡 Available prompts: ${result.prompts.length}`);
+
+				if (options.verbose) {
+					console.log("");
+					console.log("📋 Tools:", result.tools.join(", "));
+					console.log("📋 Resources:", result.resources.join(", "));
+					console.log("📋 Prompts:", result.prompts.join(", "));
+				}
+			} else {
+				console.log("❌ MCP connection test failed");
+				console.log("");
+				console.log("🔥 Errors:");
+				for (const error of result.errors) {
+					console.log(`   • ${error}`);
+				}
+			}
+
+			// Show warnings
+			if (result.warnings.length > 0) {
+				console.log("");
+				console.log("⚠️  Warnings:");
+				for (const warning of result.warnings) {
+					console.log(`   • ${warning}`);
+				}
+			}
+
+			if (!result.success) {
+				console.log("");
+				console.log("💡 Try running 'backlog mcp doctor' for detailed diagnostics");
+				process.exit(1);
+			}
+		} catch (error) {
+			console.error("❌ Test failed:", error instanceof Error ? error.message : error);
+			process.exit(1);
+		}
+	});
+
+mcpCmd
+	.command("doctor")
+	.description("Diagnose MCP configuration and setup issues")
+	.action(async () => {
+		try {
+			console.log("🏥 Running MCP diagnostics...");
+			console.log("");
+
+			const { runMcpDoctor } = await import("./mcp/test-connection.ts");
+			const result = await runMcpDoctor(process.cwd());
+
+			// Show overall status
+			const statusEmoji = result.overall === "healthy" ? "✅" : result.overall === "warning" ? "⚠️" : "❌";
+			console.log(`${statusEmoji} Overall status: ${result.overall.toUpperCase()}`);
+			console.log(`📁 Project: ${result.context.projectRoot}`);
+			console.log(
+				`🔧 Installation: ${result.context.isDevelopment ? "Development" : result.context.isGlobalInstall ? "Global" : "None detected"}`,
+			);
+			console.log("");
+
+			// Show detailed checks
+			console.log("🔍 Diagnostic Results:");
+			for (const check of result.checks) {
+				const emoji = check.status === "pass" ? "✅" : check.status === "warn" ? "⚠️" : "❌";
+				console.log(`${emoji} ${check.name}: ${check.message}`);
+				if (check.suggestion && check.status !== "pass") {
+					console.log(`   💡 ${check.suggestion}`);
+				}
+			}
+
+			// Show recommendations
+			if (result.recommendations.length > 0) {
+				console.log("");
+				console.log("📋 Recommendations:");
+				for (const rec of result.recommendations) {
+					console.log(`${rec}`);
+				}
+			}
+
+			if (result.overall === "error") {
+				process.exit(1);
+			}
+		} catch (error) {
+			console.error("❌ Doctor failed:", error instanceof Error ? error.message : error);
+			process.exit(1);
 		}
 	});
 

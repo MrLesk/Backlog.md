@@ -492,6 +492,15 @@ export class FileSystem {
 		}
 	}
 
+	async loadDocument(id: string): Promise<Document> {
+		const documents = await this.listDocuments();
+		const document = documents.find((doc) => doc.id === id);
+		if (!document) {
+			throw new Error(`Document not found: ${id}`);
+		}
+		return document;
+	}
+
 	// Config operations
 	async loadConfig(): Promise<BacklogConfig | null> {
 		// Return cached config if available

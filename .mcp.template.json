@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"backlog-md": {
+			"command": "node",
+			"args": ["${workspaceFolder}/scripts/mcp-server.cjs"],
+			"env": {
+				"BACKLOG_PROJECT_ROOT": "${workspaceFolder}"
+			}
+		}
+	}
+}
