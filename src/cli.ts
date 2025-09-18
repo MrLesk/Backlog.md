@@ -22,6 +22,7 @@ import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
+import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -537,34 +538,28 @@ program
 				}
 
 				// 6. Agent instruction files selection
-				const _agentOptions = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".github/copilot-instructions.md"] as const;
-
-				type AgentSelection = AgentInstructionFile | "none";
-				let files: AgentSelection[] = [];
+				type AgentSelection = AgentSelectionValue;
+				let agentFiles: AgentInstructionFile[] = [];
 
 				// Use --agent-instructions if provided, otherwise prompt
 				if (options.agentInstructions) {
 					// Map friendly names to actual file names
 					const nameMap: Record<string, AgentSelection> = {
-						// Friendly aliases map to files
-						cursor: "AGENTS.md", // Cursor now uses AGENTS.md
+						cursor: "AGENTS.md",
 						claude: "CLAUDE.md",
 						agents: "AGENTS.md",
 						gemini: "GEMINI.md",
 						copilot: ".github/copilot-instructions.md",
 						none: "none",
-						// Also support the full file names
 						"CLAUDE.md": "CLAUDE.md",
 						"AGENTS.md": "AGENTS.md",
 						"GEMINI.md": "GEMINI.md",
 						".github/copilot-instructions.md": ".github/copilot-instructions.md",
 					};
 
-					// Parse comma-separated agent instructions
 					const requestedInstructions = options.agentInstructions.split(",").map((f) => f.trim().toLowerCase());
 					const mappedFiles: AgentSelection[] = [];
 
-					// Validate and map instruction names
 					for (const instruction of requestedInstructions) {
 						const mappedFile = nameMap[instruction];
 						if (!mappedFile) {
@@ -575,67 +570,70 @@ program
 						mappedFiles.push(mappedFile);
 					}
 
-					files = mappedFiles;
-				} else if (isNonInteractive) {
-					// No agent instructions in non-interactive mode if not specified
-					files = [];
-				} else {
-					// Interactive prompt with built-in validation
-					const { files: selected } = await prompts(
-						{
-							type: "multiselect",
-							name: "files",
-							message: "Select one or more agent instruction files to update (space to toggle)",
-							choices: [
-								{ title: "CLAUDE.md (Claude Code)", value: "CLAUDE.md" },
-								{
-									title: "AGENTS.md (Codex, Jules, Amp, Cursor, Zed, Warp, Aider, GitHub, RooCode)",
-									value: "AGENTS.md",
-								},
-								{ title: "GEMINI.md (Google CLI)", value: "GEMINI.md" },
-								{ title: "Copilot (GitHub Copilot)", value: ".github/copilot-instructions.md" },
-								{
-									title: "Do not add instructions (danger, this will make backlog not usable with ai agents)",
-									value: "none",
-								},
-							],
-							hint: "Space to select, Enter to confirm. Multiple selections allowed\n",
-							instructions: false,
-							onRender: function () {
-								// Ensure the additional guidance appears when the min-selection error is shown
-								try {
-									// 'this' is the MultiselectPrompt instance
-									const base = "Space to select, Enter to confirm. Multiple selections allowed\n";
-									// @ts-expect-error - internal flag from prompts
-									const showErr = !!this.showMinError && !this.done;
-									// @ts-expect-error - safe assignment to built-in hint
-									this.hint = showErr ? `${base}Use space to select the option you prefer` : base;
-								} catch {}
-								return undefined;
-							},
-							// Rely on prompts' min+warn to keep the prompt open
-							min: 1,
-							warn: "Please press space to select at least one option",
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
-
-					files = (selected ?? []) as AgentSelection[];
-				}
-
-				if (files.includes("none")) {
-					if (files.length > 1) {
-						files = files.filter((f) => f !== "none");
+					const { files, needsRetry } = processAgentSelection({ selected: mappedFiles });
+					if (needsRetry) {
+						agentFiles = [];
 					} else {
-						files = [];
+						agentFiles = files;
+					}
+				} else if (isNonInteractive) {
+					agentFiles = [];
+				} else {
+					const defaultHint = "Enter selects highlighted agent; space toggles additional selections\n";
+					while (true) {
+						let highlighted: AgentSelection | undefined;
+						const response = await prompts(
+							{
+								type: "multiselect",
+								name: "files",
+								message: "Select one or more agent instruction files to update",
+								choices: [
+									{ title: "CLAUDE.md (Claude Code)", value: "CLAUDE.md" },
+									{
+										title: "AGENTS.md (Codex, Jules, Amp, Cursor, Zed, Warp, Aider, GitHub, RooCode)",
+										value: "AGENTS.md",
+									},
+									{ title: "GEMINI.md (Google CLI)", value: "GEMINI.md" },
+									{ title: "Copilot (GitHub Copilot)", value: ".github/copilot-instructions.md" },
+									{
+										title: "Do not add instructions (danger, this will make backlog not usable with ai agents)",
+										value: "none",
+									},
+								],
+								hint: defaultHint,
+								instructions: false,
+								onRender: function () {
+									try {
+										const promptInstance = this as unknown as {
+											cursor: number;
+											value: Array<{ value: AgentSelection }>;
+											hint: string;
+										};
+										const focus = promptInstance.value?.[promptInstance.cursor];
+										highlighted = focus?.value;
+										promptInstance.hint = defaultHint;
+									} catch {}
+									return undefined;
+								},
+							},
+							{
+								onCancel: () => {
+									console.log("Aborting initialization.");
+									process.exit(1);
+								},
+							},
+						);
+
+						const selected = (response?.files ?? []) as AgentSelection[];
+						const { files, needsRetry } = processAgentSelection({ selected, highlighted });
+						if (needsRetry) {
+							console.log("Please select at least one agent instruction file before continuing.");
+							continue;
+						}
+						agentFiles = files;
+						break;
 					}
 				}
-				const agentFiles = files as AgentInstructionFile[];
 
 				// 7. Claude agent installation prompt
 				let claudeAgentPrompt: { installClaudeAgent: boolean };
