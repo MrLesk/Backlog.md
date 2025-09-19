@@ -241,12 +241,14 @@ export class ContentStore {
 					return;
 				}
 
-				const task = await this.filesystem.loadTask(taskId);
-				if (!task) {
-					if (this.tasks.delete(taskId)) {
-						this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-						this.notify("tasks");
+				const task = await this.retryRead(async () => {
+					const stillExists = await Bun.file(fullPath).exists();
+					if (!stillExists) {
+						return null;
 					}
+					return this.filesystem.loadTask(taskId);
+				});
+				if (!task) {
 					return;
 				}
 
@@ -286,15 +288,20 @@ export class ContentStore {
 					return;
 				}
 
-				try {
-					const content = await Bun.file(fullPath).text();
-					const decision = parseDecision(content);
-					this.decisions.set(decision.id, decision);
-					this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
-					this.notify("decisions");
-				} catch {
-					// Ignore parse errors (partial writes) and let next event handle it
+				const decision = await this.retryRead(async () => {
+					try {
+						const content = await Bun.file(fullPath).text();
+						return parseDecision(content);
+					} catch {
+						return null;
+					}
+				});
+				if (!decision) {
+					return;
 				}
+				this.decisions.set(decision.id, decision);
+				this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+				this.notify("decisions");
 			});
 		});
 
@@ -332,15 +339,21 @@ export class ContentStore {
 				return;
 			}
 
-			try {
-				const content = await Bun.file(absolutePath).text();
-				const document = parseDocument(content);
-				this.documents.set(document.id, document);
-				this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
-				this.notify("documents");
-			} catch {
-				// Ignore parse errors during partial writes
+			const document = await this.retryRead(async () => {
+				try {
+					const content = await Bun.file(absolutePath).text();
+					return parseDocument(content);
+				} catch {
+					return null;
+				}
+			});
+			if (!document) {
+				return;
 			}
+
+			this.documents.set(document.id, document);
+			this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+			this.notify("documents");
 		});
 	}
 
@@ -475,6 +488,32 @@ export class ContentStore {
 				watchers.clear();
 			},
 		};
+	}
+
+	private async retryRead<T>(loader: () => Promise<T | null>, attempts = 10, delayMs = 50): Promise<T | null> {
+		let lastError: unknown = null;
+		for (let attempt = 1; attempt <= attempts; attempt++) {
+			try {
+				const result = await loader();
+				if (result !== null) {
+					return result;
+				}
+			} catch (error) {
+				lastError = error;
+			}
+			if (attempt < attempts) {
+				await this.delay(delayMs * attempt);
+			}
+		}
+
+		if (lastError && process.env.DEBUG) {
+			console.error("ContentStore retryRead exhausted attempts", lastError);
+		}
+		return null;
+	}
+
+	private async delay(ms: number): Promise<void> {
+		await new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
 	private enqueue(fn: () => Promise<void>): void {
