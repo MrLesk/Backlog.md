@@ -41,10 +41,13 @@ export class ContentStore {
 
 	private readonly listeners = new Set<ContentStoreListener>();
 	private readonly watchers: WatchHandle[] = [];
+	private restoreFilesystemPatch?: () => void;
 	private chainTail: Promise<void> = Promise.resolve();
 	private watchersInitialized = false;
 
-	constructor(private readonly filesystem: FileSystem) {}
+	constructor(private readonly filesystem: FileSystem) {
+		this.patchFilesystem();
+	}
 
 	subscribe(listener: ContentStoreListener): () => void {
 		this.listeners.add(listener);
@@ -117,6 +120,10 @@ export class ContentStore {
 	}
 
 	dispose(): void {
+		if (this.restoreFilesystemPatch) {
+			this.restoreFilesystemPatch();
+			this.restoreFilesystemPatch = undefined;
+		}
 		for (const watcher of this.watchers) {
 			try {
 				watcher.stop();
@@ -479,6 +486,52 @@ export class ContentStore {
 		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 	}
 
+	private patchFilesystem(): void {
+		if (this.restoreFilesystemPatch) {
+			return;
+		}
+
+		const originalSaveTask = this.filesystem.saveTask;
+		const originalSaveDocument = this.filesystem.saveDocument;
+		const originalSaveDecision = this.filesystem.saveDecision;
+
+		this.filesystem.saveTask = (async (task: Task): Promise<string> => {
+			const result = await originalSaveTask.call(this.filesystem, task);
+			await this.handleTaskWrite(task.id);
+			return result;
+		}) as FileSystem["saveTask"];
+
+		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<void> => {
+			await originalSaveDocument.call(this.filesystem, document, subPath);
+			await this.handleDocumentWrite(document.id);
+		}) as FileSystem["saveDocument"];
+
+		this.filesystem.saveDecision = (async (decision: Decision): Promise<void> => {
+			await originalSaveDecision.call(this.filesystem, decision);
+			await this.handleDecisionWrite(decision.id);
+		}) as FileSystem["saveDecision"];
+
+		this.restoreFilesystemPatch = () => {
+			this.filesystem.saveTask = originalSaveTask;
+			this.filesystem.saveDocument = originalSaveDocument;
+			this.filesystem.saveDecision = originalSaveDecision;
+		};
+	}
+
+	private async handleTaskWrite(taskId: string): Promise<void> {
+		if (!this.initialized) {
+			return;
+		}
+		await this.updateTaskFromDisk(taskId);
+	}
+
+	private async handleDocumentWrite(documentId: string): Promise<void> {
+		if (!this.initialized) {
+			return;
+		}
+		await this.refreshDocumentsFromDisk(documentId, this.documents.get(documentId));
+	}
+
 	private hasTaskChanged(previous: Task, next: Task): boolean {
 		return JSON.stringify(previous) !== JSON.stringify(next);
 	}
@@ -560,6 +613,41 @@ export class ContentStore {
 			return;
 		}
 		this.replaceDecisions(decisions);
+		this.notify("decisions");
+	}
+
+	private async handleDecisionWrite(decisionId: string): Promise<void> {
+		if (!this.initialized) {
+			return;
+		}
+		await this.updateDecisionFromDisk(decisionId);
+	}
+
+	private async updateTaskFromDisk(taskId: string): Promise<void> {
+		const previous = this.tasks.get(taskId);
+		const task = await this.retryRead(
+			async () => this.filesystem.loadTask(taskId),
+			(result) => result !== null && (!previous || this.hasTaskChanged(previous, result)),
+		);
+		if (!task) {
+			return;
+		}
+		this.tasks.set(task.id, task);
+		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+		this.notify("tasks");
+	}
+
+	private async updateDecisionFromDisk(decisionId: string): Promise<void> {
+		const previous = this.decisions.get(decisionId);
+		const decision = await this.retryRead(
+			async () => this.filesystem.loadDecision(decisionId),
+			(result) => result !== null && (!previous || this.hasDecisionChanged(previous, result)),
+		);
+		if (!decision) {
+			return;
+		}
+		this.decisions.set(decision.id, decision);
+		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 		this.notify("decisions");
 	}
 
