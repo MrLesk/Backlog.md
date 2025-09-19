@@ -647,8 +647,8 @@ export class ContentStore {
 	private async retryRead<T>(
 		loader: () => Promise<T>,
 		isValid: (result: T) => boolean = (value) => value !== null && value !== undefined,
-		attempts = 10,
-		delayMs = 50,
+		attempts = 12,
+		delayMs = 75,
 	): Promise<T | null> {
 		let lastError: unknown = null;
 		for (let attempt = 1; attempt <= attempts; attempt++) {
