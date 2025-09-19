@@ -230,14 +230,29 @@ export class ContentStore {
 					return;
 				}
 
-				const task = await this.retryRead(async () => {
-					const stillExists = await Bun.file(fullPath).exists();
-					if (!stillExists) {
-						return null;
-					}
-					const content = await Bun.file(fullPath).text();
-					return parseTask(content);
-				});
+				const previous = this.tasks.get(taskId);
+				const task = await this.retryRead(
+					async () => {
+						const stillExists = await Bun.file(fullPath).exists();
+						if (!stillExists) {
+							return null;
+						}
+						const content = await Bun.file(fullPath).text();
+						return parseTask(content);
+					},
+					(result) => {
+						if (!result) {
+							return false;
+						}
+						if (result.id !== taskId) {
+							return false;
+						}
+						if (!previous) {
+							return true;
+						}
+						return previous.rawContent !== result.rawContent;
+					},
+				);
 				if (!task) {
 					await this.refreshTasksFromDisk(taskId);
 					return;
@@ -282,14 +297,29 @@ export class ContentStore {
 					return;
 				}
 
-				const decision = await this.retryRead(async () => {
-					try {
-						const content = await Bun.file(fullPath).text();
-						return parseDecision(content);
-					} catch {
-						return null;
-					}
-				});
+				const previous = this.decisions.get(idPart);
+				const decision = await this.retryRead(
+					async () => {
+						try {
+							const content = await Bun.file(fullPath).text();
+							return parseDecision(content);
+						} catch {
+							return null;
+						}
+					},
+					(result) => {
+						if (!result) {
+							return false;
+						}
+						if (result.id !== idPart) {
+							return false;
+						}
+						if (!previous) {
+							return true;
+						}
+						return previous.rawContent !== result.rawContent;
+					},
+				);
 				if (!decision) {
 					await this.refreshDecisionsFromDisk(idPart);
 					return;
@@ -339,14 +369,29 @@ export class ContentStore {
 				return;
 			}
 
-			const document = await this.retryRead(async () => {
-				try {
-					const content = await Bun.file(absolutePath).text();
-					return parseDocument(content);
-				} catch {
-					return null;
-				}
-			});
+			const previous = this.documents.get(idPart);
+			const document = await this.retryRead(
+				async () => {
+					try {
+						const content = await Bun.file(absolutePath).text();
+						return parseDocument(content);
+					} catch {
+						return null;
+					}
+				},
+				(result) => {
+					if (!result) {
+						return false;
+					}
+					if (result.id !== idPart) {
+						return false;
+					}
+					if (!previous) {
+						return true;
+					}
+					return previous.rawContent !== result.rawContent;
+				},
+			);
 			if (!document) {
 				await this.refreshDocumentsFromDisk(idPart);
 				return;
