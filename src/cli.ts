@@ -990,7 +990,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 					.filter(Boolean)
 			: [],
 		dependencies,
-		body: "",
+		rawContent: "",
 		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
 		...(normalizedParent && { parentTaskId: normalizedParent }),
 		...(validatedPriority && { priority: validatedPriority }),
@@ -1421,17 +1421,10 @@ taskCmd
 			task.dependencies = valid;
 		}
 
-		// Handle acceptance criteria with new stable format
-		const { AcceptanceCriteriaManager } = await import("./markdown/structured-sections.ts");
-
 		// Handle adding new acceptance criteria (unified handling for both --ac and --acceptance-criteria)
 		const criteria = processAcceptanceCriteriaOptions(options);
 		if (criteria.length > 0) {
-			// Merge new criteria into structured list (fallback to parsing body for legacy)
-			const current =
-				task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0
-					? task.acceptanceCriteriaItems
-					: AcceptanceCriteriaManager.parseAllCriteria(task.body);
+			const current = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
 			let nextIndex = current.length > 0 ? Math.max(...current.map((c) => c.index)) + 1 : 1;
 			const merged = [...current, ...criteria.map((text) => ({ index: nextIndex++, text, checked: false }))];
 			task.acceptanceCriteriaItems = merged;
@@ -1440,10 +1433,7 @@ taskCmd
 		// Handle AC operations (remove, check, uncheck) with support for multiple values
 		if (options.removeAc || options.checkAc || options.uncheckAc) {
 			try {
-				let list =
-					task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0
-						? task.acceptanceCriteriaItems
-						: AcceptanceCriteriaManager.parseAllCriteria(task.body);
+				let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
 				const toNums = (v: unknown): number[] => {
 					const arr = Array.isArray(v) ? v : v ? [v] : [];
 					return arr.map((x) => {
@@ -1954,7 +1944,7 @@ docCmd
 			title: title as string,
 			type: (options.type || "other") as DocType["type"],
 			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-			body: "",
+			rawContent: "",
 		};
 		await core.createDocument(document, undefined, options.path || "");
 		console.log(`Created document ${id}`);
@@ -2038,6 +2028,7 @@ decisionCmd
 			context: "",
 			decision: "",
 			consequences: "",
+			rawContent: "",
 		};
 		await core.createDecision(decision);
 		console.log(`Created decision ${id}`);

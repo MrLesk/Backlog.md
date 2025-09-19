@@ -106,7 +106,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 }
 
 export function parseTask(content: string): Task {
-	const { frontmatter, content: body } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
 	// Validate priority field
 	const priority = frontmatter.priority ? String(frontmatter.priority).toLowerCase() : undefined;
@@ -115,12 +115,12 @@ export function parseTask(content: string): Task {
 		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
 
 	// Parse structured acceptance criteria (checked/text/index) from all sections
-	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(body);
+	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(rawContent);
 
 	// Parse other sections
-	const descriptionSection = extractStructuredSection(body, STRUCTURED_SECTION_KEYS.description) || "";
-	const planSection = extractStructuredSection(body, STRUCTURED_SECTION_KEYS.implementationPlan) || undefined;
-	const notesSection = extractStructuredSection(body, STRUCTURED_SECTION_KEYS.implementationNotes) || undefined;
+	const descriptionSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.description) || "";
+	const planSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationPlan) || undefined;
+	const notesSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationNotes) || undefined;
 
 	return {
 		id: String(frontmatter.id || ""),
@@ -137,8 +137,7 @@ export function parseTask(content: string): Task {
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
-		body: body,
-		acceptanceCriteria: extractAcceptanceCriteria(body),
+		rawContent,
 		acceptanceCriteriaItems: structuredCriteria,
 		description: descriptionSection,
 		implementationPlan: planSection,
@@ -151,23 +150,23 @@ export function parseTask(content: string): Task {
 }
 
 export function parseDecision(content: string): Decision {
-	const { frontmatter, content: body } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		date: normalizeDate(frontmatter.date),
 		status: String(frontmatter.status || "proposed") as Decision["status"],
-		context: extractSection(body, "Context") || "",
-		decision: extractSection(body, "Decision") || "",
-		consequences: extractSection(body, "Consequences") || "",
-		alternatives: extractSection(body, "Alternatives"),
-		body: body, // Raw markdown content without frontmatter
+		context: extractSection(rawContent, "Context") || "",
+		decision: extractSection(rawContent, "Decision") || "",
+		consequences: extractSection(rawContent, "Consequences") || "",
+		alternatives: extractSection(rawContent, "Alternatives"),
+		rawContent, // Raw markdown content without frontmatter
 	};
 }
 
 export function parseDocument(content: string): Document {
-	const { frontmatter, content: body } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
 	return {
 		id: String(frontmatter.id || ""),
@@ -175,19 +174,9 @@ export function parseDocument(content: string): Document {
 		type: String(frontmatter.type || "other") as Document["type"],
 		createdDate: normalizeDate(frontmatter.created_date),
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
-		body: body,
+		rawContent,
 		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
 	};
-}
-
-function extractAcceptanceCriteria(content: string): string[] {
-	const criteriaSection = extractSection(content, "Acceptance Criteria");
-	if (!criteriaSection) return [];
-
-	return criteriaSection
-		.split("\n")
-		.filter((line) => line.trim().startsWith("- [ ]") || line.trim().startsWith("- [x]"))
-		.map((line) => line.trim().replace(/^- \[[ x]] /, ""));
 }
 
 function extractSection(content: string, sectionTitle: string): string | undefined {

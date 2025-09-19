@@ -125,7 +125,7 @@ This task has mixed case priority.`;
 				createdDate: "2025-06-20",
 				labels: [],
 				dependencies: [],
-				body: "## Description\n\nThis is a high priority task.",
+				rawContent: "## Description\n\nThis is a high priority task.",
 				priority: "high",
 			};
 
@@ -143,7 +143,7 @@ This task has mixed case priority.`;
 				createdDate: "2025-06-20",
 				labels: [],
 				dependencies: [],
-				body: "## Description\n\nThis task has no priority.",
+				rawContent: "## Description\n\nThis task has no priority.",
 			};
 
 			const serialized = serializeTask(task);
@@ -163,7 +163,7 @@ This task has mixed case priority.`;
 					createdDate: "2025-06-20",
 					labels: [],
 					dependencies: [],
-					body: `## Description\n\nThis is a ${priority} priority task.`,
+					rawContent: `## Description\n\nThis is a ${priority} priority task.`,
 					priority,
 				};
 

@@ -46,7 +46,10 @@ X
 		expect(task.acceptanceCriteriaItems?.[0]).toEqual({ index: 1, text: "First", checked: false });
 		expect(task.acceptanceCriteriaItems?.[1]).toEqual({ index: 2, text: "Second", checked: true });
 
-		// Legacy compatibility remains (text-only values include index prefix)
-		expect(task.acceptanceCriteria).toEqual(["#1 First", "#2 Second"]);
+		// Derived legacy-friendly text remains accessible by mapping items
+		expect(task.acceptanceCriteriaItems?.map((item) => `#${item.index} ${item.text}`)).toEqual([
+			"#1 First",
+			"#2 Second",
+		]);
 	});
 });

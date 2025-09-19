@@ -42,8 +42,8 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] #1 Must work correctly");
+			expect(task?.rawContent).toContain("## Acceptance Criteria");
+			expect(task?.rawContent).toContain("- [ ] #1 Must work correctly");
 		});
 
 		it("should create task with multiple criteria using multiple --ac flags", async () => {
@@ -56,9 +56,9 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("- [ ] #1 Criterion 1");
-			expect(task?.body).toContain("- [ ] #2 Criterion 2");
-			expect(task?.body).toContain("- [ ] #3 Criterion 3");
+			expect(task?.rawContent).toContain("- [ ] #1 Criterion 1");
+			expect(task?.rawContent).toContain("- [ ] #2 Criterion 2");
+			expect(task?.rawContent).toContain("- [ ] #3 Criterion 3");
 		});
 
 		it("should treat comma-separated text as single criterion", async () => {
@@ -71,9 +71,9 @@ describe("Acceptance Criteria CLI", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			// Should create single criterion with commas intact
-			expect(task?.body).toContain("- [ ] #1 Criterion 1, Criterion 2, Criterion 3");
+			expect(task?.rawContent).toContain("- [ ] #1 Criterion 1, Criterion 2, Criterion 3");
 			// Should NOT create multiple criteria
-			expect(task?.body).not.toContain("- [ ] #2");
+			expect(task?.rawContent).not.toContain("- [ ] #2");
 		});
 
 		it("should create task with criteria using --acceptance-criteria", async () => {
@@ -85,8 +85,8 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] #1 Full flag test");
+			expect(task?.rawContent).toContain("## Acceptance Criteria");
+			expect(task?.rawContent).toContain("- [ ] #1 Full flag test");
 		});
 
 		it("should create task with both description and acceptance criteria", async () => {
@@ -99,11 +99,11 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Description");
-			expect(task?.body).toContain("Task description");
-			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] #1 Must pass tests");
-			expect(task?.body).toContain("- [ ] #2 Must be documented");
+			expect(task?.rawContent).toContain("## Description");
+			expect(task?.rawContent).toContain("Task description");
+			expect(task?.rawContent).toContain("## Acceptance Criteria");
+			expect(task?.rawContent).toContain("- [ ] #1 Must pass tests");
+			expect(task?.rawContent).toContain("- [ ] #2 Must be documented");
 		});
 	});
 
@@ -119,7 +119,7 @@ describe("Acceptance Criteria CLI", () => {
 					createdDate: "2025-06-19",
 					labels: [],
 					dependencies: [],
-					body: "## Description\n\nExisting task description",
+					rawContent: "## Description\n\nExisting task description",
 				},
 				false,
 			);
@@ -134,11 +134,11 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Description");
-			expect(task?.body).toContain("Existing task description");
-			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] #1 New criterion 1");
-			expect(task?.body).toContain("- [ ] #2 New criterion 2");
+			expect(task?.rawContent).toContain("## Description");
+			expect(task?.rawContent).toContain("Existing task description");
+			expect(task?.rawContent).toContain("## Acceptance Criteria");
+			expect(task?.rawContent).toContain("- [ ] #1 New criterion 1");
+			expect(task?.rawContent).toContain("- [ ] #2 New criterion 2");
 		});
 
 		it("consolidates duplicate Acceptance Criteria sections with markers into one", async () => {
@@ -152,7 +152,8 @@ describe("Acceptance Criteria CLI", () => {
 					createdDate: "2025-06-19",
 					labels: [],
 					dependencies: [],
-					body: "## Description\n\nX\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old A\n<!-- AC:END -->\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old B\n<!-- AC:END -->",
+					rawContent:
+						"## Description\n\nX\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old A\n<!-- AC:END -->\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old B\n<!-- AC:END -->",
 				},
 				false,
 			);
@@ -163,7 +164,7 @@ describe("Acceptance Criteria CLI", () => {
 
 			const task = await core.filesystem.loadTask("task-9");
 			expect(task).not.toBeNull();
-			const body = task?.body || "";
+			const body = task?.rawContent || "";
 			// Only one header and one marker pair should remain
 			expect((body.match(/## Acceptance Criteria/g) || []).length).toBe(1);
 			expect((body.match(/<!-- AC:BEGIN -->/g) || []).length).toBe(1);
@@ -185,7 +186,8 @@ describe("Acceptance Criteria CLI", () => {
 					createdDate: "2025-06-19",
 					labels: [],
 					dependencies: [],
-					body: "## Description\n\nY\n\n## Acceptance Criteria\n\n- [ ] Legacy 1\n- [ ] Legacy 2\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Marked 1\n<!-- AC:END -->",
+					rawContent:
+						"## Description\n\nY\n\n## Acceptance Criteria\n\n- [ ] Legacy 1\n- [ ] Legacy 2\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Marked 1\n<!-- AC:END -->",
 				},
 				false,
 			);
@@ -195,7 +197,7 @@ describe("Acceptance Criteria CLI", () => {
 
 			const task = await core.filesystem.loadTask("task-10");
 			expect(task).not.toBeNull();
-			const body = task?.body || "";
+			const body = task?.rawContent || "";
 			expect((body.match(/## Acceptance Criteria/g) || []).length).toBe(1);
 			expect((body.match(/<!-- AC:BEGIN -->/g) || []).length).toBe(1);
 			expect((body.match(/<!-- AC:END -->/g) || []).length).toBe(1);
@@ -221,10 +223,10 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] #1 Old criterion 1");
-			expect(task?.body).toContain("- [ ] #2 Old criterion 2");
-			expect(task?.body).toContain("- [ ] #3 New criterion");
+			expect(task?.rawContent).toContain("## Acceptance Criteria");
+			expect(task?.rawContent).toContain("- [ ] #1 Old criterion 1");
+			expect(task?.rawContent).toContain("- [ ] #2 Old criterion 2");
+			expect(task?.rawContent).toContain("- [ ] #3 New criterion");
 		});
 
 		it("should update title and add acceptance criteria together", async () => {
@@ -237,9 +239,9 @@ describe("Acceptance Criteria CLI", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.title).toBe("Updated Title");
-			expect(task?.body).toContain("## Acceptance Criteria");
-			expect(task?.body).toContain("- [ ] #1 Must be updated");
-			expect(task?.body).toContain("- [ ] #2 Must work");
+			expect(task?.rawContent).toContain("## Acceptance Criteria");
+			expect(task?.rawContent).toContain("- [ ] #1 Must be updated");
+			expect(task?.rawContent).toContain("- [ ] #2 Must work");
 		});
 	});
 
@@ -253,7 +255,7 @@ describe("Acceptance Criteria CLI", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			// Should not add acceptance criteria section for empty input
-			expect(task?.body).not.toContain("## Acceptance Criteria");
+			expect(task?.rawContent).not.toContain("## Acceptance Criteria");
 		});
 
 		it("should trim whitespace from criteria", async () => {
@@ -266,8 +268,8 @@ describe("Acceptance Criteria CLI", () => {
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
-			expect(task?.body).toContain("- [ ] #1 Criterion with spaces");
-			expect(task?.body).toContain("- [ ] #2 Another one");
+			expect(task?.rawContent).toContain("- [ ] #1 Criterion with spaces");
+			expect(task?.rawContent).toContain("- [ ] #2 Another one");
 		});
 	});
 
@@ -283,7 +285,7 @@ describe("Acceptance Criteria CLI", () => {
 					createdDate: "2025-06-19",
 					labels: [],
 					dependencies: [],
-					body: `## Description
+					rawContent: `## Description
 
 Test task with acceptance criteria
 
@@ -306,11 +308,11 @@ Test task with acceptance criteria
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
-			expect(task?.body).toContain("- [ ] #1 First criterion");
-			expect(task?.body).toContain("- [ ] #2 Second criterion");
-			expect(task?.body).toContain("- [ ] #3 Third criterion");
-			expect(task?.body).toContain("- [ ] #4 Fourth criterion");
-			expect(task?.body).toContain("- [ ] #5 Fifth criterion");
+			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
+			expect(task?.rawContent).toContain("- [ ] #2 Second criterion");
+			expect(task?.rawContent).toContain("- [ ] #3 Third criterion");
+			expect(task?.rawContent).toContain("- [ ] #4 Fourth criterion");
+			expect(task?.rawContent).toContain("- [ ] #5 Fifth criterion");
 		});
 
 		it("should remove acceptance criterion by index with --remove-ac", async () => {
@@ -319,9 +321,9 @@ Test task with acceptance criteria
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
-			expect(task?.body).toContain("- [ ] #1 First criterion");
-			expect(task?.body).not.toContain("Second criterion");
-			expect(task?.body).toContain("- [ ] #2 Third criterion"); // Renumbered
+			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
+			expect(task?.rawContent).not.toContain("Second criterion");
+			expect(task?.rawContent).toContain("- [ ] #2 Third criterion"); // Renumbered
 		});
 
 		it("removes acceptance criteria section after deleting all items", async () => {
@@ -332,7 +334,7 @@ Test task with acceptance criteria
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
-			const body = task?.body || "";
+			const body = task?.rawContent || "";
 			expect(body).not.toContain("## Acceptance Criteria");
 			expect(body).not.toContain("<!-- AC:BEGIN -->");
 			expect(body).not.toContain("<!-- AC:END -->");
@@ -344,9 +346,9 @@ Test task with acceptance criteria
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
-			expect(task?.body).toContain("- [ ] #1 First criterion");
-			expect(task?.body).toContain("- [x] #2 Second criterion");
-			expect(task?.body).toContain("- [ ] #3 Third criterion");
+			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
+			expect(task?.rawContent).toContain("- [x] #2 Second criterion");
+			expect(task?.rawContent).toContain("- [ ] #3 Third criterion");
 		});
 
 		it("should uncheck acceptance criterion by index with --uncheck-ac", async () => {
@@ -359,7 +361,7 @@ Test task with acceptance criteria
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
-			expect(task?.body).toContain("- [ ] #1 First criterion");
+			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
 		});
 
 		it("should handle multiple operations in one command", async () => {
@@ -370,10 +372,10 @@ Test task with acceptance criteria
 
 			const core = new Core(TEST_DIR);
 			const task = await core.filesystem.loadTask("task-1");
-			expect(task?.body).toContain("- [x] #1 First criterion");
-			expect(task?.body).not.toContain("Second criterion");
-			expect(task?.body).toContain("- [ ] #2 Third criterion"); // Renumbered
-			expect(task?.body).toContain("- [ ] #3 New criterion");
+			expect(task?.rawContent).toContain("- [x] #1 First criterion");
+			expect(task?.rawContent).not.toContain("Second criterion");
+			expect(task?.rawContent).toContain("- [ ] #2 Third criterion"); // Renumbered
+			expect(task?.rawContent).toContain("- [ ] #3 New criterion");
 		});
 
 		it("should error on invalid index for --remove-ac", async () => {
@@ -431,7 +433,7 @@ Test task with acceptance criteria
 					createdDate: "2025-06-19",
 					labels: [],
 					dependencies: [],
-					body: `## Description
+					rawContent: `## Description
 
 ## Acceptance Criteria
 
@@ -445,11 +447,11 @@ Test task with acceptance criteria
 			expect(result.exitCode).toBe(0);
 
 			const task = await core.filesystem.loadTask("task-2");
-			expect(task?.body).toContain("<!-- AC:BEGIN -->");
-			expect(task?.body).toContain("- [ ] #1 Old format criterion 1");
-			expect(task?.body).toContain("- [x] #2 Old format criterion 2");
-			expect(task?.body).toContain("- [ ] #3 New criterion");
-			expect(task?.body).toContain("<!-- AC:END -->");
+			expect(task?.rawContent).toContain("<!-- AC:BEGIN -->");
+			expect(task?.rawContent).toContain("- [ ] #1 Old format criterion 1");
+			expect(task?.rawContent).toContain("- [x] #2 Old format criterion 2");
+			expect(task?.rawContent).toContain("- [ ] #3 New criterion");
+			expect(task?.rawContent).toContain("<!-- AC:END -->");
 		});
 	});
 });

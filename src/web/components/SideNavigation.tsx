@@ -258,19 +258,19 @@ const SideNavigation = memo(function SideNavigation({
 				...doc,
 				type: 'doc' as const,
 				searchableTitle: doc.title,
-				searchableContent: doc.body || ''
+				searchableContent: doc.rawContent || ''
 			})),
 			...decisions.map(decision => ({
 				...decision,
 				type: 'decision' as const,
 				searchableTitle: decision.title,
-				searchableContent: decision.body || '',
+				searchableContent: decision.rawContent || '',
 			})),
 			...tasks.map(task => ({
 				...task,
 				type: 'task' as const,
 				searchableTitle: task.title,
-				searchableContent: task.body || '',
+				searchableContent: task.rawContent || '',
 				searchableLabels: (task.labels || []).join(' ')
 			}))
 		];

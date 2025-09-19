@@ -33,7 +33,7 @@ describe("CLI sequences interactive fallback (headless)", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test",
+				rawContent: "Test",
 			},
 			false,
 		);
@@ -46,7 +46,7 @@ describe("CLI sequences interactive fallback (headless)", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test",
+				rawContent: "Test",
 			},
 			false,
 		);
@@ -59,7 +59,7 @@ describe("CLI sequences interactive fallback (headless)", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: ["task-1", "task-2"],
-				body: "Test",
+				rawContent: "Test",
 			},
 			false,
 		);

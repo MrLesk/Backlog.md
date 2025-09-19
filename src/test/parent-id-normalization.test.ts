@@ -42,7 +42,7 @@ describe("CLI parent task id normalization", () => {
 			createdDate: "2025-06-08",
 			labels: [],
 			dependencies: [],
-			body: "",
+			rawContent: "",
 		};
 		await core.createTask(parent, true);
 

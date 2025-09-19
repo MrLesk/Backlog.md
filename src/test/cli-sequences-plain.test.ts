@@ -36,7 +36,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test A",
+				rawContent: "Test A",
 			},
 			false,
 		);
@@ -49,7 +49,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test B",
+				rawContent: "Test B",
 			},
 			false,
 		);
@@ -62,7 +62,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test C",
+				rawContent: "Test C",
 			},
 			false,
 		);
@@ -75,7 +75,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: ["task-1", "task-2"],
-				body: "Test D",
+				rawContent: "Test D",
 			},
 			false,
 		);
@@ -88,7 +88,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: ["task-3"],
-				body: "Test E",
+				rawContent: "Test E",
 			},
 			false,
 		);
@@ -101,7 +101,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: ["task-5"],
-				body: "Test F",
+				rawContent: "Test F",
 			},
 			false,
 		);
@@ -153,7 +153,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test Isolated",
+				rawContent: "Test Isolated",
 			},
 			false,
 		);
@@ -186,7 +186,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test",
+				rawContent: "Test",
 			},
 			false,
 		);
@@ -199,7 +199,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: [],
-				body: "Test",
+				rawContent: "Test",
 			},
 			false,
 		);
@@ -212,7 +212,7 @@ describe("CLI sequences --plain output", () => {
 				createdDate: "2025-06-18",
 				labels: [],
 				dependencies: ["task-1"],
-				body: "Test",
+				rawContent: "Test",
 			},
 			false,
 		);

@@ -20,7 +20,7 @@ describe("Cleanup functionality", () => {
 		createdDate: "2025-07-21",
 		labels: [],
 		dependencies: [],
-		body: "Test task description",
+		rawContent: "Test task description",
 	};
 
 	beforeEach(async () => {
@@ -91,7 +91,7 @@ describe("Cleanup functionality", () => {
 				title: "Old Done Task",
 				createdDate: oldDate.toISOString().split("T")[0] as string,
 				updatedDate: oldDate.toISOString().split("T")[0] as string,
-				body: "Old task description",
+				rawContent: "Old task description",
 			};
 			await core.createTask(oldTask, false);
 
@@ -104,7 +104,7 @@ describe("Cleanup functionality", () => {
 				title: "Recent Done Task",
 				createdDate: recentDate.toISOString().split("T")[0] as string,
 				updatedDate: recentDate.toISOString().split("T")[0] as string,
-				body: "Recent task description",
+				rawContent: "Recent task description",
 			};
 			await core.createTask(recentTask, false);
 
@@ -115,7 +115,7 @@ describe("Cleanup functionality", () => {
 				title: "Active Task",
 				status: "In Progress",
 				createdDate: oldDate.toISOString().split("T")[0] as string,
-				body: "Active task description",
+				rawContent: "Active task description",
 			};
 			await core.createTask(activeTask, false);
 
@@ -134,7 +134,7 @@ describe("Cleanup functionality", () => {
 				...sampleTask,
 				title: "Task Without Date",
 				createdDate: "",
-				body: "Task description",
+				rawContent: "Task description",
 			};
 			await core.createTask(task, false);
 
@@ -157,7 +157,7 @@ describe("Cleanup functionality", () => {
 				updatedDate: recentDate.toISOString().split("T")[0] as string,
 				labels: [],
 				dependencies: [],
-				body: "Task description",
+				rawContent: "Task description",
 			};
 			await core.createTask(task, false);
 

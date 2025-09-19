@@ -37,17 +37,17 @@ describe("Docs recursive listing and ID generation", () => {
 		const core = new Core(TEST_DIR);
 		// Create docs in nested paths
 		await core.createDocument(
-			{ id: "doc-1", title: "Top", type: "other", createdDate: "2020-01-01", body: "" },
+			{ id: "doc-1", title: "Top", type: "other", createdDate: "2020-01-01", rawContent: "" },
 			false,
 			"",
 		);
 		await core.createDocument(
-			{ id: "doc-2", title: "Nested A", type: "other", createdDate: "2020-01-02", body: "" },
+			{ id: "doc-2", title: "Nested A", type: "other", createdDate: "2020-01-02", rawContent: "" },
 			false,
 			"guides",
 		);
 		await core.createDocument(
-			{ id: "doc-3", title: "Nested B", type: "other", createdDate: "2020-01-03", body: "" },
+			{ id: "doc-3", title: "Nested B", type: "other", createdDate: "2020-01-03", rawContent: "" },
 			false,
 			"guides/sub",
 		);

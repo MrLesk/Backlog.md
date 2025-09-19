@@ -37,7 +37,7 @@ describe("CLI description newline handling", () => {
 
 		const core = new Core(TEST_DIR);
 		const task = await core.filesystem.loadTask("task-1");
-		expect(task?.body).toContain(desc);
+		expect(task?.rawContent).toContain(desc);
 	});
 
 	it("should preserve literal newlines when editing task", async () => {
@@ -51,7 +51,7 @@ describe("CLI description newline handling", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				body: "## Description\n\nOriginal",
+				rawContent: "## Description\n\nOriginal",
 			},
 			false,
 		);
@@ -60,7 +60,7 @@ describe("CLI description newline handling", () => {
 		await $`bun ${[cliPath, "task", "edit", "1", "--desc", desc]}`.cwd(TEST_DIR).quiet();
 
 		const updated = await core.filesystem.loadTask("task-1");
-		expect(updated?.body).toContain(desc);
+		expect(updated?.rawContent).toContain(desc);
 	});
 
 	it("should not interpret \\n sequences as newlines", async () => {
@@ -69,6 +69,6 @@ describe("CLI description newline handling", () => {
 
 		const core = new Core(TEST_DIR);
 		const task = await core.filesystem.loadTask("task-1");
-		expect(task?.body).toContain("First line\\nSecond line");
+		expect(task?.rawContent).toContain("First line\\nSecond line");
 	});
 });

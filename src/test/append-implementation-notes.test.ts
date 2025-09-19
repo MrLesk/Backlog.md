@@ -42,7 +42,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				body: "Test description\n\n## Implementation Notes\n\nOriginal notes",
+				rawContent: "Test description\n\n## Implementation Notes\n\nOriginal notes",
 			},
 			false,
 		);
@@ -60,7 +60,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		const updated = await core.filesystem.loadTask("task-1");
 		expect(updated).not.toBeNull();
 
-		const body = extractStructuredSection(updated?.body || "", "implementationNotes") || "";
+		const body = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
 		expect(body).toBe("Original notes\n\nFirst addition\n\nSecond addition\n\nThird addition");
 	});
 
@@ -75,7 +75,8 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				body: "## Description\n\nDesc here\n\n## Acceptance Criteria\n\n- [ ] Do X\n\n## Implementation Plan\n\n1. A\n2. B",
+				rawContent:
+					"## Description\n\nDesc here\n\n## Acceptance Criteria\n\n- [ ] Do X\n\n## Implementation Plan\n\n1. A\n2. B",
 			},
 			false,
 		);
@@ -84,7 +85,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		expect(res.exitCode).toBe(0);
 
 		const updated = await core.filesystem.loadTask("task-2");
-		const content = updated?.body || "";
+		const content = updated?.rawContent || "";
 		const notesContent = extractStructuredSection(content, "implementationNotes") || "";
 		expect(notesContent).toBe("Notes after plan");
 		const planMarker = "<!-- SECTION:PLAN:BEGIN -->";
@@ -104,7 +105,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				body: "Simple description",
+				rawContent: "Simple description",
 			},
 			false,
 		);
@@ -118,7 +119,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		expect(res.exitCode).toBe(0);
 
 		const updated = await core.filesystem.loadTask("task-3");
-		const body = extractStructuredSection(updated?.body || "", "implementationNotes") || "";
+		const body = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
 		expect(body).toContain("Line1\nLine2\n\nPara2");
 	});
 
@@ -133,7 +134,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				body: "Description only",
+				rawContent: "Description only",
 			},
 			false,
 		);

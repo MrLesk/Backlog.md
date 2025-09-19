@@ -54,7 +54,7 @@ describe("Core", () => {
 			createdDate: "2025-06-07",
 			labels: ["test"],
 			dependencies: [],
-			body: "This is a test task",
+			rawContent: "This is a test task",
 		};
 
 		beforeEach(async () => {
@@ -158,24 +158,24 @@ describe("Core", () => {
 			const taskNoHeader: Task = {
 				...sampleTask,
 				id: "task-2",
-				body: "Just text",
+				rawContent: "Just text",
 			};
 
 			await core.createTask(taskNoHeader, false);
 			const loaded = await core.filesystem.loadTask("task-2");
-			expect(loaded?.body).toBe("Just text");
+			expect(loaded?.rawContent).toBe("Just text");
 		});
 
 		it("should not duplicate description header", async () => {
 			const taskWithHeader: Task = {
 				...sampleTask,
 				id: "task-3",
-				body: "## Description\n\nExisting",
+				rawContent: "## Description\n\nExisting",
 			};
 
 			await core.createTask(taskWithHeader, false);
 			const loaded = await core.filesystem.loadTask("task-3");
-			const matches = loaded?.body.match(/## Description/g) || [];
+			const matches = loaded?.rawContent.match(/## Description/g) || [];
 			expect(matches.length).toBe(1);
 		});
 
@@ -243,7 +243,7 @@ describe("Core", () => {
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
-			body: "Draft task",
+			rawContent: "Draft task",
 		};
 
 		beforeEach(async () => {
@@ -331,7 +331,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Task without status",
+				rawContent: "Task without status",
 			};
 
 			await core.createTask(taskWithoutStatus, false);
@@ -359,7 +359,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Task without status",
+				rawContent: "Task without status",
 			};
 
 			await core.createTask(taskWithoutStatus, false);
@@ -381,7 +381,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Testing directory accessors",
+				rawContent: "Testing directory accessors",
 			};
 
 			// Create task without auto-commit to avoid potential git timing issues

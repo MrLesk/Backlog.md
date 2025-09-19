@@ -11,7 +11,7 @@ function t(id: string, deps: string[] = [], extra: Partial<Task> = {}): Task {
 		createdDate: "2025-01-01",
 		labels: [],
 		dependencies: deps,
-		body: "Test",
+		rawContent: "Test",
 		...extra,
 	};
 }

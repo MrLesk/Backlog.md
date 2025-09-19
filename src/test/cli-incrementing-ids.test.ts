@@ -43,7 +43,7 @@ describe("CLI ID Incrementing Behavior", () => {
 			createdDate: "2025-01-01",
 			labels: [],
 			dependencies: [],
-			body: "A test task.",
+			rawContent: "A test task.",
 		};
 		await core.createTask(task1);
 
@@ -63,7 +63,7 @@ describe("CLI ID Incrementing Behavior", () => {
 			title: "First Doc",
 			type: "other",
 			createdDate: "",
-			body: "",
+			rawContent: "",
 		};
 		await core.createDocument(doc1);
 
@@ -87,6 +87,7 @@ describe("CLI ID Incrementing Behavior", () => {
 			context: "",
 			decision: "",
 			consequences: "",
+			rawContent: "",
 		};
 		await core.createDecision(decision1);
 

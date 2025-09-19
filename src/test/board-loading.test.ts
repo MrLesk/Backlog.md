@@ -40,7 +40,7 @@ describe("Board Loading with checkActiveBranches", () => {
 			createdDate: "2025-01-08",
 			labels: ["test"],
 			dependencies: [],
-			body: `This is test task ${id}`,
+			rawContent: `This is test task ${id}`,
 		});
 
 		beforeEach(async () => {
@@ -231,7 +231,7 @@ describe("Board Loading with checkActiveBranches", () => {
 					createdDate: "2025-01-08",
 					labels: [],
 					dependencies: [],
-					body: "Test",
+					rawContent: "Test",
 				},
 				false,
 			);

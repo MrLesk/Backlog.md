@@ -128,8 +128,8 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 			// This ensures deep linking works even before the parent component loads the decisions array
 			try {
 				const fullDecision = await apiClient.fetchDecision(prefixedId);
-				setContent(fullDecision.body || '');
-				setOriginalContent(fullDecision.body || '');
+				setContent(fullDecision.rawContent || '');
+				setOriginalContent(fullDecision.rawContent || '');
 				setDecisionTitle(fullDecision.title || '');
 				setOriginalDecisionTitle(fullDecision.title || '');
 				// Update decision state with full data

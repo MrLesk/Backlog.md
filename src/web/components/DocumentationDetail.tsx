@@ -125,8 +125,8 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             // This ensures deep linking works even before the parent component loads the docs array
             try {
                 const fullDoc = await apiClient.fetchDoc(prefixedId);
-                setContent(fullDoc.body || '');
-                setOriginalContent(fullDoc.body || '');
+                setContent(fullDoc.rawContent || '');
+                setOriginalContent(fullDoc.rawContent || '');
                 setDocTitle(fullDoc.title || '');
                 setOriginalDocTitle(fullDoc.title || '');
                 // Update document state with full data

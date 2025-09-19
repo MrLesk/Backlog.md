@@ -79,7 +79,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 
 			await core.createTask(task);
@@ -99,7 +99,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 
 			await core.createTask(task, true);
@@ -120,7 +120,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 			await core.createTask(task, true);
 
@@ -144,7 +144,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 			await core.createTask(task, true);
 
@@ -182,7 +182,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 
 			await core.createTask(task);
@@ -202,7 +202,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 
 			await core.createTask(task, false);
@@ -233,7 +233,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 
 			await core.createDraft(task);
@@ -254,7 +254,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				body: "Test description",
+				rawContent: "Test description",
 			};
 			await core.createDraft(task, true);
 

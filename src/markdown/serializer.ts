@@ -23,12 +23,12 @@ export function serializeTask(task: Task): string {
 	};
 
 	// Compose from first-party fields when present, preserving other content
-	let contentBody = task.body;
+	let contentBody = task.rawContent;
 	if (typeof task.description === "string" && task.description.trim() !== "") {
 		contentBody = updateTaskDescription(contentBody, task.description);
 	}
 	if (Array.isArray(task.acceptanceCriteriaItems)) {
-		const existingCriteria = AcceptanceCriteriaManager.parseAllCriteria(task.body);
+		const existingCriteria = AcceptanceCriteriaManager.parseAllCriteria(task.rawContent);
 		const hasExistingStructuredCriteria = existingCriteria.length > 0;
 		if (task.acceptanceCriteriaItems.length > 0 || hasExistingStructuredCriteria) {
 			contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
@@ -75,7 +75,7 @@ export function serializeDocument(document: Document): string {
 		...(document.tags && document.tags.length > 0 && { tags: document.tags }),
 	};
 
-	return matter.stringify(document.body, frontmatter);
+	return matter.stringify(document.rawContent, frontmatter);
 }
 
 export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {

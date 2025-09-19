@@ -11,7 +11,7 @@ function task(id: string, deps: string[] = []): Task {
 		createdDate: "2025-01-01",
 		labels: [],
 		dependencies: deps,
-		body: "## Description\n\nTest",
+		rawContent: "## Description\n\nTest",
 	};
 }
 

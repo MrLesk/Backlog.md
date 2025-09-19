@@ -264,7 +264,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "First test task",
+					rawContent: "First test task",
 				},
 				false,
 			);
@@ -278,7 +278,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Second test task",
+					rawContent: "Second test task",
 				},
 				false,
 			);
@@ -292,7 +292,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Third test task",
+					rawContent: "Third test task",
 				},
 				false,
 			);
@@ -330,7 +330,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "First test task",
+					rawContent: "First test task",
 				},
 				false,
 			);
@@ -343,7 +343,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Second test task",
+					rawContent: "Second test task",
 				},
 				false,
 			);
@@ -367,7 +367,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "First test task",
+					rawContent: "First test task",
 				},
 				true,
 			);
@@ -380,7 +380,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Second test task",
+					rawContent: "Second test task",
 				},
 				true,
 			);
@@ -415,7 +415,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Assigned task",
+					rawContent: "Assigned task",
 				},
 				false,
 			);
@@ -428,7 +428,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Other task",
+					rawContent: "Other task",
 				},
 				false,
 			);
@@ -463,7 +463,7 @@ describe("CLI Integration", () => {
 				createdDate: "2025-06-08",
 				labels: ["test", "cli"],
 				dependencies: [],
-				body: "This is a test task for view command",
+				rawContent: "This is a test task for view command",
 			};
 
 			await core.createTask(testTask, false);
@@ -476,7 +476,7 @@ describe("CLI Integration", () => {
 			expect(loadedTask?.status).toBe("To Do");
 			expect(loadedTask?.assignee).toEqual(["testuser"]);
 			expect(loadedTask?.labels).toEqual(["test", "cli"]);
-			expect(loadedTask?.body).toBe("This is a test task for view command");
+			expect(loadedTask?.rawContent).toBe("This is a test task for view command");
 		});
 
 		it("should handle task IDs with and without 'task-' prefix", async () => {
@@ -492,7 +492,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Testing task ID normalization",
+					rawContent: "Testing task ID normalization",
 				},
 				false,
 			);
@@ -526,7 +526,7 @@ describe("CLI Integration", () => {
 				createdDate: "2025-06-08",
 				labels: ["readonly"],
 				dependencies: [],
-				body: "Original description",
+				rawContent: "Original description",
 			};
 
 			await core.createTask(originalTask, false);
@@ -539,7 +539,7 @@ describe("CLI Integration", () => {
 
 			expect(viewedTask).toEqual(secondView);
 			expect(viewedTask?.title).toBe("Read Only Test");
-			expect(viewedTask?.body).toBe("Original description");
+			expect(viewedTask?.rawContent).toBe("Original description");
 		});
 	});
 
@@ -565,7 +565,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Shortcut description",
+					rawContent: "Shortcut description",
 				},
 				false,
 			);
@@ -605,7 +605,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Original description",
+					rawContent: "Original description",
 				},
 				false,
 			);
@@ -625,7 +625,7 @@ describe("CLI Integration", () => {
 			// Verify changes were persisted
 			const updatedTask = await core.filesystem.loadTask("task-1");
 			expect(updatedTask?.title).toBe("Updated Title");
-			expect(extractStructuredSection(updatedTask?.body || "", "description")).toBe("Updated description");
+			expect(extractStructuredSection(updatedTask?.rawContent || "", "description")).toBe("Updated description");
 			expect(updatedTask?.status).toBe("In Progress");
 			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
 			expect(updatedTask?.updatedDate).toBe(today);
@@ -644,7 +644,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Testing assignee updates",
+					rawContent: "Testing assignee updates",
 				},
 				false,
 			);
@@ -674,7 +674,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["old1", "old2"],
 					dependencies: [],
-					body: "Testing label replacement",
+					rawContent: "Testing label replacement",
 				},
 				false,
 			);
@@ -704,7 +704,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["existing"],
 					dependencies: [],
-					body: "Testing label addition",
+					rawContent: "Testing label addition",
 				},
 				false,
 			);
@@ -741,7 +741,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["keep1", "remove", "keep2"],
 					dependencies: [],
-					body: "Testing label removal",
+					rawContent: "Testing label removal",
 				},
 				false,
 			);
@@ -779,7 +779,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-07",
 					labels: [],
 					dependencies: [],
-					body: "Testing updated date",
+					rawContent: "Testing updated date",
 				},
 				false,
 			);
@@ -811,7 +811,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Testing auto-commit",
+					rawContent: "Testing auto-commit",
 				},
 				false,
 			);
@@ -844,7 +844,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["yaml", "test"],
 					dependencies: ["task-1"],
-					body: "Testing YAML preservation",
+					rawContent: "Testing YAML preservation",
 				},
 				false,
 			);
@@ -868,7 +868,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);
-			expect(updatedTask?.body).toBe("Testing YAML preservation");
+			expect(updatedTask?.rawContent).toBe("Testing YAML preservation");
 		});
 	});
 
@@ -896,7 +896,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["completed"],
 					dependencies: [],
-					body: "Task ready for archiving",
+					rawContent: "Task ready for archiving",
 				},
 				false,
 			);
@@ -935,7 +935,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["needs-revision"],
 					dependencies: [],
-					body: "Task that needs to go back to drafts",
+					rawContent: "Task that needs to go back to drafts",
 				},
 				false,
 			);
@@ -967,7 +967,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["ready"],
 					dependencies: [],
-					body: "Draft ready for promotion",
+					rawContent: "Draft ready for promotion",
 				},
 				false,
 			);
@@ -999,7 +999,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["cancelled"],
 					dependencies: [],
-					body: "Draft that should be archived",
+					rawContent: "Draft that should be archived",
 				},
 				false,
 			);
@@ -1052,7 +1052,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "Testing auto-commit on archive",
+					rawContent: "Testing auto-commit on archive",
 				},
 				false,
 			);
@@ -1077,7 +1077,7 @@ describe("CLI Integration", () => {
 				createdDate: "2025-06-08",
 				labels: ["important", "preservation-test"],
 				dependencies: ["task-1", "task-2"],
-				body: "This task has rich metadata that should be preserved through transitions",
+				rawContent: "This task has rich metadata that should be preserved through transitions",
 			};
 
 			await core.createTask(originalTask, false);
@@ -1090,7 +1090,7 @@ describe("CLI Integration", () => {
 			expect(asDraft?.assignee).toEqual(originalTask.assignee);
 			expect(asDraft?.labels).toEqual(originalTask.labels);
 			expect(asDraft?.dependencies).toEqual(originalTask.dependencies);
-			expect(asDraft?.body).toContain(originalTask.body);
+			expect(asDraft?.rawContent).toContain(originalTask.rawContent);
 
 			// Promote back to task
 			await core.promoteDraft("task-6", false);
@@ -1100,7 +1100,7 @@ describe("CLI Integration", () => {
 			expect(backToTask?.assignee).toEqual(originalTask.assignee);
 			expect(backToTask?.labels).toEqual(originalTask.labels);
 			expect(backToTask?.dependencies).toEqual(originalTask.dependencies);
-			expect(backToTask?.body).toContain(originalTask.body);
+			expect(backToTask?.rawContent).toContain(originalTask.rawContent);
 		});
 	});
 
@@ -1121,7 +1121,7 @@ describe("CLI Integration", () => {
 				title: "Guide",
 				type: "guide",
 				createdDate: "2025-06-08",
-				body: "Content",
+				rawContent: "Content",
 			};
 			await core.createDocument(doc, false);
 
@@ -1140,6 +1140,7 @@ describe("CLI Integration", () => {
 				context: "context",
 				decision: "decide",
 				consequences: "conseq",
+				rawContent: "",
 			};
 			await core.createDecision(decision, false);
 			const decisions = await core.filesystem.listDecisions();
@@ -1171,7 +1172,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "A task in todo",
+					rawContent: "A task in todo",
 				},
 				false,
 			);
@@ -1185,7 +1186,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "A task in progress",
+					rawContent: "A task in progress",
 				},
 				false,
 			);
@@ -1199,7 +1200,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "A completed task",
+					rawContent: "A completed task",
 				},
 				false,
 			);
@@ -1265,7 +1266,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: [],
 					dependencies: [],
-					body: "A task in todo",
+					rawContent: "A task in todo",
 				},
 				false,
 			);
@@ -1296,7 +1297,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-09",
 					labels: [],
 					dependencies: [],
-					body: "Testing vertical shortcut",
+					rawContent: "Testing vertical shortcut",
 				},
 				false,
 			);
@@ -1327,7 +1328,7 @@ describe("CLI Integration", () => {
 				createdDate: "2025-06-09",
 				labels: [],
 				dependencies: [],
-				body: "from remote",
+				rawContent: "from remote",
 			} as Task;
 
 			await core.createTask(task, true);
@@ -1388,7 +1389,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-10",
 					labels: [],
 					dependencies: [],
-					body: "test",
+					rawContent: "test",
 				},
 				false,
 			);
@@ -1412,7 +1413,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-09",
 					labels: [],
 					dependencies: [],
-					body: "Testing board export",
+					rawContent: "Testing board export",
 				},
 				false,
 			);

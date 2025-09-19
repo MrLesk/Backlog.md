@@ -13,7 +13,7 @@ describe("Board loading with checkActiveBranches config", () => {
 		createdDate: "2025-01-08",
 		labels: ["test"],
 		dependencies: [],
-		body: `This is test task ${id}`,
+		rawContent: `This is test task ${id}`,
 	});
 
 	it("should respect checkActiveBranches=false in Core.loadBoardTasks", async () => {

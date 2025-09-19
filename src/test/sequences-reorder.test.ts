@@ -11,7 +11,7 @@ function t(id: string, ordinal?: number): Task {
 		createdDate: "2025-01-01",
 		labels: [],
 		dependencies: [],
-		body: "Test",
+		rawContent: "Test",
 		...(ordinal !== undefined ? { ordinal } : {}),
 	};
 }

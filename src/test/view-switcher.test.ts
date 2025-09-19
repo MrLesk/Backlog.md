@@ -64,7 +64,7 @@ describe("View Switcher", () => {
 				createdDate: "2025-07-05",
 				labels: [],
 				dependencies: [],
-				body: "Test task body",
+				rawContent: "Test task body",
 			};
 
 			const initialState: ViewState = {
@@ -124,7 +124,7 @@ describe("View Switcher", () => {
 				createdDate: "2025-07-05",
 				labels: [],
 				dependencies: [],
-				body: "Updated task body",
+				rawContent: "Updated task body",
 			};
 
 			const updatedState = switcher.updateState({
@@ -197,7 +197,7 @@ describe("View Switcher", () => {
 				createdDate: "2025-07-05",
 				labels: [],
 				dependencies: [],
-				body: "Test task body",
+				rawContent: "Test task body",
 			};
 
 			switcher.updateState({

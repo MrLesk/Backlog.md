@@ -18,11 +18,10 @@ export interface Task {
 	labels: string[];
 	milestone?: string;
 	dependencies: string[];
-	readonly body: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
+	readonly rawContent: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
-	acceptanceCriteria?: string[];
 	/** Structured acceptance criteria parsed from body (checked state + text + index) */
 	acceptanceCriteriaItems?: AcceptanceCriterion[];
 	parentTaskId?: string;
@@ -49,7 +48,7 @@ export interface Decision {
 	decision: string;
 	consequences: string;
 	alternatives?: string;
-	body?: string; // Raw markdown content without frontmatter
+	readonly rawContent: string; // Raw markdown content without frontmatter
 }
 
 export interface Document {
@@ -58,7 +57,7 @@ export interface Document {
 	type: "readme" | "guide" | "specification" | "other";
 	createdDate: string;
 	updatedDate?: string;
-	body: string; // Raw markdown content without frontmatter
+	rawContent: string; // Raw markdown content without frontmatter
 	tags?: string[];
 	// Web UI specific fields
 	name?: string;

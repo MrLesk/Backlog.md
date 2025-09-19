@@ -104,7 +104,7 @@ async function createTaskViaCore(
 						.split(",")
 						.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`))
 				: [],
-			body: options.description || "",
+			rawContent: options.description || "",
 			// Prefer first-party fields; serializer will compose the body
 			...(options.description && { description: options.description }),
 			...(options.parent && {
@@ -375,8 +375,8 @@ async function viewTaskViaCore(
 			if (task.dependencies?.length > 0) {
 				output += `\nDependencies: ${task.dependencies.join(", ")}`;
 			}
-			if (task.body) {
-				output += `\n\n${task.body}`;
+			if (task.rawContent) {
+				output += `\n\n${task.rawContent}`;
 			}
 		}
 

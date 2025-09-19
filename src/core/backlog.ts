@@ -220,7 +220,7 @@ export class Core {
 	async createTaskFromData(
 		taskData: {
 			title: string;
-			body?: string;
+			rawContent?: string;
 			status?: string;
 			assignee?: string[];
 			labels?: string[];
@@ -240,7 +240,7 @@ export class Core {
 		const task: Task = {
 			id,
 			title: taskData.title,
-			body: taskData.body || "",
+			rawContent: taskData.rawContent || "",
 			status: taskData.status || "",
 			assignee: taskData.assignee || [],
 			labels: taskData.labels || [],
@@ -248,7 +248,7 @@ export class Core {
 			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
 			...(taskData.priority && { priority: taskData.priority }),
-			// Carry through structured fields so serializer composes body correctly
+			// Carry through structured fields so serializer composes rawContent correctly
 			...(typeof taskData.description === "string" && { description: taskData.description }),
 			...(Array.isArray(taskData.acceptanceCriteriaItems) &&
 				taskData.acceptanceCriteriaItems.length > 0 && {
@@ -521,6 +521,7 @@ export class Core {
 			context: "[Describe the context and problem that needs to be addressed]",
 			decision: "[Describe the decision that was made]",
 			consequences: "[Describe the consequences of this decision]",
+			rawContent: "",
 		};
 
 		await this.createDecision(decision, autoCommit);
@@ -540,7 +541,7 @@ export class Core {
 	async updateDocument(existingDoc: Document, content: string, autoCommit?: boolean): Promise<void> {
 		const updatedDoc = {
 			...existingDoc,
-			body: content,
+			rawContent: content,
 			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 		};
 
@@ -557,7 +558,7 @@ export class Core {
 			title,
 			type: "other" as const,
 			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-			body: content,
+			rawContent: content,
 		};
 
 		await this.createDocument(document, autoCommit);

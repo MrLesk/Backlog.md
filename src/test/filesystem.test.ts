@@ -54,7 +54,7 @@ describe("FileSystem", () => {
 			labels: ["test"],
 			milestone: "v1.0",
 			dependencies: [],
-			body: "This is a test task",
+			rawContent: "This is a test task",
 		};
 
 		it("should save and load a task", async () => {
@@ -64,7 +64,7 @@ describe("FileSystem", () => {
 			expect(loadedTask?.id).toBe(sampleTask.id);
 			expect(loadedTask?.title).toBe(sampleTask.title);
 			expect(loadedTask?.status).toBe(sampleTask.status);
-			expect(loadedTask?.body).toBe(sampleTask.body);
+			expect(loadedTask?.rawContent).toBe(sampleTask.rawContent);
 		});
 
 		it("should return null for non-existent task", async () => {
@@ -182,7 +182,7 @@ describe("FileSystem", () => {
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
-			body: "Draft description",
+			rawContent: "Draft description",
 		};
 
 		it("should save and load a draft", async () => {
@@ -300,6 +300,7 @@ describe("FileSystem", () => {
 			context: "Need type safety",
 			decision: "Use TypeScript",
 			consequences: "Better DX",
+			rawContent: "",
 		};
 
 		it("should save and load a decision log", async () => {
@@ -345,7 +346,7 @@ describe("FileSystem", () => {
 			type: "guide",
 			createdDate: "2025-06-07",
 			updatedDate: "2025-06-08",
-			body: "This is the API guide content.",
+			rawContent: "This is the API guide content.",
 			tags: ["api", "guide"],
 		};
 
@@ -363,7 +364,7 @@ describe("FileSystem", () => {
 				title: "Simple Doc",
 				type: "readme",
 				createdDate: "2025-06-07",
-				body: "Simple content.",
+				rawContent: "Simple content.",
 			};
 
 			await filesystem.saveDocument(minimalDoc);
@@ -389,7 +390,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Task with task- prefix",
+				rawContent: "Task with task- prefix",
 			};
 
 			await filesystem.saveTask(taskWithPrefix);
@@ -407,7 +408,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Task without prefix",
+				rawContent: "Task without prefix",
 			};
 
 			await filesystem.saveTask(taskWithoutPrefix);
@@ -470,7 +471,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Task with special characters in title",
+				rawContent: "Task with special characters in title",
 			};
 
 			await filesystem.saveTask(taskWithSpecialChars);
@@ -488,7 +489,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Task with mixed case title",
+				rawContent: "Task with mixed case title",
 			};
 
 			await filesystem.saveTask(taskWithMixedCase);
@@ -512,7 +513,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				body: "Check double dashes",
+				rawContent: "Check double dashes",
 			};
 
 			await filesystem.saveTask(weirdTask);

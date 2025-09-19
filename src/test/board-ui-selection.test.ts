@@ -13,7 +13,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-2",
@@ -23,7 +23,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-1",
@@ -33,7 +33,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-20",
@@ -43,7 +43,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 		];
 
@@ -64,7 +64,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-1.2",
@@ -74,7 +74,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-1.1",
@@ -84,7 +84,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 		];
 
@@ -106,7 +106,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-2",
@@ -116,7 +116,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-1",
@@ -126,7 +126,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 		];
 
@@ -156,7 +156,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-3",
@@ -166,7 +166,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-1",
@@ -176,7 +176,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-4",
@@ -186,7 +186,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 			{
 				id: "task-2",
@@ -196,7 +196,7 @@ describe("board UI task selection", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				body: "",
+				rawContent: "",
 			},
 		];
 

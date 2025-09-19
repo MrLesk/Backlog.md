@@ -423,10 +423,10 @@ export async function viewTaskEnhanced(
 			});
 			const criteriaContent = styleCodePaths(formattedCriteria.join("\n"));
 			bodyContent.push(criteriaContent);
-		} else if (currentSelectedTask.acceptanceCriteria?.length) {
-			// Fallback to parsed criteria if no checkboxes found in raw content
+		} else if (currentSelectedTask.acceptanceCriteriaItems?.length) {
+			// Fallback to structured criteria if no checkboxes found in raw content
 			const criteriaContent = styleCodePaths(
-				currentSelectedTask.acceptanceCriteria.map((text) => ` • ${text}`).join("\n"),
+				currentSelectedTask.acceptanceCriteriaItems.map((item) => ` • ${item.text}`).join("\n"),
 			);
 			bodyContent.push(criteriaContent);
 		} else {
@@ -702,10 +702,6 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 		// Prefer structured criteria if available
 		const criteriaContent = styleCodePaths(task.acceptanceCriteriaItems.map((c) => ` • ${c.text}`).join("\n"));
 		bodyContent.push(criteriaContent);
-	} else if (task.acceptanceCriteria?.length) {
-		// Fallback to parsed criteria if no checkboxes found in raw content
-		const criteriaContent = styleCodePaths(task.acceptanceCriteria.map((text) => ` • ${text}`).join("\n"));
-		bodyContent.push(criteriaContent);
 	} else {
 		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
 	}
@@ -899,11 +895,6 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 		// Prefer structured criteria if available
 		for (const c of task.acceptanceCriteriaItems) {
 			lines.push(`• ${transformCodePathsPlain(c.text)}`);
-		}
-	} else if (task.acceptanceCriteria?.length) {
-		// Fallback to parsed criteria if no checkboxes found
-		for (const c of task.acceptanceCriteria) {
-			lines.push(`• ${transformCodePathsPlain(c)}`);
 		}
 	} else {
 		lines.push("No acceptance criteria defined");

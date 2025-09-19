@@ -87,7 +87,7 @@ Fix the login bug that prevents users from signing in.
 			expect(task.dependencies).toEqual(["task-0"]);
 			expect(task.parentTaskId).toBe("task-parent");
 			expect(task.subtasks).toEqual(["task-1.1", "task-1.2"]);
-			expect(task.acceptanceCriteria).toEqual([
+			expect(task.acceptanceCriteriaItems?.map((item) => item.text)).toEqual([
 				"Login form validates correctly",
 				"Error messages are displayed properly",
 			]);
@@ -110,7 +110,7 @@ Just a basic task.`;
 			expect(task.reporter).toBeUndefined();
 			expect(task.labels).toEqual([]);
 			expect(task.dependencies).toEqual([]);
-			expect(task.acceptanceCriteria).toEqual([]);
+			expect(task.acceptanceCriteriaItems).toEqual([]);
 			expect(task.parentTaskId).toBeUndefined();
 			expect(task.subtasks).toBeUndefined();
 		});
@@ -168,7 +168,11 @@ title: "Test with mixed criteria"
 
 			const task = parseTask(content);
 
-			expect(task.acceptanceCriteria).toEqual(["Todo item", "Done item", "Another todo"]);
+			expect(task.acceptanceCriteriaItems?.map((item) => item.text)).toEqual([
+				"Todo item",
+				"Done item",
+				"Another todo",
+			]);
 		});
 
 		it("should parse unquoted assignee names starting with @", () => {
@@ -302,7 +306,7 @@ Document body.`;
 			expect(doc.type).toBe("guide");
 			expect(doc.createdDate).toBe("2025-06-07");
 			expect(doc.tags).toEqual(["api"]);
-			expect(doc.body).toBe("Document body.");
+			expect(doc.rawContent).toBe("Document body.");
 		});
 	});
 });
@@ -320,7 +324,7 @@ describe("Markdown Serializer", () => {
 				labels: ["bug", "frontend"],
 				milestone: "v1.0",
 				dependencies: ["task-0"],
-				body: "This is a test task description.",
+				rawContent: "This is a test task description.",
 			};
 
 			const result = serializeTask(task);
@@ -344,7 +348,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				body: "A parent task with subtasks.",
+				rawContent: "A parent task with subtasks.",
 				subtasks: ["task-parent.1", "task-parent.2"],
 			};
 
@@ -364,7 +368,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				body: "A subtask.",
+				rawContent: "A subtask.",
 				parentTaskId: "task-1",
 			};
 
@@ -382,7 +386,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				body: "Minimal task.",
+				rawContent: "Minimal task.",
 			};
 
 			const result = serializeTask(task);
@@ -405,7 +409,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-10",
 				labels: [],
 				dependencies: [],
-				body,
+				rawContent: body,
 				acceptanceCriteriaItems: [],
 			};
 
@@ -428,7 +432,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-11",
 				labels: [],
 				dependencies: [],
-				body,
+				rawContent: body,
 				acceptanceCriteriaItems: [],
 			};
 
@@ -449,6 +453,7 @@ describe("Markdown Serializer", () => {
 				context: "We need type safety",
 				decision: "Use TypeScript",
 				consequences: "Better DX",
+				rawContent: "",
 			};
 
 			const result = serializeDecision(decision);
@@ -470,6 +475,7 @@ describe("Markdown Serializer", () => {
 				decision: "PostgreSQL",
 				consequences: "Good performance",
 				alternatives: "Considered MongoDB",
+				rawContent: "",
 			};
 
 			const result = serializeDecision(decision);
@@ -487,7 +493,7 @@ describe("Markdown Serializer", () => {
 				type: "specification",
 				createdDate: "2025-06-07",
 				updatedDate: "2025-06-08",
-				body: "This document describes the API endpoints.",
+				rawContent: "This document describes the API endpoints.",
 				tags: ["api", "docs"],
 			};
 
@@ -510,7 +516,7 @@ describe("Markdown Serializer", () => {
 				title: "Simple Doc",
 				type: "guide",
 				createdDate: "2025-06-07",
-				body: "Simple content.",
+				rawContent: "Simple content.",
 			};
 
 			const result = serializeDocument(document);
