@@ -250,11 +250,11 @@ export class ContentStore {
 						if (!previous) {
 							return true;
 						}
-						return previous.rawContent !== result.rawContent;
+						return this.hasTaskChanged(previous, result);
 					},
 				);
 				if (!task) {
-					await this.refreshTasksFromDisk(taskId, previous?.rawContent);
+					await this.refreshTasksFromDisk(taskId, previous);
 					return;
 				}
 
@@ -317,11 +317,11 @@ export class ContentStore {
 						if (!previous) {
 							return true;
 						}
-						return previous.rawContent !== result.rawContent;
+						return this.hasDecisionChanged(previous, result);
 					},
 				);
 				if (!decision) {
-					await this.refreshDecisionsFromDisk(idPart, previous?.rawContent);
+					await this.refreshDecisionsFromDisk(idPart, previous);
 					return;
 				}
 				this.decisions.set(decision.id, decision);
@@ -389,11 +389,11 @@ export class ContentStore {
 					if (!previous) {
 						return true;
 					}
-					return previous.rawContent !== result.rawContent;
+					return this.hasDocumentChanged(previous, result);
 				},
 			);
 			if (!document) {
-				await this.refreshDocumentsFromDisk(idPart, previous?.rawContent);
+				await this.refreshDocumentsFromDisk(idPart, previous);
 				return;
 			}
 
@@ -479,7 +479,19 @@ export class ContentStore {
 		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 	}
 
-	private async refreshTasksFromDisk(expectedId?: string, previousRawContent?: string): Promise<void> {
+	private hasTaskChanged(previous: Task, next: Task): boolean {
+		return JSON.stringify(previous) !== JSON.stringify(next);
+	}
+
+	private hasDocumentChanged(previous: Document, next: Document): boolean {
+		return JSON.stringify(previous) !== JSON.stringify(next);
+	}
+
+	private hasDecisionChanged(previous: Decision, next: Decision): boolean {
+		return JSON.stringify(previous) !== JSON.stringify(next);
+	}
+
+	private async refreshTasksFromDisk(expectedId?: string, previous?: Task): Promise<void> {
 		const tasks = await this.retryRead(
 			async () => this.filesystem.listTasks(),
 			(expected) => {
@@ -490,7 +502,7 @@ export class ContentStore {
 				if (!match) {
 					return false;
 				}
-				if (previousRawContent !== undefined && match.rawContent === previousRawContent) {
+				if (previous && !this.hasTaskChanged(previous, match)) {
 					return false;
 				}
 				return true;
@@ -503,7 +515,7 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	private async refreshDocumentsFromDisk(expectedId?: string, previousRawContent?: string): Promise<void> {
+	private async refreshDocumentsFromDisk(expectedId?: string, previous?: Document): Promise<void> {
 		const documents = await this.retryRead(
 			async () => this.filesystem.listDocuments(),
 			(expected) => {
@@ -514,7 +526,7 @@ export class ContentStore {
 				if (!match) {
 					return false;
 				}
-				if (previousRawContent !== undefined && match.rawContent === previousRawContent) {
+				if (previous && !this.hasDocumentChanged(previous, match)) {
 					return false;
 				}
 				return true;
@@ -527,7 +539,7 @@ export class ContentStore {
 		this.notify("documents");
 	}
 
-	private async refreshDecisionsFromDisk(expectedId?: string, previousRawContent?: string): Promise<void> {
+	private async refreshDecisionsFromDisk(expectedId?: string, previous?: Decision): Promise<void> {
 		const decisions = await this.retryRead(
 			async () => this.filesystem.listDecisions(),
 			(expected) => {
@@ -538,7 +550,7 @@ export class ContentStore {
 				if (!match) {
 					return false;
 				}
-				if (previousRawContent !== undefined && match.rawContent === previousRawContent) {
+				if (previous && !this.hasDecisionChanged(previous, match)) {
 					return false;
 				}
 				return true;
