@@ -254,7 +254,7 @@ export class ContentStore {
 					},
 				);
 				if (!task) {
-					await this.refreshTasksFromDisk(taskId);
+					await this.refreshTasksFromDisk(taskId, previous?.rawContent);
 					return;
 				}
 
@@ -321,7 +321,7 @@ export class ContentStore {
 					},
 				);
 				if (!decision) {
-					await this.refreshDecisionsFromDisk(idPart);
+					await this.refreshDecisionsFromDisk(idPart, previous?.rawContent);
 					return;
 				}
 				this.decisions.set(decision.id, decision);
@@ -393,7 +393,7 @@ export class ContentStore {
 				},
 			);
 			if (!document) {
-				await this.refreshDocumentsFromDisk(idPart);
+				await this.refreshDocumentsFromDisk(idPart, previous?.rawContent);
 				return;
 			}
 
@@ -479,12 +479,19 @@ export class ContentStore {
 		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 	}
 
-	private async refreshTasksFromDisk(expectedId?: string): Promise<void> {
+	private async refreshTasksFromDisk(expectedId?: string, previousRawContent?: string): Promise<void> {
 		const tasks = await this.retryRead(
 			async () => this.filesystem.listTasks(),
 			(expected) => {
-				if (expectedId) {
-					return expected.some((task) => task.id === expectedId);
+				if (!expectedId) {
+					return true;
+				}
+				const match = expected.find((task) => task.id === expectedId);
+				if (!match) {
+					return false;
+				}
+				if (previousRawContent !== undefined && match.rawContent === previousRawContent) {
+					return false;
 				}
 				return true;
 			},
@@ -496,12 +503,19 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	private async refreshDocumentsFromDisk(expectedId?: string): Promise<void> {
+	private async refreshDocumentsFromDisk(expectedId?: string, previousRawContent?: string): Promise<void> {
 		const documents = await this.retryRead(
 			async () => this.filesystem.listDocuments(),
 			(expected) => {
-				if (expectedId) {
-					return expected.some((doc) => doc.id === expectedId);
+				if (!expectedId) {
+					return true;
+				}
+				const match = expected.find((doc) => doc.id === expectedId);
+				if (!match) {
+					return false;
+				}
+				if (previousRawContent !== undefined && match.rawContent === previousRawContent) {
+					return false;
 				}
 				return true;
 			},
@@ -513,12 +527,19 @@ export class ContentStore {
 		this.notify("documents");
 	}
 
-	private async refreshDecisionsFromDisk(expectedId?: string): Promise<void> {
+	private async refreshDecisionsFromDisk(expectedId?: string, previousRawContent?: string): Promise<void> {
 		const decisions = await this.retryRead(
 			async () => this.filesystem.listDecisions(),
 			(expected) => {
-				if (expectedId) {
-					return expected.some((decision) => decision.id === expectedId);
+				if (!expectedId) {
+					return true;
+				}
+				const match = expected.find((decision) => decision.id === expectedId);
+				if (!match) {
+					return false;
+				}
+				if (previousRawContent !== undefined && match.rawContent === previousRawContent) {
+					return false;
 				}
 				return true;
 			},
