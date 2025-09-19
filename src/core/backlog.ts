@@ -7,6 +7,7 @@ import { normalizeAssignee } from "../utils/assignee.ts";
 import { openInEditor } from "../utils/editor.ts";
 import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
+import { ContentStore } from "./content-store.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
@@ -32,11 +33,20 @@ interface BlessedScreen {
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
+	private contentStore?: ContentStore;
 
 	constructor(projectRoot: string) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot);
 		// Note: Config is loaded lazily when needed since constructor can't be async
+	}
+
+	async getContentStore(): Promise<ContentStore> {
+		if (!this.contentStore) {
+			this.contentStore = new ContentStore(this.fs);
+		}
+		await this.contentStore.ensureInitialized();
+		return this.contentStore;
 	}
 
 	// Backward compatibility aliases
