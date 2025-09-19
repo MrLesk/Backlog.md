@@ -2,7 +2,7 @@ import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
-import { parseDecision, parseDocument } from "../markdown/parser.ts";
+import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -165,23 +165,9 @@ export class ContentStore {
 			this.filesystem.listDecisions(),
 		]);
 
-		this.tasks.clear();
-		for (const task of tasks) {
-			this.tasks.set(task.id, task);
-		}
-		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-
-		this.documents.clear();
-		for (const document of documents) {
-			this.documents.set(document.id, document);
-		}
-		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
-
-		this.decisions.clear();
-		for (const decision of decisions) {
-			this.decisions.set(decision.id, decision);
-		}
-		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+		this.replaceTasks(tasks);
+		this.replaceDocuments(documents);
+		this.replaceDecisions(decisions);
 
 		this.initialized = true;
 		await this.setupWatchers();
@@ -223,6 +209,9 @@ export class ContentStore {
 		const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
 			if (!file || !file.startsWith("task-") || !file.endsWith(".md")) {
+				this.enqueue(async () => {
+					await this.refreshTasksFromDisk();
+				});
 				return;
 			}
 
@@ -246,9 +235,11 @@ export class ContentStore {
 					if (!stillExists) {
 						return null;
 					}
-					return this.filesystem.loadTask(taskId);
+					const content = await Bun.file(fullPath).text();
+					return parseTask(content);
 				});
 				if (!task) {
+					await this.refreshTasksFromDisk(taskId);
 					return;
 				}
 
@@ -270,6 +261,9 @@ export class ContentStore {
 		const watcher: FSWatcher = watch(decisionsDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
 			if (!file || !file.startsWith("decision-") || !file.endsWith(".md")) {
+				this.enqueue(async () => {
+					await this.refreshDecisionsFromDisk();
+				});
 				return;
 			}
 
@@ -297,6 +291,7 @@ export class ContentStore {
 					}
 				});
 				if (!decision) {
+					await this.refreshDecisionsFromDisk(idPart);
 					return;
 				}
 				this.decisions.set(decision.id, decision);
@@ -314,18 +309,23 @@ export class ContentStore {
 
 	private async createDocumentWatcher(): Promise<WatchHandle> {
 		const docsDir = this.filesystem.docsDir;
-		return this.createDirectoryWatcher(docsDir, async (eventType, absolutePath) => {
+		return this.createDirectoryWatcher(docsDir, async (eventType, absolutePath, relativePath) => {
 			const base = basename(absolutePath);
 			if (!base.endsWith(".md")) {
+				if (relativePath === null) {
+					await this.refreshDocumentsFromDisk();
+				}
 				return;
 			}
 
 			if (!base.startsWith("doc-")) {
+				await this.refreshDocumentsFromDisk();
 				return;
 			}
 
 			const [idPart] = base.split(" - ");
 			if (!idPart) {
+				await this.refreshDocumentsFromDisk();
 				return;
 			}
 
@@ -348,6 +348,7 @@ export class ContentStore {
 				}
 			});
 			if (!document) {
+				await this.refreshDocumentsFromDisk(idPart);
 				return;
 			}
 
@@ -407,6 +408,81 @@ export class ContentStore {
 			maybeError.message.toLowerCase().includes("recursive") &&
 			maybeError.message.toLowerCase().includes("not supported")
 		);
+	}
+
+	private replaceTasks(tasks: Task[]): void {
+		this.tasks.clear();
+		for (const task of tasks) {
+			this.tasks.set(task.id, task);
+		}
+		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+	}
+
+	private replaceDocuments(documents: Document[]): void {
+		this.documents.clear();
+		for (const document of documents) {
+			this.documents.set(document.id, document);
+		}
+		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+	}
+
+	private replaceDecisions(decisions: Decision[]): void {
+		this.decisions.clear();
+		for (const decision of decisions) {
+			this.decisions.set(decision.id, decision);
+		}
+		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+	}
+
+	private async refreshTasksFromDisk(expectedId?: string): Promise<void> {
+		const tasks = await this.retryRead(
+			async () => this.filesystem.listTasks(),
+			(expected) => {
+				if (expectedId) {
+					return expected.some((task) => task.id === expectedId);
+				}
+				return true;
+			},
+		);
+		if (!tasks) {
+			return;
+		}
+		this.replaceTasks(tasks);
+		this.notify("tasks");
+	}
+
+	private async refreshDocumentsFromDisk(expectedId?: string): Promise<void> {
+		const documents = await this.retryRead(
+			async () => this.filesystem.listDocuments(),
+			(expected) => {
+				if (expectedId) {
+					return expected.some((doc) => doc.id === expectedId);
+				}
+				return true;
+			},
+		);
+		if (!documents) {
+			return;
+		}
+		this.replaceDocuments(documents);
+		this.notify("documents");
+	}
+
+	private async refreshDecisionsFromDisk(expectedId?: string): Promise<void> {
+		const decisions = await this.retryRead(
+			async () => this.filesystem.listDecisions(),
+			(expected) => {
+				if (expectedId) {
+					return expected.some((decision) => decision.id === expectedId);
+				}
+				return true;
+			},
+		);
+		if (!decisions) {
+			return;
+		}
+		this.replaceDecisions(decisions);
+		this.notify("decisions");
 	}
 
 	private async createManualRecursiveWatcher(
@@ -490,12 +566,17 @@ export class ContentStore {
 		};
 	}
 
-	private async retryRead<T>(loader: () => Promise<T | null>, attempts = 10, delayMs = 50): Promise<T | null> {
+	private async retryRead<T>(
+		loader: () => Promise<T>,
+		isValid: (result: T) => boolean = (value) => value !== null && value !== undefined,
+		attempts = 10,
+		delayMs = 50,
+	): Promise<T | null> {
 		let lastError: unknown = null;
 		for (let attempt = 1; attempt <= attempts; attempt++) {
 			try {
 				const result = await loader();
-				if (result !== null) {
+				if (isValid(result)) {
 					return result;
 				}
 			} catch (error) {
