@@ -7,6 +7,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { SidebarSkeleton } from './LoadingSpinner';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
+import { parseSearchQuery, applyCommandFilters } from '../utils/searchUtils';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -301,19 +302,76 @@ const SideNavigation = memo(function SideNavigation({
 			};
 		}
 
+	// Check if query contains command syntax (field:value)
+	const hasCommandSyntax = searchQuery.includes(':');
+
+	if (hasCommandSyntax) {
+		// Use command-based search
+		const { filters, textQuery } = parseSearchQuery(searchQuery);
+
+		// Get all search data
+		const allSearchData = [
+			...docs.map(doc => ({
+				...doc,
+				type: 'doc' as const,
+				searchableTitle: doc.title,
+				searchableContent: doc.body || ''
+			})),
+			...decisions.map(decision => ({
+				...decision,
+				type: 'decision' as const,
+				searchableTitle: decision.title,
+				searchableContent: decision.body || '',
+			})),
+			...tasks.map(task => ({
+				...task,
+				type: 'task' as const,
+				searchableTitle: task.title,
+				searchableContent: task.body || '',
+				searchableLabels: (task.labels || []).join(' ')
+			}))
+		];
+
+		// Apply command filters
+		let filteredData = applyCommandFilters(allSearchData, filters);
+
+		// If there's text query, do simple text matching
+		if (textQuery) {
+			filteredData = filteredData.filter(item =>
+				item.searchableTitle.toLowerCase().includes(textQuery.toLowerCase()) ||
+				item.searchableContent.toLowerCase().includes(textQuery.toLowerCase())
+			);
+		}
+
+		// Separate by type
+		const enhancedDocs = filteredData.filter(item => item.type === 'doc');
+		const enhancedDecisions = filteredData.filter(item => item.type === 'decision');
+		const enhancedTasks = filteredData.filter(item => item.type === 'task');
+
+		const unifiedResults = filteredData.slice(0, 5).map(item => ({ item }));
+
+		return {
+			docs: enhancedDocs as unknown as Document[],
+			decisions: enhancedDecisions as unknown as Decision[],
+			tasks: enhancedTasks as unknown as Task[],
+			unified: unifiedResults
+		};
+	} else {
+		// Use regular Fuse.js search
 		const results = fuse.search(searchQuery);
 		// Sort by score and filter out poor matches (lower score = better match)
 		const sortedResults = results
 			.filter(r => (r.score || 0) <= 0.4) // Show good matches (score <= 0.4)
 			.sort((a, b) => (a.score || 0) - (b.score || 0));
-		
+
 		return {
 			docs: sortedResults.filter(r => r.item.type === 'doc').map(r => r.item as unknown as Document),
 			decisions: sortedResults.filter(r => r.item.type === 'decision').map(r => r.item as Decision),
 			tasks: sortedResults.filter(r => r.item.type === 'task').map(r => r.item as Task),
 			unified: sortedResults.slice(0, 5) // Show only top 5 unified results
 		};
-	}, [searchQuery, fuse]);
+	}
+}, [searchQuery, fuse, docs, decisions, tasks]);
 
 	// Always show full lists in their sections, search results are separate
 	const filteredDocs = docs;
@@ -383,7 +441,13 @@ const SideNavigation = memo(function SideNavigation({
 					<h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Search Results</h3>
 					<div className="space-y-1">
 						{searchResults.unified.map((result, index) => {
-							const item = result.item;
+							// Handle both Fuse.js result format and direct item format
+							const item = result && typeof result === 'object' && 'item' in result ? result.item : result;
+							
+							if (!item || !item.type) {
+								return null;
+							}
+							
 							const getResultLink = () => {
 								if (item.type === 'doc') return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
 								if (item.type === 'decision') return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
