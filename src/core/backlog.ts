@@ -10,6 +10,7 @@ import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
+import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
 
 interface BlessedScreen {
@@ -34,6 +35,7 @@ export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
 	private contentStore?: ContentStore;
+	private searchService?: SearchService;
 
 	constructor(projectRoot: string) {
 		this.fs = new FileSystem(projectRoot);
@@ -47,6 +49,15 @@ export class Core {
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
+	}
+
+	async getSearchService(): Promise<SearchService> {
+		if (!this.searchService) {
+			const store = await this.getContentStore();
+			this.searchService = new SearchService(store);
+		}
+		await this.searchService.ensureInitialized();
+		return this.searchService;
 	}
 
 	// Backward compatibility aliases

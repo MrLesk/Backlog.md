@@ -13,6 +13,7 @@ export { exportKanbanBoardToFile, generateKanbanBoardWithMetadata } from "./boar
 export * from "./constants/index.ts";
 // Core entry point
 export { Core } from "./core/backlog.ts";
+export { SearchService } from "./core/search-service.ts";
 
 // File system operations
 export { FileSystem } from "./file-system/operations.ts";

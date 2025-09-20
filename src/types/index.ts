@@ -65,6 +65,51 @@ export interface Document {
 	lastModified?: string;
 }
 
+export type SearchResultType = "task" | "document" | "decision";
+
+export type SearchPriorityFilter = "high" | "medium" | "low";
+
+export interface SearchMatch {
+	key?: string;
+	indices: Array<[number, number]>;
+	value?: unknown;
+}
+
+export interface SearchFilters {
+	status?: string | string[];
+	priority?: SearchPriorityFilter | SearchPriorityFilter[];
+}
+
+export interface SearchOptions {
+	query?: string;
+	limit?: number;
+	types?: SearchResultType[];
+	filters?: SearchFilters;
+}
+
+export interface TaskSearchResult {
+	type: "task";
+	score: number | null;
+	task: Task;
+	matches?: SearchMatch[];
+}
+
+export interface DocumentSearchResult {
+	type: "document";
+	score: number | null;
+	document: Document;
+	matches?: SearchMatch[];
+}
+
+export interface DecisionSearchResult {
+	type: "decision";
+	score: number | null;
+	decision: Decision;
+	matches?: SearchMatch[];
+}
+
+export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult;
+
 export interface Sequence {
 	/** 1-based sequence index */
 	index: number;
