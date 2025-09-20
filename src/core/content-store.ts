@@ -237,6 +237,11 @@ export class ContentStore {
 					return;
 				}
 
+				if (eventType === "rename" && exists) {
+					await this.refreshTasksFromDisk();
+					return;
+				}
+
 				const previous = this.tasks.get(taskId);
 				const task = await this.retryRead(
 					async () => {
@@ -301,6 +306,11 @@ export class ContentStore {
 						this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 						this.notify("decisions");
 					}
+					return;
+				}
+
+				if (eventType === "rename" && exists) {
+					await this.refreshDecisionsFromDisk();
 					return;
 				}
 
@@ -373,6 +383,11 @@ export class ContentStore {
 					this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 					this.notify("documents");
 				}
+				return;
+			}
+
+			if (eventType === "rename" && exists) {
+				await this.refreshDocumentsFromDisk();
 				return;
 			}
 
