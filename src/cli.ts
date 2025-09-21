@@ -1159,6 +1159,7 @@ program
 			const validPriorities: SearchPriorityFilter[] = ["high", "medium", "low"];
 			if (!validPriorities.includes(priorityLower as SearchPriorityFilter)) {
 				console.error("Invalid priority. Valid values: high, medium, low");
+				cleanup();
 				process.exitCode = 1;
 				return;
 			}
@@ -1170,6 +1171,7 @@ program
 			const parsed = Number.parseInt(String(options.limit), 10);
 			if (Number.isNaN(parsed) || parsed <= 0) {
 				console.error("--limit must be a positive integer");
+				cleanup();
 				process.exitCode = 1;
 				return;
 			}
@@ -1345,6 +1347,7 @@ taskCmd
 			const validPriorities = ["high", "medium", "low"] as const;
 			if (!validPriorities.includes(priorityLower as (typeof validPriorities)[number])) {
 				console.error(`Invalid priority: ${options.priority}. Valid values are: high, medium, low`);
+				contentStore.dispose();
 				process.exitCode = 1;
 				return;
 			}
@@ -1364,6 +1367,7 @@ taskCmd
 			const parentExists = contentStore.getTasks().some((task) => task.id === parentId);
 			if (!parentExists) {
 				console.error(`Parent task ${parentId} not found.`);
+				contentStore.dispose();
 				process.exitCode = 1;
 				return;
 			}
@@ -1376,6 +1380,7 @@ taskCmd
 			const sortField = options.sort.toLowerCase();
 			if (!validSortFields.includes(sortField)) {
 				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+				contentStore.dispose();
 				process.exitCode = 1;
 				return;
 			}
@@ -1396,6 +1401,7 @@ taskCmd
 			} else {
 				console.log("No tasks found.");
 			}
+			contentStore.dispose();
 			return;
 		}
 
@@ -1412,6 +1418,7 @@ taskCmd
 					const statusIndicator = t.status ? ` (${t.status})` : "";
 					console.log(`  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}`);
 				}
+				contentStore.dispose();
 				return;
 			}
 
@@ -1451,6 +1458,7 @@ taskCmd
 				}
 				console.log();
 			}
+			contentStore.dispose();
 			return;
 		}
 
@@ -1460,6 +1468,7 @@ taskCmd
 			const firstTask = filtered[0];
 			if (!firstTask) {
 				console.log("No tasks found.");
+				contentStore.dispose();
 				return;
 			}
 
