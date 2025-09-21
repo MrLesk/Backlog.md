@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import BoardPage from './components/BoardPage';
@@ -13,7 +13,15 @@ import TaskForm from './components/TaskForm';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { type Task, type Document, type Decision } from '../types';
+import {
+	type Decision,
+	type DecisionSearchResult,
+	type Document,
+	type DocumentSearchResult,
+	type SearchResult,
+	type Task,
+	type TaskSearchResult,
+} from '../types';
 import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
@@ -47,23 +55,29 @@ function App() {
     });
   }, []);
 
+  const applySearchResults = useCallback((results: SearchResult[]) => {
+    const taskResults = results.filter((result): result is TaskSearchResult => result.type === 'task');
+    const documentResults = results.filter((result): result is DocumentSearchResult => result.type === 'document');
+    const decisionResults = results.filter((result): result is DecisionSearchResult => result.type === 'decision');
+
+    setTasks(taskResults.map((result) => result.task));
+    setDocs(documentResults.map((result) => result.document));
+    setDecisions(decisionResults.map((result) => result.decision));
+  }, []);
+
   React.useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        const [statusesData, configData, tasksData, docsData, decisionsData] = await Promise.all([
+        const [statusesData, configData, searchResults] = await Promise.all([
           apiClient.fetchStatuses(),
           apiClient.fetchConfig(),
-          apiClient.fetchTasks(),
-          apiClient.fetchDocs(),
-          apiClient.fetchDecisions()
+          apiClient.search(),
         ]);
-        
+
         setStatuses(statusesData);
         setProjectName(configData.projectName);
-        setTasks(tasksData);
-        setDocs(docsData);
-        setDecisions(decisionsData);
+        applySearchResults(searchResults);
       } catch (error) {
         console.error('Failed to load data:', error);
       } finally {
@@ -71,7 +85,7 @@ function App() {
       }
     };
     loadData();
-  }, []);
+  }, [applySearchResults]);
 
   // Reload data when connection is restored
   React.useEffect(() => {
@@ -79,22 +93,15 @@ function App() {
       // Connection restored, reload data
       const loadData = async () => {
         try {
-          const [tasksData, docsData, decisionsData] = await Promise.all([
-            apiClient.fetchTasks(),
-            apiClient.fetchDocs(),
-            apiClient.fetchDecisions()
-          ]);
-          
-          setTasks(tasksData);
-          setDocs(docsData);
-          setDecisions(decisionsData);
+          const results = await apiClient.search();
+          applySearchResults(results);
         } catch (error) {
           console.error('Failed to reload data:', error);
         }
       };
       loadData();
     }
-  }, [isOnline]);
+  }, [applySearchResults, isOnline]);
 
   // Update document title when project name changes
   React.useEffect(() => {
@@ -153,21 +160,14 @@ function App() {
     setIsDraftMode(false);
   };
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     try {
-      const [tasksData, docsData, decisionsData] = await Promise.all([
-        apiClient.fetchTasks(),
-        apiClient.fetchDocs(),
-        apiClient.fetchDecisions()
-      ]);
-      
-      setTasks(tasksData);
-      setDocs(docsData);
-      setDecisions(decisionsData);
+      const results = await apiClient.search();
+      applySearchResults(results);
     } catch (error) {
       console.error('Failed to refresh data:', error);
     }
-  };
+  }, [applySearchResults]);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -178,7 +178,7 @@ function App() {
       }
     };
     return () => ws.close();
-  }, []);
+  }, [refreshData]);
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {
     try {
@@ -226,7 +226,7 @@ function App() {
     <ThemeProvider>
       <BrowserRouter>
         <Routes>
-          <Route
+            <Route
             path="/"
             element={
               <Layout
@@ -242,7 +242,17 @@ function App() {
             }
           >
             <Route index element={<BoardPage onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} onRefreshData={refreshData} />} />
-            <Route path="tasks" element={<TaskList onEditTask={handleEditTask} onNewTask={handleNewTask} tasks={tasks} />} />
+            <Route
+              path="tasks"
+              element={
+                <TaskList
+                  onEditTask={handleEditTask}
+                  onNewTask={handleNewTask}
+                  tasks={tasks}
+                  availableStatuses={statuses}
+                />
+              }
+            />
             <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
             <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />

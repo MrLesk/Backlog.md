@@ -1,12 +1,20 @@
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
-import Fuse from 'fuse.js';
-import { type Task, type Document, type Decision } from '../../types';
+import {
+	type Decision,
+	type DecisionSearchResult,
+	type Document,
+	type DocumentSearchResult,
+	type SearchResult,
+	type Task,
+	type TaskSearchResult,
+} from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import { SidebarSkeleton } from './LoadingSpinner';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
+import { apiClient } from '../lib/api';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -154,6 +162,9 @@ const SideNavigation = memo(function SideNavigation({
 		return saved ? JSON.parse(saved) : false;
 	});
 	const [searchQuery, setSearchQuery] = useState('');
+	const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+	const [isSearching, setIsSearching] = useState(false);
+	const [searchError, setSearchError] = useState<string | null>(null);
 	const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
 	const [isDocsCollapsed, setIsDocsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('docsCollapsed');
@@ -251,69 +262,58 @@ const SideNavigation = memo(function SideNavigation({
 	location.pathname.startsWith('/decisions');
 
 
-	// Create Fuse.js instance for unified search
-	const fuse = useMemo(() => {
-		const searchData = [
-			...docs.map(doc => ({
-				...doc,
-				type: 'doc' as const,
-				searchableTitle: doc.title,
-				searchableContent: doc.rawContent || ''
-			})),
-			...decisions.map(decision => ({
-				...decision,
-				type: 'decision' as const,
-				searchableTitle: decision.title,
-				searchableContent: decision.rawContent || '',
-			})),
-			...tasks.map(task => ({
-				...task,
-				type: 'task' as const,
-				searchableTitle: task.title,
-				searchableContent: task.rawContent || '',
-				searchableLabels: (task.labels || []).join(' ')
-			}))
-		];
-
-		return new Fuse(searchData, {
-			keys: [
-				{ name: 'searchableTitle', weight: 0.5 },  // Even more heavily prioritize exact title matches
-				{ name: 'searchableContent', weight: 0.4 }, // Much lower content weight
-				{ name: 'id', weight: 0.05 },              
-				{ name: 'searchableLabels', weight: 0.05 } 
-			],
-			shouldSort: true,
-			threshold: 0.3,
-			location: 0,
-			distance: 100,
-			minMatchCharLength: 2,
-		});
-	}, [docs, decisions, tasks]);
-
-	// Perform unified search or show filtered results
-	const searchResults = useMemo(() => {
-		if (!searchQuery.trim()) {
-			return {
-				docs: docs,
-				decisions: decisions,
-				tasks: tasks,
-				unified: []
-			};
+	// Perform unified search via centralized API (debounced)
+	useEffect(() => {
+		const query = searchQuery.trim();
+		if (query === '') {
+			setSearchResults([]);
+			setSearchError(null);
+			setIsSearching(false);
+			return;
 		}
 
-		const results = fuse.search(searchQuery);
-		// Sort by score and filter out poor matches (lower score = better match)
-		const sortedResults = results
-			.filter(r => (r.score || 0) <= 0.4) // Show good matches (score <= 0.4)
-			.sort((a, b) => (a.score || 0) - (b.score || 0));
-		
-		return {
-			docs: sortedResults.filter(r => r.item.type === 'doc').map(r => r.item as unknown as Document),
-			decisions: sortedResults.filter(r => r.item.type === 'decision').map(r => r.item as Decision),
-			tasks: sortedResults.filter(r => r.item.type === 'task').map(r => r.item as Task),
-			unified: sortedResults.slice(0, 5) // Show only top 5 unified results
+		let cancelled = false;
+		setIsSearching(true);
+		setSearchError(null);
+		const timeout = setTimeout(async () => {
+			try {
+				const results = await apiClient.search({ query, limit: 15 });
+				if (!cancelled) {
+					setSearchResults(results);
+				}
+			} catch (err) {
+				console.error('Sidebar search failed:', err);
+				if (!cancelled) {
+					setSearchResults([]);
+					setSearchError('Search failed');
+				}
+			} finally {
+				if (!cancelled) {
+					setIsSearching(false);
+				}
+			}
+		}, 200);
+
+		return () => {
+			cancelled = true;
+			clearTimeout(timeout);
 		};
-	}, [searchQuery, fuse]);
+	}, [searchQuery]);
+
+	const unifiedSearchResults = useMemo(() => {
+		if (!searchQuery.trim()) {
+			return [];
+		}
+		const filtered = searchResults
+			.filter((result) => result.score === null || result.score <= 0.45)
+			.sort((a, b) => {
+				const scoreA = a.score ?? Number.POSITIVE_INFINITY;
+				const scoreB = b.score ?? Number.POSITIVE_INFINITY;
+				return scoreA - scoreB;
+			});
+
+		return filtered.slice(0, 5);
+	}, [searchQuery, searchResults]);
 
 	// Always show full lists in their sections, search results are separate
 	const filteredDocs = docs;
@@ -378,28 +378,40 @@ const SideNavigation = memo(function SideNavigation({
 			</div>
 
 			{/* Unified Search Results */}
-			{!isCollapsed && searchQuery.trim() && searchResults.unified.length > 0 && (
+			{!isCollapsed && searchQuery.trim() && unifiedSearchResults.length > 0 && (
 				<div className="p-4 border-b border-gray-200 dark:border-gray-700">
-					<h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Search Results</h3>
+					<div className="flex items-center justify-between mb-3">
+						<h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Search Results</h3>
+						{isSearching && (
+							<span className="text-xs text-gray-500 dark:text-gray-400">Searching…</span>
+						)}
+					</div>
 					<div className="space-y-1">
-						{searchResults.unified.map((result, index) => {
-							const item = result.item;
+						{unifiedSearchResults.map((result, index) => {
+							const item = result.type === 'task'
+								? (result as TaskSearchResult).task
+								: result.type === 'document'
+									? (result as DocumentSearchResult).document
+									: (result as DecisionSearchResult).decision;
 							const getResultLink = () => {
-								if (item.type === 'doc') return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
-								if (item.type === 'decision') return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
-								if (item.type === 'task') return `/?highlight=${encodeURIComponent(item.id)}`; // Tasks are shown on the board page with highlight
-								return '/';
+								if (result.type === 'document') {
+									return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+								}
+								if (result.type === 'decision') {
+									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+								}
+								return `/?highlight=${encodeURIComponent(item.id)}`;
 							};
-							
+
 							const getResultIcon = () => {
-								if (item.type === 'doc') return <span className="text-green-500"><Icons.DocumentPage /></span>;
-								if (item.type === 'decision') return <span className="text-stone-500"><Icons.DecisionPage /></span>;
+								if (result.type === 'document') return <span className="text-green-500"><Icons.DocumentPage /></span>;
+								if (result.type === 'decision') return <span className="text-stone-500"><Icons.DecisionPage /></span>;
 								return <span className="text-purple-500"><Icons.Tasks /></span>;
 							};
 
 							return (
 								<NavLink
-									key={`${item.type}-${item.id}-${index}`}
+									key={`${result.type}-${item.id}-${index}`}
 									to={getResultLink()}
 									className="flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-gray-100"
 								>
@@ -409,16 +421,33 @@ const SideNavigation = memo(function SideNavigation({
 											{item.title}
 										</div>
 										<div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-											{item.type.charAt(0).toUpperCase() + item.type.slice(1)} • {item.id}
+											{result.type.charAt(0).toUpperCase() + result.type.slice(1)} • {item.id}
 										</div>
 									</div>
+									{result.score !== null && (
+										<div className="text-xs text-gray-400 dark:text-gray-500">
+											{`${Math.round((1 - result.score) * 100)}%`}
+										</div>
+									)}
 								</NavLink>
 							);
 						})}
 					</div>
 				</div>
 			)}
-			
+
+			{!isCollapsed && searchQuery.trim() && unifiedSearchResults.length === 0 && !isSearching && !searchError && (
+				<div className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
+					No matching results
+				</div>
+			)}
+
+			{!isCollapsed && searchQuery.trim() && searchError && (
+				<div className="px-4 py-2 text-sm text-red-600 dark:text-red-400 border-b border-gray-200 dark:border-gray-700">
+					{searchError}
+				</div>
+			)}
+
 
 			<nav className="flex-1 overflow-y-auto">
 				{/* Loading Indicator - only show when expanded since collapsed nav is static */}
