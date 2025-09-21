@@ -27,7 +27,9 @@
 
 * 🤖 **AI-ready CLI** -- "Claude, please take over task 33"
 
-* 🔍 **Rich query commands** -- view, list, filter, or archive tasks with ease
+* 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
+
+* 📋 **Rich query commands** -- view, list, filter, or archive tasks with ease
 
 * 💻 **Cross-platform** -- runs on macOS, Linux, and Windows
 
@@ -47,17 +49,20 @@ backlog init "My Awesome Project"
 # 3. Capture work  
 backlog task create "Render markdown as kanban"
 
-# 4. See where you stand  
+# 4. See where you stand
 backlog board view or backlog browser
 
-# 5. Create tasks using Claude-code, Gemini, Codex or Jules
+# 5. Find what you need
+backlog search "markdown" or just backlog search for interactive filters
+
+# 6. Create tasks using Claude-code, Gemini, Codex or Jules
 Claude I would like to build a search functionality in the web view that searches for:
 * tasks
 * docs
 * decisions
   Please create relevant tasks to tackle this request.
 
-# 6. Assign tasks to AI
+# 7. Assign tasks to AI
 Claude please implement all tasks related to the web search functionality (task-10, task-11, task-12)
 * before starting to write code use 'ultrathink mode' to prepare an implementation plan
 * use multiple sub-agents when possible and dependencies allow
@@ -169,6 +174,25 @@ The CLI preserves input literally; `\n` sequences are not auto‑converted. Use 
   - `backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"`
 
 Tip: Help text shows Bash examples with escaped `\\n` for readability; when typing, `$'\n'` expands to a newline.
+
+### Search
+
+Find tasks, documents, and decisions across your entire backlog with fuzzy search:
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Search everything | `backlog search "auth"`                        |
+| Search tasks only | `backlog search "login" --type task`           |
+| Filter by status | `backlog search "api" --status "In Progress"`   |
+| Filter by priority | `backlog search "bug" --priority high`        |
+| Combine filters | `backlog search "web" --status "To Do" --priority medium` |
+| Plain text output | `backlog search "feature" --plain` (for scripts/AI) |
+
+**Search features:**
+- **Fuzzy matching** -- finds "authentication" when searching for "auth"
+- **Interactive filters** -- refine your search in real-time with the TUI
+- **Live filtering** -- see results update as you type (no Enter needed)
+- **Cross-content search** -- searches titles, descriptions, and full content
 
 ### Draft Workflow
 

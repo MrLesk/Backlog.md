@@ -93,6 +93,14 @@ export class ContentStore {
 			const assignee = filter.assignee;
 			tasks = tasks.filter((task) => task.assignee.includes(assignee));
 		}
+		if (filter?.priority) {
+			const priority = filter.priority.toLowerCase();
+			tasks = tasks.filter((task) => (task.priority ?? "").toLowerCase() === priority);
+		}
+		if (filter?.parentTaskId) {
+			const parentId = filter.parentTaskId.startsWith("task-") ? filter.parentTaskId : `task-${filter.parentTaskId}`;
+			tasks = tasks.filter((task) => task.parentTaskId === parentId);
+		}
 
 		return tasks.slice();
 	}

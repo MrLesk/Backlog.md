@@ -317,14 +317,16 @@ export async function renderBoardTui(
 			}
 		});
 
+		// Footer help bar with consistent styling
 		box({
 			parent: screen,
 			bottom: 0,
 			left: 0,
 			height: 1,
 			width: "100%",
-			content: " ←/→ columns · ↑/↓ tasks · Enter view · E edit · Tab tasks · q/Esc quit ",
-			style: { fg: "gray", bg: "black" },
+			tags: true,
+			content:
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit",
 		});
 
 		// Tab key for view switching

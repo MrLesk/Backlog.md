@@ -13,6 +13,7 @@ declare module "neo-neo-bblessed" {
 	export interface ScreenInterface {
 		program?: ProgramInterface;
 		key(keys: string | string[], callback: (...args: unknown[]) => void): void;
+		on(event: string, callback: (...args: unknown[]) => void): void;
 		append(el: ElementInterface): void;
 		render(): void;
 		destroy(): void;
@@ -67,6 +68,15 @@ declare module "neo-neo-bblessed" {
 	export interface LogInterface extends ElementInterface {
 		log(message: string): void;
 	}
+	export interface TextboxInterface extends ElementInterface {
+		value?: string;
+		getValue(): string;
+		setValue(value: string): void;
+		clearValue(): void;
+		submit(): void;
+		cancel(): void;
+		readInput(callback?: (error?: Error, value?: string) => void): void;
+	}
 
 	export function screen(options?: ScreenOptions): ScreenInterface;
 	export function program(options?: Record<string, unknown>): ProgramInterface;
@@ -76,4 +86,5 @@ declare module "neo-neo-bblessed" {
 	export function scrollablebox(options?: Record<string, unknown>): ScrollableBoxInterface;
 	export function scrollabletext(options?: Record<string, unknown>): ScrollableTextInterface;
 	export function log(options?: Record<string, unknown>): LogInterface;
+	export function textbox(options?: Record<string, unknown>): TextboxInterface;
 }

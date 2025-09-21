@@ -69,6 +69,9 @@ export async function viewTaskEnhanced(
 		core?: Core;
 		title?: string;
 		filterDescription?: string;
+		searchQuery?: string;
+		statusFilter?: string;
+		priorityFilter?: string;
 		startWithDetailFocus?: boolean;
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskChange?: (task: Task) => void;
@@ -102,6 +105,19 @@ export async function viewTaskEnhanced(
 		autoPadding: true,
 	});
 
+	// Build label with filter information
+	let paneLabel = `\u00A0${options.title || "Tasks"}`;
+	if (options.searchQuery) {
+		paneLabel += ` | Search: "${options.searchQuery}"`;
+	}
+	if (options.statusFilter) {
+		paneLabel += ` | Status: ${options.statusFilter}`;
+	}
+	if (options.priorityFilter) {
+		paneLabel += ` | Priority: ${options.priorityFilter}`;
+	}
+	paneLabel += "\u00A0";
+
 	// Task list pane (left 40%) with border
 	const taskListPane = box({
 		parent: container,
@@ -115,7 +131,7 @@ export async function viewTaskEnhanced(
 		style: {
 			border: { fg: "gray" },
 		},
-		label: `\u00A0${options.title || "Tasks"}\u00A0`,
+		label: paneLabel,
 	});
 
 	// Detail pane (right 60%) with border

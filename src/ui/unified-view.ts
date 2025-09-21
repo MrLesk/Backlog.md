@@ -8,7 +8,7 @@ import { getTaskPath } from "../utils/task-path.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
-import { viewTaskEnhanced } from "./task-viewer.ts";
+import { viewTaskEnhanced } from "./task-viewer-with-search.ts";
 import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
 
 export interface UnifiedViewOptions {
@@ -24,6 +24,8 @@ export interface UnifiedViewOptions {
 		sort?: string;
 		title?: string;
 		filterDescription?: string;
+		searchQuery?: string;
+		parentTaskId?: string;
 	};
 	preloadedKanbanData?: {
 		tasks: Task[];
@@ -70,6 +72,14 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let currentView: ViewType = options.initialView;
 		let selectedTask: Task | undefined = options.selectedTask;
 		let tasks = baseTasks;
+		let isInitialLoad = true; // Track if this is the first view load
+
+		// Track current filter state
+		const currentFilters = {
+			searchQuery: options.filter?.searchQuery || "",
+			statusFilter: options.filter?.status || "",
+			priorityFilter: options.filter?.priority || "",
+		};
 
 		// Create view switcher (without problematic onViewChange callback)
 		viewSwitcher = new ViewSwitcher({
@@ -154,15 +164,30 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					result = "switch";
 				};
 
+				// Determine initial focus based on where we're coming from
+				// - If we have a search query on initial load, focus search
+				// - If currentView is task-detail, focus detail
+				// - Otherwise (including when coming from kanban), focus task list
+				const shouldFocusSearch = Boolean(options.filter?.searchQuery) && isInitialLoad;
+
 				viewTaskEnhanced(taskToView, content, {
 					tasks: availableTasks,
 					core: options.core,
 					title: options.filter?.title,
 					filterDescription: options.filter?.filterDescription,
+					searchQuery: currentFilters.searchQuery,
+					statusFilter: currentFilters.statusFilter,
+					priorityFilter: currentFilters.priorityFilter,
 					startWithDetailFocus: currentView === "task-detail",
+					startWithSearchFocus: shouldFocusSearch,
 					onTaskChange: (newTask) => {
 						selectedTask = newTask;
 						currentView = "task-detail";
+					},
+					onFilterChange: (filters) => {
+						currentFilters.searchQuery = filters.searchQuery;
+						currentFilters.statusFilter = filters.statusFilter;
+						currentFilters.priorityFilter = filters.priorityFilter;
 					},
 					onTabPress,
 				}).then(() => {
@@ -267,6 +292,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				default:
 					result = "exit";
 			}
+
+			// After the first view, we're no longer on initial load
+			isInitialLoad = false;
 
 			// Handle the result
 			if (result === "switch") {

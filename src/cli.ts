@@ -17,7 +17,18 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
-import type { Decision, Document as DocType, Task } from "./types/index.ts";
+import type {
+	Decision,
+	DecisionSearchResult,
+	Document as DocType,
+	DocumentSearchResult,
+	SearchPriorityFilter,
+	SearchResult,
+	SearchResultType,
+	Task,
+	TaskListFilter,
+	TaskSearchResult,
+} from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
@@ -1107,6 +1118,208 @@ taskCmd
 		}
 	});
 
+program
+	.command("search [query]")
+	.description("search tasks, documents, and decisions using the shared index")
+	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
+	.option("--status <status>", "filter task results by status")
+	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
+	.option("--limit <number>", "limit total results returned")
+	.option("--plain", "print plain text output instead of interactive UI")
+	.action(async (query: string | undefined, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const searchService = await core.getSearchService();
+		const contentStore = await core.getContentStore();
+		const cleanup = () => {
+			searchService.dispose();
+			contentStore.dispose();
+		};
+
+		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
+		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
+		const types = rawTypes
+			? rawTypes
+					.map((value: string) => value.toLowerCase())
+					.filter((value: string): value is SearchResultType => {
+						if (!allowedTypes.includes(value as SearchResultType)) {
+							console.warn(`Ignoring unsupported type '${value}'. Supported: task, document, decision`);
+							return false;
+						}
+						return true;
+					})
+			: allowedTypes;
+
+		const filters: { status?: string; priority?: SearchPriorityFilter } = {};
+		if (options.status) {
+			filters.status = options.status;
+		}
+		if (options.priority) {
+			const priorityLower = String(options.priority).toLowerCase();
+			const validPriorities: SearchPriorityFilter[] = ["high", "medium", "low"];
+			if (!validPriorities.includes(priorityLower as SearchPriorityFilter)) {
+				console.error("Invalid priority. Valid values: high, medium, low");
+				process.exitCode = 1;
+				return;
+			}
+			filters.priority = priorityLower as SearchPriorityFilter;
+		}
+
+		let limit: number | undefined;
+		if (options.limit !== undefined) {
+			const parsed = Number.parseInt(String(options.limit), 10);
+			if (Number.isNaN(parsed) || parsed <= 0) {
+				console.error("--limit must be a positive integer");
+				process.exitCode = 1;
+				return;
+			}
+			limit = parsed;
+		}
+
+		const searchResults = searchService.search({
+			query: query ?? "",
+			limit,
+			types,
+			filters,
+		});
+
+		const isPlainFlag = options.plain || process.argv.includes("--plain") || !process.stdout.isTTY;
+		if (isPlainFlag) {
+			printSearchResults(searchResults);
+			cleanup();
+			return;
+		}
+
+		const taskResults = searchResults.filter(isTaskSearchResult);
+		const searchResultTasks = taskResults.map((result) => result.task);
+
+		// Get ALL tasks for the viewer, not just search results
+		// This allows clearing the search to show all tasks
+		const allTasksRaw = await core.filesystem.listTasks();
+		const allTasks = allTasksRaw.filter((t: Task) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+
+		// If no tasks exist at all, show plain text results
+		if (allTasks.length === 0) {
+			printSearchResults(searchResults);
+			cleanup();
+			return;
+		}
+
+		// Use the first search result as the selected task, or first available task if no results
+		const firstTask = searchResultTasks[0] || allTasks[0];
+		const priorityFilter = filters.priority ? filters.priority : undefined;
+		const statusFilter = filters.status;
+		const { runUnifiedView } = await import("./ui/unified-view.ts");
+
+		await runUnifiedView({
+			core,
+			initialView: "task-list",
+			selectedTask: firstTask,
+			tasks: allTasks, // Pass ALL tasks, not just search results
+			filter: {
+				title: query ? `Search: ${query}` : "Search",
+				filterDescription: buildSearchFilterDescription({
+					status: statusFilter,
+					priority: priorityFilter,
+					query: query ?? "",
+				}),
+				status: statusFilter,
+				priority: priorityFilter,
+				searchQuery: query ?? "", // Pre-populate search with the query
+			},
+		});
+		cleanup();
+	});
+
+function buildSearchFilterDescription(filters: {
+	status?: string;
+	priority?: SearchPriorityFilter;
+	query?: string;
+}): string {
+	const parts: string[] = [];
+	if (filters.query) {
+		parts.push(`Query: ${filters.query}`);
+	}
+	if (filters.status) {
+		parts.push(`Status: ${filters.status}`);
+	}
+	if (filters.priority) {
+		parts.push(`Priority: ${filters.priority}`);
+	}
+	return parts.join(" • ");
+}
+
+function printSearchResults(results: SearchResult[]): void {
+	if (results.length === 0) {
+		console.log("No results found.");
+		return;
+	}
+
+	const tasks: TaskSearchResult[] = [];
+	const documents: DocumentSearchResult[] = [];
+	const decisions: DecisionSearchResult[] = [];
+
+	for (const result of results) {
+		if (result.type === "task") {
+			tasks.push(result);
+			continue;
+		}
+		if (result.type === "document") {
+			documents.push(result);
+			continue;
+		}
+		decisions.push(result);
+	}
+
+	if (tasks.length > 0) {
+		console.log("Tasks:");
+		for (const taskResult of tasks) {
+			const { task } = taskResult;
+			const scoreText = formatScore(taskResult.score);
+			const statusText = task.status ? ` (${task.status})` : "";
+			const priorityText = task.priority ? ` [${task.priority.toUpperCase()}]` : "";
+			console.log(`  ${task.id} - ${task.title}${statusText}${priorityText}${scoreText}`);
+		}
+	}
+
+	if (documents.length > 0) {
+		if (tasks.length > 0) {
+			console.log("");
+		}
+		console.log("Documents:");
+		for (const documentResult of documents) {
+			const { document } = documentResult;
+			const scoreText = formatScore(documentResult.score);
+			console.log(`  ${document.id} - ${document.title}${scoreText}`);
+		}
+	}
+
+	if (decisions.length > 0) {
+		if (tasks.length > 0 || documents.length > 0) {
+			console.log("");
+		}
+		console.log("Decisions:");
+		for (const decisionResult of decisions) {
+			const { decision } = decisionResult;
+			const scoreText = formatScore(decisionResult.score);
+			console.log(`  ${decision.id} - ${decision.title}${scoreText}`);
+		}
+	}
+}
+
+function formatScore(score: number | null): string {
+	if (score === null || score === undefined) {
+		return "";
+	}
+	// Invert score so higher is better (Fuse.js uses 0=perfect match, 1=no match)
+	const invertedScore = 1 - score;
+	return ` [score ${invertedScore.toFixed(3)}]`;
+}
+
+function isTaskSearchResult(result: SearchResult): result is TaskSearchResult {
+	return result.type === "task";
+}
+
 taskCmd
 	.command("list")
 	.description("list tasks grouped by status")
@@ -1119,38 +1332,45 @@ taskCmd
 	.action(async (options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const tasks = await core.filesystem.listTasks({ status: options.status, assignee: options.assignee });
-		const config = await core.filesystem.loadConfig();
-
-		let filtered = tasks;
-		if (options.parent) {
-			// Normalize parent task ID
-			const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
-
-			// Validate parent task exists
-			const parentTask = await core.filesystem.loadTask(parentId);
-			if (!parentTask) {
-				console.error(`Parent task ${parentId} not found.`);
-				process.exitCode = 1;
-				return;
-			}
-
-			// Filter tasks by parent ID
-			filtered = filtered.filter((t) => t.parentTaskId === parentId);
+		const contentStore = await core.getContentStore();
+		const baseFilters: TaskListFilter = {};
+		if (options.status) {
+			baseFilters.status = options.status;
+		}
+		if (options.assignee) {
+			baseFilters.assignee = options.assignee;
 		}
 		if (options.priority) {
 			const priorityLower = options.priority.toLowerCase();
-			const validPriorities = ["high", "medium", "low"];
-			if (!validPriorities.includes(priorityLower)) {
+			const validPriorities = ["high", "medium", "low"] as const;
+			if (!validPriorities.includes(priorityLower as (typeof validPriorities)[number])) {
 				console.error(`Invalid priority: ${options.priority}. Valid values are: high, medium, low`);
 				process.exitCode = 1;
 				return;
 			}
-			filtered = filtered.filter((t) => t.priority?.toLowerCase() === priorityLower);
+			baseFilters.priority = priorityLower as (typeof validPriorities)[number];
+		}
+
+		let parentId: string | undefined;
+		if (options.parent) {
+			parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+			baseFilters.parentTaskId = parentId;
+		}
+
+		const tasks = contentStore.getTasks(baseFilters);
+		const config = await core.filesystem.loadConfig();
+
+		if (parentId) {
+			const parentExists = contentStore.getTasks().some((task) => task.id === parentId);
+			if (!parentExists) {
+				console.error(`Parent task ${parentId} not found.`);
+				process.exitCode = 1;
+				return;
+			}
 		}
 
 		// Apply sorting - default to priority sorting
-		let sortedTasks = filtered;
+		let sortedTasks = tasks;
 		if (options.sort) {
 			const validSortFields = ["priority", "id"];
 			const sortField = options.sort.toLowerCase();
@@ -1159,12 +1379,15 @@ taskCmd
 				process.exitCode = 1;
 				return;
 			}
-			sortedTasks = sortTasks(filtered, sortField);
+			sortedTasks = sortTasks(tasks, sortField);
 		} else {
 			// Default to priority sorting
-			sortedTasks = sortTasks(filtered, "priority");
+			sortedTasks = sortTasks(tasks, "priority");
 		}
-		filtered = sortedTasks;
+		let filtered = sortedTasks;
+		if (parentId) {
+			filtered = filtered.filter((task) => task.parentTaskId === parentId);
+		}
 
 		if (filtered.length === 0) {
 			if (options.parent) {
@@ -1273,6 +1496,8 @@ taskCmd
 					sort: options.sort,
 					title,
 					filterDescription,
+					searchQuery: "",
+					parentTaskId: parentId,
 				},
 			});
 		}

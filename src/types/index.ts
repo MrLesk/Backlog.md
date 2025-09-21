@@ -37,6 +37,8 @@ export interface Task {
 export interface TaskListFilter {
 	status?: string;
 	assignee?: string;
+	priority?: "high" | "medium" | "low";
+	parentTaskId?: string;
 }
 
 export interface Decision {

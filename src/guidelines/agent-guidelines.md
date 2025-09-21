@@ -10,6 +10,7 @@ remains fully synchronized and up-to-date.
 ### Core Capabilities
 
 - ✅ **Task Management**: Create, edit, assign, prioritize, and track tasks with full metadata
+- ✅ **Search**: Fuzzy search across tasks, documents, and decisions with `backlog search`
 - ✅ **Acceptance Criteria**: Granular control with add/remove/check/uncheck by index
 - ✅ **Board Visualization**: Terminal-based Kanban board (`backlog board`) and web UI (`backlog browser`)
 - ✅ **Git Integration**: Automatic tracking of task states across branches
@@ -368,15 +369,40 @@ A task is **Done** only when **ALL** of the following are complete:
 
 ---
 
-## 8. Quick Reference: DO vs DON'T
+## 8. Finding Tasks and Content with Search
 
-### Viewing Tasks
+When users ask you to find tasks related to a topic, use the `backlog search` command with `--plain` flag:
+
+```bash
+# Search for tasks about authentication
+backlog search "auth" --plain
+
+# Search only in tasks (not docs/decisions)
+backlog search "login" --type task --plain
+
+# Search with filters
+backlog search "api" --status "In Progress" --plain
+backlog search "bug" --priority high --plain
+```
+
+**Key points:**
+- Uses fuzzy matching - finds "authentication" when searching "auth"
+- Searches task titles, descriptions, and content
+- Also searches documents and decisions unless filtered with `--type task`
+- Always use `--plain` flag for AI-readable output
+
+---
+
+## 9. Quick Reference: DO vs DON'T
+
+### Viewing and Finding Tasks
 
 | Task         | ✅ DO                        | ❌ DON'T                         |
 |--------------|-----------------------------|---------------------------------|
 | View task    | `backlog task 42 --plain`   | Open and read .md file directly |
 | List tasks   | `backlog task list --plain` | Browse backlog/tasks folder     |
 | Check status | `backlog task 42 --plain`   | Look at file content            |
+| Find by topic| `backlog search "auth" --plain` | Manually grep through files |
 
 ### Modifying Tasks
 
@@ -389,7 +415,7 @@ A task is **Done** only when **ALL** of the following are complete:
 
 ---
 
-## 9. Complete CLI Command Reference
+## 10. Complete CLI Command Reference
 
 ### Task Creation
 
@@ -472,6 +498,8 @@ Descriptions support literal newlines; shell examples may show escaped `\\n`, bu
 |--------------------|----------------------------------------------|
 | View task          | `backlog task 42 --plain`                    |
 | List tasks         | `backlog task list --plain`                  |
+| Search tasks       | `backlog search "topic" --plain`              |
+| Search with filter | `backlog search "api" --status "To Do" --plain` |
 | Filter by status   | `backlog task list -s "In Progress" --plain` |
 | Filter by assignee | `backlog task list -a @sara --plain`         |
 | Archive task       | `backlog task archive 42`                    |
