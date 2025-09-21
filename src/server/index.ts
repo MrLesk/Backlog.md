@@ -396,7 +396,15 @@ export class BacklogServer {
 		if (priority) filter.priority = priority;
 
 		if (parent) {
-			const parentTask = findTaskByLooseId(baseTasks, parent);
+			let parentTask = findTaskByLooseId(baseTasks, parent);
+			if (!parentTask) {
+				const fallbackId = parent.startsWith(TASK_ID_PREFIX) ? parent : `${TASK_ID_PREFIX}${parent}`;
+				const fallback = await this.core.filesystem.loadTask(fallbackId);
+				if (fallback) {
+					store.upsertTask(fallback);
+					parentTask = fallback;
+				}
+			}
 			if (!parentTask) {
 				const normalizedParent = parent.startsWith(TASK_ID_PREFIX) ? parent : `${TASK_ID_PREFIX}${parent}`;
 				return Response.json({ error: `Parent task ${normalizedParent} not found` }, { status: 404 });
@@ -487,6 +495,12 @@ export class BacklogServer {
 		const tasks = store.getTasks();
 		const task = findTaskByLooseId(tasks, taskId);
 		if (!task) {
+			const fallbackId = taskId.startsWith(TASK_ID_PREFIX) ? taskId : `${TASK_ID_PREFIX}${taskId}`;
+			const fallback = await this.core.filesystem.loadTask(fallbackId);
+			if (fallback) {
+				store.upsertTask(fallback);
+				return Response.json(fallback);
+			}
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
 		return Response.json(task);

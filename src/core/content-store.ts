@@ -105,6 +105,15 @@ export class ContentStore {
 		return tasks.slice();
 	}
 
+	upsertTask(task: Task): void {
+		if (!this.initialized) {
+			return;
+		}
+		this.tasks.set(task.id, task);
+		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+		this.notify("tasks");
+	}
+
 	getDocuments(): Document[] {
 		if (!this.initialized) {
 			throw new Error("ContentStore not initialized. Call ensureInitialized() first.");

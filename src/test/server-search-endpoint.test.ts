@@ -160,6 +160,25 @@ describe("BacklogServer search endpoint", () => {
 		expect(dependencyIds).toEqual(expect.arrayContaining([baseTask.id, dependentTask.id]));
 	});
 
+	it("returns newly created tasks immediately after POST", async () => {
+		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Immediate fetch",
+				status: "In Progress",
+				rawContent: "## Description\nImmediate availability",
+			}),
+		});
+		expect(createResponse.ok).toBe(true);
+		const created = (await createResponse.json()) as Task;
+		expect(created.title).toBe("Immediate fetch");
+		const shortId = created.id.replace(/^task-/, "");
+		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
+		expect(fetched.id).toBe(created.id);
+		expect(fetched.title).toBe("Immediate fetch");
+	});
+
 	it("rebuilds the Fuse index when markdown content changes", async () => {
 		await filesystem.saveDocument({
 			...baseDoc,

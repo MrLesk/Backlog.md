@@ -47,3 +47,4 @@ are found, the commit will be blocked until fixed.
 
 - **Branching**: Use feature branches when working on tasks (e.g. `tasks/task-123-feature-name`)
 - **Committing**: Use the following format: `TASK-123 - Title of the task`
+- **Github CLI**: Use `gh` whenever possible for PRs and issues
