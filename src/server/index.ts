@@ -1,10 +1,48 @@
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import type { ContentStore } from "../core/content-store.ts";
+import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
-import type { Task } from "../types/index.ts";
-import { watchTasks } from "../utils/task-watcher.ts";
+import type { SearchPriorityFilter, SearchResultType, Task } from "../types/index.ts";
 import { getVersion } from "../utils/version.ts";
+
+const TASK_ID_PREFIX = "task-";
+
+function parseTaskIdSegments(value: string): number[] | null {
+	const withoutPrefix = value.startsWith(TASK_ID_PREFIX) ? value.slice(TASK_ID_PREFIX.length) : value;
+	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
+		return null;
+	}
+	return withoutPrefix.split(".").map((segment) => Number.parseInt(segment, 10));
+}
+
+function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
+	const normalized = inputId.startsWith(TASK_ID_PREFIX) ? inputId : `${TASK_ID_PREFIX}${inputId}`;
+	const exact = tasks.find((task) => task.id === normalized);
+	if (exact) {
+		return exact;
+	}
+
+	const inputSegments = parseTaskIdSegments(inputId);
+	if (!inputSegments) {
+		return undefined;
+	}
+
+	return tasks.find((task) => {
+		const candidateSegments = parseTaskIdSegments(task.id);
+		if (!candidateSegments || candidateSegments.length !== inputSegments.length) {
+			return false;
+		}
+		for (let index = 0; index < candidateSegments.length; index += 1) {
+			if (candidateSegments[index] !== inputSegments[index]) {
+				return false;
+			}
+		}
+		return true;
+	});
+}
+
 // @ts-expect-error
 import favicon from "../web/favicon.png" with { type: "file" };
 import indexHtml from "../web/index.html";
@@ -14,10 +52,57 @@ export class BacklogServer {
 	private server: Server | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
-	private stopTaskWatcher: (() => void) | null = null;
+	private contentStore: ContentStore | null = null;
+	private searchService: SearchService | null = null;
+	private unsubscribeContentStore?: () => void;
+	private storeReadyBroadcasted = false;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath);
+	}
+
+	private async ensureServicesReady(): Promise<void> {
+		const store = await this.core.getContentStore();
+		this.contentStore = store;
+		if (!this.unsubscribeContentStore) {
+			this.unsubscribeContentStore = store.subscribe((event) => {
+				if (event.type === "ready") {
+					if (!this.storeReadyBroadcasted) {
+						this.storeReadyBroadcasted = true;
+						return;
+					}
+					this.broadcastTasksUpdated();
+					return;
+				}
+
+				// Broadcast for tasks/documents/decisions so clients refresh caches/search
+				this.storeReadyBroadcasted = true;
+				this.broadcastTasksUpdated();
+			});
+		}
+
+		const search = await this.core.getSearchService();
+		this.searchService = search;
+	}
+
+	private async getContentStoreInstance(): Promise<ContentStore> {
+		await this.ensureServicesReady();
+		if (!this.contentStore) {
+			throw new Error("Content store not initialized");
+		}
+		return this.contentStore;
+	}
+
+	private async getSearchServiceInstance(): Promise<SearchService> {
+		await this.ensureServicesReady();
+		if (!this.searchService) {
+			throw new Error("Search service not initialized");
+		}
+		return this.searchService;
+	}
+
+	getPort(): number | null {
+		return this.server?.port ?? null;
 	}
 
 	private broadcastTasksUpdated() {
@@ -46,6 +131,7 @@ export class BacklogServer {
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
 		try {
+			await this.ensureServicesReady();
 			const serveOptions = {
 				port: finalPort,
 				development: process.env.NODE_ENV === "development",
@@ -121,6 +207,9 @@ export class BacklogServer {
 					"/api/statistics": {
 						GET: async () => await this.handleGetStatistics(),
 					},
+					"/api/search": {
+						GET: async (req: Request) => await this.handleSearch(req),
+					},
 					"/sequences": {
 						GET: async () => await this.handleGetSequences(),
 					},
@@ -152,12 +241,6 @@ export class BacklogServer {
 				/* biome-ignore format: keep cast on single line below for type narrowing */
 			};
 			this.server = Bun.serve(serveOptions as unknown as Parameters<typeof Bun.serve>[0]);
-			const watcher = watchTasks(this.core, {
-				onTaskAdded: () => this.broadcastTasksUpdated(),
-				onTaskChanged: () => this.broadcastTasksUpdated(),
-				onTaskRemoved: () => this.broadcastTasksUpdated(),
-			});
-			this.stopTaskWatcher = watcher.stop;
 
 			const url = `http://localhost:${finalPort}`;
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
@@ -203,9 +286,15 @@ export class BacklogServer {
 
 		// Stop filesystem watcher first to reduce churn
 		try {
-			this.stopTaskWatcher?.();
-			this.stopTaskWatcher = null;
+			this.unsubscribeContentStore?.();
+			this.unsubscribeContentStore = undefined;
 		} catch {}
+
+		this.core.disposeSearchService();
+		this.core.disposeContentStore();
+		this.searchService = null;
+		this.contentStore = null;
+		this.storeReadyBroadcasted = false;
 
 		// Proactively close WebSocket connections
 		for (const ws of this.sockets) {
@@ -286,20 +375,105 @@ export class BacklogServer {
 		const url = new URL(req.url);
 		const status = url.searchParams.get("status") || undefined;
 		const assignee = url.searchParams.get("assignee") || undefined;
-		const parent = url.searchParams.get("parent");
+		const parent = url.searchParams.get("parent") || undefined;
+		const priorityParam = url.searchParams.get("priority") || undefined;
 
-		let tasks = await this.core.filesystem.listTasks({ status, assignee });
-
-		if (parent) {
-			const parentId = parent.startsWith("task-") ? parent : `task-${parent}`;
-			const parentTask = await this.core.filesystem.loadTask(parentId);
-			if (!parentTask) {
-				return Response.json({ error: `Parent task ${parentId} not found` }, { status: 404 });
+		let priority: SearchPriorityFilter | undefined;
+		if (priorityParam) {
+			const normalizedPriority = priorityParam.toLowerCase();
+			const allowed: SearchPriorityFilter[] = ["high", "medium", "low"];
+			if (!allowed.includes(normalizedPriority as SearchPriorityFilter)) {
+				return Response.json({ error: "Invalid priority filter" }, { status: 400 });
 			}
-			tasks = tasks.filter((t) => t.parentTaskId === parentId);
+			priority = normalizedPriority as SearchPriorityFilter;
 		}
 
+		const store = await this.getContentStoreInstance();
+		const baseTasks = store.getTasks();
+		const filter: { status?: string; assignee?: string; priority?: SearchPriorityFilter; parentTaskId?: string } = {};
+		if (status) filter.status = status;
+		if (assignee) filter.assignee = assignee;
+		if (priority) filter.priority = priority;
+
+		if (parent) {
+			const parentTask = findTaskByLooseId(baseTasks, parent);
+			if (!parentTask) {
+				const normalizedParent = parent.startsWith(TASK_ID_PREFIX) ? parent : `${TASK_ID_PREFIX}${parent}`;
+				return Response.json({ error: `Parent task ${normalizedParent} not found` }, { status: 404 });
+			}
+			filter.parentTaskId = parentTask.id;
+		}
+
+		const tasks = store.getTasks(filter);
 		return Response.json(tasks);
+	}
+
+	private async handleSearch(req: Request): Promise<Response> {
+		try {
+			const searchService = await this.getSearchServiceInstance();
+			const url = new URL(req.url);
+			const query = url.searchParams.get("query") ?? undefined;
+			const limitParam = url.searchParams.get("limit");
+			const typeParams = [...url.searchParams.getAll("type"), ...url.searchParams.getAll("types")];
+			const statusParams = url.searchParams.getAll("status");
+			const priorityParamsRaw = url.searchParams.getAll("priority");
+
+			let limit: number | undefined;
+			if (limitParam) {
+				const parsed = Number.parseInt(limitParam, 10);
+				if (Number.isNaN(parsed) || parsed <= 0) {
+					return Response.json({ error: "limit must be a positive integer" }, { status: 400 });
+				}
+				limit = parsed;
+			}
+
+			let types: SearchResultType[] | undefined;
+			if (typeParams.length > 0) {
+				const allowed: SearchResultType[] = ["task", "document", "decision"];
+				const normalizedTypes = typeParams
+					.map((value) => value.toLowerCase())
+					.filter((value): value is SearchResultType => {
+						return allowed.includes(value as SearchResultType);
+					});
+				if (normalizedTypes.length === 0) {
+					return Response.json({ error: "type must be task, document, or decision" }, { status: 400 });
+				}
+				types = normalizedTypes;
+			}
+
+			const filters: {
+				status?: string | string[];
+				priority?: SearchPriorityFilter | SearchPriorityFilter[];
+			} = {};
+
+			if (statusParams.length === 1) {
+				filters.status = statusParams[0];
+			} else if (statusParams.length > 1) {
+				filters.status = statusParams;
+			}
+
+			if (priorityParamsRaw.length > 0) {
+				const allowedPriorities: SearchPriorityFilter[] = ["high", "medium", "low"];
+				const normalizedPriorities = priorityParamsRaw.map((value) => value.toLowerCase());
+				const invalidPriority = normalizedPriorities.find(
+					(value) => !allowedPriorities.includes(value as SearchPriorityFilter),
+				);
+				if (invalidPriority) {
+					return Response.json(
+						{ error: `Unsupported priority '${invalidPriority}'. Use high, medium, or low.` },
+						{ status: 400 },
+					);
+				}
+				const casted = normalizedPriorities as SearchPriorityFilter[];
+				filters.priority = casted.length === 1 ? casted[0] : casted;
+			}
+
+			const results = searchService.search({ query, limit, types, filters });
+			return Response.json(results);
+		} catch (error) {
+			console.error("Error performing search:", error);
+			return Response.json({ error: "Search failed" }, { status: 500 });
+		}
 	}
 
 	private async handleCreateTask(req: Request): Promise<Response> {
@@ -309,7 +483,9 @@ export class BacklogServer {
 	}
 
 	private async handleGetTask(taskId: string): Promise<Response> {
-		const task = await this.core.filesystem.loadTask(taskId);
+		const store = await this.getContentStoreInstance();
+		const tasks = store.getTasks();
+		const task = findTaskByLooseId(tasks, taskId);
 		if (!task) {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
@@ -370,7 +546,8 @@ export class BacklogServer {
 	// Documentation handlers
 	private async handleListDocs(): Promise<Response> {
 		try {
-			const docs = await this.core.filesystem.listDocuments();
+			const store = await this.getContentStoreInstance();
+			const docs = store.getDocuments();
 			const docFiles = docs.map((doc) => ({
 				name: `${doc.title}.md`,
 				id: doc.id,
@@ -390,8 +567,9 @@ export class BacklogServer {
 
 	private async handleGetDoc(docId: string): Promise<Response> {
 		try {
-			const docs = await this.core.filesystem.listDocuments();
-			const doc = docs.find((d) => d.id === docId || d.title === docId);
+			const store = await this.getContentStoreInstance();
+			const documents = store.getDocuments();
+			const doc = documents.find((d) => d.id === docId || d.title === docId);
 
 			if (!doc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
@@ -421,8 +599,9 @@ export class BacklogServer {
 		const content = await req.text();
 
 		try {
-			const docs = await this.core.filesystem.listDocuments();
-			const existingDoc = docs.find((d) => d.id === docId || d.title === docId);
+			const store = await this.getContentStoreInstance();
+			const documents = store.getDocuments();
+			const existingDoc = documents.find((d) => d.id === docId || d.title === docId);
 
 			if (!existingDoc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
@@ -439,7 +618,8 @@ export class BacklogServer {
 	// Decision handlers
 	private async handleListDecisions(): Promise<Response> {
 		try {
-			const decisions = await this.core.filesystem.listDecisions();
+			const store = await this.getContentStoreInstance();
+			const decisions = store.getDecisions();
 			const decisionFiles = decisions.map((decision) => ({
 				id: decision.id,
 				title: decision.title,
@@ -459,7 +639,9 @@ export class BacklogServer {
 
 	private async handleGetDecision(decisionId: string): Promise<Response> {
 		try {
-			const decision = await this.core.filesystem.loadDecision(decisionId);
+			const store = await this.getContentStoreInstance();
+			const normalizedId = decisionId.startsWith("decision-") ? decisionId : `decision-${decisionId}`;
+			const decision = store.getDecisions().find((item) => item.id === normalizedId || item.id === decisionId);
 
 			if (!decision) {
 				return Response.json({ error: "Decision not found" }, { status: 404 });

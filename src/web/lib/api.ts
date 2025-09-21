@@ -1,5 +1,14 @@
 import type { TaskStatistics } from "../../core/statistics.ts";
-import type { BacklogConfig, Decision, Document, Task, TaskStatus } from "../../types/index.ts";
+import type {
+	BacklogConfig,
+	Decision,
+	Document,
+	SearchPriorityFilter,
+	SearchResult,
+	SearchResultType,
+	Task,
+	TaskStatus,
+} from "../../types/index.ts";
 
 const API_BASE = "/api";
 
@@ -109,14 +118,58 @@ export class ApiClient {
 		const response = await this.fetchWithRetry(url, options);
 		return response.json();
 	}
-	async fetchTasks(options?: { status?: string; assignee?: string; parent?: string }): Promise<Task[]> {
+	async fetchTasks(options?: {
+		status?: string;
+		assignee?: string;
+		parent?: string;
+		priority?: SearchPriorityFilter;
+	}): Promise<Task[]> {
 		const params = new URLSearchParams();
 		if (options?.status) params.append("status", options.status);
 		if (options?.assignee) params.append("assignee", options.assignee);
 		if (options?.parent) params.append("parent", options.parent);
+		if (options?.priority) params.append("priority", options.priority);
 
 		const url = `${API_BASE}/tasks${params.toString() ? `?${params.toString()}` : ""}`;
 		return this.fetchJson<Task[]>(url);
+	}
+
+	async search(
+		options: {
+			query?: string;
+			types?: SearchResultType[];
+			status?: string | string[];
+			priority?: SearchPriorityFilter | SearchPriorityFilter[];
+			limit?: number;
+		} = {},
+	): Promise<SearchResult[]> {
+		const params = new URLSearchParams();
+		if (options.query) {
+			params.set("query", options.query);
+		}
+		if (options.types && options.types.length > 0) {
+			for (const type of options.types) {
+				params.append("type", type);
+			}
+		}
+		if (options.status) {
+			const statuses = Array.isArray(options.status) ? options.status : [options.status];
+			for (const status of statuses) {
+				params.append("status", status);
+			}
+		}
+		if (options.priority) {
+			const priorities = Array.isArray(options.priority) ? options.priority : [options.priority];
+			for (const priority of priorities) {
+				params.append("priority", priority);
+			}
+		}
+		if (options.limit !== undefined) {
+			params.set("limit", String(options.limit));
+		}
+
+		const url = `${API_BASE}/search${params.toString() ? `?${params.toString()}` : ""}`;
+		return this.fetchJson<SearchResult[]>(url);
 	}
 
 	async fetchTask(id: string): Promise<Task> {

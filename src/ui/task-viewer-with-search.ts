@@ -1,14 +1,7 @@
 /* Task viewer with search/filter header UI */
 
 import { stdout as output } from "node:process";
-import type {
-	BoxInterface,
-	LineInterface,
-	ListInterface,
-	ScreenInterface,
-	ScrollableTextInterface,
-	TextboxInterface,
-} from "neo-neo-bblessed";
+import type { BoxInterface, LineInterface, ListInterface, ScrollableTextInterface } from "neo-neo-bblessed";
 import { box, line, list, scrollabletext, textbox } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import type { Task, TaskSearchResult } from "../types/index.ts";
@@ -18,6 +11,46 @@ import { createGenericList, type GenericList } from "./components/generic-list.t
 import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
+
+type BorderStyle = { fg?: string; bg?: string };
+type SelectedStyle = { bg?: string; fg?: string };
+
+type BorderCapable = Pick<BoxInterface, "style">;
+type SelectableList = Pick<ListInterface, "style">;
+
+interface KeypressEvent {
+	name?: string;
+}
+
+function resolveListIndex(args: unknown[]): number {
+	if (typeof args[1] === "number") {
+		return args[1];
+	}
+	if (typeof args[0] === "number") {
+		return args[0];
+	}
+	return 0;
+}
+
+function setBorderColor(element: BorderCapable, color: string): void {
+	const style = element.style as StyleWithBorder;
+	style.border = { ...(style.border ?? {}), fg: color };
+}
+
+function setSelectedColors(list: SelectableList, colors: SelectedStyle): void {
+	const style = list.style as StyleWithSelected;
+	style.selected = { ...(style.selected ?? {}), ...colors };
+}
+
+interface StyleWithBorder {
+	border?: BorderStyle;
+	[key: string]: unknown;
+}
+
+interface StyleWithSelected {
+	selected?: SelectedStyle;
+	[key: string]: unknown;
+}
 
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	switch (priority) {
@@ -137,7 +170,7 @@ export async function viewTaskEnhanced(
 	});
 
 	// Search label
-	const searchLabel = box({
+	box({
 		parent: headerBox,
 		content: "Search:",
 		top: 0,
@@ -171,7 +204,7 @@ export async function viewTaskEnhanced(
 	});
 
 	// Status filter label
-	const statusFilterLabel = box({
+	box({
 		parent: headerBox,
 		content: "Status:",
 		top: 0,
@@ -212,7 +245,7 @@ export async function viewTaskEnhanced(
 	});
 
 	// Priority filter label
-	const priorityFilterLabel = box({
+	box({
 		parent: headerBox,
 		content: "Priority:",
 		top: 0,
@@ -406,14 +439,14 @@ export async function viewTaskEnhanced(
 			listBox.on("focus", () => {
 				currentFocus = "list";
 				// Highlight task list pane when focused
-				(taskListPane as any).style.border = { fg: "yellow" };
-				(headerBox as any).style.border = { fg: "cyan" };
+				setBorderColor(taskListPane, "yellow");
+				setBorderColor(headerBox, "cyan");
 				screen.render();
 				updateHelpBar();
 			});
 			listBox.on("blur", () => {
 				// Reset task list pane border when not focused
-				(taskListPane as any).style.border = { fg: "gray" };
+				setBorderColor(taskListPane, "gray");
 				screen.render();
 			});
 		}
@@ -554,7 +587,8 @@ export async function viewTaskEnhanced(
 	});
 
 	// Handle status selector changes with immediate filtering
-	(statusSelector as any).on("select", (item: unknown, index: number) => {
+	statusSelector.on("select", (...args: unknown[]) => {
+		const index = resolveListIndex(args);
 		statusFilter = index === 0 ? "" : statuses[index - 1] || "";
 		applyFilters();
 		notifyFilterChange();
@@ -564,15 +598,16 @@ export async function viewTaskEnhanced(
 	});
 
 	// Live status filter on arrow navigation (no Enter needed)
-	(statusSelector as any).on("select item", (item: unknown, index: number) => {
+	statusSelector.on("select item", (...args: unknown[]) => {
+		const index = resolveListIndex(args);
 		statusFilter = index === 0 ? "" : statuses[index - 1] || "";
 		applyFilters();
 		notifyFilterChange();
 	});
 
 	// Also update on keypress for immediate feedback
-	statusSelector.on("keypress", (ch: string, key: any) => {
-		if (key && (key.name === "up" || key.name === "down")) {
+	statusSelector.on("keypress", (_ch: string, key: KeypressEvent) => {
+		if (key?.name === "up" || key?.name === "down") {
 			setImmediate(() => {
 				const idx = statusSelector.selected;
 				statusFilter = idx !== undefined && idx === 0 ? "" : statuses[(idx ?? 0) - 1] || "";
@@ -583,7 +618,8 @@ export async function viewTaskEnhanced(
 	});
 
 	// Handle priority selector changes with immediate filtering
-	(prioritySelector as any).on("select", (item: unknown, index: number) => {
+	prioritySelector.on("select", (...args: unknown[]) => {
+		const index = resolveListIndex(args);
 		priorityFilter = index === 0 ? "" : priorities[index - 1] || "";
 		applyFilters();
 		notifyFilterChange();
@@ -593,15 +629,16 @@ export async function viewTaskEnhanced(
 	});
 
 	// Live priority filter on arrow navigation (no Enter needed)
-	(prioritySelector as any).on("select item", (item: unknown, index: number) => {
+	prioritySelector.on("select item", (...args: unknown[]) => {
+		const index = resolveListIndex(args);
 		priorityFilter = index === 0 ? "" : priorities[index - 1] || "";
 		applyFilters();
 		notifyFilterChange();
 	});
 
 	// Also update on keypress for immediate feedback
-	prioritySelector.on("keypress", (ch: string, key: any) => {
-		if (key && (key.name === "up" || key.name === "down")) {
+	prioritySelector.on("keypress", (_ch: string, key: KeypressEvent) => {
+		if (key?.name === "up" || key?.name === "down") {
 			setImmediate(() => {
 				const idx = prioritySelector.selected;
 				priorityFilter = idx !== undefined && idx === 0 ? "" : priorities[(idx ?? 0) - 1] || "";
@@ -640,8 +677,8 @@ export async function viewTaskEnhanced(
 		// Switch to task list
 		if (taskList) {
 			currentFocus = "list";
-			(taskListPane as any).style.border = { fg: "yellow" };
-			(headerBox as any).style.border = { fg: "cyan" };
+			setBorderColor(taskListPane, "yellow");
+			setBorderColor(headerBox, "cyan");
 			taskList.focus();
 			screen.render();
 			updateHelpBar();
@@ -654,8 +691,8 @@ export async function viewTaskEnhanced(
 	searchInput.on("focus", () => {
 		currentFocus = "search";
 		// Highlight header box when filter is active
-		(headerBox as any).style.border = { fg: "yellow" };
-		(taskListPane as any).style.border = { fg: "gray" }; // Reset task list pane
+		setBorderColor(headerBox, "yellow");
+		setBorderColor(taskListPane, "gray"); // Reset task list pane
 		screen.render();
 		updateHelpBar();
 		startSearchMonitoring();
@@ -666,7 +703,7 @@ export async function viewTaskEnhanced(
 		stopSearchMonitoring();
 		// Reset header box border
 		if (currentFocus !== "status" && currentFocus !== "priority") {
-			(headerBox as any).style.border = { fg: "cyan" };
+			setBorderColor(headerBox, "cyan");
 		}
 		screen.render();
 	});
@@ -674,38 +711,38 @@ export async function viewTaskEnhanced(
 	statusSelector.on("focus", () => {
 		currentFocus = "status";
 		// Highlight header box when filter is active
-		(headerBox as any).style.border = { fg: "yellow" };
-		(taskListPane as any).style.border = { fg: "gray" }; // Reset task list pane
+		setBorderColor(headerBox, "yellow");
+		setBorderColor(taskListPane, "gray"); // Reset task list pane
 		// Update style to show blue highlight when focused
-		(statusSelector as any).style.selected = { bg: "blue", fg: "white" };
+		setSelectedColors(statusSelector, { bg: "blue", fg: "white" });
 		screen.render();
 		updateHelpBar();
 	});
 
 	statusSelector.on("blur", () => {
 		// Remove blue highlight when not focused
-		(statusSelector as any).style.selected = { bg: "black", fg: "white" };
+		setSelectedColors(statusSelector, { bg: "black", fg: "white" });
 		// Reset header box border
-		(headerBox as any).style.border = { fg: "cyan" };
+		setBorderColor(headerBox, "cyan");
 		screen.render();
 	});
 
 	prioritySelector.on("focus", () => {
 		currentFocus = "priority";
 		// Highlight header box when filter is active
-		(headerBox as any).style.border = { fg: "yellow" };
-		(taskListPane as any).style.border = { fg: "gray" }; // Reset task list pane
+		setBorderColor(headerBox, "yellow");
+		setBorderColor(taskListPane, "gray"); // Reset task list pane
 		// Update style to show blue highlight when focused
-		(prioritySelector as any).style.selected = { bg: "blue", fg: "white" };
+		setSelectedColors(prioritySelector, { bg: "blue", fg: "white" });
 		screen.render();
 		updateHelpBar();
 	});
 
 	prioritySelector.on("blur", () => {
 		// Remove blue highlight when not focused
-		(prioritySelector as any).style.selected = { bg: "black", fg: "white" };
+		setSelectedColors(prioritySelector, { bg: "black", fg: "white" });
 		// Reset header box border
-		(headerBox as any).style.border = { fg: "cyan" };
+		setBorderColor(headerBox, "cyan");
 		screen.render();
 	});
 
@@ -811,8 +848,8 @@ export async function viewTaskEnhanced(
 			}
 			if (taskList) {
 				currentFocus = "list";
-				(taskListPane as any).style.border = { fg: "yellow" };
-				(headerBox as any).style.border = { fg: "cyan" };
+				setBorderColor(taskListPane, "yellow");
+				setBorderColor(headerBox, "cyan");
 				taskList.focus();
 				screen.render();
 				updateHelpBar();
@@ -907,7 +944,7 @@ export async function viewTaskEnhanced(
 		const list = taskList as GenericList<Task> | null;
 		if (list) {
 			currentFocus = "list";
-			(taskListPane as any).style.border = { fg: "yellow" };
+			setBorderColor(taskListPane, "yellow");
 			list.focus();
 		}
 	}

@@ -60,6 +60,20 @@ export class Core {
 		return this.searchService;
 	}
 
+	disposeSearchService(): void {
+		if (this.searchService) {
+			this.searchService.dispose();
+			this.searchService = undefined;
+		}
+	}
+
+	disposeContentStore(): void {
+		if (this.contentStore) {
+			this.contentStore.dispose();
+			this.contentStore = undefined;
+		}
+	}
+
 	// Backward compatibility aliases
 	get filesystem() {
 		return this.fs;

@@ -24,6 +24,8 @@ interface TaskSearchEntity extends BaseSearchEntity {
 	readonly task: Task;
 	readonly statusLower: string;
 	readonly priorityLower?: SearchPriorityFilter;
+	readonly idVariants: string[];
+	readonly dependencyIds: string[];
 }
 
 interface DocumentSearchEntity extends BaseSearchEntity {
@@ -42,6 +44,34 @@ type NormalizedFilters = {
 	statuses?: string[];
 	priorities?: SearchPriorityFilter[];
 };
+
+const TASK_ID_PREFIX = "task-";
+
+function parseTaskIdSegments(value: string): number[] | null {
+	const withoutPrefix = value.startsWith(TASK_ID_PREFIX) ? value.slice(TASK_ID_PREFIX.length) : value;
+	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
+		return null;
+	}
+	return withoutPrefix.split(".").map((segment) => Number.parseInt(segment, 10));
+}
+
+function createTaskIdVariants(id: string): string[] {
+	const segments = parseTaskIdSegments(id);
+	if (!segments) {
+		const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
+		return id === normalized ? [normalized] : [normalized, id];
+	}
+	const canonicalSuffix = segments.join(".");
+	const variants = new Set<string>();
+	const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
+	variants.add(normalized);
+	variants.add(`${TASK_ID_PREFIX}${canonicalSuffix}`);
+	variants.add(canonicalSuffix);
+	if (id !== normalized) {
+		variants.add(id);
+	}
+	return Array.from(variants);
+}
 
 export class SearchService {
 	private initialized = false;
@@ -160,6 +190,8 @@ export class SearchService {
 			task,
 			statusLower: task.status.toLowerCase(),
 			priorityLower: task.priority ? (task.priority.toLowerCase() as SearchPriorityFilter) : undefined,
+			idVariants: createTaskIdVariants(task.id),
+			dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
 		}));
 
 		this.documents = documents.map((document) => ({
@@ -195,9 +227,11 @@ export class SearchService {
 			ignoreLocation: true,
 			minMatchCharLength: 2,
 			keys: [
-				{ name: "title", weight: 0.45 },
-				{ name: "rawContent", weight: 0.35 },
+				{ name: "title", weight: 0.35 },
+				{ name: "rawContent", weight: 0.3 },
 				{ name: "id", weight: 0.2 },
+				{ name: "idVariants", weight: 0.1 },
+				{ name: "dependencyIds", weight: 0.05 },
 			],
 		});
 	}
