@@ -14,6 +14,7 @@ import {
 	calculateTeamMetrics,
 	calculateTrends,
 	calculateVelocityMetrics,
+	createTaskCount,
 	filterTasksByAssignee,
 	filterTasksByTimeframe,
 	formatTimeframeDescription,
@@ -106,7 +107,7 @@ export class ProjectOverviewHandlers {
 				overview,
 			};
 
-			const result: ProjectOverviewResult = {
+			const result: Partial<ProjectOverviewResult> = {
 				metadata: {
 					projectName: projectConfig.projectName || "Project",
 					analysisTimestamp: new Date().toISOString(),
@@ -120,8 +121,6 @@ export class ProjectOverviewHandlers {
 					taskCount: overview.totalTasks,
 				},
 				overview,
-				recommendations: [],
-				insights: [],
 			};
 
 			// Calculate optional metrics based on configuration
@@ -154,18 +153,21 @@ export class ProjectOverviewHandlers {
 			}
 
 			// Generate recommendations and insights
-			(result as any).recommendations = generateRecommendations(analysisInput);
-			(result as any).insights = generateInsights(analysisInput);
+			result.recommendations = generateRecommendations(analysisInput);
+			result.insights = generateInsights(analysisInput);
+
+			// Ensure we have a complete result before caching
+			const finalResult = result as ProjectOverviewResult;
 
 			// Update cache
-			this.updateCache(config, result, filteredTasks.length);
+			this.updateCache(config, finalResult, filteredTasks.length);
 
 			// Log audit trail for security
 			await this.logAuditTrail(config, filteredTasks.length);
 
 			return {
 				success: true,
-				data: result,
+				data: finalResult,
 			};
 		} catch (error) {
 			return {
@@ -289,7 +291,7 @@ export class ProjectOverviewHandlers {
 		this.cache = {
 			lastComputed: now,
 			data: result,
-			taskCount: taskCount as any, // TaskCount brand
+			taskCount: createTaskCount(taskCount),
 			configHash: this.generateConfigHash(config),
 			validUntil,
 		};

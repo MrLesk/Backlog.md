@@ -52,10 +52,10 @@ describe("JSON Schema Validation", () => {
 		expect(shortResult.isValid).toBe(false);
 		expect(shortResult.errors).toContain("Field 'title' must be at least 3 characters long");
 
-		// Too long (should be truncated)
+		// Too long (should be rejected)
 		const longResult = validateInput({ title: "This is way too long" }, schema);
-		expect(longResult.isValid).toBe(true);
-		expect(longResult.sanitizedData?.title).toBe("This is wa"); // Truncated to 10 chars
+		expect(longResult.isValid).toBe(false);
+		expect(longResult.errors).toContain("Field 'title' exceeds maximum length of 10 characters (20 characters)");
 
 		// Invalid enum
 		const enumResult = validateInput({ status: "invalid" }, schema);
@@ -117,8 +117,8 @@ describe("JSON Schema Validation", () => {
 
 		// Invalid array items
 		const invalidResult = validateInput({ tags: ["toolong"] }, schema);
-		expect(invalidResult.isValid).toBe(true);
-		expect(validResult.sanitizedData?.tags).toEqual(["one", "two"]); // Truncated
+		expect(invalidResult.isValid).toBe(false);
+		expect(invalidResult.errors).toContain("Field 'tags[0]' exceeds maximum length of 5 characters (7 characters)");
 
 		// Not an array
 		const notArrayResult = validateInput({ tags: "not-array" }, schema);
@@ -274,8 +274,8 @@ describe("Task Creation Validation", () => {
 		};
 
 		const result = await validateTaskCreate(input);
-		expect(result.isValid).toBe(true);
-		expect((result.sanitizedData?.title as string).length).toBe(200); // Truncated
+		expect(result.isValid).toBe(false);
+		expect(result.errors).toContain("Field 'title' exceeds maximum length of 200 characters (300 characters)");
 	});
 });
 

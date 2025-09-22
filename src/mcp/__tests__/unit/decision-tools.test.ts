@@ -154,7 +154,7 @@ describe("Decision Tools", () => {
 			expect(result.content[0]?.text).toContain("Decision created successfully");
 		});
 
-		it("should truncate long field values to maxLength", async () => {
+		it("should reject field values exceeding maxLength", async () => {
 			const longString = "x".repeat(10001); // Exceeds maxLength of 10000
 
 			const result = await mcpServer.testInterface.callTool({
@@ -167,18 +167,12 @@ describe("Decision Tools", () => {
 				},
 			});
 
-			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Decision created successfully");
-
-			// Verify the context was truncated to 10000 characters
-			const decisions = await mcpServer.fs.listDecisions();
-			const createdDecision = decisions.find((d) => d.title === "Field Length Test");
-			expect(createdDecision?.context.length).toBe(10000);
+			expect(result.isError).toBeTruthy();
+			expect(result.content[0]?.text).toContain("exceeds maximum length of 10000 characters");
 		});
 
-		it("should truncate long titles to maxLength", async () => {
+		it("should reject titles exceeding maxLength", async () => {
 			const longTitle = "x".repeat(201); // Exceeds maxLength of 200
-			const truncatedTitle = "x".repeat(200);
 
 			const result = await mcpServer.testInterface.callTool({
 				params: {
@@ -189,14 +183,8 @@ describe("Decision Tools", () => {
 				},
 			});
 
-			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Decision created successfully");
-
-			// Verify the title was truncated to 200 characters
-			const decisions = await mcpServer.fs.listDecisions();
-			const createdDecision = decisions.find((d) => d.title === truncatedTitle);
-			expect(createdDecision).toBeDefined();
-			expect(createdDecision?.title.length).toBe(200);
+			expect(result.isError).toBeTruthy();
+			expect(result.content[0]?.text).toContain("exceeds maximum length of 200 characters");
 		});
 
 		it("should support all valid status values", async () => {

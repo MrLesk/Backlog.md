@@ -24,6 +24,7 @@ import { registerConfigTools } from "./mcp/tools/config-tools.ts";
 import { registerDecisionTools } from "./mcp/tools/decision-tools.ts";
 import { registerDependencyTools } from "./mcp/tools/dependency-tools.ts";
 import { registerDraftTools } from "./mcp/tools/draft-tools.ts";
+import { registerNotesTools } from "./mcp/tools/notes-tools.ts";
 import { registerProjectOverviewTools } from "./mcp/tools/project-overview-tool.ts";
 import { registerSequenceTools } from "./mcp/tools/sequence-tools.ts";
 import { registerTaskTools } from "./mcp/tools/task-tools.ts";
@@ -2608,6 +2609,7 @@ mcpCmd
 			registerBoardTools(server);
 			registerConfigTools(server);
 			registerSequenceTools(server);
+			registerNotesTools(server);
 			registerProjectOverviewTools(server);
 			registerDataResources(server);
 
@@ -2618,6 +2620,9 @@ mcpCmd
 				console.error("Starting MCP server in debug mode");
 				console.error("Registered tools:");
 				console.error("  Task management: task_create, task_list, task_update");
+				console.error(
+					"  Notes management: notes_set, notes_append, notes_get, notes_clear, plan_set, plan_append, plan_get, plan_clear",
+				);
 				console.error("  Board management: board_view");
 				console.error("  Configuration: config_get, config_set");
 				console.error("  Sequence planning: sequence_create, sequence_plan");

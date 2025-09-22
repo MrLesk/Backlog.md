@@ -72,7 +72,9 @@ Comprehensive interfaces for extensible MCP functionality:
 │   ├── task-tools.ts      # Task management tools (✅ Complete - 10 tools)
 │   ├── task-handlers.ts   # Task operation handlers (✅ Complete)
 │   ├── document-tools.ts  # Document management tools (✅ Complete - 3 tools)
-│   └── document-handlers.ts # Document operation handlers (✅ Complete)
+│   ├── document-handlers.ts # Document operation handlers (✅ Complete)
+│   ├── notes-tools.ts     # Notes management tools (✅ Complete - 8 tools)
+│   └── notes-handlers.ts  # Notes operation handlers (✅ Complete)
 ├── resources/             # Resource handlers (📁 Ready for task 265.04)
 ├── prompts/               # Prompt templates (📁 Ready for task 265.06)
 ├── transports/            # Transport handlers (📁 Ready for task 265.02)
@@ -120,12 +122,23 @@ The implementation went beyond initial minimal specifications to provide a produ
 - **`doc_list`**: List documents with filtering by type and tags
 - **`doc_view`**: Get complete document content and metadata
 
+### Notes Management Tools (8 tools)
+- **`notes_set`**: Replace entire implementation notes content (50KB limit)
+- **`notes_append`**: Append to implementation notes with configurable separator
+- **`notes_get`**: Retrieve current implementation notes content
+- **`notes_clear`**: Clear all implementation notes
+- **`plan_set`**: Replace entire implementation plan content (50KB limit)
+- **`plan_append`**: Append to implementation plan with configurable separator
+- **`plan_get`**: Retrieve current implementation plan content
+- **`plan_clear`**: Clear all implementation plan
+
 ## Usage Example
 
 ```typescript
 import { McpServer } from './mcp/server.ts';
 import { registerTaskTools } from './mcp/tools/task-tools.ts';
 import { registerDocumentTools } from './mcp/tools/document-tools.ts';
+import { registerNotesTools } from './mcp/tools/notes-tools.ts';
 
 // Create server instance
 const server = new McpServer(process.cwd());
@@ -133,6 +146,7 @@ const server = new McpServer(process.cwd());
 // Register tool suites
 registerTaskTools(server);     // Adds 10 task management tools
 registerDocumentTools(server); // Adds 3 document management tools
+registerNotesTools(server);    // Adds 8 notes management tools
 
 // Connect transport (when implemented in task 265.02)
 // await server.connect('stdio');

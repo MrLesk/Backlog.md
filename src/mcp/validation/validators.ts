@@ -16,6 +16,7 @@ export interface JsonSchema {
 	minimum?: number;
 	maximum?: number;
 	maxItems?: number;
+	preserveWhitespace?: boolean;
 }
 
 /**
@@ -105,14 +106,18 @@ function validateField(
 			}
 
 			// Sanitize string input
-			let sanitizedString = sanitizeString(value);
+			const sanitizedString = schema.preserveWhitespace
+				? sanitizeStringPreserveWhitespace(value)
+				: sanitizeString(value);
 
 			// Length validation
 			if (schema.minLength !== undefined && sanitizedString.length < schema.minLength) {
 				errors.push(`Field '${fieldName}' must be at least ${schema.minLength} characters long`);
 			}
 			if (schema.maxLength !== undefined && sanitizedString.length > schema.maxLength) {
-				sanitizedString = sanitizedString.substring(0, schema.maxLength);
+				errors.push(
+					`Field '${fieldName}' exceeds maximum length of ${schema.maxLength} characters (${sanitizedString.length} characters)`,
+				);
 			}
 
 			// Enum validation
@@ -198,6 +203,18 @@ export function sanitizeString(input: string): string {
 
 	// Normalize line endings
 	sanitized = sanitized.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+	return sanitized;
+}
+
+export function sanitizeStringPreserveWhitespace(input: string): string {
+	if (typeof input !== "string") {
+		return String(input);
+	}
+
+	// Don't remove null bytes - let validation catch them
+	// Normalize line endings but preserve whitespace
+	const sanitized = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
 	return sanitized;
 }

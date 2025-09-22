@@ -97,11 +97,6 @@ export function updateTaskAcceptanceCriteria(content: string, criteria: string[]
 }
 
 export function updateTaskImplementationPlan(content: string, plan: string): string {
-	// Don't add empty plan
-	if (!plan || !plan.trim()) {
-		return content;
-	}
-
 	// Normalize to LF while computing, preserve original EOL at return
 	const useCRLF = /\r\n/.test(content);
 	const src = content.replace(/\r\n/g, "\n");
@@ -109,6 +104,19 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 	// Find if there's already an Implementation Plan section
 	const planRegex = /## Implementation Plan\s*\n([\s\S]*?)(?=\n## |$)/i;
 	const match = src.match(planRegex);
+
+	// If plan is empty, remove the existing section
+	if (!plan || !plan.trim()) {
+		if (match) {
+			// Remove the existing Implementation Plan section and normalize spacing
+			const before = src.slice(0, match.index || 0).replace(/\n+$/, "");
+			const afterIdx = (match.index || 0) + match[0].length;
+			const after = src.slice(afterIdx).replace(/^\n+/, "");
+			const result = after ? `${before}\n\n${after}` : before;
+			return useCRLF ? result.replace(/\n/g, "\r\n") : result;
+		}
+		return content;
+	}
 
 	const newSection = `## Implementation Plan\n\n${plan}`;
 
@@ -150,11 +158,6 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 }
 
 export function updateTaskImplementationNotes(content: string, notes: string): string {
-	// Don't add empty notes
-	if (!notes || !notes.trim()) {
-		return content;
-	}
-
 	// Normalize to LF while computing, preserve original EOL at return
 	const useCRLF = /\r\n/.test(content);
 	const src = content.replace(/\r\n/g, "\n");
@@ -162,6 +165,19 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 	// Find if there's already an Implementation Notes section
 	const notesRegex = /## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i;
 	const match = src.match(notesRegex);
+
+	// If notes are empty, remove the existing section
+	if (!notes || !notes.trim()) {
+		if (match) {
+			// Remove the existing Implementation Notes section and normalize spacing
+			const before = src.slice(0, match.index || 0).replace(/\n+$/, "");
+			const afterIdx = (match.index || 0) + match[0].length;
+			const after = src.slice(afterIdx).replace(/^\n+/, "");
+			const result = after ? `${before}\n\n${after}` : before;
+			return useCRLF ? result.replace(/\n/g, "\r\n") : result;
+		}
+		return content;
+	}
 
 	let out: string | undefined;
 	if (match) {

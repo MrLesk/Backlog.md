@@ -26,6 +26,10 @@ export const createTaskCount = (value: number): TaskCount => {
 	return Math.max(0, Math.floor(value)) as TaskCount;
 };
 
+export const createDuration = (value: number): Duration => {
+	return Math.max(0, Math.round(value)) as Duration;
+};
+
 // Date utility functions
 export function getDateRange(timeframe: AnalysisTimeframe): { start: Date; end: Date } {
 	const now = new Date();
@@ -154,7 +158,7 @@ export function calculateProjectOverview(tasks: readonly Task[]): ProjectOvervie
 		todoTasks,
 		blockedTasks,
 		completionRate,
-		averageCompletionTime: averageCompletionTime as any, // Duration brand
+		averageCompletionTime: createDuration(averageCompletionTime),
 	};
 }
 
