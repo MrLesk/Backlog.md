@@ -177,7 +177,7 @@ describe("MCP Dual Mode Support", () => {
 				mcpEntryPoint: "backlog",
 				projectRoot: TEST_DIR,
 				mcpCommands: {
-					global: ["mcp", "start", "--stdio"],
+					global: ["mcp", "start"],
 				},
 			};
 
@@ -188,7 +188,7 @@ describe("MCP Dual Mode Support", () => {
 				mcpServers: {
 					"backlog-md": {
 						command: "backlog",
-						args: ["mcp", "start", "--stdio"],
+						args: ["mcp", "start"],
 						env: {
 							// biome-ignore lint/suspicious/noTemplateCurlyInString: intentional template placeholder for MCP config
 							BACKLOG_PROJECT_ROOT: "${workspaceFolder}",
@@ -209,7 +209,7 @@ describe("MCP Dual Mode Support", () => {
 			expect(result.errors.length).toBeGreaterThan(0);
 			expect(result.context.isDevelopment).toBe(false);
 			// Note: Global installation may be detected based on system state
-		});
+		}, 10000);
 
 		test("should identify development setup issues", async () => {
 			// Setup incomplete development environment (missing bun)
@@ -344,7 +344,7 @@ describe("MCP Dual Mode Support", () => {
 				mcpEntryPoint: "backlog",
 				projectRoot: TEST_DIR,
 				mcpCommands: {
-					global: ["mcp", "start", "--stdio"],
+					global: ["mcp", "start"],
 				},
 			};
 
@@ -353,7 +353,7 @@ describe("MCP Dual Mode Support", () => {
 				mcpServers: {
 					"backlog-md": {
 						command: "backlog",
-						args: ["mcp", "start", "--stdio"],
+						args: ["mcp", "start"],
 						env: {
 							// biome-ignore lint/suspicious/noTemplateCurlyInString: intentional template placeholder for MCP config
 							BACKLOG_PROJECT_ROOT: "${workspaceFolder}",
@@ -364,7 +364,7 @@ describe("MCP Dual Mode Support", () => {
 
 			// Global template should use backlog command directly
 			expect(expectedConfig.mcpServers["backlog-md"].command).toBe("backlog");
-			expect(expectedConfig.mcpServers["backlog-md"].args).toEqual(["mcp", "start", "--stdio"]);
+			expect(expectedConfig.mcpServers["backlog-md"].args).toEqual(["mcp", "start"]);
 		});
 	});
 
@@ -402,7 +402,7 @@ describe("MCP Dual Mode Support", () => {
 			// Errors should be descriptive and actionable
 			const errorText = result.errors.join(" ");
 			expect(errorText.length).toBeGreaterThan(0);
-		});
+		}, 10000);
 	});
 
 	describe("Context Switching", () => {

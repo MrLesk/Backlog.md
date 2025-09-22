@@ -2,6 +2,7 @@ import type { Task } from "../types/index.ts";
 import type {
 	AnalysisTimeframe,
 	DependencyMetrics,
+	Duration,
 	Percentage,
 	ProjectOverview,
 	ProjectTrends,

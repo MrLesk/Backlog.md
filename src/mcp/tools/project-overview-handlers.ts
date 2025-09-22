@@ -6,6 +6,7 @@ import type {
 	ProjectOverviewResponse,
 	ProjectOverviewResult,
 	SecurityLevel,
+	TaskCount,
 } from "../../types/project-overview.ts";
 import {
 	calculateDependencyMetrics,

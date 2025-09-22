@@ -2555,15 +2555,19 @@ mcpCmd
 	.option("--daemon", "Run as daemon process (HTTP/SSE transport only)", false)
 	.action(async (options) => {
 		try {
-			// Check if server is already running
-			const existingPid = readPidFile();
-			if (existingPid && isProcessRunning(existingPid)) {
-				console.error(`MCP server is already running with PID ${existingPid}`);
-				process.exit(1);
-			}
+			// Only use PID files for daemon-like transports (HTTP/SSE)
+			// stdio transport should be ephemeral and allow multiple instances
+			if (options.transport !== "stdio") {
+				// Check if server is already running
+				const existingPid = readPidFile();
+				if (existingPid && isProcessRunning(existingPid)) {
+					console.error(`MCP server is already running with PID ${existingPid}`);
+					process.exit(1);
+				}
 
-			// Clean up stale PID file if needed
-			cleanupStaleProcess();
+				// Clean up stale PID file if needed
+				cleanupStaleProcess();
+			}
 
 			// Check if .mcp.json exists for Claude Code integration
 			const { existsSync } = await import("node:fs");
@@ -2632,13 +2636,18 @@ mcpCmd
 				console.error("  Daily standup: daily_standup_workflow");
 			}
 
-			// Write PID file
-			writePidFile(process.pid);
+			// Write PID file only for daemon-like transports
+			if (options.transport !== "stdio") {
+				writePidFile(process.pid);
+			}
 
 			// Set up graceful shutdown
 			const cleanup = () => {
 				console.error("Shutting down MCP server...");
-				removePidFile();
+				// Only remove PID file if we created one
+				if (options.transport !== "stdio") {
+					removePidFile();
+				}
 				process.exit(0);
 			};
 
@@ -2702,7 +2711,10 @@ mcpCmd
 				await server.start();
 			}
 		} catch (error) {
-			removePidFile();
+			// Only remove PID file if we created one
+			if (options.transport !== "stdio") {
+				removePidFile();
+			}
 			console.error("Failed to start MCP server:", error instanceof Error ? error.message : error);
 			process.exit(1);
 		}
@@ -2775,14 +2787,34 @@ mcpCmd
 
 mcpCmd
 	.command("setup")
+	.alias("init")
 	.description("Set up MCP configuration for this project")
 	.option("--force", "Overwrite existing .mcp.json file", false)
 	.option("--global", "Force global installation template (skip auto-detection)", false)
 	.action(async (options) => {
 		try {
 			const { writeFileSync, existsSync, readFileSync } = await import("node:fs");
-			const { resolve } = await import("node:path");
+			const { resolve, dirname } = await import("node:path");
+			const { fileURLToPath } = await import("node:url");
+
 			const projectRoot = process.cwd();
+
+			// Get the source directory (where backlog.md templates are located)
+			const currentFileUrl = import.meta.url;
+			const currentFilePath = fileURLToPath(currentFileUrl);
+			const sourceDir = dirname(currentFilePath);
+			const sourceRoot = resolve(sourceDir, "..");
+
+			console.log("🔧 Setting up MCP configuration");
+			console.log(`📁 Target project: ${projectRoot}`);
+			console.log(`📂 Template source: ${sourceRoot}`);
+
+			// Check if target directory is a backlog project
+			const isBacklogProject = existsSync(resolve(projectRoot, "backlog"));
+			if (!isBacklogProject) {
+				console.log("⚠️  This doesn't appear to be a backlog project (no 'backlog/' directory found)");
+				console.log("   MCP will be set up to work with the current directory as the project root");
+			}
 
 			// Check if .mcp.json already exists
 			const mcpConfigPath = resolve(projectRoot, ".mcp.json");
@@ -2794,10 +2826,9 @@ mcpCmd
 
 			// Determine which template to use
 			const { getInstallationContext } = await import("./utils/installation-detector.ts");
-			const context = getInstallationContext(projectRoot);
+			const context = getInstallationContext(projectRoot, sourceRoot);
 
 			let templateFile: string;
-			let templatePath: string;
 			let configType: string;
 
 			if (options.global || (!context.isDevelopment && context.isGlobalInstall)) {
@@ -2806,37 +2837,72 @@ mcpCmd
 				configType = "global installation";
 			} else {
 				// Use development template
-				templateFile = ".mcp.template.json";
+				templateFile = ".mcp.dev.template.json";
 				configType = "development mode";
 			}
 
-			// Try to find template file
-			templatePath = resolve(projectRoot, templateFile);
-			if (!existsSync(templatePath)) {
-				// If not in current directory, try resolving relative to this script
-				// This handles the case where we're running from a different directory
-				const scriptDir = resolve(import.meta.url.replace("file://", ""), "..", "..");
-				templatePath = resolve(scriptDir, templateFile);
+			console.log(`🔧 Configuration type: ${configType}`);
 
-				if (!existsSync(templatePath)) {
-					console.error(`❌ Template file not found: ${templateFile}`);
-					console.log("💡 Make sure you're running this command from the backlog.md project root");
-					console.log("💡 Available templates should be:");
-					console.log("   • .mcp.template.json (for development)");
-					console.log("   • .mcp.global.template.json (for end users)");
-					process.exit(1);
+			// Find template file - always look in the source directory
+			const templatePath = resolve(sourceRoot, templateFile);
+			if (!existsSync(templatePath)) {
+				console.error(`❌ Template file not found: ${templateFile}`);
+				console.log(`💡 Expected template location: ${templatePath}`);
+				console.log("💡 Available templates should be:");
+				console.log("   • .mcp.template.json (for development)");
+				console.log("   • .mcp.global.template.json (for end users)");
+				process.exit(1);
+			}
+
+			console.log(`📋 Using template: ${templateFile}`);
+
+			// Read template and generate configuration
+			let templateContent = readFileSync(templatePath, "utf8");
+
+			// Generate a unique workspace ID for dev templates
+			const workspaceId = Math.random().toString(36).substring(2, 8);
+
+			// Replace template placeholders
+			templateContent = templateContent.replace(/\{\{WORKSPACE_ID\}\}/g, workspaceId);
+
+			let mcpConfig: Record<string, unknown>;
+			try {
+				mcpConfig = JSON.parse(templateContent);
+			} catch (_parseError) {
+				console.error(`❌ Invalid JSON in template file: ${templateFile}`);
+				process.exit(1);
+			}
+
+			// Customize configuration for cross-project development
+			// This happens when we're running the dev version of backlog but setting up MCP
+			// in another project that doesn't have the backlog.md source code
+			const needsCrossProjectSetup =
+				context.isDevelopment && context.sourceRoot && context.sourceRoot !== context.projectRoot;
+
+			if (needsCrossProjectSetup) {
+				// When running development mode in a different project, use global command
+				console.log("🔄 Customizing configuration for cross-project development setup");
+
+				// Find the MCP server entry (it might have a dynamic name with workspace ID)
+				const serverKey = Object.keys(mcpConfig.mcpServers)[0];
+				if (serverKey && mcpConfig.mcpServers[serverKey]) {
+					mcpConfig.mcpServers[serverKey].command = "backlog";
+					mcpConfig.mcpServers[serverKey].args = ["mcp", "start"];
+
+					// Update environment to use the actual project path
+					// Claude Code doesn't support ${workspaceFolder} variable - only actual env vars
+					if (mcpConfig.mcpServers[serverKey].env) {
+						mcpConfig.mcpServers[serverKey].env.BACKLOG_PROJECT_ROOT = projectRoot;
+					}
 				}
 			}
 
-			console.log(`🔧 Setting up MCP configuration for ${configType}`);
-			console.log(`📋 Using template: ${templateFile}`);
-
-			// Read and copy template
-			const templateContent = readFileSync(templatePath, "utf8");
-			writeFileSync(mcpConfigPath, templateContent);
+			// Write the configuration
+			writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
 
 			console.log("✅ Created .mcp.json configuration");
-			console.log(`📁 Project root: ${projectRoot}`);
+			console.log(`📁 Target project: ${projectRoot}`);
+			console.log(`🔧 Configuration type: ${configType}`);
 			console.log("");
 			console.log("💡 Next steps:");
 			console.log("   • Open this project in Claude Code");

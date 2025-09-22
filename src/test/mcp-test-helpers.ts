@@ -230,7 +230,7 @@ export function setupMcpConfiguration(testDir: string, mode: "development" | "gl
 			mcpServers: {
 				"backlog-md": {
 					command: "backlog",
-					args: ["mcp", "start", "--stdio"],
+					args: ["mcp", "start"],
 					env: {
 						// biome-ignore lint/suspicious/noTemplateCurlyInString: intentional template placeholder for MCP config
 						BACKLOG_PROJECT_ROOT: "${workspaceFolder}",
@@ -395,7 +395,7 @@ export function mockGlobalBacklogCommand(available = true): {
 			resolve(mockBinDir, "backlog"),
 			`#!/bin/bash
 echo "Mock backlog v1.0.0"
-if [ "$1" = "mcp" ] && [ "$2" = "start" ] && [ "$3" = "--stdio" ]; then
+if [ "$1" = "mcp" ] && [ "$2" = "start" ]; then
 	echo "Mock MCP server starting..." >&2
 	sleep 1
 	echo "Mock MCP server started" >&2
