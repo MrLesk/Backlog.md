@@ -2,6 +2,7 @@ import type { Task } from "../types/index.ts";
 import type {
 	AnalysisTimeframe,
 	DependencyMetrics,
+	Duration,
 	Percentage,
 	ProjectOverview,
 	ProjectTrends,
@@ -154,7 +155,7 @@ export function calculateProjectOverview(tasks: readonly Task[]): ProjectOvervie
 		todoTasks,
 		blockedTasks,
 		completionRate,
-		averageCompletionTime: averageCompletionTime as any, // Duration brand
+		averageCompletionTime: averageCompletionTime as Duration,
 	};
 }
 

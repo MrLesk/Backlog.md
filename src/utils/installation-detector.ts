@@ -6,10 +6,14 @@ export interface InstallationContext {
 	isGlobalInstall: boolean;
 	/** True if running from source code (development) */
 	isDevelopment: boolean;
+	/** True if the target directory is a backlog project */
+	isBacklogProject: boolean;
 	/** The appropriate MCP entry point for this installation */
 	mcpEntryPoint: string;
-	/** The project root directory */
+	/** The project root directory where MCP will be set up */
 	projectRoot: string;
+	/** The source directory where backlog.md is located */
+	sourceRoot?: string;
 	/** Available MCP startup commands */
 	mcpCommands: {
 		development?: string[];
@@ -20,11 +24,17 @@ export interface InstallationContext {
 /**
  * Detects the current installation context and provides appropriate MCP configuration
  */
-export function getInstallationContext(projectRoot?: string): InstallationContext {
+export function getInstallationContext(projectRoot?: string, sourceRoot?: string): InstallationContext {
 	const root = projectRoot || process.cwd();
 
+	// Check if the target directory is a backlog project
+	const isBacklogProject = detectBacklogProject(root);
+
 	// Check if we're running from source (development mode)
-	const isDevelopment = detectDevelopmentMode(root);
+	// When sourceRoot is provided, check if we're running from backlog.md source
+	const isDevelopment = sourceRoot
+		? detectDevelopmentMode(sourceRoot) && detectGlobalInstall()
+		: detectDevelopmentMode(root);
 
 	// Check if backlog is globally available
 	const isGlobalInstall = detectGlobalInstall();
@@ -38,10 +48,23 @@ export function getInstallationContext(projectRoot?: string): InstallationContex
 	return {
 		isGlobalInstall,
 		isDevelopment,
+		isBacklogProject,
 		mcpEntryPoint,
 		projectRoot: root,
+		sourceRoot,
 		mcpCommands,
 	};
+}
+
+/**
+ * Detects if a directory is a backlog project
+ */
+function detectBacklogProject(projectRoot: string): boolean {
+	// Check for key backlog project indicators
+	const backlogDir = resolve(projectRoot, "backlog");
+	const backlogMd = resolve(projectRoot, "backlog.md");
+
+	return existsSync(backlogDir) || existsSync(backlogMd);
 }
 
 /**

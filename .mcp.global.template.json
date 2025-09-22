@@ -2,7 +2,7 @@
 	"mcpServers": {
 		"backlog-md": {
 			"command": "backlog",
-			"args": ["mcp", "start", "--stdio"],
+			"args": ["mcp", "start"],
 			"env": {
 				"BACKLOG_PROJECT_ROOT": "${workspaceFolder}"
 			}

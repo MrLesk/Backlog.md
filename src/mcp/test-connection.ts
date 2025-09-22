@@ -215,16 +215,19 @@ async function testServerStartup(context: InstallationContext): Promise<{
 	prompts: string[];
 }> {
 	return new Promise((resolve) => {
+		// Use shorter timeout in test environment
+		const timeoutMs =
+			process.env.NODE_ENV === "test" || process.argv.some((arg) => arg.includes("test")) ? 2000 : 10000;
 		const timeout = setTimeout(() => {
 			resolve({
 				success: false,
-				errors: ["MCP server startup timed out after 10 seconds"],
+				errors: [`MCP server startup timed out after ${timeoutMs / 1000} seconds`],
 				warnings: [],
 				tools: [],
 				resources: [],
 				prompts: [],
 			});
-		}, 10000);
+		}, timeoutMs);
 
 		try {
 			// Determine command and arguments
@@ -236,7 +239,7 @@ async function testServerStartup(context: InstallationContext): Promise<{
 				args = ["run", pathResolve(context.projectRoot, "src", "mcp-stdio-server.ts")];
 			} else if (context.isGlobalInstall) {
 				command = "backlog";
-				args = ["mcp", "start", "--stdio"];
+				args = ["mcp", "start"];
 			} else {
 				clearTimeout(timeout);
 				resolve({
@@ -269,9 +272,11 @@ async function testServerStartup(context: InstallationContext): Promise<{
 			});
 
 			// Give the server a moment to start, then kill it
+			const killTimeoutMs =
+				process.env.NODE_ENV === "test" || process.argv.some((arg) => arg.includes("test")) ? 500 : 2000;
 			setTimeout(() => {
 				child.kill("SIGTERM");
-			}, 2000);
+			}, killTimeoutMs);
 
 			child.on("close", (code) => {
 				clearTimeout(timeout);

@@ -6,12 +6,59 @@ Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)
 
 ### Development
 
-- `bun i` - Install dependencies
+- `bun i` - Install dependencies (also configures smart CLI detection)
 - `bun test` - Run all tests
 - `bunx tsc --noEmit` - Type-check code
 - `bun run check .` - Run all Biome checks (format + lint)
 - `bun run build` - Build the CLI tool
 - `bun run cli` - Uses the CLI tool directly
+- `bun link` - Create global symlink (now works seamlessly with smart detection!)
+
+### CLI Development Workflow
+
+The project includes smart CLI detection that eliminates common development friction:
+
+1. **Fresh Clone**: `git clone` → `bun install` → `bun link` - works immediately
+2. **Auto-Detection**: CLI automatically uses TypeScript source files in development
+3. **No Version Conflicts**: Always runs your current development code
+
+#### Debug CLI Detection
+
+```bash
+export BACKLOG_DEBUG=true
+backlog --version  # Shows detection mode and execution path
+```
+
+#### Manual Mode Override
+
+```bash
+# Force specific execution modes when needed
+BACKLOG_EXECUTION_MODE=development backlog --version  # Uses bun src/cli.ts
+BACKLOG_EXECUTION_MODE=built backlog --version        # Uses dist/backlog
+BACKLOG_EXECUTION_MODE=production backlog --version   # Uses platform binary
+```
+
+#### Disable Smart Detection (if needed)
+
+```bash
+export BACKLOG_SMART_CLI=false
+backlog --version  # Uses legacy platform binary behavior
+```
+
+#### Common Issues & Solutions
+
+**❌ "Unknown command" error after `bun link`:**
+```bash
+# Force development mode - usually fixes the issue
+BACKLOG_EXECUTION_MODE=development backlog --version
+```
+
+**❌ Using wrong version after linking:**
+```bash
+# Check if detection is working correctly
+BACKLOG_DEBUG=true backlog --version
+# Should show "Is globally linked: true" and use development mode
+```
 
 ### Testing
 

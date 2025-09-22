@@ -55,7 +55,7 @@
 		"build:css": "bun ./node_modules/@tailwindcss/cli/dist/index.mjs -i src/web/styles/source.css -o src/web/styles/style.css --minify",
 		"build": "bun run build:css && bun build --production --compile --minify --outfile=dist/backlog src/cli.ts",
 		"cli": "bun run build:css && bun src/cli.ts",
-		"postinstall": "sh -c 'command -v bun2nix >/dev/null 2>&1 && bun2nix -o bun.nix || (command -v nix >/dev/null 2>&1 && nix --extra-experimental-features \"nix-command flakes\" run github:baileyluTCD/bun2nix -- -o bun.nix || true)'"
+		"postinstall": "node scripts/cleanup-dev-packages.cjs && sh -c 'command -v bun2nix >/dev/null 2>&1 && bun2nix -o bun.nix || (command -v nix >/dev/null 2>&1 && nix --extra-experimental-features \"nix-command flakes\" run github:baileyluTCD/bun2nix -- -o bun.nix || true)'"
 	},
 	"lint-staged": {
 		"package.json": [

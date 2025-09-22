@@ -6,6 +6,7 @@ import type {
 	ProjectOverviewResponse,
 	ProjectOverviewResult,
 	SecurityLevel,
+	TaskCount,
 } from "../../types/project-overview.ts";
 import {
 	calculateDependencyMetrics,
@@ -154,8 +155,8 @@ export class ProjectOverviewHandlers {
 			}
 
 			// Generate recommendations and insights
-			(result as any).recommendations = generateRecommendations(analysisInput);
-			(result as any).insights = generateInsights(analysisInput);
+			result.recommendations = generateRecommendations(analysisInput);
+			result.insights = generateInsights(analysisInput);
 
 			// Update cache
 			this.updateCache(config, result, filteredTasks.length);
@@ -289,7 +290,7 @@ export class ProjectOverviewHandlers {
 		this.cache = {
 			lastComputed: now,
 			data: result,
-			taskCount: taskCount as any, // TaskCount brand
+			taskCount: taskCount as TaskCount,
 			configHash: this.generateConfigHash(config),
 			validUntil,
 		};

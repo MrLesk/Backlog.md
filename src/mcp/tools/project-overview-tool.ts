@@ -65,7 +65,7 @@ function createProjectOverviewTool(server: McpServer): McpToolHandler {
 		async (_input, _context) => [], // No additional validation needed
 		async (args: Record<string, unknown>, _context: ValidationContext) => {
 			// Parse and validate arguments
-			const timeframe = parseTimeframe(args.timeframe as any);
+			const timeframe = parseTimeframe(args.timeframe);
 			const includeMetrics = (args.includeMetrics as string[]) || ["overview", "velocity", "quality"];
 			const securityLevel = (args.securityLevel as SecurityLevel) || "internal";
 			const refreshCache = (args.refreshCache as boolean) || false;
@@ -192,7 +192,7 @@ function createProjectOverviewTool(server: McpServer): McpToolHandler {
 /**
  * Parse timeframe from input arguments
  */
-function parseTimeframe(timeframeInput: any): AnalysisTimeframe {
+function parseTimeframe(timeframeInput: unknown): AnalysisTimeframe {
 	if (!timeframeInput || typeof timeframeInput !== "object") {
 		// Default timeframe
 		return { type: "preset", value: "last30days" };

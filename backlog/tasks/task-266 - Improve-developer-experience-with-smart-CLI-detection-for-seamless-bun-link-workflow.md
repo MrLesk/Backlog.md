@@ -3,9 +3,11 @@ id: task-266
 title: >-
   Improve developer experience with smart CLI detection for seamless bun link
   workflow
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@agent-claude'
 created_date: '2025-09-19 12:37'
+updated_date: '2025-09-19 13:04'
 labels:
   - developer-experience
   - mcp
@@ -17,7 +19,6 @@ priority: high
 ## Description
 
 The current developer experience is broken when using 'bun link' because the cli.cjs wrapper expects platform-specific binaries that don't exist in development. This causes the linked backlog command to run an old version (0.3.3) instead of the current development code. We need to make cli.cjs intelligent enough to detect when it's running from a development installation and automatically use the TypeScript source files directly with Bun, without requiring any configuration from developers.
-
 ## Problem Analysis
 
 ### Current Architecture Issues
@@ -133,6 +134,45 @@ Add postinstall script to remove conflicting packages:
 3. Test MCP setup with new workflow
 4. Test production npm install still works
 
+
+## Implementation Notes
+
+## Synthesized Implementation Plan
+
+**Problem**: CLI wrapper always uses platform binaries, causing `bun link` to run outdated versions.
+
+**Solution**: Smart context detection in cli.cjs with these phases:
+
+### Phase 1: Smart Detection
+- Create `/scripts/detection.cjs` with intelligent execution mode detection
+- Modify `/scripts/cli.cjs` with security checks and fallback logic
+- Support dev/built/production modes automatically
+- Add debug logging and error handling
+
+### Phase 2: Environment Safety
+- Environment-aware postinstall (skip in CI/production)
+- Feature flag support (`BACKLOG_SMART_CLI`)
+- Cross-platform compatibility testing
+- Performance optimization
+
+### Phase 3: Documentation
+- Update DEVELOPMENT.md with simplified workflow
+- Enhance docs/mcp/dev-setup.md with CLI detection section
+- Add troubleshooting guides and before/after scenarios
+
+### Phase 4: Testing
+- Fresh clone → bun link workflow validation
+- Cross-platform compatibility matrix
+- Container/CI environment testing
+- MCP development workflow verification
+
+**Key Safety Features**:
+- Backward compatibility with current resolveBinary.cjs
+- Feature flag for gradual rollout
+- Comprehensive error handling
+- Security validation of execution context
+
+
 ## Success Criteria
 
 - [ ] `bun install && bun link` creates a working global command
@@ -149,3 +189,13 @@ Add postinstall script to remove conflicting packages:
 - `package.json` - Add postinstall cleanup
 - `DEVELOPMENT.md` - Update setup instructions
 - `docs/mcp/dev-setup.md` - Simplify MCP development docs
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 CLI automatically detects development environment and uses TypeScript source files with bun
+- [x] #2 Fresh clone workflow (git clone → bun install → bun link) works seamlessly without configuration
+- [x] #3 Production npm installs continue to work with platform-specific binaries
+- [x] #4 Clear error messages guide users when runtime requirements are not met
+- [x] #5 Feature flag (BACKLOG_SMART_CLI=false) allows disabling smart detection
+- [x] #6 Documentation updated to reflect new seamless workflow
+<!-- AC:END -->

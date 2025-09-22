@@ -11,11 +11,14 @@ This guide walks you through setting up a completely local MCP development envir
 # Clone and setup - automatically detects your Claude environment
 git clone <your-repo-url> backlog-workspace-1
 cd backlog-workspace-1
-./scripts/setup-mcp-dev.sh
+bun install                    # Smart CLI detection auto-configures development
+./scripts/setup-mcp-dev.sh     # Configure MCP server
 
 # For Claude CLI: run `claude`
 # For Claude Desktop: open directory in Claude Desktop
 ```
+
+> **Note**: The project now features smart CLI detection! After `bun install`, the CLI automatically uses TypeScript source files in development, eliminating version conflicts.
 
 ### Manual Mode Selection
 ```bash
@@ -116,9 +119,36 @@ BACKLOG_MCP_DEBUG=true
 BACKLOG_MCP_LOG_LEVEL=debug
 ```
 
+## CLI Detection for MCP Development
+
+The Backlog.md CLI now includes smart detection that automatically adapts to your development environment. This is particularly important for MCP development where you need the CLI to use the latest source code.
+
+### How It Works
+
+When you run `backlog` commands during MCP development:
+
+1. **Auto-Detection**: CLI detects you're in a development environment (source files present, no platform binaries)
+2. **Source Mode**: Automatically uses `bun src/cli.ts` instead of old platform binaries
+3. **Live Updates**: Changes to source files are immediately available without rebuilds
+
+### Benefits for MCP Development
+
+- **No Version Conflicts**: Always uses your current development code
+- **Instant Feedback**: MCP tools reflect your latest changes immediately
+- **Zero Configuration**: Works automatically after `bun install`
+
+### Debug Mode
+
+If you encounter issues with CLI detection during MCP development:
+
+```bash
+export BACKLOG_DEBUG=true
+backlog --version  # Shows detection logic and chosen execution mode
+```
+
 ## Prerequisites
 
-- **Bun**: Primary runtime for the project
+- **Bun**: Primary runtime for the project (required for development mode)
   ```bash
   curl -fsSL https://bun.sh/install | bash
   ```
