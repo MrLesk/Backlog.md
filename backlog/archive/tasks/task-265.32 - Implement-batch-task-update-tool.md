@@ -1,9 +1,10 @@
 ---
 id: task-265.32
 title: Implement batch task update tool
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-09-16T17:26:26.048Z'
+updated_date: '2025-09-22 17:22'
 labels:
   - mcp
   - tools
@@ -19,7 +20,6 @@ priority: low
 ## Description
 
 Add batch operation capabilities to enable agents to update multiple tasks simultaneously with filtering, validation, and atomic operations.
-
 ## Overview
 The MCP server currently only supports individual task updates, but agents often need to perform bulk operations like updating status across multiple tasks, bulk label changes, or mass assignee updates. This tool provides efficient batch processing with safety features.
 
@@ -277,3 +277,24 @@ The MCP server currently only supports individual task updates, but agents often
 - [ ] #7 Handles errors gracefully with proper reporting
 - [ ] #8 Comprehensive test coverage for all batch scenarios
 <!-- AC:END -->
+
+## Implementation Notes
+
+Task marked as Done and will be archived - deferred for future release.
+
+## Decision:
+Batch task update functionality is being deferred from the initial MCP release due to complexity and risk factors:
+
+### Reasons for Deferral:
+1. **Complexity**: Batch operations require sophisticated filtering, validation, and rollback mechanisms
+2. **Risk**: Mass update operations could potentially affect many tasks simultaneously if not properly controlled
+3. **Time Constraints**: Focus on core MCP functionality for first release
+4. **Safety Concerns**: Need more time to design proper safeguards and limits for batch operations
+
+### Future Considerations:
+- Can be revisited in a future release once core MCP functionality is stable
+- Would benefit from real-world usage patterns to inform design
+- Requires comprehensive safety mechanisms and audit trails
+- Should include robust dry-run and preview capabilities
+
+The initial MCP release will focus on single-task operations which provide a safer, more controlled interaction model for AI agents.
