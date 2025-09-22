@@ -6,7 +6,6 @@ import type {
 	ProjectOverviewResponse,
 	ProjectOverviewResult,
 	SecurityLevel,
-	TaskCount,
 } from "../../types/project-overview.ts";
 import {
 	calculateDependencyMetrics,
@@ -56,10 +55,10 @@ export class ProjectOverviewHandlers {
 			}
 
 			// Check cache first (if not forced refresh)
-			if (!config.refreshCache && this.isCacheValid(config)) {
+			if (!config.refreshCache && this.isCacheValid(config) && this.cache) {
 				return {
 					success: true,
-					data: this.cache?.data,
+					data: this.cache.data,
 				};
 			}
 
