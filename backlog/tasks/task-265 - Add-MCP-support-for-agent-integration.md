@@ -24,6 +24,21 @@ MCP is a protocol that allows AI agents to access external data sources and tool
 - **Dual Transport**: Support stdio (local) and HTTP/SSE (network) transports for different agent connection scenarios
 - **Configuration Integration**: Extend `BacklogConfig` interface (`src/types/index.ts:76-98`) with MCP-specific settings
 
+### Architectural Constraints (CRITICAL)
+MCP implementation MUST follow these non-negotiable principles:
+- **Pure Wrapper**: MCP is protocol translation only - no business logic
+- **No Feature Creep**: Cannot exceed CLI capabilities (no circular dependency detection, advanced analytics, etc.)
+- **Core API Only**: Must use existing Core methods, not reimplement them
+- **ID Generation**: Must use `core.generateNextId()` for all IDs (tasks, drafts, etc.)
+
+### Known Issues & Refactoring Tasks
+Based on architectural audit (2025-09-23):
+- **task-265.34-37**: Remove unauthorized features (circular deps, analytics, filtering, caching)
+- **task-265.38-39**: Fix ID generation to use Core APIs
+- **task-265.40-41**: Refactor to use Core methods (createTaskFromData, promoteDraft)
+- **task-265.42-43**: Extract and share validation logic
+- **task-265.44-45**: Audit and document architecture compliance
+
 ### Architecture Overview
 ```
 /src/mcp/
@@ -135,6 +150,11 @@ The MCP server is production-ready and can be used by AI agents to:
 - Manage task sequences and dependencies
 
 **Status**: Core functionality complete, ready for agent integration testing.
+
+#### ⚠️ Architecture Compliance Status:
+- Multiple violations identified where MCP reimplements Core logic
+- Refactoring required to restore pure wrapper architecture
+- See subtasks 265.34-45 for specific fixes needed
 
 ## MCP Feature Expansion
 

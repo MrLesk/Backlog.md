@@ -98,6 +98,18 @@ are found, the commit will be blocked until fixed.
 - **Utility Functions**: Reusable utility functions (like ID generators) are placed in `src/utils/` directory
 - **No Side Effects on Import**: Modules should not execute CLI code when imported by other modules or tests
 
+## MCP Architecture Principles
+
+- **MCP is a Pure Wrapper**: MCP server provides protocol translation ONLY - no business logic, no feature extensions
+- **CLI Feature Parity**: MCP cannot have features that CLI doesn't have. It's a strict subset of CLI functionality
+- **Core API Usage**: All operations MUST use Core APIs
+- **No Direct Filesystem**: All file operations through Core's filesystem abstraction
+- **Architectural Violations to Avoid**:
+  - Custom business logic in MCP handlers
+  - Features beyond CLI capabilities
+  - Reimplemented Core functionality
+  - Direct filesystem or git operations
+
 ## Git Workflow
 
 - **Branching**: Use feature branches when working on tasks (e.g. `tasks/task-123-feature-name`)
