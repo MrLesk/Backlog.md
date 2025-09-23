@@ -20,7 +20,7 @@ export class DocumentToolHandlers {
 		const { title, content, type, tags } = args;
 
 		try {
-			// Generate document ID using utility function
+			// Generate document ID using utility function with Core instance
 			const { generateNextDocId } = await import("../../utils/id-generators.js");
 			const id = await generateNextDocId(this.server);
 
@@ -58,60 +58,21 @@ export class DocumentToolHandlers {
 	}
 
 	/**
-	 * List documents with optional filtering
+	 * List documents (simple listing like CLI)
 	 */
-	async listDocuments(args: {
-		type?: "readme" | "guide" | "specification" | "other";
-		tags?: string[];
-		limit: number;
-		offset: number;
-	}): Promise<CallToolResult> {
-		const { type, tags, limit, offset } = args;
-
+	async listDocuments(): Promise<CallToolResult> {
 		try {
-			// Get all documents from filesystem
-			const allDocuments = await this.server.fs.listDocuments();
+			// Get all documents using Core API
+			const allDocuments = await this.server.filesystem.listDocuments();
 
-			// Apply filtering
-			let filteredDocuments = allDocuments;
-
-			if (type) {
-				filteredDocuments = filteredDocuments.filter((doc) => doc.type === type);
-			}
-
-			if (tags && tags.length > 0) {
-				filteredDocuments = filteredDocuments.filter((doc) => tags.some((tag) => doc.tags?.includes(tag)));
-			}
-
-			// Apply pagination
-			const paginatedDocuments = filteredDocuments.slice(offset, offset + limit);
-
-			// Create summary for each document
-			const documentSummaries = paginatedDocuments.map((doc) => ({
-				id: doc.id,
-				title: doc.title,
-				type: doc.type,
-				createdDate: doc.createdDate,
-				updatedDate: doc.updatedDate,
-				tags: doc.tags || [],
-				contentLength: doc.body.length,
-				preview: doc.body.slice(0, 200) + (doc.body.length > 200 ? "..." : ""),
-			}));
+			// Format as simple list matching CLI output: "${id} - ${title}"
+			const documentList = allDocuments.map((doc) => `${doc.id} - ${doc.title}`).join("\n");
 
 			return {
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify(
-							{
-								total: filteredDocuments.length,
-								offset,
-								limit,
-								documents: documentSummaries,
-							},
-							null,
-							2,
-						),
+						text: documentList,
 					},
 				],
 			};
@@ -138,7 +99,8 @@ export class DocumentToolHandlers {
 		try {
 			const document = await this.server.getDocument(id);
 
-			const documentWithMetadata = {
+			// Return document content in simple format matching CLI
+			const documentContent = {
 				id: document.id,
 				title: document.title,
 				type: document.type,
@@ -146,17 +108,13 @@ export class DocumentToolHandlers {
 				updatedDate: document.updatedDate,
 				tags: document.tags || [],
 				content: document.body,
-				metadata: {
-					contentLength: document.body.length,
-					lineCount: document.body.split("\n").length,
-				},
 			};
 
 			return {
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify(documentWithMetadata, null, 2),
+						text: JSON.stringify(documentContent, null, 2),
 					},
 				],
 			};

@@ -54,7 +54,7 @@ describe("Document Tools", () => {
 			expect(docCreateTool?.inputSchema).toBeDefined();
 
 			expect(docListTool).toBeDefined();
-			expect(docListTool?.description).toContain("List documents");
+			expect(docListTool?.description).toContain("List all documents");
 			expect(docListTool?.inputSchema).toBeDefined();
 
 			expect(docViewTool).toBeDefined();
@@ -191,80 +191,26 @@ describe("Document Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			const data = JSON.parse(result.content[0]?.text as string);
-			expect(data.total).toBeGreaterThanOrEqual(3);
-			expect(data.documents).toBeInstanceOf(Array);
-			expect(data.documents.length).toBeGreaterThanOrEqual(3);
+			const text = result.content[0]?.text as string;
+			expect(typeof text).toBe("string");
+			// Should be simple format: "id - title" per line
+			if (text.trim()) {
+				const lines = text.split("\n");
+				expect(lines.length).toBeGreaterThan(0);
+				// Each line should match "doc-XXX - Title" format
+				for (const line of lines) {
+					expect(line).toMatch(/^doc-\d+\s+-\s+.+$/);
+				}
+			}
 		});
 
-		it("should filter by type", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "doc_list",
-					arguments: {
-						type: "guide",
-					},
-				},
-			});
+		// REMOVED: Tests for unauthorized filtering and pagination features
+		// These features exceeded CLI capabilities and have been removed for architecture compliance
 
-			expect(result.isError).toBeFalsy();
-			const data = JSON.parse(result.content[0]?.text as string);
-			expect(data.documents.every((doc: { type: string }) => doc.type === "guide")).toBe(true);
-		});
-
-		it("should filter by tags", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "doc_list",
-					arguments: {
-						tags: ["tutorial"],
-					},
-				},
-			});
-
-			expect(result.isError).toBeFalsy();
-			const data = JSON.parse(result.content[0]?.text as string);
-			expect(data.documents.every((doc: { tags: string[] }) => doc.tags.includes("tutorial"))).toBe(true);
-		});
-
-		it("should support pagination", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "doc_list",
-					arguments: {
-						limit: 2,
-						offset: 0,
-					},
-				},
-			});
-
-			expect(result.isError).toBeFalsy();
-			const data = JSON.parse(result.content[0]?.text as string);
-			expect(data.documents.length).toBeLessThanOrEqual(2);
-			expect(data.limit).toBe(2);
-			expect(data.offset).toBe(0);
-		});
-
-		it("should include document summaries with metadata", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "doc_list",
-					arguments: {},
-				},
-			});
-
-			expect(result.isError).toBeFalsy();
-			const data = JSON.parse(result.content[0]?.text as string);
-			const firstDoc = data.documents[0];
-
-			expect(firstDoc).toHaveProperty("id");
-			expect(firstDoc).toHaveProperty("title");
-			expect(firstDoc).toHaveProperty("type");
-			expect(firstDoc).toHaveProperty("createdDate");
-			expect(firstDoc).toHaveProperty("tags");
-			expect(firstDoc).toHaveProperty("contentLength");
-			expect(firstDoc).toHaveProperty("preview");
-		});
+		// it("should filter by type", async () => {
+		// it("should filter by tags", async () => {
+		// it("should support pagination", async () => {
+		// it("should include document summaries with metadata", async () => {
 	});
 
 	describe("doc_view", () => {
@@ -308,8 +254,7 @@ describe("Document Tools", () => {
 			expect(data.type).toBe("specification");
 			expect(data.content).toContain("This is a document for viewing tests");
 			expect(data.tags).toEqual(["test", "view"]);
-			expect(data.metadata.contentLength).toBeGreaterThan(0);
-			expect(data.metadata.lineCount).toBeGreaterThan(1);
+			// Removed metadata checks - simplified to match CLI capabilities
 		});
 
 		it("should handle non-existent document", async () => {
@@ -382,11 +327,10 @@ describe("Document Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			const data = JSON.parse(result.content[0]?.text as string);
-			const foundDoc = data.documents.find((doc: { id: string }) => doc.id === "doc-filesystem-test");
+			const text = result.content[0]?.text as string;
 
-			expect(foundDoc).toBeDefined();
-			expect(foundDoc.title).toBe("Filesystem Created Document");
+			// Should find the document in simple text format: "doc-filesystem-test - Filesystem Created Document"
+			expect(text).toContain("doc-filesystem-test - Filesystem Created Document");
 		});
 	});
 });

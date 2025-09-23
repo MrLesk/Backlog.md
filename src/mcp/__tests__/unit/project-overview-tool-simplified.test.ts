@@ -49,7 +49,9 @@ describe("Project Overview Tool (Simplified CLI Parity)", () => {
 		// Create test tasks
 		await createTestTasks(mcpServer);
 
-		const result = await (mcpServer as any).callTool("project_overview", {});
+		const result = await mcpServer.testInterface.callTool({
+			params: { name: "project_overview", arguments: {} },
+		});
 
 		expect(result.isError).toBeFalsy();
 		expect(result.content).toBeDefined();
@@ -84,14 +86,21 @@ describe("Project Overview Tool (Simplified CLI Parity)", () => {
 		await createTestTasks(mcpServer);
 
 		// Should work with no parameters (simplified schema)
-		const result = await (mcpServer as any).callTool("project_overview", {});
+		const result = await mcpServer.testInterface.callTool({
+			params: { name: "project_overview", arguments: {} },
+		});
 		expect(result.isError).toBeFalsy();
 
 		// Should still work even if advanced parameters are passed (they're ignored)
-		const result2 = await (mcpServer as any).callTool("project_overview", {
-			timeframe: { type: "days", value: 30 },
-			includeMetrics: ["velocity", "quality"],
-			securityLevel: "internal",
+		const result2 = await mcpServer.testInterface.callTool({
+			params: {
+				name: "project_overview",
+				arguments: {
+					timeframe: { type: "days", value: 30 },
+					includeMetrics: ["velocity", "quality"],
+					securityLevel: "internal",
+				},
+			},
 		});
 		expect(result2.isError).toBeFalsy();
 
@@ -104,7 +113,9 @@ describe("Project Overview Tool (Simplified CLI Parity)", () => {
 	test("should match CLI overview data structure", async () => {
 		await createTestTasks(mcpServer);
 
-		const result = await (mcpServer as any).callTool("project_overview", {});
+		const result = await mcpServer.testInterface.callTool({
+			params: { name: "project_overview", arguments: {} },
+		});
 		const response = JSON.parse(result.content[0].text);
 		const stats = response.statistics;
 

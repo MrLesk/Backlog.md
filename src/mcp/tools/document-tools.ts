@@ -37,26 +37,7 @@ const docCreateSchema: JsonSchema = {
  */
 const docListSchema: JsonSchema = {
 	type: "object",
-	properties: {
-		type: {
-			type: "string",
-			enum: ["readme", "guide", "specification", "other"],
-		},
-		tags: {
-			type: "array",
-			items: { type: "string", maxLength: 50 },
-			maxItems: 10,
-		},
-		limit: {
-			type: "number",
-			minimum: 1,
-			maximum: 100,
-		},
-		offset: {
-			type: "number",
-			minimum: 0,
-		},
-	},
+	properties: {},
 	required: [],
 };
 
@@ -104,17 +85,12 @@ const createDocListTool = (handlers: DocumentToolHandlers): McpToolHandler =>
 	createSimpleValidatedTool(
 		{
 			name: "doc_list",
-			description: "List documents with optional filtering by type and tags",
+			description: "List all documents",
 			inputSchema: docListSchema,
 		},
 		docListSchema,
-		async (input, _context) => {
-			return handlers.listDocuments({
-				type: input.type as "readme" | "guide" | "specification" | "other" | undefined,
-				tags: input.tags as string[] | undefined,
-				limit: (input.limit as number) || 50,
-				offset: (input.offset as number) || 0,
-			});
+		async (_input, _context) => {
+			return handlers.listDocuments();
 		},
 	);
 
