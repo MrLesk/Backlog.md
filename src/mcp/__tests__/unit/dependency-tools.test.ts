@@ -121,50 +121,19 @@ describe("Dependency Tools", () => {
 			).rejects.toThrow("The following dependencies do not exist: task-999");
 		});
 
-		test("should reject self-referential dependencies", async () => {
-			await expect(
-				handlers.addDependencies({
-					id: "task-1",
-					dependencies: ["task-1"],
-				}),
-			).rejects.toThrow("Task cannot depend on itself: task-1");
-		});
-
-		test("should detect circular dependencies", async () => {
-			// Create A → B dependency
-			await handlers.addDependencies({
-				id: "task-2",
+		test("should allow self-referential dependencies (matches CLI behavior)", async () => {
+			const result = await handlers.addDependencies({
+				id: "task-1",
 				dependencies: ["task-1"],
 			});
 
-			// Try to create B → A dependency (circular)
-			await expect(
-				handlers.addDependencies({
-					id: "task-1",
-					dependencies: ["task-2"],
-				}),
-			).rejects.toThrow("Circular dependency detected");
-		});
+			expect(result.content[0]?.type).toBe("text");
+			expect(result.content[0]?.text).toContain("Successfully added 1 dependencies");
 
-		test("should detect multi-level circular dependencies", async () => {
-			// Create A → B → C chain
-			await handlers.addDependencies({
-				id: "task-2",
-				dependencies: ["task-1"],
-			});
-
-			await handlers.addDependencies({
-				id: "task-3",
-				dependencies: ["task-2"],
-			});
-
-			// Try to create C → A dependency (circular)
-			await expect(
-				handlers.addDependencies({
-					id: "task-1",
-					dependencies: ["task-3"],
-				}),
-			).rejects.toThrow("Circular dependency detected");
+			// Verify self-reference was added
+			const task = await server.fs.loadTask("task-1");
+			expect(task).toBeTruthy();
+			expect(task?.dependencies).toContain("task-1");
 		});
 	});
 
@@ -264,8 +233,6 @@ describe("Dependency Tools", () => {
 			});
 
 			expect(result.content[0]?.text).toContain("✅ All dependencies exist");
-			expect(result.content[0]?.text).toContain("✅ No self-reference");
-			expect(result.content[0]?.text).toContain("✅ No circular dependencies");
 			expect(result.content[0]?.text).toContain("✅ Overall validation: PASSED");
 		});
 
@@ -280,30 +247,14 @@ describe("Dependency Tools", () => {
 			expect(result.content[0]?.text).toContain("❌ Overall validation: FAILED");
 		});
 
-		test("should detect self-reference", async () => {
+		test("should allow self-reference (matches CLI behavior)", async () => {
 			const result = await handlers.validateDependencyGraph({
 				id: "task-2",
 				proposedDependencies: ["task-2"],
 			});
 
-			expect(result.content[0]?.text).toContain("❌ Self-reference detected");
-			expect(result.content[0]?.text).toContain("❌ Overall validation: FAILED");
-		});
-
-		test("should detect circular dependencies", async () => {
-			// Set up circular dependency scenario
-			await handlers.addDependencies({
-				id: "task-2",
-				dependencies: ["task-1"],
-			});
-
-			const result = await handlers.validateDependencyGraph({
-				id: "task-1",
-				proposedDependencies: ["task-2"],
-			});
-
-			expect(result.content[0]?.text).toContain("❌ Circular dependency detected");
-			expect(result.content[0]?.text).toContain("❌ Overall validation: FAILED");
+			expect(result.content[0]?.text).toContain("✅ All dependencies exist");
+			expect(result.content[0]?.text).toContain("✅ Overall validation: PASSED");
 		});
 
 		test("should validate existing dependencies when no proposals given", async () => {

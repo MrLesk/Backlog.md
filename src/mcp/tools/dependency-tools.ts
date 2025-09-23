@@ -130,71 +130,6 @@ export class DependencyToolHandlers {
 	}
 
 	/**
-	 * Detect circular dependencies in the dependency graph
-	 */
-	private async detectCircularDependency(
-		taskId: string,
-		newDependencies: string[],
-	): Promise<{ hasCycle: boolean; cyclePath?: string[] }> {
-		const tasks = await this.server.fs.listTasks();
-		const _taskMap = new Map<string, Task>(tasks.map((t) => [t.id, t]));
-
-		// Create a temporary dependency graph with the proposed changes
-		const dependencyGraph = new Map<string, string[]>();
-
-		// Build current graph
-		for (const task of tasks) {
-			dependencyGraph.set(task.id, [...(task.dependencies || [])]);
-		}
-
-		// Apply proposed changes
-		dependencyGraph.set(taskId, [...newDependencies]);
-
-		// Use DFS to detect cycles
-		const visited = new Set<string>();
-		const recursionStack = new Set<string>();
-		const path: string[] = [];
-
-		const dfs = (currentId: string): boolean => {
-			if (recursionStack.has(currentId)) {
-				// Found a cycle, capture the cycle path
-				const cycleStart = path.indexOf(currentId);
-				if (cycleStart !== -1) {
-					path.splice(0, cycleStart);
-					path.push(currentId);
-				}
-				return true;
-			}
-
-			if (visited.has(currentId)) {
-				return false;
-			}
-
-			visited.add(currentId);
-			recursionStack.add(currentId);
-			path.push(currentId);
-
-			const dependencies = dependencyGraph.get(currentId) || [];
-			for (const dep of dependencies) {
-				if (dfs(dep)) {
-					return true;
-				}
-			}
-
-			recursionStack.delete(currentId);
-			path.pop();
-			return false;
-		};
-
-		// Check for cycles starting from the modified task
-		if (dfs(taskId)) {
-			return { hasCycle: true, cyclePath: [...path] };
-		}
-
-		return { hasCycle: false };
-	}
-
-	/**
 	 * Add dependencies to a task
 	 */
 	async addDependencies(args: { id: string; dependencies: string[] }): Promise<CallToolResult> {
@@ -215,11 +150,6 @@ export class DependencyToolHandlers {
 				throw new Error(`The following dependencies do not exist: ${invalid.join(", ")}`);
 			}
 
-			// Check for self-reference
-			if (valid.includes(id)) {
-				throw new Error(`Task cannot depend on itself: ${id}`);
-			}
-
 			// Merge with existing dependencies (avoid duplicates)
 			const existingDeps = new Set(task.dependencies || []);
 			const newDeps = [...existingDeps];
@@ -230,12 +160,6 @@ export class DependencyToolHandlers {
 					newDeps.push(dep);
 					addedDeps.push(dep);
 				}
-			}
-
-			// Check for circular dependencies
-			const { hasCycle, cyclePath } = await this.detectCircularDependency(id, newDeps);
-			if (hasCycle) {
-				throw new Error(`Circular dependency detected: ${cyclePath?.join(" → ") || "Unknown cycle"}`);
 			}
 
 			// Update task
@@ -389,21 +313,6 @@ export class DependencyToolHandlers {
 				result += "✅ All dependencies exist\n";
 			}
 
-			// Check for self-reference
-			if (depsToCheck.includes(id)) {
-				result += "❌ Self-reference detected: task depends on itself\n";
-			} else {
-				result += "✅ No self-reference\n";
-			}
-
-			// Check for circular dependencies
-			const { hasCycle, cyclePath } = await this.detectCircularDependency(id, valid);
-			if (hasCycle) {
-				result += `❌ Circular dependency detected: ${cyclePath?.join(" → ") || "Unknown cycle"}\n`;
-			} else {
-				result += "✅ No circular dependencies\n";
-			}
-
 			// Provide dependency chain analysis
 			if (valid.length > 0) {
 				result += "\nDependency analysis:\n";
@@ -422,7 +331,7 @@ export class DependencyToolHandlers {
 				}
 			}
 
-			const isValid = invalid.length === 0 && !depsToCheck.includes(id) && !hasCycle;
+			const isValid = invalid.length === 0;
 			result += `\n${isValid ? "✅" : "❌"} Overall validation: ${isValid ? "PASSED" : "FAILED"}`;
 
 			return {
