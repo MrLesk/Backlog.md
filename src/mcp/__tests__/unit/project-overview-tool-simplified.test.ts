@@ -1,0 +1,164 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { $ } from "bun";
+import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
+import { McpServer } from "../../server.ts";
+import { registerProjectOverviewTools } from "../../tools/project-overview-tool.ts";
+import { registerTaskTools } from "../../tools/task-tools.ts";
+
+let TEST_DIR: string;
+
+describe("Project Overview Tool (Simplified CLI Parity)", () => {
+	let mcpServer: McpServer;
+
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-project-overview-simplified");
+		mcpServer = new McpServer(TEST_DIR);
+		await mcpServer.filesystem.ensureBacklogStructure();
+
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+		// Initialize the project to create config with default statuses
+		await mcpServer.initializeProject("Test Project");
+
+		// Register tools
+		registerTaskTools(mcpServer);
+		registerProjectOverviewTools(mcpServer);
+	});
+
+	afterEach(async () => {
+		try {
+			await mcpServer.stop();
+			await safeCleanup(TEST_DIR);
+		} catch {
+			// Ignore cleanup errors
+		}
+	});
+
+	test("should register project_overview tool with simplified description", async () => {
+		const tools = await mcpServer.listTools();
+		const overviewTool = tools.tools.find((t) => t.name === "project_overview");
+
+		expect(overviewTool).toBeDefined();
+		expect(overviewTool?.description).toContain("basic project overview");
+		expect(overviewTool?.description).toContain("CLI overview command");
+	});
+
+	test("should generate CLI-compatible basic project overview", async () => {
+		// Create test tasks
+		await createTestTasks(mcpServer);
+
+		const result = await (mcpServer as any).callTool("project_overview", {});
+
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toBeDefined();
+
+		const response = JSON.parse(result.content[0].text);
+		expect(response.success).toBe(true);
+		expect(response.statistics).toBeDefined();
+
+		// Verify CLI-compatible structure
+		const stats = response.statistics;
+		expect(stats.statusCounts).toBeDefined();
+		expect(stats.priorityCounts).toBeDefined();
+		expect(stats.totalTasks).toBeDefined();
+		expect(stats.completedTasks).toBeDefined();
+		expect(stats.completionPercentage).toBeDefined();
+		expect(stats.draftCount).toBeDefined();
+		expect(stats.recentActivity).toBeDefined();
+		expect(stats.projectHealth).toBeDefined();
+
+		// Verify NO advanced features exist
+		expect(stats.velocity).toBeUndefined();
+		expect(stats.quality).toBeUndefined();
+		expect(stats.team).toBeUndefined();
+		expect(stats.dependencies).toBeUndefined();
+		expect(stats.capacity).toBeUndefined();
+		expect(stats.trends).toBeUndefined();
+		expect(stats.recommendations).toBeUndefined();
+		expect(stats.insights).toBeUndefined();
+	});
+
+	test("should not accept advanced parameters", async () => {
+		await createTestTasks(mcpServer);
+
+		// Should work with no parameters (simplified schema)
+		const result = await (mcpServer as any).callTool("project_overview", {});
+		expect(result.isError).toBeFalsy();
+
+		// Should still work even if advanced parameters are passed (they're ignored)
+		const result2 = await (mcpServer as any).callTool("project_overview", {
+			timeframe: { type: "days", value: 30 },
+			includeMetrics: ["velocity", "quality"],
+			securityLevel: "internal",
+		});
+		expect(result2.isError).toBeFalsy();
+
+		// Response should be identical (parameters ignored)
+		const response1 = JSON.parse(result.content[0].text);
+		const response2 = JSON.parse(result2.content[0].text);
+		expect(response1.statistics.totalTasks).toBe(response2.statistics.totalTasks);
+	});
+
+	test("should match CLI overview data structure", async () => {
+		await createTestTasks(mcpServer);
+
+		const result = await (mcpServer as any).callTool("project_overview", {});
+		const response = JSON.parse(result.content[0].text);
+		const stats = response.statistics;
+
+		// Verify exact structure matches TaskStatistics interface
+		expect(typeof stats.statusCounts).toBe("object");
+		expect(typeof stats.priorityCounts).toBe("object");
+		expect(typeof stats.totalTasks).toBe("number");
+		expect(typeof stats.completedTasks).toBe("number");
+		expect(typeof stats.completionPercentage).toBe("number");
+		expect(typeof stats.draftCount).toBe("number");
+
+		expect(stats.recentActivity).toBeDefined();
+		expect(Array.isArray(stats.recentActivity.created)).toBe(true);
+		expect(Array.isArray(stats.recentActivity.updated)).toBe(true);
+
+		expect(stats.projectHealth).toBeDefined();
+		expect(typeof stats.projectHealth.averageTaskAge).toBe("number");
+		expect(Array.isArray(stats.projectHealth.staleTasks)).toBe(true);
+		expect(Array.isArray(stats.projectHealth.blockedTasks)).toBe(true);
+	});
+});
+
+async function createTestTasks(mcpServer: McpServer): Promise<void> {
+	// Create basic test tasks for CLI overview testing
+	await mcpServer.callTool({
+		params: {
+			name: "task_create",
+			arguments: {
+				title: "Test Task 1",
+				status: "To Do",
+				priority: "high",
+			},
+		},
+	});
+
+	await mcpServer.callTool({
+		params: {
+			name: "task_create",
+			arguments: {
+				title: "Test Task 2",
+				status: "In Progress",
+				priority: "medium",
+			},
+		},
+	});
+
+	await mcpServer.callTool({
+		params: {
+			name: "task_create",
+			arguments: {
+				title: "Test Task 3",
+				status: "Done",
+				priority: "low",
+			},
+		},
+	});
+}
