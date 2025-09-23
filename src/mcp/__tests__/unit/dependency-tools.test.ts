@@ -43,6 +43,7 @@ describe("Dependency Tools", () => {
 
 	afterEach(async () => {
 		try {
+			await server.stop();
 			await safeCleanup(TEST_DIR);
 		} catch {
 			// Ignore cleanup errors
