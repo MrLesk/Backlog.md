@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import { McpServer } from "../../server.ts";
@@ -9,7 +9,8 @@ describe("Dependency Tools", () => {
 	let server: McpServer;
 	let handlers: DependencyToolHandlers;
 
-	beforeEach(async () => {
+	// Expensive setup - once per describe block
+	beforeAll(async () => {
 		TEST_DIR = createUniqueTestDir("test-dependency-tools");
 		try {
 			await rm(TEST_DIR, { recursive: true, force: true });
@@ -41,7 +42,25 @@ describe("Dependency Tools", () => {
 		handlers = new DependencyToolHandlers(server);
 	});
 
-	afterEach(async () => {
+	// Lightweight state reset between tests
+	beforeEach(async () => {
+		// Reset task dependencies to clean state
+		const task1 = await server.fs.loadTask("task-1");
+		const task2 = await server.fs.loadTask("task-2");
+		const task3 = await server.fs.loadTask("task-3");
+
+		if (task1?.dependencies && task1.dependencies.length > 0) {
+			await server.fs.saveTask({ ...task1, dependencies: [] });
+		}
+		if (task2?.dependencies && task2.dependencies.length > 0) {
+			await server.fs.saveTask({ ...task2, dependencies: [] });
+		}
+		if (task3?.dependencies && task3.dependencies.length > 0) {
+			await server.fs.saveTask({ ...task3, dependencies: [] });
+		}
+	});
+
+	afterAll(async () => {
 		try {
 			await server.stop();
 			await safeCleanup(TEST_DIR);
@@ -138,12 +157,20 @@ describe("Dependency Tools", () => {
 	});
 
 	describe("removeDependencies", () => {
-		beforeEach(async () => {
-			// Set up some dependencies
+		// Set up dependencies once for this describe block
+		beforeAll(async () => {
 			await handlers.addDependencies({
 				id: "task-3",
 				dependencies: ["task-1", "task-2"],
 			});
+		});
+
+		// Reset task-3 to have both dependencies before each test
+		beforeEach(async () => {
+			const task3 = await server.fs.loadTask("task-3");
+			if (task3) {
+				await server.fs.saveTask({ ...task3, dependencies: ["task-1", "task-2"] });
+			}
 		});
 
 		test("should remove single dependency", async () => {
@@ -187,11 +214,20 @@ describe("Dependency Tools", () => {
 	});
 
 	describe("listDependencies", () => {
-		beforeEach(async () => {
+		// Set up dependencies once for this describe block
+		beforeAll(async () => {
 			await handlers.addDependencies({
 				id: "task-3",
 				dependencies: ["task-1", "task-2"],
 			});
+		});
+
+		// Reset task-3 to have both dependencies before each test
+		beforeEach(async () => {
+			const task3 = await server.fs.loadTask("task-3");
+			if (task3) {
+				await server.fs.saveTask({ ...task3, dependencies: ["task-1", "task-2"] });
+			}
 		});
 
 		test("should list dependencies without status", async () => {
