@@ -1,6 +1,7 @@
 import { AcceptanceCriteriaManager } from "../../core/acceptance-criteria.ts";
 import type { Task } from "../../types/index.ts";
 import { getTaskPath } from "../../utils/task-path.ts";
+import { McpError } from "../errors/mcp-errors.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult } from "../types.ts";
 
@@ -93,7 +94,7 @@ export class TaskToolHandlers {
 			const { valid, invalid } = await this.validateDependencies(normalizedDependencies);
 
 			if (invalid.length > 0) {
-				throw new Error(`The following dependencies do not exist: ${invalid.join(", ")}`);
+				throw new McpError(`The following dependencies do not exist: ${invalid.join(", ")}`, "VALIDATION_ERROR");
 			}
 
 			// Convert acceptance criteria strings to structured format
@@ -118,7 +119,7 @@ export class TaskToolHandlers {
 				acceptanceCriteriaItems,
 			};
 
-			const taskId = await this.server.createTask(task, false);
+			const taskId = await this.server.createTask(task);
 
 			return {
 				content: [
@@ -129,6 +130,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to create task: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -188,6 +193,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to list tasks: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -202,7 +211,7 @@ export class TaskToolHandlers {
 			const task = await this.server.fs.loadTask(id);
 
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Format task details with all metadata and relationships
@@ -255,6 +264,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to view task: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -270,19 +283,22 @@ export class TaskToolHandlers {
 			const task = await this.server.fs.loadTask(id);
 
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Validate task is completed
 			if (task.status !== "Done") {
-				throw new Error(`Cannot archive task '${id}': task status must be 'Done' but is '${task.status}'`);
+				throw new McpError(
+					`Cannot archive task '${id}': task status must be 'Done' but is '${task.status}'`,
+					"VALIDATION_ERROR",
+				);
 			}
 
 			// Archive the task
-			const success = await this.server.archiveTask(id, false);
+			const success = await this.server.archiveTask(id);
 
 			if (!success) {
-				throw new Error(`Failed to archive task: ${id}`);
+				throw new McpError(`Failed to archive task: ${id}`, "OPERATION_FAILED");
 			}
 
 			return {
@@ -294,6 +310,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to archive task: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -309,14 +329,14 @@ export class TaskToolHandlers {
 			const task = await this.server.fs.loadTask(id);
 
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Demote the task
 			const success = await this.server.demoteTask(id, false);
 
 			if (!success) {
-				throw new Error(`Failed to demote task: ${id}`);
+				throw new McpError(`Failed to demote task: ${id}`, "OPERATION_FAILED");
 			}
 
 			return {
@@ -328,6 +348,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to demote task: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -353,7 +377,7 @@ export class TaskToolHandlers {
 			const existingTask = tasks.find((task) => task.id === id);
 
 			if (!existingTask) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Validate dependencies if provided
@@ -363,7 +387,7 @@ export class TaskToolHandlers {
 				const { valid, invalid } = await this.validateDependencies(normalizedDependencies);
 
 				if (invalid.length > 0) {
-					throw new Error(`The following dependencies do not exist: ${invalid.join(", ")}`);
+					throw new McpError(`The following dependencies do not exist: ${invalid.join(", ")}`, "VALIDATION_ERROR");
 				}
 
 				validatedDependencies = valid;
@@ -385,7 +409,7 @@ export class TaskToolHandlers {
 			if (implementationNotes !== undefined) updatedTask.implementationNotes = implementationNotes;
 			if (validatedDependencies !== undefined) updatedTask.dependencies = validatedDependencies;
 
-			await this.server.updateTask(updatedTask, false);
+			await this.server.updateTask(updatedTask);
 
 			return {
 				content: [
@@ -396,6 +420,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to update task: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -410,7 +438,7 @@ export class TaskToolHandlers {
 			const task = await this.server.fs.loadTask(id);
 
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Create context for getTaskPath utility
@@ -419,7 +447,7 @@ export class TaskToolHandlers {
 			const taskPath = await getTaskPath(id, context);
 
 			if (!taskPath) {
-				throw new Error(`Task file not found: ${id}`);
+				throw new McpError(`Task file not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const taskFile = Bun.file(taskPath);
@@ -440,6 +468,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to add criteria: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -454,7 +486,7 @@ export class TaskToolHandlers {
 			const task = await this.server.fs.loadTask(id);
 
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Create context for getTaskPath utility
@@ -463,7 +495,7 @@ export class TaskToolHandlers {
 			const taskPath = await getTaskPath(id, context);
 
 			if (!taskPath) {
-				throw new Error(`Task file not found: ${id}`);
+				throw new McpError(`Task file not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const taskFile = Bun.file(taskPath);
@@ -486,7 +518,7 @@ export class TaskToolHandlers {
 			}
 
 			if (removedIndices.length === 0) {
-				throw new Error(`No criteria were removed. Invalid indices: ${indices.join(", ")}`);
+				throw new McpError(`No criteria were removed. Invalid indices: ${indices.join(", ")}`, "VALIDATION_ERROR");
 			}
 
 			// Write the updated content back to file
@@ -501,6 +533,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to remove criteria: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -515,7 +551,7 @@ export class TaskToolHandlers {
 			const task = await this.server.fs.loadTask(id);
 
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Create context for getTaskPath utility
@@ -524,7 +560,7 @@ export class TaskToolHandlers {
 			const taskPath = await getTaskPath(id, context);
 
 			if (!taskPath) {
-				throw new Error(`Task file not found: ${id}`);
+				throw new McpError(`Task file not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const taskFile = Bun.file(taskPath);
@@ -546,7 +582,7 @@ export class TaskToolHandlers {
 			}
 
 			if (updatedIndices.length === 0) {
-				throw new Error(`No criteria were updated. Invalid indices: ${indices.join(", ")}`);
+				throw new McpError(`No criteria were updated. Invalid indices: ${indices.join(", ")}`, "VALIDATION_ERROR");
 			}
 
 			// Write the updated content back to file
@@ -562,6 +598,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to check criteria: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -576,7 +616,7 @@ export class TaskToolHandlers {
 			const task = await this.server.fs.loadTask(id);
 
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Create context for getTaskPath utility
@@ -585,7 +625,7 @@ export class TaskToolHandlers {
 			const taskPath = await getTaskPath(id, context);
 
 			if (!taskPath) {
-				throw new Error(`Task file not found: ${id}`);
+				throw new McpError(`Task file not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const taskFile = Bun.file(taskPath);
@@ -625,6 +665,10 @@ export class TaskToolHandlers {
 				],
 			};
 		} catch (error) {
+			// Re-throw McpError instances to preserve specific error types
+			if (error instanceof McpError) {
+				throw error;
+			}
 			throw new Error(`Failed to list criteria: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}

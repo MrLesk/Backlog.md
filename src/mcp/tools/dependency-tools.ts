@@ -1,5 +1,6 @@
 import { computeSequences } from "../../core/sequences.ts";
 import type { Task } from "../../types/index.ts";
+import { McpError } from "../errors/mcp-errors.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
 import { createSimpleValidatedTool } from "../validation/tool-wrapper.ts";
@@ -138,7 +139,7 @@ export class DependencyToolHandlers {
 		try {
 			const task = await this.server.fs.loadTask(id);
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Normalize dependencies
@@ -169,7 +170,7 @@ export class DependencyToolHandlers {
 				updatedDate: new Date().toISOString(),
 			};
 
-			await this.server.updateTask(updatedTask, false);
+			await this.server.updateTask(updatedTask);
 
 			return {
 				content: [
@@ -196,7 +197,7 @@ export class DependencyToolHandlers {
 		try {
 			const task = await this.server.fs.loadTask(id);
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Normalize dependencies
@@ -214,7 +215,7 @@ export class DependencyToolHandlers {
 				updatedDate: new Date().toISOString(),
 			};
 
-			await this.server.updateTask(updatedTask, false);
+			await this.server.updateTask(updatedTask);
 
 			return {
 				content: [
@@ -241,7 +242,7 @@ export class DependencyToolHandlers {
 		try {
 			const task = await this.server.fs.loadTask(id);
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const dependencies = task.dependencies || [];
@@ -295,7 +296,7 @@ export class DependencyToolHandlers {
 		try {
 			const task = await this.server.fs.loadTask(id);
 			if (!task) {
-				throw new Error(`Task not found: ${id}`);
+				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const depsToCheck = proposedDependencies

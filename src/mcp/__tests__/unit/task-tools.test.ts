@@ -1,33 +1,85 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
 import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import { McpServer } from "../../server.ts";
 import { registerTaskTools } from "../../tools/task-tools.ts";
 
 let TEST_DIR: string;
+const startTime = Date.now();
+
+// Utility function for creating test tasks with criteria
+const createTestTaskWithCriteria = async (mcpServer: McpServer, overrides = {}, criteria: string[] = []) => {
+	const taskRequest = {
+		params: {
+			name: "task_create",
+			arguments: {
+				title: "Test Task",
+				description: "Test description",
+				...overrides,
+			},
+		},
+	};
+
+	const result = await mcpServer.testInterface.callTool(taskRequest);
+
+	// Extract task ID from the response
+	const responseText = result.content[0]?.text || "";
+	const taskIdMatch = responseText.match(/Successfully created task: (task-\d+)/);
+	const taskId = taskIdMatch ? taskIdMatch[1] : "task-1"; // fallback to task-1 if parsing fails
+
+	if (criteria.length > 0) {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "criteria_add",
+				arguments: { id: taskId, criteria },
+			},
+		});
+	}
+
+	return { result, taskId };
+};
 
 describe("Task Tools", () => {
 	let mcpServer: McpServer;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
+		// One-time test setup
 		TEST_DIR = createUniqueTestDir("test-task-tools");
+	});
+
+	beforeEach(async () => {
+		// Create fresh server instance
 		mcpServer = new McpServer(TEST_DIR);
+
+		// Reset task state between tests - clear tasks directory
+		const { existsSync, rmSync } = await import("node:fs");
+		const { join } = await import("node:path");
+		const tasksDir = join(TEST_DIR, "backlog", "tasks");
+		if (existsSync(tasksDir)) {
+			rmSync(tasksDir, { recursive: true, force: true });
+		}
+
 		await mcpServer.filesystem.ensureBacklogStructure();
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		// Initialize the project to create config with default statuses
 		await mcpServer.initializeProject("Test Project");
-
 		registerTaskTools(mcpServer);
 	});
 
 	afterEach(async () => {
 		try {
 			await mcpServer.stop();
+		} catch {
+			// Ignore cleanup errors
+		}
+	});
+
+	afterAll(async () => {
+		try {
 			await safeCleanup(TEST_DIR);
+			const totalTime = Date.now() - startTime;
+			console.log(`Total test suite time: ${totalTime}ms`);
+			console.log(
+				`Performance improvement: ${(((18700 - totalTime) / 18700) * 100).toFixed(1)}% faster than baseline (18.7s)`,
+			);
 		} catch {
 			// Ignore cleanup errors
 		}
@@ -153,32 +205,24 @@ describe("Task Tools", () => {
 	});
 
 	describe("task_list tool", () => {
-		beforeEach(async () => {
-			// Create some test tasks
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Frontend Task",
-						description: "UI development task",
-						labels: ["frontend", "ui"],
-					},
-				},
+		// Create test tasks once per test instead of in beforeEach
+		const setupTestTasks = async () => {
+			await createTestTaskWithCriteria(mcpServer, {
+				title: "Frontend Task",
+				description: "UI development task",
+				labels: ["frontend", "ui"],
 			});
 
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Backend Task",
-						description: "API development task",
-						labels: ["backend", "api"],
-					},
-				},
+			await createTestTaskWithCriteria(mcpServer, {
+				title: "Backend Task",
+				description: "API development task",
+				labels: ["backend", "api"],
 			});
-		});
+		};
 
 		it("should list tasks with task_list tool", async () => {
+			await setupTestTasks();
+
 			const request = {
 				params: {
 					name: "task_list",
@@ -194,6 +238,8 @@ describe("Task Tools", () => {
 		});
 
 		it("should filter tasks by status", async () => {
+			await setupTestTasks();
+
 			// Update one task status
 			await mcpServer.testInterface.callTool({
 				params: {
@@ -216,6 +262,8 @@ describe("Task Tools", () => {
 		});
 
 		it("should filter tasks by labels", async () => {
+			await setupTestTasks();
+
 			// Filter by labels
 			const request = {
 				params: {
@@ -230,6 +278,8 @@ describe("Task Tools", () => {
 		});
 
 		it("should search tasks by title and description", async () => {
+			await setupTestTasks();
+
 			// Search by title
 			const titleSearch = await mcpServer.testInterface.callTool({
 				params: {
@@ -252,14 +302,11 @@ describe("Task Tools", () => {
 		});
 
 		it("should limit task list results", async () => {
+			await setupTestTasks();
+
 			// Create additional tasks
 			for (let i = 3; i <= 5; i++) {
-				await mcpServer.testInterface.callTool({
-					params: {
-						name: "task_create",
-						arguments: { title: `Task ${i}` },
-					},
-				});
+				await createTestTaskWithCriteria(mcpServer, { title: `Task ${i}` });
 			}
 
 			// Request with limit
@@ -276,23 +323,19 @@ describe("Task Tools", () => {
 	});
 
 	describe("task_update tool", () => {
-		beforeEach(async () => {
-			// Create a test task
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: { title: "Original Title" },
-				},
-			});
-		});
+		const setupTestTask = async () => {
+			return await createTestTaskWithCriteria(mcpServer, { title: "Original Title" });
+		};
 
 		it("should update task with task_update tool", async () => {
+			const { taskId } = await setupTestTask();
+
 			// Update the task
 			const request = {
 				params: {
 					name: "task_update",
 					arguments: {
-						id: "task-1",
+						id: taskId,
 						title: "Updated Title",
 						status: "Done",
 						description: "Updated description",
@@ -313,12 +356,14 @@ describe("Task Tools", () => {
 		});
 
 		it("should update task implementation notes", async () => {
+			const { taskId } = await setupTestTask();
+
 			// Update with implementation notes
 			const request = {
 				params: {
 					name: "task_update",
 					arguments: {
-						id: "task-1",
+						id: taskId,
 						implementationNotes: "Added user authentication flow",
 					},
 				},
@@ -345,26 +390,22 @@ describe("Task Tools", () => {
 	});
 
 	describe("acceptance criteria tools", () => {
-		beforeEach(async () => {
-			// Create a test task for AC operations
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "AC Test Task",
-						description: "Task for testing acceptance criteria management",
-					},
-				},
+		const setupACTestTask = async () => {
+			return await createTestTaskWithCriteria(mcpServer, {
+				title: "AC Test Task",
+				description: "Task for testing acceptance criteria management",
 			});
-		});
+		};
 
 		describe("criteria_add tool", () => {
 			it("should add single acceptance criterion", async () => {
+				const { taskId } = await setupACTestTask();
+
 				const request = {
 					params: {
 						name: "criteria_add",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							criteria: ["User can login with valid credentials"],
 						},
 					},
@@ -382,11 +423,13 @@ describe("Task Tools", () => {
 			});
 
 			it("should add multiple acceptance criteria", async () => {
+				const { taskId } = await setupACTestTask();
+
 				const request = {
 					params: {
 						name: "criteria_add",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							criteria: [
 								"User can login with valid credentials",
 								"User receives error message for invalid credentials",
@@ -410,11 +453,13 @@ describe("Task Tools", () => {
 			});
 
 			it("should handle validation errors for criteria_add", async () => {
+				const { taskId } = await setupACTestTask();
+
 				const request = {
 					params: {
 						name: "criteria_add",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							criteria: [], // Empty array
 						},
 					},
@@ -452,24 +497,24 @@ describe("Task Tools", () => {
 		});
 
 		describe("criteria_list tool", () => {
-			beforeEach(async () => {
-				// Add some criteria for testing
-				await mcpServer.testInterface.callTool({
-					params: {
-						name: "criteria_add",
-						arguments: {
-							id: "task-1",
-							criteria: ["Feature works correctly", "Tests are passing", "Documentation is updated"],
-						},
+			const setupCriteriaListTest = async () => {
+				return await createTestTaskWithCriteria(
+					mcpServer,
+					{
+						title: "AC Test Task",
+						description: "Task for testing acceptance criteria management",
 					},
-				});
-			});
+					["Feature works correctly", "Tests are passing", "Documentation is updated"],
+				);
+			};
 
 			it("should list all acceptance criteria with status", async () => {
+				const { taskId } = await setupCriteriaListTest();
+
 				const request = {
 					params: {
 						name: "criteria_list",
-						arguments: { id: "task-1" },
+						arguments: { id: taskId },
 					},
 				};
 
@@ -483,22 +528,17 @@ describe("Task Tools", () => {
 
 			it("should handle task with no acceptance criteria", async () => {
 				// Create task without criteria
-				await mcpServer.testInterface.callTool({
-					params: {
-						name: "task_create",
-						arguments: { title: "Empty Task" },
-					},
-				});
+				const { taskId } = await createTestTaskWithCriteria(mcpServer, { title: "Empty Task" });
 
 				const request = {
 					params: {
 						name: "criteria_list",
-						arguments: { id: "task-2" },
+						arguments: { id: taskId },
 					},
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Task task-2 has no acceptance criteria");
+				expect(result.content[0]?.text).toContain(`Task ${taskId} has no acceptance criteria`);
 			});
 
 			it("should handle non-existent task for criteria_list", async () => {
@@ -517,25 +557,25 @@ describe("Task Tools", () => {
 		});
 
 		describe("criteria_check tool", () => {
-			beforeEach(async () => {
-				// Add some criteria for testing
-				await mcpServer.testInterface.callTool({
-					params: {
-						name: "criteria_add",
-						arguments: {
-							id: "task-1",
-							criteria: ["Feature implemented", "Tests written", "Code reviewed", "Documentation updated"],
-						},
+			const setupCriteriaCheckTest = async () => {
+				return await createTestTaskWithCriteria(
+					mcpServer,
+					{
+						title: "AC Test Task",
+						description: "Task for testing acceptance criteria management",
 					},
-				});
-			});
+					["Feature implemented", "Tests written", "Code reviewed", "Documentation updated"],
+				);
+			};
 
 			it("should check single acceptance criterion", async () => {
+				const { taskId } = await setupCriteriaCheckTest();
+
 				const request = {
 					params: {
 						name: "criteria_check",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [1],
 							checked: true,
 						},
@@ -543,22 +583,24 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully checked 1 acceptance criteria for task: task-1");
+				expect(result.content[0]?.text).toContain(`Successfully checked 1 acceptance criteria for task: ${taskId}`);
 
 				// Verify it was checked
 				const listResult = await mcpServer.testInterface.callTool({
-					params: { name: "criteria_list", arguments: { id: "task-1" } },
+					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 				expect(listResult.content[0]?.text).toContain("(1/4 completed)");
 				expect(listResult.content[0]?.text).toContain("✅ #1 Feature implemented");
 			});
 
 			it("should support batch check operations", async () => {
+				const { taskId } = await setupCriteriaCheckTest();
+
 				const request = {
 					params: {
 						name: "criteria_check",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [1, 3],
 							checked: true,
 						},
@@ -566,11 +608,11 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully checked 2 acceptance criteria for task: task-1");
+				expect(result.content[0]?.text).toContain(`Successfully checked 2 acceptance criteria for task: ${taskId}`);
 
 				// Verify both were checked
 				const listResult = await mcpServer.testInterface.callTool({
-					params: { name: "criteria_list", arguments: { id: "task-1" } },
+					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 				expect(listResult.content[0]?.text).toContain("(2/4 completed)");
 				expect(listResult.content[0]?.text).toContain("✅ #1 Feature implemented");
@@ -578,11 +620,13 @@ describe("Task Tools", () => {
 			});
 
 			it("should uncheck acceptance criteria", async () => {
+				const { taskId } = await setupCriteriaCheckTest();
+
 				// First check some criteria
 				await mcpServer.testInterface.callTool({
 					params: {
 						name: "criteria_check",
-						arguments: { id: "task-1", indices: [1, 2], checked: true },
+						arguments: { id: taskId, indices: [1, 2], checked: true },
 					},
 				});
 
@@ -591,7 +635,7 @@ describe("Task Tools", () => {
 					params: {
 						name: "criteria_check",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [1],
 							checked: false,
 						},
@@ -599,11 +643,11 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully unchecked 1 acceptance criteria for task: task-1");
+				expect(result.content[0]?.text).toContain(`Successfully unchecked 1 acceptance criteria for task: ${taskId}`);
 
 				// Verify the state
 				const listResult = await mcpServer.testInterface.callTool({
-					params: { name: "criteria_list", arguments: { id: "task-1" } },
+					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 				expect(listResult.content[0]?.text).toContain("(1/4 completed)");
 				expect(listResult.content[0]?.text).toContain("❌ #1 Feature implemented");
@@ -611,11 +655,13 @@ describe("Task Tools", () => {
 			});
 
 			it("should handle invalid indices gracefully", async () => {
+				const { taskId } = await setupCriteriaCheckTest();
+
 				const request = {
 					params: {
 						name: "criteria_check",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [10], // Invalid index
 							checked: true,
 						},
@@ -629,11 +675,13 @@ describe("Task Tools", () => {
 			});
 
 			it("should handle mixed valid/invalid indices", async () => {
+				const { taskId } = await setupCriteriaCheckTest();
+
 				const request = {
 					params: {
 						name: "criteria_check",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [1, 10, 2], // Mix of valid and invalid
 							checked: true,
 						},
@@ -641,28 +689,30 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully checked 2 acceptance criteria for task: task-1");
+				expect(result.content[0]?.text).toContain(`Successfully checked 2 acceptance criteria for task: ${taskId}`);
 
 				// Verify only valid indices were updated
 				const listResult = await mcpServer.testInterface.callTool({
-					params: { name: "criteria_list", arguments: { id: "task-1" } },
+					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 				expect(listResult.content[0]?.text).toContain("(2/4 completed)");
 			});
 		});
 
 		describe("criteria_remove tool", () => {
+			let taskId: string;
+
 			beforeEach(async () => {
-				// Add some criteria for testing
-				await mcpServer.testInterface.callTool({
-					params: {
-						name: "criteria_add",
-						arguments: {
-							id: "task-1",
-							criteria: ["First criterion", "Second criterion", "Third criterion", "Fourth criterion"],
-						},
+				// Create a task with criteria for testing
+				const { taskId: newTaskId } = await createTestTaskWithCriteria(
+					mcpServer,
+					{
+						title: "Remove Test Task",
+						description: "Task for testing criteria removal",
 					},
-				});
+					["First criterion", "Second criterion", "Third criterion", "Fourth criterion"],
+				);
+				taskId = newTaskId;
 			});
 
 			it("should remove single acceptance criterion", async () => {
@@ -670,14 +720,14 @@ describe("Task Tools", () => {
 					params: {
 						name: "criteria_remove",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [2], // Remove second criterion
 						},
 					},
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully removed 1 acceptance criteria from task: task-1");
+				expect(result.content[0]?.text).toContain(`Successfully removed 1 acceptance criteria from task: ${taskId}`);
 
 				// Verify removal and renumbering
 				const listResult = await mcpServer.testInterface.callTool({
@@ -695,14 +745,14 @@ describe("Task Tools", () => {
 					params: {
 						name: "criteria_remove",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [1, 3], // Remove first and third
 						},
 					},
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully removed 2 acceptance criteria from task: task-1");
+				expect(result.content[0]?.text).toContain(`Successfully removed 2 acceptance criteria from task: ${taskId}`);
 
 				// Verify removal and renumbering
 				const listResult = await mcpServer.testInterface.callTool({
@@ -720,7 +770,7 @@ describe("Task Tools", () => {
 				await mcpServer.testInterface.callTool({
 					params: {
 						name: "criteria_check",
-						arguments: { id: "task-1", indices: [2, 4], checked: true },
+						arguments: { id: taskId, indices: [2, 4], checked: true },
 					},
 				});
 
@@ -728,7 +778,7 @@ describe("Task Tools", () => {
 				await mcpServer.testInterface.callTool({
 					params: {
 						name: "criteria_remove",
-						arguments: { id: "task-1", indices: [3] },
+						arguments: { id: taskId, indices: [3] },
 					},
 				});
 
@@ -746,7 +796,7 @@ describe("Task Tools", () => {
 					params: {
 						name: "criteria_remove",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [10], // Invalid index
 						},
 					},
@@ -763,14 +813,14 @@ describe("Task Tools", () => {
 					params: {
 						name: "criteria_remove",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							indices: [1, 10, 2], // Mix of valid and invalid
 						},
 					},
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully removed 2 acceptance criteria from task: task-1");
+				expect(result.content[0]?.text).toContain(`Successfully removed 2 acceptance criteria from task: ${taskId}`);
 
 				// Verify only valid indices were removed
 				const listResult = await mcpServer.testInterface.callTool({
@@ -802,12 +852,18 @@ describe("Task Tools", () => {
 			});
 
 			it("should work with workflow scenarios", async () => {
+				// Create a task for the workflow test
+				const { taskId } = await createTestTaskWithCriteria(mcpServer, {
+					title: "Workflow Test Task",
+					description: "Task for testing acceptance criteria workflow",
+				});
+
 				// Add initial criteria
 				await mcpServer.testInterface.callTool({
 					params: {
 						name: "criteria_add",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							criteria: [
 								"Implement user registration",
 								"Add input validation",
@@ -822,7 +878,7 @@ describe("Task Tools", () => {
 				await mcpServer.testInterface.callTool({
 					params: {
 						name: "criteria_check",
-						arguments: { id: "task-1", indices: [1, 3], checked: true },
+						arguments: { id: taskId, indices: [1, 3], checked: true },
 					},
 				});
 
@@ -831,7 +887,7 @@ describe("Task Tools", () => {
 					params: {
 						name: "criteria_add",
 						arguments: {
-							id: "task-1",
+							id: taskId,
 							criteria: ["Add email verification", "Handle edge cases"],
 						},
 					},
@@ -841,13 +897,13 @@ describe("Task Tools", () => {
 				await mcpServer.testInterface.callTool({
 					params: {
 						name: "criteria_remove",
-						arguments: { id: "task-1", indices: [2] }, // Remove validation criterion
+						arguments: { id: taskId, indices: [2] }, // Remove validation criterion
 					},
 				});
 
 				// Verify final state
 				const listResult = await mcpServer.testInterface.callTool({
-					params: { name: "criteria_list", arguments: { id: "task-1" } },
+					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 
 				const content = listResult.content[0]?.text as string;

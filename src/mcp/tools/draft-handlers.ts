@@ -1,4 +1,5 @@
 import type { Task } from "../../types/index.ts";
+import { McpError } from "../errors/mcp-errors.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult } from "../types.ts";
 
@@ -122,7 +123,7 @@ export class DraftToolHandlers {
 			const draft = await this.server.fs.loadDraft(id);
 
 			if (!draft) {
-				throw new Error(`Draft not found: ${id}`);
+				throw new McpError(`Draft not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const draftText = `**${draft.id}**: ${draft.title}
@@ -154,7 +155,7 @@ export class DraftToolHandlers {
 			const draft = await this.server.fs.loadDraft(id);
 
 			if (!draft) {
-				throw new Error(`Draft not found: ${id}`);
+				throw new McpError(`Draft not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			// Convert draft to task format
@@ -174,7 +175,7 @@ export class DraftToolHandlers {
 			};
 
 			// Create the task
-			await this.server.createTask(task, false);
+			await this.server.createTask(task);
 
 			// Manually remove the draft (not using promoteDraft since we already created the task)
 			const draftsDir = await this.server.fs.getDraftsDir();
@@ -210,13 +211,13 @@ export class DraftToolHandlers {
 			const draft = await this.server.fs.loadDraft(id);
 
 			if (!draft) {
-				throw new Error(`Draft not found: ${id}`);
+				throw new McpError(`Draft not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
 			const archived = await this.server.fs.archiveDraft(id);
 
 			if (!archived) {
-				throw new Error(`Failed to archive draft: ${id}`);
+				throw new McpError(`Failed to archive draft: ${id}`, "OPERATION_FAILED");
 			}
 
 			return {

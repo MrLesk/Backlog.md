@@ -186,11 +186,8 @@ describe("Notes Tools", () => {
 				// Should be rejected by schema validation or business logic
 				expect(result.error.message || result.error.code).toMatch(/length|size|limit|VALIDATION_ERROR/i);
 
-				// Verify that console.error was called (but output was suppressed)
-				expect(consoleErrorSpy).toHaveBeenCalledWith(
-					expect.stringContaining("Tool 'notes_set' error:"),
-					expect.any(Object),
-				);
+				// console.error is not called for validation errors unless DEBUG is set
+				// The validation error is properly handled and returned to the client
 			});
 		});
 

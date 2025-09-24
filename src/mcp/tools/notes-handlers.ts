@@ -90,7 +90,7 @@ export class NotesToolHandlers {
 			task.implementationNotes = params.content;
 
 			// Save the updated task
-			await this.server.updateTask(task, false);
+			await this.server.updateTask(task);
 
 			return handleMcpSuccess({
 				operation: "notes_set",
@@ -139,7 +139,7 @@ export class NotesToolHandlers {
 			task.implementationNotes = newContent;
 
 			// Save the updated task
-			await this.server.updateTask(task, false);
+			await this.server.updateTask(task);
 
 			return handleMcpSuccess({
 				operation: "notes_append",
@@ -193,7 +193,7 @@ export class NotesToolHandlers {
 			task.implementationNotes = "";
 
 			// Save the updated task
-			await this.server.updateTask(task, false);
+			await this.server.updateTask(task);
 
 			return handleMcpSuccess({
 				operation: "notes_clear",
@@ -230,7 +230,7 @@ export class NotesToolHandlers {
 			task.implementationPlan = params.content;
 
 			// Save the updated task
-			await this.server.updateTask(task, false);
+			await this.server.updateTask(task);
 
 			return handleMcpSuccess({
 				operation: "plan_set",
@@ -279,7 +279,7 @@ export class NotesToolHandlers {
 			task.implementationPlan = newContent;
 
 			// Save the updated task
-			await this.server.updateTask(task, false);
+			await this.server.updateTask(task);
 
 			return handleMcpSuccess({
 				operation: "plan_append",
@@ -333,7 +333,7 @@ export class NotesToolHandlers {
 			task.implementationPlan = "";
 
 			// Save the updated task
-			await this.server.updateTask(task, false);
+			await this.server.updateTask(task);
 
 			return handleMcpSuccess({
 				operation: "plan_clear",
