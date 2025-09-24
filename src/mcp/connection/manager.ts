@@ -1,6 +1,18 @@
 import { McpConnectionError } from "../errors/mcp-errors.ts";
 
 /**
+ * Time provider interface for dependency injection
+ */
+export interface TimeProvider {
+	now(): number;
+}
+
+/**
+ * Connection status type
+ */
+export type ConnectionStatus = "active" | "marked_for_removal";
+
+/**
  * Represents an active MCP connection
  */
 export interface Connection {
@@ -9,8 +21,9 @@ export interface Connection {
 	transport: unknown; // Can be HTTP, SSE, or other transport types
 	createdAt: number;
 	lastActivity: number;
-	timeoutId?: NodeJS.Timeout;
 	metadata?: Record<string, unknown>;
+	removalAttempts: number;
+	status: ConnectionStatus;
 }
 
 /**
@@ -26,13 +39,16 @@ export interface ConnectionTimeout {
  */
 export class ConnectionManager {
 	private connections = new Map<string, Connection>();
+	private cleanupInterval?: NodeJS.Timeout;
 	private timeouts: ConnectionTimeout;
+	private timeProvider: TimeProvider;
 
-	constructor(timeouts?: Partial<ConnectionTimeout>) {
+	constructor(timeouts?: Partial<ConnectionTimeout>, timeProvider: TimeProvider = Date) {
 		this.timeouts = {
 			inactivity: timeouts?.inactivity || 30000, // 30 seconds
 			absolute: timeouts?.absolute || 3600000, // 1 hour
 		};
+		this.timeProvider = timeProvider;
 	}
 
 	/**
@@ -44,13 +60,12 @@ export class ConnectionManager {
 		clientId?: string,
 		metadata?: Record<string, unknown>,
 	): Promise<void> {
-		const now = Date.now();
-
 		// Remove existing connection with same ID if it exists
 		if (this.connections.has(connectionId)) {
 			await this.removeConnection(connectionId, "Replacing existing connection");
 		}
 
+		const now = this.timeProvider.now();
 		const connection: Connection = {
 			id: connectionId,
 			clientId,
@@ -58,10 +73,9 @@ export class ConnectionManager {
 			createdAt: now,
 			lastActivity: now,
 			metadata,
+			removalAttempts: 0,
+			status: "active",
 		};
-
-		// Set up inactivity timeout
-		this.setupTimeouts(connection);
 
 		this.connections.set(connectionId, connection);
 
@@ -81,14 +95,12 @@ export class ConnectionManager {
 			return false;
 		}
 
-		connection.lastActivity = Date.now();
-
-		// Reset inactivity timeout
-		if (connection.timeoutId) {
-			clearTimeout(connection.timeoutId);
+		// Don't update activity if connection is marked for removal
+		if (connection.status === "marked_for_removal") {
+			return false;
 		}
-		this.setupInactivityTimeout(connection);
 
+		connection.lastActivity = this.timeProvider.now();
 		return true;
 	}
 
@@ -116,7 +128,7 @@ export class ConnectionManager {
 		connectionsPerClient: Record<string, number>;
 	} {
 		const connections = this.getAllConnections();
-		const now = Date.now();
+		const now = this.timeProvider.now();
 
 		const connectionsPerClient: Record<string, number> = {};
 		let oldestConnection: number | null = null;
@@ -150,11 +162,6 @@ export class ConnectionManager {
 			return false;
 		}
 
-		// Clear any timeouts
-		if (connection.timeoutId) {
-			clearTimeout(connection.timeoutId);
-		}
-
 		// Clean up transport if it has a cleanup method
 		try {
 			const transport = connection.transport as { close?: () => Promise<void> | void };
@@ -163,8 +170,14 @@ export class ConnectionManager {
 			}
 		} catch (error) {
 			console.error(`Error closing transport for connection ${connectionId}:`, error);
+			// If this was called from cleanup and transport fails, don't remove - let retry logic handle it
+			if (reason === "Expired") {
+				throw error; // Let the cleanup logic handle the retry
+			}
+			// For manual removals, we still remove even if transport cleanup fails
 		}
 
+		// Remove from tracking
 		this.connections.delete(connectionId);
 
 		if (process.env.DEBUG) {
@@ -196,61 +209,69 @@ export class ConnectionManager {
 	 * Clean up expired connections
 	 */
 	async cleanupExpiredConnections(): Promise<number> {
-		const now = Date.now();
-		const expiredConnections: string[] = [];
+		const now = this.timeProvider.now();
+
+		// Phase 1: Mark expired connections
+		for (const [id, connection] of this.connections.entries()) {
+			if (connection.status === "active") {
+				const inactiveTime = now - connection.lastActivity;
+				const totalTime = now - connection.createdAt;
+
+				if (inactiveTime > this.timeouts.inactivity || totalTime > this.timeouts.absolute) {
+					connection.status = "marked_for_removal";
+					if (process.env.DEBUG) {
+						console.log(`Marked connection ${id} for removal (inactive: ${inactiveTime}ms, total: ${totalTime}ms)`);
+					}
+				}
+			}
+		}
+
+		// Phase 2: Remove marked connections
+		let removedCount = 0;
+		const connectionsToRemove: string[] = [];
 
 		for (const [id, connection] of this.connections.entries()) {
-			const inactiveTime = now - connection.lastActivity;
-			const totalTime = now - connection.createdAt;
-
-			if (inactiveTime > this.timeouts.inactivity || totalTime > this.timeouts.absolute) {
-				expiredConnections.push(id);
+			if (connection.status === "marked_for_removal") {
+				if (connection.removalAttempts >= 3) {
+					// Force remove after 3 failed attempts
+					this.connections.delete(id);
+					removedCount++;
+					console.error(`Force removed connection ${id} after 3 failed attempts`);
+				} else {
+					connection.removalAttempts++;
+					connectionsToRemove.push(id);
+				}
 			}
 		}
 
-		// Remove expired connections
-		for (const id of expiredConnections) {
-			await this.removeConnection(id, "Expired due to inactivity or timeout");
+		// Attempt to remove connections with retry logic
+		for (const id of connectionsToRemove) {
+			try {
+				const removed = await this.removeConnection(id, "Expired");
+				if (removed) {
+					removedCount++;
+				}
+			} catch (error) {
+				const connection = this.connections.get(id);
+				if (connection) {
+					console.error(`Removal attempt ${connection.removalAttempts} failed for ${id}:`, error);
+				}
+			}
 		}
 
-		if (expiredConnections.length > 0 && process.env.DEBUG) {
-			console.log(`Cleaned up ${expiredConnections.length} expired connections`);
+		if (removedCount > 0 && process.env.DEBUG) {
+			console.log(`Cleaned up ${removedCount} expired connections`);
 		}
 
-		return expiredConnections.length;
-	}
-
-	/**
-	 * Set up timeouts for a connection
-	 */
-	private setupTimeouts(connection: Connection): void {
-		// Set up inactivity timeout
-		this.setupInactivityTimeout(connection);
-
-		// Set up absolute timeout
-		setTimeout(async () => {
-			if (this.connections.has(connection.id)) {
-				await this.removeConnection(connection.id, "Absolute timeout reached");
-			}
-		}, this.timeouts.absolute);
-	}
-
-	/**
-	 * Set up inactivity timeout for a connection
-	 */
-	private setupInactivityTimeout(connection: Connection): void {
-		connection.timeoutId = setTimeout(async () => {
-			if (this.connections.has(connection.id)) {
-				await this.removeConnection(connection.id, "Inactivity timeout");
-			}
-		}, this.timeouts.inactivity);
+		return removedCount;
 	}
 
 	/**
 	 * Check if a connection exists and is active
 	 */
 	hasActiveConnection(connectionId: string): boolean {
-		return this.connections.has(connectionId);
+		const connection = this.connections.get(connectionId);
+		return connection !== undefined && connection.status === "active";
 	}
 
 	/**
@@ -262,8 +283,9 @@ export class ConnectionManager {
 			throw new McpConnectionError(`Connection not found: ${connectionId}`);
 		}
 
-		// Update activity
-		this.updateActivity(connectionId);
+		if (connection.status === "marked_for_removal") {
+			throw new McpConnectionError(`Connection expired: ${connectionId}`);
+		}
 
 		return connection;
 	}
@@ -271,14 +293,29 @@ export class ConnectionManager {
 	/**
 	 * Start periodic cleanup of expired connections
 	 */
-	startPeriodicCleanup(intervalMs = 60000): NodeJS.Timeout {
-		return setInterval(async () => {
+	startPeriodicCleanup(intervalMs = 30000): NodeJS.Timeout {
+		// Stop existing cleanup if running
+		this.stopPeriodicCleanup();
+
+		this.cleanupInterval = setInterval(async () => {
 			try {
 				await this.cleanupExpiredConnections();
 			} catch (error) {
 				console.error("Error during periodic connection cleanup:", error);
 			}
 		}, intervalMs);
+
+		return this.cleanupInterval;
+	}
+
+	/**
+	 * Stop periodic cleanup
+	 */
+	stopPeriodicCleanup(): void {
+		if (this.cleanupInterval) {
+			clearInterval(this.cleanupInterval);
+			this.cleanupInterval = undefined;
+		}
 	}
 
 	/**

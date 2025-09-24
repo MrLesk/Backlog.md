@@ -28,19 +28,16 @@ import type {
 export class McpServer extends Core {
 	private server: Server;
 	private transport?: StdioServerTransport | BacklogSseTransport | BacklogHttpTransport;
-	private connectionManager: ConnectionManager;
+	private connectionManager?: ConnectionManager;
 	private cleanupInterval?: NodeJS.Timeout;
 	private tools: Map<string, McpToolHandler>;
 	private resources: Map<string, McpResourceHandler>;
 	private prompts: Map<string, McpPromptHandler>;
+	private transportType?: TransportType;
 
 	constructor(projectRoot: string) {
 		super(projectRoot);
 
-		this.connectionManager = new ConnectionManager({
-			inactivity: 30000, // 30 seconds
-			absolute: 3600000, // 1 hour
-		});
 		this.tools = new Map();
 		this.resources = new Map();
 		this.prompts = new Map();
@@ -176,11 +173,17 @@ export class McpServer extends Core {
 	}
 
 	private async startSseTransport(options?: SseTransportOptions): Promise<void> {
+		if (!this.connectionManager) {
+			throw new Error("Connection manager not initialized for SSE transport");
+		}
 		this.transport = new BacklogSseTransport(options);
 		await this.transport.start(this.server, this.connectionManager);
 	}
 
 	private async startHttpTransport(options?: HttpTransportOptions): Promise<void> {
+		if (!this.connectionManager) {
+			throw new Error("Connection manager not initialized for HTTP transport");
+		}
 		this.transport = new BacklogHttpTransport(options);
 		await this.transport.start(this.server, this.connectionManager);
 	}
@@ -189,14 +192,26 @@ export class McpServer extends Core {
 		transportType: TransportType,
 		options?: SseTransportOptions | HttpTransportOptions,
 	): Promise<void> {
+		this.transportType = transportType;
+
 		if (transportType === "stdio") {
 			await this.startStdioTransport();
-		} else if (transportType === "sse") {
-			await this.startSseTransport(options as SseTransportOptions);
-		} else if (transportType === "http") {
-			await this.startHttpTransport(options as HttpTransportOptions);
 		} else {
-			throw new Error(`Unknown transport type: ${transportType}`);
+			// Create ConnectionManager only for network transports
+			if (!this.connectionManager) {
+				this.connectionManager = new ConnectionManager({
+					inactivity: 30000, // 30 seconds
+					absolute: 3600000, // 1 hour
+				});
+			}
+
+			if (transportType === "sse") {
+				await this.startSseTransport(options as SseTransportOptions);
+			} else if (transportType === "http") {
+				await this.startHttpTransport(options as HttpTransportOptions);
+			} else {
+				throw new Error(`Unknown transport type: ${transportType}`);
+			}
 		}
 	}
 
@@ -205,8 +220,10 @@ export class McpServer extends Core {
 			throw new Error("No transport connected. Call connect() first.");
 		}
 
-		// Start periodic connection cleanup
-		this.cleanupInterval = this.connectionManager.startPeriodicCleanup(60000); // Every minute
+		// Start periodic connection cleanup only for network transports
+		if (this.connectionManager && (this.transportType === "http" || this.transportType === "sse")) {
+			this.cleanupInterval = this.connectionManager.startPeriodicCleanup(60000); // Every minute
+		}
 
 		// Server automatically starts when transport connects
 	}
@@ -229,8 +246,11 @@ export class McpServer extends Core {
 			this.cleanupInterval = undefined;
 		}
 
-		// Clean up all connections
-		await this.connectionManager.removeAllConnections("Server shutdown");
+		// Clean up all connections (only for network transports)
+		if (this.connectionManager) {
+			this.connectionManager.stopPeriodicCleanup();
+			await this.connectionManager.removeAllConnections("Server shutdown");
+		}
 
 		if (this.transport && "stop" in this.transport) {
 			await this.transport.stop();
@@ -244,7 +264,7 @@ export class McpServer extends Core {
 		return this.server;
 	}
 
-	public getConnectionManager(): ConnectionManager {
+	public getConnectionManager(): ConnectionManager | undefined {
 		return this.connectionManager;
 	}
 
