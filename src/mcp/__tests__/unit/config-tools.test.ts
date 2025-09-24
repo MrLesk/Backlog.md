@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
 import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import type { BacklogConfig } from "../../../types/index.ts";
 import { McpServer } from "../../server.ts";
@@ -31,10 +30,6 @@ describe("Config Tools", () => {
 		TEST_DIR = createUniqueTestDir("test-config-tools");
 		mcpServer = new McpServer(TEST_DIR);
 		await mcpServer.filesystem.ensureBacklogStructure();
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		await mcpServer.filesystem.saveConfig(initialConfig);
 

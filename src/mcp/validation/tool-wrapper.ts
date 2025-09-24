@@ -1,5 +1,5 @@
 import type { Core } from "../../core/backlog.ts";
-import { handleMcpError, McpInternalError, McpValidationError } from "../errors/mcp-errors.ts";
+import { handleMcpError, McpValidationError } from "../errors/mcp-errors.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
 import type { JsonSchema, ValidationResult } from "./validators.ts";
 import { validateInput } from "./validators.ts";

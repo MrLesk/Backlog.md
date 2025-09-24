@@ -67,6 +67,9 @@ export class FileSystem {
 			const content = await file.text();
 			return this.parseConfig(content);
 		} catch (_error) {
+			if (process.env.DEBUG) {
+				console.error("Error loading config:", _error);
+			}
 			return null;
 		}
 	}

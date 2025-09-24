@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
 import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import { McpServer } from "../../server.ts";
 import { registerTaskTools } from "../../tools/task-tools.ts";

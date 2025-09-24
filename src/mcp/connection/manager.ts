@@ -180,6 +180,11 @@ export class ConnectionManager {
 	async removeAllConnections(reason = "Shutdown"): Promise<void> {
 		const connectionIds = Array.from(this.connections.keys());
 
+		if (process.env.DEBUG) {
+			console.log(`Removing all connections (${connectionIds.length}) - Reason: ${reason}`);
+		}
+
+		// Remove connections in parallel
 		await Promise.all(connectionIds.map((id) => this.removeConnection(id, reason)));
 
 		if (process.env.DEBUG) {

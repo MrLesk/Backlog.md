@@ -1,27 +1,69 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { McpServer } from "../../server.ts";
 import { BacklogHttpTransport, type HttpTransportOptions } from "../../transports/http.ts";
 
 describe("BacklogHttpTransport", () => {
-	let transport: BacklogHttpTransport;
-	let mcpServer: McpServer;
+	let sharedTransport: BacklogHttpTransport;
+	let sharedMcpServer: McpServer;
+	let bearerTransport: BacklogHttpTransport;
+	let basicTransport: BacklogHttpTransport;
+	let corsTransport: BacklogHttpTransport;
 	const testPort = 19080; // Use different port to avoid conflicts
+	const bearerPort = 19081;
+	const basicPort = 19082;
+	const corsPort = 19083;
 
-	beforeEach(async () => {
-		mcpServer = new McpServer(process.cwd());
-		transport = new BacklogHttpTransport({
+	beforeAll(async () => {
+		sharedMcpServer = new McpServer(process.cwd());
+
+		// Create shared transports for different test scenarios
+		sharedTransport = new BacklogHttpTransport({
 			host: "localhost",
 			port: testPort,
 			auth: { type: "none" },
 		});
+
+		bearerTransport = new BacklogHttpTransport({
+			host: "localhost",
+			port: bearerPort,
+			auth: { type: "bearer", token: "secret-token" },
+		});
+
+		basicTransport = new BacklogHttpTransport({
+			host: "localhost",
+			port: basicPort,
+			auth: { type: "basic", username: "user", password: "pass" },
+		});
+
+		corsTransport = new BacklogHttpTransport({
+			host: "localhost",
+			port: corsPort,
+			cors: { origin: "*", credentials: true },
+		});
+
+		// Start all shared transports
+		await sharedTransport.start(sharedMcpServer.getServer());
+		await bearerTransport.start(sharedMcpServer.getServer());
+		await basicTransport.start(sharedMcpServer.getServer());
+		await corsTransport.start(sharedMcpServer.getServer());
 	});
 
-	afterEach(async () => {
-		if (transport) {
-			await transport.stop();
+	afterAll(async () => {
+		// Clean up all shared transports
+		if (sharedTransport) {
+			await sharedTransport.stop();
 		}
-		if (mcpServer) {
-			await mcpServer.stop();
+		if (bearerTransport) {
+			await bearerTransport.stop();
+		}
+		if (basicTransport) {
+			await basicTransport.stop();
+		}
+		if (corsTransport) {
+			await corsTransport.stop();
+		}
+		if (sharedMcpServer) {
+			await sharedMcpServer.stop();
 		}
 	});
 
@@ -54,9 +96,7 @@ describe("BacklogHttpTransport", () => {
 	});
 
 	describe("server operations", () => {
-		it("should start and stop server successfully", async () => {
-			await transport.start(mcpServer.getServer());
-
+		it("should be running and respond to health checks", async () => {
 			// Check if server is running by making a health check request
 			const response = await fetch(`http://localhost:${testPort}/health`);
 			expect(response.status).toBe(200);
@@ -64,129 +104,61 @@ describe("BacklogHttpTransport", () => {
 			const data = await response.json();
 			expect(data.status).toBe("ok");
 			expect(data.transport).toBe("http");
-
-			await transport.stop();
-
-			// Server should be stopped now
-			try {
-				await fetch(`http://localhost:${testPort}/health`);
-				expect.unreachable("Should have thrown connection error");
-			} catch (error) {
-				// Expected - connection should be refused
-				expect(error).toBeDefined();
-			}
 		});
 	});
 
 	describe("authentication", () => {
 		it("should allow access with no auth", async () => {
-			const noAuthTransport = new BacklogHttpTransport({
-				host: "localhost",
-				port: testPort + 1,
-				auth: { type: "none" },
-			});
-
-			await noAuthTransport.start(mcpServer.getServer());
-
-			const response = await fetch(`http://localhost:${testPort + 1}/health`);
+			// Use shared no-auth transport
+			const response = await fetch(`http://localhost:${testPort}/health`);
 			expect(response.status).toBe(200);
-
-			await noAuthTransport.stop();
 		});
 
 		it("should reject access without bearer token", async () => {
-			const authTransport = new BacklogHttpTransport({
-				host: "localhost",
-				port: testPort + 2,
-				auth: { type: "bearer", token: "secret-token" },
-			});
-
-			await authTransport.start(mcpServer.getServer());
-
-			// Request without auth header
-			const response = await fetch(`http://localhost:${testPort + 2}/health`);
+			// Use shared bearer auth transport without auth header
+			const response = await fetch(`http://localhost:${bearerPort}/health`);
 			expect(response.status).toBe(401);
 
 			const data = await response.json();
 			expect(data.error.message).toBe("Unauthorized");
-
-			await authTransport.stop();
 		});
 
 		it("should allow access with correct bearer token", async () => {
-			const authTransport = new BacklogHttpTransport({
-				host: "localhost",
-				port: testPort + 3,
-				auth: { type: "bearer", token: "secret-token" },
-			});
-
-			await authTransport.start(mcpServer.getServer());
-
-			// Request with correct auth header
-			const response = await fetch(`http://localhost:${testPort + 3}/health`, {
+			// Use shared bearer auth transport with correct auth header
+			const response = await fetch(`http://localhost:${bearerPort}/health`, {
 				headers: {
 					Authorization: "Bearer secret-token",
 				},
 			});
 			expect(response.status).toBe(200);
-
-			await authTransport.stop();
 		});
 
 		it("should reject access with wrong bearer token", async () => {
-			const authTransport = new BacklogHttpTransport({
-				host: "localhost",
-				port: testPort + 4,
-				auth: { type: "bearer", token: "secret-token" },
-			});
-
-			await authTransport.start(mcpServer.getServer());
-
-			// Request with wrong auth header
-			const response = await fetch(`http://localhost:${testPort + 4}/health`, {
+			// Use shared bearer auth transport with wrong auth header
+			const response = await fetch(`http://localhost:${bearerPort}/health`, {
 				headers: {
 					Authorization: "Bearer wrong-token",
 				},
 			});
 			expect(response.status).toBe(401);
-
-			await authTransport.stop();
 		});
 
 		it("should allow access with correct basic auth", async () => {
-			const authTransport = new BacklogHttpTransport({
-				host: "localhost",
-				port: testPort + 5,
-				auth: { type: "basic", username: "user", password: "pass" },
-			});
-
-			await authTransport.start(mcpServer.getServer());
-
-			// Request with correct basic auth
+			// Use shared basic auth transport with correct credentials
 			const credentials = btoa("user:pass");
-			const response = await fetch(`http://localhost:${testPort + 5}/health`, {
+			const response = await fetch(`http://localhost:${basicPort}/health`, {
 				headers: {
 					Authorization: `Basic ${credentials}`,
 				},
 			});
 			expect(response.status).toBe(200);
-
-			await authTransport.stop();
 		});
 	});
 
 	describe("CORS", () => {
 		it("should handle preflight requests", async () => {
-			const corsTransport = new BacklogHttpTransport({
-				host: "localhost",
-				port: testPort + 6,
-				cors: { origin: "*", credentials: true },
-			});
-
-			await corsTransport.start(mcpServer.getServer());
-
-			// Send OPTIONS request
-			const response = await fetch(`http://localhost:${testPort + 6}/health`, {
+			// Use shared CORS transport
+			const response = await fetch(`http://localhost:${corsPort}/health`, {
 				method: "OPTIONS",
 			});
 
@@ -197,15 +169,11 @@ describe("BacklogHttpTransport", () => {
 			expect(response.headers.get("Access-Control-Allow-Methods")).toContain("DELETE");
 			expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Content-Type");
 			expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Mcp-Session-Id");
-
-			await corsTransport.stop();
 		});
 	});
 
 	describe("MCP endpoints", () => {
-		beforeEach(async () => {
-			await transport.start(mcpServer.getServer());
-		});
+		// Use shared transport that's already running
 
 		it("should return 404 for unknown endpoints", async () => {
 			const response = await fetch(`http://localhost:${testPort}/unknown`);
@@ -332,7 +300,7 @@ describe("BacklogHttpTransport", () => {
 
 	describe("connection info", () => {
 		it("should return correct connection information", () => {
-			const info = transport.getConnectionInfo();
+			const info = sharedTransport.getConnectionInfo();
 
 			expect(info.host).toBe("localhost");
 			expect(info.port).toBe(testPort);

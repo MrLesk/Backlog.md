@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import { registerDataResources } from "../../resources/data-resources.ts";
 import { McpServer } from "../../server.ts";
@@ -12,14 +11,10 @@ let TEST_DIR: string;
 describe("Data Resources Filtering", () => {
 	let mcpServer: McpServer;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		TEST_DIR = createUniqueTestDir("test-filtering-data-resources");
 		mcpServer = new McpServer(TEST_DIR);
 		await mcpServer.filesystem.ensureBacklogStructure();
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize the project to create config
 		await mcpServer.initializeProject("Test Project");
@@ -105,7 +100,7 @@ describe("Data Resources Filtering", () => {
 		});
 	});
 
-	afterEach(async () => {
+	afterAll(async () => {
 		try {
 			await mcpServer.stop();
 			await safeCleanup(TEST_DIR);
@@ -254,7 +249,9 @@ describe("Data Resources Filtering", () => {
 
 		it("should support priorityFilter parameter", async () => {
 			const result = await mcpServer.testInterface.readResource({
-				params: { uri: "backlog://project/overview?priorityFilter=high,medium" },
+				params: {
+					uri: "backlog://project/overview?priorityFilter=high,medium",
+				},
 			});
 
 			const response = JSON.parse(result.contents[0].text || "{}");

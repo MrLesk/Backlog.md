@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { $ } from "bun";
 import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import { McpServer } from "../../server.ts";
 import { registerProjectOverviewTools } from "../../tools/project-overview-tool.ts";
@@ -14,10 +13,6 @@ describe("Project Overview Tool (Simplified CLI Parity)", () => {
 		TEST_DIR = createUniqueTestDir("test-project-overview-simplified");
 		mcpServer = new McpServer(TEST_DIR);
 		await mcpServer.filesystem.ensureBacklogStructure();
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize the project to create config with default statuses
 		await mcpServer.initializeProject("Test Project");

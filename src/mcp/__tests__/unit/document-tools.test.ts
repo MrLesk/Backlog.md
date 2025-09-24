@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import { McpServer } from "../../server.ts";
 import { registerDocumentTools } from "../../tools/document-tools.ts";
@@ -9,14 +8,10 @@ let TEST_DIR: string;
 describe("Document Tools", () => {
 	let mcpServer: McpServer;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		TEST_DIR = createUniqueTestDir("test-document-tools");
 		mcpServer = new McpServer(TEST_DIR);
 		await mcpServer.filesystem.ensureBacklogStructure();
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize the project to create config
 		await mcpServer.initializeProject("Test Project");
@@ -24,7 +19,7 @@ describe("Document Tools", () => {
 		registerDocumentTools(mcpServer);
 	});
 
-	afterEach(async () => {
+	afterAll(async () => {
 		try {
 			await mcpServer.stop();
 			await safeCleanup(TEST_DIR);
@@ -143,7 +138,7 @@ describe("Document Tools", () => {
 	});
 
 	describe("doc_list", () => {
-		beforeEach(async () => {
+		beforeAll(async () => {
 			// Create test documents
 			await mcpServer.testInterface.callTool({
 				params: {
@@ -216,7 +211,7 @@ describe("Document Tools", () => {
 	describe("doc_view", () => {
 		let documentId: string;
 
-		beforeEach(async () => {
+		beforeAll(async () => {
 			// Create a test document and extract its ID
 			const createResult = await mcpServer.testInterface.callTool({
 				params: {
