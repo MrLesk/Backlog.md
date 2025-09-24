@@ -26,7 +26,7 @@ export interface HttpTransportOptions {
 }
 
 export class BacklogHttpTransport {
-	private server?: { stop(): void };
+	private server?: ReturnType<typeof Bun.serve>;
 	private transports: Map<string, StreamableHTTPServerTransport> = new Map();
 	private connectionManager?: ConnectionManager;
 	private options: Required<HttpTransportOptions>;
@@ -34,7 +34,7 @@ export class BacklogHttpTransport {
 	constructor(options: HttpTransportOptions = {}) {
 		this.options = {
 			host: options.host || "localhost",
-			port: options.port || 8080,
+			port: options.port ?? 8080,
 			cors: {
 				origin: options.cors?.origin || "*",
 				credentials: options.cors?.credentials || false,
@@ -124,207 +124,212 @@ export class BacklogHttpTransport {
 
 	async start(mcpServer: Server, connectionManager?: ConnectionManager): Promise<void> {
 		this.connectionManager = connectionManager;
-		this.server = Bun.serve({
-			hostname: this.options.host,
-			port: this.options.port,
-			fetch: async (req: Request): Promise<Response> => {
-				const url = new URL(req.url);
+		try {
+			this.server = Bun.serve({
+				hostname: this.options.host,
+				port: this.options.port,
+				fetch: async (req: Request): Promise<Response> => {
+					const url = new URL(req.url);
 
-				// Handle CORS preflight
-				if (req.method === "OPTIONS") {
-					return this.handlePreflight();
-				}
-
-				// Authentication check
-				if (!this.authenticate(req)) {
-					return this.createErrorResponse(401, "Unauthorized");
-				}
-
-				// Main MCP endpoint - handles POST, GET, DELETE according to MCP spec
-				if (url.pathname === "/") {
-					try {
-						const sessionId = req.headers.get("Mcp-Session-Id");
-
-						if (req.method === "POST") {
-							// Handle POST requests (JSON-RPC messages)
-							const body = await req.json();
-
-							let transport: StreamableHTTPServerTransport;
-
-							if (sessionId && this.transports.has(sessionId)) {
-								// Reuse existing transport
-								const existingTransport = this.transports.get(sessionId);
-								if (!existingTransport) {
-									throw new Error(`Transport not found for session: ${sessionId}`);
-								}
-								transport = existingTransport;
-
-								// Update connection activity
-								if (this.connectionManager) {
-									this.connectionManager.updateActivity(sessionId);
-								}
-							} else {
-								// Create new transport for initialization requests
-								transport = new StreamableHTTPServerTransport({
-									sessionIdGenerator: () => randomUUID(),
-									enableJsonResponse: true, // Always enable JSON response for HTTP transport
-									enableDnsRebindingProtection: this.options.enableDnsRebindingProtection,
-									allowedHosts: this.options.allowedHosts,
-									allowedOrigins: this.options.allowedOrigins,
-									onsessioninitialized: async (sessionId: string) => {
-										if (process.env.DEBUG) {
-											console.error(`HTTP session initialized: ${sessionId}`);
-										}
-										this.transports.set(sessionId, transport);
-
-										// Register connection with ConnectionManager
-										if (this.connectionManager) {
-											await this.connectionManager.registerConnection(sessionId, transport, undefined, {
-												transportType: "http",
-												host: this.options.host,
-												port: this.options.port,
-											});
-										}
-									},
-									onsessionclosed: async (sessionId: string) => {
-										if (process.env.DEBUG) {
-											console.error(`HTTP session closed: ${sessionId}`);
-										}
-										this.transports.delete(sessionId);
-
-										// Remove connection from ConnectionManager
-										if (this.connectionManager) {
-											await this.connectionManager.removeConnection(sessionId, "Session closed");
-										}
-									},
-								});
-
-								// Connect transport to MCP server
-								await mcpServer.connect(transport);
-
-								// Setup cleanup on transport close
-								transport.onclose = () => {
-									const sid = transport.sessionId;
-									if (sid && this.transports.has(sid)) {
-										this.transports.delete(sid);
-									}
-								};
-							}
-
-							// Convert Bun Request to Node.js-like request for StreamableHTTP
-							const nodeReq = this.bunRequestToNodeRequest(req, body);
-							const nodeRes = this.createNodeResponse();
-
-							await transport.handleRequest(nodeReq, nodeRes, body);
-
-							// Wait for response to finish if needed
-							if (!nodeRes.finished) {
-								await new Promise<void>((resolve) => {
-									nodeRes.on("finish", resolve);
-									// Timeout after 5 seconds
-									setTimeout(() => resolve(), 5000);
-								});
-							}
-
-							// Return the response created by the transport
-							return nodeRes.getResponse();
-						}
-
-						if (req.method === "GET") {
-							// Handle GET requests for SSE streams
-							if (!sessionId || !this.transports.has(sessionId)) {
-								return this.createErrorResponse(400, "Invalid or missing session ID");
-							}
-
-							// Return SSE stream for established session
-							const stream = new ReadableStream({
-								start(controller) {
-									// Send initial connection message
-									const encoder = new TextEncoder();
-									const message = `data: {"jsonrpc":"2.0","method":"notifications/initialized"}\n\n`;
-									controller.enqueue(encoder.encode(message));
-
-									// Keep connection alive
-									const keepAlive = setInterval(() => {
-										try {
-											controller.enqueue(encoder.encode(`data: {"type":"heartbeat"}\n\n`));
-										} catch {
-											clearInterval(keepAlive);
-										}
-									}, 30000);
-
-									// Cleanup when stream is closed
-									return () => {
-										clearInterval(keepAlive);
-									};
-								},
-							});
-
-							return new Response(stream, {
-								status: 200,
-								headers: {
-									"Content-Type": "text/event-stream",
-									"Cache-Control": "no-cache",
-									Connection: "keep-alive",
-									...this.createCorsHeaders(),
-								},
-							});
-						}
-
-						if (req.method === "DELETE") {
-							// Handle DELETE requests for session termination
-							if (!sessionId || !this.transports.has(sessionId)) {
-								return this.createErrorResponse(400, "Invalid or missing session ID");
-							}
-
-							const transport = this.transports.get(sessionId);
-							if (!transport) {
-								return this.createErrorResponse(400, "Session not found");
-							}
-							const nodeReq = this.bunRequestToNodeRequest(req);
-							const nodeRes = this.createNodeResponse();
-
-							await transport.handleRequest(nodeReq, nodeRes);
-							return nodeRes.getResponse();
-						}
-
-						return this.createErrorResponse(405, "Method not allowed");
-					} catch (error) {
-						console.error("HTTP transport error:", error);
-
-						if (error instanceof McpConnectionError) {
-							return this.createErrorResponse(400, error.message, error.code);
-						}
-						if (error instanceof McpAuthenticationError) {
-							return this.createErrorResponse(401, error.message, error.code);
-						}
-
-						// Handle network/connection errors
-						if (error instanceof Error && error.message.includes("Connection")) {
-							return this.createErrorResponse(503, "Connection error occurred", "CONNECTION_ERROR");
-						}
-
-						// Generic server error
-						return this.createErrorResponse(500, "Internal server error", "INTERNAL_ERROR");
+					// Handle CORS preflight
+					if (req.method === "OPTIONS") {
+						return this.handlePreflight();
 					}
-				}
 
-				// Health check endpoint
-				if (url.pathname === "/health" && req.method === "GET") {
-					return new Response(JSON.stringify({ status: "ok", transport: "http" }), {
-						status: 200,
-						headers: {
-							"Content-Type": "application/json",
-							...this.createCorsHeaders(),
-						},
-					});
-				}
+					// Authentication check
+					if (!this.authenticate(req)) {
+						return this.createErrorResponse(401, "Unauthorized");
+					}
 
-				return this.createErrorResponse(404, "Not found");
-			},
-		});
+					// Main MCP endpoint - handles POST, GET, DELETE according to MCP spec
+					if (url.pathname === "/") {
+						try {
+							const sessionId = req.headers.get("Mcp-Session-Id");
 
-		console.log(`MCP server running on ${this.options.host}:${this.options.port} (HTTP transport)`);
+							if (req.method === "POST") {
+								// Handle POST requests (JSON-RPC messages)
+								const body = await req.json();
+
+								let transport: StreamableHTTPServerTransport;
+
+								if (sessionId && this.transports.has(sessionId)) {
+									// Reuse existing transport
+									const existingTransport = this.transports.get(sessionId);
+									if (!existingTransport) {
+										throw new Error(`Transport not found for session: ${sessionId}`);
+									}
+									transport = existingTransport;
+
+									// Update connection activity
+									if (this.connectionManager) {
+										this.connectionManager.updateActivity(sessionId);
+									}
+								} else {
+									// Create new transport for initialization requests
+									transport = new StreamableHTTPServerTransport({
+										sessionIdGenerator: () => randomUUID(),
+										enableJsonResponse: true, // Always enable JSON response for HTTP transport
+										enableDnsRebindingProtection: this.options.enableDnsRebindingProtection,
+										allowedHosts: this.options.allowedHosts,
+										allowedOrigins: this.options.allowedOrigins,
+										onsessioninitialized: async (sessionId: string) => {
+											if (process.env.DEBUG) {
+												console.error(`HTTP session initialized: ${sessionId}`);
+											}
+											this.transports.set(sessionId, transport);
+
+											// Register connection with ConnectionManager
+											if (this.connectionManager) {
+												await this.connectionManager.registerConnection(sessionId, transport, undefined, {
+													transportType: "http",
+													host: this.options.host,
+													port: this.options.port,
+												});
+											}
+										},
+										onsessionclosed: async (sessionId: string) => {
+											if (process.env.DEBUG) {
+												console.error(`HTTP session closed: ${sessionId}`);
+											}
+											this.transports.delete(sessionId);
+
+											// Remove connection from ConnectionManager
+											if (this.connectionManager) {
+												await this.connectionManager.removeConnection(sessionId, "Session closed");
+											}
+										},
+									});
+
+									// Connect transport to MCP server
+									await mcpServer.connect(transport);
+
+									// Setup cleanup on transport close
+									transport.onclose = () => {
+										const sid = transport.sessionId;
+										if (sid && this.transports.has(sid)) {
+											this.transports.delete(sid);
+										}
+									};
+								}
+
+								// Convert Bun Request to Node.js-like request for StreamableHTTP
+								const nodeReq = this.bunRequestToNodeRequest(req, body);
+								const nodeRes = this.createNodeResponse();
+
+								await transport.handleRequest(nodeReq, nodeRes, body);
+
+								// Wait for response to finish if needed
+								if (!nodeRes.finished) {
+									await new Promise<void>((resolve) => {
+										nodeRes.on("finish", resolve);
+										// Timeout after 5 seconds
+										setTimeout(() => resolve(), 5000);
+									});
+								}
+
+								// Return the response created by the transport
+								return nodeRes.getResponse();
+							}
+
+							if (req.method === "GET") {
+								// Handle GET requests for SSE streams
+								if (!sessionId || !this.transports.has(sessionId)) {
+									return this.createErrorResponse(400, "Invalid or missing session ID");
+								}
+
+								// Return SSE stream for established session
+								const stream = new ReadableStream({
+									start(controller) {
+										// Send initial connection message
+										const encoder = new TextEncoder();
+										const message = `data: {"jsonrpc":"2.0","method":"notifications/initialized"}\n\n`;
+										controller.enqueue(encoder.encode(message));
+
+										// Keep connection alive
+										const keepAlive = setInterval(() => {
+											try {
+												controller.enqueue(encoder.encode(`data: {"type":"heartbeat"}\n\n`));
+											} catch {
+												clearInterval(keepAlive);
+											}
+										}, 30000);
+
+										// Cleanup when stream is closed
+										return () => {
+											clearInterval(keepAlive);
+										};
+									},
+								});
+
+								return new Response(stream, {
+									status: 200,
+									headers: {
+										"Content-Type": "text/event-stream",
+										"Cache-Control": "no-cache",
+										Connection: "keep-alive",
+										...this.createCorsHeaders(),
+									},
+								});
+							}
+
+							if (req.method === "DELETE") {
+								// Handle DELETE requests for session termination
+								if (!sessionId || !this.transports.has(sessionId)) {
+									return this.createErrorResponse(400, "Invalid or missing session ID");
+								}
+
+								const transport = this.transports.get(sessionId);
+								if (!transport) {
+									return this.createErrorResponse(400, "Session not found");
+								}
+								const nodeReq = this.bunRequestToNodeRequest(req);
+								const nodeRes = this.createNodeResponse();
+
+								await transport.handleRequest(nodeReq, nodeRes);
+								return nodeRes.getResponse();
+							}
+
+							return this.createErrorResponse(405, "Method not allowed");
+						} catch (error) {
+							console.error("HTTP transport error:", error);
+
+							if (error instanceof McpConnectionError) {
+								return this.createErrorResponse(400, error.message, error.code);
+							}
+							if (error instanceof McpAuthenticationError) {
+								return this.createErrorResponse(401, error.message, error.code);
+							}
+
+							// Handle network/connection errors
+							if (error instanceof Error && error.message.includes("Connection")) {
+								return this.createErrorResponse(503, "Connection error occurred", "CONNECTION_ERROR");
+							}
+
+							// Generic server error
+							return this.createErrorResponse(500, "Internal server error", "INTERNAL_ERROR");
+						}
+					}
+
+					// Health check endpoint
+					if (url.pathname === "/health" && req.method === "GET") {
+						return new Response(JSON.stringify({ status: "ok", transport: "http" }), {
+							status: 200,
+							headers: {
+								"Content-Type": "application/json",
+								...this.createCorsHeaders(),
+							},
+						});
+					}
+
+					return this.createErrorResponse(404, "Not found");
+				},
+			});
+
+			console.log(`MCP server running on ${this.server.hostname}:${this.server.port} (HTTP transport)`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			throw new Error(`Failed to start HTTP transport on port ${this.options.port}: ${errorMessage}`);
+		}
 	}
 
 	private bunRequestToNodeRequest(req: Request, body?: unknown): IncomingMessage & { auth?: AuthInfo | undefined } {
@@ -425,6 +430,10 @@ export class BacklogHttpTransport {
 		return nodeRes as ServerResponse & { getResponse: () => Response };
 	}
 
+	getPort(): number | undefined {
+		return this.server?.port;
+	}
+
 	async stop(): Promise<void> {
 		if (this.server) {
 			// First close all HTTP transports
@@ -451,8 +460,8 @@ export class BacklogHttpTransport {
 
 	getConnectionInfo(): { host: string; port: number; endpoints: string[] } {
 		return {
-			host: this.options.host,
-			port: this.options.port,
+			host: this.server?.hostname ?? this.options.host,
+			port: this.server?.port ?? this.options.port,
 			endpoints: ["/", "/health"],
 		};
 	}

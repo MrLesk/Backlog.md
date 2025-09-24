@@ -153,7 +153,8 @@ describe("McpServer", () => {
 	describe("transport methods", () => {
 		it("should connect successfully to SSE transport", async () => {
 			// SSE transport is now implemented, so it should connect successfully
-			await expect(mcpServer.connect("sse")).resolves.toBeUndefined();
+			// Use dynamic port allocation (port 0) to avoid conflicts
+			await expect(mcpServer.connect("sse", { port: 0 })).resolves.toBeUndefined();
 		});
 
 		it("should require transport before starting", async () => {

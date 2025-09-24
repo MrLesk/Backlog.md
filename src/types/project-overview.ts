@@ -24,7 +24,6 @@ export interface ProjectOverviewConfig {
 	readonly timeframe: AnalysisTimeframe;
 	readonly includeMetrics: readonly MetricType[];
 	readonly securityLevel: SecurityLevel;
-	readonly refreshCache: boolean;
 	readonly teamFilter?: readonly string[];
 	readonly priorityFilter?: readonly ("high" | "medium" | "low")[];
 }
@@ -161,7 +160,7 @@ export interface ProjectOverviewResult {
 
 // Error handling for project overview
 export interface ProjectOverviewError {
-	readonly code: "INSUFFICIENT_DATA" | "INVALID_TIMEFRAME" | "ACCESS_DENIED" | "COMPUTATION_ERROR" | "CACHE_ERROR";
+	readonly code: "INSUFFICIENT_DATA" | "INVALID_TIMEFRAME" | "ACCESS_DENIED" | "COMPUTATION_ERROR";
 	readonly message: string;
 	readonly details?: Record<string, unknown>;
 }
@@ -170,15 +169,6 @@ export interface ProjectOverviewError {
 export type ProjectOverviewResponse =
 	| { readonly success: true; readonly data: ProjectOverviewResult }
 	| { readonly success: false; readonly error: ProjectOverviewError };
-
-// Cache structure for performance optimization
-export interface ProjectOverviewCache {
-	readonly lastComputed: Date;
-	readonly data: ProjectOverviewResult;
-	readonly taskCount: TaskCount;
-	readonly configHash: string;
-	readonly validUntil: Date;
-}
 
 // Helper utility types
 export type TaskFilter = (task: Task) => boolean;

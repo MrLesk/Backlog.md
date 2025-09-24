@@ -211,6 +211,17 @@ export class McpServer extends Core {
 		// Server automatically starts when transport connects
 	}
 
+	/**
+	 * Get the actual port number that the transport is listening on
+	 * @returns The port number, or undefined if no transport is connected or it doesn't support port reporting
+	 */
+	public getPort(): number | undefined {
+		if (this.transport && "getPort" in this.transport) {
+			return this.transport.getPort();
+		}
+		return undefined;
+	}
+
 	public async stop(): Promise<void> {
 		// Stop periodic cleanup
 		if (this.cleanupInterval) {
