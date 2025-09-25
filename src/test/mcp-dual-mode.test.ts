@@ -1,13 +1,13 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
-import type { InstallationContext } from "../../../utils/installation-detector.ts";
+import type { InstallationContext } from "../utils/installation-detector.ts";
 import {
 	generateMcpConfiguration,
 	getInstallationContext,
 	validateMcpConfiguration,
-} from "../../../utils/installation-detector.ts";
+} from "../utils/installation-detector.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 // Mock heavy operations to avoid spawning processes
 const mockTestMcpConnection = async (projectRoot: string) => ({

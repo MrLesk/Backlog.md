@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
 import {
 	createDecisionsListResource,
 	createDocsListResource,
 	createDraftsListResource,
 	createProjectOverviewResource,
 	registerDataResources,
-} from "../../resources/data-resources.ts";
-import { McpServer } from "../../server.ts";
+} from "../mcp/resources/data-resources.ts";
+import { McpServer } from "../mcp/server.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 

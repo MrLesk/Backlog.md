@@ -7,7 +7,7 @@ import {
 	McpError,
 	McpInternalError,
 	McpValidationError,
-} from "../../errors/mcp-errors.ts";
+} from "../mcp/errors/mcp-errors.ts";
 
 describe("MCP Error Classes", () => {
 	test("McpError should have correct properties", () => {

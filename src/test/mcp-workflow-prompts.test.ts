@@ -5,8 +5,8 @@ import {
 	registerWorkflowPrompts,
 	sprintPlanningPrompt,
 	taskCreationPrompt,
-} from "../../prompts/workflow-prompts.ts";
-import { McpServer } from "../../server.ts";
+} from "../mcp/prompts/workflow-prompts.ts";
+import { McpServer } from "../mcp/server.ts";
 
 describe("workflow prompts", () => {
 	describe("taskCreationPrompt", () => {

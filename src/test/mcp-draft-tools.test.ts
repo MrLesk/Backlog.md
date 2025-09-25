@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
-import { McpServer } from "../../server.ts";
-import { registerDraftTools } from "../../tools/draft-tools.ts";
+import { McpServer } from "../mcp/server.ts";
+import { registerDraftTools } from "../mcp/tools/draft-tools.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 

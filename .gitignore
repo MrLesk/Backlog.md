@@ -58,3 +58,9 @@ result
 
 # Test temp directories created by bun tests
 tmp/
+
+# Local files
+*.local.*
+
+# Performance benchmark artifacts
+test-benchmark-report.json

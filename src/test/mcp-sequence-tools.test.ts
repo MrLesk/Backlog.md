@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
-import type { BacklogConfig } from "../../../types/index.ts";
-import { McpServer } from "../../server.ts";
-import { registerSequenceTools } from "../../tools/sequence-tools.ts";
+import type { BacklogConfig } from "../../types/index.ts";
+import { McpServer } from "../mcp/server.ts";
+import { registerSequenceTools } from "../mcp/tools/sequence-tools.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 

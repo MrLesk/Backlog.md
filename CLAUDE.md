@@ -68,6 +68,15 @@ BACKLOG_DEBUG=true backlog --version
 - `bun test src/mcp/**/*.test.ts` - Run only MCP tests (or use `npm run test:mcp`)
 - `bun test --watch` - Run tests in watch mode (or use `npm run test:watch`)
 
+### Performance Benchmarking
+
+- `bun run benchmark` - Run performance benchmark on all test files
+  - Runs each test file individually and measures execution time
+  - Groups results by test prefix (mcp-, cli-, board-, etc.)
+  - Generates `test-benchmark-report.json` with detailed timing data
+  - Shows top 10 slowest tests and performance breakdown by category
+  - Useful for tracking test performance improvements and identifying bottlenecks
+
 ### Configuration Management
 
 - `bun run cli config list` - View all configuration values

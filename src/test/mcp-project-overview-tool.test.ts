@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
-import { McpServer } from "../../server.ts";
-import { registerProjectOverviewTools } from "../../tools/project-overview-tool.ts";
-import { registerTaskTools } from "../../tools/task-tools.ts";
+import { McpServer } from "../mcp/server.ts";
+import { registerProjectOverviewTools } from "../mcp/tools/project-overview-tool.ts";
+import { registerTaskTools } from "../mcp/tools/task-tools.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 

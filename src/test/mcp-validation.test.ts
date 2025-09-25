@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { McpValidationError } from "../../errors/mcp-errors.ts";
+import { McpValidationError } from "../mcp/errors/mcp-errors.ts";
 import {
 	type JsonSchema,
 	sanitizePath,
@@ -7,7 +7,7 @@ import {
 	validateConfigUpdate,
 	validateInput,
 	validateTaskCreate,
-} from "../../validation/validators.ts";
+} from "../mcp/validation/validators.ts";
 
 describe("JSON Schema Validation", () => {
 	test("validateInput should validate required fields", () => {

@@ -1,41 +1,41 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { McpServer } from "../../server.ts";
-import { BacklogSseTransport, type SseTransportOptions } from "../../transports/sse.ts";
+import { McpServer } from "../mcp/server.ts";
+import { BacklogHttpTransport, type HttpTransportOptions } from "../mcp/transports/http.ts";
 
-describe("BacklogSseTransport", () => {
-	let sharedTransport: BacklogSseTransport;
+describe("BacklogHttpTransport", () => {
+	let sharedTransport: BacklogHttpTransport;
 	let sharedMcpServer: McpServer;
-	let bearerTransport: BacklogSseTransport;
-	let basicTransport: BacklogSseTransport;
-	let corsTransport: BacklogSseTransport;
-	const testPort = 18080; // Use different port to avoid conflicts
-	const bearerPort = 18081;
-	const basicPort = 18082;
-	const corsPort = 18083;
+	let bearerTransport: BacklogHttpTransport;
+	let basicTransport: BacklogHttpTransport;
+	let corsTransport: BacklogHttpTransport;
+	const testPort = 19080; // Use different port to avoid conflicts
+	const bearerPort = 19081;
+	const basicPort = 19082;
+	const corsPort = 19083;
 
 	beforeAll(async () => {
 		sharedMcpServer = new McpServer(process.cwd());
 
 		// Create shared transports for different test scenarios
-		sharedTransport = new BacklogSseTransport({
+		sharedTransport = new BacklogHttpTransport({
 			host: "localhost",
 			port: testPort,
 			auth: { type: "none" },
 		});
 
-		bearerTransport = new BacklogSseTransport({
+		bearerTransport = new BacklogHttpTransport({
 			host: "localhost",
 			port: bearerPort,
 			auth: { type: "bearer", token: "secret-token" },
 		});
 
-		basicTransport = new BacklogSseTransport({
+		basicTransport = new BacklogHttpTransport({
 			host: "localhost",
 			port: basicPort,
 			auth: { type: "basic", username: "user", password: "pass" },
 		});
 
-		corsTransport = new BacklogSseTransport({
+		corsTransport = new BacklogHttpTransport({
 			host: "localhost",
 			port: corsPort,
 			cors: { origin: "*", credentials: true },
@@ -69,25 +69,25 @@ describe("BacklogSseTransport", () => {
 
 	describe("constructor", () => {
 		it("should initialize with default options", () => {
-			const defaultTransport = new BacklogSseTransport();
+			const defaultTransport = new BacklogHttpTransport();
 			const info = defaultTransport.getConnectionInfo();
 
 			expect(info.host).toBe("localhost");
 			expect(info.port).toBe(8080);
-			expect(info.endpoints).toContain("/sse");
-			expect(info.endpoints).toContain("/messages");
+			expect(info.endpoints).toContain("/");
 			expect(info.endpoints).toContain("/health");
 		});
 
 		it("should initialize with custom options", () => {
-			const customOptions: SseTransportOptions = {
+			const customOptions: HttpTransportOptions = {
 				host: "127.0.0.1",
 				port: 9090,
 				auth: { type: "bearer", token: "test-token" },
 				cors: { origin: "https://example.com", credentials: true },
+				enableJsonResponse: true,
 			};
 
-			const customTransport = new BacklogSseTransport(customOptions);
+			const customTransport = new BacklogHttpTransport(customOptions);
 			const info = customTransport.getConnectionInfo();
 
 			expect(info.host).toBe("127.0.0.1");
@@ -103,7 +103,7 @@ describe("BacklogSseTransport", () => {
 
 			const data = await response.json();
 			expect(data.status).toBe("ok");
-			expect(data.transport).toBe("sse");
+			expect(data.transport).toBe("http");
 		});
 	});
 
@@ -120,7 +120,7 @@ describe("BacklogSseTransport", () => {
 			expect(response.status).toBe(401);
 
 			const data = await response.json();
-			expect(data.error).toBe("Unauthorized");
+			expect(data.error.message).toBe("Unauthorized");
 		});
 
 		it("should allow access with correct bearer token", async () => {
@@ -166,11 +166,13 @@ describe("BacklogSseTransport", () => {
 			expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 			expect(response.headers.get("Access-Control-Allow-Methods")).toContain("GET");
 			expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+			expect(response.headers.get("Access-Control-Allow-Methods")).toContain("DELETE");
 			expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Content-Type");
+			expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Mcp-Session-Id");
 		});
 	});
 
-	describe("endpoints", () => {
+	describe("MCP endpoints", () => {
 		// Use shared transport that's already running
 
 		it("should return 404 for unknown endpoints", async () => {
@@ -178,47 +180,121 @@ describe("BacklogSseTransport", () => {
 			expect(response.status).toBe(404);
 
 			const data = await response.json();
-			expect(data.error).toBe("Not found");
+			expect(data.error.message).toBe("Not found");
 		});
 
-		it("should handle SSE endpoint with GET request", async () => {
-			// Note: This is a simplified test. In a real scenario, we'd need to handle SSE streams properly
-			const response = await fetch(`http://localhost:${testPort}/sse`);
+		it("should handle POST requests to root endpoint", async () => {
+			// Test initialization request
+			const initRequest = {
+				jsonrpc: "2.0",
+				id: 1,
+				method: "initialize",
+				params: {
+					protocolVersion: "2024-11-05",
+					capabilities: {},
+					clientInfo: {
+						name: "test-client",
+						version: "1.0.0",
+					},
+				},
+			};
+
+			const response = await fetch(`http://localhost:${testPort}/`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json, text/event-stream",
+				},
+				body: JSON.stringify(initRequest),
+			});
+
 			expect(response.status).toBe(200);
-			expect(response.headers.get("Content-Type")).toBe("text/event-stream");
-			expect(response.headers.get("Cache-Control")).toBe("no-cache, no-transform");
+			expect(response.headers.get("Mcp-Session-Id")).toBeDefined();
+
+			// Should return MCP response
+			const data = await response.json();
+			expect(data.jsonrpc).toBe("2.0");
+			expect(data.id).toBe(1);
 		});
 
-		it("should reject SSE endpoint with non-GET request", async () => {
-			const response = await fetch(`http://localhost:${testPort}/sse`, {
-				method: "POST",
-			});
-			expect(response.status).toBe(404); // Will hit the catch-all 404
-		});
+		it("should require session ID for non-initialization requests", async () => {
+			const toolsRequest = {
+				jsonrpc: "2.0",
+				id: 2,
+				method: "tools/list",
+			};
 
-		it("should handle messages endpoint validation", async () => {
-			// Missing session ID
-			const response = await fetch(`http://localhost:${testPort}/messages`, {
+			const response = await fetch(`http://localhost:${testPort}/`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ test: "message" }),
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json, text/event-stream",
+				},
+				body: JSON.stringify(toolsRequest),
 			});
+
 			expect(response.status).toBe(400);
-
-			const data = await response.json();
-			expect(data.error).toBe("Missing session ID");
 		});
 
-		it("should return 404 for unknown session ID", async () => {
-			const response = await fetch(`http://localhost:${testPort}/messages?sessionId=unknown`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ test: "message" }),
+		it("should reject non-POST/GET/DELETE methods on root endpoint", async () => {
+			const response = await fetch(`http://localhost:${testPort}/`, {
+				method: "PUT",
 			});
-			expect(response.status).toBe(404);
 
+			expect(response.status).toBe(405);
 			const data = await response.json();
-			expect(data.error).toBe("Session not found");
+			expect(data.error.message).toBe("Method not allowed");
+		});
+
+		it("should handle GET requests for SSE with valid session", async () => {
+			// First, establish a session with POST
+			const initRequest = {
+				jsonrpc: "2.0",
+				id: 1,
+				method: "initialize",
+				params: {
+					protocolVersion: "2024-11-05",
+					capabilities: {},
+					clientInfo: {
+						name: "test-client",
+						version: "1.0.0",
+					},
+				},
+			};
+
+			const postResponse = await fetch(`http://localhost:${testPort}/`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json, text/event-stream",
+				},
+				body: JSON.stringify(initRequest),
+			});
+
+			const sessionId = postResponse.headers.get("Mcp-Session-Id");
+			expect(sessionId).toBeDefined();
+
+			// Now try SSE stream
+			const getResponse = await fetch(`http://localhost:${testPort}/`, {
+				method: "GET",
+				headers: {
+					"Mcp-Session-Id": sessionId || "",
+				},
+			});
+
+			expect(getResponse.status).toBe(200);
+			expect(getResponse.headers.get("Content-Type")).toBe("text/event-stream");
+		});
+
+		it("should reject GET requests without valid session", async () => {
+			const response = await fetch(`http://localhost:${testPort}/`, {
+				method: "GET",
+				headers: {
+					"Mcp-Session-Id": "invalid-session",
+				},
+			});
+
+			expect(response.status).toBe(400);
 		});
 	});
 
@@ -228,9 +304,8 @@ describe("BacklogSseTransport", () => {
 
 			expect(info.host).toBe("localhost");
 			expect(info.port).toBe(testPort);
-			expect(info.endpoints).toHaveLength(3);
-			expect(info.endpoints).toContain("/sse");
-			expect(info.endpoints).toContain("/messages");
+			expect(info.endpoints).toHaveLength(2);
+			expect(info.endpoints).toContain("/");
 			expect(info.endpoints).toContain("/health");
 		});
 	});

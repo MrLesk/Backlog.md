@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
-import { registerDataResources } from "../../resources/data-resources.ts";
-import { McpServer } from "../../server.ts";
-import { registerDecisionTools } from "../../tools/decision-tools.ts";
-import { registerDocumentTools } from "../../tools/document-tools.ts";
-import { registerDraftTools } from "../../tools/draft-tools.ts";
+import { registerDataResources } from "../mcp/resources/data-resources.ts";
+import { McpServer } from "../mcp/server.ts";
+import { registerDecisionTools } from "../mcp/tools/decision-tools.ts";
+import { registerDocumentTools } from "../mcp/tools/document-tools.ts";
+import { registerDraftTools } from "../mcp/tools/draft-tools.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 

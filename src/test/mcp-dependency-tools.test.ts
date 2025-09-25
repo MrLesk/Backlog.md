@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { createUniqueTestDir, safeCleanup } from "../../../test/test-utils.ts";
-import { McpServer } from "../../server.ts";
-import { DependencyToolHandlers } from "../../tools/dependency-tools.ts";
+import { McpServer } from "../mcp/server.ts";
+import { DependencyToolHandlers } from "../mcp/tools/dependency-tools.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Dependency Tools", () => {
 	let TEST_DIR: string;

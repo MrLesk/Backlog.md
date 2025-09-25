@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { ConnectionManager, type TimeProvider } from "../../connection/manager.ts";
-import { McpConnectionError } from "../../errors/mcp-errors.ts";
+import { ConnectionManager, type TimeProvider } from "../mcp/connection/manager.ts";
+import { McpConnectionError } from "../mcp/errors/mcp-errors.ts";
 
 class MockTimeProvider implements TimeProvider {
 	private currentTime = 0;

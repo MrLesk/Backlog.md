@@ -47,6 +47,7 @@
 		"test:unit": "bun test src/**/*.test.ts",
 		"test:mcp": "bun test src/mcp/**/*.test.ts",
 		"test:watch": "bun test --watch",
+		"benchmark": "bun run scripts/benchmark-tests.ts",
 		"format": "biome format --write .",
 		"lint": "biome lint --write .",
 		"check": "biome check .",
