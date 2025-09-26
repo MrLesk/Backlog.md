@@ -1,4 +1,5 @@
 import type { Task } from "../../types/index.ts";
+import { formatTaskPlainText } from "../../ui/task-viewer.ts";
 import { McpError } from "../errors/mcp-errors.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult } from "../types.ts";
@@ -46,11 +47,14 @@ export class DraftToolHandlers {
 
 			await this.server.fs.saveDraft(draft);
 
+			// Format the draft using formatTaskPlainText since drafts are tasks
+			const formattedDraft = formatTaskPlainText(draft, draft.body || "");
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully created draft: ${newId}`,
+						text: `Successfully created draft:\n\n${formattedDraft}`,
 					},
 				],
 			};
@@ -91,20 +95,27 @@ export class DraftToolHandlers {
 			// Apply limit
 			filteredDrafts = filteredDrafts.slice(0, limit);
 
+			if (filteredDrafts.length === 0) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: "No drafts found.",
+						},
+					],
+				};
+			}
+
+			// Format each draft using formatTaskPlainText since drafts are tasks
 			const draftsText = filteredDrafts
-				.map(
-					(draft) => `**${draft.id}**: ${draft.title}
-- Assignee: ${draft.assignee.join(", ") || "Unassigned"}
-- Labels: ${draft.labels.join(", ") || "None"}
-- Created: ${draft.createdDate}${draft.description ? `\n- Description: ${draft.description}` : ""}`,
-				)
-				.join("\n\n");
+				.map((draft) => formatTaskPlainText(draft, draft.body || ""))
+				.join(`\n${"=".repeat(80)}\n\n`);
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Found ${filteredDrafts.length} draft(s):\n\n${draftsText || "No drafts found."}`,
+						text: `Found ${filteredDrafts.length} draft(s):\n\n${draftsText}`,
 					},
 				],
 			};
@@ -126,11 +137,8 @@ export class DraftToolHandlers {
 				throw new McpError(`Draft not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
-			const draftText = `**${draft.id}**: ${draft.title}
-- Assignee: ${draft.assignee.join(", ") || "Unassigned"}
-- Labels: ${draft.labels.join(", ") || "None"}
-- Priority: ${draft.priority || "Not set"}
-- Created: ${draft.createdDate}${draft.updatedDate ? `\n- Updated: ${draft.updatedDate}` : ""}${draft.description ? `\n- Description: ${draft.description}` : ""}`;
+			// Format the draft using formatTaskPlainText since drafts are tasks
+			const draftText = formatTaskPlainText(draft, draft.body || "");
 
 			return {
 				content: [
@@ -177,22 +185,18 @@ export class DraftToolHandlers {
 			// Create the task
 			await this.server.createTask(task);
 
-			// Manually remove the draft (not using promoteDraft since we already created the task)
-			const draftsDir = await this.server.fs.getDraftsDir();
-			const core = { filesystem: { tasksDir: draftsDir } };
-			const { getTaskPath } = await import("../../utils/task-path.ts");
-			const draftPath = await getTaskPath(id, core);
+			// Remove the draft using the filesystem abstraction
+			// Note: We archive the draft to remove it cleanly through the proper abstraction
+			await this.server.fs.archiveDraft(id);
 
-			if (draftPath) {
-				const { unlink } = await import("node:fs/promises");
-				await unlink(draftPath);
-			}
+			// Format the newly created task using formatTaskPlainText
+			const formattedTask = formatTaskPlainText(task, task.body || "");
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully promoted draft ${id} to task: ${newTaskId}`,
+						text: `Successfully promoted draft ${id} to task:\n\n${formattedTask}`,
 					},
 				],
 			};
@@ -220,11 +224,14 @@ export class DraftToolHandlers {
 				throw new McpError(`Failed to archive draft: ${id}`, "OPERATION_FAILED");
 			}
 
+			// Format the archived draft using formatTaskPlainText since drafts are tasks
+			const formattedDraft = formatTaskPlainText(draft, draft.body || "");
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully archived draft: ${id}`,
+						text: `Successfully archived draft:\n\n${formattedDraft}`,
 					},
 				],
 			};

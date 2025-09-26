@@ -64,7 +64,9 @@ describe("Draft Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 
-			expect(result.content[0]?.text).toMatch(/Successfully created draft: draft-\d+/);
+			expect(result.content[0]?.text).toContain("Successfully created draft:");
+			expect(result.content[0]?.text).toContain("Task draft-");
+			expect(result.content[0]?.text).toContain("Test Draft");
 
 			// Verify the draft was actually created
 			const drafts = await mcpServer.fs.listDrafts();
@@ -89,7 +91,9 @@ describe("Draft Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 
-			expect(result.content[0]?.text).toMatch(/Successfully created draft: draft-\d+/);
+			expect(result.content[0]?.text).toContain("Successfully created draft:");
+			expect(result.content[0]?.text).toContain("Task draft-");
+			expect(result.content[0]?.text).toContain("Test Draft");
 
 			// Verify the draft was created with all fields
 			const drafts = await mcpServer.fs.listDrafts();
@@ -249,11 +253,11 @@ describe("Draft Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 
-			expect(result.content[0]?.text).toContain(`**${draftId}**: Test Draft`);
-			expect(result.content[0]?.text).toContain("Assignee: user1");
+			expect(result.content[0]?.text).toContain(`Task ${draftId} - Test Draft`);
+			expect(result.content[0]?.text).toContain("Assignee: @user1");
 			expect(result.content[0]?.text).toContain("Labels: test");
-			expect(result.content[0]?.text).toContain("Priority: high");
-			expect(result.content[0]?.text).toContain("Description: Test description");
+			expect(result.content[0]?.text).toContain("Priority: High");
+			expect(result.content[0]?.text).toContain("Test description");
 		});
 
 		// Note: Error handling test removed as MCP server handles retries differently
@@ -293,7 +297,9 @@ describe("Draft Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(promoteRequest);
 
-			expect(result.content[0]?.text).toMatch(new RegExp(`Successfully promoted draft ${draftId} to task: task-\\d+`));
+			expect(result.content[0]?.text).toContain(`Successfully promoted draft ${draftId} to task:`);
+			expect(result.content[0]?.text).toContain("Task task-");
+			expect(result.content[0]?.text).toContain("Test Draft for Promotion");
 
 			// Verify a new task was created
 			const tasks = await mcpServer.fs.listTasks();
@@ -343,7 +349,9 @@ describe("Draft Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(promoteRequest);
 
-			expect(result.content[0]?.text).toMatch(new RegExp(`Successfully promoted draft ${draftId} to task: task-\\d+`));
+			expect(result.content[0]?.text).toContain(`Successfully promoted draft ${draftId} to task:`);
+			expect(result.content[0]?.text).toContain("Task task-");
+			expect(result.content[0]?.text).toContain("Test Draft for Custom Status");
 
 			// Verify the task was created with custom status
 			const tasks = await mcpServer.fs.listTasks();
@@ -386,7 +394,8 @@ describe("Draft Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(archiveRequest);
 
-			expect(result.content[0]?.text).toBe(`Successfully archived draft: ${draftId}`);
+			expect(result.content[0]?.text).toContain("Successfully archived draft:");
+			expect(result.content[0]?.text).toContain(`Task ${draftId} - Test Draft for Archive`);
 
 			// Verify the draft was removed from active drafts
 			const drafts = await mcpServer.fs.listDrafts();
