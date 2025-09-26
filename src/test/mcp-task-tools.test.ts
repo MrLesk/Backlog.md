@@ -4,7 +4,6 @@ import { registerTaskTools } from "../mcp/tools/task-tools.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const startTime = Date.now();
 
 // Utility function for creating test tasks with criteria
 const createTestTaskWithCriteria = async (mcpServer: McpServer, overrides = {}, criteria: string[] = []) => {
@@ -21,10 +20,10 @@ const createTestTaskWithCriteria = async (mcpServer: McpServer, overrides = {}, 
 
 	const result = await mcpServer.testInterface.callTool(taskRequest);
 
-	// Extract task ID from the response
-	const responseText = result.content[0]?.text || "";
-	const taskIdMatch = responseText.match(/Successfully created task: (task-\d+)/);
-	const taskId = taskIdMatch ? taskIdMatch[1] : "task-1"; // fallback to task-1 if parsing fails
+	// Extract task ID from the formatted response (now contains "Task task-X - Title")
+	const responseText = (result.content[0]?.text as string) || "";
+	const taskIdMatch = responseText.match(/Task (task-\d+) -/);
+	const taskId = taskIdMatch?.[1] || "task-1"; // fallback to task-1 if parsing fails
 
 	if (criteria.length > 0) {
 		await mcpServer.testInterface.callTool({
@@ -74,11 +73,6 @@ describe("Task Tools", () => {
 	afterAll(async () => {
 		try {
 			await safeCleanup(TEST_DIR);
-			const totalTime = Date.now() - startTime;
-			console.log(`Total test suite time: ${totalTime}ms`);
-			console.log(
-				`Performance improvement: ${(((18700 - totalTime) / 18700) * 100).toFixed(1)}% faster than baseline (18.7s)`,
-			);
 		} catch {
 			// Ignore cleanup errors
 		}
@@ -157,8 +151,8 @@ describe("Task Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]?.text).toContain("Successfully created task:");
-			expect(result.content[0]?.text).toContain("task-");
+			expect(result.content[0]?.text).toContain("Task task-");
+			expect(result.content[0]?.text).toContain("Test Task");
 		});
 
 		it("should handle task creation with parent task", async () => {
@@ -182,7 +176,7 @@ describe("Task Tools", () => {
 			};
 
 			const result = await mcpServer.testInterface.callTool(request);
-			expect(result.content[0]?.text).toContain("Successfully created task:");
+			expect(result.content[0]?.text).toContain("Task task-");
 		});
 
 		it("should validate required fields for task creation", async () => {
@@ -231,7 +225,6 @@ describe("Task Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]?.text).toContain("Found 2 task(s):");
 			expect(result.content[0]?.text).toContain("Frontend Task");
 			expect(result.content[0]?.text).toContain("Backend Task");
 		});
@@ -256,7 +249,7 @@ describe("Task Tools", () => {
 			};
 
 			const result = await mcpServer.testInterface.callTool(request);
-			expect(result.content[0]?.text).toContain("Found 1 task(s):");
+			expect(result.content[0]?.text).toContain("Frontend Task");
 			expect(result.content[0]?.text).toContain("In Progress");
 		});
 
@@ -272,7 +265,7 @@ describe("Task Tools", () => {
 			};
 
 			const result = await mcpServer.testInterface.callTool(request);
-			expect(result.content[0]?.text).toContain("Found 1 task(s):");
+			expect(result.content[0]?.text).toContain("Frontend Task");
 			expect(result.content[0]?.text).toContain("Frontend Task");
 		});
 
@@ -286,7 +279,6 @@ describe("Task Tools", () => {
 					arguments: { search: "Frontend" },
 				},
 			});
-			expect(titleSearch.content[0]?.text).toContain("Found 1 task(s):");
 			expect(titleSearch.content[0]?.text).toContain("Frontend Task");
 
 			// Search by description
@@ -296,7 +288,6 @@ describe("Task Tools", () => {
 					arguments: { search: "API" },
 				},
 			});
-			expect(descSearch.content[0]?.text).toContain("Found 1 task(s):");
 			expect(descSearch.content[0]?.text).toContain("Backend Task");
 		});
 
@@ -317,13 +308,15 @@ describe("Task Tools", () => {
 			};
 
 			const result = await mcpServer.testInterface.callTool(request);
-			expect(result.content[0]?.text).toContain("Found 3 task(s):");
+			expect(result.content[0]?.text).toContain("Task 3");
 		});
 	});
 
 	describe("task_update tool", () => {
 		const setupTestTask = async () => {
-			return await createTestTaskWithCriteria(mcpServer, { title: "Original Title" });
+			return await createTestTaskWithCriteria(mcpServer, {
+				title: "Original Title",
+			});
 		};
 
 		it("should update task with task_update tool", async () => {
@@ -344,7 +337,7 @@ describe("Task Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]?.text).toContain("Successfully updated task: task-1");
+			expect(result.content[0]?.text).toContain("Updated Title");
 
 			// Verify update by listing
 			const listResult = await mcpServer.testInterface.callTool({
@@ -369,7 +362,7 @@ describe("Task Tools", () => {
 			};
 
 			const result = await mcpServer.testInterface.callTool(request);
-			expect(result.content[0]?.text).toContain("Successfully updated task: task-1");
+			expect(result.content[0]?.text).toContain("Added user authentication flow");
 		});
 
 		it("should handle errors gracefully for non-existent task updates", async () => {
@@ -527,7 +520,9 @@ describe("Task Tools", () => {
 
 			it("should handle task with no acceptance criteria", async () => {
 				// Create task without criteria
-				const { taskId } = await createTestTaskWithCriteria(mcpServer, { title: "Empty Task" });
+				const { taskId } = await createTestTaskWithCriteria(mcpServer, {
+					title: "Empty Task",
+				});
 
 				const request = {
 					params: {
@@ -711,7 +706,7 @@ describe("Task Tools", () => {
 					},
 					["First criterion", "Second criterion", "Third criterion", "Fourth criterion"],
 				);
-				taskId = newTaskId;
+				taskId = newTaskId || "task-1";
 			});
 
 			it("should remove single acceptance criterion", async () => {

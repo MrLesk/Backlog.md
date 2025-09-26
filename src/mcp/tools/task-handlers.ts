@@ -1,5 +1,6 @@
 import { AcceptanceCriteriaManager } from "../../core/acceptance-criteria.ts";
 import type { Task } from "../../types/index.ts";
+import { formatTaskPlainText } from "../../ui/task-viewer.ts";
 import { getTaskPath } from "../../utils/task-path.ts";
 import { McpError } from "../errors/mcp-errors.ts";
 import type { McpServer } from "../server.ts";
@@ -119,13 +120,31 @@ export class TaskToolHandlers {
 				acceptanceCriteriaItems,
 			};
 
-			const taskId = await this.server.createTask(task);
+			const filepath = await this.server.createTask(task);
+
+			// Extract task ID from filepath (e.g., "/path/to/task-1 - Title.md" -> "task-1")
+			const taskId = task.id; // We already generated this above
+			// Load the created task and return formatted output
+			const createdTask = await this.server.fs.loadTask(taskId);
+			// Use the filepath returned from createTask
+			const content = await Bun.file(filepath).text();
+
+			if (createdTask) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: formatTaskPlainText(createdTask, content, filepath),
+						},
+					],
+				};
+			}
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully created task: ${taskId}`,
+						text: `Successfully created task: ${filepath}`,
 					},
 				],
 			};
@@ -174,21 +193,30 @@ export class TaskToolHandlers {
 			// Apply limit
 			filteredTasks = filteredTasks.slice(0, limit);
 
-			const tasksText = filteredTasks
-				.map(
-					(task) => `**${task.id}**: ${task.title}
-- Status: ${task.status}
-- Assignee: ${task.assignee.join(", ") || "Unassigned"}
-- Labels: ${task.labels.join(", ") || "None"}
-- Created: ${task.createdDate}${task.description ? `\n- Description: ${task.description}` : ""}`,
-				)
-				.join("\n\n");
+			if (filteredTasks.length === 0) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: "No tasks found.",
+						},
+					],
+				};
+			}
+
+			// Use formatTaskPlainText for consistent CLI --plain formatting
+			const tasksOutput = [];
+			for (const task of filteredTasks) {
+				const taskPath = await getTaskPath(task.id, { filesystem: { tasksDir: this.server.fs.tasksDir } });
+				const content = taskPath ? await Bun.file(taskPath).text() : "";
+				tasksOutput.push(formatTaskPlainText(task, content, taskPath || undefined));
+			}
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Found ${filteredTasks.length} task(s):\n\n${tasksText || "No tasks found."}`,
+						text: tasksOutput.join(`\n\n${"=".repeat(80)}\n\n`),
 					},
 				],
 			};
@@ -214,52 +242,15 @@ export class TaskToolHandlers {
 				throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 			}
 
-			// Format task details with all metadata and relationships
-			const taskDetails = [];
-			taskDetails.push(`**${task.id}**: ${task.title}`);
-			taskDetails.push(`- Status: ${task.status}`);
-			taskDetails.push(`- Assignee: ${task.assignee?.join(", ") || "Unassigned"}`);
-			taskDetails.push(`- Priority: ${task.priority || "Not set"}`);
-			taskDetails.push(`- Labels: ${task.labels?.join(", ") || "None"}`);
-			taskDetails.push(`- Created: ${task.createdDate}`);
-
-			if (task.updatedDate) {
-				taskDetails.push(`- Updated: ${task.updatedDate}`);
-			}
-
-			if (task.parentTaskId) {
-				taskDetails.push(`- Parent Task: ${task.parentTaskId}`);
-			}
-
-			if (task.dependencies && task.dependencies.length > 0) {
-				taskDetails.push(`- Dependencies: ${task.dependencies.join(", ")}`);
-			}
-
-			if (task.description) {
-				taskDetails.push(`\n**Description:**\n${task.description}`);
-			}
-
-			if (task.acceptanceCriteriaItems && task.acceptanceCriteriaItems.length > 0) {
-				taskDetails.push("\n**Acceptance Criteria:**");
-				for (const criteria of task.acceptanceCriteriaItems) {
-					const checkMark = criteria.checked ? "✅" : "❌";
-					taskDetails.push(`${checkMark} #${criteria.index} ${criteria.text}`);
-				}
-			}
-
-			if (task.implementationPlan) {
-				taskDetails.push(`\n**Implementation Plan:**\n${task.implementationPlan}`);
-			}
-
-			if (task.implementationNotes) {
-				taskDetails.push(`\n**Implementation Notes:**\n${task.implementationNotes}`);
-			}
+			// Get task file path and content for formatting
+			const taskPath = await getTaskPath(id, { filesystem: { tasksDir: this.server.fs.tasksDir } });
+			const content = taskPath ? await Bun.file(taskPath).text() : "";
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: taskDetails.join("\n"),
+						text: formatTaskPlainText(task, content, taskPath || undefined),
 					},
 				],
 			};
@@ -301,11 +292,15 @@ export class TaskToolHandlers {
 				throw new McpError(`Failed to archive task: ${id}`, "OPERATION_FAILED");
 			}
 
+			// Return formatted result with task details
+			const taskPath = await getTaskPath(id, { filesystem: { tasksDir: this.server.fs.tasksDir } });
+			const content = taskPath ? await Bun.file(taskPath).text() : "";
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully archived task: ${id}`,
+						text: formatTaskPlainText(task, content, taskPath || undefined),
 					},
 				],
 			};
@@ -339,11 +334,15 @@ export class TaskToolHandlers {
 				throw new McpError(`Failed to demote task: ${id}`, "OPERATION_FAILED");
 			}
 
+			// Return formatted result with task details
+			const taskPath = await getTaskPath(id, { filesystem: { tasksDir: this.server.fs.tasksDir } });
+			const content = taskPath ? await Bun.file(taskPath).text() : "";
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully demoted task: ${id}`,
+						text: formatTaskPlainText(task, content, taskPath || undefined),
 					},
 				],
 			};
@@ -410,6 +409,22 @@ export class TaskToolHandlers {
 			if (validatedDependencies !== undefined) updatedTask.dependencies = validatedDependencies;
 
 			await this.server.updateTask(updatedTask);
+
+			// Load updated task and return formatted output
+			const refreshedTask = await this.server.fs.loadTask(id);
+			const taskPath = await getTaskPath(id, { filesystem: { tasksDir: this.server.fs.tasksDir } });
+			const content = taskPath ? await Bun.file(taskPath).text() : "";
+
+			if (refreshedTask) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: formatTaskPlainText(refreshedTask, content, taskPath || undefined),
+						},
+					],
+				};
+			}
 
 			return {
 				content: [
