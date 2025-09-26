@@ -116,12 +116,12 @@ describe("Notes Tools", () => {
 			});
 
 			expect(createResponse.content).toHaveLength(1);
-			expect(createResponse.content[0]?.text).toContain("Successfully created task:");
+			expect(createResponse.content[0]?.text).toContain("Task task-1 - Test Task for Notes");
 			// Extract task ID from the response text
 			const responseText = createResponse.content[0]?.text as string;
-			const match = responseText.match(/task-(\d+)/);
+			const match = responseText.match(/Task (task-\d+)/);
 			expect(match).toBeTruthy();
-			taskId = match?.[0] as string;
+			taskId = match?.[1] as string;
 		});
 
 		describe("notes_set tool", () => {
@@ -157,9 +157,7 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(false);
-				expect(result.error.message).toContain("not found");
+				expect(response.content[0]?.text).toContain("Task with ID 'non-existent-task' not found");
 			});
 
 			it("should enforce content size limit", async () => {
@@ -176,10 +174,8 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(false);
 				// Should be rejected by schema validation or business logic
-				expect(result.error.message || result.error.code).toMatch(/length|size|limit|VALIDATION_ERROR/i);
+				expect(response.content[0]?.text).toMatch(/exceeds maximum length|Content exceeds maximum size limit/i);
 
 				// console.error is not called for validation errors unless DEBUG is set
 				// The validation error is properly handled and returned to the client
@@ -283,9 +279,7 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(false);
-				expect(result.error.message).toContain("control characters");
+				expect(response.content[0]?.text).toContain("control characters");
 			});
 
 			it("should prevent exceeding size limit", async () => {
@@ -314,9 +308,7 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(false);
-				expect(result.error.message).toContain("exceeds maximum size limit");
+				expect(response.content[0]?.text).toContain("exceeds maximum size limit");
 			});
 		});
 
@@ -379,9 +371,7 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(false);
-				expect(result.error.message).toContain("not found");
+				expect(response.content[0]?.text).toContain("Task with ID 'non-existent-task' not found");
 			});
 		});
 
@@ -439,9 +429,7 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(false);
-				expect(result.error.message).toContain("not found");
+				expect(response.content[0]?.text).toContain("Task with ID 'non-existent-task' not found");
 			});
 		});
 	});
@@ -462,11 +450,11 @@ describe("Notes Tools", () => {
 			});
 
 			expect(createResponse.content).toHaveLength(1);
-			expect(createResponse.content[0]?.text).toContain("Successfully created task:");
+			expect(createResponse.content[0]?.text).toContain("Task task-1 - Test Task for Plans");
 			const responseText = createResponse.content[0]?.text as string;
-			const match = responseText.match(/task-(\d+)/);
+			const match = responseText.match(/Task (task-\d+)/);
 			expect(match).toBeTruthy();
-			taskId = match?.[0] as string;
+			taskId = match?.[1] as string;
 		});
 
 		describe("plan_set tool", () => {
@@ -617,11 +605,11 @@ describe("Notes Tools", () => {
 			});
 
 			expect(createResponse.content).toHaveLength(1);
-			expect(createResponse.content[0]?.text).toContain("Successfully created task:");
+			expect(createResponse.content[0]?.text).toContain("Task task-1 - Integration Test Task");
 			const responseText = createResponse.content[0]?.text as string;
-			const match = responseText.match(/task-(\d+)/);
+			const match = responseText.match(/Task (task-\d+)/);
 			expect(match).toBeTruthy();
-			taskId = match?.[0] as string;
+			taskId = match?.[1] as string;
 		});
 
 		it("should work with task_update tool", async () => {
@@ -649,7 +637,7 @@ describe("Notes Tools", () => {
 			});
 
 			expect(updateResponse.content).toHaveLength(1);
-			expect(updateResponse.content[0]?.text).toContain("Successfully updated task");
+			expect(updateResponse.content[0]?.text).toContain("Task task-1 - Updated Task Title");
 
 			// Verify the notes were updated
 			const getResponse = await mcpServer.testInterface.callTool({
@@ -713,10 +701,11 @@ describe("Notes Tools", () => {
 			});
 
 			expect(createResponse.content).toHaveLength(1);
+			expect(createResponse.content[0]?.text).toContain("Task task-1 - Performance Test Task");
 			const responseText = createResponse.content[0]?.text as string;
-			const match = responseText.match(/task-(\d+)/);
+			const match = responseText.match(/Task (task-\d+)/);
 			expect(match).toBeTruthy();
-			taskId = match?.[0] as string;
+			taskId = match?.[1] as string;
 		});
 
 		it("should handle large content efficiently", async () => {

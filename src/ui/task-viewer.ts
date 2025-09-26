@@ -332,7 +332,9 @@ export async function viewTaskEnhanced(
 		});
 
 		// Format header content - just status and title
-		const headerContent = `{${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`;
+		const headerContent = `{${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(
+			currentSelectedTask.status,
+		)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`;
 
 		headerBox.setContent(headerContent);
 
@@ -418,7 +420,9 @@ export async function viewTaskEnhanced(
 		// Subtasks
 		if (currentSelectedTask.subtasks?.length) {
 			metadata.push(
-				`{bold}Subtasks:{/bold} ${currentSelectedTask.subtasks.length} task${currentSelectedTask.subtasks.length > 1 ? "s" : ""}`,
+				`{bold}Subtasks:{/bold} ${currentSelectedTask.subtasks.length} task${
+					currentSelectedTask.subtasks.length > 1 ? "s" : ""
+				}`,
 			);
 		}
 
@@ -603,7 +607,11 @@ export async function viewTaskEnhanced(
 				if (!filePath) return;
 
 				type ProgWithPause = { pause?: () => () => void };
-				const scr = screen as unknown as { program?: ProgWithPause; leave?: () => void; enter?: () => void };
+				const scr = screen as unknown as {
+					program?: ProgWithPause;
+					leave?: () => void;
+					enter?: () => void;
+				};
 				const prog = scr.program;
 				const resumeProgram = typeof prog?.pause === "function" ? prog.pause() : undefined;
 				try {
@@ -641,7 +649,9 @@ export async function viewTaskEnhanced(
 function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
 	// Format header content - just status and title
 	const headerContent = [
-		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
+		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(
+			task.status,
+		)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
 
 	// Build the scrollable body content

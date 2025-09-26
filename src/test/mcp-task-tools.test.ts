@@ -190,10 +190,7 @@ describe("Task Tools", () => {
 			// Validation errors should be returned as error responses, not thrown
 			const result = await mcpServer.testInterface.callTool(request);
 			expect(result.content).toHaveLength(1);
-			const response = JSON.parse(result.content[0]?.text as string);
-			expect(response.success).toBe(false);
-			expect(response.error.code).toBe("VALIDATION_ERROR");
-			expect(response.error.message).toContain("Required field 'title'");
+			expect(result.content[0]?.text).toContain("Required field 'title'");
 		});
 	});
 
@@ -375,9 +372,7 @@ describe("Task Tools", () => {
 
 			const result = await mcpServer.testInterface.callTool(request);
 			expect(result.content).toHaveLength(1);
-			const response = JSON.parse(result.content[0]?.text as string);
-			expect(response.success).toBe(false);
-			expect(response.error.message).toContain("Task not found: non-existent-task");
+			expect(result.content[0]?.text).toContain("Task not found: non-existent-task");
 		});
 	});
 
@@ -482,9 +477,8 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				const response = JSON.parse(result.content[0]?.text as string);
-				expect(response.success).toBe(false);
-				expect(response.error.message).toContain("Task not found: non-existent-task");
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain("Task not found: non-existent-task");
 			});
 		});
 
@@ -544,9 +538,8 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				const response = JSON.parse(result.content[0]?.text as string);
-				expect(response.success).toBe(false);
-				expect(response.error.message).toContain("Task not found: non-existent-task");
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain("Task not found: non-existent-task");
 			});
 		});
 
@@ -663,9 +656,8 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				const response = JSON.parse(result.content[0]?.text as string);
-				expect(response.success).toBe(false);
-				expect(response.error.message).toContain("No criteria were updated");
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain("No criteria were updated");
 			});
 
 			it("should handle mixed valid/invalid indices", async () => {
@@ -797,9 +789,8 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				const response = JSON.parse(result.content[0]?.text as string);
-				expect(response.success).toBe(false);
-				expect(response.error.message).toContain("No criteria were removed");
+				expect(result.content).toHaveLength(1);
+				expect(result.content[0]?.text).toContain("No criteria were removed");
 			});
 
 			it("should handle mixed valid/invalid indices", async () => {
@@ -838,10 +829,8 @@ describe("Task Tools", () => {
 					};
 
 					const result = await mcpServer.testInterface.callTool(request);
-					const response = JSON.parse(result.content[0]?.text as string);
-					expect(response.success).toBe(false);
-					expect(response.error.code).toBe("VALIDATION_ERROR");
-					expect(response.error.message).toContain("Required field 'id'");
+					expect(result.content).toHaveLength(1);
+					expect(result.content[0]?.text).toContain("Required field 'id'");
 				}
 			});
 

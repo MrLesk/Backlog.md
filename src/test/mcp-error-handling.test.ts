@@ -79,11 +79,8 @@ describe("Error Response Handling", () => {
 		expect(result.content).toHaveLength(1);
 		expect(result.content[0]?.type).toBe("text");
 
-		const responseData = JSON.parse(result.content[0]?.text as string);
-		expect(responseData.success).toBe(false);
-		expect(responseData.error.code).toBe("VALIDATION_ERROR");
-		expect(responseData.error.message).toBe("Invalid input");
-		expect(responseData.error.details).toEqual({ field: "title" });
+		// Now returns plain text error message instead of JSON
+		expect(result.content[0]?.text).toBe("Invalid input");
 
 		// MCP errors should not trigger console.error
 		expect(consoleErrorSpy).not.toHaveBeenCalled();
@@ -94,11 +91,11 @@ describe("Error Response Handling", () => {
 		const result = handleMcpError(error);
 
 		expect(result.isError).toBe(true);
-		const responseData = JSON.parse(result.content[0]?.text as string);
-		expect(responseData.success).toBe(false);
-		expect(responseData.error.code).toBe("INTERNAL_ERROR");
-		expect(responseData.error.message).toBe("An unexpected error occurred");
-		expect(responseData.error.details).toBeUndefined();
+		expect(result.content).toHaveLength(1);
+		expect(result.content[0]?.type).toBe("text");
+
+		// Now returns plain text error message instead of JSON
+		expect(result.content[0]?.text).toBe("An unexpected error occurred");
 
 		// Verify console.error was called with the unexpected error
 		expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
@@ -110,9 +107,11 @@ describe("Error Response Handling", () => {
 		const result = handleMcpError(error);
 
 		expect(result.isError).toBe(true);
-		const responseData = JSON.parse(result.content[0]?.text as string);
-		expect(responseData.success).toBe(false);
-		expect(responseData.error.code).toBe("INTERNAL_ERROR");
+		expect(result.content).toHaveLength(1);
+		expect(result.content[0]?.type).toBe("text");
+
+		// Now returns plain text error message instead of JSON
+		expect(result.content[0]?.text).toBe("An unexpected error occurred");
 
 		// Verify console.error was called with the string error
 		expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
