@@ -205,7 +205,7 @@ describe("Dependency Tools", () => {
 				dependencies: ["task-999"],
 			});
 
-			expect(result.content[0]?.text).toContain("No dependencies removed");
+			expect(result.content[0]?.text).toContain("No new dependencies removed");
 
 			const task = await server.fs.loadTask("task-3");
 			expect(task).toBeTruthy();
@@ -236,7 +236,7 @@ describe("Dependency Tools", () => {
 				includeStatus: false,
 			});
 
-			expect(result.content[0]?.text).toContain("Task task-3 has 2 dependencies");
+			expect(result.content[0]?.text).toContain("Task **task-3** has 2 dependencies");
 			expect(result.content[0]?.text).toContain("task-1");
 			expect(result.content[0]?.text).toContain("task-2");
 		});
@@ -247,9 +247,9 @@ describe("Dependency Tools", () => {
 				includeStatus: true,
 			});
 
-			expect(result.content[0]?.text).toContain("Task task-3 has 2 dependencies");
-			expect(result.content[0]?.text).toContain("task-1 (");
-			expect(result.content[0]?.text).toContain("task-2 (");
+			expect(result.content[0]?.text).toContain("Task **task-3** has 2 dependencies");
+			expect(result.content[0]?.text).toContain("task-1** (Status:");
+			expect(result.content[0]?.text).toContain("task-2** (Status:");
 		});
 
 		test("should handle task with no dependencies", async () => {
@@ -257,7 +257,7 @@ describe("Dependency Tools", () => {
 				id: "task-1",
 			});
 
-			expect(result.content[0]?.text).toContain("Task task-1 has no dependencies");
+			expect(result.content[0]?.text).toContain("Task **task-1** has no dependencies");
 		});
 	});
 
@@ -268,8 +268,8 @@ describe("Dependency Tools", () => {
 				proposedDependencies: ["task-1"],
 			});
 
-			expect(result.content[0]?.text).toContain("✅ All dependencies exist");
-			expect(result.content[0]?.text).toContain("✅ Overall validation: PASSED");
+			expect(result.content[0]?.text).toContain("All dependencies exist and are valid");
+			expect(result.content[0]?.text).toContain("✅ Validation Status: PASSED");
 		});
 
 		test("should detect invalid dependencies", async () => {
@@ -278,9 +278,9 @@ describe("Dependency Tools", () => {
 				proposedDependencies: ["task-999"],
 			});
 
-			expect(result.content[0]?.text).toContain("❌ Invalid dependencies");
+			expect(result.content[0]?.text).toContain("❌ Validation Status: FAILED");
 			expect(result.content[0]?.text).toContain("task-999");
-			expect(result.content[0]?.text).toContain("❌ Overall validation: FAILED");
+			expect(result.content[0]?.text).toContain("The following dependencies do not exist");
 		});
 
 		test("should allow self-reference (matches CLI behavior)", async () => {
@@ -289,8 +289,8 @@ describe("Dependency Tools", () => {
 				proposedDependencies: ["task-2"],
 			});
 
-			expect(result.content[0]?.text).toContain("✅ All dependencies exist");
-			expect(result.content[0]?.text).toContain("✅ Overall validation: PASSED");
+			expect(result.content[0]?.text).toContain("All dependencies exist and are valid");
+			expect(result.content[0]?.text).toContain("✅ Validation Status: PASSED");
 		});
 
 		test("should validate existing dependencies when no proposals given", async () => {
@@ -303,8 +303,8 @@ describe("Dependency Tools", () => {
 				id: "task-2",
 			});
 
-			expect(result.content[0]?.text).toContain("✅ All dependencies exist");
-			expect(result.content[0]?.text).toContain("✅ Overall validation: PASSED");
+			expect(result.content[0]?.text).toContain("All dependencies exist and are valid");
+			expect(result.content[0]?.text).toContain("✅ Validation Status: PASSED");
 		});
 	});
 

@@ -82,6 +82,116 @@ const dependencyValidateSchema: JsonSchema = {
 };
 
 /**
+ * Helper function to format dependency relationships as markdown
+ */
+function formatDependencyListMarkdown(
+	taskId: string,
+	dependencies: string[],
+	title: string,
+	includeStatus?: boolean,
+	taskMap?: Map<string, Task>,
+): string {
+	const lines = [`# ${title}`, ""];
+
+	if (dependencies.length === 0) {
+		lines.push(`Task **${taskId}** has no dependencies.`);
+		return lines.join("\n");
+	}
+
+	lines.push(`Task **${taskId}** has ${dependencies.length} dependencies:`);
+	lines.push("");
+
+	for (const dep of dependencies) {
+		if (includeStatus && taskMap) {
+			const depTask = taskMap.get(dep);
+			const status = depTask?.status || "Unknown";
+			lines.push(`- **${dep}** (Status: ${status})`);
+		} else {
+			lines.push(`- **${dep}**`);
+		}
+	}
+
+	return lines.join("\n");
+}
+
+/**
+ * Helper function to format dependency operation results as markdown
+ */
+function formatDependencyOperationMarkdown(
+	operation: "added" | "removed",
+	taskId: string,
+	dependencies: string[],
+	success: boolean,
+): string {
+	const lines = [`# Dependency ${operation === "added" ? "Addition" : "Removal"} Result`, ""];
+
+	if (success && dependencies.length > 0) {
+		lines.push(
+			`✅ Successfully ${operation} ${dependencies.length} dependencies ${operation === "added" ? "to" : "from"} task **${taskId}**:`,
+		);
+		lines.push("");
+		for (const dep of dependencies) {
+			lines.push(`- **${dep}**`);
+		}
+	} else if (dependencies.length === 0) {
+		const action = operation === "added" ? "added" : "removed";
+		const reason = operation === "added" ? "(all were already present)" : "(none were found)";
+		lines.push(`ℹ️ No new dependencies ${action} ${operation === "added" ? "to" : "from"} task **${taskId}** ${reason}`);
+	}
+
+	return lines.join("\n");
+}
+
+/**
+ * Helper function to format dependency validation results as markdown
+ */
+function formatDependencyValidationMarkdown(
+	taskId: string,
+	validDeps: string[],
+	invalidDeps: string[],
+	sequenceInfo?: { index: number },
+): string {
+	const lines = [`# Dependency Validation for ${taskId}`, ""];
+
+	// Validation status
+	if (invalidDeps.length > 0) {
+		lines.push("## ❌ Validation Status: FAILED");
+		lines.push("");
+		lines.push("### Invalid Dependencies");
+		lines.push("The following dependencies do not exist:");
+		lines.push("");
+		for (const dep of invalidDeps) {
+			lines.push(`- **${dep}**`);
+		}
+		lines.push("");
+	} else {
+		lines.push("## ✅ Validation Status: PASSED");
+		lines.push("");
+		lines.push("All dependencies exist and are valid.");
+		lines.push("");
+	}
+
+	// Dependency analysis
+	if (validDeps.length > 0) {
+		lines.push("## Dependency Analysis");
+		lines.push("");
+		lines.push(`- **Direct dependencies:** ${validDeps.length}`);
+
+		if (sequenceInfo) {
+			lines.push(`- **Sequence position:** ${sequenceInfo.index}`);
+		}
+
+		lines.push("");
+		lines.push("### Valid Dependencies");
+		for (const dep of validDeps) {
+			lines.push(`- **${dep}**`);
+		}
+	}
+
+	return lines.join("\n");
+}
+
+/**
  * DependencyToolHandlers class containing all dependency management business logic
  */
 export class DependencyToolHandlers {
@@ -172,14 +282,13 @@ export class DependencyToolHandlers {
 
 			await this.server.updateTask(updatedTask);
 
+			const markdownText = formatDependencyOperationMarkdown("added", id, addedDeps, addedDeps.length > 0);
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text:
-							addedDeps.length > 0
-								? `Successfully added ${addedDeps.length} dependencies to task ${id}: ${addedDeps.join(", ")}`
-								: `No new dependencies added to task ${id} (all were already present)`,
+						text: markdownText,
 					},
 				],
 			};
@@ -217,14 +326,13 @@ export class DependencyToolHandlers {
 
 			await this.server.updateTask(updatedTask);
 
+			const markdownText = formatDependencyOperationMarkdown("removed", id, removedDeps, removedDeps.length > 0);
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text:
-							removedDeps.length > 0
-								? `Successfully removed ${removedDeps.length} dependencies from task ${id}: ${removedDeps.join(", ")}`
-								: `No dependencies removed from task ${id} (none were found)`,
+						text: markdownText,
 					},
 				],
 			};
@@ -246,39 +354,21 @@ export class DependencyToolHandlers {
 			}
 
 			const dependencies = task.dependencies || [];
-
-			if (dependencies.length === 0) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Task ${id} has no dependencies`,
-						},
-					],
-				};
-			}
-
-			let result = `Task ${id} has ${dependencies.length} dependencies:\n`;
+			let taskMap: Map<string, Task> | undefined;
 
 			if (includeStatus) {
 				// Load dependency tasks to get their status
 				const allTasks = await this.server.fs.listTasks();
-				const taskMap = new Map(allTasks.map((t) => [t.id, t]));
-
-				for (const dep of dependencies) {
-					const depTask = taskMap.get(dep);
-					const status = depTask?.status || "Unknown";
-					result += `  - ${dep} (${status})\n`;
-				}
-			} else {
-				result += dependencies.map((dep) => `  - ${dep}`).join("\n");
+				taskMap = new Map(allTasks.map((t) => [t.id, t]));
 			}
+
+			const markdownText = formatDependencyListMarkdown(id, dependencies, "Task Dependencies", includeStatus, taskMap);
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: result,
+						text: markdownText,
 					},
 				],
 			};
@@ -303,43 +393,31 @@ export class DependencyToolHandlers {
 				? this.normalizeDependencies(proposedDependencies)
 				: task.dependencies || [];
 
-			let result = `Dependency validation for task ${id}:\n\n`;
-
 			// Check if dependencies exist
 			const { valid, invalid } = await this.validateDependencies(depsToCheck);
 
-			if (invalid.length > 0) {
-				result += `❌ Invalid dependencies (do not exist): ${invalid.join(", ")}\n`;
-			} else {
-				result += "✅ All dependencies exist\n";
-			}
-
-			// Provide dependency chain analysis
+			// Get sequence information for analysis
+			let sequenceInfo: { index: number } | undefined;
 			if (valid.length > 0) {
-				result += "\nDependency analysis:\n";
-				result += `- Direct dependencies: ${valid.length}\n`;
-
-				// Count total dependencies in chain using sequence computation
 				const allTasks = await this.server.fs.listTasks();
 				const { sequences } = computeSequences(allTasks);
 
 				for (const seq of sequences) {
 					const taskInSeq = seq.tasks.find((t) => t.id === id);
 					if (taskInSeq) {
-						result += `- Sequence position: ${seq.index}\n`;
+						sequenceInfo = { index: seq.index };
 						break;
 					}
 				}
 			}
 
-			const isValid = invalid.length === 0;
-			result += `\n${isValid ? "✅" : "❌"} Overall validation: ${isValid ? "PASSED" : "FAILED"}`;
+			const markdownText = formatDependencyValidationMarkdown(id, valid, invalid, sequenceInfo);
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: result,
+						text: markdownText,
 					},
 				],
 			};
