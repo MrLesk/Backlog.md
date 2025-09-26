@@ -20,8 +20,8 @@ Update notes_set, notes_get, notes_append, notes_clear, plan_set, plan_get, plan
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 notes_set, notes_get, notes_append, notes_clear return formatted markdown
-- [ ] #2 plan_set, plan_get, plan_append, plan_clear return formatted markdown
-- [ ] #3 Remove JSON wrapping from handleMcpSuccess/handleMcpError
-- [ ] #4 Show operation details in human-readable format
+- [x] #1 notes_set, notes_get, notes_append, notes_clear return formatted markdown
+- [x] #2 plan_set, plan_get, plan_append, plan_clear return formatted markdown
+- [x] #3 Remove JSON wrapping from handleMcpSuccess/handleMcpError
+- [x] #4 Show operation details in human-readable format
 <!-- AC:END -->

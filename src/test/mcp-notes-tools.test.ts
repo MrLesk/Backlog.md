@@ -137,12 +137,10 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("notes_set");
-				expect(result.data.taskId).toBe(taskId);
-				expect(result.data.contentLength).toBe(28);
-				expect(result.data.message).toContain("successfully");
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Notes Updated**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Content length: 28 characters");
 			});
 
 			it("should fail for non-existent task", async () => {
@@ -195,12 +193,11 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("notes_append");
-				expect(result.data.appendedLength).toBe(16);
-				expect(result.data.totalLength).toBe(16);
-				expect(result.data.separator).toBe("\n\n");
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Notes Appended**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Appended: 16 characters");
+				expect(responseText).toContain("Total length: 16 characters");
 			});
 
 			it("should append to existing notes with default separator", async () => {
@@ -227,12 +224,11 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("notes_append");
-				expect(result.data.appendedLength).toBe(16);
-				expect(result.data.totalLength).toBe(31); // 13 + 2 + 16
-				expect(result.data.separator).toBe("\n\n");
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Notes Appended**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Appended: 16 characters");
+				expect(responseText).toContain("Total length: 31 characters");
 			});
 
 			it("should append with custom separator", async () => {
@@ -260,10 +256,12 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.separator).toBe(" | ");
-				expect(result.data.totalLength).toBe(20); // 7 + 3 + 10
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Notes Appended**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Appended: 10 characters");
+				expect(responseText).toContain("Total length: 20 characters"); // 7 + 3 + 10
+				expect(responseText).toContain('Separator: " | "');
 			});
 
 			it("should reject invalid separator", async () => {
@@ -324,11 +322,11 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("notes_get");
-				expect(result.data.content).toBe("");
-				expect(result.data.contentLength).toBe(0);
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Notes**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Length: 0 characters");
+				expect(responseText).toContain("*No implementation notes*");
 			});
 
 			it("should get existing notes", async () => {
@@ -354,10 +352,11 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.content).toBe("Test notes content");
-				expect(result.data.contentLength).toBe(18);
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Notes**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Length: 18 characters");
+				expect(responseText).toContain("Test notes content");
 			});
 
 			it("should fail for non-existent task", async () => {
@@ -399,10 +398,10 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("notes_clear");
-				expect(result.data.message).toContain("successfully");
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Notes Cleared**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("All notes have been removed");
 
 				// Verify they are cleared
 				const getResponse = await mcpServer.testInterface.callTool({
@@ -414,8 +413,9 @@ describe("Notes Tools", () => {
 					},
 				});
 
-				const getResult = JSON.parse(getResponse.content[0]?.text as string);
-				expect(getResult.data.content).toBe("");
+				const getResponseText = getResponse.content[0]?.text as string;
+				expect(getResponseText).toContain("Length: 0 characters");
+				expect(getResponseText).toContain("*No implementation notes*");
 			});
 
 			it("should fail for non-existent task", async () => {
@@ -470,12 +470,10 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("plan_set");
-				expect(result.data.taskId).toBe(taskId);
-				expect(result.data.contentLength).toBe(55);
-				expect(result.data.message).toContain("successfully");
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Plan Updated**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Content length: 55 characters");
 			});
 		});
 
@@ -504,11 +502,11 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("plan_append");
-				expect(result.data.appendedLength).toBe(22);
-				expect(result.data.totalLength).toBe(40); // 16 + 2 + 22
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Plan Appended**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Appended: 22 characters");
+				expect(responseText).toContain("Total length: 40 characters"); // 16 + 2 + 22
 			});
 		});
 
@@ -536,11 +534,11 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("plan_get");
-				expect(result.data.content).toBe("Detailed plan content");
-				expect(result.data.contentLength).toBe(21);
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Plan**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("Length: 21 characters");
+				expect(responseText).toContain("Detailed plan content");
 			});
 		});
 
@@ -568,10 +566,10 @@ describe("Notes Tools", () => {
 				});
 
 				expect(response.content).toHaveLength(1);
-				const result = JSON.parse(response.content[0]?.text as string);
-				expect(result.success).toBe(true);
-				expect(result.data.operation).toBe("plan_clear");
-				expect(result.data.message).toContain("successfully");
+				const responseText = response.content[0]?.text as string;
+				expect(responseText).toContain("**Implementation Plan Cleared**");
+				expect(responseText).toContain(taskId);
+				expect(responseText).toContain("All plan content has been removed");
 
 				// Verify it's cleared
 				const getResponse = await mcpServer.testInterface.callTool({
@@ -583,8 +581,9 @@ describe("Notes Tools", () => {
 					},
 				});
 
-				const getResult = JSON.parse(getResponse.content[0]?.text as string);
-				expect(getResult.data.content).toBe("");
+				const getResponseText = getResponse.content[0]?.text as string;
+				expect(getResponseText).toContain("Length: 0 characters");
+				expect(getResponseText).toContain("*No implementation plan*");
 			});
 		});
 	});
@@ -649,8 +648,9 @@ describe("Notes Tools", () => {
 				},
 			});
 
-			const getResult = JSON.parse(getResponse.content[0]?.text as string);
-			expect(getResult.data.content).toBe("Notes updated via task_update");
+			const getResponseText = getResponse.content[0]?.text as string;
+			expect(getResponseText).toContain("**Implementation Notes**");
+			expect(getResponseText).toContain("Notes updated via task_update");
 		});
 
 		it("should preserve basic markdown formatting", async () => {
@@ -667,8 +667,9 @@ describe("Notes Tools", () => {
 				},
 			});
 
-			const setResult = JSON.parse(setResponse.content[0]?.text as string);
-			expect(setResult.success).toBe(true);
+			const setResponseText = setResponse.content[0]?.text as string;
+			expect(setResponseText).toContain("**Implementation Notes Updated**");
+			expect(setResponseText).toContain(`Content length: ${markdownContent.length} characters`);
 
 			// Get notes back
 			const getResponse = await mcpServer.testInterface.callTool({
@@ -680,9 +681,9 @@ describe("Notes Tools", () => {
 				},
 			});
 
-			const getResult = JSON.parse(getResponse.content[0]?.text as string);
-			expect(getResult.success).toBe(true);
-			expect(getResult.data.content).toBe(markdownContent);
+			const getResponseText = getResponse.content[0]?.text as string;
+			expect(getResponseText).toContain("**Implementation Notes**");
+			expect(getResponseText).toContain(markdownContent);
 		});
 	});
 
@@ -724,8 +725,9 @@ describe("Notes Tools", () => {
 			const endTime = Date.now();
 
 			expect(response.content).toHaveLength(1);
-			const result = JSON.parse(response.content[0]?.text as string);
-			expect(result.success).toBe(true);
+			const responseText = response.content[0]?.text as string;
+			expect(responseText).toContain("**Implementation Notes Updated**");
+			expect(responseText).toContain(`Content length: ${largeContent.length} characters`);
 			expect(endTime - startTime).toBeLessThan(200); // Should complete within 200ms
 
 			// Verify content is preserved
@@ -738,9 +740,10 @@ describe("Notes Tools", () => {
 				},
 			});
 
-			const getResult = JSON.parse(getResponse.content[0]?.text as string);
-			expect(getResult.data.content).toBe(largeContent);
-			expect(getResult.data.contentLength).toBe(40000);
+			const getResponseText = getResponse.content[0]?.text as string;
+			expect(getResponseText).toContain("**Implementation Notes**");
+			expect(getResponseText).toContain(largeContent);
+			expect(getResponseText).toContain("Length: 40000 characters");
 		});
 	});
 });

@@ -1,4 +1,4 @@
-import { handleMcpError, handleMcpSuccess, McpError } from "../errors/mcp-errors.ts";
+import { handleMcpError, McpError } from "../errors/mcp-errors.ts";
 import type { McpServer } from "../server.ts";
 import type { CallToolResult } from "../types.ts";
 
@@ -60,6 +60,98 @@ function validateSeparator(separator: string): string[] {
 }
 
 /**
+ * Format notes operation result as readable markdown
+ */
+function formatNotesOperationResult(
+	operation: string,
+	taskId: string,
+	details: {
+		contentLength?: number;
+		appendedLength?: number;
+		totalLength?: number;
+		separator?: string;
+		content?: string;
+	},
+): string {
+	const lines = [];
+
+	switch (operation) {
+		case "notes_set":
+			lines.push(`**Implementation Notes Updated** for task ${taskId}`);
+			lines.push(`✓ Content length: ${details.contentLength} characters`);
+			break;
+		case "notes_append":
+			lines.push(`**Implementation Notes Appended** to task ${taskId}`);
+			lines.push(`✓ Appended: ${details.appendedLength} characters`);
+			lines.push(`✓ Total length: ${details.totalLength} characters`);
+			if (details.separator !== "\n\n") {
+				lines.push(`✓ Separator: "${details.separator}"`);
+			}
+			break;
+		case "notes_get":
+			lines.push(`**Implementation Notes** for task ${taskId}`);
+			lines.push(`Length: ${details.contentLength} characters`);
+			lines.push("");
+			lines.push("---");
+			lines.push("");
+			lines.push(details.content || "*No implementation notes*");
+			break;
+		case "notes_clear":
+			lines.push(`**Implementation Notes Cleared** for task ${taskId}`);
+			lines.push("✓ All notes have been removed");
+			break;
+	}
+
+	return lines.join("\n");
+}
+
+/**
+ * Format plan operation result as readable markdown
+ */
+function formatPlanOperationResult(
+	operation: string,
+	taskId: string,
+	details: {
+		contentLength?: number;
+		appendedLength?: number;
+		totalLength?: number;
+		separator?: string;
+		content?: string;
+	},
+): string {
+	const lines = [];
+
+	switch (operation) {
+		case "plan_set":
+			lines.push(`**Implementation Plan Updated** for task ${taskId}`);
+			lines.push(`✓ Content length: ${details.contentLength} characters`);
+			break;
+		case "plan_append":
+			lines.push(`**Implementation Plan Appended** to task ${taskId}`);
+			lines.push(`✓ Appended: ${details.appendedLength} characters`);
+			lines.push(`✓ Total length: ${details.totalLength} characters`);
+			if (details.separator !== "\n\n") {
+				lines.push(`✓ Separator: "${details.separator}"`);
+			}
+			break;
+		case "plan_get":
+			lines.push(`**Implementation Plan** for task ${taskId}`);
+			lines.push(`Length: ${details.contentLength} characters`);
+			lines.push("");
+			lines.push("---");
+			lines.push("");
+			lines.push(details.content || "*No implementation plan*");
+			break;
+		case "plan_clear":
+			lines.push(`**Implementation Plan Cleared** for task ${taskId}`);
+			lines.push("✓ All plan content has been removed");
+			break;
+	}
+
+	return lines.join("\n");
+}
+
+/**
  * Handlers for notes management tools
  */
 export class NotesToolHandlers {
@@ -92,12 +184,16 @@ export class NotesToolHandlers {
 			// Save the updated task
 			await this.server.updateTask(task);
 
-			return handleMcpSuccess({
-				operation: "notes_set",
-				taskId: params.id,
-				contentLength: params.content.length,
-				message: "Implementation notes updated successfully",
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatNotesOperationResult("notes_set", params.id, {
+							contentLength: params.content.length,
+						}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
@@ -141,14 +237,18 @@ export class NotesToolHandlers {
 			// Save the updated task
 			await this.server.updateTask(task);
 
-			return handleMcpSuccess({
-				operation: "notes_append",
-				taskId: params.id,
-				appendedLength: params.content.length,
-				totalLength: newContent.length,
-				separator: separator,
-				message: "Content appended to implementation notes successfully",
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatNotesOperationResult("notes_append", params.id, {
+							appendedLength: params.content.length,
+							totalLength: newContent.length,
+							separator: separator,
+						}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
@@ -167,12 +267,17 @@ export class NotesToolHandlers {
 
 			const notes = task.implementationNotes || "";
 
-			return handleMcpSuccess({
-				operation: "notes_get",
-				taskId: params.id,
-				content: notes,
-				contentLength: notes.length,
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatNotesOperationResult("notes_get", params.id, {
+							content: notes,
+							contentLength: notes.length,
+						}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
@@ -195,11 +300,14 @@ export class NotesToolHandlers {
 			// Save the updated task
 			await this.server.updateTask(task);
 
-			return handleMcpSuccess({
-				operation: "notes_clear",
-				taskId: params.id,
-				message: "Implementation notes cleared successfully",
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatNotesOperationResult("notes_clear", params.id, {}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
@@ -232,12 +340,16 @@ export class NotesToolHandlers {
 			// Save the updated task
 			await this.server.updateTask(task);
 
-			return handleMcpSuccess({
-				operation: "plan_set",
-				taskId: params.id,
-				contentLength: params.content.length,
-				message: "Implementation plan updated successfully",
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatPlanOperationResult("plan_set", params.id, {
+							contentLength: params.content.length,
+						}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
@@ -281,14 +393,18 @@ export class NotesToolHandlers {
 			// Save the updated task
 			await this.server.updateTask(task);
 
-			return handleMcpSuccess({
-				operation: "plan_append",
-				taskId: params.id,
-				appendedLength: params.content.length,
-				totalLength: newContent.length,
-				separator: separator,
-				message: "Content appended to implementation plan successfully",
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatPlanOperationResult("plan_append", params.id, {
+							appendedLength: params.content.length,
+							totalLength: newContent.length,
+							separator: separator,
+						}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
@@ -307,12 +423,17 @@ export class NotesToolHandlers {
 
 			const plan = task.implementationPlan || "";
 
-			return handleMcpSuccess({
-				operation: "plan_get",
-				taskId: params.id,
-				content: plan,
-				contentLength: plan.length,
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatPlanOperationResult("plan_get", params.id, {
+							content: plan,
+							contentLength: plan.length,
+						}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
@@ -335,11 +456,14 @@ export class NotesToolHandlers {
 			// Save the updated task
 			await this.server.updateTask(task);
 
-			return handleMcpSuccess({
-				operation: "plan_clear",
-				taskId: params.id,
-				message: "Implementation plan cleared successfully",
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: formatPlanOperationResult("plan_clear", params.id, {}),
+					},
+				],
+			};
 		} catch (error) {
 			return handleMcpError(error);
 		}
