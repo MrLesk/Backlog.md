@@ -474,11 +474,22 @@ export class TaskToolHandlers {
 			// Write the updated content back to file
 			await Bun.write(taskPath, updatedContent);
 
+			// Parse updated criteria to show current state
+			const allCriteria = AcceptanceCriteriaManager.parseAllCriteria(updatedContent);
+			const criteriaMarkdown = allCriteria
+				.map((criterion) => {
+					const checkbox = criterion.checked ? "[x]" : "[ ]";
+					return `- ${checkbox} #${criterion.index} ${criterion.text}`;
+				})
+				.join("\n");
+
+			const successMessage = `✅ **Successfully added ${criteria.length} acceptance criteria to task ${id}**\n\n**Current Acceptance Criteria:**\n${criteriaMarkdown}`;
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully added ${criteria.length} acceptance criteria to task: ${id}`,
+						text: successMessage,
 					},
 				],
 			};
@@ -539,11 +550,25 @@ export class TaskToolHandlers {
 			// Write the updated content back to file
 			await Bun.write(taskPath, content);
 
+			// Parse updated criteria to show current state
+			const allCriteria = AcceptanceCriteriaManager.parseAllCriteria(content);
+			let criteriaMarkdown = "*No acceptance criteria remaining*";
+			if (allCriteria.length > 0) {
+				criteriaMarkdown = allCriteria
+					.map((criterion) => {
+						const checkbox = criterion.checked ? "[x]" : "[ ]";
+						return `- ${checkbox} #${criterion.index} ${criterion.text}`;
+					})
+					.join("\n");
+			}
+
+			const successMessage = `🗑️ **Successfully removed ${removedIndices.length} acceptance criteria from task ${id}**\n\n**Current Acceptance Criteria:**\n${criteriaMarkdown}`;
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully removed ${removedIndices.length} acceptance criteria from task: ${id}`,
+						text: successMessage,
 					},
 				],
 			};
@@ -603,12 +628,25 @@ export class TaskToolHandlers {
 			// Write the updated content back to file
 			await Bun.write(taskPath, content);
 
+			// Parse updated criteria to show current state with highlighting
+			const allCriteria = AcceptanceCriteriaManager.parseAllCriteria(content);
+			const criteriaMarkdown = allCriteria
+				.map((criterion) => {
+					const checkbox = criterion.checked ? "[x]" : "[ ]";
+					const highlight = updatedIndices.includes(criterion.index) ? "**" : "";
+					return `- ${checkbox} #${criterion.index} ${highlight}${criterion.text}${highlight}`;
+				})
+				.join("\n");
+
 			const action = checked ? "checked" : "unchecked";
+			const emoji = checked ? "✅" : "⬜";
+			const successMessage = `${emoji} **Successfully ${action} ${updatedIndices.length} acceptance criteria for task ${id}**\n\n**Current Acceptance Criteria:**\n${criteriaMarkdown}`;
+
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully ${action} ${updatedIndices.length} acceptance criteria for task: ${id}`,
+						text: successMessage,
 					},
 				],
 			};
@@ -654,28 +692,29 @@ export class TaskToolHandlers {
 					content: [
 						{
 							type: "text" as const,
-							text: `Task ${id} has no acceptance criteria.`,
+							text: `📋 **Task ${id}** has no acceptance criteria.`,
 						},
 					],
 				};
 			}
 
-			// Format criteria list with status
-			const criteriaList = criteria
+			// Format criteria list with checkboxes (GitHub-style markdown)
+			const criteriaMarkdown = criteria
 				.map((criterion) => {
-					const status = criterion.checked ? "✅" : "❌";
-					return `${status} #${criterion.index} ${criterion.text}`;
+					const checkbox = criterion.checked ? "[x]" : "[ ]";
+					return `- ${checkbox} #${criterion.index} ${criterion.text}`;
 				})
 				.join("\n");
 
 			const checkedCount = criteria.filter((c) => c.checked).length;
 			const totalCount = criteria.length;
+			const progressEmoji = checkedCount === totalCount ? "🎉" : "📋";
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: `**Acceptance Criteria for ${id}** (${checkedCount}/${totalCount} completed):\n\n${criteriaList}`,
+						text: `${progressEmoji} **Acceptance Criteria for ${id}** (${checkedCount}/${totalCount} completed)\n\n${criteriaMarkdown}`,
 					},
 				],
 			};

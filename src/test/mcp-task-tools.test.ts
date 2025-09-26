@@ -400,7 +400,7 @@ describe("Task Tools", () => {
 
 				const result = await mcpServer.testInterface.callTool(request);
 				expect(result.content).toHaveLength(1);
-				expect(result.content[0]?.text).toContain("Successfully added 1 acceptance criteria to task: task-1");
+				expect(result.content[0]?.text).toContain("✅ **Successfully added 1 acceptance criteria to task task-1**");
 
 				// Verify it was added
 				const listResult = await mcpServer.testInterface.callTool({
@@ -427,7 +427,7 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Successfully added 3 acceptance criteria to task: task-1");
+				expect(result.content[0]?.text).toContain("✅ **Successfully added 3 acceptance criteria to task task-1**");
 
 				// Verify all were added
 				const listResult = await mcpServer.testInterface.callTool({
@@ -505,11 +505,10 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain("Acceptance Criteria for task-1");
-				expect(result.content[0]?.text).toContain("(0/3 completed)");
-				expect(result.content[0]?.text).toContain("❌ #1 Feature works correctly");
-				expect(result.content[0]?.text).toContain("❌ #2 Tests are passing");
-				expect(result.content[0]?.text).toContain("❌ #3 Documentation is updated");
+				expect(result.content[0]?.text).toContain("📋 **Acceptance Criteria for task-1** (0/3 completed)");
+				expect(result.content[0]?.text).toContain("- [ ] #1 Feature works correctly");
+				expect(result.content[0]?.text).toContain("- [ ] #2 Tests are passing");
+				expect(result.content[0]?.text).toContain("- [ ] #3 Documentation is updated");
 			});
 
 			it("should handle task with no acceptance criteria", async () => {
@@ -526,7 +525,7 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Task ${taskId} has no acceptance criteria`);
+				expect(result.content[0]?.text).toContain(`📋 **Task ${taskId}** has no acceptance criteria.`);
 			});
 
 			it("should handle non-existent task for criteria_list", async () => {
@@ -570,14 +569,16 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Successfully checked 1 acceptance criteria for task: ${taskId}`);
+				expect(result.content[0]?.text).toContain(
+					`✅ **Successfully checked 1 acceptance criteria for task ${taskId}**`,
+				);
 
 				// Verify it was checked
 				const listResult = await mcpServer.testInterface.callTool({
 					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 				expect(listResult.content[0]?.text).toContain("(1/4 completed)");
-				expect(listResult.content[0]?.text).toContain("✅ #1 Feature implemented");
+				expect(listResult.content[0]?.text).toContain("- [x] #1 Feature implemented");
 			});
 
 			it("should support batch check operations", async () => {
@@ -595,15 +596,17 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Successfully checked 2 acceptance criteria for task: ${taskId}`);
+				expect(result.content[0]?.text).toContain(
+					`✅ **Successfully checked 2 acceptance criteria for task ${taskId}**`,
+				);
 
 				// Verify both were checked
 				const listResult = await mcpServer.testInterface.callTool({
 					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 				expect(listResult.content[0]?.text).toContain("(2/4 completed)");
-				expect(listResult.content[0]?.text).toContain("✅ #1 Feature implemented");
-				expect(listResult.content[0]?.text).toContain("✅ #3 Code reviewed");
+				expect(listResult.content[0]?.text).toContain("- [x] #1 Feature implemented");
+				expect(listResult.content[0]?.text).toContain("- [x] #3 Code reviewed");
 			});
 
 			it("should uncheck acceptance criteria", async () => {
@@ -630,15 +633,17 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Successfully unchecked 1 acceptance criteria for task: ${taskId}`);
+				expect(result.content[0]?.text).toContain(
+					`⬜ **Successfully unchecked 1 acceptance criteria for task ${taskId}**`,
+				);
 
 				// Verify the state
 				const listResult = await mcpServer.testInterface.callTool({
 					params: { name: "criteria_list", arguments: { id: taskId } },
 				});
 				expect(listResult.content[0]?.text).toContain("(1/4 completed)");
-				expect(listResult.content[0]?.text).toContain("❌ #1 Feature implemented");
-				expect(listResult.content[0]?.text).toContain("✅ #2 Tests written");
+				expect(listResult.content[0]?.text).toContain("- [ ] #1 Feature implemented");
+				expect(listResult.content[0]?.text).toContain("- [x] #2 Tests written");
 			});
 
 			it("should handle invalid indices gracefully", async () => {
@@ -675,7 +680,9 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Successfully checked 2 acceptance criteria for task: ${taskId}`);
+				expect(result.content[0]?.text).toContain(
+					`✅ **Successfully checked 2 acceptance criteria for task ${taskId}**`,
+				);
 
 				// Verify only valid indices were updated
 				const listResult = await mcpServer.testInterface.callTool({
@@ -713,7 +720,9 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Successfully removed 1 acceptance criteria from task: ${taskId}`);
+				expect(result.content[0]?.text).toContain(
+					`🗑️ **Successfully removed 1 acceptance criteria from task ${taskId}**`,
+				);
 
 				// Verify removal and renumbering
 				const listResult = await mcpServer.testInterface.callTool({
@@ -738,7 +747,9 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Successfully removed 2 acceptance criteria from task: ${taskId}`);
+				expect(result.content[0]?.text).toContain(
+					`🗑️ **Successfully removed 2 acceptance criteria from task ${taskId}**`,
+				);
 
 				// Verify removal and renumbering
 				const listResult = await mcpServer.testInterface.callTool({
@@ -773,8 +784,8 @@ describe("Task Tools", () => {
 					params: { name: "criteria_list", arguments: { id: "task-1" } },
 				});
 				expect(listResult.content[0]?.text).toContain("(2/3 completed)");
-				expect(listResult.content[0]?.text).toContain("✅ #2 Second criterion");
-				expect(listResult.content[0]?.text).toContain("✅ #3 Fourth criterion"); // Renumbered but still checked
+				expect(listResult.content[0]?.text).toContain("- [x] #2 Second criterion");
+				expect(listResult.content[0]?.text).toContain("- [x] #3 Fourth criterion"); // Renumbered but still checked
 			});
 
 			it("should handle invalid indices gracefully", async () => {
@@ -805,7 +816,9 @@ describe("Task Tools", () => {
 				};
 
 				const result = await mcpServer.testInterface.callTool(request);
-				expect(result.content[0]?.text).toContain(`Successfully removed 2 acceptance criteria from task: ${taskId}`);
+				expect(result.content[0]?.text).toContain(
+					`🗑️ **Successfully removed 2 acceptance criteria from task ${taskId}**`,
+				);
 
 				// Verify only valid indices were removed
 				const listResult = await mcpServer.testInterface.callTool({
@@ -891,11 +904,11 @@ describe("Task Tools", () => {
 
 				const content = listResult.content[0]?.text as string;
 				expect(content).toContain("(2/5 completed)");
-				expect(content).toContain("✅ #1 Implement user registration");
-				expect(content).toContain("✅ #2 Write unit tests"); // This was checked in step 2
-				expect(content).toContain("❌ #3 Update documentation"); // Was #3 after removal, now unchecked
-				expect(content).toContain("❌ #4 Add email verification");
-				expect(content).toContain("❌ #5 Handle edge cases");
+				expect(content).toContain("- [x] #1 Implement user registration");
+				expect(content).toContain("- [x] #2 Write unit tests"); // This was checked in step 2
+				expect(content).toContain("- [ ] #3 Update documentation"); // Was #3 after removal, now unchecked
+				expect(content).toContain("- [ ] #4 Add email verification");
+				expect(content).toContain("- [ ] #5 Handle edge cases");
 				expect(content).not.toContain("Add input validation");
 			});
 		});
