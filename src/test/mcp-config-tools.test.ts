@@ -157,7 +157,11 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]?.text).toContain("Successfully updated projectName to: Updated Project");
+			const responseText = result.content[0]?.text as string;
+			expect(responseText).toContain("# Configuration Update");
+			expect(responseText).toContain("✅ Successfully updated **projectName**");
+			expect(responseText).toContain("**New value:** Updated Project");
+			expect(responseText).toContain("Configuration saved successfully.");
 
 			// Verify the config was actually saved
 			const config = await mcpServer.filesystem.loadConfig();
@@ -174,7 +178,10 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]?.text).toContain("Successfully updated");
+			const responseText = result.content[0]?.text as string;
+			expect(responseText).toContain("# Configuration Update");
+			expect(responseText).toContain("✅ Successfully updated **statuses**");
+			expect(responseText).toContain("Configuration saved successfully.");
 
 			const config = await mcpServer.filesystem.loadConfig();
 			expect(config?.statuses).toEqual(newStatuses);
@@ -189,7 +196,11 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]?.text).toContain("Successfully updated");
+			const responseText = result.content[0]?.text as string;
+			expect(responseText).toContain("# Configuration Update");
+			expect(responseText).toContain("✅ Successfully updated **autoCommit**");
+			expect(responseText).toContain("**New value:** true");
+			expect(responseText).toContain("Configuration saved successfully.");
 			const config = await mcpServer.filesystem.loadConfig();
 			expect(config?.autoCommit).toBe(true);
 		});
@@ -203,7 +214,11 @@ describe("Config Tools", () => {
 			});
 
 			expect(result.content).toHaveLength(1);
-			expect(result.content[0]?.text).toContain("Successfully updated");
+			const responseText = result.content[0]?.text as string;
+			expect(responseText).toContain("# Configuration Update");
+			expect(responseText).toContain("✅ Successfully updated **defaultPort**");
+			expect(responseText).toContain("**New value:** 8080");
+			expect(responseText).toContain("Configuration saved successfully.");
 			const config = await mcpServer.filesystem.loadConfig();
 			expect(config?.defaultPort).toBe(8080);
 		});

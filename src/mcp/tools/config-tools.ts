@@ -3,6 +3,31 @@ import type { CallToolResult, McpToolHandler } from "../types.ts";
 import { createSimpleValidatedTool } from "../validation/tool-wrapper.ts";
 import type { JsonSchema } from "../validation/validators.ts";
 
+/**
+ * Helper function to format config_set operation results as markdown
+ */
+function formatConfigSetMarkdown(key: string, value: unknown): string {
+	const lines = ["# Configuration Update", ""];
+
+	lines.push(`✅ Successfully updated **${key}**`);
+	lines.push("");
+
+	// Format the value based on its type
+	let formattedValue: string;
+	if (typeof value === "object" && value !== null) {
+		formattedValue = `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
+		lines.push(`**New value:**\n${formattedValue}`);
+	} else {
+		formattedValue = String(value);
+		lines.push(`**New value:** ${formattedValue}`);
+	}
+
+	lines.push("");
+	lines.push("Configuration saved successfully.");
+
+	return lines.join("\n");
+}
+
 export class ConfigToolHandlers {
 	constructor(private server: McpServer) {}
 
@@ -375,11 +400,7 @@ export class ConfigToolHandlers {
 				content: [
 					{
 						type: "text" as const,
-						text: `Successfully updated ${key} to: ${
-							typeof (updatedConfig as Record<string, unknown>)[key] === "object"
-								? JSON.stringify((updatedConfig as Record<string, unknown>)[key], null, 2)
-								: String((updatedConfig as Record<string, unknown>)[key])
-						}`,
+						text: formatConfigSetMarkdown(key, (updatedConfig as Record<string, unknown>)[key]),
 					},
 				],
 			};

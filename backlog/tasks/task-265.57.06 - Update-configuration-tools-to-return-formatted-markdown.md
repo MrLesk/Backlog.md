@@ -1,9 +1,10 @@
 ---
 id: task-265.57.06
 title: Update configuration tools to return formatted markdown
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-09-26 16:07'
+updated_date: '2025-09-26 20:43'
 labels: []
 dependencies: []
 parent_task_id: task-265.57
@@ -18,8 +19,8 @@ Update config_set to return formatted markdown with clear success messages showi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 config_set returns formatted markdown (config_get already returns raw config)
-- [ ] #2 Clear success messages with updated values
-- [ ] #3 Consistent with other tool responses
-- [ ] #4 Show configuration changes clearly
+- [x] #1 config_set returns formatted markdown (config_get already returns raw config)
+- [x] #2 Clear success messages with updated values
+- [x] #3 Consistent with other tool responses
+- [x] #4 Show configuration changes clearly
 <!-- AC:END -->
