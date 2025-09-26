@@ -63,9 +63,11 @@ describe("Decision Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Decision created successfully");
+			expect(result.content[0]?.text).toContain("# Decision Record Created");
+			expect(result.content[0]?.text).toContain("✅ Successfully created");
 			expect(result.content[0]?.text).toMatch(/decision-\d+/);
-			expect(result.content[0]?.text).toContain("/decisions/");
+			expect(result.content[0]?.text).toContain("**File path:** `/decisions/");
+			expect(result.content[0]?.text).toContain("**Title:** Use React for Frontend");
 		});
 
 		it("should create a decision with minimal required fields", async () => {
@@ -79,7 +81,8 @@ describe("Decision Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Decision created successfully");
+			expect(result.content[0]?.text).toContain("# Decision Record Created");
+			expect(result.content[0]?.text).toContain("✅ Successfully created");
 			expect(result.content[0]?.text).toMatch(/decision-\d+/);
 		});
 
@@ -95,7 +98,8 @@ describe("Decision Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Decision created successfully");
+			expect(result.content[0]?.text).toContain("# Decision Record Created");
+			expect(result.content[0]?.text).toContain("✅ Successfully created");
 
 			// Verify the decision was created with default status in filesystem
 			const decisions = await mcpServer.fs.listDecisions();
@@ -146,7 +150,8 @@ describe("Decision Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Decision created successfully");
+			expect(result.content[0]?.text).toContain("# Decision Record Created");
+			expect(result.content[0]?.text).toContain("✅ Successfully created");
 		});
 
 		it("should reject field values exceeding maxLength", async () => {
@@ -197,7 +202,8 @@ describe("Decision Tools", () => {
 				});
 
 				expect(result.isError).toBeFalsy();
-				expect(result.content[0]?.text).toContain("Decision created successfully");
+				expect(result.content[0]?.text).toContain("# Decision Record Created");
+				expect(result.content[0]?.text).toContain("✅ Successfully created");
 			}
 		});
 

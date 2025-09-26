@@ -3,6 +3,75 @@ import type { McpServer } from "../server.ts";
 import type { CallToolResult } from "../types.ts";
 
 /**
+ * Helper function to format document_create operation results as markdown
+ */
+function formatDocumentCreateMarkdown(id: string, title: string): string {
+	const lines = ["# Document Created", ""];
+
+	lines.push(`✅ Successfully created **${id}**`);
+	lines.push("");
+
+	// Get the file path for the created document
+	const documentFileName = `${id} - ${title
+		.replace(/[^a-zA-Z0-9\s-]/g, "")
+		.replace(/\s+/g, "-")
+		.replace(/-+/g, "-")
+		.toLowerCase()}.md`;
+
+	lines.push(`**File path:** \`/docs/${documentFileName}\``);
+	lines.push(`**Title:** ${title}`);
+	lines.push("");
+	lines.push("Document created successfully and ready for editing.");
+
+	return lines.join("\n");
+}
+
+/**
+ * Helper function to format document list as markdown
+ */
+function formatDocumentListMarkdown(documents: Document[]): string {
+	if (documents.length === 0) {
+		return "# Documents\n\nNo documents found.";
+	}
+
+	const lines = ["# Documents", ""];
+	lines.push(`Found ${documents.length} document${documents.length === 1 ? "" : "s"}:`);
+	lines.push("");
+
+	for (const doc of documents) {
+		lines.push(`- **${doc.id}** - ${doc.title}`);
+	}
+
+	return lines.join("\n");
+}
+
+/**
+ * Helper function to format document view as markdown
+ */
+function formatDocumentViewMarkdown(document: Document): string {
+	const lines = [`# Document: ${document.title}`, ""];
+
+	lines.push("## Metadata");
+	lines.push("");
+	lines.push(`**ID:** ${document.id}`);
+	lines.push(`**Type:** ${document.type}`);
+	lines.push(`**Created:** ${document.createdDate}`);
+	if (document.updatedDate) {
+		lines.push(`**Updated:** ${document.updatedDate}`);
+	}
+	if (document.tags && document.tags.length > 0) {
+		lines.push(`**Tags:** ${document.tags.join(", ")}`);
+	}
+
+	lines.push("");
+	lines.push("## Content");
+	lines.push("");
+	lines.push(document.body);
+
+	return lines.join("\n");
+}
+
+/**
  * DocumentToolHandlers class containing all document management business logic
  */
 export class DocumentToolHandlers {
@@ -39,7 +108,7 @@ export class DocumentToolHandlers {
 				content: [
 					{
 						type: "text",
-						text: `Document created successfully with ID: ${id}`,
+						text: formatDocumentCreateMarkdown(id, title),
 					},
 				],
 			};
@@ -65,14 +134,11 @@ export class DocumentToolHandlers {
 			// Get all documents using Core API
 			const allDocuments = await this.server.filesystem.listDocuments();
 
-			// Format as simple list matching CLI output: "${id} - ${title}"
-			const documentList = allDocuments.map((doc) => `${doc.id} - ${doc.title}`).join("\n");
-
 			return {
 				content: [
 					{
 						type: "text",
-						text: documentList,
+						text: formatDocumentListMarkdown(allDocuments),
 					},
 				],
 			};
@@ -99,22 +165,11 @@ export class DocumentToolHandlers {
 		try {
 			const document = await this.server.getDocument(id);
 
-			// Return document content in simple format matching CLI
-			const documentContent = {
-				id: document.id,
-				title: document.title,
-				type: document.type,
-				createdDate: document.createdDate,
-				updatedDate: document.updatedDate,
-				tags: document.tags || [],
-				content: document.body,
-			};
-
 			return {
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify(documentContent, null, 2),
+						text: formatDocumentViewMarkdown(document),
 					},
 				],
 			};

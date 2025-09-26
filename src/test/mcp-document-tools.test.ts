@@ -73,8 +73,11 @@ describe("Document Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Document created successfully");
+			expect(result.content[0]?.text).toContain("# Document Created");
+			expect(result.content[0]?.text).toContain("✅ Successfully created");
 			expect(result.content[0]?.text).toMatch(/doc-\d+/);
+			expect(result.content[0]?.text).toContain("**File path:** `/docs/");
+			expect(result.content[0]?.text).toContain("**Title:** Test Document");
 		});
 
 		it("should create a document with minimal required fields", async () => {
@@ -89,7 +92,8 @@ describe("Document Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			expect(result.content[0]?.text).toContain("Document created successfully");
+			expect(result.content[0]?.text).toContain("# Document Created");
+			expect(result.content[0]?.text).toContain("✅ Successfully created");
 		});
 
 		it("should validate required fields", async () => {
@@ -188,14 +192,11 @@ describe("Document Tools", () => {
 			expect(result.isError).toBeFalsy();
 			const text = result.content[0]?.text as string;
 			expect(typeof text).toBe("string");
-			// Should be simple format: "id - title" per line
-			if (text.trim()) {
-				const lines = text.split("\n");
-				expect(lines.length).toBeGreaterThan(0);
-				// Each line should match "doc-XXX - Title" format
-				for (const line of lines) {
-					expect(line).toMatch(/^doc-\d+\s+-\s+.+$/);
-				}
+			// Should be formatted markdown with header and list
+			expect(text).toContain("# Documents");
+			if (!text.includes("No documents found")) {
+				expect(text).toContain("Found");
+				expect(text).toMatch(/- \*\*doc-\d+\*\* - .+/);
 			}
 		});
 
@@ -242,14 +243,15 @@ describe("Document Tools", () => {
 			});
 
 			expect(result.isError).toBeFalsy();
-			const data = JSON.parse(result.content[0]?.text as string);
+			const text = result.content[0]?.text as string;
 
-			expect(data.id).toBe(documentId);
-			expect(data.title).toBe("View Test Document");
-			expect(data.type).toBe("specification");
-			expect(data.content).toContain("This is a document for viewing tests");
-			expect(data.tags).toEqual(["test", "view"]);
-			// Removed metadata checks - simplified to match CLI capabilities
+			expect(text).toContain("# Document: View Test Document");
+			expect(text).toContain("## Metadata");
+			expect(text).toContain(`**ID:** ${documentId}`);
+			expect(text).toContain("**Type:** specification");
+			expect(text).toContain("**Tags:** test, view");
+			expect(text).toContain("## Content");
+			expect(text).toContain("This is a document for viewing tests");
 		});
 
 		it("should handle non-existent document", async () => {
@@ -324,8 +326,8 @@ describe("Document Tools", () => {
 			expect(result.isError).toBeFalsy();
 			const text = result.content[0]?.text as string;
 
-			// Should find the document in simple text format: "doc-filesystem-test - Filesystem Created Document"
-			expect(text).toContain("doc-filesystem-test - Filesystem Created Document");
+			// Should find the document in markdown format: "- **doc-filesystem-test** - Filesystem Created Document"
+			expect(text).toContain("**doc-filesystem-test** - Filesystem Created Document");
 		});
 	});
 });

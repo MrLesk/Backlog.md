@@ -1,9 +1,10 @@
 ---
 id: task-265.57.07
 title: Update decision/document tools to return formatted markdown
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-09-26 16:08'
+updated_date: '2025-09-26 21:12'
 labels: []
 dependencies: []
 parent_task_id: task-265.57
@@ -18,8 +19,8 @@ Update decision_create and document creation tools to return formatted markdown 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 decision_create and document tools return formatted markdown
-- [ ] #2 Show file paths and IDs clearly
-- [ ] #3 Consistent formatting with other tools
-- [ ] #4 Clear success messages for document operations
+- [x] #1 decision_create and document tools return formatted markdown
+- [x] #2 Show file paths and IDs clearly
+- [x] #3 Consistent formatting with other tools
+- [x] #4 Clear success messages for document operations
 <!-- AC:END -->

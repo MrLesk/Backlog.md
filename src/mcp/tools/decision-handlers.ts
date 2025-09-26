@@ -3,6 +3,30 @@ import type { McpServer } from "../server.ts";
 import type { CallToolResult } from "../types.ts";
 
 /**
+ * Helper function to format decision_create operation results as markdown
+ */
+function formatDecisionCreateMarkdown(id: string, title: string): string {
+	const lines = ["# Decision Record Created", ""];
+
+	lines.push(`✅ Successfully created **${id}**`);
+	lines.push("");
+
+	// Get the file path for the created decision
+	const decisionFileName = `${id} - ${title
+		.replace(/[^a-zA-Z0-9\s-]/g, "")
+		.replace(/\s+/g, "-")
+		.replace(/-+/g, "-")
+		.toLowerCase()}.md`;
+
+	lines.push(`**File path:** \`/decisions/${decisionFileName}\``);
+	lines.push(`**Title:** ${title}`);
+	lines.push("");
+	lines.push("Decision record created successfully and ready for review.");
+
+	return lines.join("\n");
+}
+
+/**
  * DecisionToolHandlers class containing all decision management business logic
  */
 export class DecisionToolHandlers {
@@ -39,18 +63,11 @@ export class DecisionToolHandlers {
 
 			await this.server.createDecision(decisionRecord);
 
-			// Get the file path for the created decision
-			const decisionFileName = `${id} - ${title
-				.replace(/[^a-zA-Z0-9\s-]/g, "")
-				.replace(/\s+/g, "-")
-				.replace(/-+/g, "-")
-				.toLowerCase()}.md`;
-
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Decision created successfully with ID: ${id}\nFile path: /decisions/${decisionFileName}`,
+						text: formatDecisionCreateMarkdown(id, title),
 					},
 				],
 			};
