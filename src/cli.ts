@@ -551,6 +551,7 @@ program
 				// 6. Agent instruction files selection
 				type AgentSelection = AgentSelectionValue;
 				let agentFiles: AgentInstructionFile[] = [];
+				let agentInstructionsSkipped = false;
 
 				// Use --agent-instructions if provided, otherwise prompt
 				if (options.agentInstructions) {
@@ -581,11 +582,13 @@ program
 						mappedFiles.push(mappedFile);
 					}
 
-					const { files, needsRetry } = processAgentSelection({ selected: mappedFiles });
+					const { files, needsRetry, skipped } = processAgentSelection({ selected: mappedFiles });
 					if (needsRetry) {
 						agentFiles = [];
+						agentInstructionsSkipped = false;
 					} else {
 						agentFiles = files;
+						agentInstructionsSkipped = skipped;
 					}
 				} else if (isNonInteractive) {
 					agentFiles = [];
@@ -649,7 +652,7 @@ program
 						);
 
 						const selected = (response?.files ?? []) as AgentSelection[];
-						const { files, needsRetry } = processAgentSelection({
+						const { files, needsRetry, skipped } = processAgentSelection({
 							selected,
 							highlighted,
 							useHighlightFallback: cursorMoved,
@@ -659,6 +662,7 @@ program
 							continue;
 						}
 						agentFiles = files;
+						agentInstructionsSkipped = skipped;
 						break;
 					}
 				}
@@ -750,6 +754,8 @@ program
 				if (agentFiles.length > 0) {
 					await addAgentInstructions(cwd, core.gitOps, agentFiles, config.autoCommit);
 					console.log(`✓ Created agent instruction files: ${agentFiles.join(", ")}`);
+				} else if (agentInstructionsSkipped) {
+					console.log("Skipping agent instruction files per selection.");
 				}
 
 				// Install Claude agent if selected

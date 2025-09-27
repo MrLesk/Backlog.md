@@ -10,18 +10,21 @@ describe("processAgentSelection", () => {
 		const result = processAgentSelection({ selected: [AGENTS_MD, CLAUDE_MD] });
 		expect(result.needsRetry).toBe(false);
 		expect(result.files).toEqual([AGENTS_MD, CLAUDE_MD]);
+		expect(result.skipped).toBe(false);
 	});
 
 	it("auto-selects highlighted item when none selected and fallback enabled", () => {
 		const result = processAgentSelection({ selected: [], highlighted: GEMINI_MD, useHighlightFallback: true });
 		expect(result.needsRetry).toBe(false);
 		expect(result.files).toEqual([GEMINI_MD]);
+		expect(result.skipped).toBe(false);
 	});
 
 	it("does not auto-select highlight when fallback disabled", () => {
 		const result = processAgentSelection({ selected: [], highlighted: CLAUDE_MD });
 		expect(result.needsRetry).toBe(true);
 		expect(result.files).toEqual([]);
+		expect(result.skipped).toBe(false);
 	});
 
 	it("ignores placeholder highlight even when fallback enabled", () => {
@@ -32,24 +35,28 @@ describe("processAgentSelection", () => {
 		});
 		expect(result.needsRetry).toBe(true);
 		expect(result.files).toEqual([]);
+		expect(result.skipped).toBe(false);
 	});
 
 	it("requires retry when nothing highlighted or selected", () => {
 		const result = processAgentSelection({ selected: [] });
 		expect(result.needsRetry).toBe(true);
 		expect(result.files).toEqual([]);
+		expect(result.skipped).toBe(false);
 	});
 
 	it("filters out 'none' when combined with other selections", () => {
 		const result = processAgentSelection({ selected: ["none", AGENTS_MD] as AgentSelectionValue[] });
 		expect(result.needsRetry).toBe(false);
 		expect(result.files).toEqual([AGENTS_MD]);
+		expect(result.skipped).toBe(false);
 	});
 
-	it("requires retry when only 'none' is selected", () => {
+	it("reports skip when only 'none' is selected", () => {
 		const result = processAgentSelection({ selected: ["none"] });
-		expect(result.needsRetry).toBe(true);
+		expect(result.needsRetry).toBe(false);
 		expect(result.files).toEqual([]);
+		expect(result.skipped).toBe(true);
 	});
 
 	it("dedupes selections while preserving order", () => {
@@ -58,5 +65,6 @@ describe("processAgentSelection", () => {
 		});
 		expect(result.needsRetry).toBe(false);
 		expect(result.files).toEqual([AGENTS_MD, CLAUDE_MD]);
+		expect(result.skipped).toBe(false);
 	});
 });

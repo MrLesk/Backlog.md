@@ -1,10 +1,11 @@
 ---
 id: task-281
 title: Fix backlog init skip option
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-27 16:32'
+updated_date: '2025-09-27 17:07'
 labels:
   - bug
 dependencies: []
@@ -30,7 +31,24 @@ When the skip option is chosen, the wizard should accept the choice and proceed 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Interactive backlog init accepts the skip option without showing a validation error.
-- [ ] #2 Interactive backlog init still requires a retry when no option is chosen or when only the placeholder row is highlighted.
-- [ ] #3 Automated coverage verifies that selecting only the skip option results in initialization continuing with zero agent instruction files.
+- [x] #1 Interactive backlog init accepts the skip option without showing a validation error.
+- [x] #2 Interactive backlog init still requires a retry when no option is chosen or when only the placeholder row is highlighted.
+- [x] #3 Automated coverage verifies that selecting only the skip option results in initialization continuing with zero agent instruction files.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Update `processAgentSelection` to treat a lone "none" selection as an explicit skip (no retry) while still deduping/ignoring placeholders, and surface a skip indicator alongside the files array.
+2. Adjust the `backlog init` agent-instruction prompt handling to honor the skip outcome without forcing the retry loop, keeping existing behavior for other selections and fallbacks.
+3. Strengthen coverage by extending `agent-selection` unit tests for the skip case and adding an integration regression test that proves `backlog init` proceeds with zero agent instruction files when the skip option is chosen.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- Updated `processAgentSelection` to treat a lone "none" selection as an explicit skip and return a skip flag for callers.
+- Updated the `backlog init` agent selection flow to honor skip outcomes and log that instructions were skipped instead of forcing a retry.
+- Added regression coverage for the skip path in `agent-selection` and CLI integration tests to ensure no agent instruction files are produced when skipping.
+- Tests: `bunx tsc --noEmit`, `bun test`, `bun run check .`
+<!-- SECTION:NOTES:END -->

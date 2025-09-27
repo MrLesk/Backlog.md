@@ -13,6 +13,7 @@ export interface AgentSelectionInput {
 export interface AgentSelectionOutcome {
 	files: AgentInstructionFile[];
 	needsRetry: boolean;
+	skipped: boolean;
 }
 
 function uniqueOrder(values: AgentSelectionValue[]): AgentSelectionValue[] {
@@ -48,10 +49,11 @@ export function processAgentSelection({
 	const agentFiles = ordered.filter(
 		(value): value is AgentInstructionFile => value !== "none" && value !== PLACEHOLDER_AGENT_VALUE,
 	);
+	const skipSelected = ordered.includes("none") && agentFiles.length === 0;
 
-	if (agentFiles.length === 0) {
-		return { files: [], needsRetry: true };
+	if (agentFiles.length === 0 && !skipSelected) {
+		return { files: [], needsRetry: true, skipped: false };
 	}
 
-	return { files: agentFiles, needsRetry: false };
+	return { files: agentFiles, needsRetry: false, skipped: skipSelected };
 }

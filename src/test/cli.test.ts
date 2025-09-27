@@ -174,12 +174,13 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`.cwd(TEST_DIR).quiet();
+			const output = await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`.cwd(TEST_DIR).text();
 
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			expect(agentsFile).toBe(false);
 			expect(claudeFile).toBe(false);
+			expect(output).toContain("Skipping agent instruction files per selection.");
 		});
 
 		it("should ignore 'none' when other agent instructions are provided", async () => {
