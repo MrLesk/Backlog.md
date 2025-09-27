@@ -1,6 +1,6 @@
 import type { BoxInterface, ListInterface } from "neo-neo-bblessed";
 import { box, list } from "neo-neo-bblessed";
-import { type BoardLayout, generateKanbanBoardWithMetadata } from "../board.ts";
+import { type BoardLayout, buildKanbanStatusGroups, generateKanbanBoardWithMetadata } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
@@ -20,10 +20,6 @@ type ColumnView = {
 	list: ListInterface;
 	box: BoxInterface;
 };
-
-function normalizeStatuses(statuses: string[]): string[] {
-	return statuses.filter((status) => typeof status === "string" && status.trim().length > 0);
-}
 
 function isDoneStatus(status: string): boolean {
 	const normalized = status.trim().toLowerCase();
@@ -64,48 +60,14 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 }
 
 function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
-	const canonicalByLower = new Map<string, string>();
-	const sanitizedStatuses = normalizeStatuses(statuses);
-	for (const status of sanitizedStatuses) {
-		canonicalByLower.set(status.toLowerCase(), status);
-	}
-
+	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
 	const byId = new Map<string, Task>(tasks.map((task) => [task.id, task]));
-	const grouped = new Map<string, Task[]>();
-	for (const status of sanitizedStatuses) {
-		grouped.set(status, []);
-	}
 
-	for (const task of tasks) {
-		const raw = (task.status || "").trim();
-		if (!raw) continue;
-		const canonical = canonicalByLower.get(raw.toLowerCase()) || raw;
-		const list = grouped.get(canonical) ?? [];
-		list.push(task);
-		grouped.set(canonical, list);
-	}
-
-	const result: ColumnData[] = [];
-	const seen = new Set<string>();
-
-	const appendColumn = (status: string) => {
-		const items = grouped.get(status) ?? [];
+	return orderedStatuses.map((status) => {
+		const items = groupedTasks.get(status) ?? [];
 		const orderedTasks = buildColumnTasks(status, items, byId);
-		result.push({ status, tasks: orderedTasks });
-		seen.add(status);
-	};
-
-	for (const status of sanitizedStatuses) {
-		appendColumn(status);
-	}
-
-	for (const [status, items] of grouped.entries()) {
-		if (seen.has(status)) continue;
-		if (items.length === 0) continue;
-		appendColumn(status);
-	}
-
-	return result;
+		return { status, tasks: orderedTasks };
+	});
 }
 
 function formatTaskListItem(task: Task): string {

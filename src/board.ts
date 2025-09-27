@@ -1,42 +1,75 @@
-export interface BoardOptions {
-	statuses?: string[];
-}
-
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Task } from "./types/index.ts";
 
+export interface BoardOptions {
+	statuses?: string[];
+}
+
 export type BoardLayout = "horizontal" | "vertical";
 export type BoardFormat = "terminal" | "markdown";
+
+export function buildKanbanStatusGroups(
+	tasks: Task[],
+	statuses: string[],
+): { orderedStatuses: string[]; groupedTasks: Map<string, Task[]> } {
+	const canonicalByLower = new Map<string, string>();
+	const orderedConfiguredStatuses: string[] = [];
+	const configuredSeen = new Set<string>();
+
+	for (const status of statuses ?? []) {
+		if (typeof status !== "string") continue;
+		const trimmed = status.trim();
+		if (!trimmed) continue;
+		const lower = trimmed.toLowerCase();
+		if (!canonicalByLower.has(lower)) {
+			canonicalByLower.set(lower, trimmed);
+		}
+		if (!configuredSeen.has(trimmed)) {
+			orderedConfiguredStatuses.push(trimmed);
+			configuredSeen.add(trimmed);
+		}
+	}
+
+	const groupedTasks = new Map<string, Task[]>();
+	for (const status of orderedConfiguredStatuses) {
+		groupedTasks.set(status, []);
+	}
+
+	for (const task of tasks) {
+		const raw = (task.status ?? "").trim();
+		if (!raw) continue;
+		const canonical = canonicalByLower.get(raw.toLowerCase()) ?? raw;
+		if (!groupedTasks.has(canonical)) {
+			groupedTasks.set(canonical, []);
+		}
+		groupedTasks.get(canonical)?.push(task);
+	}
+
+	const orderedStatuses: string[] = [];
+	const seen = new Set<string>();
+
+	for (const status of orderedConfiguredStatuses) {
+		if (seen.has(status)) continue;
+		orderedStatuses.push(status);
+		seen.add(status);
+	}
+
+	for (const status of groupedTasks.keys()) {
+		if (seen.has(status)) continue;
+		orderedStatuses.push(status);
+		seen.add(status);
+	}
+
+	return { orderedStatuses, groupedTasks };
+}
 
 export function generateKanbanBoardWithMetadata(tasks: Task[], statuses: string[], projectName: string): string {
 	// Generate timestamp
 	const now = new Date();
 	const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
 
-	// Build case-insensitive mapping from configured statuses to their canonical display value
-	const canonicalByLower = new Map<string, string>();
-	for (const s of statuses) {
-		if (!s) continue;
-		canonicalByLower.set(s.toLowerCase(), s);
-	}
-
-	// Group tasks by canonical status, filtering out tasks without status
-	const groups = new Map<string, Task[]>(); // key is display/canonical label
-	for (const task of tasks) {
-		const raw = (task.status || "").trim();
-		if (!raw) continue;
-		const canonical = canonicalByLower.get(raw.toLowerCase()) || raw; // fallback to raw if unknown
-		const list = groups.get(canonical) || [];
-		list.push(task);
-		groups.set(canonical, list);
-	}
-
-	// Only show statuses that have tasks (filter out empty groups and exclude empty/no status)
-	const ordered = [
-		...statuses.filter((s) => s?.trim() && groups.has(s) && (groups.get(s)?.length ?? 0) > 0),
-		...Array.from(groups.keys()).filter((s) => s?.trim() && !statuses.includes(s) && (groups.get(s)?.length ?? 0) > 0),
-	];
+	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
 
 	// Create header
 	const header = `# Kanban Board Export (powered by Backlog.md)
@@ -45,21 +78,21 @@ Project: ${projectName}
 
 `;
 
-	// Return early if no tasks
-	if (ordered.length === 0) {
+	// Return early if there are no configured statuses and no tasks
+	if (orderedStatuses.length === 0) {
 		return `${header}No tasks found.`;
 	}
 
 	// Create table header
-	const headerRow = `| ${ordered.map((status) => status || "No Status").join(" | ")} |`;
-	const separatorRow = `| ${ordered.map(() => "---").join(" | ")} |`;
+	const headerRow = `| ${orderedStatuses.map((status) => status || "No Status").join(" | ")} |`;
+	const separatorRow = `| ${orderedStatuses.map(() => "---").join(" | ")} |`;
 
 	// Map for quick lookup by id
 	const byId = new Map<string, Task>(tasks.map((t) => [t.id, t]));
 
 	// Group tasks by status and handle parent-child relationships
-	const columns: Task[][] = ordered.map((status) => {
-		const items = groups.get(status) || [];
+	const columns: Task[][] = orderedStatuses.map((status) => {
+		const items = groupedTasks.get(status) || [];
 		const top: Task[] = [];
 		const children = new Map<string, Task[]>();
 
@@ -111,7 +144,7 @@ Project: ${projectName}
 	const rows = [headerRow, separatorRow];
 
 	for (let taskIdx = 0; taskIdx < maxTasks; taskIdx++) {
-		const row = ordered.map((_, cIdx) => {
+		const row = orderedStatuses.map((_, cIdx) => {
 			const task = columns[cIdx]?.[taskIdx];
 			if (!task || !task.id || !task.title) return "";
 
@@ -136,7 +169,12 @@ Project: ${projectName}
 		rows.push(`| ${row.join(" | ")} |`);
 	}
 
-	return `${header + rows.join("\n")}\n`;
+	const table = `${rows.join("\n")}`;
+	if (maxTasks === 0) {
+		return `${header}${table}\n\nNo tasks found.\n`;
+	}
+
+	return `${header}${table}\n`;
 }
 
 export async function exportKanbanBoardToFile(

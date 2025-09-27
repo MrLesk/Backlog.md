@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { exportKanbanBoardToFile } from "../board.ts";
+import { buildKanbanStatusGroups, exportKanbanBoardToFile } from "../board.ts";
 import type { Task } from "../types/index.ts";
 
 describe("exportKanbanBoardToFile", () => {
@@ -201,5 +201,45 @@ describe("exportKanbanBoardToFile", () => {
 		expect(content).not.toContain("@@bob");
 
 		await rm(dir, { recursive: true, force: true });
+	});
+});
+
+describe("buildKanbanStatusGroups", () => {
+	it("returns configured statuses even when there are no tasks", () => {
+		const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups([], ["To Do", "In Progress", "Done"]);
+		expect(orderedStatuses).toEqual(["To Do", "In Progress", "Done"]);
+		expect(groupedTasks.get("To Do")).toEqual([]);
+		expect(groupedTasks.get("In Progress")).toEqual([]);
+		expect(groupedTasks.get("Done")).toEqual([]);
+	});
+
+	it("appends unknown statuses from tasks after configured ones", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Blocked Task",
+				status: "Blocked",
+				assignee: [],
+				createdDate: "2025-01-02",
+				labels: [],
+				dependencies: [],
+				rawContent: "",
+			},
+			{
+				id: "task-2",
+				title: "Lowercase todo",
+				status: "to do",
+				assignee: [],
+				createdDate: "2025-01-03",
+				labels: [],
+				dependencies: [],
+				rawContent: "",
+			},
+		];
+
+		const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, ["To Do"]);
+		expect(orderedStatuses).toEqual(["To Do", "Blocked"]);
+		expect(groupedTasks.get("To Do")?.map((t) => t.id)).toEqual(["task-2"]);
+		expect(groupedTasks.get("Blocked")?.map((t) => t.id)).toEqual(["task-1"]);
 	});
 });

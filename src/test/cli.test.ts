@@ -1250,8 +1250,9 @@ describe("CLI Integration", () => {
 			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
 			const board = generateKanbanBoardWithMetadata(tasks, statuses, "Test Project");
 
-			// Should return board with metadata and "No tasks found" message
+			// Should return board with metadata, configured status columns, and empty-state message
 			expect(board).toContain("# Kanban Board Export");
+			expect(board).toContain("| To Do | In Progress | Done |");
 			expect(board).toContain("No tasks found");
 		});
 
