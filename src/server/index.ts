@@ -809,53 +809,24 @@ export class BacklogServer {
 
 	private async handleReorderTask(req: Request): Promise<Response> {
 		try {
-			const { taskId, newOrdinal, columnTasks } = await req.json();
+			const body = await req.json();
+			const taskId = typeof body.taskId === "string" ? body.taskId : "";
+			const targetStatus = typeof body.targetStatus === "string" ? body.targetStatus : "";
+			const orderedTaskIds = Array.isArray(body.orderedTaskIds) ? body.orderedTaskIds : [];
 
-			if (!taskId || newOrdinal === undefined) {
-				return Response.json({ error: "Missing required fields: taskId and newOrdinal" }, { status: 400 });
+			if (!taskId || !targetStatus || orderedTaskIds.length === 0) {
+				return Response.json(
+					{ error: "Missing required fields: taskId, targetStatus, and orderedTaskIds" },
+					{ status: 400 },
+				);
 			}
 
-			// Load the task to update
-			const task = await this.core.filesystem.loadTask(taskId);
-			if (!task) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
-			}
-
-			// Update the task's ordinal value
-			const updatedTask: Task = {
-				...task,
-				ordinal: newOrdinal,
-				// Note: updatedDate will be set automatically by Core.updateTask
-			};
-
-			// Save the updated task
-			await this.core.updateTask(updatedTask);
-
-			// If other tasks in the column need ordinal updates (to prevent collisions)
-			if (columnTasks && Array.isArray(columnTasks)) {
-				// Reassign ordinals to prevent conflicts
-				const tasksToUpdate: Task[] = [];
-				let ordinal = 1000;
-
-				for (const columnTask of columnTasks) {
-					if (columnTask.id !== taskId) {
-						const existingTask = await this.core.filesystem.loadTask(columnTask.id);
-						if (existingTask && existingTask.ordinal !== ordinal) {
-							tasksToUpdate.push({
-								...existingTask,
-								ordinal: ordinal,
-								// Note: updatedDate will be set automatically by Core.updateTask
-							});
-						}
-						ordinal += 1000;
-					}
-				}
-
-				// Use Core's bulk update method instead of manual git operations
-				if (tasksToUpdate.length > 0) {
-					await this.core.updateTasksBulk(tasksToUpdate, "Reorder tasks in column");
-				}
-			}
+			const { updatedTask } = await this.core.reorderTask({
+				taskId,
+				targetStatus,
+				orderedTaskIds,
+				commitMessage: `Reorder tasks in ${targetStatus}`,
+			});
 
 			return Response.json({ success: true, task: updatedTask });
 		} catch (error) {

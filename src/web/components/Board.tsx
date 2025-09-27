@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { type Task } from '../../types';
-import { apiClient } from '../lib/api';
+import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
 import { SuccessToast } from './SuccessToast';
@@ -55,13 +55,9 @@ const Board: React.FC<BoardProps> = ({
     }
   };
 
-  const handleStatusChange = (taskId: string, newStatus: string) => {
-    handleTaskUpdate(taskId, { status: newStatus });
-  };
-
-  const handleTaskReorder = async (taskId: string, newOrdinal: number, columnTasks: Task[]) => {
+  const handleTaskReorder = async (payload: ReorderTaskPayload) => {
     try {
-      await apiClient.reorderTask(taskId, newOrdinal, columnTasks);
+      await apiClient.reorderTask(payload);
       // Refresh data to reflect the changes
       if (onRefreshData) {
         await onRefreshData();
@@ -178,7 +174,6 @@ const Board: React.FC<BoardProps> = ({
                 title={status}
                 tasks={getTasksByStatus(status)}
                 onTaskUpdate={handleTaskUpdate}
-                onStatusChange={handleStatusChange}
                 onEditTask={onEditTask}
                 onTaskReorder={handleTaskReorder}
                 dragSourceStatus={dragSourceStatus}

@@ -1,14 +1,14 @@
 import React from 'react';
 import { type Task } from '../../types';
+import type { ReorderTaskPayload } from '../lib/api';
 import TaskCard from './TaskCard';
 
 interface TaskColumnProps {
   title: string;
   tasks: Task[];
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
-  onStatusChange: (taskId: string, status: string) => void;
   onEditTask: (task: Task) => void;
-  onTaskReorder?: (taskId: string, newOrdinal: number, columnTasks: Task[]) => void;
+  onTaskReorder?: (payload: ReorderTaskPayload) => void;
   dragSourceStatus?: string | null;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -19,7 +19,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   title,
   tasks,
   onTaskUpdate,
-  onStatusChange,
   onEditTask,
   onTaskReorder,
   dragSourceStatus,
@@ -54,38 +53,40 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     
     if (!droppedTaskId) return;
     
-    // If dropping from another column, just change status
-    if (sourceStatus !== title) {
-      onStatusChange(droppedTaskId, title);
+    if (!onTaskReorder) {
       return;
     }
-    
-    // For same column drops, handle reordering if supported
-    if (onTaskReorder && dropPosition) {
+
+    const columnWithoutDropped = tasks.filter((task) => task.id !== droppedTaskId);
+
+    let insertIndex = columnWithoutDropped.length;
+    if (dropPosition) {
       const { index, position } = dropPosition;
-      let newOrdinal: number;
-      
-      if (index === 0 && position === 'before') {
-        // Dropping at the very beginning
-        newOrdinal = tasks[0]?.ordinal !== undefined ? tasks[0].ordinal / 2 : 1000;
-      } else if (index === tasks.length - 1 && position === 'after') {
-        // Dropping at the very end
-        const lastTask = tasks[tasks.length - 1];
-        newOrdinal = lastTask?.ordinal !== undefined ? lastTask.ordinal + 1000 : (tasks.length + 1) * 1000;
-      } else {
-        // Dropping between two tasks
-        const actualIndex = position === 'before' ? index : index + 1;
-        const prevTask = tasks[actualIndex - 1];
-        const nextTask = tasks[actualIndex];
-        
-        const prevOrdinal = prevTask?.ordinal ?? actualIndex * 1000;
-        const nextOrdinal = nextTask?.ordinal ?? (actualIndex + 1) * 1000;
-        
-        newOrdinal = (prevOrdinal + nextOrdinal) / 2;
+      const baseIndex = position === 'before' ? index : index + 1;
+      let count = 0;
+      for (let i = 0; i < Math.min(baseIndex, tasks.length); i += 1) {
+        if (tasks[i]?.id === droppedTaskId) {
+          continue;
+        }
+        count += 1;
       }
-      
-      onTaskReorder(droppedTaskId, newOrdinal, tasks);
+      insertIndex = count;
     }
+
+    const orderedTaskIds = columnWithoutDropped.map((task) => task.id);
+    orderedTaskIds.splice(insertIndex, 0, droppedTaskId);
+
+    const isSameColumn = sourceStatus === title;
+    const isOrderUnchanged =
+      isSameColumn &&
+      orderedTaskIds.length === tasks.length &&
+      orderedTaskIds.every((taskId, idx) => taskId === tasks[idx]?.id);
+
+    if (isOrderUnchanged) {
+      return;
+    }
+
+    onTaskReorder({ taskId: droppedTaskId, targetStatus: title, orderedTaskIds });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -120,7 +121,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       className={`rounded-lg p-4 min-h-96 transition-colors duration-200 ${
         isDragOver && dragSourceStatus !== title
           ? 'bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 border-dashed'
-          : 'bg-gray-50 dark:bg-gray-800 border border-transparent'
+          : 'bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700'
       }`}
       onDrop={handleDrop}
       onDragOver={handleDragOverColumn}

@@ -12,6 +12,12 @@ import type {
 
 const API_BASE = "/api";
 
+export interface ReorderTaskPayload {
+	taskId: string;
+	targetStatus: string;
+	orderedTaskIds: string[];
+}
+
 // Enhanced error types for better error handling
 export class ApiError extends Error {
 	constructor(
@@ -190,14 +196,10 @@ export class ApiClient {
 		});
 	}
 
-	async reorderTask(
-		taskId: string,
-		newOrdinal: number,
-		columnTasks?: Task[],
-	): Promise<{ success: boolean; task: Task }> {
+	async reorderTask(payload: ReorderTaskPayload): Promise<{ success: boolean; task: Task }> {
 		return this.fetchJson<{ success: boolean; task: Task }>(`${API_BASE}/tasks/reorder`, {
 			method: "POST",
-			body: JSON.stringify({ taskId, newOrdinal, columnTasks }),
+			body: JSON.stringify(payload),
 		});
 	}
 

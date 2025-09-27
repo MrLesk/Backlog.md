@@ -10,6 +10,7 @@ import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
+import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
 
@@ -363,6 +364,100 @@ export class Core {
 			await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(commitMessage || `Update ${tasks.length} tasks`);
 		}
+	}
+
+	async reorderTask(params: {
+		taskId: string;
+		targetStatus: string;
+		orderedTaskIds: string[];
+		commitMessage?: string;
+		autoCommit?: boolean;
+		defaultStep?: number;
+	}): Promise<{ updatedTask: Task; changedTasks: Task[] }> {
+		const taskId = String(params.taskId || "").trim();
+		const targetStatus = String(params.targetStatus || "").trim();
+		const orderedTaskIds = params.orderedTaskIds.map((id) => String(id || "").trim()).filter(Boolean);
+		const defaultStep = params.defaultStep ?? DEFAULT_ORDINAL_STEP;
+
+		if (!taskId) throw new Error("taskId is required");
+		if (!targetStatus) throw new Error("targetStatus is required");
+		if (orderedTaskIds.length === 0) throw new Error("orderedTaskIds must include at least one task");
+		if (!orderedTaskIds.includes(taskId)) {
+			throw new Error("orderedTaskIds must include the task being moved");
+		}
+
+		const seen = new Set<string>();
+		for (const id of orderedTaskIds) {
+			if (seen.has(id)) {
+				throw new Error(`Duplicate task id ${id} in orderedTaskIds`);
+			}
+			seen.add(id);
+		}
+
+		const loadedTasks = await Promise.all(
+			orderedTaskIds.map(async (id) => {
+				const task = await this.fs.loadTask(id);
+				if (!task) throw new Error(`Task ${id} not found`);
+				return task;
+			}),
+		);
+
+		const targetIndex = orderedTaskIds.indexOf(taskId);
+		if (targetIndex === -1) {
+			throw new Error("orderedTaskIds must contain the moved task");
+		}
+		const movedTask = loadedTasks[targetIndex];
+		if (!movedTask) {
+			throw new Error(`Task ${taskId} not found while reordering`);
+		}
+
+		const previousTask = targetIndex > 0 ? loadedTasks[targetIndex - 1] : null;
+		const nextTask = targetIndex < loadedTasks.length - 1 ? loadedTasks[targetIndex + 1] : null;
+
+		const { ordinal: newOrdinal, requiresRebalance } = calculateNewOrdinal({
+			previous: previousTask,
+			next: nextTask,
+			defaultStep,
+		});
+
+		const updatedMoved: Task = {
+			...movedTask,
+			status: targetStatus,
+			ordinal: newOrdinal,
+		};
+
+		const tasksInOrder: Task[] = loadedTasks.map((task, index) => (index === targetIndex ? updatedMoved : task));
+		const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, {
+			defaultStep,
+			startOrdinal: defaultStep,
+			forceSequential: requiresRebalance,
+		});
+
+		const updatesMap = new Map<string, Task>();
+		for (const update of resolutionUpdates) {
+			updatesMap.set(update.id, update);
+		}
+		if (!updatesMap.has(updatedMoved.id)) {
+			updatesMap.set(updatedMoved.id, updatedMoved);
+		}
+
+		const originalMap = new Map(loadedTasks.map((task) => [task.id, task]));
+		const changedTasks = Array.from(updatesMap.values()).filter((task) => {
+			const original = originalMap.get(task.id);
+			if (!original) return true;
+			return (original.ordinal ?? null) !== (task.ordinal ?? null) || (original.status ?? "") !== (task.status ?? "");
+		});
+
+		if (changedTasks.length > 0) {
+			await this.updateTasksBulk(
+				changedTasks,
+				params.commitMessage ?? `Reorder tasks in ${targetStatus}`,
+				params.autoCommit,
+			);
+		}
+
+		const updatedTask = updatesMap.get(taskId) ?? updatedMoved;
+		return { updatedTask, changedTasks };
 	}
 
 	// Sequences operations (business logic lives in core, not server)
