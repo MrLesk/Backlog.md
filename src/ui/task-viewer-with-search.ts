@@ -139,10 +139,26 @@ export async function viewTaskEnhanced(
 	// Priority is already lowercase
 	let priorityFilter = options.priorityFilter || "";
 	let filteredTasks = [...allTasks];
+	const filtersActive = Boolean(searchQuery || statusFilter || priorityFilter);
+	let requireInitialFilterSelection = filtersActive;
 
 	// Find the initial selected task
 	let currentSelectedTask = task;
 	let currentSelectedContent = content;
+	let detailLoading = false;
+	let selectionRequestId = 0;
+
+	async function readTaskContent(taskId: string): Promise<string> {
+		try {
+			const filePath = await getTaskPath(taskId, core);
+			if (filePath) {
+				return await Bun.file(filePath).text();
+			}
+		} catch {
+			// Ignore read errors to keep the UI responsive
+		}
+		return "";
+	}
 
 	const screen = createScreen({ title: options.title || "Backlog Tasks" });
 
@@ -363,13 +379,20 @@ export async function viewTaskEnhanced(
 			taskList.destroy();
 			taskList = null;
 		}
-		createTaskList();
-
-		// Select first task if current is filtered out
-		if (!filteredTasks.find((t) => t.id === currentSelectedTask.id)) {
-			if (filteredTasks.length > 0) {
-				void applySelection(filteredTasks[0] || null);
+		const listController = createTaskList();
+		taskList = listController;
+		if (filteredTasks.length > 0 && listController) {
+			const forceFirst = requireInitialFilterSelection;
+			let desiredIndex = filteredTasks.findIndex((t) => t.id === currentSelectedTask.id);
+			if (forceFirst || desiredIndex < 0) {
+				desiredIndex = 0;
 			}
+			const currentIndexRaw = listController.getSelectedIndex();
+			const currentIndex = Array.isArray(currentIndexRaw) ? (currentIndexRaw[0] ?? 0) : currentIndexRaw;
+			if (forceFirst || currentIndex !== desiredIndex) {
+				listController.setSelectedIndex(desiredIndex);
+			}
+			requireInitialFilterSelection = false;
 		}
 
 		screen.render();
@@ -380,23 +403,24 @@ export async function viewTaskEnhanced(
 
 	async function applySelection(selectedTask: Task | null) {
 		if (!selectedTask) return;
-		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id) return;
+		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id && detailLoading === false) {
+			return;
+		}
 		currentSelectedTask = selectedTask;
 		options.onTaskChange?.(selectedTask);
-		try {
-			const filePath = await getTaskPath(selectedTask.id, core);
-			if (filePath) {
-				currentSelectedContent = await Bun.file(filePath).text();
-			} else {
-				currentSelectedContent = "";
-			}
-		} catch {
-			currentSelectedContent = "";
+		detailLoading = true;
+		const requestId = ++selectionRequestId;
+		refreshDetailPane();
+		const contentText = await readTaskContent(selectedTask.id);
+		if (requestId !== selectionRequestId) {
+			return;
 		}
+		currentSelectedContent = contentText;
+		detailLoading = false;
 		refreshDetailPane();
 	}
 
-	function createTaskList() {
+	function createTaskList(): GenericList<Task> | null {
 		const initialIndex = Math.max(
 			0,
 			filteredTasks.findIndex((t) => t.id === currentSelectedTask.id),
@@ -450,6 +474,8 @@ export async function viewTaskEnhanced(
 				screen.render();
 			});
 		}
+
+		return taskList;
 	}
 
 	// Detail pane refresh function
@@ -521,19 +547,30 @@ export async function viewTaskEnhanced(
 		bodyContent.push(...metadata);
 		bodyContent.push("");
 
+		if (detailLoading) {
+			bodyContent.push("{gray-fg}Loading task content…{/}");
+			bodyContent.push("");
+		}
+
 		if (currentSelectedTask.description) {
 			bodyContent.push(formatHeading("Description", 2));
 			bodyContent.push(currentSelectedTask.description);
 		}
 
-		const acceptanceCriteria = extractAcceptanceCriteriaWithCheckboxes(currentSelectedContent);
-		if (acceptanceCriteria.length > 0) {
+		if (detailLoading) {
 			bodyContent.push("");
 			bodyContent.push(formatHeading("Acceptance Criteria", 2));
-			for (const criterion of acceptanceCriteria) {
-				const parsed = parseCheckboxLine(criterion);
-				if (parsed) {
-					bodyContent.push(formatChecklistItem(parsed));
+			bodyContent.push("{gray-fg}Loading acceptance criteria…{/}");
+		} else {
+			const acceptanceCriteria = extractAcceptanceCriteriaWithCheckboxes(currentSelectedContent);
+			if (acceptanceCriteria.length > 0) {
+				bodyContent.push("");
+				bodyContent.push(formatHeading("Acceptance Criteria", 2));
+				for (const criterion of acceptanceCriteria) {
+					const parsed = parseCheckboxLine(criterion);
+					if (parsed) {
+						bodyContent.push(formatChecklistItem(parsed));
+					}
 				}
 			}
 		}
@@ -926,10 +963,11 @@ export async function viewTaskEnhanced(
 
 	// Initial setup
 	// Apply filters first if any are set
-	if (searchQuery || statusFilter || priorityFilter) {
+	if (filtersActive) {
 		applyFilters();
+	} else {
+		taskList = createTaskList();
 	}
-	createTaskList();
 	refreshDetailPane();
 
 	if (options.startWithSearchFocus) {

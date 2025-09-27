@@ -91,9 +91,28 @@ export async function viewTaskEnhanced(
 		.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
 
 	// Find the initial selected task index
-	const initialIndex = allTasks.findIndex((t) => t.id === task.id);
-	let currentSelectedTask = task;
+	const foundIndex = allTasks.findIndex((t) => t.id === task.id);
+	const initialIndex = foundIndex >= 0 ? foundIndex : 0;
+	let currentSelectedTask = foundIndex >= 0 ? task : (allTasks[0] ?? task);
 	let currentSelectedContent = content;
+	let detailLoading = false;
+	let selectionRequestId = 0;
+
+	async function readTaskContent(taskId: string): Promise<string> {
+		try {
+			const filePath = await getTaskPath(taskId, core);
+			if (filePath) {
+				return await Bun.file(filePath).text();
+			}
+		} catch {
+			// Ignore read errors so the UI can continue functioning
+		}
+		return "";
+	}
+
+	if (foundIndex === -1 && allTasks.length > 0) {
+		currentSelectedContent = await readTaskContent(currentSelectedTask.id);
+	}
 
 	const screen = createScreen({ title: options.title || "Backlog Tasks" });
 
@@ -153,20 +172,21 @@ export async function viewTaskEnhanced(
 	// Create task list using generic list component
 	async function applySelection(selectedTask: Task | null) {
 		if (!selectedTask) return;
-		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id) return;
+		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id && detailLoading === false) {
+			return;
+		}
 		currentSelectedTask = selectedTask;
 		// Notify view switcher of task change
 		options.onTaskChange?.(selectedTask);
-		try {
-			const filePath = await getTaskPath(selectedTask.id, core);
-			if (filePath) {
-				currentSelectedContent = await Bun.file(filePath).text();
-			} else {
-				currentSelectedContent = "";
-			}
-		} catch {
-			currentSelectedContent = "";
+		detailLoading = true;
+		const requestId = ++selectionRequestId;
+		refreshDetailPane();
+		const contentText = await readTaskContent(selectedTask.id);
+		if (requestId !== selectionRequestId) {
+			return;
 		}
+		currentSelectedContent = contentText;
+		detailLoading = false;
 		refreshDetailPane();
 	}
 	const taskList = createGenericList<Task>({
@@ -410,6 +430,11 @@ export async function viewTaskEnhanced(
 		bodyContent.push(metadata.join("\n"));
 		bodyContent.push("");
 
+		if (detailLoading) {
+			bodyContent.push("{gray-fg}Loading task content…{/}");
+			bodyContent.push("");
+		}
+
 		// Description section
 		bodyContent.push(formatHeading("Description", 2));
 		const descriptionText = currentSelectedTask.description?.trim();
@@ -421,32 +446,36 @@ export async function viewTaskEnhanced(
 
 		// Acceptance criteria section
 		bodyContent.push(formatHeading("Acceptance Criteria", 2));
-		// Extract checkbox lines from raw content to preserve checkbox state
-		const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(currentSelectedContent);
-		if (checkboxLines.length > 0) {
-			const formattedCriteria = checkboxLines.map((line) => {
-				const checkboxItem = parseCheckboxLine(line);
-				if (checkboxItem) {
-					// Use nice Unicode symbols for checkboxes in TUI
-					return formatChecklistItem(checkboxItem, {
-						padding: " ",
-						checkedSymbol: "{green-fg}✓{/}",
-						uncheckedSymbol: "{gray-fg}○{/}",
-					});
-				}
-				// Handle non-checkbox lines
-				return ` ${line}`;
-			});
-			const criteriaContent = styleCodePaths(formattedCriteria.join("\n"));
-			bodyContent.push(criteriaContent);
-		} else if (currentSelectedTask.acceptanceCriteriaItems?.length) {
-			// Fallback to structured criteria if no checkboxes found in raw content
-			const criteriaContent = styleCodePaths(
-				currentSelectedTask.acceptanceCriteriaItems.map((item) => ` • ${item.text}`).join("\n"),
-			);
-			bodyContent.push(criteriaContent);
+		if (detailLoading) {
+			bodyContent.push("{gray-fg}Loading acceptance criteria…{/}");
 		} else {
-			bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
+			// Extract checkbox lines from raw content to preserve checkbox state
+			const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(currentSelectedContent);
+			if (checkboxLines.length > 0) {
+				const formattedCriteria = checkboxLines.map((line) => {
+					const checkboxItem = parseCheckboxLine(line);
+					if (checkboxItem) {
+						// Use nice Unicode symbols for checkboxes in TUI
+						return formatChecklistItem(checkboxItem, {
+							padding: " ",
+							checkedSymbol: "{green-fg}✓{/}",
+							uncheckedSymbol: "{gray-fg}○{/}",
+						});
+					}
+					// Handle non-checkbox lines
+					return ` ${line}`;
+				});
+				const criteriaContent = styleCodePaths(formattedCriteria.join("\n"));
+				bodyContent.push(criteriaContent);
+			} else if (currentSelectedTask.acceptanceCriteriaItems?.length) {
+				// Fallback to structured criteria if no checkboxes found in raw content
+				const criteriaContent = styleCodePaths(
+					currentSelectedTask.acceptanceCriteriaItems.map((item) => ` • ${item.text}`).join("\n"),
+				);
+				bodyContent.push(criteriaContent);
+			} else {
+				bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
+			}
 		}
 		bodyContent.push("");
 

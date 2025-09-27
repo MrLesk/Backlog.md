@@ -51,6 +51,7 @@ export interface GenericListOptions<T extends GenericListItem> {
 export interface GenericListController<T extends GenericListItem> {
 	getSelected(): T | T[] | null;
 	getSelectedIndex(): number | number[];
+	setSelectedIndex(index: number): void;
 	updateItems(items: T[]): void;
 	focus(): void;
 	getListBox(): ListInterface;
@@ -398,6 +399,24 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 	public getSelectedIndex(): number | number[] {
 		return this.isMultiSelect ? Array.from(this.selectedIndices) : this.selectedIndex;
+	}
+
+	public setSelectedIndex(index: number): void {
+		if (!this.listBox || this.filteredItems.length === 0) {
+			return;
+		}
+		const clamped = Math.max(0, Math.min(index, this.filteredItems.length - 1));
+		if (this.selectedIndex === clamped) {
+			// Still emit highlight to ensure host state stays synchronized
+			this.onHighlight?.(this.filteredItems[clamped] ?? null, clamped);
+			return;
+		}
+		this.selectedIndex = clamped;
+		this.listBox.select(clamped);
+		const listWithSelected = this.listBox as ListInterface & { selected?: number };
+		listWithSelected.selected = clamped;
+		this.onHighlight?.(this.filteredItems[clamped] ?? null, clamped);
+		this.getScreen()?.render?.();
 	}
 
 	public updateItems(items: T[]): void {
