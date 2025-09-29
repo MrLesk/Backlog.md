@@ -20,6 +20,16 @@ npx biome check .
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Filesystem-only Mode (No Git)
+
+For local testing without a Git repository, you can initialize a project in filesystem-only mode:
+
+```bash
+bun src/cli.ts init "Dev Project" --no-git --defaults
+```
+
+This disables cross-branch checks and remote Git operations, and forces `autoCommit: false`. You can still run all core commands (task/doc/decision creation) without Git installed.
+
 ## Release
 
 Backlog.md now relies on npm Trusted Publishing with GitHub Actions OIDC. The
