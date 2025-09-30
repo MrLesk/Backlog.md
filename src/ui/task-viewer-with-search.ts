@@ -1,21 +1,26 @@
 /* Task viewer with search/filter header UI */
 
 import { stdout as output } from "node:process";
-import type { BoxInterface, LineInterface, ListInterface, ScrollableTextInterface } from "neo-neo-bblessed";
+import type {
+	BoxInterface,
+	LineInterface,
+	ListInterface,
+	ScreenInterface,
+	ScrollableTextInterface,
+} from "neo-neo-bblessed";
 import { box, line, list, scrollabletext, textbox } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import type { Task, TaskSearchResult } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
+import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
 import { createGenericList, type GenericList } from "./components/generic-list.ts";
 import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
 
-type BorderStyle = { fg?: string; bg?: string };
 type SelectedStyle = { bg?: string; fg?: string };
 
-type BorderCapable = Pick<BoxInterface, "style">;
 type SelectableList = Pick<ListInterface, "style">;
 
 interface KeypressEvent {
@@ -32,24 +37,21 @@ function resolveListIndex(args: unknown[]): number {
 	return 0;
 }
 
-function setBorderColor(element: BorderCapable, color: string): void {
-	const style = element.style as StyleWithBorder;
-	style.border = { ...(style.border ?? {}), fg: color };
-}
-
 function setSelectedColors(list: SelectableList, colors: SelectedStyle): void {
 	const style = list.style as StyleWithSelected;
 	style.selected = { ...(style.selected ?? {}), ...colors };
 }
 
-interface StyleWithBorder {
-	border?: BorderStyle;
-	[key: string]: unknown;
-}
-
 interface StyleWithSelected {
 	selected?: SelectedStyle;
 	[key: string]: unknown;
+}
+
+type BorderCapable = Pick<BoxInterface, "style">;
+
+function setBorderColor(element: BorderCapable, color: string): void {
+	const style = element.style as { border?: { fg?: string } };
+	style.border = { ...(style.border ?? {}), fg: color };
 }
 
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
@@ -145,8 +147,8 @@ export async function viewTaskEnhanced(
 	// Find the initial selected task
 	let currentSelectedTask = task;
 	let currentSelectedContent = content;
-	let detailLoading = false;
 	let selectionRequestId = 0;
+	let noResultsMessage: string | null = null;
 
 	async function readTaskContent(taskId: string): Promise<string> {
 		try {
@@ -337,6 +339,40 @@ export async function viewTaskEnhanced(
 		label: "\u00A0Details\u00A0",
 	});
 
+	function setActivePane(active: "list" | "detail" | "none") {
+		const listBorder = taskListPane.style as { border?: { fg?: string } };
+		const detailBorder = detailPane.style as { border?: { fg?: string } };
+		if (listBorder.border) listBorder.border.fg = active === "list" ? "yellow" : "gray";
+		if (detailBorder.border) detailBorder.border.fg = active === "detail" ? "yellow" : "gray";
+	}
+
+	function focusTaskList(): void {
+		if (!taskList) {
+			if (descriptionBox) {
+				currentFocus = "detail";
+				setActivePane("detail");
+				descriptionBox.focus();
+				updateHelpBar();
+				screen.render();
+			}
+			return;
+		}
+		currentFocus = "list";
+		setActivePane("list");
+		taskList.focus();
+		updateHelpBar();
+		screen.render();
+	}
+
+	function focusDetailPane(): void {
+		if (!descriptionBox) return;
+		currentFocus = "detail";
+		setActivePane("detail");
+		descriptionBox.focus();
+		updateHelpBar();
+		screen.render();
+	}
+
 	// Helper to notify filter changes
 	function notifyFilterChange() {
 		if (options.onFilterChange) {
@@ -374,14 +410,42 @@ export async function viewTaskEnhanced(
 			taskListPane.setLabel(`\u00A0Tasks (${filteredTasks.length})\u00A0`);
 		}
 
-		// Recreate the task list with filtered items
+		if (filteredTasks.length === 0) {
+			if (taskList) {
+				taskList.destroy();
+				taskList = null;
+			}
+			const activeFilters: string[] = [];
+			const trimmedQuery = searchQuery.trim();
+			if (trimmedQuery) {
+				activeFilters.push(`Search: {cyan-fg}${trimmedQuery}{/}`);
+			}
+			if (statusFilter) {
+				activeFilters.push(`Status: {cyan-fg}${statusFilter}{/}`);
+			}
+			if (priorityFilter) {
+				activeFilters.push(`Priority: {cyan-fg}${priorityFilter}{/}`);
+			}
+			if (activeFilters.length > 0) {
+				noResultsMessage = `{bold}No tasks match your current filters{/bold}\n${activeFilters.map((f) => ` • ${f}`).join("\n")}\n\n{gray-fg}Try adjusting the search or clearing filters.{/}`;
+			} else {
+				noResultsMessage =
+					"{bold}No tasks available{/bold}\n{gray-fg}Create a task with {cyan-fg}backlog task create{/cyan-fg}.{/}";
+			}
+			refreshDetailPane();
+			screen.render();
+			return;
+		}
+
+		noResultsMessage = null;
+
 		if (taskList) {
 			taskList.destroy();
 			taskList = null;
 		}
 		const listController = createTaskList();
 		taskList = listController;
-		if (filteredTasks.length > 0 && listController) {
+		if (listController) {
 			const forceFirst = requireInitialFilterSelection;
 			let desiredIndex = filteredTasks.findIndex((t) => t.id === currentSelectedTask.id);
 			if (forceFirst || desiredIndex < 0) {
@@ -403,21 +467,22 @@ export async function viewTaskEnhanced(
 
 	async function applySelection(selectedTask: Task | null) {
 		if (!selectedTask) return;
-		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id && detailLoading === false) {
+		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id) {
 			return;
 		}
 		currentSelectedTask = selectedTask;
+		currentSelectedContent = "";
 		options.onTaskChange?.(selectedTask);
-		detailLoading = true;
 		const requestId = ++selectionRequestId;
 		refreshDetailPane();
+		screen.render();
 		const contentText = await readTaskContent(selectedTask.id);
 		if (requestId !== selectionRequestId) {
 			return;
 		}
 		currentSelectedContent = contentText;
-		detailLoading = false;
 		refreshDetailPane();
+		screen.render();
 	}
 
 	function createTaskList(): GenericList<Task> | null {
@@ -462,16 +527,17 @@ export async function viewTaskEnhanced(
 			const listBox = taskList.getListBox();
 			listBox.on("focus", () => {
 				currentFocus = "list";
-				// Highlight task list pane when focused
-				setBorderColor(taskListPane, "yellow");
-				setBorderColor(headerBox, "cyan");
+				setActivePane("list");
 				screen.render();
 				updateHelpBar();
 			});
 			listBox.on("blur", () => {
-				// Reset task list pane border when not focused
-				setBorderColor(taskListPane, "gray");
+				setActivePane("none");
 				screen.render();
+			});
+			listBox.key(["right", "l"], () => {
+				focusDetailPane();
+				return false;
 			});
 		}
 
@@ -488,6 +554,108 @@ export async function viewTaskEnhanced(
 		if (divider) divider.destroy();
 		if (descriptionBox) descriptionBox.destroy();
 
+		const configureDetailBox = (boxInstance: ScrollableTextInterface) => {
+			descriptionBox = boxInstance;
+			const scrollable = boxInstance as unknown as {
+				scroll?: (offset: number) => void;
+				setScroll?: (offset: number) => void;
+				setScrollPerc?: (perc: number) => void;
+			};
+
+			const pageAmount = () => {
+				const height = typeof boxInstance.height === "number" ? boxInstance.height : 0;
+				return height > 0 ? Math.max(1, height - 3) : 0;
+			};
+
+			boxInstance.key(["pageup", "b"], () => {
+				const delta = pageAmount();
+				if (delta > 0) {
+					scrollable.scroll?.(-delta);
+					screen.render();
+				}
+				return false;
+			});
+			boxInstance.key(["pagedown", "space"], () => {
+				const delta = pageAmount();
+				if (delta > 0) {
+					scrollable.scroll?.(delta);
+					screen.render();
+				}
+				return false;
+			});
+			boxInstance.key(["home", "g"], () => {
+				scrollable.setScroll?.(0);
+				screen.render();
+				return false;
+			});
+			boxInstance.key(["end", "G"], () => {
+				scrollable.setScrollPerc?.(100);
+				screen.render();
+				return false;
+			});
+			boxInstance.on("focus", () => {
+				currentFocus = "detail";
+				setActivePane("detail");
+				updateHelpBar();
+				screen.render();
+			});
+			boxInstance.on("blur", () => {
+				if (currentFocus !== "detail") {
+					setActivePane(currentFocus === "list" ? "list" : "none");
+					screen.render();
+				}
+			});
+			boxInstance.key(["left", "h"], () => {
+				focusTaskList();
+				return false;
+			});
+			boxInstance.key(["escape"], () => {
+				focusTaskList();
+				return false;
+			});
+			if (currentFocus === "detail") {
+				setImmediate(() => boxInstance.focus());
+			}
+		};
+
+		if (noResultsMessage) {
+			screen.title = options.title || "Backlog Tasks";
+
+			headerDetailBox = box({
+				parent: detailPane,
+				top: 0,
+				left: 1,
+				right: 1,
+				height: "shrink",
+				tags: true,
+				wrap: true,
+				scrollable: false,
+				padding: { left: 1, right: 1 },
+				content: "{bold}No tasks to display{/bold}",
+			});
+
+			descriptionBox = undefined;
+			divider = undefined;
+			const messageBox = scrollabletext({
+				parent: detailPane,
+				top: (typeof headerDetailBox.bottom === "number" ? headerDetailBox.bottom : 0) + 1,
+				left: 1,
+				right: 1,
+				bottom: 1,
+				keys: true,
+				vi: true,
+				mouse: true,
+				tags: true,
+				wrap: true,
+				padding: { left: 1, right: 1, top: 0, bottom: 0 },
+				content: noResultsMessage,
+			});
+
+			configureDetailBox(messageBox);
+			screen.render();
+			return;
+		}
+
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
 		headerDetailBox = box({
@@ -501,9 +669,6 @@ export async function viewTaskEnhanced(
 			scrollable: false,
 			padding: { left: 1, right: 1 },
 		});
-
-		const headerContent = `{${getStatusColor(currentSelectedTask.status)}-fg}${formatStatusWithIcon(currentSelectedTask.status)}{/} {bold}{blue-fg}${currentSelectedTask.id}{/blue-fg}{/bold} - ${currentSelectedTask.title}`;
-		headerDetailBox.setContent(headerContent);
 
 		divider = line({
 			parent: detailPane,
@@ -530,57 +695,14 @@ export async function viewTaskEnhanced(
 			padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		});
 
-		const bodyContent = [];
-		bodyContent.push(formatHeading("Details", 2));
-
-		const metadata = [];
-		metadata.push(`{bold}Created:{/bold} ${formatDateForDisplay(currentSelectedTask.createdDate)}`);
-		if (currentSelectedTask.updatedDate && currentSelectedTask.updatedDate !== currentSelectedTask.createdDate) {
-			metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(currentSelectedTask.updatedDate)}`);
-		}
-		if (currentSelectedTask.priority) {
-			const priorityDisplay = getPriorityDisplay(currentSelectedTask.priority);
-			const priorityText = currentSelectedTask.priority.charAt(0).toUpperCase() + currentSelectedTask.priority.slice(1);
-			metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
-		}
-
-		bodyContent.push(...metadata);
-		bodyContent.push("");
-
-		if (detailLoading) {
-			bodyContent.push("{gray-fg}Loading task content…{/}");
-			bodyContent.push("");
-		}
-
-		if (currentSelectedTask.description) {
-			bodyContent.push(formatHeading("Description", 2));
-			bodyContent.push(currentSelectedTask.description);
-		}
-
-		if (detailLoading) {
-			bodyContent.push("");
-			bodyContent.push(formatHeading("Acceptance Criteria", 2));
-			bodyContent.push("{gray-fg}Loading acceptance criteria…{/}");
-		} else {
-			const acceptanceCriteria = extractAcceptanceCriteriaWithCheckboxes(currentSelectedContent);
-			if (acceptanceCriteria.length > 0) {
-				bodyContent.push("");
-				bodyContent.push(formatHeading("Acceptance Criteria", 2));
-				for (const criterion of acceptanceCriteria) {
-					const parsed = parseCheckboxLine(criterion);
-					if (parsed) {
-						bodyContent.push(formatChecklistItem(parsed));
-					}
-				}
-			}
-		}
-
-		bodyContainer.setContent(bodyContent.join("\n"));
-		descriptionBox = bodyContainer;
+		const detailContent = generateDetailContent(currentSelectedTask, currentSelectedContent);
+		headerDetailBox.setContent(detailContent.headerContent.join("\n"));
+		bodyContainer.setContent(detailContent.bodyContent.join("\n"));
+		configureDetailBox(bodyContainer);
 	}
 
 	// State for tracking focus
-	let currentFocus: "search" | "status" | "priority" | "list" = "list";
+	let currentFocus: "search" | "status" | "priority" | "list" | "detail" = "list";
 
 	// Event handlers for search and filters
 	searchInput.on("submit", (value: unknown) => {
@@ -619,7 +741,7 @@ export async function viewTaskEnhanced(
 	searchInput.on("cancel", () => {
 		// On Escape, move focus to task list
 		if (taskList) {
-			taskList.focus();
+			focusTaskList();
 		}
 	});
 
@@ -630,7 +752,7 @@ export async function viewTaskEnhanced(
 		applyFilters();
 		notifyFilterChange();
 		if (taskList) {
-			taskList.focus();
+			focusTaskList();
 		}
 	});
 
@@ -661,7 +783,7 @@ export async function viewTaskEnhanced(
 		applyFilters();
 		notifyFilterChange();
 		if (taskList) {
-			taskList.focus();
+			focusTaskList();
 		}
 	});
 
@@ -713,12 +835,7 @@ export async function viewTaskEnhanced(
 		searchInput.cancel();
 		// Switch to task list
 		if (taskList) {
-			currentFocus = "list";
-			setBorderColor(taskListPane, "yellow");
-			setBorderColor(headerBox, "cyan");
-			taskList.focus();
-			screen.render();
-			updateHelpBar();
+			focusTaskList();
 		}
 		// Prevent event from bubbling
 		return false;
@@ -729,7 +846,7 @@ export async function viewTaskEnhanced(
 		currentFocus = "search";
 		// Highlight header box when filter is active
 		setBorderColor(headerBox, "yellow");
-		setBorderColor(taskListPane, "gray"); // Reset task list pane
+		setActivePane("none");
 		screen.render();
 		updateHelpBar();
 		startSearchMonitoring();
@@ -742,6 +859,7 @@ export async function viewTaskEnhanced(
 		if (currentFocus !== "status" && currentFocus !== "priority") {
 			setBorderColor(headerBox, "cyan");
 		}
+		setActivePane(currentFocus === "detail" ? "detail" : currentFocus === "list" ? "list" : "none");
 		screen.render();
 	});
 
@@ -749,7 +867,7 @@ export async function viewTaskEnhanced(
 		currentFocus = "status";
 		// Highlight header box when filter is active
 		setBorderColor(headerBox, "yellow");
-		setBorderColor(taskListPane, "gray"); // Reset task list pane
+		setActivePane("none");
 		// Update style to show blue highlight when focused
 		setSelectedColors(statusSelector, { bg: "blue", fg: "white" });
 		screen.render();
@@ -761,6 +879,7 @@ export async function viewTaskEnhanced(
 		setSelectedColors(statusSelector, { bg: "black", fg: "white" });
 		// Reset header box border
 		setBorderColor(headerBox, "cyan");
+		setActivePane(currentFocus === "detail" ? "detail" : currentFocus === "list" ? "list" : "none");
 		screen.render();
 	});
 
@@ -768,7 +887,7 @@ export async function viewTaskEnhanced(
 		currentFocus = "priority";
 		// Highlight header box when filter is active
 		setBorderColor(headerBox, "yellow");
-		setBorderColor(taskListPane, "gray"); // Reset task list pane
+		setActivePane("none");
 		// Update style to show blue highlight when focused
 		setSelectedColors(prioritySelector, { bg: "blue", fg: "white" });
 		screen.render();
@@ -780,6 +899,7 @@ export async function viewTaskEnhanced(
 		setSelectedColors(prioritySelector, { bg: "black", fg: "white" });
 		// Reset header box border
 		setBorderColor(headerBox, "cyan");
+		setActivePane(currentFocus === "detail" ? "detail" : currentFocus === "list" ? "list" : "none");
 		screen.render();
 	});
 
@@ -884,12 +1004,7 @@ export async function viewTaskEnhanced(
 				searchInput.setValue(searchQuery);
 			}
 			if (taskList) {
-				currentFocus = "list";
-				setBorderColor(taskListPane, "yellow");
-				setBorderColor(headerBox, "cyan");
-				taskList.focus();
-				screen.render();
-				updateHelpBar();
+				focusTaskList();
 			}
 		} else {
 			// If already in task list, quit
@@ -924,6 +1039,8 @@ export async function viewTaskEnhanced(
 			// Status/Priority filter help - changes apply immediately
 			content =
 				" {cyan-fg}[Tab]{/} Next Filter | {cyan-fg}[Shift+Tab]{/} Prev Filter | {cyan-fg}[↑↓]{/} Select | {cyan-fg}[Esc]{/} Back to Tasks | {gray-fg}(Live filter){/}";
+		} else if (currentFocus === "detail") {
+			content = " {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[q/Esc]{/} Quit";
 		} else {
 			// Task list help - show all available shortcuts
 			content =
@@ -975,15 +1092,13 @@ export async function viewTaskEnhanced(
 		searchInput.focus();
 	} else if (options.startWithDetailFocus) {
 		if (descriptionBox) {
-			descriptionBox.focus();
+			focusDetailPane();
 		}
 	} else {
 		// Focus the task list initially and highlight it
 		const list = taskList as GenericList<Task> | null;
 		if (list) {
-			currentFocus = "list";
-			setBorderColor(taskListPane, "yellow");
-			list.focus();
+			focusTaskList();
 		}
 	}
 
@@ -1000,41 +1115,317 @@ export async function viewTaskEnhanced(
 	});
 }
 
-// Helper function for plain text output
-function formatTaskPlainText(task: Task, content: string): string {
+export function formatTaskPlainText(task: Task, content: string, filePath?: string): string {
 	const lines: string[] = [];
 
-	lines.push(`Task: ${task.id} - ${task.title}`);
-	lines.push(`Status: ${task.status}`);
-
-	if (task.assignee?.length) {
-		lines.push(`Assignee: ${task.assignee.join(", ")}`);
+	if (filePath) {
+		lines.push(`File: ${filePath}`);
+		lines.push("");
 	}
 
+	lines.push(`Task ${task.id} - ${task.title}`);
+	lines.push("=".repeat(50));
+	lines.push("");
+	lines.push(`Status: ${formatStatusWithIcon(task.status)}`);
+	if (task.priority) {
+		lines.push(`Priority: ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`);
+	}
+	if (task.assignee?.length) {
+		lines.push(`Assignee: ${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}`);
+	}
+	if (task.reporter) {
+		lines.push(`Reporter: ${task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`}`);
+	}
+	lines.push(`Created: ${formatDateForDisplay(task.createdDate)}`);
+	if (task.updatedDate) {
+		lines.push(`Updated: ${formatDateForDisplay(task.updatedDate)}`);
+	}
 	if (task.labels?.length) {
 		lines.push(`Labels: ${task.labels.join(", ")}`);
 	}
-
-	if (task.priority) {
-		lines.push(`Priority: ${task.priority}`);
+	if (task.milestone) {
+		lines.push(`Milestone: ${task.milestone}`);
 	}
-
+	if (task.parentTaskId) {
+		lines.push(`Parent: ${task.parentTaskId}`);
+	}
+	if (task.subtasks?.length) {
+		lines.push(`Subtasks: ${task.subtasks.length}`);
+	}
+	if (task.dependencies?.length) {
+		lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
+	}
 	lines.push("");
+
 	lines.push("Description:");
-	lines.push(task.description || "No description");
+	lines.push("-".repeat(50));
+	const description = task.description?.trim();
+	lines.push(transformCodePathsPlain(description && description.length > 0 ? description : "No description provided"));
+	lines.push("");
 
-	const acceptanceCriteria = extractAcceptanceCriteriaWithCheckboxes(content);
-	if (acceptanceCriteria.length > 0) {
-		lines.push("");
-		lines.push("Acceptance Criteria:");
-		for (const criterion of acceptanceCriteria) {
-			lines.push(criterion);
+	lines.push("Acceptance Criteria:");
+	lines.push("-".repeat(50));
+	const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(content);
+	if (checkboxLines.length > 0) {
+		for (const line of checkboxLines) {
+			lines.push(line);
 		}
+	} else if (task.acceptanceCriteriaItems?.length) {
+		for (const criterion of task.acceptanceCriteriaItems) {
+			lines.push(`• ${transformCodePathsPlain(criterion.text)}`);
+		}
+	} else {
+		lines.push("No acceptance criteria defined");
+	}
+	lines.push("");
+
+	const implementationPlan = task.implementationPlan?.trim();
+	if (implementationPlan) {
+		lines.push("Implementation Plan:");
+		lines.push("-".repeat(50));
+		lines.push(transformCodePathsPlain(implementationPlan));
+		lines.push("");
 	}
 
-	lines.push("");
-	lines.push("Content:");
-	lines.push(content);
+	const implementationNotes = task.implementationNotes?.trim();
+	if (implementationNotes) {
+		lines.push("Implementation Notes:");
+		lines.push("-".repeat(50));
+		lines.push(transformCodePathsPlain(implementationNotes));
+		lines.push("");
+	}
 
 	return lines.join("\n");
+}
+
+function styleCodePaths(content: string): string {
+	return transformCodePaths(content);
+}
+
+function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
+	const headerContent = [
+		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
+	];
+
+	const bodyContent: string[] = [];
+	bodyContent.push(formatHeading("Details", 2));
+
+	const metadata: string[] = [];
+	metadata.push(`{bold}Created:{/bold} ${formatDateForDisplay(task.createdDate)}`);
+	if (task.updatedDate && task.updatedDate !== task.createdDate) {
+		metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(task.updatedDate)}`);
+	}
+	if (task.priority) {
+		const priorityDisplay = getPriorityDisplay(task.priority);
+		const priorityText = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
+		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
+	}
+	if (task.assignee?.length) {
+		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+		metadata.push(`{bold}Assignee:{/bold} {cyan-fg}${assigneeList}{/}`);
+	}
+	if (task.labels?.length) {
+		metadata.push(`{bold}Labels:{/bold} ${task.labels.map((l) => `{yellow-fg}[${l}]{/}`).join(" ")}`);
+	}
+	if (task.reporter) {
+		const reporterText = task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`;
+		metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
+	}
+	if (task.milestone) {
+		metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${task.milestone}{/}`);
+	}
+	if (task.parentTaskId) {
+		metadata.push(`{bold}Parent:{/bold} {blue-fg}${task.parentTaskId}{/}`);
+	}
+	if (task.subtasks?.length) {
+		metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
+	}
+	if (task.dependencies?.length) {
+		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
+	}
+
+	bodyContent.push(metadata.join("\n"));
+	bodyContent.push("");
+
+	bodyContent.push(formatHeading("Description", 2));
+	const descriptionText = task.description?.trim();
+	const descriptionContent = descriptionText
+		? transformCodePaths(descriptionText)
+		: "{gray-fg}No description provided{/}";
+	bodyContent.push(descriptionContent);
+	bodyContent.push("");
+
+	bodyContent.push(formatHeading("Acceptance Criteria", 2));
+	const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(rawContent);
+	if (checkboxLines.length > 0) {
+		const formattedCriteria = checkboxLines.map((line) => {
+			const checkboxItem = parseCheckboxLine(line);
+			if (checkboxItem) {
+				return formatChecklistItem(checkboxItem, {
+					padding: " ",
+					checkedSymbol: "{green-fg}✓{/}",
+					uncheckedSymbol: "{gray-fg}○{/}",
+				});
+			}
+			return ` ${line}`;
+		});
+		const criteriaContent = styleCodePaths(formattedCriteria.join("\n"));
+		bodyContent.push(criteriaContent);
+	} else if (task.acceptanceCriteriaItems?.length) {
+		const criteriaContent = styleCodePaths(task.acceptanceCriteriaItems.map((c) => ` • ${c.text}`).join("\n"));
+		bodyContent.push(criteriaContent);
+	} else {
+		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
+	}
+	bodyContent.push("");
+
+	const implementationPlan = task.implementationPlan?.trim();
+	if (implementationPlan) {
+		bodyContent.push(formatHeading("Implementation Plan", 2));
+		bodyContent.push(transformCodePaths(implementationPlan));
+		bodyContent.push("");
+	}
+
+	const implementationNotes = task.implementationNotes?.trim();
+	if (implementationNotes) {
+		bodyContent.push(formatHeading("Implementation Notes", 2));
+		bodyContent.push(transformCodePaths(implementationNotes));
+		bodyContent.push("");
+	}
+
+	return { headerContent, bodyContent };
+}
+
+export async function createTaskPopup(
+	screen: ScreenInterface,
+	task: Task,
+	content: string,
+): Promise<{
+	background: BoxInterface;
+	popup: BoxInterface;
+	contentArea: ScrollableTextInterface;
+	close: () => void;
+} | null> {
+	if (output.isTTY === false) return null;
+
+	const popup = box({
+		parent: screen,
+		top: "center",
+		left: "center",
+		width: "85%",
+		height: "80%",
+		border: "line",
+		style: {
+			border: { fg: "gray" },
+		},
+		keys: true,
+		tags: true,
+		autoPadding: true,
+	});
+
+	const background = box({
+		parent: screen,
+		top: Number(popup.top ?? 0) - 1,
+		left: Number(popup.left ?? 0) - 2,
+		width: Number(popup.width ?? 0) + 4,
+		height: Number(popup.height ?? 0) + 2,
+		style: {
+			bg: "black",
+		},
+	});
+
+	popup.setFront?.();
+
+	const { headerContent, bodyContent } = generateDetailContent(task, content);
+
+	const headerBox = box({
+		parent: popup,
+		top: 0,
+		left: 1,
+		right: 1,
+		height: "shrink",
+		tags: true,
+		wrap: true,
+		scrollable: false,
+		padding: { left: 1, right: 1 },
+		content: headerContent.join("\n"),
+	});
+
+	line({
+		parent: popup,
+		top: headerBox.bottom,
+		left: 1,
+		right: 1,
+		orientation: "horizontal",
+		style: {
+			fg: "gray",
+		},
+	});
+
+	box({
+		parent: popup,
+		content: " Esc ",
+		top: -1,
+		right: 1,
+		width: 5,
+		height: 1,
+		style: {
+			fg: "white",
+			bg: "blue",
+		},
+	});
+
+	const contentArea = scrollabletext({
+		parent: popup,
+		top: (typeof headerBox.bottom === "number" ? headerBox.bottom : 0) + 1,
+		left: 1,
+		right: 1,
+		bottom: 1,
+		keys: true,
+		vi: true,
+		mouse: true,
+		tags: true,
+		wrap: true,
+		padding: { left: 1, right: 1, top: 0, bottom: 0 },
+		content: bodyContent.join("\n"),
+	});
+
+	const closePopup = () => {
+		popup.destroy();
+		background.destroy();
+		screen.render();
+	};
+
+	popup.key(["escape", "q", "C-c"], () => {
+		closePopup();
+		return false;
+	});
+
+	contentArea.on("focus", () => {
+		const popupStyle = popup.style as { border?: { fg?: string } };
+		popupStyle.border = { ...(popupStyle.border ?? {}), fg: "yellow" };
+		screen.render();
+	});
+
+	contentArea.on("blur", () => {
+		const popupStyle = popup.style as { border?: { fg?: string } };
+		popupStyle.border = { ...(popupStyle.border ?? {}), fg: "gray" };
+		screen.render();
+	});
+
+	contentArea.key(["escape"], () => {
+		closePopup();
+		return false;
+	});
+
+	setImmediate(() => {
+		contentArea.focus();
+	});
+
+	return {
+		background,
+		popup,
+		contentArea,
+		close: closePopup,
+	};
 }

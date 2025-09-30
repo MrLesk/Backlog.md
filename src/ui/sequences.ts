@@ -4,7 +4,7 @@ import { box, scrollablebox } from "neo-neo-bblessed";
 import type { Core } from "../index.ts";
 import type { Sequence, Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
-import { createTaskPopup } from "./task-viewer.ts";
+import { createTaskPopup } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 
 /**

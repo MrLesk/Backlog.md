@@ -6,7 +6,7 @@ import type { Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { createTaskPopup } from "./task-viewer.ts";
+import { createTaskPopup } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 
 type ColumnData = {

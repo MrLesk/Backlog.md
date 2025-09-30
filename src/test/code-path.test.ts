@@ -173,7 +173,7 @@ describe("Code path utilities", () => {
 			const testFixture = `
 Implementation details:
 - Update \`src/cli.ts\` to add new command
-- Modify \`src/ui/task-viewer.ts\` for display
+- Modify \`src/ui/task-viewer-with-search.ts\` for display
 - Check \`package.json\` for dependencies
 - Test with \`/absolute/path/test.js\`
 - Relative paths: \`./src/utils.ts\` and \`../config/settings.json\`
@@ -187,7 +187,7 @@ Windows paths like \`C:\\Users\\name\\file.txt\` should work too.
 			// Verify we captured all expected paths
 			const expectedPaths = [
 				"src/cli.ts",
-				"src/ui/task-viewer.ts",
+				"src/ui/task-viewer-with-search.ts",
 				"package.json",
 				"/absolute/path/test.js",
 				"./src/utils.ts",

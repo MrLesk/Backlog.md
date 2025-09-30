@@ -163,10 +163,10 @@ async function viewTaskEnhancedWithSwitching(
 	},
 ): Promise<void> {
 	// Import the original viewTaskEnhanced function
-	const { viewTaskEnhanced } = await import("./task-viewer.ts");
+	const { viewTaskEnhanced } = await import("./task-viewer-with-search.ts");
 
 	// For now, use the original function but we'll need to modify it to support Tab switching
-	// This is a placeholder - we'll need to modify the actual task-viewer.ts
+	// This is a placeholder - we'll need to modify the actual task-viewer-with-search.ts
 	return viewTaskEnhanced(task, content, {
 		tasks: options.tasks,
 		core: options.core,

@@ -7,7 +7,7 @@ import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import type { Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { renderBoardTui } from "./board.ts";
-import { viewTaskEnhanced } from "./task-viewer.ts";
+import { viewTaskEnhanced } from "./task-viewer-with-search.ts";
 import type { ViewType } from "./view-switcher.ts";
 
 export interface SimpleUnifiedViewOptions {

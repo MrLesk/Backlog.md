@@ -31,7 +31,7 @@ import type {
 } from "./types/index.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
-import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer.ts";
+import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
