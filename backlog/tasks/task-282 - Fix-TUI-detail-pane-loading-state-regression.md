@@ -1,7 +1,7 @@
 ---
 id: task-282
 title: Fix TUI detail pane loading state regression
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-29 20:29'
