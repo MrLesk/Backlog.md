@@ -22,9 +22,9 @@ We need to reset the loading flag when a request is superseded so the UI never s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Reproduce the regression and confirm the loading placeholder appears only while content is actually being read.
-- [ ] #2 Ensure rapid selection changes and filter toggles update the detail pane without leaving stale loading text.
-- [ ] #3 Add automated coverage or regression test if feasible, or document manual verification steps.
+- [x] #1 Reproduce the regression and confirm the loading placeholder appears only while content is actually being read.
+- [x] #2 Ensure rapid selection changes and filter toggles update the detail pane without leaving stale loading text.
+- [x] #3 Add automated coverage or regression test if feasible, or document manual verification steps.
 <!-- AC:END -->
 
 ## Implementation Notes
