@@ -639,7 +639,7 @@ export class BacklogServer {
 	}
 
 	private async handleUpdateDoc(req: Request, docId: string): Promise<Response> {
-		const content = await req.text();
+		const { content, title } = await req.json();
 
 		try {
 			const store = await this.getContentStoreInstance();
@@ -648,6 +648,11 @@ export class BacklogServer {
 
 			if (!existingDoc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
+			}
+
+			// Update title if provided
+			if (title && title !== existingDoc.title) {
+				existingDoc.title = title;
 			}
 
 			await this.core.updateDocument(existingDoc, content);

@@ -179,7 +179,22 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             } else {
                 // Update existing document
                 if (!id) return;
-                await apiClient.updateDoc(addDocPrefix(id), content);
+
+                // Check if title has changed
+                const titleChanged = docTitle !== originalDocTitle;
+
+                // Pass title only if it has changed
+                await apiClient.updateDoc(
+                    addDocPrefix(id),
+                    content,
+                    titleChanged ? docTitle : undefined
+                );
+
+                // Update original title to the new value
+                if (titleChanged) {
+                    setOriginalDocTitle(docTitle);
+                }
+
                 // Refresh data from parent
                 await onRefreshData();
                 // Show success toast
