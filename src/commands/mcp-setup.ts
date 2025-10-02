@@ -26,7 +26,7 @@ ${chalk.bold("Step 3:")} Restart your AI agent
 ${chalk.bold("Step 4:")} Test
   ${chalk.italic('"Show me all tasks in this project"')}
 
-${chalk.dim("Documentation: https://backlog.md/docs/mcp")}
+${chalk.dim("Documentation: https://github.com/MrLesk/Backlog.md/tree/main/docs/mcp")}
   `);
 }
 
