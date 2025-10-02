@@ -1,0 +1,22 @@
+{
+	"name": "OpenAI Codex CLI",
+	"slug": "codex",
+	"type": "manual",
+	"config": {
+		"location": "~/.codex/config.toml",
+		"format": "toml",
+		"template": "[mcp_servers.{server_name}]\\ncommand = \"{command}\"\\nargs = {args_array}",
+		"example": "[mcp_servers.backlog]\\ncommand = \"backlog\"\\nargs = [\"mcp\", \"start\"]"
+	},
+	"setup": {
+		"install_url": "https://openai.com/codex",
+		"verify_command": "codex --version",
+		"documentation": "https://github.com/openai/codex"
+	},
+	"testing": [
+		"Edit ~/.codex/config.toml",
+		"Add the configuration block",
+		"Restart Codex CLI",
+		"Test: 'Show me all tasks in this project'"
+	]
+}

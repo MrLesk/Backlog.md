@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
-import type { BacklogConfig, Decision, Document, Sequence, Task } from "../types/index.ts";
+import type { AcceptanceCriterion, BacklogConfig, Decision, Document, Sequence, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { openInEditor } from "../utils/editor.ts";
 import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
@@ -271,7 +271,7 @@ export class Core {
 		},
 		autoCommit?: boolean,
 	): Promise<Task> {
-		const id = await this.generateNextId();
+		const id = await this.generateNextId(taskData.parentTaskId);
 
 		const task: Task = {
 			id,
@@ -596,6 +596,123 @@ export class Core {
 		}
 
 		return success;
+	}
+
+	/**
+	 * Add acceptance criteria to a task
+	 */
+	async addAcceptanceCriteria(taskId: string, criteria: string[], autoCommit?: boolean): Promise<void> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) {
+			throw new Error(`Task not found: ${taskId}`);
+		}
+
+		// Get existing criteria or initialize empty array
+		const current = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
+
+		// Calculate next index (1-based)
+		let nextIndex = current.length > 0 ? Math.max(...current.map((c) => c.index)) + 1 : 1;
+
+		// Append new criteria
+		const newCriteria = criteria.map((text) => ({ index: nextIndex++, text, checked: false }));
+		task.acceptanceCriteriaItems = [...current, ...newCriteria];
+
+		// Save the task
+		await this.updateTask(task, autoCommit);
+	}
+
+	/**
+	 * Remove acceptance criteria by indices (supports batch operations)
+	 * @returns Array of removed indices
+	 */
+	async removeAcceptanceCriteria(taskId: string, indices: number[], autoCommit?: boolean): Promise<number[]> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) {
+			throw new Error(`Task not found: ${taskId}`);
+		}
+
+		let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
+		const removed: number[] = [];
+
+		// Sort indices in descending order to avoid index shifting issues
+		const sortedIndices = [...indices].sort((a, b) => b - a);
+
+		for (const idx of sortedIndices) {
+			const before = list.length;
+			list = list.filter((c) => c.index !== idx);
+			if (list.length < before) {
+				removed.push(idx);
+			}
+		}
+
+		if (removed.length === 0) {
+			throw new Error("No criteria were removed. Check that the specified indices exist.");
+		}
+
+		// Re-index remaining items (1-based)
+		list = list.map((c, i) => ({ ...c, index: i + 1 }));
+		task.acceptanceCriteriaItems = list;
+
+		// Save the task
+		await this.updateTask(task, autoCommit);
+
+		return removed.sort((a, b) => a - b); // Return in ascending order
+	}
+
+	/**
+	 * Check or uncheck acceptance criteria by indices (supports batch operations)
+	 * Silently ignores invalid indices and only updates valid ones.
+	 * @returns Array of updated indices
+	 */
+	async checkAcceptanceCriteria(
+		taskId: string,
+		indices: number[],
+		checked: boolean,
+		autoCommit?: boolean,
+	): Promise<number[]> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) {
+			throw new Error(`Task not found: ${taskId}`);
+		}
+
+		let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
+		const updated: number[] = [];
+
+		// Filter to only valid indices and update them
+		for (const idx of indices) {
+			if (list.some((c) => c.index === idx)) {
+				list = list.map((c) => {
+					if (c.index === idx) {
+						updated.push(idx);
+						return { ...c, checked };
+					}
+					return c;
+				});
+			}
+		}
+
+		if (updated.length === 0) {
+			throw new Error("No criteria were updated.");
+		}
+
+		task.acceptanceCriteriaItems = list;
+
+		// Save the task
+		await this.updateTask(task, autoCommit);
+
+		return updated.sort((a, b) => a - b);
+	}
+
+	/**
+	 * List all acceptance criteria for a task
+	 */
+	async listAcceptanceCriteria(taskId: string): Promise<AcceptanceCriterion[]> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) {
+			throw new Error(`Task not found: ${taskId}`);
+		}
+
+		return task.acceptanceCriteriaItems || [];
 	}
 
 	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
