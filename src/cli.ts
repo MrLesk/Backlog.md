@@ -34,6 +34,7 @@ import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
+import { sanitizeBackticks, sanitizeOptions } from "./utils/sanitize-backticks.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -1055,7 +1056,12 @@ taskCmd
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
 		const id = await core.generateNextId(options.parent);
-		const task = buildTaskFromOptions(id, title, options);
+
+		// Sanitize all options to prevent command substitution
+		const sanitizedOptions = sanitizeOptions(options);
+		const sanitizedTitle = sanitizeBackticks(title) || title;
+
+		const task = buildTaskFromOptions(id, sanitizedTitle, sanitizedOptions);
 
 		// Normalize and validate status if provided (case-insensitive)
 		if (options.status) {
@@ -1573,6 +1579,10 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
+
+		// Sanitize all options to prevent command substitution
+		const sanitizedOptions = sanitizeOptions(options);
+
 		const task = await core.filesystem.loadTask(taskId);
 
 		if (!task) {
@@ -1580,11 +1590,11 @@ taskCmd
 			return;
 		}
 
-		if (options.title) {
-			task.title = String(options.title);
+		if (sanitizedOptions.title) {
+			task.title = String(sanitizedOptions.title);
 		}
-		if (options.description || options.desc) {
-			task.description = String(options.description || options.desc);
+		if (sanitizedOptions.description || sanitizedOptions.desc) {
+			task.description = String(sanitizedOptions.description || sanitizedOptions.desc);
 		}
 		if (typeof options.assignee !== "undefined") {
 			task.assignee = [String(options.assignee)];
@@ -1661,7 +1671,7 @@ taskCmd
 		}
 
 		// Handle adding new acceptance criteria (unified handling for both --ac and --acceptance-criteria)
-		const criteria = processAcceptanceCriteriaOptions(options);
+		const criteria = processAcceptanceCriteriaOptions(sanitizedOptions);
 		if (criteria.length > 0) {
 			const current = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
 			let nextIndex = current.length > 0 ? Math.max(...current.map((c) => c.index)) + 1 : 1;
@@ -1708,24 +1718,26 @@ taskCmd
 		}
 
 		// Handle implementation plan
-		if (options.plan) {
-			task.implementationPlan = String(options.plan);
+		if (sanitizedOptions.plan) {
+			task.implementationPlan = String(sanitizedOptions.plan);
 		}
 
 		// Handle implementation notes - replace or append
-		if (options.appendNotes && options.notes) {
+		if (sanitizedOptions.appendNotes && sanitizedOptions.notes) {
 			console.error("Cannot use --notes (replace) together with --append-notes (append). Choose one.");
 			process.exitCode = 1;
 			return;
 		}
 
-		if (options.notes) {
+		if (sanitizedOptions.notes) {
 			// Replace semantics
-			task.implementationNotes = String(options.notes);
+			task.implementationNotes = String(sanitizedOptions.notes);
 		}
 
-		if (options.appendNotes) {
-			const appends = Array.isArray(options.appendNotes) ? options.appendNotes : [options.appendNotes];
+		if (sanitizedOptions.appendNotes) {
+			const appends = Array.isArray(sanitizedOptions.appendNotes)
+				? sanitizedOptions.appendNotes
+				: [sanitizedOptions.appendNotes];
 			const combined = appends
 				.map((v: string) => String(v))
 				.filter(Boolean)
