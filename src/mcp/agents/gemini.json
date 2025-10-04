@@ -1,0 +1,23 @@
+{
+	"name": "Google Gemini CLI",
+	"slug": "gemini",
+	"type": "cli",
+	"command": {
+		"template": "gemini mcp add {server_name} {command} {args}",
+		"example": "gemini mcp add backlog backlog mcp start"
+	},
+	"config": {
+		"supports_project_scope": false
+	},
+	"setup": {
+		"install_url": "https://cloud.google.com/gemini/docs/codeassist/gemini-cli",
+		"verify_command": "gemini --version",
+		"documentation": "https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html"
+	},
+	"testing": [
+		"Run: gemini mcp add backlog backlog mcp start",
+		"Restart Gemini CLI",
+		"Test: 'Show me all tasks in this project'"
+	],
+	"notes": ["Uses space-separated args (no -- separator)", "Config stored globally in ~/.gemini/"]
+}

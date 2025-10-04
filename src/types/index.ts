@@ -141,6 +141,25 @@ export interface BacklogConfig {
 	bypassGitHooks?: boolean;
 	checkActiveBranches?: boolean; // Check task states across active branches (default: true)
 	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
+	mcp?: {
+		http?: {
+			host?: string;
+			port?: number;
+			auth?: {
+				type?: "bearer" | "basic" | "none";
+				token?: string;
+				username?: string;
+				password?: string;
+			};
+			cors?: {
+				origin?: string | string[];
+				credentials?: boolean;
+			};
+			enableDnsRebindingProtection?: boolean;
+			allowedHosts?: string[];
+			allowedOrigins?: string[];
+		};
+	};
 }
 
 export interface ParsedMarkdown {

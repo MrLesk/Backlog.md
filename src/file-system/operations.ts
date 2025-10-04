@@ -67,6 +67,9 @@ export class FileSystem {
 			const content = await file.text();
 			return this.parseConfig(content);
 		} catch (_error) {
+			if (process.env.DEBUG) {
+				console.error("Error loading config:", _error);
+			}
 			return null;
 		}
 	}
@@ -498,6 +501,15 @@ export class FileSystem {
 		} catch {
 			return [];
 		}
+	}
+
+	async loadDocument(id: string): Promise<Document> {
+		const documents = await this.listDocuments();
+		const document = documents.find((doc) => doc.id === id);
+		if (!document) {
+			throw new Error(`Document not found: ${id}`);
+		}
+		return document;
 	}
 
 	// Config operations

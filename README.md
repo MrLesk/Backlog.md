@@ -25,7 +25,7 @@
 
 * 🌐 **Modern web interface** -- `backlog browser` launches a sleek web UI for visual task management
 
-* 🤖 **AI-ready CLI** -- "Claude, please take over task 33"
+* 🤖 **AI-ready CLI** -- Works with Claude Code, Claude Desktop, Google Gemini CLI, OpenAI Codex & other MCP-compatible AI assistants
 
 * 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
 
@@ -55,7 +55,7 @@ backlog board view or backlog browser
 # 5. Find what you need
 backlog search "markdown" or just backlog search for interactive filters
 
-# 6. Create tasks using Claude-code, Gemini, Codex or Jules
+# 6. Create tasks using Claude Code, Claude Desktop, Google Gemini CLI, or OpenAI Codex
 Claude I would like to build a search functionality in the web view that searches for:
 * tasks
 * docs
@@ -88,16 +88,28 @@ backlog browser --port 8080
 backlog browser --no-open
 ```
 
+**Features:**
+- Interactive Kanban board with drag-and-drop
+- Task creation and editing with rich forms
+- Interactive acceptance criteria editor with checklists
+- Real-time updates across all views
+- Responsive design for desktop and mobile
+- Task archiving with confirmation dialogs
+- Seamless CLI integration - all changes sync with markdown files
+
 ![Web Interface Screenshot](./.github/web.jpeg)
 
-The web interface provides:
-- **Interactive Kanban board** with drag-and-drop functionality
-- **Task creation and editing** with rich forms and validation
-- **Interactive acceptance criteria editor** with checklist controls and instant persistence
-- **Real-time updates** as you manage tasks
-- **Responsive design** that works on desktop and mobile
-- **Archive tasks** with confirmation dialogs
-- **Seamless CLI integration** - changes sync with your markdown files
+---
+
+## 🔧 MCP Integration (Model Context Protocol)
+
+Enable AI assistants like Claude Code to manage tasks directly:
+
+```bash
+backlog mcp setup  # Display setup instructions for your AI assistant
+```
+
+> ⚠️ **Security**: MCP is for local development only. [Details →](docs/mcp/README.md)
 
 ---
 
@@ -199,6 +211,24 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 | Create draft | `backlog task create "Feature" --draft`             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
+
+### Dependency Management
+
+Manage task dependencies to create execution sequences and prevent circular relationships:
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Add dependencies | `backlog task edit 7 --dep task-1 --dep task-2`     |
+| Add multiple deps | `backlog task edit 7 --dep task-1,task-5,task-9`    |
+| Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
+| View dependencies | `backlog task 7` (shows dependencies in task view)  |
+| Validate dependencies | Use task commands to automatically validate dependencies |
+
+**Dependency Features:**
+- **Automatic validation**: Prevents circular dependencies and validates task existence
+- **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
+- **Visual sequences**: Dependencies create visual execution sequences in board view
+- **Completion tracking**: See which dependencies are blocking task progress
 
 ### Board Operations
 
