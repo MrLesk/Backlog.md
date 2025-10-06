@@ -5,6 +5,8 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import prompts from "prompts";
+import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
+import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { computeSequences } from "./core/sequences.ts";
@@ -19,6 +21,7 @@ import {
 	updateReadmeWithBoard,
 } from "./index.ts";
 import type {
+	BacklogConfig,
 	Decision,
 	DecisionSearchResult,
 	Document as DocType,
@@ -74,6 +77,20 @@ function processAcceptanceCriteriaOptions(options: {
 	}
 
 	return criteria;
+}
+
+function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partial<BacklogConfig> {
+	return {
+		checkActiveBranches: existingConfig?.checkActiveBranches ?? true,
+		remoteOperations: existingConfig?.remoteOperations ?? true,
+		activeBranchDays: existingConfig?.activeBranchDays ?? 30,
+		bypassGitHooks: existingConfig?.bypassGitHooks ?? false,
+		autoCommit: existingConfig?.autoCommit ?? false,
+		zeroPaddedIds: existingConfig?.zeroPaddedIds,
+		defaultEditor: existingConfig?.defaultEditor,
+		defaultPort: existingConfig?.defaultPort ?? 6420,
+		autoOpenBrowser: existingConfig?.autoOpenBrowser ?? true,
+	};
 }
 
 // Windows color fix
@@ -285,278 +302,36 @@ program
 					}
 				}
 
-				// 1. Cross-branch checking configuration
-				let crossBranchPrompt: { checkActiveBranches: boolean };
-
-				// Skip prompts if in non-interactive mode
-				if (isNonInteractive) {
-					crossBranchPrompt = {
-						checkActiveBranches: parseBoolean(options.checkBranches, existingConfig?.checkActiveBranches ?? true),
-					};
-				} else {
-					crossBranchPrompt = await prompts(
-						{
-							type: "confirm",
-							name: "checkActiveBranches",
-							message: "Check task states across active branches?",
-							hint: "Ensures accurate task tracking across branches (may impact performance on large repos)",
-							initial: existingConfig?.checkActiveBranches ?? true,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
-				}
-
-				let remoteOperations = false;
-				let activeBranchDays = 30;
-
-				if (crossBranchPrompt.checkActiveBranches) {
-					if (isNonInteractive) {
-						// Use flag values or defaults in non-interactive mode
-						remoteOperations = parseBoolean(options.includeRemote, existingConfig?.remoteOperations ?? true);
-						activeBranchDays = parseNumber(options.branchDays, existingConfig?.activeBranchDays || 30);
+				const defaultAdvancedConfig = getDefaultAdvancedConfig(existingConfig);
+				const applyAdvancedOptionOverrides = () => {
+					const result: Partial<BacklogConfig> = { ...defaultAdvancedConfig };
+					result.checkActiveBranches = parseBoolean(options.checkBranches, result.checkActiveBranches ?? true);
+					if (result.checkActiveBranches) {
+						result.remoteOperations = parseBoolean(options.includeRemote, result.remoteOperations ?? true);
+						result.activeBranchDays = parseNumber(options.branchDays, result.activeBranchDays ?? 30);
 					} else {
-						// 1.1 Remote branches checking
-						const remotePrompt = await prompts(
-							{
-								type: "confirm",
-								name: "remoteOperations",
-								message: "Check task states in remote branches?",
-								hint: "Required for accessing tasks from feature branches on remote repos",
-								initial: existingConfig?.remoteOperations ?? true,
-							},
-							{
-								onCancel: () => {
-									console.log("Aborting initialization.");
-									process.exit(1);
-								},
-							},
-						);
-						remoteOperations = remotePrompt.remoteOperations ?? false;
-
-						// 1.2 Active branch days
-						const daysPrompt = await prompts(
-							{
-								type: "number",
-								name: "activeBranchDays",
-								message: "How many days should a branch be considered active?",
-								hint: "Lower values improve performance (default: 30 days)",
-								initial: existingConfig?.activeBranchDays || 30,
-								min: 1,
-								max: 365,
-							},
-							{
-								onCancel: () => {
-									console.log("Aborting initialization.");
-									process.exit(1);
-								},
-							},
-						);
-						activeBranchDays = daysPrompt.activeBranchDays || 30;
+						result.remoteOperations = false;
 					}
-				}
-
-				// 2. Git hooks bypass prompt
-				let bypassGitHooks: boolean;
-				if (isNonInteractive) {
-					bypassGitHooks = parseBoolean(options.bypassGitHooks, existingConfig?.bypassGitHooks ?? false);
-				} else {
-					const gitHooksPrompt = await prompts(
-						{
-							type: "confirm",
-							name: "bypassGitHooks",
-							message: "Bypass git hooks when committing?",
-							hint: "Use --no-verify flag to skip pre-commit hooks",
-							initial: existingConfig?.bypassGitHooks ?? false,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
-					bypassGitHooks = gitHooksPrompt.bypassGitHooks ?? false;
-				}
-
-				// 3. Zero-padding configuration
-				let zeroPaddedIds: number | undefined;
-				if (isNonInteractive) {
-					const paddingValue = parseNumber(options.zeroPaddedIds, existingConfig?.zeroPaddedIds || 0);
-					zeroPaddedIds = paddingValue === 0 ? 0 : paddingValue;
-				} else {
-					const zeroPaddingPrompt = await prompts(
-						{
-							type: "confirm",
-							name: "enableZeroPadding",
-							message: "Enable zero-padded IDs for consistent formatting?",
-							hint: "Example: task-001, doc-001 instead of task-1, doc-1",
-							initial: (existingConfig?.zeroPaddedIds ?? 0) > 0,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
-
-					if (zeroPaddingPrompt.enableZeroPadding) {
-						// 3.1 Number of digits for zero-padding
-						const paddingPrompt = await prompts(
-							{
-								type: "number",
-								name: "paddingWidth",
-								message: "Number of digits for zero-padding:",
-								hint: "e.g., 3 creates task-001, task-002; 4 creates task-0001, task-0002",
-								initial: existingConfig?.zeroPaddedIds || 3,
-								min: 1,
-								max: 10,
-							},
-							{
-								onCancel: () => {
-									console.log("Aborting initialization.");
-									process.exit(1);
-								},
-							},
-						);
-
-						if (paddingPrompt?.paddingWidth) {
-							zeroPaddedIds = paddingPrompt.paddingWidth;
-						}
-					} else {
-						// User chose not to enable padding
-						zeroPaddedIds = 0;
-					}
-				}
-
-				// 4. Default editor configuration
-				let defaultEditor: string | undefined;
-				if (isNonInteractive) {
-					defaultEditor =
+					result.bypassGitHooks = parseBoolean(options.bypassGitHooks, result.bypassGitHooks ?? false);
+					const paddingValue = parseNumber(options.zeroPaddedIds, result.zeroPaddedIds ?? 0);
+					result.zeroPaddedIds = paddingValue > 0 ? paddingValue : undefined;
+					result.defaultEditor =
 						options.defaultEditor ||
 						existingConfig?.defaultEditor ||
 						process.env.EDITOR ||
 						process.env.VISUAL ||
 						undefined;
-				} else {
-					const editorPrompt = await prompts(
-						{
-							type: "text",
-							name: "editor",
-							message: "Default editor command (optional):",
-							hint: "e.g., 'code --wait', 'vim', 'nano'",
-							initial: existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || "",
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
+					result.defaultPort = parseNumber(options.webPort, result.defaultPort ?? 6420);
+					result.autoOpenBrowser = parseBoolean(options.autoOpenBrowser, result.autoOpenBrowser ?? true);
+					return result;
+				};
 
-					if (editorPrompt?.editor) {
-						const { isEditorAvailable } = await import("./utils/editor.ts");
-						const isAvailable = await isEditorAvailable(editorPrompt.editor);
-						if (isAvailable) {
-							defaultEditor = editorPrompt.editor;
-						} else {
-							console.warn(`Warning: Editor command '${editorPrompt.editor}' not found in PATH`);
-							// Still allow them to set it even if not found
-							const confirmAnyway = await prompts(
-								{
-									type: "confirm",
-									name: "confirm",
-									message: "Editor not found in PATH. Set it anyway?",
-									initial: false,
-								},
-								{
-									onCancel: () => {
-										console.log("Aborting initialization.");
-										process.exit(1);
-									},
-								},
-							);
-							if (confirmAnyway?.confirm) {
-								defaultEditor = editorPrompt.editor;
-							}
-						}
-					}
-				}
-
-				// 5. Web UI configuration
-				let webUIConfig: { defaultPort?: number; autoOpenBrowser?: boolean } = {};
-				if (isNonInteractive) {
-					// Use flag values or defaults for web UI in non-interactive mode
-					webUIConfig = {
-						defaultPort: parseNumber(options.webPort, existingConfig?.defaultPort ?? 6420),
-						autoOpenBrowser: parseBoolean(options.autoOpenBrowser, existingConfig?.autoOpenBrowser ?? true),
-					};
-				} else {
-					const webUIPrompt = await prompts(
-						{
-							type: "confirm",
-							name: "configureWebUI",
-							message: "Override default web UI settings?",
-							hint: "Optional: Set custom port and browser behavior",
-							initial: false,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
-
-					// Web UI configuration (conditional) - ask immediately after enable question
-					if (webUIPrompt.configureWebUI) {
-						const webUIPrompts = await prompts(
-							[
-								{
-									type: "number",
-									name: "defaultPort",
-									message: "Default web UI port:",
-									hint: "Port number for the web interface (1-65535)",
-									initial: existingConfig?.defaultPort ?? 6420,
-									min: 1,
-									max: 65535,
-								},
-								{
-									type: "confirm",
-									name: "autoOpenBrowser",
-									message: "Automatically open browser when starting web UI?",
-									hint: "When enabled, 'backlog web' automatically opens your browser",
-									initial: existingConfig?.autoOpenBrowser ?? true,
-								},
-							],
-							{
-								onCancel: () => {
-									console.log("Aborting initialization.");
-									process.exit(1);
-								},
-							},
-						);
-
-						if (webUIPrompts !== undefined) {
-							webUIConfig = webUIPrompts;
-						}
-					}
-				}
-
-				// 6. Agent instruction files selection
+				// Agent instruction selection
 				type AgentSelection = AgentSelectionValue;
 				let agentFiles: AgentInstructionFile[] = [];
 				let agentInstructionsSkipped = false;
 
-				// Use --agent-instructions if provided, otherwise prompt
 				if (options.agentInstructions) {
-					// Map friendly names to actual file names
 					const nameMap: Record<string, AgentSelection> = {
 						cursor: "AGENTS.md",
 						claude: "CLAUDE.md",
@@ -668,18 +443,20 @@ program
 					}
 				}
 
-				// 7. Claude agent installation prompt
-				let claudeAgentPrompt: { installClaudeAgent: boolean };
+				let advancedConfig: Partial<BacklogConfig> = { ...defaultAdvancedConfig };
+				let advancedConfigured = false;
+				let installClaudeAgentSelection = false;
+
 				if (isNonInteractive) {
-					// Use flag value or default in non-interactive mode
-					claudeAgentPrompt = { installClaudeAgent: parseBoolean(options.installClaudeAgent, false) };
+					advancedConfig = applyAdvancedOptionOverrides();
+					installClaudeAgentSelection = parseBoolean(options.installClaudeAgent, false);
 				} else {
-					claudeAgentPrompt = await prompts(
+					const advancedPrompt = await prompts(
 						{
 							type: "confirm",
-							name: "installClaudeAgent",
-							message: "Install Claude Code Backlog.md agent? (y/N)",
-							hint: "Adds to .claude/agents/ (opt-in)",
+							name: "configureAdvanced",
+							message: "Configure advanced settings now?",
+							hint: "Runs the advanced backlog config wizard",
 							initial: false,
 						},
 						{
@@ -689,8 +466,18 @@ program
 							},
 						},
 					);
-				}
 
+					if (advancedPrompt.configureAdvanced) {
+						const wizardResult = await runAdvancedConfigWizard({
+							existingConfig,
+							cancelMessage: "Aborting initialization.",
+							includeClaudePrompt: true,
+						});
+						advancedConfig = { ...defaultAdvancedConfig, ...wizardResult.config };
+						installClaudeAgentSelection = wizardResult.installClaudeAgent;
+						advancedConfigured = true;
+					}
+				}
 				// Prepare configuration object preserving existing values
 				const config = {
 					projectName: name,
@@ -700,44 +487,45 @@ program
 					defaultStatus: existingConfig?.defaultStatus || "To Do",
 					dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
 					maxColumnWidth: existingConfig?.maxColumnWidth || 20,
-					autoCommit: existingConfig?.autoCommit ?? false, // Keep autoCommit as hidden/advanced setting
-					remoteOperations,
-					bypassGitHooks,
-					checkActiveBranches: crossBranchPrompt.checkActiveBranches ?? true,
-					activeBranchDays,
-					...(defaultEditor && { defaultEditor }),
-					// Web UI config: use new values, preserve existing, or set defaults
-					defaultPort:
-						webUIConfig.defaultPort !== undefined
-							? webUIConfig.defaultPort
-							: existingConfig?.defaultPort !== undefined
-								? existingConfig.defaultPort
-								: 6420,
-					autoOpenBrowser:
-						webUIConfig.autoOpenBrowser !== undefined
-							? webUIConfig.autoOpenBrowser
-							: existingConfig?.autoOpenBrowser !== undefined
-								? existingConfig.autoOpenBrowser
-								: true,
-					// Zero-padding config: only include if enabled (> 0)
-					...(zeroPaddedIds && zeroPaddedIds > 0 && { zeroPaddedIds }),
+					autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? false,
+					remoteOperations: advancedConfig.remoteOperations ?? true,
+					bypassGitHooks: advancedConfig.bypassGitHooks ?? false,
+					checkActiveBranches: advancedConfig.checkActiveBranches ?? true,
+					activeBranchDays: advancedConfig.activeBranchDays ?? 30,
+					...(advancedConfig.defaultEditor ? { defaultEditor: advancedConfig.defaultEditor } : {}),
+					defaultPort: advancedConfig.defaultPort ?? 6420,
+					autoOpenBrowser: advancedConfig.autoOpenBrowser ?? true,
+					...(typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0
+						? { zeroPaddedIds: advancedConfig.zeroPaddedIds }
+						: {}),
 				};
 
 				// Show configuration summary
-				console.log("\nConfiguration Summary:");
+				console.log("\nInitialization Summary:");
 				console.log(`  Project Name: ${config.projectName}`);
-				console.log(`  Auto Commit: ${config.autoCommit}`);
-				console.log(`  Remote Operations: ${config.remoteOperations}`);
-				if (config.bypassGitHooks) console.log(`  Bypass Git Hooks: ${config.bypassGitHooks}`);
-				if (config.defaultEditor) console.log(`  Default Editor: ${config.defaultEditor}`);
-				if (config.defaultPort) console.log(`  Web UI Port: ${config.defaultPort}`);
-				if (config.autoOpenBrowser !== undefined) console.log(`  Auto Open Browser: ${config.autoOpenBrowser}`);
-				if (config.zeroPaddedIds) {
-					console.log(`  Zero-Padded IDs: ${config.zeroPaddedIds} digits`);
+				if (agentFiles.length > 0) {
+					console.log(`  Agent instructions: ${agentFiles.join(", ")}`);
+				} else if (agentInstructionsSkipped) {
+					console.log("  Agent instructions: skipped");
 				} else {
-					console.log("  Zero-Padded IDs: disabled");
+					console.log("  Agent instructions: none");
 				}
-				console.log(`  Statuses: [${config.statuses.join(", ")}]`);
+				if (advancedConfigured) {
+					console.log("  Advanced settings:");
+					console.log(`    Check active branches: ${config.checkActiveBranches}`);
+					console.log(`    Remote operations: ${config.remoteOperations}`);
+					console.log(`    Active branch days: ${config.activeBranchDays}`);
+					console.log(`    Bypass git hooks: ${config.bypassGitHooks}`);
+					console.log(`    Auto commit: ${config.autoCommit}`);
+					console.log(`    Zero-padded IDs: ${config.zeroPaddedIds ? `${config.zeroPaddedIds} digits` : "disabled"}`);
+					console.log(`    Web UI port: ${config.defaultPort}`);
+					console.log(`    Auto open browser: ${config.autoOpenBrowser}`);
+					if (config.defaultEditor) {
+						console.log(`    Default editor: ${config.defaultEditor}`);
+					}
+				} else {
+					console.log("  Advanced settings: unchanged (run `backlog config` to customize).");
+				}
 				console.log("");
 
 				// Initialize or update project
@@ -760,7 +548,7 @@ program
 				}
 
 				// Install Claude agent if selected
-				if (claudeAgentPrompt.installClaudeAgent) {
+				if (installClaudeAgentSelection) {
 					await installClaudeAgent(cwd);
 					console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
 				}
@@ -2333,7 +2121,47 @@ agentsCmd
 	});
 
 // Config command group
-const configCmd = program.command("config");
+const configCmd = program
+	.command("config")
+	.description("manage backlog configuration")
+	.action(async () => {
+		try {
+			const cwd = process.cwd();
+			const core = new Core(cwd);
+			const existingConfig = await core.filesystem.loadConfig();
+
+			if (!existingConfig) {
+				console.error("No backlog project found. Initialize one first with: backlog init");
+				process.exit(1);
+			}
+
+			const { mergedConfig, installClaudeAgent: shouldInstallClaude } = await configureAdvancedSettings(core);
+
+			console.log("\nAdvanced configuration updated.");
+			console.log(`  Check active branches: ${mergedConfig.checkActiveBranches ?? true}`);
+			console.log(`  Remote operations: ${mergedConfig.remoteOperations ?? true}`);
+			console.log(
+				`  Zero-padded IDs: ${
+					typeof mergedConfig.zeroPaddedIds === "number" ? `${mergedConfig.zeroPaddedIds} digits` : "disabled"
+				}`,
+			);
+			console.log(`  Web UI port: ${mergedConfig.defaultPort ?? 6420}`);
+			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
+			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
+			console.log(`  Auto commit: ${mergedConfig.autoCommit ?? false}`);
+			if (mergedConfig.defaultEditor) {
+				console.log(`  Default editor: ${mergedConfig.defaultEditor}`);
+			}
+			if (shouldInstallClaude) {
+				await installClaudeAgent(cwd);
+				console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
+			}
+			console.log("\nUse `backlog config list` to review all configuration values.");
+		} catch (err) {
+			console.error("Failed to update configuration", err);
+			process.exitCode = 1;
+		}
+	});
 
 // Sequences command group
 const sequenceCmd = program.command("sequence");

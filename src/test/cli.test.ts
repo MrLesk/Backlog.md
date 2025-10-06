@@ -183,6 +183,22 @@ describe("CLI Integration", () => {
 			expect(output).toContain("Skipping agent instruction files per selection.");
 		});
 
+		it("should print minimal summary when advanced settings are skipped", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output = await $`bun ${CLI_PATH} init SummaryProj --defaults --agent-instructions none`
+				.cwd(TEST_DIR)
+				.text();
+
+			expect(output).toContain("Initialization Summary:");
+			expect(output).toContain("Project Name: SummaryProj");
+			expect(output).toContain("Advanced settings: unchanged");
+			expect(output).not.toContain("Remote operations:");
+			expect(output).not.toContain("Zero-padded IDs:");
+		});
+
 		it("should ignore 'none' when other agent instructions are provided", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();

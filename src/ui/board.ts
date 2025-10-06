@@ -9,7 +9,7 @@ import { getStatusIcon } from "./status-icon.ts";
 import { createTaskPopup } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 
-type ColumnData = {
+export type ColumnData = {
 	status: string;
 	tasks: Task[];
 };
@@ -91,6 +91,31 @@ function arraysEqual(left: string[], right: string[]): boolean {
 		if (left[index] !== right[index]) return false;
 	}
 	return true;
+}
+
+export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
+	if (current.length !== next.length) {
+		return true;
+	}
+	for (let index = 0; index < next.length; index += 1) {
+		const nextColumn = next[index];
+		if (!nextColumn) return true;
+		const prevColumn = current[index];
+		if (!prevColumn) return true;
+		if (prevColumn.status !== nextColumn.status) return true;
+		if (prevColumn.tasks.length !== nextColumn.tasks.length) return true;
+		for (let taskIdx = 0; taskIdx < nextColumn.tasks.length; taskIdx += 1) {
+			const prevTask = prevColumn.tasks[taskIdx];
+			const nextTask = nextColumn.tasks[taskIdx];
+			if (!prevTask || !nextTask) {
+				return true;
+			}
+			if (prevTask.id !== nextTask.id) {
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 /**
@@ -276,7 +301,7 @@ export async function renderBoardTui(
 			}
 
 			const nextStatusOrder = nextData.map((column) => column.status);
-			if (!arraysEqual(currentStatuses, nextStatusOrder)) {
+			if (!arraysEqual(currentStatuses, nextStatusOrder) || shouldRebuildColumns(currentColumnsData, nextData)) {
 				rebuildColumns(nextData, selectedTaskId);
 			} else {
 				applyColumnData(nextData, selectedTaskId);
