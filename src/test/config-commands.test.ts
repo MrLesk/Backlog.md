@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
@@ -7,6 +8,7 @@ import { Core } from "../core/backlog.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Config commands", () => {
 	let core: Core;
@@ -102,6 +104,16 @@ describe("Config commands", () => {
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
 		expect(reloadedConfig?.bypassGitHooks).toBe(true);
 		expect(reloadedConfig?.autoCommit).toBe(true);
+	});
+
+	it("exposes config list/get/set subcommands", async () => {
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("Configuration:");
+
+		await $`bun ${CLI_PATH} config set defaultPort 7001`.cwd(TEST_DIR).quiet();
+
+		const portOutput = await $`bun ${CLI_PATH} config get defaultPort`.cwd(TEST_DIR).text();
+		expect(portOutput.trim()).toBe("7001");
 	});
 
 	afterEach(async () => {

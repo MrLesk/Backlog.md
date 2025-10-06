@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-05 11:17'
-updated_date: '2025-10-05 11:45'
+updated_date: '2025-10-06 19:41'
 labels:
   - cli
   - init
@@ -61,4 +61,9 @@ Init currently prompts for many settings (branch checks, remote, zero-padding, e
 - Simplified `backlog init` interactive flow to project name → agent instructions → advanced confirmation, applying safe defaults when skipped.
 - Updated docs plus added unit coverage for wizard/config flows and CLI summary output.
 - Tests: `bunx tsc --noEmit`, `bun run check .`, `bun test`.
+
+Reopening after Codex review on PR 385 flagged missing `backlog config list` subcommand. Investigating CLI regression to restore list handler while preserving other config commands.
+
+- Restored `backlog config list` CLI coverage and added regression test ensuring list/get/set remain available.
+- Tests: bun test src/test/config-commands.test.ts
 <!-- SECTION:NOTES:END -->
