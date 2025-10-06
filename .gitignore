@@ -48,11 +48,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 example-project/
 
 # blessed resources
-resources
-result
 
 # Test temp directories created by bun tests
-.tmp-*
-.tmp-test-*
-test-cli-*
-test-cli-sequences-*
+tmp/
+
+# Local files
+*.local.*
+
+# Performance benchmark artifacts
+test-benchmark-report.json

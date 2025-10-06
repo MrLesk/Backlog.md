@@ -232,6 +232,42 @@ describe("Core", () => {
 			loaded = await core.filesystem.loadTask("task-1");
 			expect(loaded?.assignee).toEqual(["@dave"]);
 		});
+
+		it("should create sub-tasks with proper hierarchical IDs using createTaskFromData", async () => {
+			await core.initializeProject("Subtask Project", true);
+
+			// Create parent task
+			const parent = await core.createTaskFromData({
+				title: "Parent Task",
+				status: "To Do",
+			});
+			expect(parent.id).toBe("task-1");
+
+			// Create first sub-task
+			const child1 = await core.createTaskFromData({
+				title: "First Child",
+				parentTaskId: parent.id,
+				status: "To Do",
+			});
+			expect(child1.id).toBe("task-1.1");
+			expect(child1.parentTaskId).toBe("task-1");
+
+			// Create second sub-task
+			const child2 = await core.createTaskFromData({
+				title: "Second Child",
+				parentTaskId: parent.id,
+				status: "To Do",
+			});
+			expect(child2.id).toBe("task-1.2");
+			expect(child2.parentTaskId).toBe("task-1");
+
+			// Create another parent task to ensure sequential numbering still works
+			const parent2 = await core.createTaskFromData({
+				title: "Second Parent",
+				status: "To Do",
+			});
+			expect(parent2.id).toBe("task-2");
+		});
 	});
 
 	describe("draft operations", () => {
