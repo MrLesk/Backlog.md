@@ -107,23 +107,20 @@ The web interface provides:
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Initialize project | `backlog init [project-name]` (creates backlog structure with interactive configuration) |
+| Initialize project | `backlog init [project-name]` (creates backlog structure with a minimal interactive flow) |
 | Re-initialize | `backlog init` (preserves existing config, allows updates) |
+| Advanced settings wizard | `backlog config` (no args) — launches the full interactive configuration flow |
 
-The `backlog init` command provides comprehensive project setup with interactive prompts for:
-- **Project name** - identifier for your backlog
-- **Auto-commit** - whether to automatically commit task changes to git
-- **Default editor** - editor command for opening tasks (detects from environment)
-- **Remote operations** - enable/disable fetching tasks from remote branches
-- **Web UI settings** - port and browser auto-open preferences
-- **Agent guidelines** - AI agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot)
-- **Claude Code agent** - optional Backlog.md agent for enhanced task management (defaults to not installed; opt-in during `init` or pass `--install-claude-agent true`)
+`backlog init` keeps first-run setup focused on the essentials:
+- **Project name** – identifier for your backlog (defaults to the current directory on re-run).
+- **Agent instruction files** – pick which AI Agent instruction files to create (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot, or skip).
+- **Advanced settings prompt** – default answer “No” finishes init immediately; choosing “Yes” jumps straight into the advanced wizard documented in [Configuration](#configuration).
+
+You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`, or `--install-claude-agent true`) continue to provide fully non-interactive setups, so existing scripts keep working without change.
 
 ### Documentation
 
 - Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree. Example: `backlog doc create -p guides "New Guide"`.
-
-When re-initializing an existing project, all current configuration values are preserved and pre-populated in prompts, allowing you to update only what you need.
 
 ### Task Management
 
@@ -274,6 +271,24 @@ Backlog.md merges the following layers (highest → lowest):
 | Bypass git hooks | `backlog config set bypassGitHooks true` |
 | Enable cross-branch check | `backlog config set checkActiveBranches true` |
 | Set active branch days | `backlog config set activeBranchDays 30` |
+
+### Interactive wizard (`backlog config`)
+
+Run `backlog config` with no arguments to launch the full interactive wizard. This is the same experience triggered from `backlog init` when you opt into advanced settings, and it walks through the complete configuration surface:
+- Cross-branch accuracy: `checkActiveBranches`, `remoteOperations`, and `activeBranchDays`.
+- Git workflow: `autoCommit` and `bypassGitHooks`.
+- ID formatting: enable or size `zeroPaddedIds`.
+- Editor integration: pick a `defaultEditor` with availability checks.
+- Web UI defaults: choose `defaultPort` and whether `autoOpenBrowser` should run.
+
+Skipping the wizard (answering “No” during init) applies the safe defaults that ship with Backlog.md:
+- `checkActiveBranches=true`, `remoteOperations=true`, `activeBranchDays=30`.
+- `autoCommit=false`, `bypassGitHooks=false`.
+- `zeroPaddedIds` disabled.
+- `defaultEditor` unset (falls back to your environment).
+- `defaultPort=6420`, `autoOpenBrowser=true`.
+
+Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
 
 ### Available Configuration Options
 

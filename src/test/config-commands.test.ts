@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { $ } from "bun";
+import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
+import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
 import { Core } from "../core/backlog.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -21,6 +23,85 @@ describe("Config commands", () => {
 
 		core = new Core(TEST_DIR);
 		await core.initializeProject("Test Config Project");
+	});
+
+	function createPromptStub(sequence: Array<Record<string, unknown>>): PromptRunner {
+		const stub: PromptRunner = async () => {
+			return sequence.shift() ?? {};
+		};
+		return stub;
+	}
+
+	it("configureAdvancedSettings keeps defaults when no changes requested", async () => {
+		const promptStub = createPromptStub([
+			{ checkActiveBranches: true },
+			{ remoteOperations: true },
+			{ activeBranchDays: 30 },
+			{ bypassGitHooks: false },
+			{ autoCommit: false },
+			{ enableZeroPadding: false },
+			{ editor: "" },
+			{ configureWebUI: false },
+			{ installClaudeAgent: false },
+		]);
+
+		const { mergedConfig, installClaudeAgent } = await configureAdvancedSettings(core, {
+			promptImpl: promptStub,
+		});
+
+		expect(installClaudeAgent).toBe(false);
+		expect(mergedConfig.checkActiveBranches).toBe(true);
+		expect(mergedConfig.remoteOperations).toBe(true);
+		expect(mergedConfig.activeBranchDays).toBe(30);
+		expect(mergedConfig.bypassGitHooks).toBe(false);
+		expect(mergedConfig.autoCommit).toBe(false);
+		expect(mergedConfig.zeroPaddedIds).toBeUndefined();
+		expect(mergedConfig.defaultEditor).toBeUndefined();
+		expect(mergedConfig.defaultPort).toBe(6420);
+		expect(mergedConfig.autoOpenBrowser).toBe(true);
+
+		const reloadedConfig = await core.filesystem.loadConfig();
+		expect(reloadedConfig?.defaultPort).toBe(6420);
+		expect(reloadedConfig?.autoOpenBrowser).toBe(true);
+	});
+
+	it("configureAdvancedSettings applies wizard selections", async () => {
+		const promptStub = createPromptStub([
+			{ checkActiveBranches: true },
+			{ remoteOperations: false },
+			{ activeBranchDays: 14 },
+			{ bypassGitHooks: true },
+			{ autoCommit: true },
+			{ enableZeroPadding: true },
+			{ paddingWidth: 4 },
+			{ editor: "echo" },
+			{ configureWebUI: true },
+			{ defaultPort: 7007, autoOpenBrowser: false },
+			{ installClaudeAgent: true },
+		]);
+
+		const { mergedConfig, installClaudeAgent } = await configureAdvancedSettings(core, {
+			promptImpl: promptStub,
+		});
+
+		expect(installClaudeAgent).toBe(true);
+		expect(mergedConfig.checkActiveBranches).toBe(true);
+		expect(mergedConfig.remoteOperations).toBe(false);
+		expect(mergedConfig.activeBranchDays).toBe(14);
+		expect(mergedConfig.bypassGitHooks).toBe(true);
+		expect(mergedConfig.autoCommit).toBe(true);
+		expect(mergedConfig.zeroPaddedIds).toBe(4);
+		expect(mergedConfig.defaultEditor).toBe("echo");
+		expect(mergedConfig.defaultPort).toBe(7007);
+		expect(mergedConfig.autoOpenBrowser).toBe(false);
+
+		const reloadedConfig = await core.filesystem.loadConfig();
+		expect(reloadedConfig?.zeroPaddedIds).toBe(4);
+		expect(reloadedConfig?.defaultEditor).toBe("echo");
+		expect(reloadedConfig?.defaultPort).toBe(7007);
+		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
+		expect(reloadedConfig?.bypassGitHooks).toBe(true);
+		expect(reloadedConfig?.autoCommit).toBe(true);
 	});
 
 	afterEach(async () => {
