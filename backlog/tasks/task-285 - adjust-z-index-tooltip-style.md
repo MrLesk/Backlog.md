@@ -4,7 +4,7 @@ title: adjust z-index tooltip style
 status: To Do
 assignee: []
 created_date: '2025-10-09 04:58'
-updated_date: '2025-10-09 05:05'
+updated_date: '2025-10-09 05:14'
 labels: []
 dependencies: []
 priority: low
@@ -21,8 +21,8 @@ When the sidebar is collapsed, react-tooltip are hidden by elements in the main 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 In `Kanban Board` page, tooltips are displayed over the `task` cards
-- [ ] #2 In `All Tasks` page, tooltips are displayed over the Search input
+- [x] #1 In `Kanban Board` page, tooltips are displayed over the `task` cards
+- [x] #2 In `All Tasks` page, tooltips are displayed over the Search input
 <!-- AC:END -->
 
 ## Implementation Plan
