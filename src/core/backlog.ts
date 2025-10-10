@@ -55,7 +55,7 @@ export class Core {
 	async getSearchService(): Promise<SearchService> {
 		if (!this.searchService) {
 			const store = await this.getContentStore();
-			this.searchService = new SearchService(store);
+			this.searchService = new SearchService(store, this.fs);
 		}
 		await this.searchService.ensureInitialized();
 		return this.searchService;
