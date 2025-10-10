@@ -27,9 +27,11 @@
 
 * 🤖 **AI-ready CLI** -- "Claude, please take over task 33"
 
-* 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
+* 🔍 **Powerful search** -- fuzzy search across tasks, docs, decisions & milestones with `backlog search`
 
 * 📋 **Rich query commands** -- view, list, filter, or archive tasks with ease
+
+* 🎯 **Milestone tracking** -- organize tasks by project phases, sprints, or releases
 
 * 💻 **Cross-platform** -- runs on macOS, Linux, and Windows
 
@@ -234,6 +236,30 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 |-------------|------------------------------------------------------|
 | Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
 | Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
+
+### Milestones
+
+Organize tasks into milestones to track project phases, sprints, or releases:
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Create milestone | `backlog milestone create "v1.0 Release"`           |
+| Create with details | `backlog milestone create "Q1 Sprint" --desc "Complete Q1 objectives" --status active --due "2025-03-31"` |
+| List milestones | `backlog milestone list`                           |
+| View milestone | `backlog milestone view m-1`                       |
+| Edit milestone | `backlog milestone edit m-1 --status completed`     |
+| Archive milestone | `backlog milestone archive m-1`                    |
+| Create task with milestone | `backlog task create "Feature" --milestone "v1.0 Release"` |
+| Assign task to milestone | `backlog task edit 7 --milestone "Q1 Sprint"`     |
+| List tasks by milestone | `backlog task list --milestone "v1.0 Release"`    |
+| Search by milestone | `backlog search "auth" --milestone "v1.0 Release"` |
+| Board by milestone | `backlog board --milestones` (groups tasks by milestone instead of status) |
+
+**Milestone statuses:**
+- `planned` -- Not yet started
+- `active` -- Currently in progress
+- `completed` -- All work finished
+- `archived` -- Historical milestone
 
 ### Agent Instructions
 

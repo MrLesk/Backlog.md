@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { Decision, Document, Task } from "../types/index.ts";
+import type { Decision, Document, Milestone, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { AcceptanceCriteriaManager, getStructuredSections, updateStructuredSections } from "./structured-sections.ts";
 
@@ -76,6 +76,25 @@ export function serializeDocument(document: Document): string {
 	};
 
 	return matter.stringify(document.rawContent, frontmatter);
+}
+
+export function serializeMilestone(milestone: Milestone): string {
+	const frontmatter = {
+		id: milestone.id,
+		title: milestone.title,
+		...(milestone.status && { status: milestone.status }),
+		...(milestone.createdDate && { created_date: milestone.createdDate }),
+		...(milestone.updatedDate && { updated_date: milestone.updatedDate }),
+		...(milestone.dueDate && { due_date: milestone.dueDate }),
+	};
+
+	// If there's a description, ensure it's in the ## Description section
+	let content = milestone.rawContent;
+	if (milestone.description && !content.includes("## Description")) {
+		content = `## Description\n\n${milestone.description}`;
+	}
+
+	return matter.stringify(content, frontmatter);
 }
 
 export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {

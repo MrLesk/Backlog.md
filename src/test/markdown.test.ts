@@ -1,12 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { parseDecision, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
+import { parseDecision, parseDocument, parseMarkdown, parseMilestone, parseTask } from "../markdown/parser.ts";
 import {
 	serializeDecision,
 	serializeDocument,
+	serializeMilestone,
 	serializeTask,
 	updateTaskAcceptanceCriteria,
 } from "../markdown/serializer.ts";
-import type { Decision, Document, Task } from "../types/index.ts";
+import type { Decision, Document, Milestone, Task } from "../types/index.ts";
 
 describe("Markdown Parser", () => {
 	describe("parseMarkdown", () => {
@@ -309,6 +310,99 @@ Document body.`;
 			expect(doc.rawContent).toBe("Document body.");
 		});
 	});
+
+	describe("parseMilestone", () => {
+		it("should parse a complete milestone", () => {
+			const content = `---
+id: m-1
+title: "Version 1.0 Release"
+status: "active"
+created_date: "2025-06-01"
+updated_date: "2025-06-10"
+due_date: "2025-12-31"
+---
+
+## Description
+
+Complete all features for the v1.0 release.`;
+
+			const milestone = parseMilestone(content);
+
+			expect(milestone.id).toBe("m-1");
+			expect(milestone.title).toBe("Version 1.0 Release");
+			expect(milestone.status).toBe("active");
+			expect(milestone.createdDate).toBe("2025-06-01");
+			expect(milestone.updatedDate).toBe("2025-06-10");
+			expect(milestone.dueDate).toBe("2025-12-31");
+			expect(milestone.description).toBe("Complete all features for the v1.0 release.");
+			expect(milestone.rawContent).toContain("## Description");
+		});
+
+		it("should parse milestone with minimal fields", () => {
+			const content = `---
+id: m-2
+title: "Q2 Goals"
+---
+
+Quarterly objectives.`;
+
+			const milestone = parseMilestone(content);
+
+			expect(milestone.id).toBe("m-2");
+			expect(milestone.title).toBe("Q2 Goals");
+			expect(milestone.status).toBeUndefined();
+			expect(milestone.createdDate).toBeUndefined();
+			expect(milestone.updatedDate).toBeUndefined();
+			expect(milestone.dueDate).toBeUndefined();
+			expect(milestone.description).toBeUndefined();
+			expect(milestone.rawContent).toBe("Quarterly objectives.");
+		});
+
+		it("should parse milestone without description section", () => {
+			const content = `---
+id: m-3
+title: "Sprint 5"
+status: "planned"
+created_date: "2025-06-15"
+---
+
+Just some notes here.`;
+
+			const milestone = parseMilestone(content);
+
+			expect(milestone.id).toBe("m-3");
+			expect(milestone.title).toBe("Sprint 5");
+			expect(milestone.status).toBe("planned");
+			expect(milestone.description).toBeUndefined();
+			expect(milestone.rawContent).toBe("Just some notes here.");
+		});
+
+		it("should handle milestone with empty id defaulting to empty string", () => {
+			const content = `---
+title: "No ID Milestone"
+---
+
+Content without ID.`;
+
+			const milestone = parseMilestone(content);
+
+			expect(milestone.id).toBe("");
+			expect(milestone.title).toBe("No ID Milestone");
+		});
+
+		it("should default to 'Untitled Milestone' when title is missing", () => {
+			const content = `---
+id: m-4
+---
+
+Milestone without title.`;
+
+			const milestone = parseMilestone(content);
+
+			expect(milestone.id).toBe("m-4");
+			expect(milestone.title).toBe("Untitled Milestone");
+		});
+	});
 });
 
 describe("Markdown Serializer", () => {
@@ -524,6 +618,63 @@ describe("Markdown Serializer", () => {
 			expect(result).toContain("id: doc-2");
 			expect(result).not.toContain("updated_date:");
 			expect(result).not.toContain("tags:");
+		});
+	});
+
+	describe("serializeMilestone", () => {
+		it("should serialize a complete milestone correctly", () => {
+			const milestone: Milestone = {
+				id: "m-1",
+				title: "Version 1.0 Release",
+				status: "active",
+				createdDate: "2025-06-01",
+				updatedDate: "2025-06-10",
+				dueDate: "2025-12-31",
+				rawContent: "## Description\n\nComplete all features for the v1.0 release.",
+			};
+
+			const result = serializeMilestone(milestone);
+
+			expect(result).toContain("id: m-1");
+			expect(result).toContain("title: Version 1.0 Release");
+			expect(result).toContain("status: active");
+			expect(result).toContain("created_date: '2025-06-01'");
+			expect(result).toContain("updated_date: '2025-06-10'");
+			expect(result).toContain("due_date: '2025-12-31'");
+			expect(result).toContain("## Description");
+			expect(result).toContain("Complete all features for the v1.0 release.");
+		});
+
+		it("should serialize milestone without optional fields", () => {
+			const milestone: Milestone = {
+				id: "m-2",
+				title: "Q2 Goals",
+				rawContent: "Quarterly objectives.",
+			};
+
+			const result = serializeMilestone(milestone);
+
+			expect(result).toContain("id: m-2");
+			expect(result).toContain("title: Q2 Goals");
+			expect(result).not.toContain("status:");
+			expect(result).not.toContain("created_date:");
+			expect(result).not.toContain("updated_date:");
+			expect(result).not.toContain("due_date:");
+			expect(result).toContain("Quarterly objectives.");
+		});
+
+		it("should add description section if missing", () => {
+			const milestone: Milestone = {
+				id: "m-3",
+				title: "Sprint 5",
+				description: "Complete sprint 5 objectives",
+				rawContent: "Some other content.",
+			};
+
+			const result = serializeMilestone(milestone);
+
+			expect(result).toContain("id: m-3");
+			expect(result).toContain("## Description");
 		});
 	});
 
