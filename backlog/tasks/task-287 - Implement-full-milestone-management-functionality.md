@@ -5,11 +5,12 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-10 19:26'
-updated_date: '2025-10-10 20:12'
+updated_date: '2025-10-10 21:06'
 labels:
   - feature
   - milestone
   - cli
+milestone: m-1
 dependencies: []
 priority: high
 ---
@@ -51,3 +52,17 @@ Add complete CRUD operations and filtering capabilities for milestones to match 
 10. Add comprehensive tests
 11. Update documentation
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+### Related Work
+- **TASK-288**: Web UI support for milestones (MR #1)
+  - Adds MilestoneDetail component
+  - Integrates milestones into browser interface
+  - Fixes SearchService to include milestones in search results
+  - Adds milestone selector to task modal
+  - Displays milestone badges on task cards
+
+This task (TASK-287) implemented the CLI foundation via MR !390, and TASK-288 completes the feature by adding full web UI support.
+<!-- SECTION:NOTES:END -->
