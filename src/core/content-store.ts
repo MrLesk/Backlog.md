@@ -102,6 +102,11 @@ export class ContentStore {
 			tasks = tasks.filter((task) => task.parentTaskId === parentId);
 		}
 
+		if (filter?.milestone) {
+			const milestoneId = filter.milestone.startsWith("m-") ? filter.milestone : `m-${filter.milestone}`;
+			tasks = tasks.filter((task) => task.milestone === milestoneId);
+		}
+
 		return tasks.slice();
 	}
 

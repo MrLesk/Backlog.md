@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { AcceptanceCriterion, Task } from "../../types";
+import type { AcceptanceCriterion, Task, Milestone } from "../../types";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
@@ -52,7 +52,9 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
+  const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const [availableMilestones, setAvailableMilestones] = useState<Milestone[]>([]);
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({
@@ -113,10 +115,12 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     setLabels(task?.labels || []);
     setPriority(task?.priority || "");
     setDependencies(task?.dependencies || []);
+    setMilestone(task?.milestone || "");
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
-    // Preload tasks for dependency picker
+    // Preload tasks for dependency picker and milestones
     apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
+    apiClient.fetchMilestones().then(setAvailableMilestones).catch(() => setAvailableMilestones([]));
   }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses]);
 
   const handleCancelEdit = () => {
@@ -160,6 +164,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
         labels,
         priority: priority as "high" | "medium" | "low" | undefined,
         dependencies,
+        milestone: milestone || undefined,
       };
 
       if (isCreateMode && onSubmit) {
@@ -201,6 +206,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     if (updates.labels !== undefined) setLabels(updates.labels as string[]);
     if (updates.priority !== undefined) setPriority(String(updates.priority));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
+    if (updates.milestone !== undefined) setMilestone(String(updates.milestone));
 
     // Only update server if editing existing task
     if (task) {
@@ -496,12 +502,15 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
             />
           </div>
 
-          {/* Metadata (render only if content exists) */}
-          {task?.milestone ? (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-              <div>Milestone: {task.milestone}</div>
-            </div>
-          ) : null}
+          {/* Milestone */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <SectionHeader title="Milestone" />
+            <MilestoneSelect
+              current={milestone}
+              onChange={(val) => handleInlineMetaUpdate({ milestone: val })}
+              milestones={availableMilestones}
+            />
+          </div>
 
           {/* Archive button at bottom of sidebar */}
           {task && onArchive && (
@@ -536,6 +545,21 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void }>
     >
       {statuses.map((s) => (
         <option key={s} value={s}>{s}</option>
+      ))}
+    </select>
+  );
+};
+
+const MilestoneSelect: React.FC<{ current: string; onChange: (v: string) => void; milestones: Milestone[] }> = ({ current, onChange, milestones }) => {
+  return (
+    <select
+      className="w-full px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
+      value={current}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">No Milestone</option>
+      {milestones.map((m) => (
+        <option key={m.id} value={m.id}>{m.title}</option>
       ))}
     </select>
   );

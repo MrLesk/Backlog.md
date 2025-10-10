@@ -39,6 +39,7 @@ export interface TaskListFilter {
 	assignee?: string;
 	priority?: "high" | "medium" | "low";
 	parentTaskId?: string;
+	milestone?: string;
 }
 
 export interface Decision {
@@ -67,7 +68,18 @@ export interface Document {
 	lastModified?: string;
 }
 
-export type SearchResultType = "task" | "document" | "decision";
+export interface Milestone {
+	id: string;
+	title: string;
+	description?: string;
+	status?: "planned" | "active" | "completed" | "archived";
+	createdDate?: string;
+	updatedDate?: string;
+	dueDate?: string;
+	readonly rawContent: string; // Raw markdown content without frontmatter
+}
+
+export type SearchResultType = "task" | "document" | "decision" | "milestone";
 
 export type SearchPriorityFilter = "high" | "medium" | "low";
 
@@ -110,7 +122,14 @@ export interface DecisionSearchResult {
 	matches?: SearchMatch[];
 }
 
-export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult;
+export interface MilestoneSearchResult {
+	type: "milestone";
+	score: number | null;
+	milestone: Milestone;
+	matches?: SearchMatch[];
+}
+
+export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult | MilestoneSearchResult;
 
 export interface Sequence {
 	/** 1-based sequence index */

@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import BoardPage from './components/BoardPage';
 import DocumentationDetail from './components/DocumentationDetail';
 import DecisionDetail from './components/DecisionDetail';
+import MilestoneDetail from './components/MilestoneDetail';
 import TaskList from './components/TaskList';
 import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
@@ -16,6 +17,8 @@ import {
 	type DecisionSearchResult,
 	type Document,
 	type DocumentSearchResult,
+	type Milestone,
+	type MilestoneSearchResult,
 	type SearchResult,
 	type Task,
 	type TaskSearchResult,
@@ -37,6 +40,7 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const { isOnline } = useHealthCheckContext();
@@ -56,10 +60,12 @@ function App() {
     const taskResults = results.filter((result): result is TaskSearchResult => result.type === 'task');
     const documentResults = results.filter((result): result is DocumentSearchResult => result.type === 'document');
     const decisionResults = results.filter((result): result is DecisionSearchResult => result.type === 'decision');
+    const milestoneResults = results.filter((result): result is MilestoneSearchResult => result.type === 'milestone');
 
     setTasks(taskResults.map((result) => result.task));
     setDocs(documentResults.map((result) => result.document));
     setDecisions(decisionResults.map((result) => result.decision));
+    setMilestones(milestoneResults.map((result) => result.milestone));
   }, []);
 
   const loadAllData = useCallback(async () => {
@@ -232,6 +238,7 @@ function App() {
                 tasks={tasks}
                 docs={docs}
                 decisions={decisions}
+                milestones={milestones}
                 isLoading={isLoading}
                 onRefreshData={refreshData}
               />
@@ -269,6 +276,9 @@ function App() {
             <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
             <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
             <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
+            <Route path="milestones" element={<MilestoneDetail milestones={milestones} onRefreshData={refreshData} />} />
+            <Route path="milestones/:id" element={<MilestoneDetail milestones={milestones} onRefreshData={refreshData} />} />
+            <Route path="milestones/:id/:title" element={<MilestoneDetail milestones={milestones} onRefreshData={refreshData} />} />
             <Route path="statistics" element={<Statistics tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} />} />
             <Route path="settings" element={<Settings />} />
           </Route>

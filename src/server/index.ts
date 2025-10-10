@@ -160,6 +160,8 @@ export class BacklogServer {
 					"/documentation/*": indexHtml,
 					"/decisions": indexHtml,
 					"/decisions/*": indexHtml,
+					"/milestones": indexHtml,
+					"/milestones/*": indexHtml,
 					"/statistics": indexHtml,
 					"/settings": indexHtml,
 
@@ -208,6 +210,18 @@ export class BacklogServer {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) =>
 							await this.handleUpdateDecision(req, req.params.id),
+					},
+					"/api/milestones": {
+						GET: async () => await this.handleListMilestones(),
+						POST: async (req: Request) => await this.handleCreateMilestone(req),
+					},
+					"/api/milestone/:id": {
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
+					},
+					"/api/milestones/:id": {
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) =>
+							await this.handleUpdateMilestone(req, req.params.id),
 					},
 					"/api/drafts": {
 						GET: async () => await this.handleListDrafts(),
@@ -466,7 +480,7 @@ export class BacklogServer {
 
 			let types: SearchResultType[] | undefined;
 			if (typeParams.length > 0) {
-				const allowed: SearchResultType[] = ["task", "document", "decision"];
+				const allowed: SearchResultType[] = ["task", "document", "decision", "milestone"];
 				const normalizedTypes = typeParams
 					.map((value) => value.toLowerCase())
 					.filter((value): value is SearchResultType => {
@@ -721,6 +735,83 @@ export class BacklogServer {
 			}
 			console.error("Error updating decision:", error);
 			return Response.json({ error: "Failed to update decision" }, { status: 500 });
+		}
+	}
+
+	// Milestone handlers
+	private async handleListMilestones(): Promise<Response> {
+		try {
+			const milestones = await this.core.filesystem.listMilestones();
+			return Response.json(milestones);
+		} catch (error) {
+			console.error("Error listing milestones:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleGetMilestone(milestoneId: string): Promise<Response> {
+		try {
+			const normalizedId = milestoneId.startsWith("m-") ? milestoneId : `m-${milestoneId}`;
+			const milestone = await this.core.filesystem.loadMilestone(normalizedId);
+
+			if (!milestone) {
+				return Response.json({ error: "Milestone not found" }, { status: 404 });
+			}
+
+			return Response.json(milestone);
+		} catch (error) {
+			console.error("Error loading milestone:", error);
+			return Response.json({ error: "Milestone not found" }, { status: 404 });
+		}
+	}
+
+	private async handleCreateMilestone(req: Request): Promise<Response> {
+		const { title, description, status, dueDate } = await req.json();
+
+		try {
+			// Get the next milestone ID
+			const milestones = await this.core.filesystem.listMilestones();
+			const maxId = milestones.reduce((max, m) => {
+				const num = Number.parseInt(m.id.replace("m-", ""), 10);
+				return num > max ? num : max;
+			}, 0);
+			const nextId = `m-${maxId + 1}`;
+
+			const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const milestone = {
+				id: nextId,
+				title: title || "Untitled Milestone",
+				description,
+				status: status || "planned",
+				createdDate: now,
+				dueDate,
+				rawContent: description ? `## Description\n\n${description}` : "",
+			};
+
+			await this.core.createMilestone(milestone);
+			return Response.json(milestone, { status: 201 });
+		} catch (error) {
+			console.error("Error creating milestone:", error);
+			return Response.json({ error: "Failed to create milestone" }, { status: 500 });
+		}
+	}
+
+	private async handleUpdateMilestone(req: Request, milestoneId: string): Promise<Response> {
+		const updates = await req.json();
+
+		try {
+			const normalizedId = milestoneId.startsWith("m-") ? milestoneId : `m-${milestoneId}`;
+			const existing = await this.core.filesystem.loadMilestone(normalizedId);
+
+			if (!existing) {
+				return Response.json({ error: "Milestone not found" }, { status: 404 });
+			}
+
+			await this.core.updateMilestone(existing, updates);
+			return Response.json({ success: true });
+		} catch (error) {
+			console.error("Error updating milestone:", error);
+			return Response.json({ error: "Failed to update milestone" }, { status: 500 });
 		}
 	}
 

@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
-import type { BacklogConfig, Decision, Document, Sequence, Task } from "../types/index.ts";
+import type { BacklogConfig, Decision, Document, Milestone, Sequence, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { openInEditor } from "../utils/editor.ts";
 import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
@@ -55,7 +55,7 @@ export class Core {
 	async getSearchService(): Promise<SearchService> {
 		if (!this.searchService) {
 			const store = await this.getContentStore();
-			this.searchService = new SearchService(store);
+			this.searchService = new SearchService(store, this.fs);
 		}
 		await this.searchService.ensureInitialized();
 		return this.searchService;
@@ -676,6 +676,26 @@ export class Core {
 		};
 
 		await this.createDocument(updatedDoc, autoCommit);
+	}
+
+	async createMilestone(milestone: Milestone, autoCommit?: boolean): Promise<void> {
+		await this.fs.saveMilestone(milestone);
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			const backlogDir = await this.getBacklogDirectoryName();
+			await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Add milestone ${milestone.id}`);
+		}
+	}
+
+	async updateMilestone(existing: Milestone, updates: Partial<Milestone>, autoCommit?: boolean): Promise<void> {
+		const updatedMilestone: Milestone = {
+			...existing,
+			...updates,
+			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+		};
+
+		await this.createMilestone(updatedMilestone, autoCommit);
 	}
 
 	async createDocumentWithId(title: string, content: string, autoCommit?: boolean): Promise<Document> {

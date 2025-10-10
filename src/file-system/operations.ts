@@ -2,9 +2,9 @@ import { mkdir, rename, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
-import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
-import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
+import { serializeDecision, serializeDocument, serializeMilestone, serializeTask } from "../markdown/serializer.ts";
+import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -90,6 +90,10 @@ export class FileSystem {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.DOCS);
 	}
 
+	get milestonesDir(): string {
+		return join(this.backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
+	}
+
 	get configFilePath(): string {
 		return join(this.backlogDir, DEFAULT_FILES.CONFIG);
 	}
@@ -128,6 +132,11 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.DOCS);
 	}
 
+	private async getMilestonesDir(): Promise<string> {
+		const backlogDir = await this.getBacklogDir();
+		return join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
+	}
+
 	private async getCompletedDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
@@ -144,6 +153,7 @@ export class FileSystem {
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS),
 			join(backlogDir, DEFAULT_DIRECTORIES.DOCS),
 			join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS),
+			join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES),
 		];
 
 		for (const dir of directories) {
@@ -497,6 +507,61 @@ export class FileSystem {
 			return docs.sort((a, b) => a.title.localeCompare(b.title));
 		} catch {
 			return [];
+		}
+	}
+
+	// Milestone operations
+	async listMilestones(): Promise<Milestone[]> {
+		try {
+			const milestonesDir = await this.getMilestonesDir();
+			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const milestones: Milestone[] = [];
+
+			for (const file of milestoneFiles) {
+				// Filter out README files
+				if (file.toLowerCase().match(/^readme\.md$/i)) {
+					continue;
+				}
+				const filepath = join(milestonesDir, file);
+				const content = await Bun.file(filepath).text();
+				milestones.push(parseMilestone(content));
+			}
+
+			// Sort by ID for consistent ordering
+			return milestones.sort((a, b) => a.id.localeCompare(b.id));
+		} catch {
+			return [];
+		}
+	}
+
+	async saveMilestone(milestone: Milestone): Promise<void> {
+		const milestonesDir = await this.getMilestonesDir();
+		// Normalize ID - remove "m-" prefix if present
+		const normalizedId = milestone.id.replace(/^m-/, "");
+		const filename = `m-${normalizedId} - ${this.sanitizeFilename(milestone.title)}.md`;
+		const filepath = join(milestonesDir, filename);
+		const content = serializeMilestone(milestone);
+
+		await this.ensureDirectoryExists(dirname(filepath));
+		await Bun.write(filepath, content);
+	}
+
+	async loadMilestone(milestoneId: string): Promise<Milestone | null> {
+		try {
+			const milestonesDir = await this.getMilestonesDir();
+			const files = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+
+			// Normalize ID - remove "m-" prefix if present
+			const normalizedId = milestoneId.replace(/^m-/, "");
+			const milestoneFile = files.find((file) => file.startsWith(`m-${normalizedId} -`));
+
+			if (!milestoneFile) return null;
+
+			const filepath = join(milestonesDir, milestoneFile);
+			const content = await Bun.file(filepath).text();
+			return parseMilestone(content);
+		} catch {
+			return null;
 		}
 	}
 

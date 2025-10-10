@@ -1,7 +1,9 @@
 import Fuse, { type FuseResult, type FuseResultMatch } from "fuse.js";
+import type { FileSystem } from "../file-system/operations.ts";
 import type {
 	Decision,
 	Document,
+	Milestone,
 	SearchFilters,
 	SearchMatch,
 	SearchOptions,
@@ -38,7 +40,12 @@ interface DecisionSearchEntity extends BaseSearchEntity {
 	readonly decision: Decision;
 }
 
-type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEntity;
+interface MilestoneSearchEntity extends BaseSearchEntity {
+	readonly type: "milestone";
+	readonly milestone: Milestone;
+}
+
+type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEntity | MilestoneSearchEntity;
 
 type NormalizedFilters = {
 	statuses?: string[];
@@ -81,10 +88,17 @@ export class SearchService {
 	private tasks: TaskSearchEntity[] = [];
 	private documents: DocumentSearchEntity[] = [];
 	private decisions: DecisionSearchEntity[] = [];
+	private milestones: MilestoneSearchEntity[] = [];
 	private collection: SearchEntity[] = [];
 	private version = 0;
+	private filesystem?: FileSystem;
 
-	constructor(private readonly store: ContentStore) {}
+	constructor(
+		private readonly store: ContentStore,
+		filesystem?: FileSystem,
+	) {
+		this.filesystem = filesystem;
+	}
 
 	async ensureInitialized(): Promise<void> {
 		if (this.initialized) {
@@ -111,6 +125,7 @@ export class SearchService {
 		this.tasks = [];
 		this.documents = [];
 		this.decisions = [];
+		this.milestones = [];
 		this.initialized = false;
 		this.initializing = null;
 	}
@@ -124,7 +139,7 @@ export class SearchService {
 
 		const trimmedQuery = query.trim();
 		const allowedTypes = new Set<SearchResultType>(
-			types && types.length > 0 ? types : ["task", "document", "decision"],
+			types && types.length > 0 ? types : ["task", "document", "decision", "milestone"],
 		);
 		const normalizedFilters = this.normalizeFilters(filters);
 
@@ -161,7 +176,11 @@ export class SearchService {
 
 	private async initialize(): Promise<void> {
 		const snapshot = await this.store.ensureInitialized();
-		this.applySnapshot(snapshot.tasks, snapshot.documents, snapshot.decisions);
+
+		// Load milestones from filesystem if available
+		const milestones = this.filesystem ? await this.filesystem.listMilestones() : [];
+
+		this.applySnapshot(snapshot.tasks, snapshot.documents, snapshot.decisions, milestones);
 
 		if (!this.unsubscribe) {
 			this.unsubscribe = this.store.subscribe((event) => {
@@ -178,10 +197,27 @@ export class SearchService {
 			return;
 		}
 		this.version = event.version;
-		this.applySnapshot(event.snapshot.tasks, event.snapshot.documents, event.snapshot.decisions);
+		// Reload milestones when store changes
+		void this.reloadMilestones().then((milestones) => {
+			this.applySnapshot(event.snapshot.tasks, event.snapshot.documents, event.snapshot.decisions, milestones);
+		});
 	}
 
-	private applySnapshot(tasks: Task[], documents: Document[], decisions: Decision[]): void {
+	private async reloadMilestones(): Promise<Milestone[]> {
+		if (!this.filesystem) return [];
+		try {
+			return await this.filesystem.listMilestones();
+		} catch {
+			return [];
+		}
+	}
+
+	private applySnapshot(
+		tasks: Task[],
+		documents: Document[],
+		decisions: Decision[],
+		milestones: Milestone[] = [],
+	): void {
 		this.tasks = tasks.map((task) => ({
 			id: task.id,
 			type: "task",
@@ -210,7 +246,15 @@ export class SearchService {
 			decision,
 		}));
 
-		this.collection = [...this.tasks, ...this.documents, ...this.decisions];
+		this.milestones = milestones.map((milestone) => ({
+			id: milestone.id,
+			type: "milestone",
+			title: milestone.title,
+			rawContent: milestone.rawContent ?? "",
+			milestone,
+		}));
+
+		this.collection = [...this.tasks, ...this.documents, ...this.decisions, ...this.milestones];
 		this.rebuildFuse();
 	}
 
@@ -264,6 +308,15 @@ export class SearchService {
 
 		if (allowedTypes.has("decision")) {
 			for (const entity of this.decisions) {
+				results.push(this.mapEntityToResult(entity));
+				if (limit && results.length >= limit) {
+					return results;
+				}
+			}
+		}
+
+		if (allowedTypes.has("milestone")) {
+			for (const entity of this.milestones) {
 				results.push(this.mapEntityToResult(entity));
 				if (limit && results.length >= limit) {
 					return results;
@@ -368,6 +421,15 @@ export class SearchService {
 				type: "document",
 				score,
 				document: entity.document,
+				matches,
+			};
+		}
+
+		if (entity.type === "milestone") {
+			return {
+				type: "milestone",
+				score,
+				milestone: entity.milestone,
 				matches,
 			};
 		}
