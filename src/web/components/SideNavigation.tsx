@@ -6,6 +6,8 @@ import {
 	type DecisionSearchResult,
 	type Document,
 	type DocumentSearchResult,
+	type Milestone,
+	type MilestoneSearchResult,
 	type SearchResult,
 	type Task,
 	type TaskSearchResult,
@@ -21,6 +23,7 @@ const stripIdPrefix = (id: string): string => {
 	if (id.startsWith('doc-')) return id.replace('doc-', '');
 	if (id.startsWith('decision-')) return id.replace('decision-', '');
 	if (id.startsWith('task-')) return id.replace('task-', '');
+	if (id.startsWith('m-')) return id.replace('m-', '');
 	return id;
 };
 
@@ -137,24 +140,36 @@ const Icons = {
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
 		</svg>
 	),
+	Milestone: () => (
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+		</svg>
+	),
+	MilestonePage: () => (
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+		</svg>
+	),
 };
 
 interface SideNavigationProps {
 	tasks: Task[];
 	docs: Document[];
 	decisions: Decision[];
+	milestones: Milestone[];
 	isLoading: boolean;
 	error?: Error | null;
 	onRetry?: () => void;
 	onRefreshData: () => Promise<void>;
 }
 
-const SideNavigation = memo(function SideNavigation({ 
-	tasks, 
-	docs, 
-	decisions, 
-	isLoading, 
-	error, 
+const SideNavigation = memo(function SideNavigation({
+	tasks,
+	docs,
+	decisions,
+	milestones,
+	isLoading,
+	error,
 	onRetry
 }: SideNavigationProps) {
 	const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -181,6 +196,14 @@ const SideNavigation = memo(function SideNavigation({
 		}
 		// Auto-collapse if more than 6 decisions
 		return decisions.length > 6;
+	});
+	const [isMilestonesCollapsed, setIsMilestonesCollapsed] = useState(() => {
+		const saved = localStorage.getItem('milestonesCollapsed');
+		if (saved !== null) {
+			return JSON.parse(saved);
+		}
+		// Auto-collapse if more than 6 milestones
+		return milestones.length > 6;
 	});
 	const [version, setVersion] = useState<string>('');
 	const location = useLocation();
@@ -214,6 +237,11 @@ const SideNavigation = memo(function SideNavigation({
 		localStorage.setItem('decisionsCollapsed', JSON.stringify(isDecisionsCollapsed));
 	}, [isDecisionsCollapsed]);
 
+	// Save milestones collapse state to localStorage
+	useEffect(() => {
+		localStorage.setItem('milestonesCollapsed', JSON.stringify(isMilestonesCollapsed));
+	}, [isMilestonesCollapsed]);
+
 	// Auto-collapse when data loads/changes if no saved preference exists
 	useEffect(() => {
 		const savedDocsCollapsed = localStorage.getItem('docsCollapsed');
@@ -228,6 +256,13 @@ const SideNavigation = memo(function SideNavigation({
 			setIsDecisionsCollapsed(true);
 		}
 	}, [decisions.length]);
+
+	useEffect(() => {
+		const savedMilestonesCollapsed = localStorage.getItem('milestonesCollapsed');
+		if (savedMilestonesCollapsed === null && milestones.length > 6) {
+			setIsMilestonesCollapsed(true);
+		}
+	}, [milestones.length]);
 
 	// Add keyboard shortcut for search
 	useEffect(() => {
@@ -318,6 +353,7 @@ const SideNavigation = memo(function SideNavigation({
 	// Always show full lists in their sections, search results are separate
 	const filteredDocs = docs;
 	const filteredDecisions = decisions;
+	const filteredMilestones = milestones;
 
 	const toggleCollapse = useCallback(() => {
 		setIsCollapsed((prev: any) => !prev);
@@ -392,7 +428,9 @@ const SideNavigation = memo(function SideNavigation({
 								? (result as TaskSearchResult).task
 								: result.type === 'document'
 									? (result as DocumentSearchResult).document
-									: (result as DecisionSearchResult).decision;
+									: result.type === 'decision'
+										? (result as DecisionSearchResult).decision
+										: (result as MilestoneSearchResult).milestone;
 							const getResultLink = () => {
 								if (result.type === 'document') {
 									return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
@@ -400,12 +438,16 @@ const SideNavigation = memo(function SideNavigation({
 								if (result.type === 'decision') {
 									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
 								}
+								if (result.type === 'milestone') {
+									return `/milestones/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+								}
 								return `/?highlight=${encodeURIComponent(item.id)}`;
 							};
 
 							const getResultIcon = () => {
 								if (result.type === 'document') return <span className="text-green-500"><Icons.DocumentPage /></span>;
 								if (result.type === 'decision') return <span className="text-stone-500"><Icons.DecisionPage /></span>;
+								if (result.type === 'milestone') return <span className="text-orange-500"><Icons.MilestonePage /></span>;
 								return <span className="text-purple-500"><Icons.Tasks /></span>;
 							};
 
@@ -663,6 +705,52 @@ const SideNavigation = memo(function SideNavigation({
 								</div>
 							)}
 						</div>
+
+						{/* Divider between Decisions and Milestones */}
+						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
+
+						{/* Milestones Section */}
+						<div className="px-4 py-4">
+							<div className="flex items-center justify-between mb-4">
+								<div className="flex items-center space-x-3">
+									<button
+										onClick={() => setIsMilestonesCollapsed(!isMilestonesCollapsed)}
+										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200 cursor-pointer"
+										title={isMilestonesCollapsed ? "Expand milestones" : "Collapse milestones"}
+									>
+										{isMilestonesCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
+									</button>
+									<span className="text-gray-500 dark:text-gray-400"><Icons.Milestone /></span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Milestones ({milestones.length})</span>
+								</div>
+							</div>
+
+							{/* Milestone List */}
+							{!isMilestonesCollapsed && (
+								<div className="space-y-1">
+									{filteredMilestones.length === 0 ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No milestones</p>
+									) : (
+										filteredMilestones.map((milestone) => (
+											<NavLink
+												key={milestone.id}
+												to={`/milestones/${stripIdPrefix(milestone.id)}/${sanitizeUrlTitle(milestone.title)}`}
+												className={({ isActive }) =>
+													`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
+														isActive
+															? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+															: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+													}`
+												}
+											>
+												<span className="text-gray-400 dark:text-gray-500"><Icons.MilestonePage /></span>
+												<span className="truncate">{milestone.title}</span>
+											</NavLink>
+										))
+									)}
+								</div>
+							)}
+						</div>
 					</>
 				)}
 
@@ -766,6 +854,23 @@ const SideNavigation = memo(function SideNavigation({
 						>
 							<div className="w-6 h-6 flex items-center justify-center">
 								<Icons.Decision />
+							</div>
+						</button>
+						<button
+							onClick={() => {
+								setIsCollapsed(false);
+								setIsMilestonesCollapsed(false);
+							}}
+							data-tooltip-id="sidebar-tooltip"
+							data-tooltip-content="Milestones"
+							className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 cursor-pointer w-full ${
+								location.pathname.startsWith('/milestones')
+									? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+									: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+							}`}
+						>
+							<div className="w-6 h-6 flex items-center justify-center">
+								<Icons.Milestone />
 							</div>
 						</button>
 					</div>

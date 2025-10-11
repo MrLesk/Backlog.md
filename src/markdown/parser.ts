@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { AcceptanceCriterion, Decision, Document, ParsedMarkdown, Task } from "../types/index.ts";
+import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import { AcceptanceCriteriaManager, extractStructuredSection, STRUCTURED_SECTION_KEYS } from "./structured-sections.ts";
 
 function preprocessFrontmatter(frontmatter: string): string {
@@ -176,6 +176,21 @@ export function parseDocument(content: string): Document {
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
 		rawContent,
 		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+	};
+}
+
+export function parseMilestone(content: string): Milestone {
+	const { frontmatter, content: rawContent } = parseMarkdown(content);
+
+	return {
+		id: String(frontmatter.id || ""),
+		title: String(frontmatter.title || "Untitled Milestone"),
+		description: extractSection(rawContent, "Description"),
+		status: frontmatter.status ? (String(frontmatter.status) as Milestone["status"]) : undefined,
+		createdDate: frontmatter.created_date ? normalizeDate(frontmatter.created_date) : undefined,
+		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
+		dueDate: frontmatter.due_date ? normalizeDate(frontmatter.due_date) : undefined,
+		rawContent,
 	};
 }
 

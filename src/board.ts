@@ -64,6 +64,70 @@ export function buildKanbanStatusGroups(
 	return { orderedStatuses, groupedTasks };
 }
 
+export function buildKanbanMilestoneGroups(
+	tasks: Task[],
+	milestones: string[],
+): { orderedMilestones: string[]; groupedTasks: Map<string, Task[]> } {
+	const orderedConfiguredMilestones: string[] = [];
+	const configuredSeen = new Set<string>();
+
+	// Add configured milestones in order
+	for (const milestone of milestones ?? []) {
+		if (typeof milestone !== "string") continue;
+		const trimmed = milestone.trim();
+		if (!trimmed) continue;
+		if (!configuredSeen.has(trimmed)) {
+			orderedConfiguredMilestones.push(trimmed);
+			configuredSeen.add(trimmed);
+		}
+	}
+
+	const groupedTasks = new Map<string, Task[]>();
+	for (const milestone of orderedConfiguredMilestones) {
+		groupedTasks.set(milestone, []);
+	}
+
+	// Add a column for tasks without a milestone
+	const noMilestoneKey = "No Milestone";
+	groupedTasks.set(noMilestoneKey, []);
+
+	// Group tasks by milestone
+	for (const task of tasks) {
+		const milestone = (task.milestone ?? "").trim();
+		const key = milestone || noMilestoneKey;
+		if (!groupedTasks.has(key)) {
+			groupedTasks.set(key, []);
+		}
+		groupedTasks.get(key)?.push(task);
+	}
+
+	// Build ordered list of milestones
+	const orderedMilestones: string[] = [];
+	const seen = new Set<string>();
+
+	// First add configured milestones
+	for (const milestone of orderedConfiguredMilestones) {
+		if (seen.has(milestone)) continue;
+		orderedMilestones.push(milestone);
+		seen.add(milestone);
+	}
+
+	// Then add any other milestones found in tasks
+	for (const milestone of groupedTasks.keys()) {
+		if (seen.has(milestone)) continue;
+		if (milestone === noMilestoneKey) continue; // Add "No Milestone" last
+		orderedMilestones.push(milestone);
+		seen.add(milestone);
+	}
+
+	// Add "No Milestone" column last
+	if (groupedTasks.has(noMilestoneKey) && groupedTasks.get(noMilestoneKey)!.length > 0) {
+		orderedMilestones.push(noMilestoneKey);
+	}
+
+	return { orderedMilestones, groupedTasks };
+}
+
 export function generateKanbanBoardWithMetadata(tasks: Task[], statuses: string[], projectName: string): string {
 	// Generate timestamp
 	const now = new Date();
