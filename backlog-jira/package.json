@@ -1,0 +1,32 @@
+{
+	"name": "backlog-jira",
+	"version": "0.1.0",
+	"description": "Bidirectional sync plugin between Backlog.md and Jira via MCP",
+	"type": "module",
+	"bin": {
+		"backlog-jira": "dist/cli.js"
+	},
+	"scripts": {
+		"build": "bun build --target=bun src/cli.ts --outdir=dist",
+		"dev": "bun run src/cli.ts",
+		"test": "bun test",
+		"check": "biome check .",
+		"check:types": "bunx tsc --noEmit"
+	},
+	"dependencies": {
+		"better-sqlite3": "^11.0.0",
+		"commander": "^12.0.0",
+		"pino": "^8.16.0",
+		"pino-pretty": "^10.2.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.8.3",
+		"@types/better-sqlite3": "^7.6.8",
+		"@types/node": "^20.10.0",
+		"bun-types": "^1.3.0",
+		"typescript": "^5.2.2"
+	},
+	"engines": {
+		"bun": ">=1.0.0"
+	}
+}
