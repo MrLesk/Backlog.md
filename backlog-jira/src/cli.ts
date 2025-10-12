@@ -3,6 +3,11 @@ import { Command } from "commander";
 import { connectCommand } from "./commands/connect.ts";
 import { doctorCommand } from "./commands/doctor.ts";
 import { initCommand } from "./commands/init.ts";
+import { registerMapCommand } from "./commands/map.ts";
+import { pull } from "./commands/pull.ts";
+import { push } from "./commands/push.ts";
+import { registerStatusCommand } from "./commands/status.ts";
+import { sync } from "./commands/sync.ts";
 
 const program = new Command();
 
@@ -44,48 +49,108 @@ program
 		}
 	});
 
-// Placeholder commands for future phases
-program
-	.command("map")
-	.description("Map Backlog tasks to Jira issues (Phase 3)")
-	.option("--auto", "Automatically map by title similarity")
-	.option("--interactive", "Interactive mapping UI")
-	.action(() => {
-		console.log("Coming in Phase 3: Mapping and Status Commands");
-	});
+// Phase 3: Mapping and Status Commands
+registerMapCommand(program);
+registerStatusCommand(program);
 
 program
-	.command("status")
-	.description("Show sync status for mapped tasks (Phase 3)")
-	.option("--json", "Output as JSON")
-	.option("--grep <pattern>", "Filter by pattern")
-	.action(() => {
-		console.log("Coming in Phase 3: Mapping and Status Commands");
-	});
-
-program
-	.command("push [taskId]")
-	.description("Push Backlog changes to Jira (Phase 4)")
+	.command("push [taskIds...]")
+	.description("Push Backlog changes to Jira")
 	.option("--all", "Push all mapped tasks")
-	.action(() => {
-		console.log("Coming in Phase 4: Push, Pull & Sync Commands");
+	.option("--force", "Force push even if conflicts detected")
+	.option("--dry-run", "Show what would be pushed without making changes")
+	.action(async (taskIds, options) => {
+		try {
+			const result = await push({
+				taskIds: taskIds && taskIds.length > 0 ? taskIds : undefined,
+				all: options.all,
+				force: options.force,
+				dryRun: options.dryRun,
+			});
+			console.log("\nPush Results:");
+			console.log(`  Pushed: ${result.pushed.length}`);
+			console.log(`  Failed: ${result.failed.length}`);
+			console.log(`  Skipped: ${result.skipped.length}`);
+			if (result.failed.length > 0) {
+				console.log("\nFailures:");
+				for (const fail of result.failed) {
+					console.log(`  ${fail.taskId}: ${fail.error}`);
+				}
+				process.exit(1);
+			}
+		} catch (error) {
+			console.error("Error:", error instanceof Error ? error.message : String(error));
+			process.exit(1);
+		}
 	});
 
 program
-	.command("pull [taskId]")
-	.description("Pull Jira changes to Backlog (Phase 4)")
+	.command("pull [taskIds...]")
+	.description("Pull Jira changes to Backlog")
 	.option("--all", "Pull all mapped tasks")
-	.action(() => {
-		console.log("Coming in Phase 4: Push, Pull & Sync Commands");
+	.option("--force", "Force pull even if conflicts detected")
+	.option("--dry-run", "Show what would be pulled without making changes")
+	.action(async (taskIds, options) => {
+		try {
+			const result = await pull({
+				taskIds: taskIds && taskIds.length > 0 ? taskIds : undefined,
+				all: options.all,
+				force: options.force,
+				dryRun: options.dryRun,
+			});
+			console.log("\nPull Results:");
+			console.log(`  Pulled: ${result.pulled.length}`);
+			console.log(`  Failed: ${result.failed.length}`);
+			console.log(`  Skipped: ${result.skipped.length}`);
+			if (result.failed.length > 0) {
+				console.log("\nFailures:");
+				for (const fail of result.failed) {
+					console.log(`  ${fail.taskId}: ${fail.error}`);
+				}
+				process.exit(1);
+			}
+		} catch (error) {
+			console.error("Error:", error instanceof Error ? error.message : String(error));
+			process.exit(1);
+		}
 	});
 
 program
-	.command("sync [taskId]")
-	.description("Bidirectional sync with conflict resolution (Phase 4)")
+	.command("sync [taskIds...]")
+	.description("Bidirectional sync with conflict resolution")
 	.option("--all", "Sync all mapped tasks")
-	.option("--strategy <strategy>", "Conflict resolution strategy: prompt|prefer-backlog|prefer-jira")
-	.action(() => {
-		console.log("Coming in Phase 4: Push, Pull & Sync Commands");
+	.option("--strategy <strategy>", "Conflict resolution strategy: prefer-backlog|prefer-jira|prompt|manual")
+	.option("--dry-run", "Show what would be synced without making changes")
+	.action(async (taskIds, options) => {
+		try {
+			const result = await sync({
+				taskIds: taskIds && taskIds.length > 0 ? taskIds : undefined,
+				all: options.all,
+				strategy: options.strategy,
+				dryRun: options.dryRun,
+			});
+			console.log("\nSync Results:");
+			console.log(`  Synced: ${result.synced.length}`);
+			console.log(`  Conflicts: ${result.conflicts.length}`);
+			console.log(`  Failed: ${result.failed.length}`);
+			console.log(`  Skipped: ${result.skipped.length}`);
+			if (result.conflicts.length > 0) {
+				console.log("\nConflicts:");
+				for (const conflict of result.conflicts) {
+					console.log(`  ${conflict.taskId}: ${conflict.resolution}`);
+				}
+			}
+			if (result.failed.length > 0) {
+				console.log("\nFailures:");
+				for (const fail of result.failed) {
+					console.log(`  ${fail.taskId}: ${fail.error}`);
+				}
+				process.exit(1);
+			}
+		} catch (error) {
+			console.error("Error:", error instanceof Error ? error.message : String(error));
+			process.exit(1);
+		}
 	});
 
 program

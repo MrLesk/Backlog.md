@@ -1,6 +1,6 @@
+import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import Database from "better-sqlite3";
 import { logger } from "../utils/logger.ts";
 
 export interface Mapping {
@@ -36,7 +36,7 @@ export interface OpLog {
 }
 
 export class SyncStore {
-	private db: Database.Database;
+	private db: Database;
 
 	constructor(dbPath?: string) {
 		const configDir = join(process.cwd(), ".backlog-jira");
@@ -147,7 +147,7 @@ export class SyncStore {
 	// Sync state methods
 	updateSyncState(backlogId: string, updates: Partial<Omit<SyncState, "backlogId">>): void {
 		const fields: string[] = [];
-		const values: unknown[] = [];
+		const values: (string | null)[] = [];
 
 		if (updates.lastSyncAt !== undefined) {
 			fields.push("last_sync_at = ?");
@@ -164,14 +164,14 @@ export class SyncStore {
 
 		if (fields.length === 0) return;
 
-		values.push(backlogId);
-
 		const stmt = this.db.prepare(`
 			INSERT INTO sync_state (backlog_id, ${fields.map((f) => f.split(" = ")[0]).join(", ")})
 			VALUES (?, ${fields.map(() => "?").join(", ")})
 			ON CONFLICT(backlog_id) DO UPDATE SET ${fields.join(", ")}
 		`);
-		stmt.run(...values);
+		// Build the arguments array properly
+		const args: (string | null)[] = [backlogId, ...values];
+		stmt.run(...args);
 		logger.debug({ backlogId, updates }, "Updated sync state");
 	}
 

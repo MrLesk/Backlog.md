@@ -2,14 +2,20 @@
 
 Bidirectional sync plugin between Backlog.md and Jira via MCP Atlassian server.
 
-## Status: Phase 1 Complete ✓
+## Status: Phase 4 Complete ✓
 
-Foundation and scaffolding completed:
+Push, pull, and sync commands completed:
 - ✅ Project structure with TypeScript + Bun
 - ✅ Configuration system
 - ✅ SQLite state store with schema
 - ✅ Pino logger with secret redaction
 - ✅ Init, connect, and doctor commands
+- ✅ Backlog & Jira integration layer
+- ✅ Mapping & status commands
+- ✅ Push command (Backlog → Jira)
+- ✅ Pull command (Jira → Backlog)
+- ✅ Sync command with 3-way merge
+- ✅ Conflict detection and resolution strategies
 - ✅ TypeScript compilation passes
 - ✅ Linting passes (Biome)
 
@@ -26,20 +32,23 @@ Foundation and scaffolding completed:
 - [x] TypeScript compiles
 - [x] Linting passes
 
-### Phase 2: Backlog & Jira Integration Layer (Next)
-- [ ] Backlog CLI wrapper
-- [ ] MCP Atlassian client wrapper
-- [ ] Full connect command implementation
+### Phase 2: Backlog & Jira Integration Layer ✅ COMPLETE
+- [x] Backlog CLI wrapper
+- [x] MCP Atlassian client wrapper
+- [x] Full connect command implementation
 
-### Phase 3: Mapping & Status Commands
-- [ ] Auto-mapping logic
-- [ ] Interactive mapping
-- [ ] Status reporting
+### Phase 3: Mapping & Status Commands ✅ COMPLETE
+- [x] Auto-mapping logic
+- [x] Interactive mapping
+- [x] Status reporting
 
-### Phase 4: Push, Pull & Sync Commands
-- [ ] Push (Backlog → Jira)
-- [ ] Pull (Jira → Backlog)
-- [ ] Bidirectional sync with 3-way merge
+### Phase 4: Push, Pull & Sync Commands ✅ COMPLETE
+- [x] Push (Backlog → Jira)
+- [x] Pull (Jira → Backlog)
+- [x] Bidirectional sync with 3-way merge
+- [x] Conflict detection (field-level)
+- [x] Conflict resolution strategies (prefer-backlog, prefer-jira, prompt, manual)
+- [x] Snapshot management for 3-way merge
 
 ### Phase 5: Watch Mode & Advanced Features
 - [ ] Watch command
@@ -91,7 +100,31 @@ Run environment health checks:
 - Git status
 
 ### `backlog-jira connect`
-Verify connections (placeholder - full implementation in Phase 2)
+Verify connections to Backlog CLI and MCP Atlassian
+
+### `backlog-jira map`
+Create and manage task-to-issue mappings
+
+### `backlog-jira status`
+View sync status and recent operations
+
+### `backlog-jira push [taskIds...]`
+Push Backlog changes to Jira
+- `--all` - Push all mapped tasks
+- `--force` - Force push even if conflicts detected
+- `--dry-run` - Show what would be pushed without making changes
+
+### `backlog-jira pull [taskIds...]`
+Pull Jira changes to Backlog
+- `--all` - Pull all mapped tasks
+- `--force` - Force pull even if conflicts detected
+- `--dry-run` - Show what would be pulled without making changes
+
+### `backlog-jira sync [taskIds...]`
+Bidirectional sync with conflict resolution
+- `--all` - Sync all mapped tasks
+- `--strategy <strategy>` - Conflict resolution strategy: prefer-backlog|prefer-jira|prompt|manual
+- `--dry-run` - Show what would be synced without making changes
 
 ## Architecture
 

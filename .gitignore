@@ -56,3 +56,4 @@ result
 .tmp-test-*
 test-cli-*
 test-cli-sequences-*
+.env.jira
