@@ -6,7 +6,8 @@
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
+import type { TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
+import { normalizeDependencies } from "../utils/task-builders.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 const isWindows = process.platform === "win32";
@@ -20,6 +21,7 @@ export interface TaskCreateOptions {
 	priority?: string;
 	ac?: string;
 	plan?: string;
+	notes?: string;
 	draft?: boolean;
 	parent?: string;
 	dependencies?: string;
@@ -45,121 +47,60 @@ async function createTaskViaCore(
 	options: TaskCreateOptions,
 	testDir: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string; taskId?: string }> {
-	try {
-		const core = new Core(testDir);
+	const core = new Core(testDir);
 
-		// Generate next ID (mimicking CLI behavior)
-		const tasks = await core.filesystem.listTasks();
-		const drafts = await core.filesystem.listDrafts();
+	const normalizedPriority = options.priority ? String(options.priority).toLowerCase() : undefined;
+	const createInput: TaskCreateInput = {
+		title: options.title.trim(),
+		description: options.description,
+		status: options.status ?? (options.draft ? "Draft" : undefined),
+		priority: normalizedPriority as TaskCreateInput["priority"],
+		labels: options.labels
+			? options.labels
+					.split(",")
+					.map((label) => label.trim())
+					.filter((label) => label.length > 0)
+			: undefined,
+		assignee: options.assignee ? [options.assignee] : undefined,
+		dependencies: options.dependencies ? normalizeDependencies(options.dependencies) : undefined,
+		parentTaskId: options.parent
+			? options.parent.startsWith("task-")
+				? options.parent
+				: `task-${options.parent}`
+			: undefined,
+	};
 
-		let taskId: string;
-
-		if (options.parent) {
-			// Handle subtask ID generation
-			const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
-			let maxSubtask = 0;
-
-			// Find existing subtasks of this parent
-			for (const t of tasks) {
-				if (t.id.startsWith(`${parentId}.`)) {
-					const rest = t.id.slice(parentId.length + 1);
-					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
-					if (num > maxSubtask) maxSubtask = num;
-				}
-			}
-			for (const d of drafts) {
-				if (d.id.startsWith(`${parentId}.`)) {
-					const rest = d.id.slice(parentId.length + 1);
-					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
-					if (num > maxSubtask) maxSubtask = num;
-				}
-			}
-
-			taskId = `${parentId}.${maxSubtask + 1}`;
-		} else {
-			// Regular task ID generation
-			const maxId = Math.max(
-				...tasks.map((t) => Number.parseInt(t.id.replace("task-", "") || "0", 10)),
-				...drafts.map((d) => Number.parseInt(d.id.replace("task-", "") || "0", 10)),
-				0,
-			);
-			taskId = `task-${maxId + 1}`;
-		}
-
-		// Build task object (mimicking CLI buildTaskFromOptions)
-		const task = {
-			id: taskId,
-			title: options.title,
-			status: options.status || "",
-			assignee: options.assignee ? [options.assignee] : [],
-			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-			labels: options.labels
-				? options.labels
-						.split(",")
-						.map((l) => l.trim())
-						.filter(Boolean)
-				: [],
-			dependencies: options.dependencies
-				? options.dependencies
-						.split(",")
-						.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`))
-				: [],
-			rawContent: options.description || "",
-			// Prefer first-party fields; serializer will compose the body
-			...(options.description && { description: options.description }),
-			...(options.parent && {
-				parentTaskId: options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`,
-			}),
-			...(options.priority && { priority: options.priority as "high" | "medium" | "low" }),
+	if (!createInput.title) {
+		return {
+			exitCode: 1,
+			stdout: "",
+			stderr: "Title is required",
 		};
+	}
 
-		// Handle acceptance criteria
-		if (options.ac) {
-			// Treat the entire ac string as a single criterion (matching current CLI behavior)
-			const trimmed = options.ac.trim();
-			if (trimmed) {
-				(task as Task).acceptanceCriteriaItems = [{ index: 1, text: trimmed, checked: false }];
-			}
+	if (options.ac) {
+		const trimmed = options.ac.trim();
+		if (trimmed) {
+			createInput.acceptanceCriteria = [{ text: trimmed, checked: false }];
 		}
+	}
 
-		// Handle implementation plan
-		if (options.plan) {
-			(task as Task).implementationPlan = options.plan;
-		}
+	if (options.plan) {
+		createInput.implementationPlan = options.plan;
+	}
 
-		// Validate dependencies exist
-		if (task.dependencies && task.dependencies.length > 0) {
-			const allTasks = await core.filesystem.listTasks();
-			const allDrafts = await core.filesystem.listDrafts();
-			const allIds = [...allTasks.map((t) => t.id), ...allDrafts.map((d) => d.id)];
+	if (options.notes) {
+		createInput.implementationNotes = options.notes;
+	}
 
-			const invalidDeps = task.dependencies.filter((dep) => !allIds.includes(dep));
-			if (invalidDeps.length > 0) {
-				return {
-					exitCode: 1,
-					stdout: "",
-					stderr: `The following dependencies do not exist: ${invalidDeps.join(", ")}`,
-					taskId,
-				};
-			}
-		}
-
-		// Create task or draft
-		if (options.draft) {
-			await core.createDraft(task, false);
-			return {
-				exitCode: 0,
-				stdout: `Created draft ${taskId}`,
-				stderr: "",
-				taskId,
-			};
-		}
-		await core.createTask(task, false);
+	try {
+		const { task } = await core.createTaskFromInput(createInput);
+		const isDraft = (task.status ?? "").toLowerCase() === "draft";
 		return {
 			exitCode: 0,
-			stdout: `Created task ${taskId}`,
+			stdout: isDraft ? `Created draft ${task.id}` : `Created task ${task.id}`,
 			stderr: "",
-			taskId,
+			taskId: task.id,
 		};
 	} catch (error) {
 		return {
@@ -249,9 +190,7 @@ async function editTaskViaCore(
 			};
 		}
 
-		// Update task with new values
-		const updatedTask: Task = {
-			...existingTask,
+		const updateInput: TaskUpdateInput = {
 			...(options.title && { title: options.title }),
 			...(options.description && { description: options.description }),
 			...(options.status && { status: options.status }),
@@ -259,30 +198,16 @@ async function editTaskViaCore(
 			...(options.labels && {
 				labels: options.labels
 					.split(",")
-					.map((l) => l.trim())
-					.filter(Boolean),
+					.map((label) => label.trim())
+					.filter((label) => label.length > 0),
 			}),
-			...(options.dependencies && {
-				dependencies: options.dependencies
-					.split(",")
-					.map((dep) => (dep.trim().startsWith("task-") ? dep.trim() : `task-${dep.trim()}`)),
-			}),
-			...(options.priority && { priority: options.priority as "high" | "medium" | "low" }),
-			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+			...(options.dependencies && { dependencies: normalizeDependencies(options.dependencies) }),
+			...(options.priority && { priority: options.priority as TaskUpdateInput["priority"] }),
+			...(options.notes && { implementationNotes: options.notes }),
+			...(options.plan && { implementationPlan: options.plan }),
 		};
 
-		// Update implementation notes if provided
-		if (options.notes) {
-			updatedTask.implementationNotes = options.notes;
-		}
-
-		// Update implementation plan if provided
-		if (options.plan) {
-			updatedTask.implementationPlan = options.plan;
-		}
-
-		// Save updated task
-		await core.updateTask(updatedTask, false);
+		await core.updateTaskFromInput(taskId, updateInput, false);
 		return {
 			exitCode: 0,
 			stdout: `Updated task ${taskId}`,

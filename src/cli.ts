@@ -3,6 +3,7 @@
 import { join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
+import { $, spawn } from "bun";
 import { Command } from "commander";
 import prompts from "prompts";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
@@ -10,10 +11,13 @@ import { configureAdvancedSettings } from "./commands/configure-advanced-setting
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { computeSequences } from "./core/sequences.ts";
+import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
 	addAgentInstructions,
 	Core,
+	type EnsureMcpGuidelinesResult,
+	ensureMcpGuidelines,
 	exportKanbanBoardToFile,
 	initializeGitRepository,
 	installClaudeAgent,
@@ -33,15 +37,107 @@ import type {
 	TaskListFilter,
 	TaskSearchResult,
 } from "./types/index.ts";
+import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
-import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
+import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
+import { parsePositiveIndexList, processAcceptanceCriteriaOptions, toStringArray } from "./utils/task-builders.ts";
+import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getVersion } from "./utils/version.ts";
+
+type IntegrationMode = "mcp" | "cli" | "none";
+
+function normalizeIntegrationOption(value: string): IntegrationMode | null {
+	const normalized = value.trim().toLowerCase();
+	if (
+		normalized === "mcp" ||
+		normalized === "connector" ||
+		normalized === "model-context-protocol" ||
+		normalized === "model_context_protocol"
+	) {
+		return "mcp";
+	}
+	if (
+		normalized === "cli" ||
+		normalized === "legacy" ||
+		normalized === "commands" ||
+		normalized === "command" ||
+		normalized === "instructions" ||
+		normalized === "instruction" ||
+		normalized === "agent" ||
+		normalized === "agents"
+	) {
+		return "cli";
+	}
+	if (
+		normalized === "none" ||
+		normalized === "skip" ||
+		normalized === "manual" ||
+		normalized === "later" ||
+		normalized === "no" ||
+		normalized === "off"
+	) {
+		return "none";
+	}
+	return null;
+}
+
+function toMcpServerName(projectName: string): string {
+	const base = projectName
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return (base.length > 0 ? base : "backlog") + "-backlog";
+}
+
+const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
+	claude: "CLAUDE.md",
+	codex: "AGENTS.md",
+	gemini: "GEMINI.md",
+	guide: "AGENTS.md",
+};
+
+async function openUrlInBrowser(url: string): Promise<void> {
+	let cmd: string[];
+	if (process.platform === "darwin") {
+		cmd = ["open", url];
+	} else if (process.platform === "win32") {
+		cmd = ["cmd", "/c", "start", "", url];
+	} else {
+		cmd = ["xdg-open", url];
+	}
+	try {
+		await $`${cmd}`.quiet();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(`  ⚠️  Unable to open browser automatically (${message}). Please visit ${url}`);
+	}
+}
+
+async function runMcpClientCommand(label: string, command: string, args: string[]): Promise<string> {
+	console.log(`    Configuring ${label}...`);
+	try {
+		const child = spawn({
+			cmd: [command, ...args],
+			stdout: "inherit",
+			stderr: "inherit",
+		});
+		await child.exited;
+		console.log(`    ✓ Added Backlog MCP server to ${label}`);
+		return label;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(`    ⚠️ Unable to configure ${label} automatically (${message}).`);
+		console.warn(`       Run manually: ${command} ${args.join(" ")}`);
+		return `${label} (manual setup required)`;
+	}
+}
 
 // Helper function for accumulating multiple CLI option values
 function createMultiValueAccumulator() {
@@ -56,29 +152,6 @@ function createMultiValueAccumulator() {
  * Processes --ac and --acceptance-criteria options to extract acceptance criteria
  * Handles both single values and arrays from multi-value accumulators
  */
-function processAcceptanceCriteriaOptions(options: {
-	ac?: string | string[];
-	acceptanceCriteria?: string | string[];
-}): string[] {
-	const criteria: string[] = [];
-
-	// Process --ac options
-	if (options.ac) {
-		const acCriteria = Array.isArray(options.ac) ? options.ac : [options.ac];
-		criteria.push(...acCriteria.map((c) => String(c).trim()).filter(Boolean));
-	}
-
-	// Process --acceptance-criteria options
-	if (options.acceptanceCriteria) {
-		const accCriteria = Array.isArray(options.acceptanceCriteria)
-			? options.acceptanceCriteria
-			: [options.acceptanceCriteria];
-		criteria.push(...accCriteria.map((c) => String(c).trim()).filter(Boolean));
-	}
-
-	return criteria;
-}
-
 function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partial<BacklogConfig> {
 	return {
 		checkActiveBranches: existingConfig?.checkActiveBranches ?? true,
@@ -209,6 +282,7 @@ program
 	.option("--web-port <number>", "default web UI port (default: 6420)")
 	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
+	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
 	.option("--defaults", "use default values for all prompts")
 	.action(
 		async (
@@ -224,6 +298,7 @@ program
 				webPort?: string;
 				autoOpenBrowser?: string;
 				installClaudeAgent?: string;
+				integrationMode?: string;
 				defaults?: boolean;
 			},
 		) => {
@@ -283,7 +358,8 @@ program
 					options.defaultEditor ||
 					options.webPort ||
 					options.autoOpenBrowser ||
-					options.installClaudeAgent
+					options.installClaudeAgent ||
+					options.integrationMode
 				);
 
 				// Get project name
@@ -326,119 +402,362 @@ program
 					return result;
 				};
 
-				// Agent instruction selection
+				const integrationOption = options.integrationMode
+					? normalizeIntegrationOption(options.integrationMode)
+					: undefined;
+				if (options.integrationMode && !integrationOption) {
+					console.error(`Invalid integration mode: ${options.integrationMode}. Valid options are: mcp, cli, none`);
+					process.exit(1);
+				}
+
+				let integrationMode: IntegrationMode | null = integrationOption ?? (isNonInteractive ? "mcp" : null);
+				const needsInteractiveIntegration = !integrationOption && !isNonInteractive;
+				const mcpServerName = toMcpServerName(name);
 				type AgentSelection = AgentSelectionValue;
 				let agentFiles: AgentInstructionFile[] = [];
 				let agentInstructionsSkipped = false;
+				let mcpClientSetupSummary: string | undefined;
+				const mcpGuideUrl = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
-				if (options.agentInstructions) {
-					const nameMap: Record<string, AgentSelection> = {
-						cursor: "AGENTS.md",
-						claude: "CLAUDE.md",
-						agents: "AGENTS.md",
-						gemini: "GEMINI.md",
-						copilot: ".github/copilot-instructions.md",
-						none: "none",
-						"CLAUDE.md": "CLAUDE.md",
-						"AGENTS.md": "AGENTS.md",
-						"GEMINI.md": "GEMINI.md",
-						".github/copilot-instructions.md": ".github/copilot-instructions.md",
-					};
+				if (
+					!integrationOption &&
+					integrationMode === "mcp" &&
+					(options.agentInstructions || options.installClaudeAgent)
+				) {
+					integrationMode = "cli";
+				}
 
-					const requestedInstructions = options.agentInstructions.split(",").map((f) => f.trim().toLowerCase());
-					const mappedFiles: AgentSelection[] = [];
+				if (integrationMode === "mcp" && (options.agentInstructions || options.installClaudeAgent)) {
+					console.error(
+						"The MCP connector option cannot be combined with --agent-instructions or --install-claude-agent.",
+					);
+					process.exit(1);
+				}
 
-					for (const instruction of requestedInstructions) {
-						const mappedFile = nameMap[instruction];
-						if (!mappedFile) {
-							console.error(`Invalid agent instruction: ${instruction}`);
-							console.error("Valid options are: cursor, claude, agents, gemini, copilot, none");
-							process.exit(1);
-						}
-						mappedFiles.push(mappedFile);
-					}
+				if (integrationMode === "none" && (options.agentInstructions || options.installClaudeAgent)) {
+					console.error(
+						"Skipping AI integration cannot be combined with --agent-instructions or --install-claude-agent.",
+					);
+					process.exit(1);
+				}
 
-					const { files, needsRetry, skipped } = processAgentSelection({ selected: mappedFiles });
-					if (needsRetry) {
-						agentFiles = [];
-						agentInstructionsSkipped = false;
-					} else {
-						agentFiles = files;
-						agentInstructionsSkipped = skipped;
-					}
-				} else if (isNonInteractive) {
-					agentFiles = [];
-				} else {
-					const defaultHint = "Enter selects highlighted agent (after moving); space toggles selections\n";
-					while (true) {
-						let highlighted: AgentSelection | undefined;
-						let initialCursor: number | undefined;
-						let cursorMoved = false;
-						const response = await prompts(
+				mainSelection: while (true) {
+					if (integrationMode === null) {
+						let cancelled = false;
+						const integrationPrompt = await prompts(
 							{
-								type: "multiselect",
-								name: "files",
-								message: "Select one or more agent instruction files to update",
+								type: "select",
+								name: "mode",
+								message: "How would you like your AI tools to connect to Backlog.md?",
+								hint: "Pick MCP when your editor supports the Model Context Protocol.",
+								initial: 0,
 								choices: [
 									{
-										title: "↓ Select an agent instruction from the list below",
-										value: PLACEHOLDER_AGENT_VALUE,
-										disabled: true,
+										title: "via MCP connector (recommended for Claude Code, Codex, Gemini, Cursor, etc.)",
+										description: "Agents learn the Backlog.md workflow through MCP tools, resources, and prompts.",
+										value: "mcp",
 									},
-									{ title: "CLAUDE.md (Claude Code)", value: "CLAUDE.md" },
 									{
-										title: "AGENTS.md (Codex, Jules, Amp, Cursor, Zed, Warp, Aider, GitHub, RooCode)",
-										value: "AGENTS.md",
+										title: "via CLI commands (legacy)",
+										description:
+											"Generate instruction files like CLAUDE.md and AGENTS.md for tools that read local docs.",
+										value: "cli",
 									},
-									{ title: "GEMINI.md (Google CLI)", value: "GEMINI.md" },
-									{ title: "Copilot (GitHub Copilot)", value: ".github/copilot-instructions.md" },
 									{
-										title: "Do not add instructions (danger, this will make backlog not usable with ai agents)",
+										title: "Skip for now (I am not using Backlog.md with AI tools)",
+										description: "Continue without setting up MCP or instruction files.",
 										value: "none",
 									},
 								],
-								hint: defaultHint,
-								instructions: false,
-								onRender: function () {
-									try {
-										const promptInstance = this as unknown as {
-											cursor: number;
-											value: Array<{ value: AgentSelection }>;
-											hint: string;
-										};
-										if (initialCursor === undefined) {
-											initialCursor = promptInstance.cursor;
-										}
-										if (initialCursor !== undefined && promptInstance.cursor !== initialCursor) {
-											cursorMoved = true;
-										}
-										const focus = promptInstance.value?.[promptInstance.cursor];
-										highlighted = focus?.value;
-										promptInstance.hint = defaultHint;
-									} catch {}
-									return undefined;
-								},
 							},
 							{
 								onCancel: () => {
-									console.log("Aborting initialization.");
-									process.exit(1);
+									cancelled = true;
 								},
 							},
 						);
 
-						const selected = (response?.files ?? []) as AgentSelection[];
-						const { files, needsRetry, skipped } = processAgentSelection({
-							selected,
-							highlighted,
-							useHighlightFallback: cursorMoved,
-						});
-						if (needsRetry) {
-							console.log("Please select at least one agent instruction file before continuing.");
-							continue;
+						if (cancelled) {
+							console.log("Initialization cancelled.");
+							return;
 						}
-						agentFiles = files;
-						agentInstructionsSkipped = skipped;
+
+						const selectedMode = integrationPrompt?.mode
+							? normalizeIntegrationOption(String(integrationPrompt.mode))
+							: null;
+						integrationMode = selectedMode ?? "mcp";
+						console.log("");
+					}
+
+					if (integrationMode === "cli") {
+						if (options.agentInstructions) {
+							const nameMap: Record<string, AgentSelection> = {
+								cursor: "AGENTS.md",
+								claude: "CLAUDE.md",
+								agents: "AGENTS.md",
+								gemini: "GEMINI.md",
+								copilot: ".github/copilot-instructions.md",
+								none: "none",
+								"CLAUDE.md": "CLAUDE.md",
+								"AGENTS.md": "AGENTS.md",
+								"GEMINI.md": "GEMINI.md",
+								".github/copilot-instructions.md": ".github/copilot-instructions.md",
+							};
+
+							const requestedInstructions = options.agentInstructions.split(",").map((f) => f.trim().toLowerCase());
+							const mappedFiles: AgentSelection[] = [];
+
+							for (const instruction of requestedInstructions) {
+								const mappedFile = nameMap[instruction];
+								if (!mappedFile) {
+									console.error(`Invalid agent instruction: ${instruction}`);
+									console.error("Valid options are: cursor, claude, agents, gemini, copilot, none");
+									process.exit(1);
+								}
+								mappedFiles.push(mappedFile);
+							}
+
+							const { files, needsRetry, skipped } = processAgentSelection({ selected: mappedFiles });
+							if (needsRetry) {
+								console.error("Please select at least one agent instruction file before continuing.");
+								process.exit(1);
+							}
+							agentFiles = files;
+							agentInstructionsSkipped = skipped;
+						} else if (isNonInteractive) {
+							agentFiles = [];
+						} else {
+							const defaultHint = "Enter selects highlighted agent (after moving); space toggles selections\n";
+							while (true) {
+								let highlighted: AgentSelection | undefined;
+								let initialCursor: number | undefined;
+								let cursorMoved = false;
+								let selectionCancelled = false;
+								const response = await prompts(
+									{
+										type: "multiselect",
+										name: "files",
+										message: "Select instruction files for CLI-based AI tools",
+										choices: [
+											{
+												title: "↓ Use space to toggle instruction files (enter accepts)",
+												value: PLACEHOLDER_AGENT_VALUE,
+												disabled: true,
+											},
+											{ title: "CLAUDE.md — Claude Code", value: "CLAUDE.md" },
+											{
+												title: "AGENTS.md — Codex, Cursor, Zed, Warp, Aider, RooCode, etc.",
+												value: "AGENTS.md",
+											},
+											{ title: "GEMINI.md — Google Gemini Code Assist CLI", value: "GEMINI.md" },
+											{ title: "Copilot instructions — GitHub Copilot", value: ".github/copilot-instructions.md" },
+										],
+										hint: defaultHint,
+										instructions: false,
+										onRender: function () {
+											try {
+												const promptInstance = this as unknown as {
+													cursor: number;
+													value: Array<{ value: AgentSelection }>;
+													hint: string;
+												};
+												if (initialCursor === undefined) {
+													initialCursor = promptInstance.cursor;
+												}
+												if (initialCursor !== undefined && promptInstance.cursor !== initialCursor) {
+													cursorMoved = true;
+												}
+												const focus = promptInstance.value?.[promptInstance.cursor];
+												highlighted = focus?.value;
+												promptInstance.hint = defaultHint;
+											} catch {}
+											return undefined;
+										},
+									},
+									{
+										onCancel: () => {
+											selectionCancelled = true;
+										},
+									},
+								);
+
+								if (selectionCancelled) {
+									integrationMode = null;
+									console.log("");
+									continue mainSelection;
+								}
+
+								const rawSelection = (response?.files ?? []) as AgentSelection[];
+								const selected =
+									rawSelection.length === 0 &&
+									highlighted &&
+									highlighted !== PLACEHOLDER_AGENT_VALUE &&
+									highlighted !== "none"
+										? [highlighted]
+										: rawSelection;
+								const { files, needsRetry, skipped } = processAgentSelection({
+									selected,
+									highlighted,
+									useHighlightFallback: cursorMoved,
+								});
+								if (needsRetry) {
+									console.log("Please select at least one agent instruction file before continuing.");
+									continue;
+								}
+								agentFiles = files;
+								agentInstructionsSkipped = skipped;
+								break;
+							}
+						}
+
+						break;
+					}
+
+					if (integrationMode === "mcp") {
+						if (isNonInteractive) {
+							mcpClientSetupSummary = "skipped (non-interactive)";
+							break;
+						}
+
+						console.log(`  MCP server name: ${mcpServerName}`);
+						while (true) {
+							let clientSelectionCancelled = false;
+							let highlightedClient: string | undefined;
+							const clientResponse = await prompts(
+								{
+									type: "multiselect",
+									name: "clients",
+									message: "Which AI tools should we configure right now?",
+									hint: "Space toggles items • Enter confirms (leave empty to skip)",
+									instructions: false,
+									choices: [
+										{ title: "Claude Code", value: "claude" },
+										{ title: "OpenAI Codex", value: "codex" },
+										{ title: "Gemini CLI", value: "gemini" },
+										{ title: "Other (open setup guide)", value: "guide" },
+									],
+									onRender: function () {
+										try {
+											const promptInstance = this as unknown as {
+												cursor: number;
+												value: Array<{ value: string }>;
+											};
+											highlightedClient = promptInstance.value?.[promptInstance.cursor]?.value;
+										} catch {}
+										return undefined;
+									},
+								},
+								{
+									onCancel: () => {
+										clientSelectionCancelled = true;
+									},
+								},
+							);
+
+							if (clientSelectionCancelled) {
+								integrationMode = null;
+								console.log("");
+								continue mainSelection;
+							}
+
+							const rawClients = (clientResponse?.clients ?? []) as string[];
+							const selectedClients = rawClients.length === 0 && highlightedClient ? [highlightedClient] : rawClients;
+							highlightedClient = undefined;
+							if (selectedClients.length === 0) {
+								console.log("  MCP client setup skipped (configure later if needed).");
+								mcpClientSetupSummary = "skipped";
+								break;
+							}
+
+							const results: string[] = [];
+							const mcpGuidelineUpdates: EnsureMcpGuidelinesResult[] = [];
+							const recordGuidelinesForClient = async (clientKey: string) => {
+								const instructionFile = MCP_CLIENT_INSTRUCTION_MAP[clientKey];
+								if (!instructionFile) {
+									return;
+								}
+								const nudgeResult = await ensureMcpGuidelines(cwd, instructionFile);
+								if (nudgeResult.changed) {
+									mcpGuidelineUpdates.push(nudgeResult);
+								}
+							};
+							const uniq = (values: string[]) => [...new Set(values)];
+
+							for (const client of selectedClients) {
+								if (client === "claude") {
+									const result = await runMcpClientCommand("Claude Code", "claude", [
+										"mcp",
+										"add",
+										mcpServerName,
+										"--",
+										"backlog",
+										"mcp",
+										"start",
+									]);
+									results.push(result);
+									await recordGuidelinesForClient(client);
+									continue;
+								}
+								if (client === "codex") {
+									const result = await runMcpClientCommand("OpenAI Codex", "codex", [
+										"mcp",
+										"add",
+										mcpServerName,
+										"--",
+										"backlog",
+										"mcp",
+										"start",
+									]);
+									results.push(result);
+									await recordGuidelinesForClient(client);
+									continue;
+								}
+								if (client === "gemini") {
+									const result = await runMcpClientCommand("Gemini CLI", "gemini", [
+										"mcp",
+										"add",
+										mcpServerName,
+										"backlog",
+										"mcp",
+										"start",
+									]);
+									results.push(result);
+									await recordGuidelinesForClient(client);
+									continue;
+								}
+								if (client === "guide") {
+									console.log("    Opening MCP setup guide in your browser...");
+									await openUrlInBrowser(mcpGuideUrl);
+									results.push("Setup guide opened");
+									await recordGuidelinesForClient(client);
+								}
+							}
+
+							if (mcpGuidelineUpdates.length > 0) {
+								const createdFiles = uniq(
+									mcpGuidelineUpdates.filter((entry) => entry.created).map((entry) => entry.fileName),
+								);
+								const updatedFiles = uniq(
+									mcpGuidelineUpdates.filter((entry) => !entry.created).map((entry) => entry.fileName),
+								);
+								if (createdFiles.length > 0) {
+									console.log(`    Created MCP reminder file(s): ${createdFiles.join(", ")}`);
+								}
+								if (updatedFiles.length > 0) {
+									console.log(`    Added MCP reminder to ${updatedFiles.join(", ")}`);
+								}
+							}
+
+							mcpClientSetupSummary = results.join(", ");
+							break;
+						}
+
+						break;
+					}
+
+					if (integrationMode === "none") {
+						agentFiles = [];
+						agentInstructionsSkipped = false;
 						break;
 					}
 				}
@@ -449,7 +768,8 @@ program
 
 				if (isNonInteractive) {
 					advancedConfig = applyAdvancedOptionOverrides();
-					installClaudeAgentSelection = parseBoolean(options.installClaudeAgent, false);
+					installClaudeAgentSelection =
+						integrationMode === "cli" ? parseBoolean(options.installClaudeAgent, false) : false;
 				} else {
 					const advancedPrompt = await prompts(
 						{
@@ -471,10 +791,10 @@ program
 						const wizardResult = await runAdvancedConfigWizard({
 							existingConfig,
 							cancelMessage: "Aborting initialization.",
-							includeClaudePrompt: true,
+							includeClaudePrompt: integrationMode === "cli",
 						});
 						advancedConfig = { ...defaultAdvancedConfig, ...wizardResult.config };
-						installClaudeAgentSelection = wizardResult.installClaudeAgent;
+						installClaudeAgentSelection = integrationMode === "cli" ? wizardResult.installClaudeAgent : false;
 						advancedConfigured = true;
 					}
 				}
@@ -503,12 +823,24 @@ program
 				// Show configuration summary
 				console.log("\nInitialization Summary:");
 				console.log(`  Project Name: ${config.projectName}`);
-				if (agentFiles.length > 0) {
-					console.log(`  Agent instructions: ${agentFiles.join(", ")}`);
-				} else if (agentInstructionsSkipped) {
-					console.log("  Agent instructions: skipped");
+				if (integrationMode === "cli") {
+					console.log("  AI Integration: CLI commands (legacy)");
+					if (agentFiles.length > 0) {
+						console.log(`  Agent instructions: ${agentFiles.join(", ")}`);
+					} else if (agentInstructionsSkipped) {
+						console.log("  Agent instructions: skipped");
+					} else {
+						console.log("  Agent instructions: none");
+					}
+				} else if (integrationMode === "mcp") {
+					console.log("  AI Integration: MCP connector");
+					console.log("  Agent instruction files: guidance is provided through the MCP connector.");
+					console.log(`  MCP server name: ${mcpServerName}`);
+					console.log(`  MCP client setup: ${mcpClientSetupSummary ?? "skipped"}`);
 				} else {
-					console.log("  Agent instructions: none");
+					console.log(
+						"  AI integration skipped. Configure later via `backlog init` or by registering the MCP server manually.",
+					);
 				}
 				if (advancedConfigured) {
 					console.log("  Advanced settings:");
@@ -540,15 +872,17 @@ program
 				}
 
 				// Add agent instruction files if selected
-				if (agentFiles.length > 0) {
-					await addAgentInstructions(cwd, core.gitOps, agentFiles, config.autoCommit);
-					console.log(`✓ Created agent instruction files: ${agentFiles.join(", ")}`);
-				} else if (agentInstructionsSkipped) {
-					console.log("Skipping agent instruction files per selection.");
+				if (integrationMode === "cli") {
+					if (agentFiles.length > 0) {
+						await addAgentInstructions(cwd, core.gitOps, agentFiles, config.autoCommit);
+						console.log(`✓ Created agent instruction files: ${agentFiles.join(", ")}`);
+					} else if (agentInstructionsSkipped) {
+						console.log("Skipping agent instruction files per selection.");
+					}
 				}
 
 				// Install Claude agent if selected
-				if (installClaudeAgentSelection) {
+				if (integrationMode === "cli" && installClaudeAgentSelection) {
 					await installClaudeAgent(cwd);
 					console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
 				}
@@ -749,7 +1083,7 @@ async function validateDependencies(
 	}
 
 	// Load both tasks and drafts to validate dependencies
-	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
+	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.fs.listDrafts()]);
 
 	const allTaskIds = new Set([...tasks.map((t) => t.id), ...drafts.map((d) => d.id)]);
 
@@ -895,8 +1229,7 @@ taskCmd
 		if (options.draft) {
 			const filepath = await core.createDraft(task);
 			if (isPlainFlag) {
-				const content = await Bun.file(filepath).text();
-				console.log(formatTaskPlainText(task, content, filepath));
+				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
 				return;
 			}
 			console.log(`Created draft ${id}`);
@@ -904,8 +1237,7 @@ taskCmd
 		} else {
 			const filepath = await core.createTask(task);
 			if (isPlainFlag) {
-				const content = await Bun.file(filepath).text();
-				console.log(formatTaskPlainText(task, content, filepath));
+				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
 				return;
 			}
 			console.log(`Created task ${id}`);
@@ -990,10 +1322,9 @@ program
 		const taskResults = searchResults.filter(isTaskSearchResult);
 		const searchResultTasks = taskResults.map((result) => result.task);
 
-		// Get ALL tasks for the viewer, not just search results
-		// This allows clearing the search to show all tasks
-		const allTasksRaw = await core.filesystem.listTasks();
-		const allTasks = allTasksRaw.filter((t: Task) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		const allTasks = (await core.queryTasks()).filter(
+			(task) => task.id && task.id.trim() !== "" && task.id.startsWith("task-"),
+		);
 
 		// If no tasks exist at all, show plain text results
 		if (allTasks.length === 0) {
@@ -1129,7 +1460,10 @@ taskCmd
 	.action(async (options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const contentStore = await core.getContentStore();
+		const cleanup = () => {
+			core.disposeSearchService();
+			core.disposeContentStore();
+		};
 		const baseFilters: TaskListFilter = {};
 		if (options.status) {
 			baseFilters.status = options.status;
@@ -1142,8 +1476,8 @@ taskCmd
 			const validPriorities = ["high", "medium", "low"] as const;
 			if (!validPriorities.includes(priorityLower as (typeof validPriorities)[number])) {
 				console.error(`Invalid priority: ${options.priority}. Valid values are: high, medium, low`);
-				contentStore.dispose();
 				process.exitCode = 1;
+				cleanup();
 				return;
 			}
 			baseFilters.priority = priorityLower as (typeof validPriorities)[number];
@@ -1155,35 +1489,34 @@ taskCmd
 			baseFilters.parentTaskId = parentId;
 		}
 
-		const tasks = contentStore.getTasks(baseFilters);
+		const tasks = await core.queryTasks({ filters: baseFilters });
 		const config = await core.filesystem.loadConfig();
 
 		if (parentId) {
-			const parentExists = contentStore.getTasks().some((task) => task.id === parentId);
+			const parentExists = (await core.queryTasks()).some((task) => task.id === parentId);
 			if (!parentExists) {
 				console.error(`Parent task ${parentId} not found.`);
-				contentStore.dispose();
 				process.exitCode = 1;
+				cleanup();
 				return;
 			}
 		}
 
-		// Apply sorting - default to priority sorting
 		let sortedTasks = tasks;
 		if (options.sort) {
 			const validSortFields = ["priority", "id"];
 			const sortField = options.sort.toLowerCase();
 			if (!validSortFields.includes(sortField)) {
 				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
-				contentStore.dispose();
 				process.exitCode = 1;
+				cleanup();
 				return;
 			}
 			sortedTasks = sortTasks(tasks, sortField);
 		} else {
-			// Default to priority sorting
 			sortedTasks = sortTasks(tasks, "priority");
 		}
+
 		let filtered = sortedTasks;
 		if (parentId) {
 			filtered = filtered.filter((task) => task.parentTaskId === parentId);
@@ -1191,119 +1524,108 @@ taskCmd
 
 		if (filtered.length === 0) {
 			if (options.parent) {
-				const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
-				console.log(`No child tasks found for parent task ${parentId}.`);
+				const canonicalParent = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+				console.log(`No child tasks found for parent task ${canonicalParent}.`);
 			} else {
 				console.log("No tasks found.");
 			}
-			contentStore.dispose();
+			cleanup();
 			return;
 		}
 
-		// Plain text output
-		// Workaround for bun compile issue with commander options
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
-			// If sorting by priority, do global sorting instead of status-grouped sorting
 			if (options.sort && options.sort.toLowerCase() === "priority") {
-				const sortedTasks = sortTasks(filtered, "priority");
+				const sortedByPriority = sortTasks(filtered, "priority");
 				console.log("Tasks (sorted by priority):");
-				for (const t of sortedTasks) {
+				for (const t of sortedByPriority) {
 					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
 					const statusIndicator = t.status ? ` (${t.status})` : "";
 					console.log(`  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}`);
 				}
-				contentStore.dispose();
+				cleanup();
 				return;
 			}
 
-			// Group by status case-insensitively, preserving configured casing
 			const canonicalByLower = new Map<string, string>();
 			const statuses = config?.statuses || [];
-			for (const s of statuses) canonicalByLower.set(s.toLowerCase(), s);
+			for (const status of statuses) {
+				canonicalByLower.set(status.toLowerCase(), status);
+			}
 
 			const groups = new Map<string, Task[]>();
 			for (const task of filtered) {
-				const raw = (task.status || "").trim();
-				const canonical = canonicalByLower.get(raw.toLowerCase()) || raw;
-				const list = groups.get(canonical) || [];
+				const rawStatus = (task.status || "").trim();
+				const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) || rawStatus;
+				const list = groups.get(canonicalStatus) || [];
 				list.push(task);
-				groups.set(canonical, list);
+				groups.set(canonicalStatus, list);
 			}
 
-			const ordered = [
-				...statuses.filter((s) => groups.has(s)),
-				...Array.from(groups.keys()).filter((s) => !statuses.includes(s)),
+			const orderedStatuses = [
+				...statuses.filter((status) => groups.has(status)),
+				...Array.from(groups.keys()).filter((status) => !statuses.includes(status)),
 			];
 
-			for (const status of ordered) {
+			for (const status of orderedStatuses) {
 				const list = groups.get(status);
 				if (!list) continue;
-
-				// Sort tasks within each status group if a sort field was specified
 				let sortedList = list;
 				if (options.sort) {
 					sortedList = sortTasks(list, options.sort.toLowerCase());
 				}
-
 				console.log(`${status || "No Status"}:`);
-				for (const t of sortedList) {
-					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
-					console.log(`  ${priorityIndicator}${t.id} - ${t.title}`);
-				}
+				sortedList.forEach((task) => {
+					const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
+					console.log(`  ${priorityIndicator}${task.id} - ${task.title}`);
+				});
 				console.log();
 			}
-			contentStore.dispose();
+			cleanup();
 			return;
 		}
 
-		// Interactive UI - use unified view for Tab switching support
-		if (filtered.length > 0) {
-			// Use the first task as the initial selection
-			const firstTask = filtered[0];
-			if (!firstTask) {
-				console.log("No tasks found.");
-				contentStore.dispose();
-				return;
-			}
-
-			// Build filter description for the footer and title
-			let filterDescription = "";
-			let title = "Tasks";
-
-			const filters = [];
-			if (options.status) filters.push(`Status: ${options.status}`);
-			if (options.assignee) filters.push(`Assignee: ${options.assignee}`);
-			if (options.parent) {
-				const parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
-				filters.push(`Parent: ${parentId}`);
-			}
-			if (options.priority) filters.push(`Priority: ${options.priority}`);
-			if (options.sort) filters.push(`Sort: ${options.sort}`);
-
-			if (filters.length > 0) {
-				filterDescription = filters.join(", ");
-				title = `Tasks (${filters.join(" • ")})`;
-			}
-
-			// Use unified view with Tab switching support
-			const { runUnifiedView } = await import("./ui/unified-view.ts");
-			await runUnifiedView({
-				core,
-				initialView: "task-list",
-				selectedTask: firstTask,
-				tasks: filtered,
-				filter: {
-					status: options.status,
-					assignee: options.assignee,
-					priority: options.priority,
-					sort: options.sort,
-					title,
-					filterDescription,
-					parentTaskId: parentId,
-				},
-			});
+		const firstTask = filtered[0];
+		if (!firstTask) {
+			console.log("No tasks found.");
+			cleanup();
+			return;
 		}
+
+		let filterDescription = "";
+		let title = "Tasks";
+		const activeFilters: string[] = [];
+		if (options.status) activeFilters.push(`Status: ${options.status}`);
+		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
+		if (options.parent) {
+			const canonicalParent = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+			activeFilters.push(`Parent: ${canonicalParent}`);
+		}
+		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
+		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
+
+		if (activeFilters.length > 0) {
+			filterDescription = activeFilters.join(", ");
+			title = `Tasks (${activeFilters.join(" • ")})`;
+		}
+
+		const { runUnifiedView } = await import("./ui/unified-view.ts");
+		await runUnifiedView({
+			core,
+			initialView: "task-list",
+			selectedTask: firstTask,
+			tasks: filtered,
+			filter: {
+				status: options.status,
+				assignee: options.assignee,
+				priority: options.priority,
+				sort: options.sort,
+				title,
+				filterDescription,
+				parentTaskId: parentId,
+			},
+		});
+		cleanup();
 	});
 
 taskCmd
@@ -1362,22 +1684,23 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const task = await core.filesystem.loadTask(taskId);
+		const canonicalId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+		const existingTask = await core.filesystem.loadTask(canonicalId);
 
-		if (!task) {
+		if (!existingTask) {
 			console.error(`Task ${taskId} not found.`);
+			process.exitCode = 1;
 			return;
 		}
 
-		if (options.title) {
-			task.title = String(options.title);
-		}
-		if (options.description || options.desc) {
-			task.description = String(options.description || options.desc);
-		}
-		if (typeof options.assignee !== "undefined") {
-			task.assignee = [String(options.assignee)];
-		}
+		const parseCommaSeparated = (value: unknown): string[] => {
+			return toStringArray(value)
+				.flatMap((entry) => String(entry).split(","))
+				.map((entry) => entry.trim())
+				.filter((entry) => entry.length > 0);
+		};
+
+		let canonicalStatus: string | undefined;
 		if (options.status) {
 			const canonical = await getCanonicalStatus(String(options.status), core);
 			if (!canonical) {
@@ -1388,158 +1711,144 @@ taskCmd
 				process.exitCode = 1;
 				return;
 			}
-			task.status = canonical;
+			canonicalStatus = canonical;
 		}
 
+		let normalizedPriority: "high" | "medium" | "low" | undefined;
 		if (options.priority) {
 			const priority = String(options.priority).toLowerCase();
-			const validPriorities = ["high", "medium", "low"];
-			if (validPriorities.includes(priority)) {
-				task.priority = priority as "high" | "medium" | "low";
-			} else {
+			const validPriorities = ["high", "medium", "low"] as const;
+			if (!validPriorities.includes(priority as (typeof validPriorities)[number])) {
 				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
+				process.exitCode = 1;
 				return;
 			}
+			normalizedPriority = priority as "high" | "medium" | "low";
 		}
 
+		let ordinalValue: number | undefined;
 		if (options.ordinal !== undefined) {
-			const ordinal = Number(options.ordinal);
-			if (Number.isNaN(ordinal) || ordinal < 0) {
+			const parsed = Number(options.ordinal);
+			if (Number.isNaN(parsed) || parsed < 0) {
 				console.error(`Invalid ordinal: ${options.ordinal}. Must be a non-negative number.`);
-				return;
-			}
-			task.ordinal = ordinal;
-		}
-
-		const labels = [...task.labels];
-		if (options.label) {
-			const newLabels = String(options.label)
-				.split(",")
-				.map((l: string) => l.trim())
-				.filter(Boolean);
-			labels.splice(0, labels.length, ...newLabels);
-		}
-		if (options.addLabel) {
-			const adds = Array.isArray(options.addLabel) ? options.addLabel : [options.addLabel];
-			for (const l of adds) {
-				const trimmed = String(l).trim();
-				if (trimmed && !labels.includes(trimmed)) labels.push(trimmed);
-			}
-		}
-		if (options.removeLabel) {
-			const removes = Array.isArray(options.removeLabel) ? options.removeLabel : [options.removeLabel];
-			for (const l of removes) {
-				const trimmed = String(l).trim();
-				const idx = labels.indexOf(trimmed);
-				if (idx !== -1) labels.splice(idx, 1);
-			}
-		}
-		task.labels = labels;
-
-		// Handle dependencies
-		if (options.dependsOn || options.dep) {
-			const dependencies = normalizeDependencies(options.dependsOn || options.dep);
-			const { valid, invalid } = await validateDependencies(dependencies, core);
-			if (invalid.length > 0) {
-				console.error(`Error: The following dependencies do not exist: ${invalid.join(", ")}`);
-				console.error("Please create these tasks first or check the task IDs.");
 				process.exitCode = 1;
 				return;
 			}
-			task.dependencies = valid;
+			ordinalValue = parsed;
 		}
 
-		// Handle adding new acceptance criteria (unified handling for both --ac and --acceptance-criteria)
-		const criteria = processAcceptanceCriteriaOptions(options);
-		if (criteria.length > 0) {
-			const current = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
-			let nextIndex = current.length > 0 ? Math.max(...current.map((c) => c.index)) + 1 : 1;
-			const merged = [...current, ...criteria.map((text) => ({ index: nextIndex++, text, checked: false }))];
-			task.acceptanceCriteriaItems = merged;
-		}
-
-		// Handle AC operations (remove, check, uncheck) with support for multiple values
-		if (options.removeAc || options.checkAc || options.uncheckAc) {
-			try {
-				let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
-				const toNums = (v: unknown): number[] => {
-					const arr = Array.isArray(v) ? v : v ? [v] : [];
-					return arr.map((x) => {
-						const n = Number.parseInt(String(x), 10);
-						if (!Number.isFinite(n) || Number.isNaN(n) || n < 1) {
-							throw new Error(`Invalid index: ${String(x)}. Index must be a positive number (1-based).`);
-						}
-						return n;
-					});
-				};
-				const removes = toNums(options.removeAc).sort((a: number, b: number) => b - a);
-				for (const idx of removes) {
-					const before = list.length;
-					list = list.filter((c) => c.index !== idx).map((c, i) => ({ ...c, index: i + 1 }));
-					if (list.length === before) throw new Error(`Acceptance criterion #${idx} not found`);
-				}
-				for (const idx of toNums(options.checkAc)) {
-					if (!list.some((c) => c.index === idx))
-						throw new Error(`Failed to check AC #${idx}: Acceptance criterion #${idx} not found`);
-					list = list.map((c) => (c.index === idx ? { ...c, checked: true } : c));
-				}
-				for (const idx of toNums(options.uncheckAc)) {
-					if (!list.some((c) => c.index === idx))
-						throw new Error(`Failed to uncheck AC #${idx}: Acceptance criterion #${idx} not found`);
-					list = list.map((c) => (c.index === idx ? { ...c, checked: false } : c));
-				}
-				task.acceptanceCriteriaItems = list;
-			} catch (error) {
-				console.error(error instanceof Error ? error.message : String(error));
-				process.exitCode = 1;
-				return;
-			}
-		}
-
-		// Handle implementation plan
-		if (options.plan) {
-			task.implementationPlan = String(options.plan);
-		}
-
-		// Handle implementation notes - replace or append
 		if (options.appendNotes && options.notes) {
 			console.error("Cannot use --notes (replace) together with --append-notes (append). Choose one.");
 			process.exitCode = 1;
 			return;
 		}
 
-		if (options.notes) {
-			// Replace semantics
-			task.implementationNotes = String(options.notes);
+		let removeCriteria: number[] | undefined;
+		let checkCriteria: number[] | undefined;
+		let uncheckCriteria: number[] | undefined;
+
+		try {
+			const removes = parsePositiveIndexList(options.removeAc);
+			if (removes.length > 0) {
+				removeCriteria = removes;
+			}
+			const checks = parsePositiveIndexList(options.checkAc);
+			if (checks.length > 0) {
+				checkCriteria = checks;
+			}
+			const unchecks = parsePositiveIndexList(options.uncheckAc);
+			if (unchecks.length > 0) {
+				uncheckCriteria = unchecks;
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+			return;
 		}
 
-		if (options.appendNotes) {
-			const appends = Array.isArray(options.appendNotes) ? options.appendNotes : [options.appendNotes];
-			const combined = appends
-				.map((v: string) => String(v))
-				.filter(Boolean)
-				.join("\n\n");
-			// Merge into existing implementation notes (normalize spacing at the join)
-			const existing = (task.implementationNotes || "").replace(/\s+$/, "").trim();
-			const addition = String(combined).replace(/^\s+|\s+$/g, "");
-			const merged = existing ? `${existing}\n\n${addition}` : addition;
-			(task as { implementationNotes?: string }).implementationNotes = merged;
+		const labelValues = parseCommaSeparated(options.label);
+		const addLabelValues = parseCommaSeparated(options.addLabel);
+		const removeLabelValues = parseCommaSeparated(options.removeLabel);
+		const assigneeValues = parseCommaSeparated(options.assignee);
+		const acceptanceAdditions = processAcceptanceCriteriaOptions(options);
+
+		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
+		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
+
+		const notesAppendValues = toStringArray(options.appendNotes);
+
+		const editArgs: TaskEditArgs = {};
+		if (options.title) {
+			editArgs.title = String(options.title);
+		}
+		const descriptionOption = options.description ?? options.desc;
+		if (descriptionOption !== undefined) {
+			editArgs.description = String(descriptionOption);
+		}
+		if (canonicalStatus) {
+			editArgs.status = canonicalStatus;
+		}
+		if (normalizedPriority) {
+			editArgs.priority = normalizedPriority;
+		}
+		if (ordinalValue !== undefined) {
+			editArgs.ordinal = ordinalValue;
+		}
+		if (labelValues.length > 0) {
+			editArgs.labels = labelValues;
+		}
+		if (addLabelValues.length > 0) {
+			editArgs.addLabels = addLabelValues;
+		}
+		if (removeLabelValues.length > 0) {
+			editArgs.removeLabels = removeLabelValues;
+		}
+		if (assigneeValues.length > 0) {
+			editArgs.assignee = assigneeValues;
+		}
+		if (dependencyValues && dependencyValues.length > 0) {
+			editArgs.dependencies = dependencyValues;
+		}
+		if (typeof options.plan === "string") {
+			editArgs.planSet = String(options.plan);
+		}
+		if (typeof options.notes === "string") {
+			editArgs.notesSet = String(options.notes);
+		}
+		if (notesAppendValues.length > 0) {
+			editArgs.notesAppend = notesAppendValues;
+		}
+		if (acceptanceAdditions.length > 0) {
+			editArgs.acceptanceCriteriaAdd = acceptanceAdditions;
+		}
+		if (removeCriteria) {
+			editArgs.acceptanceCriteriaRemove = removeCriteria;
+		}
+		if (checkCriteria) {
+			editArgs.acceptanceCriteriaCheck = checkCriteria;
+		}
+		if (uncheckCriteria) {
+			editArgs.acceptanceCriteriaUncheck = uncheckCriteria;
 		}
 
-		await core.updateTask(task);
+		let updatedTask: Task;
+		try {
+			const updateInput = buildTaskUpdateInput(editArgs);
+			updatedTask = await core.editTask(canonicalId, updateInput);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+			return;
+		}
 
-		// Workaround for bun compile issue with commander options
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
-			const filePath = await getTaskPath(task.id, core);
-			if (filePath) {
-				const content = await Bun.file(filePath).text();
-				console.log(formatTaskPlainText(task, content, filePath));
-				return;
-			}
+			const filePath = await getTaskPath(updatedTask.id, core);
+			console.log(formatTaskPlainText(updatedTask, { filePathOverride: filePath ?? undefined }));
+			return;
 		}
 
-		console.log(`Updated task ${task.id}`);
+		console.log(`Updated task ${updatedTask.id}`);
 	});
 
 // Note: Implementation notes appending is handled via `task edit --append-notes` only.
@@ -1557,7 +1866,6 @@ taskCmd
 			console.error(`Task ${taskId} not found.`);
 			return;
 		}
-		const content = await Bun.file(filePath).text();
 		const task = await core.filesystem.loadTask(taskId);
 
 		if (!task) {
@@ -1567,12 +1875,12 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(task, content, filePath));
+			console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
 			return;
 		}
 
 		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(task, content, { startWithDetailFocus: true });
+		await viewTaskEnhanced(task, { startWithDetailFocus: true, core });
 	});
 
 taskCmd
@@ -1629,7 +1937,6 @@ taskCmd
 			console.error(`Task ${taskId} not found.`);
 			return;
 		}
-		const content = await Bun.file(filePath).text();
 		const task = await core.filesystem.loadTask(taskId);
 
 		if (!task) {
@@ -1639,12 +1946,12 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (options.plain || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(task, content, filePath));
+			console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
 			return;
 		}
 
 		// Use unified view with detail focus and Tab switching support
-		const allTasks = await core.filesystem.listTasks();
+		const allTasks = await core.queryTasks();
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
 		await runUnifiedView({
 			core,
@@ -1779,7 +2086,6 @@ draftCmd
 			console.error(`Draft ${taskId} not found.`);
 			return;
 		}
-		const content = await Bun.file(filePath).text();
 		const draft = await core.filesystem.loadDraft(taskId);
 
 		if (!draft) {
@@ -1789,12 +2095,12 @@ draftCmd
 
 		// Plain text output for AI agents
 		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(draft, content, filePath));
+			console.log(formatTaskPlainText(draft));
 			return;
 		}
 
 		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, content, { startWithDetailFocus: true });
+		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
 	});
 
 draftCmd
@@ -1815,7 +2121,6 @@ draftCmd
 			console.error(`Draft ${taskId} not found.`);
 			return;
 		}
-		const content = await Bun.file(filePath).text();
 		const draft = await core.filesystem.loadDraft(taskId);
 
 		if (!draft) {
@@ -1825,12 +2130,12 @@ draftCmd
 
 		// Plain text output for AI agents
 		if (options && (options.plain || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(draft, content, filePath));
+			console.log(formatTaskPlainText(draft, { filePathOverride: filePath }));
 			return;
 		}
 
 		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, content, { startWithDetailFocus: true });
+		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
 	});
 
 const boardCmd = program.command("board");
@@ -2174,7 +2479,7 @@ sequenceCmd
 	.action(async (options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const tasks = await core.filesystem.listTasks();
+		const tasks = await core.queryTasks();
 		// Exclude tasks marked as Done from sequences (case-insensitive)
 		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
 		const { unsequenced, sequences } = computeSequences(activeTasks);
@@ -2497,7 +2802,7 @@ program
 			}
 
 			// Get all Done tasks
-			const tasks = await core.filesystem.listTasks();
+			const tasks = await core.queryTasks();
 			const doneTasks = tasks.filter((task) => task.status === "Done");
 
 			if (doneTasks.length === 0) {

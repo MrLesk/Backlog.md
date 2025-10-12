@@ -7,6 +7,11 @@ export interface AcceptanceCriterion {
 	checked: boolean;
 }
 
+export interface AcceptanceCriterionInput {
+	text: string;
+	checked?: boolean;
+}
+
 export interface Task {
 	id: string;
 	title: string;
@@ -18,7 +23,7 @@ export interface Task {
 	labels: string[];
 	milestone?: string;
 	dependencies: string[];
-	readonly rawContent: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
+	readonly rawContent?: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
@@ -29,9 +34,52 @@ export interface Task {
 	priority?: "high" | "medium" | "low";
 	branch?: string;
 	ordinal?: number;
+	filePath?: string;
 	// Metadata fields (previously in TaskWithMetadata)
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed";
+}
+
+export interface TaskCreateInput {
+	title: string;
+	description?: string;
+	status?: TaskStatus;
+	priority?: "high" | "medium" | "low";
+	labels?: string[];
+	assignee?: string[];
+	dependencies?: string[];
+	parentTaskId?: string;
+	implementationPlan?: string;
+	implementationNotes?: string;
+	acceptanceCriteria?: AcceptanceCriterionInput[];
+	rawContent?: string;
+}
+
+export interface TaskUpdateInput {
+	title?: string;
+	description?: string;
+	status?: TaskStatus;
+	priority?: "high" | "medium" | "low";
+	labels?: string[];
+	addLabels?: string[];
+	removeLabels?: string[];
+	assignee?: string[];
+	ordinal?: number;
+	dependencies?: string[];
+	addDependencies?: string[];
+	removeDependencies?: string[];
+	implementationPlan?: string;
+	appendImplementationPlan?: string[];
+	clearImplementationPlan?: boolean;
+	implementationNotes?: string;
+	appendImplementationNotes?: string[];
+	clearImplementationNotes?: boolean;
+	acceptanceCriteria?: AcceptanceCriterionInput[];
+	addAcceptanceCriteria?: Array<AcceptanceCriterionInput | string>;
+	removeAcceptanceCriteria?: number[];
+	checkAcceptanceCriteria?: number[];
+	uncheckAcceptanceCriteria?: number[];
+	rawContent?: string;
 }
 
 export interface TaskListFilter {
@@ -80,6 +128,8 @@ export interface SearchMatch {
 export interface SearchFilters {
 	status?: string | string[];
 	priority?: SearchPriorityFilter | SearchPriorityFilter[];
+	assignee?: string | string[];
+	labels?: string | string[];
 }
 
 export interface SearchOptions {

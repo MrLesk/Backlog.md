@@ -53,32 +53,40 @@ export class McpInternalError extends McpError {
 /**
  * Formats MCP errors into standardized tool responses
  */
-export function handleMcpError(error: unknown): CallToolResult {
-	if (error instanceof McpError) {
-		const includeDetails = !!process.env.DEBUG;
-		return {
-			content: [
-				{
-					type: "text",
-					text: formatErrorMarkdown(error.code, error.message, error.details, includeDetails),
-				},
-			],
-			isError: true,
-		};
-	}
-
-	// Log unexpected errors for debugging but don't expose details to clients
-	console.error("Unexpected MCP error:", error);
-
+function buildErrorResult(code: string, message: string, details?: unknown): CallToolResult {
 	const includeDetails = !!process.env.DEBUG;
+	const structured = details !== undefined ? { code, details } : { code };
 	return {
 		content: [
 			{
 				type: "text",
-				text: formatErrorMarkdown("INTERNAL_ERROR", "An unexpected error occurred", error, includeDetails),
+				text: formatErrorMarkdown(code, message, details, includeDetails),
 			},
 		],
 		isError: true,
+		structuredContent: structured,
+	};
+}
+
+export function handleMcpError(error: unknown): CallToolResult {
+	if (error instanceof McpError) {
+		return buildErrorResult(error.code, error.message, error.details);
+	}
+
+	console.error("Unexpected MCP error:", error);
+
+	return {
+		content: [
+			{
+				type: "text",
+				text: formatErrorMarkdown("INTERNAL_ERROR", "An unexpected error occurred", error, !!process.env.DEBUG),
+			},
+		],
+		isError: true,
+		structuredContent: {
+			code: "INTERNAL_ERROR",
+			details: error,
+		},
 	};
 }
 
@@ -90,12 +98,13 @@ export function handleMcpSuccess(data: unknown): CallToolResult {
 		content: [
 			{
 				type: "text",
-				text: JSON.stringify({
-					success: true,
-					data,
-				}),
+				text: "OK",
 			},
 		],
+		structuredContent: {
+			success: true,
+			data,
+		},
 	};
 }
 

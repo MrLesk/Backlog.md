@@ -42,7 +42,8 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description\n\n## Implementation Notes\n\nOriginal notes",
+				description: "Test description",
+				implementationNotes: "Original notes",
 			},
 			false,
 		);
@@ -57,10 +58,10 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		res = await $`bun ${CLI_PATH} task edit 1 --append-notes "Third addition"`.cwd(TEST_DIR).quiet().nothrow();
 		expect(res.exitCode).toBe(0);
 
-		const updated = await core.filesystem.loadTask("task-1");
-		expect(updated).not.toBeNull();
+		const updatedBody = await core.getTaskContent("task-1");
+		expect(updatedBody).not.toBeNull();
 
-		const body = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
+		const body = extractStructuredSection(updatedBody ?? "", "implementationNotes") || "";
 		expect(body).toBe("Original notes\n\nFirst addition\n\nSecond addition\n\nThird addition");
 	});
 
@@ -75,8 +76,9 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				rawContent:
-					"## Description\n\nDesc here\n\n## Acceptance Criteria\n\n- [ ] Do X\n\n## Implementation Plan\n\n1. A\n2. B",
+				description: "Desc here",
+				acceptanceCriteriaItems: [{ index: 1, text: "Do X", checked: false }],
+				implementationPlan: "1. A\n2. B",
 			},
 			false,
 		);
@@ -84,8 +86,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		const res = await $`bun ${CLI_PATH} task edit 2 --append-notes "Notes after plan"`.cwd(TEST_DIR).quiet().nothrow();
 		expect(res.exitCode).toBe(0);
 
-		const updated = await core.filesystem.loadTask("task-2");
-		const content = updated?.rawContent || "";
+		const content = (await core.getTaskContent("task-2")) ?? "";
 		const notesContent = extractStructuredSection(content, "implementationNotes") || "";
 		expect(notesContent).toBe("Notes after plan");
 		const planMarker = "<!-- SECTION:PLAN:BEGIN -->";
@@ -105,7 +106,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "Simple description",
+				description: "Simple description",
 			},
 			false,
 		);
@@ -118,12 +119,12 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 			.nothrow();
 		expect(res.exitCode).toBe(0);
 
-		const updated = await core.filesystem.loadTask("task-3");
-		const body = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
+		const updatedBody = await core.getTaskContent("task-3");
+		const body = extractStructuredSection(updatedBody ?? "", "implementationNotes") || "";
 		expect(body).toContain("Line1\nLine2\n\nPara2");
 	});
 
-	it("rejects mixing --notes (replace) with --append-notes (append)", async () => {
+	it("allows combining --notes (replace) with --append-notes (append)", async () => {
 		const core = new Core(TEST_DIR);
 		await core.createTask(
 			{
@@ -134,7 +135,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 				createdDate: "2025-09-10 00:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "Description only",
+				description: "Description only",
 			},
 			false,
 		);
@@ -144,7 +145,9 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 			.quiet()
 			.nothrow();
 
-		expect(res.exitCode).not.toBe(0);
-		expect(res.stderr.toString()).toContain("Cannot use --notes (replace) together with --append-notes (append)");
+		expect(res.exitCode).toBe(0);
+		const updatedBody = await core.getTaskContent("task-4");
+		const body = extractStructuredSection(updatedBody ?? "", "implementationNotes") || "";
+		expect(body).toBe("Replace\n\nAppend");
 	});
 });

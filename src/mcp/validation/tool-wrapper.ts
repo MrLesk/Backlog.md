@@ -1,4 +1,3 @@
-import type { Core } from "../../core/backlog.ts";
 import { handleMcpError, McpValidationError } from "../errors/mcp-errors.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
 import type { JsonSchema, ValidationResult } from "./validators.ts";
@@ -7,11 +6,10 @@ import { validateInput } from "./validators.ts";
 /**
  * Validation context for tool calls
  */
-export interface ValidationContext {
+export type ValidationContext = {
 	clientId?: string;
 	timestamp: number;
-	core?: Core;
-}
+};
 
 /**
  * Tool handler function with validation context

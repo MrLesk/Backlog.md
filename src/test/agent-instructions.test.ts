@@ -7,6 +7,7 @@ import {
 	addAgentInstructions,
 	CLAUDE_GUIDELINES,
 	COPILOT_GUIDELINES,
+	ensureMcpGuidelines,
 	GEMINI_GUIDELINES,
 	README_GUIDELINES,
 } from "../index.ts";
@@ -133,5 +134,49 @@ describe("addAgentInstructions", () => {
 		const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+	});
+
+	it("replaces CLI guidelines with MCP nudge when switching modes", async () => {
+		const agentsPath = join(TEST_DIR, "AGENTS.md");
+		const cliBlock = [
+			"Preface content",
+			"<!-- BACKLOG.MD GUIDELINES START -->",
+			"CLI instructions here",
+			"<!-- BACKLOG.MD GUIDELINES END -->",
+			"Footer line",
+			"",
+		].join("\n");
+		await Bun.write(agentsPath, cliBlock);
+
+		await ensureMcpGuidelines(TEST_DIR, "AGENTS.md");
+		const updated = await Bun.file(agentsPath).text();
+
+		expect(updated).not.toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(updated).not.toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(updated).toContain("<!-- BACKLOG.MD MCP GUIDELINES START -->");
+		expect(updated).toContain("<!-- BACKLOG.MD MCP GUIDELINES END -->");
+		expect(updated).toContain("Preface content");
+		expect(updated).toContain("Footer line");
+	});
+
+	it("replaces MCP nudge with CLI guidelines when switching modes", async () => {
+		const agentsPath = join(TEST_DIR, "AGENTS.md");
+		const mcpBlock = [
+			"Header",
+			"<!-- BACKLOG.MD MCP GUIDELINES START -->",
+			"MCP reminder here",
+			"<!-- BACKLOG.MD MCP GUIDELINES END -->",
+			"",
+		].join("\n");
+		await Bun.write(agentsPath, mcpBlock);
+
+		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		const updated = await Bun.file(agentsPath).text();
+
+		expect(updated).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		expect(updated).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
+		expect(updated).not.toContain("<!-- BACKLOG.MD MCP GUIDELINES START -->");
+		expect(updated).not.toContain("<!-- BACKLOG.MD MCP GUIDELINES END -->");
+		expect(updated).toContain("Header");
 	});
 });

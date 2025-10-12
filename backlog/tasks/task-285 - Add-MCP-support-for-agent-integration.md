@@ -2,9 +2,10 @@
 id: task-285
 title: Add MCP support for agent integration
 status: Done
-assignee: []
+assignee:
+  - '@codex'
 created_date: '2025-09-13 18:52'
-updated_date: '2025-10-02 15:40'
+updated_date: '2025-10-11 20:07'
 labels:
   - mcp
   - integration
@@ -21,10 +22,10 @@ Implement Model Context Protocol (MCP) support to expose backlog.md functionalit
 ## Architecture
 
 MCP server extends Core class, providing:
-- **33+ Tools**: Complete CLI parity (tasks, drafts, docs, notes, board, config, dependencies, sequences)
+- **30+ Tools**: CLI parity (tasks, drafts, docs, notes, board, config, dependencies, sequences)
 - **10+ Resources**: Read-only data access (tasks, board state, metrics, docs)
-- **3 Transports**: stdio (recommended), HTTP, SSE (localhost-only with runtime enforcement)
-- **7 CLI Commands**: setup, security, start, stop, status, test, doctor
+- **Transport**: stdio-only (recommended; safest for local assistants)
+- **CLI Command**: `backlog mcp start`
 
 ## Key Principles
 
@@ -36,12 +37,12 @@ MCP server extends Core class, providing:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 MCP server extends Core class with stdio/HTTP/SSE transports
+- [x] #1 MCP server extends Core class with stdio transport
 - [x] #2 33+ MCP tools provide complete CLI feature parity
 - [x] #3 10+ MCP resources for read-only data access
-- [x] #4 7 CLI commands for setup, control, and diagnostics
+- [x] #4 CLI command group exposes setup, security, and start workflows
 - [x] #5 Localhost-only security with runtime enforcement
-- [x] #6 Comprehensive test coverage (1,067 tests, 100% pass rate)
+- [x] #6 Comprehensive test coverage (full suite passing)
 - [x] #7 Complete documentation (architecture, security, setup)
 - [x] #8 Architecture compliance verified (pure wrapper, Core API usage)
 <!-- AC:END -->
@@ -52,74 +53,28 @@ MCP server extends Core class, providing:
 ## ✅ Implementation Complete
 
 **Branch**: user/radleta/mcp-support
-**Commit**: 7c00591
-**Status**: Production-ready, approved for merge
+**Status**: Production-ready after stdio-only simplification
 
 ### Deliverables
 
-**Code**:
-- 104 files changed (+27,002 lines)
-- 30 MCP source files in `src/mcp/`
-- 25 test files (1,067 tests, 100% pass rate)
-- 33+ tools, 10+ resources, 3 transports
+- MCP server (`src/mcp/server.ts`) extends `Core`, exposes 30+ tools and 10 resources via stdio transport
+- CLI command group now exposes `backlog mcp start`
 
-**CLI Commands**:
-```bash
-backlog mcp setup|security|start|stop|status|test|doctor
-```
+### Security & Architecture
 
-**Documentation**:
-- `docs/mcp/README.md` - Implementation overview
-- `docs/mcp/SECURITY.md` - Security model & warnings
-- Updated CLAUDE.md, DEVELOPMENT.md, README.md
+- Stdio transport is the single supported execution path (no HTTP/SSE endpoints)
+- Runtime behaviour remains local-only; no network sockets are opened
+- MCP layer continues to be a pure protocol wrapper over existing Core APIs
 
-### Quality Metrics
+### Quality Validation
 
-✅ **Tests**: 1,067/1,067 passing (100%)
-✅ **TypeScript**: 0 errors
-✅ **Code Quality**: Biome clean
-✅ **Security**: Localhost enforcement verified
-✅ **Architecture**: Core API compliance verified
+- `BUN_TEST_TIMEOUT=120000 bun test --test-concurrency=1` (full suite) – green
+- TypeScript compilation and Biome formatting checks pass
+- No new runtime dependencies introduced
 
-### Key Features
+### Notes
 
-**Tools (33+)**:
-- Task lifecycle: create, list, update, view, archive, demote
-- Drafts: create, list, view, promote, archive
-- Documents & decisions: CRUD operations
-- Notes & plans: set, append, get, clear
-- Board & config: view, manage
-- Dependencies & sequences: add, remove, validate, plan
-
-**Resources (10+)**:
-- tasks://list, tasks://by-status, tasks://by-label
-- board://overview, config://current, metrics://summary
-- Individual task access, archived tasks, docs
-
-**Transports (3)**:
-- stdio (recommended - max security)
-- HTTP (localhost-only with runtime validation)
-- SSE (localhost-only with streaming support)
-
-### Security
-
-Runtime enforcement prevents binding to 0.0.0.0 or public IPs. All network transports restricted to localhost (127.0.0.1, ::1) with token-based auth.
-
-### Architecture Compliance
-
-✅ Pure protocol wrapper (zero business logic)
-✅ Core API usage (no direct fs/git operations)
-✅ Shared utilities (task-builders, validators)
-✅ Localhost-only security model
-
-### Pre-Merge Validation
-
-All completed 2025-10-02:
-- ✅ Fixed 3 failing tests → 100% pass rate
-- ✅ TypeScript compilation clean
-- ✅ Biome quality checks passed
-- ✅ Security audit (localhost enforcement added)
-- ✅ Architecture audit (Core API usage verified)
-
-**Ready for merge to main**
+- All HTTP/SSE transport files, connection manager, PID management, and associated tests have been removed
+- MCP CLI commands trimmed accordingly; references to `stop`, `status`, `test`, and `doctor` were dropped across docs/tests
+- Task 285 description/ACs updated to describe the stdio-only architecture
 <!-- SECTION:NOTES:END -->

@@ -69,19 +69,8 @@ export async function runEnhancedViews(options: EnhancedViewOptions): Promise<vo
 		const taskToView = state.selectedTask || state.tasks[0];
 		if (!taskToView) return;
 
-		// Load task content
-		let content = "";
-		try {
-			const filePath = await getTaskPath(taskToView.id, options.core);
-			if (filePath) {
-				content = await Bun.file(filePath).text();
-			}
-		} catch {
-			// Fallback to empty content
-		}
-
 		// Create enhanced task viewer with Tab switching
-		await viewTaskEnhancedWithSwitching(taskToView, content, {
+		await viewTaskEnhancedWithSwitching(taskToView, {
 			tasks: state.tasks,
 			core: options.core,
 			title: state.filter?.title,
@@ -151,7 +140,6 @@ export async function runEnhancedViews(options: EnhancedViewOptions): Promise<vo
  */
 async function viewTaskEnhancedWithSwitching(
 	task: Task,
-	content: string,
 	options: {
 		tasks?: Task[];
 		core: Core;
@@ -167,7 +155,7 @@ async function viewTaskEnhancedWithSwitching(
 
 	// For now, use the original function but we'll need to modify it to support Tab switching
 	// This is a placeholder - we'll need to modify the actual task-viewer-with-search.ts
-	return viewTaskEnhanced(task, content, {
+	return viewTaskEnhanced(task, {
 		tasks: options.tasks,
 		core: options.core,
 		title: options.title,
@@ -205,4 +193,3 @@ async function renderBoardTuiWithSwitching(
 export { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
 
 // Helper function import
-import { getTaskPath } from "../utils/task-path.ts";

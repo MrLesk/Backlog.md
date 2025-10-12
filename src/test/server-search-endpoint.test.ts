@@ -19,7 +19,7 @@ const baseTask: Task = {
 	updatedDate: "2025-09-20 10:00",
 	labels: ["search"],
 	dependencies: [],
-	rawContent: "## Details\nAlpha token appears here",
+	description: "Alpha token appears here",
 	priority: "high",
 };
 
@@ -53,7 +53,7 @@ const dependentTask: Task = {
 	updatedDate: "2025-09-20 10:30",
 	labels: ["search"],
 	dependencies: [baseTask.id],
-	rawContent: "## Details\nDepends on task-0007 for completion",
+	description: "Depends on task-0007 for completion",
 	priority: "medium",
 };
 
@@ -167,7 +167,7 @@ describe("BacklogServer search endpoint", () => {
 			body: JSON.stringify({
 				title: "Immediate fetch",
 				status: "In Progress",
-				rawContent: "## Description\nImmediate availability",
+				description: "Immediate availability",
 			}),
 		});
 		expect(createResponse.ok).toBe(true);

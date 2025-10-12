@@ -74,13 +74,14 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 			},
 		},
 		required: ["title"],
+		additionalProperties: false,
 	};
 }
 
 /**
- * Generates the task_update input schema with dynamic status enum
+ * Generates the task_edit input schema with dynamic status enum and MCP-specific operations.
  */
-export function generateTaskUpdateSchema(config: BacklogConfig): JsonSchema {
+export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 	return {
 		type: "object",
 		properties: {
@@ -127,25 +128,78 @@ export function generateTaskUpdateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				maxLength: 10000,
 			},
-		},
-		required: ["id"],
-	};
-}
-
-/**
- * Generates the draft_promote input schema with dynamic status enum
- */
-export function generateDraftPromoteSchema(config: BacklogConfig): JsonSchema {
-	return {
-		type: "object",
-		properties: {
-			id: {
+			notesSet: {
 				type: "string",
-				minLength: 1,
-				maxLength: 50,
+				maxLength: 20000,
 			},
-			status: generateStatusFieldSchema(config),
+			notesAppend: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 5000,
+				},
+				maxItems: 20,
+			},
+			notesClear: {
+				type: "boolean",
+			},
+			planSet: {
+				type: "string",
+				maxLength: 20000,
+			},
+			planAppend: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 5000,
+				},
+				maxItems: 20,
+			},
+			planClear: {
+				type: "boolean",
+			},
+			acceptanceCriteriaSet: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				maxItems: 50,
+			},
+			acceptanceCriteriaAdd: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				maxItems: 50,
+			},
+			acceptanceCriteriaRemove: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+			},
+			acceptanceCriteriaCheck: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+			},
+			acceptanceCriteriaUncheck: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+			},
 		},
 		required: ["id"],
+		additionalProperties: false,
 	};
 }

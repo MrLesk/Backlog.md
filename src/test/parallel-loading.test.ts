@@ -148,7 +148,7 @@ describe("Parallel remote task loading", () => {
 			createdDate: "2025-06-13",
 			labels: [],
 			dependencies: [],
-			rawContent: "Local version",
+			description: "Local version",
 			source: "local",
 			lastModified: new Date("2025-06-13T10:00:00Z"),
 		};
@@ -161,7 +161,7 @@ describe("Parallel remote task loading", () => {
 			createdDate: "2025-06-13",
 			labels: [],
 			dependencies: [],
-			rawContent: "Remote version",
+			description: "Remote version",
 			source: "remote",
 			branch: "feature",
 			lastModified: new Date("2025-06-13T12:00:00Z"),

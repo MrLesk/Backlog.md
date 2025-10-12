@@ -1,162 +1,21 @@
 ## Local Development
 
-### TL;DR
+Run these commands to bootstrap the project:
 
 ```bash
-git clone <repository-url>
-cd Backlog.md
-bun install && bun link    # Sets up dev environment
-bun test                    # Run tests
+bun install
 ```
 
-For detailed troubleshooting, see sections below.
-
----
-
-### Quick Start
-
-The project now features smart CLI detection for seamless development workflow:
+Run tests:
 
 ```bash
-git clone <repository-url>
-cd Backlog.md
-bun install       # Automatically sets up development environment
-bun link          # Creates global symlink - now works seamlessly!
+bun test
 ```
 
-The CLI automatically detects your development environment and uses TypeScript source files directly, eliminating the need for manual builds during development.
-
-### Development Commands
+Format and lint:
 
 ```bash
-bun test          # Run all tests
-bun test --watch  # Run tests in watch mode
-bun run check .   # Format and lint with Biome
-bunx tsc --noEmit # Type-check code
-```
-
-### CLI Detection Behavior
-
-The smart CLI wrapper (`scripts/cli.cjs`) automatically chooses the best execution mode with improved priority:
-
-- **Development Mode**: Uses `bun src/cli.ts` when:
-  - Globally linked installation detected (`bun link` or `npm link`)
-  - OR source files exist and no platform binaries available
-  - Bun runtime is available
-
-- **Production Mode**: Uses platform binaries when:
-  - Installed via npm/npx with platform-specific packages
-  - Platform binary packages are available
-
-- **Built Mode**: Uses `dist/backlog` when:
-  - Built binary exists but no source files (rare scenario)
-  - Manual override with `BACKLOG_EXECUTION_MODE=built`
-
-### Troubleshooting Development Issues
-
-**❌ "Unknown command" error after `bun link`:**
-```bash
-# This usually means the built binary is corrupted or incompatible
-# Solution 1: Force development mode
-BACKLOG_EXECUTION_MODE=development backlog --version
-
-# Solution 2: Rebuild the binary
-bun run build
-
-# Solution 3: Enable debug to see what's happening
-BACKLOG_DEBUG=true backlog --version
-```
-
-**❌ "Bun runtime not found" error:**
-```bash
-# Install Bun
-curl -fsSL https://bun.sh/install | bash
-# Restart your terminal
-
-# Or force using built binary instead
-BACKLOG_EXECUTION_MODE=built backlog --version
-```
-
-**❌ CLI still using old version after `bun link`:**
-```bash
-# Enable debug mode to see detection logic
-BACKLOG_DEBUG=true backlog --version
-
-# Check if global link detection is working
-# Should show "Is globally linked: true"
-
-# Force development mode if needed
-BACKLOG_EXECUTION_MODE=development backlog --version
-```
-
-**🔧 Manual Execution Mode Override:**
-```bash
-# Force development mode (uses bun src/cli.ts)
-BACKLOG_EXECUTION_MODE=development backlog --version
-
-# Force built mode (uses dist/backlog)
-BACKLOG_EXECUTION_MODE=built backlog --version
-
-# Force production mode (uses platform binary)
-BACKLOG_EXECUTION_MODE=production backlog --version
-```
-
-**🔧 Disable Smart Detection (Legacy Mode):**
-```bash
-export BACKLOG_SMART_CLI=false
-# CLI will fall back to legacy platform binary behavior
-```
-
-**🔍 Debug Information:**
-```bash
-# See detailed execution mode detection
-BACKLOG_DEBUG=true backlog --version
-
-# Check what the CLI wrapper detects:
-# - Script real path (follows symlinks)
-# - Project root directory
-# - Available execution options (src, dist, platform binary)
-# - Global link status
-# - Final execution mode choice
-```
-
-### MCP Development Troubleshooting
-
-**❌ MCP setup creates .mcp.json with wrong paths:**
-```bash
-# This happens when running `backlog mcp setup` from a different project
-# The fix automatically detects cross-project setup
-
-# Solution 1: The new setup detects this and creates correct paths
-backlog mcp setup --force
-
-# Solution 2: Manually verify the generated .mcp.json
-cat .mcp.json
-# Should contain: "command": "backlog" (not absolute paths)
-```
-
-**❌ MCP server fails to start in development mode:**
-```bash
-# Check what type of setup was created
-backlog mcp doctor
-
-# Force development template if needed
-backlog mcp setup --force
-
-# Test MCP connection
-backlog mcp test --verbose
-```
-
-**🔧 MCP Cross-Project Development:**
-```bash
-# When developing backlog.md but using MCP in another project:
-cd /path/to/other/project
-backlog mcp setup    # Automatically detects cross-project scenario
-
-# The setup will:
-# - Use templates from backlog.md source directory
-# - Configure command to use global 'backlog' (your dev version)
-# - Set correct project root for the target project
+npx biome check .
 ```
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -178,15 +37,13 @@ Install at least one AI coding assistant:
 
 ```bash
 # Terminal 1: Start the MCP server
-bun run src/mcp-stdio-server.ts
+bun run mcp
+
+# Optional: include debug logs
+bun run mcp -- --debug
 ```
 
-The server will start and listen on stdio. You should see:
-```
-MCP Server started (stdio mode)
-Server name: backlog-md
-Available tools: 40+
-```
+The server will start and listen on stdio. You should see log messages confirming the stdio transport is active.
 
 #### 2. Configure Your Agent
 
@@ -195,7 +52,7 @@ Choose one of the methods below based on your agent:
 **Claude Code (Recommended for Development):**
 ```bash
 # Add to project (creates .mcp.json)
-claude mcp add backlog-dev -- bun run $(pwd)/src/mcp-stdio-server.ts
+claude mcp add backlog-dev -- bun run mcp
 ```
 
 **Codex CLI:**
@@ -203,12 +60,12 @@ claude mcp add backlog-dev -- bun run $(pwd)/src/mcp-stdio-server.ts
 # Edit ~/.codex/config.toml
 [mcp_servers.backlog-dev]
 command = "bun"
-args = ["run", "/absolute/path/to/backlog.md/src/mcp-stdio-server.ts"]
+args = ["run", "mcp"]
 ```
 
 **Gemini CLI:**
 ```bash
-gemini mcp add backlog-dev bun run $(pwd)/src/mcp-stdio-server.ts
+gemini mcp add backlog-dev bun run mcp
 ```
 
 #### 3. Test the Connection
@@ -227,11 +84,53 @@ Open your agent and test:
 
 ### Testing Individual Agents
 
-Each AI agent has different configuration requirements. Run `backlog mcp setup` to see agent-specific instructions.
+Each AI agent has different configuration requirements. Start the server from your project root and follow the assistant's instructions to register it:
+
+```bash
+backlog mcp start
+```
+
+### Testing with MCP Inspector
+
+Use the Inspector tooling when you want to exercise the stdio server outside an AI agent.
+
+#### GUI workflow (`npx @modelcontextprotocol/inspector`)
+
+1. Launch the Inspector UI in a terminal: `npx @modelcontextprotocol/inspector`
+2. Choose **STDIO** transport.
+3. Fill the connection fields exactly as follows:
+   - **Command**: `bun`
+   - **Arguments** (enter each item separately): `--cwd`, `/Users/<you>/Projects/Backlog.md`, `src/cli.ts`, `mcp`, `start`
+   - Remove any proxy token; it is not needed for local stdio.
+4. Connect and use the tools/resources panes to issue MCP requests.
+
+> Replace `/Users/<you>/Projects/Backlog.md` with the absolute path to your local Backlog.md checkout.
+
+`bun run mcp` by itself prints Bun's `$ bun …` preamble, which breaks the Inspector’s JSON parser. If you prefer using the package script here, add `--silent` so the startup log disappears:
+
+```
+Command: bun
+Arguments: run, --silent, mcp
+```
+
+> Remember to substitute your own project directory for `/Users/<you>/Projects/Backlog.md`.
+
+#### CLI workflow (`npx @modelcontextprotocol/inspector-cli`)
+
+Run the CLI helper when you want to script quick checks:
+
+```bash
+npx @modelcontextprotocol/inspector-cli \
+  --cli \
+  --transport stdio \
+  --method tools/list \
+  -- bun --cwd /Users/<you>/Projects/Backlog.md src/cli.ts mcp start
+```
+
+The key detail in both flows is to call `src/cli.ts mcp start` directly (or `bun run --silent mcp`) so stdout stays pure JSON for the MCP handshake.
 
 ### Adding New MCP Agents
 
-To add support for a new AI assistant, create a JSON configuration file in `src/mcp/agents/` following the pattern of existing agents (claude-code.json, codex.json, etc.).
 
 ### Project Structure
 
@@ -239,16 +138,12 @@ To add support for a new AI assistant, create a JSON configuration file in `src/
 backlog.md/
 ├── src/
 │   ├── mcp/
-│   │   ├── agents/          # Agent JSON configs
-│   │   │   ├── claude-code.json
-│   │   │   ├── codex.json
-│   │   │   ├── gemini.json
-│   │   │   └── loader.ts    # Agent config loader
+│   │   ├── errors/          # MCP error helpers
+│   │   ├── resources/       # Read-only resource adapters
 │   │   ├── tools/           # MCP tool implementations
-│   │   ├── prompts/         # MCP prompts
-│   │   └── mcp-stdio-server.ts
-│   └── commands/
-│       └── mcp-setup.ts     # Setup command
+│   │   ├── utils/           # Shared utilities
+│   │   ├── validation/      # Input validators
+│   │   └── server.ts        # createMcpServer entry point
 └── docs/
     ├── mcp/                 # User-facing MCP docs
     └── development/         # Developer docs

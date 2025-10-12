@@ -1,15 +1,3 @@
-/**
- * MCP Server for Backlog.md
- *
- * ⚠️ LOCAL DEVELOPMENT ONLY: Designed for localhost use with local AI assistants.
- * See docs/mcp/SECURITY.md for usage guidelines.
- *
- * Supported transports:
- * - stdio: Process isolation (recommended)
- * - http: localhost only (127.0.0.1)
- * - sse: localhost only (127.0.0.1)
- */
-
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -21,9 +9,10 @@ import {
 	ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
-import { ConnectionManager } from "./connection/manager.ts";
-import { BacklogHttpTransport, type HttpTransportOptions } from "./transports/http.ts";
-import { BacklogSseTransport, type SseTransportOptions } from "./transports/sse.ts";
+import { getPackageName } from "../utils/app-info.ts";
+import { getVersion } from "../utils/version.ts";
+import { registerCoreTools } from "./tools/core/index.ts";
+import { registerTaskTools } from "./tools/tasks/index.ts";
 import type {
 	CallToolResult,
 	GetPromptResult,
@@ -34,48 +23,52 @@ import type {
 	McpResourceHandler,
 	McpToolHandler,
 	ReadResourceResult,
-	TransportType,
 } from "./types.ts";
 
+/**
+ * Minimal MCP server implementation for stdio transport.
+ *
+ * The Backlog.md MCP server is intentionally local-only and exposes tools,
+ * resources, and prompts through the stdio transport so that desktop editors
+ * (e.g. Claude Code) can interact with a project without network exposure.
+ */
+const APP_NAME = getPackageName();
+const APP_VERSION = await getVersion();
+const INSTRUCTIONS_POINTER =
+	"At the beginning of each session, call the `read_backlog_instructions` tool once and follow the Backlog.md workflow it returns. That tool response is the authoritative instruction set for all work on this project.";
+
+type ServerInitOptions = {
+	debug?: boolean;
+};
+
 export class McpServer extends Core {
-	private server: Server;
-	private transport?: StdioServerTransport | BacklogSseTransport | BacklogHttpTransport;
-	private connectionManager?: ConnectionManager;
-	private cleanupInterval?: NodeJS.Timeout;
-	private tools: Map<string, McpToolHandler>;
-	private resources: Map<string, McpResourceHandler>;
-	private prompts: Map<string, McpPromptHandler>;
-	private transportType?: TransportType;
+	private readonly server: Server;
+	private transport?: StdioServerTransport;
+
+	private readonly tools = new Map<string, McpToolHandler>();
+	private readonly resources = new Map<string, McpResourceHandler>();
+	private readonly prompts = new Map<string, McpPromptHandler>();
 
 	constructor(projectRoot: string) {
 		super(projectRoot);
 
-		this.tools = new Map();
-		this.resources = new Map();
-		this.prompts = new Map();
-
 		this.server = new Server(
 			{
-				name: "backlog.md-mcp-server",
-				version: "1.0.0",
+				name: APP_NAME,
+				version: APP_VERSION,
 			},
 			{
 				capabilities: {
-					tools: {
-						listChanged: true,
-					},
-					resources: {
-						subscribe: false,
-						listChanged: true,
-					},
-					prompts: {
-						listChanged: true,
-					},
+					tools: { listChanged: true },
+					resources: { listChanged: true },
+					prompts: { listChanged: true },
 				},
+				instructions: INSTRUCTIONS_POINTER,
 			},
 		);
 
 		this.setupHandlers();
+		registerCoreTools(this);
 	}
 
 	private setupHandlers(): void {
@@ -86,6 +79,64 @@ export class McpServer extends Core {
 		this.server.setRequestHandler(ListPromptsRequestSchema, async () => this.listPrompts());
 		this.server.setRequestHandler(GetPromptRequestSchema, async (request) => this.getPrompt(request));
 	}
+
+	/**
+	 * Register a tool implementation with the server.
+	 */
+	public addTool(tool: McpToolHandler): void {
+		this.tools.set(tool.name, tool);
+	}
+
+	/**
+	 * Register a resource implementation with the server.
+	 */
+	public addResource(resource: McpResourceHandler): void {
+		this.resources.set(resource.uri, resource);
+	}
+
+	/**
+	 * Register a prompt implementation with the server.
+	 */
+	public addPrompt(prompt: McpPromptHandler): void {
+		this.prompts.set(prompt.name, prompt);
+	}
+
+	/**
+	 * Connect the server to the stdio transport.
+	 */
+	public async connect(): Promise<void> {
+		if (this.transport) {
+			return;
+		}
+
+		this.transport = new StdioServerTransport();
+		await this.server.connect(this.transport);
+	}
+
+	/**
+	 * Start the server. The stdio transport begins handling requests as soon as
+	 * it is connected, so this method exists primarily for symmetry with
+	 * callers that expect an explicit start step.
+	 */
+	public async start(): Promise<void> {
+		if (!this.transport) {
+			throw new Error("MCP server not connected. Call connect() before start().");
+		}
+	}
+
+	/**
+	 * Stop the server and release transport resources.
+	 */
+	public async stop(): Promise<void> {
+		await this.server.close();
+		this.transport = undefined;
+	}
+
+	public getServer(): Server {
+		return this.server;
+	}
+
+	// -- Internal handlers --------------------------------------------------
 
 	protected async listTools(): Promise<ListToolsResult> {
 		return {
@@ -127,12 +178,12 @@ export class McpServer extends Core {
 	protected async readResource(request: { params: { uri: string } }): Promise<ReadResourceResult> {
 		const { uri } = request.params;
 
-		// First try exact match
+		// Exact match first
 		let resource = this.resources.get(uri);
 
-		// If not found, try to match by base URI (for parameterized resources)
+		// Fallback to base URI for parameterised resources
 		if (!resource) {
-			const baseUri = uri.split("?")[0] || uri; // Remove query parameters
+			const baseUri = uri.split("?")[0] || uri;
 			resource = this.resources.get(baseUri);
 		}
 
@@ -166,121 +217,9 @@ export class McpServer extends Core {
 		return await prompt.handler(args);
 	}
 
-	public addTool(tool: McpToolHandler): void {
-		this.tools.set(tool.name, tool);
-	}
-
-	public addResource(resource: McpResourceHandler): void {
-		this.resources.set(resource.uri, resource);
-	}
-
-	public addPrompt(prompt: McpPromptHandler): void {
-		this.prompts.set(prompt.name, prompt);
-	}
-
-	private async startStdioTransport(): Promise<void> {
-		this.transport = new StdioServerTransport();
-		await this.server.connect(this.transport);
-		console.error("MCP server running on stdio"); // Log to stderr to avoid stdout interference
-	}
-
-	private async startSseTransport(options?: SseTransportOptions): Promise<void> {
-		if (!this.connectionManager) {
-			throw new Error("Connection manager not initialized for SSE transport");
-		}
-		this.transport = new BacklogSseTransport(options);
-		await this.transport.start(this.server, this.connectionManager);
-	}
-
-	private async startHttpTransport(options?: HttpTransportOptions): Promise<void> {
-		if (!this.connectionManager) {
-			throw new Error("Connection manager not initialized for HTTP transport");
-		}
-		this.transport = new BacklogHttpTransport(options);
-		await this.transport.start(this.server, this.connectionManager);
-	}
-
-	public async connect(
-		transportType: TransportType,
-		options?: SseTransportOptions | HttpTransportOptions,
-	): Promise<void> {
-		this.transportType = transportType;
-
-		if (transportType === "stdio") {
-			await this.startStdioTransport();
-		} else {
-			// Create ConnectionManager only for network transports
-			if (!this.connectionManager) {
-				this.connectionManager = new ConnectionManager({
-					inactivity: 30000, // 30 seconds
-					absolute: 3600000, // 1 hour
-				});
-			}
-
-			if (transportType === "sse") {
-				await this.startSseTransport(options as SseTransportOptions);
-			} else if (transportType === "http") {
-				await this.startHttpTransport(options as HttpTransportOptions);
-			} else {
-				throw new Error(`Unknown transport type: ${transportType}`);
-			}
-		}
-	}
-
-	public async start(): Promise<void> {
-		if (!this.transport) {
-			throw new Error("No transport connected. Call connect() first.");
-		}
-
-		// Start periodic connection cleanup only for network transports
-		if (this.connectionManager && (this.transportType === "http" || this.transportType === "sse")) {
-			this.cleanupInterval = this.connectionManager.startPeriodicCleanup(60000); // Every minute
-		}
-
-		// Server automatically starts when transport connects
-	}
-
 	/**
-	 * Get the actual port number that the transport is listening on
-	 * @returns The port number, or undefined if no transport is connected or it doesn't support port reporting
+	 * Helper exposed for tests so they can call handlers directly.
 	 */
-	public getPort(): number | undefined {
-		if (this.transport && "getPort" in this.transport) {
-			return this.transport.getPort();
-		}
-		return undefined;
-	}
-
-	public async stop(): Promise<void> {
-		// Stop periodic cleanup
-		if (this.cleanupInterval) {
-			clearInterval(this.cleanupInterval);
-			this.cleanupInterval = undefined;
-		}
-
-		// Clean up all connections (only for network transports)
-		if (this.connectionManager) {
-			this.connectionManager.stopPeriodicCleanup();
-			await this.connectionManager.removeAllConnections("Server shutdown");
-		}
-
-		if (this.transport && "stop" in this.transport) {
-			await this.transport.stop();
-		}
-		if (this.server) {
-			await this.server.close();
-		}
-	}
-
-	public getServer(): Server {
-		return this.server;
-	}
-
-	public getConnectionManager(): ConnectionManager | undefined {
-		return this.connectionManager;
-	}
-
-	// Test interface for accessing protected methods
 	public get testInterface() {
 		return {
 			listTools: () => this.listTools(),
@@ -292,4 +231,26 @@ export class McpServer extends Core {
 				this.getPrompt(request),
 		};
 	}
+}
+
+/**
+ * Factory that bootstraps a fully configured MCP server instance.
+ */
+export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
+	const server = new McpServer(projectRoot);
+
+	await server.ensureConfigLoaded();
+
+	const config = await server.filesystem.loadConfig();
+	if (!config) {
+		throw new Error("Failed to load backlog configuration");
+	}
+
+	registerTaskTools(server, config);
+
+	if (options.debug) {
+		console.error("MCP server initialised (stdio transport only).");
+	}
+
+	return server;
 }

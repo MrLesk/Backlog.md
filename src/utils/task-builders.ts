@@ -1,5 +1,4 @@
 import type { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
 
 /**
  * Shared utilities for building tasks and validating dependencies
@@ -82,91 +81,45 @@ export function processAcceptanceCriteriaOptions(options: {
 }
 
 /**
- * Build a Task object from CLI/MCP options
- * This is the core task building logic shared between CLI and MCP
+ * Normalize a list of string values by trimming whitespace, dropping empties, and deduplicating.
+ * Returns `undefined` when the resulting list is empty so callers can skip optional updates.
  */
-export function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
-	const parentInput = options.parent ? String(options.parent) : undefined;
-	const normalizedParent = parentInput
-		? parentInput.startsWith("task-")
-			? parentInput
-			: `task-${parentInput}`
-		: undefined;
-	const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
-	// Handle dependencies - they will be validated separately
-	const dependencies = normalizeDependencies(options.dependsOn || options.dep);
-	// Validate priority option
-	const priority = options.priority ? String(options.priority).toLowerCase() : undefined;
-	const validPriorities = ["high", "medium", "low"];
-	const validatedPriority =
-		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
-	return {
-		id,
-		title,
-		status: options.status ? String(options.status) : "",
-		assignee: options.assignee ? [String(options.assignee)] : [],
-		createdDate,
-		labels: options.labels
-			? String(options.labels)
-					.split(",")
-					.map((l: string) => l.trim())
-					.filter(Boolean)
-			: [],
-		dependencies,
-		rawContent: "",
-		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
-		...(normalizedParent && { parentTaskId: normalizedParent }),
-		...(validatedPriority && { priority: validatedPriority }),
-	};
+export function normalizeStringList(values: string[] | undefined): string[] | undefined {
+	if (!values) return undefined;
+	const unique = Array.from(new Set(values.map((value) => String(value).trim()).filter((value) => value.length > 0)));
+	return unique.length > 0 ? unique : undefined;
 }
 
 /**
- * Interface for MCP-compatible options
- * Simplified version that matches MCP tool argument patterns
+ * Convert Commander-style option values into a string array.
+ * Handles single values, repeated flags, and undefined/null inputs.
  */
-export interface McpTaskOptions {
-	title: string;
-	description?: string;
-	labels?: string[];
-	assignee?: string[];
-	priority?: "high" | "medium" | "low";
-	status?: string;
-	parentTaskId?: string;
-	acceptanceCriteria?: string[];
-	dependencies?: string[];
+export function toStringArray(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value.map((item) => String(item));
+	}
+	if (value === undefined || value === null) {
+		return [];
+	}
+	return [String(value)];
 }
 
 /**
- * Build a Task object from MCP-style options
- * Converts MCP arguments to the format expected by buildTaskFromOptions
+ * Parse a Commander option (single value or array) into a strictly positive integer list.
+ * Throws an Error when any value is invalid so callers can surface CLI-friendly messaging.
  */
-export function buildTaskFromMcpOptions(id: string, mcpOptions: McpTaskOptions): Task {
-	// Convert MCP options to CLI-style options format
-	const cliOptions: Record<string, unknown> = {
-		description: mcpOptions.description,
-		assignee: mcpOptions.assignee?.[0], // CLI takes single assignee string
-		status: mcpOptions.status,
-		labels: mcpOptions.labels?.join(","), // CLI expects comma-separated string
-		priority: mcpOptions.priority,
-		parent: mcpOptions.parentTaskId,
-		dep: mcpOptions.dependencies, // Will be normalized by buildTaskFromOptions
-	};
+export function parsePositiveIndexList(value: unknown): number[] {
+	const entries = Array.isArray(value) ? value : value !== undefined && value !== null ? [value] : [];
+	return entries.map((entry) => {
+		const parsed = Number.parseInt(String(entry), 10);
+		if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed < 1) {
+			throw new Error(`Invalid index: ${String(entry)}. Index must be a positive number (1-based).`);
+		}
+		return parsed;
+	});
+}
 
-	const task = buildTaskFromOptions(id, mcpOptions.title, cliOptions);
-
-	// Handle MCP-specific fields that CLI doesn't support directly
-	if (mcpOptions.acceptanceCriteria && mcpOptions.acceptanceCriteria.length > 0) {
-		task.acceptanceCriteriaItems = mcpOptions.acceptanceCriteria.map((text, index) => ({
-			index: index + 1,
-			text,
-			checked: false,
-		}));
-	}
-
-	// MCP can have multiple assignees, CLI only supports one
-	if (mcpOptions.assignee && mcpOptions.assignee.length > 1) {
-		task.assignee = mcpOptions.assignee;
-	}
-
-	return task;
+export function stringArraysEqual(a: string[], b: string[]): boolean {
+	if (a.length !== b.length) return false;
+	return a.every((value, index) => value === b[index]);
 }

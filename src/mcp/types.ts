@@ -36,8 +36,6 @@ export interface McpPromptHandler {
 	handler: (args: Record<string, unknown>) => Promise<GetPromptResult>;
 }
 
-export type TransportType = "stdio" | "sse" | "http";
-
 export type {
 	CallToolResult,
 	ListResourcesResult,
