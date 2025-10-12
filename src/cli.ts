@@ -25,6 +25,8 @@ import type {
 	DecisionSearchResult,
 	Document as DocType,
 	DocumentSearchResult,
+	Milestone,
+	MilestoneSearchResult,
 	SearchPriorityFilter,
 	SearchResult,
 	SearchResultType,
@@ -37,6 +39,7 @@ import { createLoadingScreen } from "./ui/loading.ts";
 import { formatTaskPlainText, viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
+import { openInEditor } from "./utils/editor.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -713,6 +716,74 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	return `decision-${nextIdNumber}`;
 }
 
+export async function generateNextMilestoneId(core: Core): Promise<string> {
+	const config = await core.filesystem.loadConfig();
+	// Load local milestones
+	const milestones = await core.filesystem.listMilestones();
+	const allIds: string[] = [];
+
+	try {
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+
+		// Skip remote operations if disabled
+		if (config?.remoteOperations === false) {
+			if (process.env.DEBUG) {
+				console.log("Remote operations disabled - generating ID from local milestones only");
+			}
+		} else {
+			await core.gitOps.fetch();
+		}
+
+		const branches = await core.gitOps.listAllBranches();
+
+		// Load files from all branches in parallel
+		const branchFilePromises = branches.map(async (branch) => {
+			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/milestones`);
+			return files
+				.map((file) => {
+					const match = file.match(/m-(\d+)/);
+					return match ? `m-${match[1]}` : null;
+				})
+				.filter((id): id is string => id !== null);
+		});
+
+		const branchResults = await Promise.all(branchFilePromises);
+		for (const branchIds of branchResults) {
+			allIds.push(...branchIds);
+		}
+	} catch (error) {
+		// Suppress errors for offline mode or other git issues
+		if (process.env.DEBUG) {
+			console.error("Could not fetch remote milestone IDs:", error);
+		}
+	}
+
+	// Add local milestone IDs
+	for (const milestone of milestones) {
+		allIds.push(milestone.id);
+	}
+
+	// Find the highest numeric ID
+	let max = 0;
+	for (const id of allIds) {
+		const match = id.match(/^m-(\d+)$/);
+		if (match) {
+			const num = Number.parseInt(match[1] || "0", 10);
+			if (num > max) max = num;
+		}
+	}
+
+	const nextIdNumber = max + 1;
+	const padding = config?.zeroPaddedIds;
+
+	if (padding && typeof padding === "number" && padding > 0) {
+		const paddedId = String(nextIdNumber).padStart(padding, "0");
+		return `m-${paddedId}`;
+	}
+
+	return `m-${nextIdNumber}`;
+}
+
 function normalizeDependencies(dependencies: unknown): string[] {
 	if (!dependencies) return [];
 
@@ -782,6 +853,14 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 	const validatedPriority =
 		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
 
+	// Handle milestone option - normalize milestone ID
+	const milestoneInput = options.milestone ? String(options.milestone) : undefined;
+	const normalizedMilestone = milestoneInput
+		? milestoneInput.startsWith("m-")
+			? milestoneInput
+			: `m-${milestoneInput}`
+		: undefined;
+
 	return {
 		id,
 		title,
@@ -799,6 +878,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
 		...(normalizedParent && { parentTaskId: normalizedParent }),
 		...(validatedPriority && { priority: validatedPriority }),
+		...(normalizedMilestone && { milestone: normalizedMilestone }),
 	};
 }
 
@@ -814,6 +894,7 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
+	.option("-m, --milestone <milestone>", "assign task to a milestone (e.g., m-1 or just 1)")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--plain", "use plain text output after creating")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
@@ -917,6 +998,7 @@ program
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
+	.option("--milestone <milestone>", "filter task results by milestone (e.g., m-1 or just 1)")
 	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
 	.option("--limit <number>", "limit total results returned")
 	.option("--plain", "print plain text output instead of interactive UI")
@@ -972,12 +1054,24 @@ program
 			limit = parsed;
 		}
 
-		const searchResults = searchService.search({
+		let searchResults = searchService.search({
 			query: query ?? "",
 			limit,
 			types,
 			filters,
 		});
+
+		// Apply milestone filter to task results
+		if (options.milestone) {
+			const milestoneInput = String(options.milestone);
+			const milestoneId = milestoneInput.startsWith("m-") ? milestoneInput : `m-${milestoneInput}`;
+			searchResults = searchResults.filter((result) => {
+				if (result.type === "task") {
+					return result.task.milestone === milestoneId;
+				}
+				return true; // Keep non-task results
+			});
+		}
 
 		const isPlainFlag = options.plain || process.argv.includes("--plain") || !process.stdout.isTTY;
 		if (isPlainFlag) {
@@ -1054,6 +1148,7 @@ function printSearchResults(results: SearchResult[]): void {
 	const tasks: TaskSearchResult[] = [];
 	const documents: DocumentSearchResult[] = [];
 	const decisions: DecisionSearchResult[] = [];
+	const milestones: MilestoneSearchResult[] = [];
 
 	for (const result of results) {
 		if (result.type === "task") {
@@ -1062,6 +1157,10 @@ function printSearchResults(results: SearchResult[]): void {
 		}
 		if (result.type === "document") {
 			documents.push(result);
+			continue;
+		}
+		if (result.type === "milestone") {
+			milestones.push(result);
 			continue;
 		}
 		decisions.push(result);
@@ -1101,6 +1200,19 @@ function printSearchResults(results: SearchResult[]): void {
 			console.log(`  ${decision.id} - ${decision.title}${scoreText}`);
 		}
 	}
+
+	if (milestones.length > 0) {
+		if (tasks.length > 0 || documents.length > 0 || decisions.length > 0) {
+			console.log("");
+		}
+		console.log("Milestones:");
+		for (const milestoneResult of milestones) {
+			const { milestone } = milestoneResult;
+			const scoreText = formatScore(milestoneResult.score);
+			const statusText = milestone.status ? ` [${milestone.status}]` : "";
+			console.log(`  ${milestone.id} - ${milestone.title}${statusText}${scoreText}`);
+		}
+	}
 }
 
 function formatScore(score: number | null): string {
@@ -1122,6 +1234,7 @@ taskCmd
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
+	.option("-m, --milestone <milestone>", "filter tasks by milestone (e.g., m-1 or just 1)")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
 	.option("--sort <field>", "sort tasks by field (priority, id)")
 	.option("--plain", "use plain text output instead of interactive UI")
@@ -1146,6 +1259,10 @@ taskCmd
 				return;
 			}
 			baseFilters.priority = priorityLower as (typeof validPriorities)[number];
+		}
+		if (options.milestone) {
+			const milestoneInput = String(options.milestone);
+			baseFilters.milestone = milestoneInput.startsWith("m-") ? milestoneInput : `m-${milestoneInput}`;
 		}
 
 		let parentId: string | undefined;
@@ -1317,6 +1434,7 @@ taskCmd
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --label <labels>")
+	.option("-m, --milestone <milestone>", "assign task to a milestone (e.g., m-1 or just 1)")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("--plain", "use plain text output after editing")
@@ -1408,6 +1526,11 @@ taskCmd
 				return;
 			}
 			task.ordinal = ordinal;
+		}
+
+		if (options.milestone !== undefined) {
+			const milestoneInput = String(options.milestone);
+			task.milestone = milestoneInput.startsWith("m-") ? milestoneInput : `m-${milestoneInput}`;
 		}
 
 		const labels = [...task.labels];
@@ -1837,12 +1960,13 @@ const boardCmd = program.command("board");
 function addBoardOptions(cmd: Command) {
 	return cmd
 		.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
-		.option("--vertical", "use vertical layout (shortcut for --layout vertical)");
+		.option("--vertical", "use vertical layout (shortcut for --layout vertical)")
+		.option("--milestones", "group tasks by milestone instead of status");
 }
 
 // TaskWithMetadata and resolveTaskConflict are now imported from remote-tasks.ts
 
-async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
+async function handleBoardView(options: { layout?: string; vertical?: boolean; milestones?: boolean }) {
 	const cwd = process.cwd();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
@@ -1871,20 +1995,45 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 
 	const _layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const _maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
-	const statuses = config?.statuses || [];
 
 	// Use unified view for Tab switching support
 	const { runUnifiedView } = await import("./ui/unified-view.ts");
-	await runUnifiedView({
-		core,
-		initialView: "kanban",
-		tasks: allTasks.map((t) => ({ ...t, status: t.status || "" })), // Ensure tasks have status
-		// Pass the already-loaded kanban data to avoid duplicate loading
-		preloadedKanbanData: {
-			tasks: allTasks,
-			statuses,
-		},
-	});
+
+	// Group by milestone if --milestones flag is set
+	if (options.milestones) {
+		const { buildKanbanMilestoneGroups } = await import("./board.ts");
+		const milestones = await core.filesystem.listMilestones();
+		const milestoneIds = milestones.map((m) => m.id);
+		const { orderedMilestones } = buildKanbanMilestoneGroups(allTasks, milestoneIds);
+
+		// Transform tasks to use milestone as status for board rendering
+		const tasksWithMilestoneAsStatus = allTasks.map((t) => ({
+			...t,
+			status: t.milestone || "No Milestone",
+		}));
+
+		await runUnifiedView({
+			core,
+			initialView: "kanban",
+			tasks: tasksWithMilestoneAsStatus,
+			preloadedKanbanData: {
+				tasks: tasksWithMilestoneAsStatus,
+				statuses: orderedMilestones,
+			},
+		});
+	} else {
+		// Default: group by status
+		const statuses = config?.statuses || [];
+		await runUnifiedView({
+			core,
+			initialView: "kanban",
+			tasks: allTasks.map((t) => ({ ...t, status: t.status || "" })),
+			preloadedKanbanData: {
+				tasks: allTasks,
+				statuses,
+			},
+		});
+	}
 }
 
 addBoardOptions(boardCmd).description("display tasks in a Kanban board").action(handleBoardView);
@@ -2059,6 +2208,105 @@ decisionCmd
 		};
 		await core.createDecision(decision);
 		console.log(`Created decision ${id}`);
+	});
+
+const milestoneCmd = program.command("milestone");
+
+milestoneCmd
+	.command("create <title>")
+	.option("-s, --status <status>", "milestone status (planned, active, completed, archived)")
+	.option("-d, --due-date <date>", "due date (YYYY-MM-DD)")
+	.option("--description <description>", "milestone description")
+	.action(async (title: string, options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const id = await generateNextMilestoneId(core);
+		const milestone: Milestone = {
+			id,
+			title: title as string,
+			description: options.description,
+			status: (options.status || "planned") as Milestone["status"],
+			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+			dueDate: options.dueDate,
+			rawContent: options.description ? `## Description\n\n${options.description}` : "",
+		};
+		await core.createMilestone(milestone);
+		console.log(`Created milestone ${id}`);
+	});
+
+milestoneCmd
+	.command("list")
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (options) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const milestones = await core.filesystem.listMilestones();
+		if (milestones.length === 0) {
+			console.log("No milestones found.");
+			return;
+		}
+
+		// Plain text output
+		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		if (isPlainFlag) {
+			for (const m of milestones) {
+				const statusText = m.status ? ` [${m.status}]` : "";
+				const dueDateText = m.dueDate ? ` (due: ${m.dueDate})` : "";
+				console.log(`${m.id} - ${m.title}${statusText}${dueDateText}`);
+			}
+			return;
+		}
+
+		// Interactive UI
+		const selected = await genericSelectList("Select a milestone", milestones);
+		if (selected) {
+			// Show milestone details
+			const milestone = await core.filesystem.loadMilestone(selected.id);
+			if (milestone) {
+				const content = `# ${milestone.title}\n\nID: ${milestone.id}\nStatus: ${milestone.status || "N/A"}\nCreated: ${milestone.createdDate || "N/A"}\nDue: ${milestone.dueDate || "N/A"}\n\n${milestone.description || "No description"}`;
+				await scrollableViewer(content);
+			}
+		}
+	});
+
+milestoneCmd
+	.command("view <milestoneId>")
+	.description("view a milestone")
+	.action(async (milestoneId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const normalizedId = milestoneId.startsWith("m-") ? milestoneId : `m-${milestoneId}`;
+		const milestone = await core.filesystem.loadMilestone(normalizedId);
+
+		if (!milestone) {
+			console.error(`Milestone ${milestoneId} not found.`);
+			return;
+		}
+
+		const content = `# ${milestone.title}\n\nID: ${milestone.id}\nStatus: ${milestone.status || "N/A"}\nCreated: ${milestone.createdDate || "N/A"}\nDue: ${milestone.dueDate || "N/A"}\n\n${milestone.description || "No description"}`;
+		await scrollableViewer(content);
+	});
+
+milestoneCmd
+	.command("edit <milestoneId>")
+	.description("edit a milestone in your configured editor")
+	.action(async (milestoneId: string) => {
+		const cwd = process.cwd();
+		const core = new Core(cwd);
+		const normalizedId = milestoneId.startsWith("m-") ? milestoneId : `m-${milestoneId}`;
+
+		// Find the milestone file
+		const files = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: core.filesystem.milestonesDir }));
+		const milestoneFile = files.find((f) => f.startsWith(`${normalizedId} -`) || f === `${normalizedId}.md`);
+
+		if (!milestoneFile) {
+			console.error(`Milestone ${milestoneId} not found.`);
+			return;
+		}
+
+		const filePath = join(core.filesystem.milestonesDir, milestoneFile);
+		const config = await core.filesystem.loadConfig();
+		await openInEditor(filePath, config);
 	});
 
 // Agents command group
