@@ -32,6 +32,8 @@ export interface Task {
 	// Metadata fields (previously in TaskWithMetadata)
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed";
+	// Dynamic fields: allow plugins to add custom fields without modifying core
+	[key: string]: unknown;
 }
 
 export interface TaskListFilter {

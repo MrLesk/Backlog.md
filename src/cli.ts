@@ -8,6 +8,7 @@ import prompts from "prompts";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
+import { PluginRouter } from "./core/plugin-router.ts";
 import { computeSequences } from "./core/sequences.ts";
 import {
 	type AgentInstructionFile,
@@ -2683,9 +2684,27 @@ program
 		}
 	});
 
-program.parseAsync(process.argv).finally(() => {
-	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
-	if (originalBunOptions) {
-		process.env.BUN_OPTIONS = originalBunOptions;
-	}
-});
+// Plugin routing - check if command should be routed to a plugin
+const rawArgs = process.argv.slice(2);
+const pluginRouter = new PluginRouter();
+const { shouldRoute, pluginName, pluginArgs } = pluginRouter.shouldRouteToPlugin(rawArgs);
+
+if (shouldRoute && pluginName && pluginArgs) {
+	// Route to plugin
+	(async () => {
+		const exitCode = await pluginRouter.executePlugin(pluginName, pluginArgs);
+		// Restore BUN_OPTIONS before exiting
+		if (originalBunOptions) {
+			process.env.BUN_OPTIONS = originalBunOptions;
+		}
+		process.exit(exitCode);
+	})();
+} else {
+	// Normal Commander parsing
+	program.parseAsync(process.argv).finally(() => {
+		// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
+		if (originalBunOptions) {
+			process.env.BUN_OPTIONS = originalBunOptions;
+		}
+	});
+}
