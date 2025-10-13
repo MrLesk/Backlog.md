@@ -134,12 +134,14 @@ async function pullTask(
 
 	// Get mapping
 	const mapping = store.getMapping(taskId);
+	logger.info({ taskId, mapping }, "Retrieved mapping from store");
 	if (!mapping) {
 		throw new Error(`No Jira mapping found for task ${taskId}`);
 	}
 
 	// Get current state
 	const task = await backlog.getTask(taskId);
+	logger.info({ mappingJiraKey: mapping.jiraKey, mappingKeys: Object.keys(mapping) }, "Accessing mapping.jiraKey");
 	const issue = await jira.getIssue(mapping.jiraKey);
 
 	const backlogHash = computeHash(normalizeBacklogTask(task));

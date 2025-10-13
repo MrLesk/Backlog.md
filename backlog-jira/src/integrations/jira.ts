@@ -63,12 +63,12 @@ export class JiraClient {
 
 		// Get credentials from environment
 		const jiraUrl = process.env.JIRA_URL;
-		const jiraEmail = process.env.JIRA_EMAIL;
+		const jiraUsername = process.env.JIRA_EMAIL || process.env.JIRA_USERNAME;
 		const jiraToken = process.env.JIRA_API_TOKEN;
 
-		if (!jiraUrl || !jiraEmail || !jiraToken) {
+		if (!jiraUrl || !jiraUsername || !jiraToken) {
 			throw new Error(
-				"Missing required Jira credentials. Please set JIRA_URL, JIRA_EMAIL, and JIRA_API_TOKEN environment variables.",
+				"Missing required Jira credentials. Please set JIRA_URL, JIRA_EMAIL (or JIRA_USERNAME), and JIRA_API_TOKEN environment variables.",
 			);
 		}
 
@@ -79,14 +79,20 @@ export class JiraClient {
 				"run",
 				"--rm",
 				"-i",
+				"-e",
+				"JIRA_URL",
+				"-e",
+				"JIRA_USERNAME",
+				"-e",
+				"JIRA_API_TOKEN",
 				this.dockerImage,
-				"--jira-url",
-				jiraUrl,
-				"--jira-username",
-				jiraEmail,
-				"--jira-token",
-				jiraToken,
 			],
+			env: {
+				...process.env,
+				JIRA_URL: jiraUrl,
+				JIRA_USERNAME: jiraUsername,
+				JIRA_API_TOKEN: jiraToken,
+			},
 		});
 
 		try {
@@ -117,12 +123,13 @@ export class JiraClient {
 	private async callMcpTool(toolName: string, input: Record<string, unknown>): Promise<unknown> {
 		try {
 			const client = await this.ensureConnected();
-			logger.debug({ toolName, input }, "Calling MCP tool");
+			logger.info({ toolName, input }, "About to call MCP tool");
 
 			const result = await client.callTool({
 				name: toolName,
 				arguments: input,
 			});
+			logger.info({ toolName, hasContent: !!result.content }, "MCP tool returned");
 
 			// Extract the actual content from the MCP response
 			if (result.content && result.content.length > 0) {
@@ -249,9 +256,11 @@ export class JiraClient {
 	 */
 	async getIssue(issueKey: string, options?: { fields?: string; expand?: string }): Promise<JiraIssue> {
 		try {
+			logger.info({ issueKey, options }, "getIssue called with parameters");
 			const input: Record<string, unknown> = {
 				issue_key: issueKey,
 			};
+			logger.info({ input }, "Built input object");
 
 			if (options?.fields) {
 				input.fields = options.fields;
@@ -260,38 +269,37 @@ export class JiraClient {
 				input.expand = options.expand;
 			}
 
-			const result = (await this.callMcpTool("jira_get_issue", input)) as {
+			const result = await this.callMcpTool("jira_get_issue", input);
+			const typedResult = result as {
 				key: string;
 				id: string;
-				fields: {
-					summary: string;
-					description?: string;
-					status: { name: string };
-					issuetype: { name: string };
-					assignee?: { displayName: string };
-					reporter?: { displayName: string };
-					priority?: { name: string };
-					labels?: string[];
-					created: string;
-					updated: string;
-					[key: string]: unknown;
-				};
+				summary: string;
+				description?: string;
+				status: { name: string; category?: string; color?: string };
+				issue_type?: { name: string };
+				assignee?: { display_name: string };
+				reporter?: { display_name: string };
+				priority?: { name: string };
+				labels?: string[];
+				created: string;
+				updated: string;
+				[key: string]: unknown;
 			};
 
 			const issue: JiraIssue = {
-				key: result.key,
-				id: result.id,
-				summary: result.fields.summary,
-				description: result.fields.description as string | undefined,
-				status: result.fields.status.name,
-				issueType: result.fields.issuetype.name,
-				assignee: result.fields.assignee?.displayName,
-				reporter: result.fields.reporter?.displayName,
-				priority: result.fields.priority?.name,
-				labels: result.fields.labels,
-				created: result.fields.created,
-				updated: result.fields.updated,
-				fields: result.fields,
+				key: typedResult.key,
+				id: typedResult.id,
+				summary: typedResult.summary,
+				description: typedResult.description,
+				status: typedResult.status.name,
+				issueType: typedResult.issue_type?.name || "Task",
+				assignee: typedResult.assignee?.display_name,
+				reporter: typedResult.reporter?.display_name,
+				priority: typedResult.priority?.name,
+				labels: typedResult.labels || [],
+				created: typedResult.created,
+				updated: typedResult.updated,
+				fields: typedResult as any,
 			};
 
 			logger.info({ issueKey }, "Retrieved Jira issue");

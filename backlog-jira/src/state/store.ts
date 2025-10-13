@@ -103,12 +103,26 @@ export class SyncStore {
 
 	getMapping(backlogId: string): Mapping | null {
 		const stmt = this.db.prepare("SELECT * FROM mappings WHERE backlog_id = ?");
-		return stmt.get(backlogId) as Mapping | null;
+		const row = stmt.get(backlogId) as any;
+		if (!row) return null;
+		return {
+			backlogId: row.backlog_id,
+			jiraKey: row.jira_key,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		};
 	}
 
 	getMappingByJiraKey(jiraKey: string): Mapping | null {
 		const stmt = this.db.prepare("SELECT * FROM mappings WHERE jira_key = ?");
-		return stmt.get(jiraKey) as Mapping | null;
+		const row = stmt.get(jiraKey) as any;
+		if (!row) return null;
+		return {
+			backlogId: row.backlog_id,
+			jiraKey: row.jira_key,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		};
 	}
 
 	getAllMappings(): Map<string, string> {
@@ -169,8 +183,8 @@ export class SyncStore {
 			VALUES (?, ${fields.map(() => "?").join(", ")})
 			ON CONFLICT(backlog_id) DO UPDATE SET ${fields.join(", ")}
 		`);
-		// Build the arguments array properly
-		const args: (string | null)[] = [backlogId, ...values];
+		// Build the arguments array: backlogId + values for INSERT + values again for UPDATE
+		const args: (string | null)[] = [backlogId, ...values, ...values];
 		stmt.run(...args);
 		logger.debug({ backlogId, updates }, "Updated sync state");
 	}
