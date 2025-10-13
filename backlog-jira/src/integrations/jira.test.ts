@@ -56,17 +56,16 @@ describe("JiraClient", () => {
 		it("should get issue with correct parameters", async () => {
 			const client = new JiraClient();
 
+			// Mock the MCP tool response - it returns fields at the top level, not nested
 			const mockResult = {
 				key: "PROJ-1",
 				id: "10001",
-				fields: {
-					summary: "Test Issue",
-					description: "Test description",
-					status: { name: "To Do" },
-					issuetype: { name: "Task" },
-					created: "2025-01-01T10:00:00.000Z",
-					updated: "2025-01-02T15:30:00.000Z",
-				},
+				summary: "Test Issue",
+				description: "Test description",
+				status: { name: "To Do" },
+				issue_type: { name: "Task" },
+				created: "2025-01-01T10:00:00.000Z",
+				updated: "2025-01-02T15:30:00.000Z",
 			};
 
 			const callMcpToolMock = mock(() => Promise.resolve(mockResult));

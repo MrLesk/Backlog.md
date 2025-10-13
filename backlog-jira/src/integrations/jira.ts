@@ -132,8 +132,9 @@ export class JiraClient {
 			logger.info({ toolName, hasContent: !!result.content }, "MCP tool returned");
 
 			// Extract the actual content from the MCP response
-			if (result.content && result.content.length > 0) {
-				const content = result.content[0];
+			const resultContent = result.content as Array<{ type: string; text?: string }> | undefined;
+			if (resultContent && resultContent.length > 0) {
+				const content = resultContent[0];
 				if (content.type === "text" && content.text) {
 					try {
 						// Try to parse as JSON

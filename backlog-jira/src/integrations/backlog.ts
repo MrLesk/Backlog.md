@@ -149,12 +149,14 @@ export class BacklogClient {
 			priority?: string;
 			notes?: string;
 			appendNotes?: string;
-			plan?: string;
-			checkAc?: number[];
-			uncheckAc?: number[];
-		},
-	): Promise<void> {
-		const args = ["task", "edit", taskId];
+		plan?: string;
+		addAc?: string[];
+		removeAc?: number[];
+		checkAc?: number[];
+		uncheckAc?: number[];
+	},
+): Promise<void> {
+	const args = ["task", "edit", taskId];
 
 		if (updates.title) {
 			args.push("-t", updates.title);
@@ -180,19 +182,30 @@ export class BacklogClient {
 		if (updates.appendNotes) {
 			args.push("--append-notes", this.escapeMultiline(updates.appendNotes));
 		}
-		if (updates.plan) {
-			args.push("--plan", this.escapeMultiline(updates.plan));
+	if (updates.plan) {
+		args.push("--plan", this.escapeMultiline(updates.plan));
+	}
+	if (updates.addAc) {
+		for (const ac of updates.addAc) {
+			args.push("--ac", ac);
 		}
-		if (updates.checkAc) {
-			for (const index of updates.checkAc) {
-				args.push("--check-ac", index.toString());
-			}
+	}
+	if (updates.removeAc) {
+		// Process in reverse order to avoid index shifting
+		for (const index of updates.removeAc.sort((a, b) => b - a)) {
+			args.push("--remove-ac", index.toString());
 		}
-		if (updates.uncheckAc) {
-			for (const index of updates.uncheckAc) {
-				args.push("--uncheck-ac", index.toString());
-			}
+	}
+	if (updates.checkAc) {
+		for (const index of updates.checkAc) {
+			args.push("--check-ac", index.toString());
 		}
+	}
+	if (updates.uncheckAc) {
+		for (const index of updates.uncheckAc) {
+			args.push("--uncheck-ac", index.toString());
+		}
+	}
 
 		try {
 			await this.execute(args);
@@ -276,24 +289,14 @@ export class BacklogClient {
 			} else if (line.startsWith("Parent:")) {
 				task.parent = line.replace("Parent:", "").trim();
 			} else if (line.match(/^[-=]{2,}$/)) {
-				// Section dividers - save previous section
+				// Section dividers - skip them, they're just visual separators
+				continue;
+			} else if (line.endsWith(":") && !line.startsWith(" ")) {
+				// Section header - save previous section first
 				if (currentSection && sectionContent.length > 0) {
 					this.assignSection(task, currentSection, sectionContent.join("\n"));
 				}
-				currentSection = null;
-				sectionContent = [];
-			} else if (
-				line.endsWith(":") &&
-				!line.startsWith(" ") &&
-				line !== "Description:" &&
-				line !== "Acceptance Criteria:" &&
-				line !== "Implementation Plan:" &&
-				line !== "Implementation Notes:"
-			) {
-				// New section header
-				if (currentSection && sectionContent.length > 0) {
-					this.assignSection(task, currentSection, sectionContent.join("\n"));
-				}
+				// Set new section (remove the colon)
 				currentSection = line.replace(":", "").trim();
 				sectionContent = [];
 			} else if (currentSection || line.startsWith("- [")) {

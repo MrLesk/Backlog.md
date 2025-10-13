@@ -80,43 +80,117 @@ async function checkGitStatus(): Promise<void> {
 	}
 }
 
+async function checkMCPConnectivity(): Promise<void> {
+	try {
+		// Try to list tasks via MCP (which uses the backlog CLI)
+		const startTime = Date.now();
+		const result = await exec("backlog", ["task", "list", "--plain", "-s", "To Do"]);
+		const duration = Date.now() - startTime;
+		
+		if (duration > 5000) {
+			logger.warn(`  ⚠ MCP response slow (${duration}ms). Consider optimizing task count.`);
+		} else {
+			logger.info(`  ✓ MCP connectivity OK (${duration}ms)`);
+		}
+	} catch (error) {
+		throw new Error("Failed to connect to MCP server. Ensure backlog CLI is working.");
+	}
+}
+
+async function checkNodeModules(): Promise<void> {
+	const nodeModulesPath = join(process.cwd(), "node_modules");
+	if (!existsSync(nodeModulesPath)) {
+		throw new Error("node_modules not found. Run 'bun install' first.");
+	}
+	logger.info("  ✓ Dependencies installed");
+}
+
+async function checkDiskSpace(): Promise<void> {
+	try {
+		// Check available disk space (macOS/Linux)
+		const result = await exec("df", ["-h", process.cwd()]);
+		const lines = result.split("\n");
+		if (lines.length > 1) {
+			const parts = lines[1].split(/\s+/);
+			const available = parts[3];
+			logger.info(`  ✓ Disk space: ${available} available`);
+		}
+	} catch (error) {
+		// Non-critical check, just log warning
+		logger.warn("  ⚠ Could not check disk space");
+	}
+}
+
 async function checkConfigFile(): Promise<void> {
 	const configPath = join(process.cwd(), ".backlog-jira", "config.json");
 	if (!existsSync(configPath)) {
 		throw new Error("Config file not found. Run 'backlog-jira init' first.");
 	}
-	logger.info("  ✓ Configuration file exists");
+	
+	// Validate config structure
+	try {
+		const configContent = await Bun.file(configPath).text();
+		const config = JSON.parse(configContent);
+		
+		const requiredFields = ["jiraProjectKey", "mcpServerName"];
+		const missingFields = requiredFields.filter(field => !config[field]);
+		
+		if (missingFields.length > 0) {
+			throw new Error(`Missing required config fields: ${missingFields.join(", ")}`);
+		}
+		
+		logger.info("  ✓ Configuration file valid");
+	} catch (error) {
+		if (error instanceof SyntaxError) {
+			throw new Error("Config file contains invalid JSON");
+		}
+		throw error;
+	}
 }
 
 export async function doctorCommand(): Promise<void> {
 	logger.info("Running environment checks...\n");
 
 	const checks = [
-		{ name: "Bun runtime", fn: checkBunRuntime },
-		{ name: "Backlog CLI", fn: checkBacklogCLI },
-		{ name: "Configuration", fn: checkConfigFile },
-		{ name: "Database", fn: checkDatabasePerms },
-		{ name: "Backlog.md project", fn: checkMCPServer },
-		{ name: "Git status", fn: checkGitStatus },
+		{ name: "Bun runtime", fn: checkBunRuntime, critical: true },
+		{ name: "Backlog CLI", fn: checkBacklogCLI, critical: true },
+		{ name: "Dependencies", fn: checkNodeModules, critical: true },
+		{ name: "Configuration", fn: checkConfigFile, critical: true },
+		{ name: "Database", fn: checkDatabasePerms, critical: true },
+		{ name: "MCP Connectivity", fn: checkMCPConnectivity, critical: true },
+		{ name: "Backlog.md project", fn: checkMCPServer, critical: false },
+		{ name: "Git status", fn: checkGitStatus, critical: false },
+		{ name: "Disk space", fn: checkDiskSpace, critical: false },
 	];
 
-	let allPassed = true;
+	let criticalFailed = false;
+	let warningCount = 0;
 
 	for (const check of checks) {
 		try {
 			await check.fn();
 		} catch (error) {
-			logger.error(`  ✗ ${check.name}: ${error instanceof Error ? error.message : String(error)}`);
-			allPassed = false;
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			if (check.critical) {
+				logger.error(`  ✗ ${check.name}: ${errorMsg}`);
+				criticalFailed = true;
+			} else {
+				logger.warn(`  ⚠ ${check.name}: ${errorMsg}`);
+				warningCount++;
+			}
 		}
 	}
 
 	logger.info("");
 
-	if (!allPassed) {
-		logger.error("Some checks failed. Please fix the issues above before proceeding.");
+	if (criticalFailed) {
+		logger.error("Critical checks failed. Please fix the issues above before proceeding.");
 		process.exit(1);
 	}
 
-	logger.info("✓ All checks passed! Ready to sync.");
+	if (warningCount > 0) {
+		logger.info(`✓ All critical checks passed! (${warningCount} warning${warningCount > 1 ? "s" : ""})`);
+	} else {
+		logger.info("✓ All checks passed! Ready to sync.");
+	}
 }

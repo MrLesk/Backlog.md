@@ -2,8 +2,15 @@ import { BacklogClient, type BacklogTask } from "../integrations/backlog.ts";
 import { JiraClient, type JiraIssue } from "../integrations/jira.ts";
 import { SyncStore } from "../state/store.ts";
 import { logger } from "../utils/logger.ts";
-import { computeHash, normalizeBacklogTask, normalizeJiraIssue } from "../utils/normalizer.ts";
+import {
+	computeHash,
+	normalizeBacklogTask,
+	normalizeJiraIssue,
+	stripAcceptanceCriteriaFromDescription,
+} from "../utils/normalizer.ts";
 import { classifySyncState } from "../utils/sync-state.ts";
+import { mapJiraStatusToBacklog } from "../utils/status-mapping.ts";
+import { getTaskFilePath, updateJiraMetadata } from "../utils/frontmatter.ts";
 
 export interface PullOptions {
 	taskIds?: string[];
@@ -43,27 +50,40 @@ export async function pull(options: PullOptions = {}): Promise<PullResult> {
 
 		logger.info({ count: taskIds.length }, "Tasks to process");
 
-		for (const taskId of taskIds) {
-			try {
-				await pullTask(taskId, {
-					store,
-					backlog,
-					jira,
-					force: options.force || false,
-					dryRun: options.dryRun || false,
-				});
+		// Process in parallel batches for better performance (max 10 concurrent)
+		const batchSize = 10;
+		for (let i = 0; i < taskIds.length; i += batchSize) {
+			const batch = taskIds.slice(i, i + batchSize);
+			const promises = batch.map(async (taskId) => {
+				try {
+					await pullTask(taskId, {
+						store,
+						backlog,
+						jira,
+						force: options.force || false,
+						dryRun: options.dryRun || false,
+					});
 
-				result.pulled.push(taskId);
-				logger.info({ taskId }, "Successfully pulled task");
-			} catch (error) {
-				const errorMsg = error instanceof Error ? error.message : String(error);
-				result.failed.push({ taskId, error: errorMsg });
-				logger.error({ taskId, error: errorMsg }, "Failed to pull task");
-				result.success = false;
-			}
+					result.pulled.push(taskId);
+					logger.info({ taskId }, "Successfully pulled task");
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					result.failed.push({ taskId, error: errorMsg });
+					logger.error({ taskId, error: errorMsg }, "Failed to pull task");
+					result.success = false;
+				}
+			});
+
+			await Promise.all(promises);
 		}
 
-		store.logOperation("pull", null, null, result.success ? "success" : "partial", JSON.stringify(result));
+		store.logOperation(
+			"pull",
+			null,
+			null,
+			result.success ? "success" : "partial",
+			JSON.stringify(result),
+		);
 	} finally {
 		store.close();
 	}
@@ -104,7 +124,12 @@ async function getTaskIds(
 			const jiraHash = computeHash(normalizeJiraIssue(issue));
 
 			const snapshots = store.getSnapshots(taskId);
-			const state = classifySyncState(backlogHash, jiraHash, snapshots.backlog, snapshots.jira);
+			const state = classifySyncState(
+				backlogHash,
+				jiraHash,
+				snapshots.backlog,
+				snapshots.jira,
+			);
 
 			if (state.state === "NeedsPull") {
 				needsPull.push(taskId);
@@ -141,7 +166,10 @@ async function pullTask(
 
 	// Get current state
 	const task = await backlog.getTask(taskId);
-	logger.info({ mappingJiraKey: mapping.jiraKey, mappingKeys: Object.keys(mapping) }, "Accessing mapping.jiraKey");
+	logger.info(
+		{ mappingJiraKey: mapping.jiraKey, mappingKeys: Object.keys(mapping) },
+		"Accessing mapping.jiraKey",
+	);
 	const issue = await jira.getIssue(mapping.jiraKey);
 
 	const backlogHash = computeHash(normalizeBacklogTask(task));
@@ -150,10 +178,17 @@ async function pullTask(
 	// Check sync state unless force is enabled
 	if (!force) {
 		const snapshots = store.getSnapshots(taskId);
-		const state = classifySyncState(backlogHash, jiraHash, snapshots.backlog, snapshots.jira);
+		const state = classifySyncState(
+			backlogHash,
+			jiraHash,
+			snapshots.backlog,
+			snapshots.jira,
+		);
 
 		if (state.state === "Conflict") {
-			throw new Error(`Conflict detected. Use --force to override or run 'backlog-jira sync' to resolve`);
+			throw new Error(
+				`Conflict detected. Use --force to override or run 'backlog-jira sync' to resolve`,
+			);
 		}
 
 		if (state.state === "InSync") {
@@ -163,7 +198,9 @@ async function pullTask(
 	}
 
 	// Build CLI updates from Jira issue
-	const updates = buildBacklogUpdates(issue, task);
+	// Extract project key from Jira issue key (format: PROJECT-123)
+	const projectKey = issue.key.split("-")[0];
+	const updates = buildBacklogUpdates(issue, task, projectKey);
 
 	if (dryRun) {
 		logger.info({ taskId, updates }, "DRY RUN: Would update Backlog task");
@@ -176,14 +213,47 @@ async function pullTask(
 		// Update snapshots with freshly updated data
 		const updatedTask = await backlog.getTask(taskId);
 		const syncedHash = computeHash(normalizeJiraIssue(issue));
-		store.setSnapshot(taskId, "backlog", syncedHash, normalizeBacklogTask(updatedTask));
+		store.setSnapshot(
+			taskId,
+			"backlog",
+			syncedHash,
+			normalizeBacklogTask(updatedTask),
+		);
 		store.setSnapshot(taskId, "jira", syncedHash, normalizeJiraIssue(issue));
 
 		store.updateSyncState(taskId, {
 			lastSyncAt: new Date().toISOString(),
 		});
 
-		logger.info({ taskId, jiraKey: mapping.jiraKey }, "Updated Backlog task from Jira");
+		// Update frontmatter with Jira metadata
+		try {
+			const filePath = getTaskFilePath(taskId);
+			const jiraUrl = process.env.JIRA_URL
+				? `${process.env.JIRA_URL}/browse/${mapping.jiraKey}`
+				: undefined;
+
+			updateJiraMetadata(filePath, {
+				jiraKey: mapping.jiraKey,
+				jiraUrl,
+				jiraLastSync: new Date().toISOString(),
+				jiraSyncState: "InSync",
+			});
+
+			logger.debug(
+				{ taskId, jiraKey: mapping.jiraKey },
+				"Updated frontmatter with Jira metadata",
+			);
+		} catch (error) {
+			logger.error(
+				{ taskId, error },
+				"Failed to update frontmatter, but pull was successful",
+			);
+		}
+
+		logger.info(
+			{ taskId, jiraKey: mapping.jiraKey },
+			"Updated Backlog task from Jira",
+		);
 	}
 }
 
@@ -194,6 +264,7 @@ async function pullTask(
 function buildBacklogUpdates(
 	issue: JiraIssue,
 	currentTask: BacklogTask,
+	projectKey?: string,
 ): {
 	title?: string;
 	description?: string;
@@ -201,6 +272,10 @@ function buildBacklogUpdates(
 	assignee?: string;
 	labels?: string[];
 	priority?: string;
+	addAc?: string[];
+	removeAc?: number[];
+	checkAc?: number[];
+	uncheckAc?: number[];
 } {
 	const updates: Record<string, unknown> = {};
 
@@ -209,15 +284,30 @@ function buildBacklogUpdates(
 		updates.title = issue.summary;
 	}
 
-	// Description
-	if (issue.description && issue.description !== currentTask.description) {
-		updates.description = issue.description;
+	// Description (without AC section - AC synced separately)
+	const cleanJiraDesc = stripAcceptanceCriteriaFromDescription(
+		issue.description || "",
+	);
+	const cleanTaskDesc = stripAcceptanceCriteriaFromDescription(
+		currentTask.description || "",
+	);
+
+	if (cleanJiraDesc !== cleanTaskDesc) {
+		updates.description = cleanJiraDesc;
 	}
 
 	// Status (needs mapping from Jira status to Backlog status)
-	// For now, we'll do a simple direct mapping
 	if (issue.status !== currentTask.status) {
-		updates.status = mapJiraStatusToBacklog(issue.status);
+		updates.status = mapJiraStatusToBacklog(issue.status, projectKey);
+		logger.debug(
+			{
+				taskId: currentTask.id,
+				from: currentTask.status,
+				to: updates.status,
+				jiraStatus: issue.status,
+			},
+			"Mapped Jira status to Backlog status",
+		);
 	}
 
 	// Assignee
@@ -226,7 +316,10 @@ function buildBacklogUpdates(
 	}
 
 	// Labels
-	if (issue.labels && JSON.stringify(issue.labels) !== JSON.stringify(currentTask.labels)) {
+	if (
+		issue.labels &&
+		JSON.stringify(issue.labels) !== JSON.stringify(currentTask.labels)
+	) {
 		updates.labels = issue.labels;
 	}
 
@@ -235,24 +328,90 @@ function buildBacklogUpdates(
 		updates.priority = issue.priority;
 	}
 
+	// Acceptance Criteria synchronization
+	const acUpdates = syncAcceptanceCriteria(issue, currentTask);
+	if (acUpdates.addAc && acUpdates.addAc.length > 0) {
+		updates.addAc = acUpdates.addAc;
+	}
+	if (acUpdates.removeAc && acUpdates.removeAc.length > 0) {
+		updates.removeAc = acUpdates.removeAc;
+	}
+	if (acUpdates.checkAc && acUpdates.checkAc.length > 0) {
+		updates.checkAc = acUpdates.checkAc;
+	}
+	if (acUpdates.uncheckAc && acUpdates.uncheckAc.length > 0) {
+		updates.uncheckAc = acUpdates.uncheckAc;
+	}
+
 	return updates;
 }
 
 /**
- * Map Jira status to Backlog status
- * This should use configuration, but for now uses simple defaults
+ * Sync acceptance criteria from Jira to Backlog
+ * Returns operations needed to align Backlog AC with Jira AC
  */
-function mapJiraStatusToBacklog(jiraStatus: string): string {
-	// Simple default mapping
-	const mappings: Record<string, string> = {
-		"To Do": "To Do",
-		Open: "To Do",
-		Backlog: "To Do",
-		"In Progress": "In Progress",
-		Done: "Done",
-		Closed: "Done",
-		Resolved: "Done",
-	};
+function syncAcceptanceCriteria(
+	issue: JiraIssue,
+	currentTask: BacklogTask,
+): {
+	addAc?: string[];
+	removeAc?: number[];
+	checkAc?: number[];
+	uncheckAc?: number[];
+} {
+	// Extract AC from Jira description
+	const jiraAc = normalizeJiraIssue(issue).acceptanceCriteria;
+	const backlogAc = currentTask.acceptanceCriteria || [];
 
-	return mappings[jiraStatus] || jiraStatus;
+	// If AC are identical, no sync needed
+	if (JSON.stringify(jiraAc) === JSON.stringify(backlogAc)) {
+		return {};
+	}
+
+	const addAc: string[] = [];
+	const removeAc: number[] = [];
+	const checkAc: number[] = [];
+	const uncheckAc: number[] = [];
+
+	// Simple approach: If AC lists are different, replace entirely
+	// Remove all existing AC and add new ones
+	if (
+		jiraAc.length !== backlogAc.length ||
+		JSON.stringify(jiraAc) !== JSON.stringify(backlogAc)
+	) {
+		// Remove all existing AC (in reverse order to avoid index issues)
+		for (let i = backlogAc.length; i > 0; i--) {
+			removeAc.push(i);
+		}
+
+		// Add all Jira AC
+		for (const ac of jiraAc) {
+			addAc.push(ac.text);
+		}
+
+		// Note: The checked state will be handled after AC are added
+		// We'll need to check the ones that should be checked
+		for (let i = 0; i < jiraAc.length; i++) {
+			if (jiraAc[i].checked) {
+				// AC indices are 1-based, and they'll be added in order
+				checkAc.push(i + 1);
+			}
+		}
+	}
+
+	logger.debug(
+		{
+			taskId: currentTask.id,
+			jiraAcCount: jiraAc.length,
+			backlogAcCount: backlogAc.length,
+			operations: {
+				addAc: addAc.length,
+				removeAc: removeAc.length,
+				checkAc: checkAc.length,
+			},
+		},
+		"Syncing acceptance criteria from Jira",
+	);
+
+	return { addAc, removeAc, checkAc, uncheckAc };
 }

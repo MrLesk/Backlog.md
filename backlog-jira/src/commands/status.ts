@@ -137,6 +137,7 @@ async function getStatus(options: { json?: boolean; grep?: string }): Promise<vo
 		}
 	} finally {
 		store.close();
+		await jira.close();
 	}
 }
 
@@ -194,6 +195,7 @@ export function registerStatusCommand(program: Command): void {
 		.action(async (options) => {
 			try {
 				await getStatus(options);
+				process.exit(0);
 			} catch (error) {
 				logger.error({ error }, "Status command failed");
 				console.error(`Error: ${error}`);

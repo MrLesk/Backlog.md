@@ -81,6 +81,52 @@ function normalizeStatus(status: string, side: "backlog" | "jira"): string {
 }
 
 /**
+ * Format acceptance criteria for inclusion in Jira description
+ * Converts array of AC to markdown format with checked/unchecked boxes
+ */
+export function formatAcceptanceCriteriaForJira(
+	acceptanceCriteria: Array<{ text: string; checked: boolean }>,
+): string {
+	if (!acceptanceCriteria || acceptanceCriteria.length === 0) {
+		return "";
+	}
+
+	const formatted = acceptanceCriteria
+		.map((ac) => {
+			const checkbox = ac.checked ? "[x]" : "[ ]";
+			return `- ${checkbox} ${ac.text}`;
+		})
+		.join("\n");
+
+	return `\n\nAcceptance Criteria:\n${formatted}`;
+}
+
+/**
+ * Remove acceptance criteria section from a description
+ * Returns the description without the AC section
+ */
+export function stripAcceptanceCriteriaFromDescription(description: string): string {
+	if (!description) return "";
+
+	// Remove AC section (case-insensitive, handles variations)
+	const withoutAc = description.replace(/\n\n?Acceptance Criteria:?\s*[\s\S]*?(?=\n\n|$)/i, "");
+	return withoutAc.trim();
+}
+
+/**
+ * Merge description with acceptance criteria for Jira
+ * Strips any existing AC section from description first, then appends formatted AC
+ */
+export function mergeDescriptionWithAc(
+	description: string,
+	acceptanceCriteria: Array<{ text: string; checked: boolean }>,
+): string {
+	const cleanDescription = stripAcceptanceCriteriaFromDescription(description);
+	const acSection = formatAcceptanceCriteriaForJira(acceptanceCriteria);
+	return cleanDescription + acSection;
+}
+
+/**
  * Extract acceptance criteria from Jira description
  * Looks for patterns like "Acceptance Criteria:" followed by bullet points
  */

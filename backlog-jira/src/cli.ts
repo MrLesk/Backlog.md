@@ -8,6 +8,7 @@ import { pull } from "./commands/pull.ts";
 import { push } from "./commands/push.ts";
 import { registerStatusCommand } from "./commands/status.ts";
 import { sync } from "./commands/sync.ts";
+import { watch } from "./commands/watch.ts";
 
 const program = new Command();
 
@@ -155,10 +156,21 @@ program
 
 program
 	.command("watch")
-	.description("Watch for changes and auto-sync (Phase 5)")
-	.option("--interval <interval>", "Polling interval (e.g., 60s, 5m)")
-	.action(() => {
-		console.log("Coming in Phase 5: Watch Mode & Advanced Features");
+	.description("Watch for changes and auto-sync")
+	.option("--interval <interval>", "Polling interval (e.g., 60s, 5m)", "60s")
+	.option("--strategy <strategy>", "Conflict resolution strategy: prefer-backlog|prefer-jira|prompt|manual", "prefer-backlog")
+	.option("--stop-on-error", "Stop watch mode if an error occurs")
+	.action(async (options) => {
+		try {
+			await watch({
+				interval: options.interval,
+				strategy: options.strategy,
+				stopOnError: options.stopOnError,
+			});
+		} catch (error) {
+			console.error("Error:", error instanceof Error ? error.message : String(error));
+			process.exit(1);
+		}
 	});
 
 program.parse();

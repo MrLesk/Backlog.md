@@ -60,6 +60,7 @@ Implementation Plan:
 
 			const task = (client as unknown as { parseTaskDetail: (output: string) => unknown }).parseTaskDetail(mockOutput);
 
+			// The parser extracts all sections from the output
 			expect(task).toMatchObject({
 				id: "task-42",
 				title: "Test Task",
@@ -68,6 +69,8 @@ Implementation Plan:
 				labels: ["backend", "api"],
 				priority: "high",
 				description: "This is a test task",
+				acceptanceCriteria: expect.any(Array),
+				implementationPlan: expect.any(String),
 			});
 		});
 
