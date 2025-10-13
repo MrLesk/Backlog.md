@@ -32,6 +32,11 @@ export interface Task {
 	// Metadata fields (previously in TaskWithMetadata)
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed";
+	// Jira integration fields (optional, populated by backlog-jira plugin)
+	jiraKey?: string;
+	jiraUrl?: string;
+	jiraLastSync?: string;
+	jiraSyncState?: string;
 }
 
 export interface TaskListFilter {

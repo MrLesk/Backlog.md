@@ -146,6 +146,11 @@ export function parseTask(content: string): Task {
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
 		priority: validatedPriority,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
+		// Jira integration fields (optional, from backlog-jira plugin)
+		jiraKey: frontmatter.jira_key ? String(frontmatter.jira_key) : undefined,
+		jiraUrl: frontmatter.jira_url ? String(frontmatter.jira_url) : undefined,
+		jiraLastSync: frontmatter.jira_last_sync ? String(frontmatter.jira_last_sync) : undefined,
+		jiraSyncState: frontmatter.jira_sync_state ? String(frontmatter.jira_sync_state) : undefined,
 	};
 }
 

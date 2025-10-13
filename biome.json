@@ -6,15 +6,13 @@
 		"useIgnoreFile": false
 	},
 	"files": {
-		"ignoreUnknown": false,
-		"includes": ["src/**/*.ts", "scripts/**/*.cjs", "*.json", "**/*.json"]
+		"ignoreUnknown": false
 	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
 		"lineWidth": 120
 	},
-	"assist": { "actions": { "source": { "organizeImports": "on" } } },
 	"linter": {
 		"enabled": true,
 		"rules": {

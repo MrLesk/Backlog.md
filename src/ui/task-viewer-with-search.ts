@@ -1155,6 +1155,25 @@ export function formatTaskPlainText(task: Task, content: string, filePath?: stri
 	if (task.dependencies?.length) {
 		lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
 	}
+
+	// Jira metadata (if present)
+	if (task.jiraKey || task.jiraUrl || task.jiraLastSync || task.jiraSyncState) {
+		lines.push("");
+		lines.push("Jira Integration:");
+		lines.push("-".repeat(50));
+		if (task.jiraKey) {
+			lines.push(`Key: ${task.jiraKey}`);
+		}
+		if (task.jiraUrl) {
+			lines.push(`URL: ${task.jiraUrl}`);
+		}
+		if (task.jiraLastSync) {
+			lines.push(`Last Sync: ${task.jiraLastSync}`);
+		}
+		if (task.jiraSyncState) {
+			lines.push(`Sync State: ${task.jiraSyncState}`);
+		}
+	}
 	lines.push("");
 
 	lines.push("Description:");
@@ -1242,6 +1261,24 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	}
 	if (task.dependencies?.length) {
 		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
+	}
+
+	// Jira metadata (if present)
+	if (task.jiraKey || task.jiraUrl || task.jiraLastSync || task.jiraSyncState) {
+		metadata.push("");
+		metadata.push("{bold}{blue-fg}Jira Integration:{/}{/bold}");
+		if (task.jiraKey) {
+			metadata.push(`{bold}Key:{/bold} {cyan-fg}${task.jiraKey}{/}`);
+		}
+		if (task.jiraUrl) {
+			metadata.push(`{bold}URL:{/bold} {blue-fg}${task.jiraUrl}{/}`);
+		}
+		if (task.jiraLastSync) {
+			metadata.push(`{bold}Last Sync:{/bold} ${task.jiraLastSync}`);
+		}
+		if (task.jiraSyncState) {
+			metadata.push(`{bold}Sync State:{/bold} {yellow-fg}${task.jiraSyncState}{/}`);
+		}
 	}
 
 	bodyContent.push(metadata.join("\n"));
