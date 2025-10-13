@@ -2,6 +2,7 @@
 	"name": "backlog.md",
 	"version": "1.23.0",
 	"type": "module",
+	"module": "src/cli.ts",
 	"files": [
 		"scripts/*.cjs",
 		"README.md",

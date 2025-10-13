@@ -50,7 +50,7 @@
         '';
 
         backlog-md = bun2nix.lib.${system}.mkBunDerivation {
-          pname = "backlog-md";
+          pname = "backlog";
           inherit version;
           src = ./.;
           packageJson = ./package.json;
@@ -67,10 +67,8 @@
           buildPhase = ''
             runHook preBuild
 
-            # Build CSS (uses baseline Bun on x64 Linux via overlay)
-            bun run build:css
-
             # Build the CLI tool with embedded version
+            # Note: CSS is pre-compiled and committed to git, no need to build here
             bun build --compile --minify --define "__EMBEDDED_VERSION__=${version}" --outfile=dist/backlog src/cli.ts
 
             runHook postBuild
