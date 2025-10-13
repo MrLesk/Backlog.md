@@ -26,11 +26,12 @@
         '';
 
         backlog-md = bun2nix.lib.${system}.mkBunDerivation {
-          pname = "backlog-md";
+          pname = "backlog";
           inherit version;
           src = ./.;
           packageJson = ./package.json;
           bunNix = ./bun.nix;
+          index = "src/cli.ts";
           
           nativeBuildInputs = with pkgs; [ bun git rsync ];
           
@@ -38,29 +39,10 @@
             export HOME=$TMPDIR
             export HUSKY=0
             export ${ldLibraryPath}
+            rm -rf backlog
           '';
-          
-          buildPhase = ''
-            runHook preBuild
-            
-            # Build CSS
-            bun run build:css
-            
-            # Build the CLI tool with embedded version
-            bun build --compile --minify --define "__EMBEDDED_VERSION__=${version}" --outfile=dist/backlog src/cli.ts
-            
-            runHook postBuild
-          '';
-          
-          installPhase = ''
-            runHook preInstall
-            
-            mkdir -p $out/bin
-            cp dist/backlog $out/bin/backlog
-            chmod +x $out/bin/backlog
-            
-            runHook postInstall
-          '';
+
+          buildFlags = ["--compile" "--minify" "--define" "__EMBEDDED_VERSION__=${version}"];
           
           meta = with pkgs.lib; {
             description = "A markdown-based task management CLI tool with Kanban board";
