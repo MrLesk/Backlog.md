@@ -57,3 +57,9 @@ result
 test-cli-*
 test-cli-sequences-*
 .env.jira
+
+# Jira integration state (local config)
+.backlog-jira/
+
+# Thoughts directory (planning and brainstorming)
+thoughts/
