@@ -1,5 +1,5 @@
 ---
-id: task-285
+id: task-287
 title: Add MCP support for agent integration
 status: Done
 assignee:
