@@ -1,13 +1,15 @@
 ## 1. Understand the user's intent (Why and What)
 
-### Step 1: Search for existing work
-- Start every request by confirming Backlog coverage through MCP (`task_search`, `task_list`)
+### Step 1: Understand user's intent and search for existing work
+- Start every request by understanding user intent and ask yourself: Is the user mentioning an existing task or work item, is this a new task request or a general question?
+  - If it's general question/request (example: "How can I configure this thing?") and cannot be tracked as a task, answer the request directly.
+  - If they imply that they are talking about new work or existing work, confirm Backlog coverage through MCP (`task_search`, `task_list`)
 - **IMPORTANT**: Always use filters when searching or listing tasks:
   - Use `task_search` with query parameter to find specific tasks (e.g., query="desktop app")
   - Use `task_list` with status filter to exclude completed work (e.g., status="To Do" or status="In Progress")
   - Never list all tasks including "Done" status without explicit user request
   - Never search without a query or limit - this can overwhelm the context window
-- Only proceed without tracking if the user explicitly opts out
+- Only proceed without tracking if the user explicitly opts out or if the request is purely informational or doesn't reflect anything that would require project manangement with Backlog.md
 - Use `task_view` to read full context of related tasks
 
 ### Step 2: Assess scope BEFORE creating tasks
