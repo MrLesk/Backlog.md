@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/mrlesk-backlog-md-badge.png)](https://mseep.ai/app/mrlesk-backlog-md)
+
 <h1 align="center">Backlog.md</h1>
 <p align="center">Markdown‑native Task Manager &amp; Kanban visualizer for any Git repository</p>
 
