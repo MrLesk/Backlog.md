@@ -116,6 +116,7 @@ export class PluginRouter {
 			"browser",
 			"overview",
 			"sequence",
+			"mcp",
 			"--help",
 			"-h",
 			"--version",
