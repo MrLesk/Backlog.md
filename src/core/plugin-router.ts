@@ -78,8 +78,7 @@ export class PluginRouter {
 		console.error(`  bun add -d backlog-${pluginName}`);
 		console.error("");
 		console.error("Available plugins:");
-		console.error("  backlog-jira    - Jira integration");
-		console.error("  backlog-github  - GitHub integration");
+		console.error("  backlog-jira  - Jira integration");
 		return 1;
 	}
 
