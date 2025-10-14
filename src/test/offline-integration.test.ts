@@ -70,7 +70,7 @@ remote_operations: false
 		const task = {
 			id: "task-1",
 			title: "Test task in offline mode",
-			rawContent: "This task should be created without remote operations",
+			description: "This task should be created without remote operations",
 			status: "To Do",
 			assignee: [],
 			createdDate: new Date().toISOString().split("T")[0] ?? "",
@@ -95,7 +95,7 @@ remote_operations: false
 		const task1 = {
 			id: "task-1",
 			title: "First task",
-			rawContent: "First task description",
+			description: "First task description",
 			status: "To Do",
 			assignee: [],
 			createdDate: new Date().toISOString().split("T")[0] ?? "",
@@ -108,7 +108,7 @@ remote_operations: false
 		const task2 = {
 			id: "task-2",
 			title: "Second task",
-			rawContent: "Second task description",
+			description: "Second task description",
 			status: "In Progress",
 			assignee: [],
 			createdDate: new Date().toISOString().split("T")[0] ?? "",

@@ -5,7 +5,6 @@
 import type { Core } from "../core/backlog.ts";
 import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import type { Task } from "../types/index.ts";
-import { getTaskPath } from "../utils/task-path.ts";
 import { renderBoardTui } from "./board.ts";
 import { viewTaskEnhanced } from "./task-viewer-with-search.ts";
 import type { ViewType } from "./view-switcher.ts";
@@ -72,19 +71,8 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 			return;
 		}
 
-		// Load task content
-		let content = "";
-		try {
-			const filePath = await getTaskPath(taskToView.id, options.core);
-			if (filePath) {
-				content = await Bun.file(filePath).text();
-			}
-		} catch {
-			// Fallback to empty content
-		}
-
 		// Show task viewer with simple view switching
-		await viewTaskEnhanced(taskToView, content, {
+		await viewTaskEnhanced(taskToView, {
 			tasks: validTasks,
 			core: options.core,
 			title: options.filter?.title,

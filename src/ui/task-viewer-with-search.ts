@@ -10,10 +10,14 @@ import type {
 } from "neo-neo-bblessed";
 import { box, line, list, scrollabletext, textbox } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
+import {
+	buildAcceptanceCriteriaItems,
+	formatDateForDisplay,
+	formatTaskPlainText,
+} from "../formatters/task-plain-text.ts";
 import type { Task, TaskSearchResult } from "../types/index.ts";
-import { getTaskPath } from "../utils/task-path.ts";
-import { formatChecklistItem, parseCheckboxLine } from "./checklist.ts";
-import { transformCodePaths, transformCodePathsPlain } from "./code-path.ts";
+import { formatChecklistItem } from "./checklist.ts";
+import { transformCodePaths } from "./code-path.ts";
 import { createGenericList, type GenericList } from "./components/generic-list.ts";
 import { formatHeading } from "./heading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
@@ -67,31 +71,11 @@ function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	}
 }
 
-function formatDateForDisplay(dateStr: string): string {
-	const hasTime = dateStr.includes(" ") || dateStr.includes("T");
-	if (hasTime) {
-		return dateStr;
-	}
-	return dateStr;
-}
-
-function extractAcceptanceCriteriaWithCheckboxes(content: string): string[] {
-	if (!content) return [];
-	const regex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/i;
-	const match = content.match(regex);
-	if (!match || !match[1]) return [];
-	return match[1]
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line.startsWith("- [ ]") || line.startsWith("- [x]"));
-}
-
 /**
  * Display task details with search/filter header UI
  */
 export async function viewTaskEnhanced(
 	task: Task,
-	content: string,
 	options: {
 		tasks?: Task[];
 		core?: Core;
@@ -109,7 +93,7 @@ export async function viewTaskEnhanced(
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
-		console.log(formatTaskPlainText(task, content));
+		console.log(formatTaskPlainText(task));
 		return;
 	}
 
@@ -123,7 +107,7 @@ export async function viewTaskEnhanced(
 	const priorities = ["high", "medium", "low"];
 
 	// Initialize with all tasks
-	const allTasks = (options.tasks || (await core.filesystem.listTasks())).filter(
+	const allTasks = (options.tasks || (await core.queryTasks())).filter(
 		(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
 	);
 
@@ -146,21 +130,8 @@ export async function viewTaskEnhanced(
 
 	// Find the initial selected task
 	let currentSelectedTask = task;
-	let currentSelectedContent = content;
 	let selectionRequestId = 0;
 	let noResultsMessage: string | null = null;
-
-	async function readTaskContent(taskId: string): Promise<string> {
-		try {
-			const filePath = await getTaskPath(taskId, core);
-			if (filePath) {
-				return await Bun.file(filePath).text();
-			}
-		} catch {
-			// Ignore read errors to keep the UI responsive
-		}
-		return "";
-	}
 
 	const screen = createScreen({ title: options.title || "Backlog Tasks" });
 
@@ -471,16 +442,18 @@ export async function viewTaskEnhanced(
 			return;
 		}
 		currentSelectedTask = selectedTask;
-		currentSelectedContent = "";
 		options.onTaskChange?.(selectedTask);
 		const requestId = ++selectionRequestId;
 		refreshDetailPane();
 		screen.render();
-		const contentText = await readTaskContent(selectedTask.id);
+		const refreshed = await core.getTask(selectedTask.id);
 		if (requestId !== selectionRequestId) {
 			return;
 		}
-		currentSelectedContent = contentText;
+		if (refreshed) {
+			currentSelectedTask = refreshed;
+			options.onTaskChange?.(refreshed);
+		}
 		refreshDetailPane();
 		screen.render();
 	}
@@ -695,7 +668,7 @@ export async function viewTaskEnhanced(
 			padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		});
 
-		const detailContent = generateDetailContent(currentSelectedTask, currentSelectedContent);
+		const detailContent = generateDetailContent(currentSelectedTask);
 		headerDetailBox.setContent(detailContent.headerContent.join("\n"));
 		bodyContainer.setContent(detailContent.bodyContent.join("\n"));
 		configureDetailBox(bodyContainer);
@@ -1115,94 +1088,7 @@ export async function viewTaskEnhanced(
 	});
 }
 
-export function formatTaskPlainText(task: Task, content: string, filePath?: string): string {
-	const lines: string[] = [];
-
-	if (filePath) {
-		lines.push(`File: ${filePath}`);
-		lines.push("");
-	}
-
-	lines.push(`Task ${task.id} - ${task.title}`);
-	lines.push("=".repeat(50));
-	lines.push("");
-	lines.push(`Status: ${formatStatusWithIcon(task.status)}`);
-	if (task.priority) {
-		lines.push(`Priority: ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`);
-	}
-	if (task.assignee?.length) {
-		lines.push(`Assignee: ${task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ")}`);
-	}
-	if (task.reporter) {
-		lines.push(`Reporter: ${task.reporter.startsWith("@") ? task.reporter : `@${task.reporter}`}`);
-	}
-	lines.push(`Created: ${formatDateForDisplay(task.createdDate)}`);
-	if (task.updatedDate) {
-		lines.push(`Updated: ${formatDateForDisplay(task.updatedDate)}`);
-	}
-	if (task.labels?.length) {
-		lines.push(`Labels: ${task.labels.join(", ")}`);
-	}
-	if (task.milestone) {
-		lines.push(`Milestone: ${task.milestone}`);
-	}
-	if (task.parentTaskId) {
-		lines.push(`Parent: ${task.parentTaskId}`);
-	}
-	if (task.subtasks?.length) {
-		lines.push(`Subtasks: ${task.subtasks.length}`);
-	}
-	if (task.dependencies?.length) {
-		lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
-	}
-	lines.push("");
-
-	lines.push("Description:");
-	lines.push("-".repeat(50));
-	const description = task.description?.trim();
-	lines.push(transformCodePathsPlain(description && description.length > 0 ? description : "No description provided"));
-	lines.push("");
-
-	lines.push("Acceptance Criteria:");
-	lines.push("-".repeat(50));
-	const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(content);
-	if (checkboxLines.length > 0) {
-		for (const line of checkboxLines) {
-			lines.push(line);
-		}
-	} else if (task.acceptanceCriteriaItems?.length) {
-		for (const criterion of task.acceptanceCriteriaItems) {
-			lines.push(`• ${transformCodePathsPlain(criterion.text)}`);
-		}
-	} else {
-		lines.push("No acceptance criteria defined");
-	}
-	lines.push("");
-
-	const implementationPlan = task.implementationPlan?.trim();
-	if (implementationPlan) {
-		lines.push("Implementation Plan:");
-		lines.push("-".repeat(50));
-		lines.push(transformCodePathsPlain(implementationPlan));
-		lines.push("");
-	}
-
-	const implementationNotes = task.implementationNotes?.trim();
-	if (implementationNotes) {
-		lines.push("Implementation Notes:");
-		lines.push("-".repeat(50));
-		lines.push(transformCodePathsPlain(implementationNotes));
-		lines.push("");
-	}
-
-	return lines.join("\n");
-}
-
-function styleCodePaths(content: string): string {
-	return transformCodePaths(content);
-}
-
-function generateDetailContent(task: Task, rawContent = ""): { headerContent: string[]; bodyContent: string[] } {
+function generateDetailContent(task: Task): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -1256,24 +1142,22 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 	bodyContent.push("");
 
 	bodyContent.push(formatHeading("Acceptance Criteria", 2));
-	const checkboxLines = extractAcceptanceCriteriaWithCheckboxes(rawContent);
-	if (checkboxLines.length > 0) {
-		const formattedCriteria = checkboxLines.map((line) => {
-			const checkboxItem = parseCheckboxLine(line);
-			if (checkboxItem) {
-				return formatChecklistItem(checkboxItem, {
+	const checklistItems = buildAcceptanceCriteriaItems(task);
+	if (checklistItems.length > 0) {
+		const formattedCriteria = checklistItems.map((item) =>
+			formatChecklistItem(
+				{
+					text: transformCodePaths(item.text),
+					checked: item.checked,
+				},
+				{
 					padding: " ",
 					checkedSymbol: "{green-fg}✓{/}",
 					uncheckedSymbol: "{gray-fg}○{/}",
-				});
-			}
-			return ` ${line}`;
-		});
-		const criteriaContent = styleCodePaths(formattedCriteria.join("\n"));
-		bodyContent.push(criteriaContent);
-	} else if (task.acceptanceCriteriaItems?.length) {
-		const criteriaContent = styleCodePaths(task.acceptanceCriteriaItems.map((c) => ` • ${c.text}`).join("\n"));
-		bodyContent.push(criteriaContent);
+				},
+			),
+		);
+		bodyContent.push(formattedCriteria.join("\n"));
 	} else {
 		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
 	}
@@ -1299,7 +1183,6 @@ function generateDetailContent(task: Task, rawContent = ""): { headerContent: st
 export async function createTaskPopup(
 	screen: ScreenInterface,
 	task: Task,
-	content: string,
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1336,7 +1219,7 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(task, content);
+	const { headerContent, bodyContent } = generateDetailContent(task);
 
 	const headerBox = box({
 		parent: popup,

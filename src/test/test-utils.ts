@@ -9,12 +9,13 @@ import { join } from "node:path";
 
 /**
  * Creates a unique test directory name to avoid conflicts in parallel execution
+ * All test directories are created under tmp/ to keep the root directory clean
  */
 export function createUniqueTestDir(prefix: string): string {
 	const uuid = randomUUID().slice(0, 8); // Short UUID for readability
 	const timestamp = Date.now().toString(36); // Base36 timestamp
 	const pid = process.pid.toString(36); // Process ID for additional uniqueness
-	return join(process.cwd(), `${prefix}-${timestamp}-${pid}-${uuid}`);
+	return join(process.cwd(), "tmp", `${prefix}-${timestamp}-${pid}-${uuid}`);
 }
 
 /**

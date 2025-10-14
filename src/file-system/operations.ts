@@ -67,6 +67,9 @@ export class FileSystem {
 			const content = await file.text();
 			return this.parseConfig(content);
 		} catch (_error) {
+			if (process.env.DEBUG) {
+				console.error("Error loading config:", _error);
+			}
 			return null;
 		}
 	}
@@ -184,7 +187,8 @@ export class FileSystem {
 			if (!filepath) return null;
 
 			const content = await Bun.file(filepath).text();
-			return parseTask(content);
+			const task = parseTask(content);
+			return { ...task, filePath: filepath };
 		} catch (_error) {
 			return null;
 		}
@@ -199,7 +203,8 @@ export class FileSystem {
 			for (const file of taskFiles) {
 				const filepath = join(tasksDir, file);
 				const content = await Bun.file(filepath).text();
-				tasks.push(parseTask(content));
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
 			}
 
 			if (filter?.status) {
@@ -227,7 +232,8 @@ export class FileSystem {
 			for (const file of taskFiles) {
 				const filepath = join(completedDir, file);
 				const content = await Bun.file(filepath).text();
-				tasks.push(parseTask(content));
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
 			}
 
 			return sortByTaskId(tasks);
@@ -388,7 +394,8 @@ export class FileSystem {
 			if (!filepath) return null;
 
 			const content = await Bun.file(filepath).text();
-			return parseTask(content);
+			const task = parseTask(content);
+			return { ...task, filePath: filepath };
 		} catch {
 			return null;
 		}
@@ -403,7 +410,8 @@ export class FileSystem {
 			for (const file of taskFiles) {
 				const filepath = join(draftsDir, file);
 				const content = await Bun.file(filepath).text();
-				tasks.push(parseTask(content));
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
 			}
 
 			return sortByTaskId(tasks);
@@ -498,6 +506,15 @@ export class FileSystem {
 		} catch {
 			return [];
 		}
+	}
+
+	async loadDocument(id: string): Promise<Document> {
+		const documents = await this.listDocuments();
+		const document = documents.find((doc) => doc.id === id);
+		if (!document) {
+			throw new Error(`Document not found: ${id}`);
+		}
+		return document;
 	}
 
 	// Config operations

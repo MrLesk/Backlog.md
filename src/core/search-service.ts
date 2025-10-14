@@ -16,7 +16,7 @@ interface BaseSearchEntity {
 	readonly id: string;
 	readonly type: SearchResultType;
 	readonly title: string;
-	readonly rawContent: string;
+	readonly bodyText: string;
 }
 
 interface TaskSearchEntity extends BaseSearchEntity {
@@ -186,7 +186,7 @@ export class SearchService {
 			id: task.id,
 			type: "task",
 			title: task.title,
-			rawContent: task.rawContent ?? "",
+			bodyText: buildTaskBodyText(task),
 			task,
 			statusLower: task.status.toLowerCase(),
 			priorityLower: task.priority ? (task.priority.toLowerCase() as SearchPriorityFilter) : undefined,
@@ -198,7 +198,7 @@ export class SearchService {
 			id: document.id,
 			type: "document",
 			title: document.title,
-			rawContent: document.rawContent ?? "",
+			bodyText: document.rawContent ?? "",
 			document,
 		}));
 
@@ -206,7 +206,7 @@ export class SearchService {
 			id: decision.id,
 			type: "decision",
 			title: decision.title,
-			rawContent: decision.rawContent ?? "",
+			bodyText: decision.rawContent ?? "",
 			decision,
 		}));
 
@@ -228,7 +228,7 @@ export class SearchService {
 			minMatchCharLength: 2,
 			keys: [
 				{ name: "title", weight: 0.35 },
-				{ name: "rawContent", weight: 0.3 },
+				{ name: "bodyText", weight: 0.3 },
 				{ name: "id", weight: 0.2 },
 				{ name: "idVariants", weight: 0.1 },
 				{ name: "dependencyIds", weight: 0.05 },
@@ -391,4 +391,28 @@ export class SearchService {
 			value: match.value,
 		}));
 	}
+}
+function buildTaskBodyText(task: Task): string {
+	const parts: string[] = [];
+
+	if (task.description) {
+		parts.push(task.description);
+	}
+
+	if (Array.isArray(task.acceptanceCriteriaItems) && task.acceptanceCriteriaItems.length > 0) {
+		const lines = [...task.acceptanceCriteriaItems]
+			.sort((a, b) => a.index - b.index)
+			.map((criterion) => `- [${criterion.checked ? "x" : " "}] ${criterion.text}`);
+		parts.push(lines.join("\n"));
+	}
+
+	if (task.implementationPlan) {
+		parts.push(task.implementationPlan);
+	}
+
+	if (task.implementationNotes) {
+		parts.push(task.implementationNotes);
+	}
+
+	return parts.join("\n\n");
 }

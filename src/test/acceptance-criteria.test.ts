@@ -647,7 +647,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 				.cwd(TEST_DIR_UNIT)
 				.nothrow();
 			expect(checkResult.exitCode).toBe(1);
-			expect(checkResult.stderr.toString()).toContain("Failed to check AC #5");
+			expect(checkResult.stderr.toString()).toContain("Acceptance criterion #5 not found");
 		});
 	});
 });

@@ -300,6 +300,7 @@ implementation.
 - When you begin work, switch to edit, set the task in progress and assign to yourself
   `backlog task edit <id> -s "In Progress" -a "..."`.
 - Think about how you would solve the task and add the plan: `backlog task edit <id> --plan "..."`.
+- After updating the plan, share it with the user and ask for confirmation. Do not begin coding until the user approves the plan or explicitly tells you to skip the review.
 - Add Implementation Notes only after completing the work: `backlog task edit <id> --notes "..."` (replace) or append progressively using `--append-notes`.
 
 ## Phase discipline: What goes where
@@ -330,19 +331,21 @@ backlog task edit 42 -s "In Progress" -a @myself
 # 4. Add implementation plan
 backlog task edit 42 --plan "1. Analyze\n2. Refactor\n3. Test"
 
-# 5. Work on the task (write code, test, etc.)
+# 5. Share the plan with the user and wait for approval (do not write code yet)
 
-# 6. Mark acceptance criteria as complete (supports multiple in one command)
+# 6. Work on the task (write code, test, etc.)
+
+# 7. Mark acceptance criteria as complete (supports multiple in one command)
 backlog task edit 42 --check-ac 1 --check-ac 2 --check-ac 3  # Check all at once
 # Or check them individually if preferred:
 # backlog task edit 42 --check-ac 1
 # backlog task edit 42 --check-ac 2
 # backlog task edit 42 --check-ac 3
 
-# 7. Add implementation notes (PR Description)
+# 8. Add implementation notes (PR Description)
 backlog task edit 42 --notes "Refactored using strategy pattern, updated tests"
 
-# 8. Mark task as done
+# 9. Mark task as done
 backlog task edit 42 -s Done
 ```
 

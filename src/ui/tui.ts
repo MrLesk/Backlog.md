@@ -11,7 +11,26 @@ import { screen as blessedScreen, box, program as createProgram } from "neo-neo-
 
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
-	return blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
+	const screen = blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
+
+	// Windows runners occasionally surface file system watcher errors as plain objects
+	// (rather than Error instances). Blessed rethrows unhandled "error" events by
+	// constructing the first argument, which explodes when it is a string. Attach a
+	// defensive handler so these platform-specific events don't crash tests.
+	screen.on("error", (err) => {
+		const normalizedError =
+			typeof err === "function"
+				? new err()
+				: err instanceof Error
+					? err
+					: new Error(String(err ?? "Unknown screen error"));
+		if (process.env.DEBUG) {
+			console.warn("TUI screen error", normalizedError);
+		}
+		throw normalizedError;
+	});
+
+	return screen;
 }
 
 // Ask the user for a single line of input.  Falls back to readline.

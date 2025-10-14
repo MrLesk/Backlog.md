@@ -54,7 +54,7 @@ describe("FileSystem", () => {
 			labels: ["test"],
 			milestone: "v1.0",
 			dependencies: [],
-			rawContent: "This is a test task",
+			description: "This is a test task",
 		};
 
 		it("should save and load a task", async () => {
@@ -64,7 +64,7 @@ describe("FileSystem", () => {
 			expect(loadedTask?.id).toBe(sampleTask.id);
 			expect(loadedTask?.title).toBe(sampleTask.title);
 			expect(loadedTask?.status).toBe(sampleTask.status);
-			expect(loadedTask?.rawContent).toBe(sampleTask.rawContent);
+			expect(loadedTask?.description).toBe(sampleTask.description);
 		});
 
 		it("should return null for non-existent task", async () => {
@@ -182,7 +182,7 @@ describe("FileSystem", () => {
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
-			rawContent: "Draft description",
+			description: "Draft description",
 		};
 
 		it("should save and load a draft", async () => {
@@ -390,7 +390,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task with task- prefix",
+				description: "Task with task- prefix",
 			};
 
 			await filesystem.saveTask(taskWithPrefix);
@@ -408,7 +408,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task without prefix",
+				description: "Task without prefix",
 			};
 
 			await filesystem.saveTask(taskWithoutPrefix);
@@ -471,7 +471,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task with special characters in title",
+				description: "Task with special characters in title",
 			};
 
 			await filesystem.saveTask(taskWithSpecialChars);
@@ -489,7 +489,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task with mixed case title",
+				description: "Task with mixed case title",
 			};
 
 			await filesystem.saveTask(taskWithMixedCase);
@@ -513,7 +513,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Check double dashes",
+				description: "Check double dashes",
 			};
 
 			await filesystem.saveTask(weirdTask);

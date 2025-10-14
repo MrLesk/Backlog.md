@@ -1,6 +1,29 @@
-# ⚠️ **IMPORTANT**
+<!-- BACKLOG.MD MCP GUIDELINES START -->
 
-Read the [agent-guidelines.md](src/guidelines/agent-guidelines.md)  
+<CRITICAL_INSTRUCTION>
+
+## BACKLOG WORKFLOW INSTRUCTIONS
+
+This project uses Backlog.md MCP for all task and project management.
+
+**CRITICAL RESOURCE**: Read `backlog://workflow/overview` to understand when and how to use Backlog for this project.
+
+- **First time working here?** Read the overview resource IMMEDIATELY to learn the workflow
+- **Already familiar?** You should have the overview cached ("## Backlog.md Overview (MCP)")
+- **When to read it**: BEFORE creating tasks, or when you're unsure whether to track work
+
+The overview resource contains:
+- Decision framework for when to create tasks
+- Search-first workflow to avoid duplicates
+- Links to detailed guides for task creation, execution, and completion
+- MCP tools reference
+
+You MUST read the overview resource to understand the complete workflow. The information is NOT summarized here.
+
+</CRITICAL_INSTRUCTION>
+
+<!-- BACKLOG.MD MCP GUIDELINES END -->
+
 When you're working on a task, you should assign it yourself: -a @codex
 
 In addition to the rules above, please consider the following:
@@ -54,3 +77,4 @@ are found, the commit will be blocked until fixed.
 - **Branching**: Use feature branches when working on tasks (e.g. `tasks/task-123-feature-name`)
 - **Committing**: Use the following format: `TASK-123 - Title of the task`
 - **Github CLI**: Use `gh` whenever possible for PRs and issues
+

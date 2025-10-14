@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-05 11:17'
-updated_date: '2025-10-06 19:41'
+updated_date: '2025-10-12 16:52'
 labels:
   - cli
   - init
@@ -57,13 +57,7 @@ Init currently prompts for many settings (branch checks, remote, zero-padding, e
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-- Refactored init advanced prompts into a reusable wizard, reused by `backlog config` and exposed via a new helper.
-- Simplified `backlog init` interactive flow to project name → agent instructions → advanced confirmation, applying safe defaults when skipped.
-- Updated docs plus added unit coverage for wizard/config flows and CLI summary output.
-- Tests: `bunx tsc --noEmit`, `bun run check .`, `bun test`.
-
-Reopening after Codex review on PR 385 flagged missing `backlog config list` subcommand. Investigating CLI regression to restore list handler while preserving other config commands.
-
-- Restored `backlog config list` CLI coverage and added regression test ensuring list/get/set remain available.
-- Tests: bun test src/test/config-commands.test.ts
+- Extended init integration prompt with ESC handling, highlight fallback, MCP client automation, and summary outputs for MCP/CLI/no AI paths.
+- Adjusted non-interactive defaults to prefer MCP, enforced invalid flag combinations, and updated template/README links.
+- Tests now cover MCP default, CLI agent selections, and skip behavior under new flow.
 <!-- SECTION:NOTES:END -->

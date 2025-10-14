@@ -45,6 +45,14 @@ export class ContentStore {
 	private chainTail: Promise<void> = Promise.resolve();
 	private watchersInitialized = false;
 
+	private attachWatcherErrorHandler(watcher: FSWatcher, context: string): void {
+		watcher.on("error", (error) => {
+			if (process.env.DEBUG) {
+				console.warn(`Watcher error (${context})`, error);
+			}
+		});
+	}
+
 	constructor(private readonly filesystem: FileSystem) {
 		this.patchFilesystem();
 	}
@@ -251,6 +259,7 @@ export class ContentStore {
 					this.notify("tasks");
 				});
 			});
+			this.attachWatcherErrorHandler(watcher, "config");
 
 			return {
 				stop() {
@@ -329,6 +338,7 @@ export class ContentStore {
 				this.notify("tasks");
 			});
 		});
+		this.attachWatcherErrorHandler(watcher, "tasks");
 
 		return {
 			stop() {
@@ -400,6 +410,7 @@ export class ContentStore {
 				this.notify("decisions");
 			});
 		});
+		this.attachWatcherErrorHandler(watcher, "decisions");
 
 		return {
 			stop() {
@@ -502,6 +513,7 @@ export class ContentStore {
 					await handler(eventType, absolutePath, relativePath);
 				});
 			});
+			this.attachWatcherErrorHandler(watcher, `dir:${rootDir}`);
 
 			return {
 				stop() {
@@ -765,6 +777,7 @@ export class ContentStore {
 					}
 				});
 			});
+			this.attachWatcherErrorHandler(watcher, `manual:${dir}`);
 
 			watchers.set(dir, watcher);
 

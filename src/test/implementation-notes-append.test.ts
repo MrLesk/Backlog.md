@@ -36,7 +36,8 @@ describe("Implementation Notes - append", () => {
 			createdDate: "2025-07-03",
 			labels: [],
 			dependencies: [],
-			rawContent: "Test description\n\n## Implementation Notes\n\nFirst block",
+			description: "Test description",
+			implementationNotes: "First block",
 		};
 		await core.createTask(task, false);
 
@@ -45,10 +46,8 @@ describe("Implementation Notes - append", () => {
 			.quiet();
 		expect(result.exitCode).toBe(0);
 
-		const updated = await core.filesystem.loadTask("task-1");
-		expect(extractStructuredSection(updated?.rawContent || "", "implementationNotes")).toBe(
-			"First block\n\nSecond block",
-		);
+		const updatedBody = await core.getTaskContent("task-1");
+		expect(extractStructuredSection(updatedBody ?? "", "implementationNotes")).toBe("First block\n\nSecond block");
 	});
 
 	it("creates Implementation Notes at correct position when missing (after plan, else AC, else Description)", async () => {
@@ -61,7 +60,9 @@ describe("Implementation Notes - append", () => {
 			createdDate: "2025-07-03",
 			labels: [],
 			dependencies: [],
-			rawContent: "Desc here\n\n## Acceptance Criteria\n\n- [ ] A\n\n## Implementation Plan\n\n1. Do A\n2. Do B",
+			description: "Desc here",
+			acceptanceCriteriaItems: [{ index: 1, text: "A", checked: false }],
+			implementationPlan: "1. Do A\n2. Do B",
 		};
 		await core.createTask(t, false);
 
@@ -70,8 +71,7 @@ describe("Implementation Notes - append", () => {
 			.quiet();
 		expect(res.exitCode).toBe(0);
 
-		const updated = await core.filesystem.loadTask("task-1");
-		const body = updated?.rawContent || "";
+		const body = (await core.getTaskContent("task-1")) ?? "";
 		const planIdx = body.indexOf("## Implementation Plan");
 		const notesContent = extractStructuredSection(body, "implementationNotes") || "";
 		expect(planIdx).toBeGreaterThan(0);
@@ -88,7 +88,7 @@ describe("Implementation Notes - append", () => {
 			createdDate: "2025-07-03",
 			labels: [],
 			dependencies: [],
-			rawContent: "Some description",
+			description: "Some description",
 		};
 		await core.createTask(task, false);
 
@@ -97,11 +97,11 @@ describe("Implementation Notes - append", () => {
 			.quiet();
 		expect(res.exitCode).toBe(0);
 
-		const updated = await core.filesystem.loadTask("task-1");
-		expect(extractStructuredSection(updated?.rawContent || "", "implementationNotes")).toBe("First\n\nSecond");
+		const updatedBody = await core.getTaskContent("task-1");
+		expect(extractStructuredSection(updatedBody ?? "", "implementationNotes")).toBe("First\n\nSecond");
 	});
 
-	it("edit --append-notes works and errors if combined with --notes", async () => {
+	it("edit --append-notes works and allows combining with --notes", async () => {
 		const resOk = await $`bun ${[CLI_PATH, "task", "create", "T", "--plan", "1. A\n2. B"]}`.cwd(TEST_DIR).quiet();
 		expect(resOk.exitCode).toBe(0);
 
@@ -111,13 +111,17 @@ describe("Implementation Notes - append", () => {
 		expect(res1.exitCode).toBe(0);
 
 		const core = new Core(TEST_DIR);
-		const task = await core.filesystem.loadTask("task-1");
-		expect(extractStructuredSection(task?.rawContent || "", "implementationNotes")).toBe("Alpha\n\nBeta");
+		let taskBody = await core.getTaskContent("task-1");
+		expect(extractStructuredSection(taskBody ?? "", "implementationNotes")).toBe("Alpha\n\nBeta");
 
-		const bad = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "X", "--notes", "Y"]}`
+		// Combining --notes (replace) with --append-notes (append) should work
+		const combined = await $`bun ${[CLI_PATH, "task", "edit", "1", "--notes", "Y", "--append-notes", "X"]}`
 			.cwd(TEST_DIR)
 			.quiet()
 			.nothrow();
-		expect(bad.exitCode).not.toBe(0);
+		expect(combined.exitCode).toBe(0);
+
+		taskBody = await core.getTaskContent("task-1");
+		expect(extractStructuredSection(taskBody ?? "", "implementationNotes")).toBe("Y\n\nX");
 	});
 });

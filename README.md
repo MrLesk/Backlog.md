@@ -17,19 +17,19 @@
 
 * 📝 **Markdown-native tasks** -- manage every issue as a plain `.md` file
 
-* 🔒 **100 % private & offline** -- backlog lives entirely inside your repo
+* 🤖 **AI-Ready** -- Works with Claude Code, Gemini CLI, Codex & any other MCP or CLI compatible AI assistants
 
 * 📊 **Instant terminal Kanban** -- `backlog board` paints a live board in your shell
 
-* 📤 **Board export** -- `backlog board export` creates shareable markdown reports
-
 * 🌐 **Modern web interface** -- `backlog browser` launches a sleek web UI for visual task management
-
-* 🤖 **AI-ready CLI** -- "Claude, please take over task 33"
 
 * 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
 
 * 📋 **Rich query commands** -- view, list, filter, or archive tasks with ease
+
+* 📤 **Board export** -- `backlog board export` creates shareable markdown reports
+
+* 🔒 **100 % private & offline** -- backlog lives entirely inside your repo and you can manage everything locally
 
 * 💻 **Cross-platform** -- runs on macOS, Linux, and Windows
 
@@ -40,34 +40,34 @@
 
 ## <img src="./.github/5-minute-tour-256.png" alt="5-minute tour" width="28" height="28" align="center"> Five‑minute tour
 ```bash
-# 1. Make sure you have Backlog.md installed  
-bun/npm i -g backlog.md or brew install backlog-md
+# 1. Make sure you have Backlog.md installed (global installation recommended) 
+bun i -g backlog.md 
+or 
+npm i -g backlog.md 
+or 
+brew install backlog-md
 
-# 2. Bootstrap a repo + backlog  
+# 2. Bootstrap a repo + backlog and choose the AI Agent integration mode (MCP, CLI, or skip)
 backlog init "My Awesome Project"
 
-# 3. Capture work  
+# 3. Create tasks manually  
 backlog task create "Render markdown as kanban"
 
-# 4. See where you stand
-backlog board view or backlog browser
-
-# 5. Find what you need
-backlog search "markdown" or just backlog search for interactive filters
-
-# 6. Create tasks using Claude-code, Gemini, Codex or Jules
+# 4. Or ask AI to create them: Claude Code, Gemini CLI, or Codex (Agents automatically use Backlog.md via MCP or CLI)
 Claude I would like to build a search functionality in the web view that searches for:
 * tasks
 * docs
 * decisions
   Please create relevant tasks to tackle this request.
 
-# 7. Assign tasks to AI
+# 5. See where you stand
+backlog board view or backlog browser
+
+# 6. Assign tasks to AI (Backlog.md instructions tell agents how to work with tasks)
 Claude please implement all tasks related to the web search functionality (task-10, task-11, task-12)
-* before starting to write code use 'ultrathink mode' to prepare an implementation plan
+* before starting to write code use 'ultrathink mode' to prepare and add an implementation plan to the task
 * use multiple sub-agents when possible and dependencies allow
 ```
-
 
 All data is saved under `backlog` folder as human‑readable Markdown with the following format `task-<task-id> - <task-title>.md` (e.g. `task-10 - Add core search functionality.md`).
 
@@ -88,16 +88,71 @@ backlog browser --port 8080
 backlog browser --no-open
 ```
 
+**Features:**
+- Interactive Kanban board with drag-and-drop
+- Task creation and editing with rich forms
+- Interactive acceptance criteria editor with checklists
+- Real-time updates across all views
+- Responsive design for desktop and mobile
+- Task archiving with confirmation dialogs
+- Seamless CLI integration - all changes sync with markdown files
+
 ![Web Interface Screenshot](./.github/web.jpeg)
 
-The web interface provides:
-- **Interactive Kanban board** with drag-and-drop functionality
-- **Task creation and editing** with rich forms and validation
-- **Interactive acceptance criteria editor** with checklist controls and instant persistence
-- **Real-time updates** as you manage tasks
-- **Responsive design** that works on desktop and mobile
-- **Archive tasks** with confirmation dialogs
-- **Seamless CLI integration** - changes sync with your markdown files
+---
+
+## 🔧 MCP Integration (Model Context Protocol)
+
+Connect Backlog.md to an MCP-compatible AI tool so it can launch `backlog mcp start` automatically whenever it needs project access.
+
+### Client guides
+
+<details>
+  <summary><strong>Claude Code</strong></summary>
+
+  ```bash
+  claude mcp add my-project-backlog -- backlog mcp start
+  ```
+
+</details>
+
+<details>
+  <summary><strong>Codex</strong></summary>
+
+  ```bash
+  codex mcp add my-project-backlog -- backlog mcp start
+  ```
+
+</details>
+
+<details>
+  <summary><strong>Gemini CLI</strong></summary>
+
+  ```bash
+  gemini mcp add my-project-backlog backlog mcp start
+  ```
+
+</details>
+
+### Manual config
+
+```json
+{
+  "mcpServers": {
+    "my-project-backlog": {
+      "command": "backlog",
+      "args": ["mcp", "start"]
+    },
+    "my-other-project-backlog": {
+      "command": "backlog",
+      "args": ["mcp", "start"]
+    }
+  }
+}
+```
+
+Once connected, agents can read the Backlog.md workflow instructions via the resource `backlog://docs/task-workflow`.
+Use `/mcp` command in your AI tool (Claude Code, Codex) to verify if the connection is working.
 
 ---
 
@@ -113,7 +168,8 @@ The web interface provides:
 
 `backlog init` keeps first-run setup focused on the essentials:
 - **Project name** – identifier for your backlog (defaults to the current directory on re-run).
-- **Agent instruction files** – pick which AI Agent instruction files to create (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot, or skip).
+- **Integration choice** – decide whether your AI tools connect through the **MCP connector** (recommended) or stick with **CLI commands (legacy)**.
+- **Instruction files (CLI path only)** – when you choose the legacy CLI flow, pick which instruction files to create (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot, or skip).
 - **Advanced settings prompt** – default answer “No” finishes init immediately; choosing “Yes” jumps straight into the advanced wizard documented in [Configuration](#configuration).
 
 You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`, or `--install-claude-agent true`) continue to provide fully non-interactive setups, so existing scripts keep working without change.
@@ -196,6 +252,24 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 | Create draft | `backlog task create "Feature" --draft`             |
 | Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
 | Demote to draft| `backlog task demote <id>` |
+
+### Dependency Management
+
+Manage task dependencies to create execution sequences and prevent circular relationships:
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Add dependencies | `backlog task edit 7 --dep task-1 --dep task-2`     |
+| Add multiple deps | `backlog task edit 7 --dep task-1,task-5,task-9`    |
+| Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
+| View dependencies | `backlog task 7` (shows dependencies in task view)  |
+| Validate dependencies | Use task commands to automatically validate dependencies |
+
+**Dependency Features:**
+- **Automatic validation**: Prevents circular dependencies and validates task existence
+- **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
+- **Visual sequences**: Dependencies create visual execution sequences in board view
+- **Completion tracking**: See which dependencies are blocking task progress
 
 ### Board Operations
 

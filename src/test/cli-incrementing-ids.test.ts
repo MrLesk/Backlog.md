@@ -43,7 +43,7 @@ describe("CLI ID Incrementing Behavior", () => {
 			createdDate: "2025-01-01",
 			labels: [],
 			dependencies: [],
-			rawContent: "A test task.",
+			description: "A test task.",
 		};
 		await core.createTask(task1);
 

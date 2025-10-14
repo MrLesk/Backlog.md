@@ -11,7 +11,7 @@ function t(id: string, deps: string[] = []): Task {
 		createdDate: "2025-01-01",
 		labels: [],
 		dependencies: deps,
-		rawContent: "## Description\n\nTest",
+		description: "Test",
 	};
 }
 

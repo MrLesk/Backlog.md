@@ -11,7 +11,7 @@ function createTask(id: string, status: string): Task {
 		createdDate: "2025-01-01",
 		labels: [],
 		dependencies: [],
-		rawContent: "",
+		description: "",
 	};
 }
 

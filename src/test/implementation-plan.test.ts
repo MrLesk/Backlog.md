@@ -123,11 +123,11 @@ describe("Implementation Plan CLI", () => {
 
 			// Test 2: replace existing implementation plan
 			// First add an old plan via structured field (serializer will compose)
-			task = await core.filesystem.loadTask("task-1");
-			if (task) {
-				task.implementationPlan = "Old plan:\n1. Old step 1\n2. Old step 2";
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput(
+				"task-1",
+				{ implementationPlan: "Old plan:\n1. Old step 1\n2. Old step 2" },
+				false,
+			);
 
 			// Now update with new plan
 			const result2 = await editTaskPlatformAware(

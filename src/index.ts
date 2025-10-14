@@ -5,6 +5,8 @@ export {
 	_loadAgentGuideline,
 	type AgentInstructionFile,
 	addAgentInstructions,
+	type EnsureMcpGuidelinesResult,
+	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "./agent-instructions.ts";
 // Kanban board utilities

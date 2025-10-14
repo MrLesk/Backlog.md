@@ -79,7 +79,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 
 			await core.createTask(task);
@@ -99,7 +99,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 
 			await core.createTask(task, true);
@@ -120,13 +120,12 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 			await core.createTask(task, true);
 
 			// Update the task (should not auto-commit)
-			task.title = "Updated Task";
-			await core.updateTask(task);
+			await core.updateTaskFromInput("task-3", { title: "Updated Task" });
 
 			// Check that there are uncommitted changes
 			const git = await core.getGitOps();
@@ -144,7 +143,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 			await core.createTask(task, true);
 
@@ -182,7 +181,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 
 			await core.createTask(task);
@@ -202,7 +201,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 
 			await core.createTask(task, false);
@@ -233,7 +232,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 
 			await core.createDraft(task);
@@ -254,7 +253,7 @@ describe("Auto-commit configuration", () => {
 				createdDate: "2025-07-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 			await core.createDraft(task, true);
 

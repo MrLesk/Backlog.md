@@ -13,7 +13,7 @@ describe("Board loading with checkActiveBranches config", () => {
 		createdDate: "2025-01-08",
 		labels: ["test"],
 		dependencies: [],
-		rawContent: `This is test task ${id}`,
+		description: `This is test task ${id}`,
 	});
 
 	it("should respect checkActiveBranches=false in Core.loadBoardTasks", async () => {
@@ -36,6 +36,11 @@ describe("Board loading with checkActiveBranches config", () => {
 			isInsideGitRepo: async () => true,
 			fetch: async () => {},
 			listRecentRemoteBranches: async () => [],
+			listRecentBranches: async () => ["main"],
+			listAllBranches: async () => ["main"],
+			listFilesInTree: async () => [],
+			getBranchLastModifiedMap: async () => new Map<string, Date>(),
+			getCurrentBranch: async () => "main",
 		};
 
 		// Track progress messages
@@ -91,7 +96,10 @@ describe("Board loading with checkActiveBranches config", () => {
 			fetch: async () => {},
 			listRecentRemoteBranches: async () => [],
 			listRecentBranches: async () => ["main"],
+			listAllBranches: async () => ["main"],
 			listFilesInTree: async () => [],
+			getBranchLastModifiedMap: async () => new Map<string, Date>(),
+			getCurrentBranch: async () => "main",
 		};
 
 		// Track progress messages
@@ -146,7 +154,10 @@ describe("Board loading with checkActiveBranches config", () => {
 			fetch: async () => {},
 			listRecentRemoteBranches: async () => [],
 			listRecentBranches: async () => ["main"],
+			listAllBranches: async () => ["main"],
 			listFilesInTree: async () => [],
+			getBranchLastModifiedMap: async () => new Map<string, Date>(),
+			getCurrentBranch: async () => "main",
 		};
 
 		// Track progress messages

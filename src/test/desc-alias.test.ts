@@ -57,7 +57,7 @@ describe("--desc alias functionality", () => {
 		const task = await core.filesystem.loadTask("task-1");
 
 		expect(task).not.toBeNull();
-		expect(task?.rawContent).toContain("Description via --desc");
+		expect(task?.description).toContain("Description via --desc");
 	});
 
 	it("should edit task description with --desc alias", async () => {
@@ -72,7 +72,7 @@ describe("--desc alias functionality", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				rawContent: "Original description",
+				description: "Original description",
 			},
 			false,
 		);
@@ -84,7 +84,7 @@ describe("--desc alias functionality", () => {
 
 		// Verify the description was updated
 		const updatedTask = await core.filesystem.loadTask("task-1");
-		expect(updatedTask?.rawContent).toContain("Updated via --desc");
+		expect(updatedTask?.description).toContain("Updated via --desc");
 	});
 
 	it("should create draft with --desc alias", async () => {
@@ -102,7 +102,7 @@ describe("--desc alias functionality", () => {
 		const draft = await core.filesystem.loadDraft("task-1");
 
 		expect(draft).not.toBeNull();
-		expect(draft?.rawContent).toContain("Draft via --desc");
+		expect(draft?.description).toContain("Draft via --desc");
 	});
 
 	it("should show --desc in help text", async () => {

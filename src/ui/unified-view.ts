@@ -5,7 +5,6 @@
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
-import { getTaskPath } from "../utils/task-path.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -168,17 +167,6 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				return "exit";
 			}
 
-			// Load task content
-			let content = "";
-			try {
-				const filePath = await getTaskPath(taskToView.id, options.core);
-				if (filePath) {
-					content = await Bun.file(filePath).text();
-				}
-			} catch {
-				// Fallback to empty content
-			}
-
 			// Show enhanced task viewer with view switching support
 			return new Promise<ViewResult>((resolve) => {
 				let result: ViewResult = "exit"; // Default to exit
@@ -194,7 +182,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				const hasSearchQuery = options.filter ? "searchQuery" in options.filter : false;
 				const shouldFocusSearch = isInitialLoad && hasSearchQuery;
 
-				viewTaskEnhanced(taskToView, content, {
+				viewTaskEnhanced(taskToView, {
 					tasks: availableTasks,
 					core: options.core,
 					title: options.filter?.title,

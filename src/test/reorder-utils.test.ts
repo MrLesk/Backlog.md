@@ -21,7 +21,6 @@ const buildTask = (id: string, status: string, ordinal?: number): Task => ({
 	createdDate: FIXED_DATE,
 	labels: [],
 	dependencies: [],
-	rawContent: "",
 	...(ordinal !== undefined ? { ordinal } : {}),
 });
 

@@ -22,13 +22,12 @@ export function serializeTask(task: Task): string {
 		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
 	};
 
-	// Compose from first-party fields when present, preserving other content
-	let contentBody = task.rawContent;
+	let contentBody = task.rawContent ?? "";
 	if (typeof task.description === "string" && task.description.trim() !== "") {
 		contentBody = updateTaskDescription(contentBody, task.description);
 	}
 	if (Array.isArray(task.acceptanceCriteriaItems)) {
-		const existingCriteria = AcceptanceCriteriaManager.parseAllCriteria(task.rawContent);
+		const existingCriteria = AcceptanceCriteriaManager.parseAllCriteria(task.rawContent ?? "");
 		const hasExistingStructuredCriteria = existingCriteria.length > 0;
 		if (task.acceptanceCriteriaItems.length > 0 || hasExistingStructuredCriteria) {
 			contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
