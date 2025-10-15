@@ -1,11 +1,11 @@
 ---
 id: task-290
 title: Improve MCP status field to use enum dropdown with config values
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-15 18:31'
-updated_date: '2025-10-15 19:20'
+updated_date: '2025-10-15 19:29'
 labels: []
 dependencies: []
 priority: medium
