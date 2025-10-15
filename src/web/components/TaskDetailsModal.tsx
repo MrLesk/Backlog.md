@@ -50,7 +50,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
   const [status, setStatus] = useState(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
   const [assignee, setAssignee] = useState<string[]>(task?.assignee || []);
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
-  const [priority, setPriority] = useState<string>(task?.priority || "");
+  const [priority, setPriority] = useState<string>(task?.priority || "low");
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
 
@@ -111,7 +111,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     setStatus(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
     setAssignee(task?.assignee || []);
     setLabels(task?.labels || []);
-    setPriority(task?.priority || "");
+    setPriority(task?.priority || "low");
     setDependencies(task?.dependencies || []);
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
@@ -477,7 +477,6 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
               value={priority}
               onChange={(e) => handleInlineMetaUpdate({ priority: e.target.value as any })}
             >
-              <option value="">No Priority</option>
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
