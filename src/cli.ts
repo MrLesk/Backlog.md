@@ -459,9 +459,8 @@ program
 										value: "mcp",
 									},
 									{
-										title: "via CLI commands (legacy)",
-										description:
-											"Generate instruction files like CLAUDE.md and AGENTS.md for tools that read local docs.",
+										title: "via CLI commands (broader compatibility)",
+										description: "Agents will use Backlog.md by invoking CLI commands directly",
 										value: "cli",
 									},
 									{

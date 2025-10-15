@@ -3,7 +3,7 @@
 
 ## BACKLOG WORKFLOW INSTRUCTIONS
 
-This project uses Backlog.md MCP for all task and project management.
+This project uses Backlog.md MCP for all task and project management activities.
 
 **CRITICAL RESOURCE**: Read `backlog://workflow/overview` to understand when and how to use Backlog for this project.
 
