@@ -3,19 +3,21 @@ import type { BacklogConfig } from "../../types/index.ts";
 import type { JsonSchema } from "../validation/validators.ts";
 
 /**
- * Generates a status field schema with dynamic values shown in description
- *
- * Note: We use description instead of enum to allow the custom validator
- * to perform case-insensitive normalization. The schema validation happens
- * before custom validation, so a strict enum would block normalization.
+ * Generates a status field schema with dynamic enum values sourced from config.
  */
 export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
-	const statuses = config.statuses || DEFAULT_STATUSES;
+	const configuredStatuses =
+		config.statuses && config.statuses.length > 0 ? [...config.statuses] : [...DEFAULT_STATUSES];
+	const defaultStatus = configuredStatuses[0] ?? DEFAULT_STATUSES[0];
 
 	return {
 		type: "string",
 		maxLength: 100,
-		description: `Status value (case-insensitive). Valid values: ${statuses.join(", ")}`,
+		enum: configuredStatuses,
+		enumCaseInsensitive: true,
+		enumNormalizeWhitespace: true,
+		default: defaultStatus,
+		description: `Status value (case-insensitive). Valid values: ${configuredStatuses.join(", ")}`,
 	};
 }
 

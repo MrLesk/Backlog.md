@@ -7,6 +7,8 @@ export interface JsonSchema {
 	required?: string[];
 	items?: JsonSchema;
 	enum?: string[];
+	enumCaseInsensitive?: boolean;
+	enumNormalizeWhitespace?: boolean;
 	minLength?: number;
 	maxLength?: number;
 	minimum?: number;
@@ -15,6 +17,7 @@ export interface JsonSchema {
 	additionalProperties?: boolean;
 	preserveWhitespace?: boolean;
 	description?: string;
+	default?: unknown;
 }
 
 /**
@@ -109,6 +112,7 @@ function validateField(
 			const sanitizedString = shouldPreserveWhitespace
 				? sanitizeStringPreserveWhitespace(value)
 				: sanitizeString(value);
+			let sanitizedResult = sanitizedString;
 
 			// Length validation
 			if (schema.minLength !== undefined && sanitizedString.length < schema.minLength) {
@@ -121,11 +125,30 @@ function validateField(
 			}
 
 			// Enum validation
-			if (schema.enum && !schema.enum.includes(sanitizedString)) {
-				errors.push(`Field '${fieldName}' must be one of: ${schema.enum.join(", ")}`);
+			if (schema.enum) {
+				const normalizeValue = (inputValue: string): string => {
+					const withoutWhitespace = schema.enumNormalizeWhitespace ? inputValue.replace(/\s+/g, "") : inputValue;
+					return schema.enumCaseInsensitive ? withoutWhitespace.toLowerCase() : withoutWhitespace;
+				};
+
+				const normalizedCandidate = normalizeValue(sanitizedString);
+				let canonicalMatch: string | undefined;
+
+				for (const option of schema.enum) {
+					if (normalizeValue(option) === normalizedCandidate) {
+						canonicalMatch = option;
+						break;
+					}
+				}
+
+				if (!canonicalMatch) {
+					errors.push(`Field '${fieldName}' must be one of: ${schema.enum.join(", ")}`);
+				} else {
+					sanitizedResult = canonicalMatch;
+				}
 			}
 
-			return { isValid: errors.length === 0, errors, sanitizedValue: sanitizedString };
+			return { isValid: errors.length === 0, errors, sanitizedValue: sanitizedResult };
 		}
 
 		case "number": {

@@ -1,9 +1,11 @@
 ---
 id: task-290
 title: Improve MCP status field to use enum dropdown with config values
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-10-15 18:31'
+updated_date: '2025-10-15 19:20'
 labels: []
 dependencies: []
 priority: medium
@@ -38,11 +40,17 @@ References:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Status field in task_create schema uses enum with values from config.statuses
-- [ ] #2 Status field in task_edit schema uses enum with values from config.statuses
-- [ ] #3 First status in config is set as default value (if MCP schema supports defaults)
-- [ ] #4 Case-insensitive normalization still works in validation layer
-- [ ] #5 MCP Inspector displays status as dropdown with valid options
-- [ ] #6 Tests verify enum values match config.statuses
-- [ ] #7 Tests verify case-insensitive normalization still works (e.g., 'done' normalizes to 'Done')
+- [x] #1 Status field in task_create schema uses enum with values from config.statuses
+- [x] #2 Status field in task_edit schema uses enum with values from config.statuses
+- [x] #3 First status in config is set as default value (if MCP schema supports defaults)
+- [x] #4 Case-insensitive normalization still works in validation layer
+- [x] #5 MCP Inspector displays status as dropdown with valid options
+- [x] #6 Tests verify enum values match config.statuses
+- [x] #7 Tests verify case-insensitive normalization still works (e.g., 'done' normalizes to 'Done')
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Status schema now exposes enum values and defaults sourced from Backlog config while keeping case-insensitive normalization in the validator. Added unit tests covering schema enum exposure and normalization. Ran `bun test src/test/mcp-tasks.test.ts`, `bun test src/test/mcp-server.test.ts`, `bunx tsc --noEmit`, and `bun run check .`.
+<!-- SECTION:NOTES:END -->

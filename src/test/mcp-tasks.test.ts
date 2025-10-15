@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
+import type { JsonSchema } from "../mcp/validation/validators.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -75,6 +77,64 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).toContain("task-1 - Agent onboarding checklist");
 		expect(searchText).toContain("(To Do)");
 		expect(searchText).not.toContain("Implementation Plan:");
+	});
+
+	it("exposes status enums and defaults from configuration", async () => {
+		const config = await loadConfig(mcpServer);
+		const expectedStatuses =
+			config.statuses && config.statuses.length > 0 ? [...config.statuses] : Array.from(DEFAULT_STATUSES);
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
+
+		const createStatusSchema = createSchema?.properties?.status;
+		const editStatusSchema = editSchema?.properties?.status;
+
+		expect(createStatusSchema?.enum).toEqual(expectedStatuses);
+		expect(createStatusSchema?.default).toBe(expectedStatuses[0] ?? DEFAULT_STATUSES[0]);
+		expect(createStatusSchema?.enumCaseInsensitive).toBe(true);
+		expect(createStatusSchema?.enumNormalizeWhitespace).toBe(true);
+
+		expect(editStatusSchema?.enum).toEqual(expectedStatuses);
+		expect(editStatusSchema?.default).toBe(expectedStatuses[0] ?? DEFAULT_STATUSES[0]);
+		expect(editStatusSchema?.enumCaseInsensitive).toBe(true);
+		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
+	});
+
+	it("allows case-insensitive and whitespace-normalized status values", async () => {
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Status normalization",
+					status: "done",
+				},
+			},
+		});
+
+		const createText = createResult.content?.[0]?.text ?? "";
+		expect(createText).toContain("Task task-1 - Status normalization");
+
+		const createdTask = await mcpServer.getTask("task-1");
+		expect(createdTask?.status).toBe("Done");
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					status: "inprogress",
+				},
+			},
+		});
+
+		const editText = editResult.content?.[0]?.text ?? "";
+		expect(editText).toContain("Task task-1 - Status normalization");
+
+		const updatedTask = await mcpServer.getTask("task-1");
+		expect(updatedTask?.status).toBe("In Progress");
 	});
 
 	it("edits tasks including plan, notes, dependencies, and acceptance criteria", async () => {
