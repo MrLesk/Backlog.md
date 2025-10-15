@@ -124,7 +124,7 @@ export class Core {
 	}
 
 	private normalizePriority(value: string | undefined): ("high" | "medium" | "low") | undefined {
-		if (value === undefined) {
+		if (value === undefined || value === "") {
 			return undefined;
 		}
 		const normalized = value.toLowerCase();
