@@ -17,6 +17,6 @@ The priority in the web interfaces "New Task"-form should have a default value s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Priority is "low" by default
-- [ ] #2 Priority is still changeable
+- [x] #1 Priority is "low" by default
+- [x] #2 Priority is still changeable
 <!-- AC:END -->
