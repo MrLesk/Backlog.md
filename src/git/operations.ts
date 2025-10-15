@@ -471,24 +471,29 @@ export class GitOperations {
 	}
 
 	private async execGit(args: string[], options?: { readOnly?: boolean }): Promise<{ stdout: string; stderr: string }> {
-		// Use the new Bun shell API
-		try {
-			// Set GIT_OPTIONAL_LOCKS=0 for read-only operations to avoid lock contention
-			const env = options?.readOnly
-				? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
-				: (process.env as Record<string, string>);
+		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
+		// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
+		const env = options?.readOnly
+			? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
+			: (process.env as Record<string, string>);
 
-			const { stdout, stderr } = await $`git ${args}`.cwd(this.projectRoot).env(env).quiet();
-			return { stdout: stdout.toString(), stderr: stderr.toString() };
-		} catch (error: unknown) {
-			const e = error as { exitCode?: number; stderr?: unknown };
-			if (e && typeof e === "object" && e.exitCode !== undefined) {
-				throw new Error(
-					`Git command failed (exit code ${e.exitCode}): git ${args.join(" ")}\n${String(e.stderr ?? "")}`,
-				);
-			}
-			throw error as Error;
+		const subprocess = Bun.spawn(["git", ...args], {
+			cwd: this.projectRoot,
+			stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
+			stdout: "pipe",
+			stderr: "pipe",
+			env,
+		});
+
+		const stdoutPromise = subprocess.stdout ? new Response(subprocess.stdout).text() : Promise.resolve("");
+		const stderrPromise = subprocess.stderr ? new Response(subprocess.stderr).text() : Promise.resolve("");
+		const [exitCode, stdout, stderr] = await Promise.all([subprocess.exited, stdoutPromise, stderrPromise]);
+
+		if (exitCode !== 0) {
+			throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);
 		}
+
+		return { stdout, stderr };
 	}
 }
 
