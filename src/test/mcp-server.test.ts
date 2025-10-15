@@ -47,6 +47,9 @@ describe("McpServer bootstrap", () => {
 		const prompts = await server.testInterface.listPrompts();
 		expect(prompts.prompts).toEqual([]);
 
+		const resourceTemplates = await server.testInterface.listResourceTemplates();
+		expect(resourceTemplates.resourceTemplates).toEqual([]);
+
 		await server.stop();
 	});
 
@@ -125,6 +128,9 @@ describe("McpServer bootstrap", () => {
 		]);
 		expect(MCP_WORKFLOW_OVERVIEW).toContain("## Backlog.md Overview (MCP)");
 
+		const resourceTemplates = await server.testInterface.listResourceTemplates();
+		expect(resourceTemplates.resourceTemplates).toEqual([]);
+
 		await server.stop();
 	});
 
@@ -159,6 +165,9 @@ describe("McpServer bootstrap", () => {
 			"backlog://workflow/task-completion",
 		]);
 		expect(MCP_WORKFLOW_OVERVIEW).toContain("## Backlog.md Overview (MCP)");
+
+		const resourceTemplates = await server.testInterface.listResourceTemplates();
+		expect(resourceTemplates.resourceTemplates).toEqual([]);
 
 		await server.connect();
 		await server.start();

@@ -3,9 +3,11 @@ id: task-289
 title: >-
   Implement resource templates list handler to return empty list instead of
   error
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2025-10-15 18:25'
+updated_date: '2025-10-15 18:47'
 labels:
   - mcp
   - enhancement
@@ -25,8 +27,14 @@ Related to GitHub issue #399 - the "List Templates" error shown in screenshots.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MCP server responds to resources/templates/list request without error
-- [ ] #2 Handler returns empty array when no templates are available
-- [ ] #3 MCP Inspector 'List Templates' button works without showing error
-- [ ] #4 Implementation follows MCP protocol specification for resource templates
+- [x] #1 MCP server responds to resources/templates/list request without error
+- [x] #2 Handler returns empty array when no templates are available
+- [x] #3 MCP Inspector 'List Templates' button works without showing error
+- [x] #4 Implementation follows MCP protocol specification for resource templates
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented resources/templates/list handler returning an empty array and added test coverage. Ran `bun test src/test/mcp-server.test.ts` to verify.
+<!-- SECTION:NOTES:END -->

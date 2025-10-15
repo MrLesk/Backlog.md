@@ -5,6 +5,7 @@ import {
 	GetPromptRequestSchema,
 	ListPromptsRequestSchema,
 	ListResourcesRequestSchema,
+	ListResourceTemplatesRequestSchema,
 	ListToolsRequestSchema,
 	ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -18,6 +19,7 @@ import type {
 	GetPromptResult,
 	ListPromptsResult,
 	ListResourcesResult,
+	ListResourceTemplatesResult,
 	ListToolsResult,
 	McpPromptHandler,
 	McpResourceHandler,
@@ -75,6 +77,7 @@ export class McpServer extends Core {
 		this.server.setRequestHandler(ListToolsRequestSchema, async () => this.listTools());
 		this.server.setRequestHandler(CallToolRequestSchema, async (request) => this.callTool(request));
 		this.server.setRequestHandler(ListResourcesRequestSchema, async () => this.listResources());
+		this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => this.listResourceTemplates());
 		this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => this.readResource(request));
 		this.server.setRequestHandler(ListPromptsRequestSchema, async () => this.listPrompts());
 		this.server.setRequestHandler(GetPromptRequestSchema, async (request) => this.getPrompt(request));
@@ -175,6 +178,12 @@ export class McpServer extends Core {
 		};
 	}
 
+	protected async listResourceTemplates(): Promise<ListResourceTemplatesResult> {
+		return {
+			resourceTemplates: [],
+		};
+	}
+
 	protected async readResource(request: { params: { uri: string } }): Promise<ReadResourceResult> {
 		const { uri } = request.params;
 
@@ -225,6 +234,7 @@ export class McpServer extends Core {
 			listTools: () => this.listTools(),
 			callTool: (request: { params: { name: string; arguments?: Record<string, unknown> } }) => this.callTool(request),
 			listResources: () => this.listResources(),
+			listResourceTemplates: () => this.listResourceTemplates(),
 			readResource: (request: { params: { uri: string } }) => this.readResource(request),
 			listPrompts: () => this.listPrompts(),
 			getPrompt: (request: { params: { name: string; arguments?: Record<string, unknown> } }) =>
