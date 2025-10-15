@@ -3,6 +3,7 @@ import type {
 	GetPromptResult,
 	ListPromptsResult,
 	ListResourcesResult,
+	ListResourceTemplatesResult,
 	ListToolsResult,
 	Prompt,
 	ReadResourceResult,
@@ -38,12 +39,13 @@ export interface McpPromptHandler {
 
 export type {
 	CallToolResult,
-	ListResourcesResult,
-	ListToolsResult,
-	ReadResourceResult,
-	Tool,
-	Resource,
-	Prompt,
-	ListPromptsResult,
 	GetPromptResult,
+	ListPromptsResult,
+	ListResourcesResult,
+	ListResourceTemplatesResult,
+	ListToolsResult,
+	Prompt,
+	ReadResourceResult,
+	Resource,
+	Tool,
 };
