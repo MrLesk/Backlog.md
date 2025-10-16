@@ -570,9 +570,10 @@ export class ContentStore {
 			return result;
 		}) as FileSystem["saveTask"];
 
-		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<void> => {
-			await originalSaveDocument.call(this.filesystem, document, subPath);
+		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<string> => {
+			const result = await originalSaveDocument.call(this.filesystem, document, subPath);
 			await this.handleDocumentWrite(document.id);
+			return result;
 		}) as FileSystem["saveDocument"];
 
 		this.filesystem.saveDecision = (async (decision: Decision): Promise<void> => {

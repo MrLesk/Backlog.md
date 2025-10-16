@@ -161,10 +161,11 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
         try {
             setIsSaving(true);
             setSaveError(null);
+            const normalizedTitle = docTitle.trim();
 
             if (isNewDocument) {
                 // Create new document
-                const result = await apiClient.createDoc(docTitle, content);
+                const result = await apiClient.createDoc(normalizedTitle, content);
                 // Refresh data and navigate to the new document
                 await onRefreshData();
                 // Show success toast
@@ -173,26 +174,29 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 // Exit edit mode and navigate to the new document
                 setIsEditing(false);
                 setIsNewDocument(false);
+                setDocTitle(normalizedTitle);
+                setOriginalDocTitle(normalizedTitle);
                 // Use the returned document ID for navigation
                 const documentId = result.id.replace('doc-', ''); // Remove prefix for URL
-                navigate(`/documentation/${documentId}/${sanitizeUrlTitle(docTitle)}`);
+                navigate(`/documentation/${documentId}/${sanitizeUrlTitle(normalizedTitle)}`);
             } else {
                 // Update existing document
                 if (!id) return;
 
                 // Check if title has changed
-                const titleChanged = docTitle !== originalDocTitle;
+                const titleChanged = normalizedTitle !== originalDocTitle;
 
                 // Pass title only if it has changed
                 await apiClient.updateDoc(
                     addDocPrefix(id),
                     content,
-                    titleChanged ? docTitle : undefined
+                    titleChanged ? normalizedTitle : undefined
                 );
 
                 // Update original title to the new value
                 if (titleChanged) {
-                    setOriginalDocTitle(docTitle);
+                    setDocTitle(normalizedTitle);
+                    setOriginalDocTitle(normalizedTitle);
                 }
 
                 // Refresh data from parent
@@ -202,7 +206,7 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 setTimeout(() => setShowSaveSuccess(false), 4000);
                 // Exit edit mode and navigate to document detail page (this will load in preview mode)
                 setIsEditing(false);
-                navigate(`/documentation/${id}/${sanitizeUrlTitle(docTitle)}`);
+                navigate(`/documentation/${id}/${sanitizeUrlTitle(normalizedTitle)}`);
             }
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Failed to save document');

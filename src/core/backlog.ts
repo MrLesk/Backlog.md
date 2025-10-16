@@ -659,7 +659,8 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
-		await this.fs.saveDocument(doc, subPath);
+		const relativePath = await this.fs.saveDocument(doc, subPath);
+		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const backlogDir = await this.getBacklogDirectoryName();
@@ -675,7 +676,15 @@ export class Core {
 			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 		};
 
-		await this.createDocument(updatedDoc, autoCommit);
+		let normalizedSubPath = "";
+		if (existingDoc.path) {
+			const segments = existingDoc.path.split(/[\\/]/).slice(0, -1);
+			if (segments.length > 0) {
+				normalizedSubPath = segments.join("/");
+			}
+		}
+
+		await this.createDocument(updatedDoc, autoCommit, normalizedSubPath);
 	}
 
 	async createDocumentWithId(title: string, content: string, autoCommit?: boolean): Promise<Document> {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
+import type { Document, Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -231,6 +231,60 @@ describe("Core", () => {
 			await core.updateTask(updateArray, false);
 			loaded = await core.filesystem.loadTask("task-1");
 			expect(loaded?.assignee).toEqual(["@dave"]);
+		});
+	});
+
+	describe("document operations", () => {
+		const baseDocument: Document = {
+			id: "doc-1",
+			title: "Operations Guide",
+			type: "guide",
+			createdDate: "2025-06-07",
+			rawContent: "# Ops Guide",
+		};
+
+		beforeEach(async () => {
+			await core.initializeProject("Test Project", false);
+		});
+
+		it("updates a document title without leaving the previous file behind", async () => {
+			await core.createDocument(baseDocument, false);
+
+			const [initialFile] = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			expect(initialFile).toBe("doc-1 - Operations-Guide.md");
+
+			const [existingDoc] = await core.filesystem.listDocuments();
+			expect(existingDoc?.title).toBe("Operations Guide");
+
+			await core.updateDocument({ ...existingDoc, title: "Operations Guide Updated" }, "# Updated content", false);
+
+			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			expect(docFiles).toHaveLength(1);
+			expect(docFiles[0]).toBe("doc-1 - Operations-Guide-Updated.md");
+
+			const updatedDocs = await core.filesystem.listDocuments();
+			expect(updatedDocs[0]?.title).toBe("Operations Guide Updated");
+		});
+
+		it("shows a git rename when the document title changes", async () => {
+			await core.createDocument(baseDocument, true);
+
+			const renamedDoc: Document = {
+				...baseDocument,
+				title: "Operations Guide Renamed",
+			};
+
+			await core.updateDocument(renamedDoc, "# Ops Guide", false);
+
+			await $`git add -A`.cwd(TEST_DIR).quiet();
+			const diffResult = await $`git diff --name-status -M HEAD`.cwd(TEST_DIR).quiet();
+			const diff = diffResult.stdout.toString();
+			const previousPath = "backlog/docs/doc-1 - Operations-Guide.md";
+			const renamedPath = "backlog/docs/doc-1 - Operations-Guide-Renamed.md";
+			const escapeForRegex = (value: string) => value.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
+			expect(diff).toMatch(
+				new RegExp(`^R\\d*\\t${escapeForRegex(previousPath)}\\t${escapeForRegex(renamedPath)}`, "m"),
+			);
 		});
 	});
 

@@ -639,26 +639,45 @@ export class BacklogServer {
 	}
 
 	private async handleUpdateDoc(req: Request, docId: string): Promise<Response> {
-		const { content, title } = await req.json();
-
 		try {
+			const body = await req.json();
+			const content = typeof body?.content === "string" ? body.content : undefined;
+			const title = typeof body?.title === "string" ? body.title : undefined;
+
+			if (typeof content !== "string") {
+				return Response.json({ error: "Document content is required" }, { status: 400 });
+			}
+
+			let normalizedTitle: string | undefined;
+
+			if (typeof title === "string") {
+				normalizedTitle = title.trim();
+				if (normalizedTitle.length === 0) {
+					return Response.json({ error: "Document title cannot be empty" }, { status: 400 });
+				}
+			}
+
 			const store = await this.getContentStoreInstance();
 			const documents = store.getDocuments();
-			const existingDoc = documents.find((d) => d.id === docId || d.title === docId);
+			const existingDoc = documents.find((document) => {
+				if (document.id === docId) return true;
+				if (document.id === `doc-${docId}`) return true;
+				return document.title === docId;
+			});
 
 			if (!existingDoc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
 
-			// Update title if provided
-			if (title && title !== existingDoc.title) {
-				existingDoc.title = title;
-			}
+			const nextDoc = normalizedTitle ? { ...existingDoc, title: normalizedTitle } : { ...existingDoc };
 
-			await this.core.updateDocument(existingDoc, content);
+			await this.core.updateDocument(nextDoc, content);
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error updating document:", error);
+			if (error instanceof SyntaxError) {
+				return Response.json({ error: "Invalid request payload" }, { status: 400 });
+			}
 			return Response.json({ error: "Failed to update document" }, { status: 500 });
 		}
 	}

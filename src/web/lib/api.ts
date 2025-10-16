@@ -299,12 +299,17 @@ export class ApiClient {
 	}
 
 	async updateDoc(filename: string, content: string, title?: string): Promise<void> {
+		const payload: Record<string, unknown> = { content };
+		if (typeof title === "string") {
+			payload.title = title;
+		}
+
 		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ content, title }),
+			body: JSON.stringify(payload),
 		});
 		if (!response.ok) {
 			throw new Error("Failed to update document");

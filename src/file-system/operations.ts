@@ -445,17 +445,57 @@ export class FileSystem {
 	}
 
 	// Document operations
-	async saveDocument(document: Document, subPath = ""): Promise<void> {
+	async saveDocument(document: Document, subPath = ""): Promise<string> {
 		const docsDir = await this.getDocsDir();
-		const dir = join(docsDir, subPath);
-		// Normalize ID - remove "doc-" prefix if present
 		const normalizedId = document.id.replace(/^doc-/, "");
 		const filename = `doc-${normalizedId} - ${this.sanitizeFilename(document.title)}.md`;
-		const filepath = join(dir, filename);
+		const subPathSegments = subPath
+			.split(/[\\/]+/)
+			.map((segment) => segment.trim())
+			.filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+		const relativePath = subPathSegments.length > 0 ? join(...subPathSegments, filename) : filename;
+		const filepath = join(docsDir, relativePath);
 		const content = serializeDocument(document);
 
 		await this.ensureDirectoryExists(dirname(filepath));
+
+		const glob = new Bun.Glob(`**/doc-${normalizedId} - *.md`);
+		const existingMatches = await Array.fromAsync(glob.scan({ cwd: docsDir }));
+
+		let sourceRelativePath = document.path;
+		if (!sourceRelativePath && existingMatches.length > 0) {
+			sourceRelativePath = existingMatches[0];
+		}
+
+		if (sourceRelativePath && sourceRelativePath !== relativePath) {
+			const sourcePath = join(docsDir, sourceRelativePath);
+			try {
+				await this.ensureDirectoryExists(dirname(filepath));
+				await rename(sourcePath, filepath);
+			} catch (error) {
+				const code = (error as NodeJS.ErrnoException | undefined)?.code;
+				if (code !== "ENOENT") {
+					throw error;
+				}
+			}
+		}
+
+		for (const match of existingMatches) {
+			const matchPath = join(docsDir, match);
+			if (matchPath === filepath) {
+				continue;
+			}
+			try {
+				await unlink(matchPath);
+			} catch {
+				// Ignore cleanup errors - file may have been removed already
+			}
+		}
+
 		await Bun.write(filepath, content);
+
+		document.path = relativePath;
+		return relativePath;
 	}
 
 	async listDecisions(): Promise<Decision[]> {
@@ -490,7 +530,11 @@ export class FileSystem {
 				if (base.toLowerCase() === "readme.md") continue;
 				const filepath = join(docsDir, file);
 				const content = await Bun.file(filepath).text();
-				docs.push(parseDocument(content));
+				const parsed = parseDocument(content);
+				docs.push({
+					...parsed,
+					path: file,
+				});
 			}
 
 			// Stable sort by title for UI/CLI listing

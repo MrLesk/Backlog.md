@@ -373,10 +373,39 @@ describe("FileSystem", () => {
 			expect(docsFiles.some((f) => f.includes("Simple-Doc"))).toBe(true);
 		});
 
+		it("removes the previous document file when the title changes", async () => {
+			await filesystem.saveDocument(sampleDocument);
+
+			await filesystem.saveDocument({
+				...sampleDocument,
+				title: "API Guide Updated",
+				rawContent: "Updated content",
+			});
+
+			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir }));
+			expect(docFiles).toHaveLength(1);
+			expect(docFiles[0]).toBe("doc-1 - API-Guide-Updated.md");
+		});
+
 		it("should list documents", async () => {
 			await filesystem.saveDocument(sampleDocument);
 			const list = await filesystem.listDocuments();
 			expect(list.some((d) => d.id === sampleDocument.id)).toBe(true);
+		});
+
+		it("should include relative path metadata when listing documents", async () => {
+			await filesystem.saveDocument(
+				{
+					...sampleDocument,
+					id: "doc-3",
+					title: "Nested Guide",
+				},
+				"guides",
+			);
+
+			const docs = await filesystem.listDocuments();
+			const nested = docs.find((doc) => doc.id === "doc-3");
+			expect(nested?.path).toBe(join("guides", "doc-3 - Nested-Guide.md"));
 		});
 	});
 
