@@ -2,6 +2,8 @@
 
 ### Planning Workflow
 
+> **Non-negotiable:** Capture an implementation plan in the Backlog task _before_ writing any code or running commands. The plan must live in the task record prior to implementation and remain up to date when you close the task.
+
 1. **Mark task as In Progress** via `task_edit` with status "In Progress"
 2. **Assign to yourself** via `task_edit` with assignee field
 3. **Draft the implementation plan** - Think through the approach, review code, identify key files
@@ -29,7 +31,8 @@
 
 ### Execution Workflow
 
-- **IMPORTANT**: Before writing code, wait for the user to confirm the implementation plan (or to explicitly waive the review)
+- **IMPORTANT**: Do not touch the codebase until the implementation plan is approved _and_ recorded in the task via `task_edit`
+- The recorded plan must stay accurate; if the approach shifts, update it first and get confirmation before continuing
 - If feedback requires changes, revise the plan first via `task_edit` (planSet or planAppend fields)
 - Work in short loops: implement, run the relevant tests, and immediately check off acceptance criteria with `task_edit` (acceptanceCriteriaCheck field) when they are met
 - Log progress with `task_edit` (notesAppend field) to document decisions, blockers, or learnings

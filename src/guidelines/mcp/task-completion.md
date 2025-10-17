@@ -5,11 +5,13 @@
 1. **Verify all acceptance criteria** - Confirm every criterion is satisfied (use `task_view` to see current status)
 2. **Run the Definition of Done checklist** (see below)
 3. **Summarize the work** - Use `task_edit` (notesAppend field) to document what changed and why (treat it like a PR description)
-4. **Update task status** - Set status to "Done" via `task_edit`
+4. **Confirm the implementation plan is captured and current** - Update the plan in Backlog if the executed approach deviated
+5. **Update task status** - Set status to "Done" via `task_edit`
 5. **Propose next steps** - Never autonomously create or start new tasks
 
 ### Definition of Done Checklist
 
+- Implementation plan exists in the task record (`task_edit` planSet/planAppend) and reflects the final solution
 - Acceptance criteria are all checked via `task_edit` (acceptanceCriteriaCheck field)
 - Automated and relevant manual tests pass; no new warnings or regressions introduced
 - Documentation or configuration updates completed when required

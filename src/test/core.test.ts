@@ -283,8 +283,12 @@ describe("Core", () => {
 			const [initialFile] = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
 			expect(initialFile).toBe("doc-1 - Operations-Guide.md");
 
-			const [existingDoc] = await core.filesystem.listDocuments();
-			expect(existingDoc?.title).toBe("Operations Guide");
+			const documents = await core.filesystem.listDocuments();
+			const existingDoc = documents[0];
+			if (!existingDoc) {
+				throw new Error("Expected document to exist after creation");
+			}
+			expect(existingDoc.title).toBe("Operations Guide");
 
 			await core.updateDocument({ ...existingDoc, title: "Operations Guide Updated" }, "# Updated content", false);
 
