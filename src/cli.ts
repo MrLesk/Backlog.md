@@ -87,14 +87,8 @@ function normalizeIntegrationOption(value: string): IntegrationMode | null {
 	return null;
 }
 
-function toMcpServerName(projectName: string): string {
-	const base = projectName
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
-	return `${base.length > 0 ? base : "backlog"}-backlog`;
-}
+// Always use "backlog" as the global MCP server name so fallback mode works when the project isn't initialized.
+const MCP_SERVER_NAME = "backlog";
 
 const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
 	claude: "CLAUDE.md",
@@ -412,7 +406,7 @@ program
 
 				let integrationMode: IntegrationMode | null = integrationOption ?? (isNonInteractive ? "mcp" : null);
 				const _needsInteractiveIntegration = !integrationOption && !isNonInteractive;
-				const mcpServerName = toMcpServerName(name);
+				const mcpServerName = MCP_SERVER_NAME;
 				type AgentSelection = AgentSelectionValue;
 				let agentFiles: AgentInstructionFile[] = [];
 				let agentInstructionsSkipped = false;

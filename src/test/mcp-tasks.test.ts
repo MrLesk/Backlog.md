@@ -20,7 +20,7 @@ async function loadConfig(server: McpServer) {
 describe("MCP task tools (MVP)", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("mcp-tasks");
-		mcpServer = new McpServer(TEST_DIR);
+		mcpServer = new McpServer(TEST_DIR, "Test instructions");
 		await mcpServer.filesystem.ensureBacklogStructure();
 
 		await $`git init -b main`.cwd(TEST_DIR).quiet();

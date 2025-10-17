@@ -6,6 +6,7 @@ import {
 	MCP_TASK_EXECUTION_GUIDE,
 	MCP_WORKFLOW_OVERVIEW,
 } from "../guidelines/mcp/index.ts";
+import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -14,7 +15,8 @@ let TEST_DIR: string;
 
 async function bootstrapServer(): Promise<McpServer> {
 	TEST_DIR = createUniqueTestDir("mcp-server");
-	const server = new McpServer(TEST_DIR);
+	// Use normal mode instructions for bootstrapped test server
+	const server = new McpServer(TEST_DIR, "Test instructions");
 
 	await server.filesystem.ensureBacklogStructure();
 	await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -22,6 +24,10 @@ async function bootstrapServer(): Promise<McpServer> {
 	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 	await server.initializeProject("Test Project");
+
+	// Register workflow resources manually (normally done in createMcpServer)
+	registerWorkflowResources(server);
+
 	return server;
 }
 
@@ -137,7 +143,7 @@ describe("McpServer bootstrap", () => {
 	it("createMcpServer wires stdio-ready instance", async () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-factory");
 
-		const bootstrap = new McpServer(TEST_DIR);
+		const bootstrap = new McpServer(TEST_DIR, "Bootstrap instructions");
 		await bootstrap.filesystem.ensureBacklogStructure();
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();

@@ -12,6 +12,7 @@ import {
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { getVersion } from "../utils/version.ts";
+import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
 import { registerTaskTools } from "./tools/tasks/index.ts";
 import type {
@@ -36,8 +37,10 @@ import type {
  */
 const APP_NAME = getPackageName();
 const APP_VERSION = await getVersion();
-const INSTRUCTIONS_POINTER =
+const INSTRUCTIONS_NORMAL =
 	"At the beginning of each session, read the backlog://workflow/overview resource to understand when and how to use Backlog.md for task management. Additional detailed guides are available as resources when needed.";
+const INSTRUCTIONS_FALLBACK =
+	"Backlog.md is not initialized in this directory. Read the backlog://init-required resource for setup instructions.";
 
 type ServerInitOptions = {
 	debug?: boolean;
@@ -51,7 +54,7 @@ export class McpServer extends Core {
 	private readonly resources = new Map<string, McpResourceHandler>();
 	private readonly prompts = new Map<string, McpPromptHandler>();
 
-	constructor(projectRoot: string) {
+	constructor(projectRoot: string, instructions: string) {
 		super(projectRoot);
 
 		this.server = new Server(
@@ -65,12 +68,11 @@ export class McpServer extends Core {
 					resources: { listChanged: true },
 					prompts: { listChanged: true },
 				},
-				instructions: INSTRUCTIONS_POINTER,
+				instructions,
 			},
 		);
 
 		this.setupHandlers();
-		registerWorkflowResources(this);
 	}
 
 	private setupHandlers(): void {
@@ -245,17 +247,34 @@ export class McpServer extends Core {
 
 /**
  * Factory that bootstraps a fully configured MCP server instance.
+ *
+ * If backlog is not initialized in the project directory, the server will start
+ * successfully but only provide the backlog://init-required resource to guide
+ * users to run `backlog init`.
  */
 export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
-	const server = new McpServer(projectRoot);
+	// We need to check config first to determine which instructions to use
+	const tempCore = new Core(projectRoot);
+	await tempCore.ensureConfigLoaded();
+	const config = await tempCore.filesystem.loadConfig();
 
-	await server.ensureConfigLoaded();
+	// Create server with appropriate instructions
+	const instructions = config ? INSTRUCTIONS_NORMAL : INSTRUCTIONS_FALLBACK;
+	const server = new McpServer(projectRoot, instructions);
 
-	const config = await server.filesystem.loadConfig();
+	// Graceful fallback: if config doesn't exist, provide init-required resource
 	if (!config) {
-		throw new Error("Failed to load backlog configuration");
+		registerInitRequiredResource(server);
+
+		if (options.debug) {
+			console.error("MCP server initialised in fallback mode (backlog not initialized in this directory).");
+		}
+
+		return server;
 	}
 
+	// Normal mode: full tools and resources
+	registerWorkflowResources(server);
 	registerTaskTools(server, config);
 
 	if (options.debug) {

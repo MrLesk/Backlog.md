@@ -210,7 +210,7 @@ describe("CLI Integration", () => {
 
 			expect(output).toContain("AI Integration: MCP connector");
 			expect(output).toContain("Agent instruction files: guidance is provided through the MCP connector.");
-			expect(output).toContain("MCP server name: mcpproj-backlog");
+			expect(output).toContain("MCP server name: backlog");
 			expect(output).toContain("MCP client setup: skipped (non-interactive)");
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
@@ -226,7 +226,7 @@ describe("CLI Integration", () => {
 			const output = await $`bun ${CLI_PATH} init DefaultMcpProj --defaults`.cwd(TEST_DIR).text();
 
 			expect(output).toContain("AI Integration: MCP connector");
-			expect(output).toContain("MCP server name: defaultmcpproj-backlog");
+			expect(output).toContain("MCP server name: backlog");
 			expect(output).toContain("MCP client setup: skipped (non-interactive)");
 		});
 
