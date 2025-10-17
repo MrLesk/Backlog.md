@@ -1,11 +1,11 @@
 ---
 id: task-299
 title: 'Fix MCP initialization for multiple AI coding agents (Codex, Gemini, Claude)'
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-16 20:07'
-updated_date: '2025-10-16 21:25'
+updated_date: '2025-10-17 19:22'
 labels:
   - mcp
   - init
@@ -34,15 +34,15 @@ This works universally across Claude, Codex, and Gemini.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When user opens Codex in a project with multiple backlog projects configured, all MCP servers start successfully (0 failures, N successes)
-- [ ] #2 MCP server starts successfully in non-backlog directories and provides backlog://init-required resource
-- [ ] #3 backlog://init-required resource contains instructions for agent to tell user to run backlog init
-- [ ] #4 All agents register single global 'backlog' server name (not per-project names)
-- [ ] #5 Init command updated to register global scope for all agents
+- [x] #1 When user opens Codex in a project with multiple backlog projects configured, all MCP servers start successfully (0 failures, N successes)
+- [x] #2 MCP server starts successfully in non-backlog directories and provides backlog://init-required resource
+- [x] #3 backlog://init-required resource contains instructions for agent to tell user to run backlog init
+- [x] #4 All agents register single global 'backlog' server name (not per-project names)
+- [x] #5 Init command updated to register global scope for all agents
 
-- [ ] #6 Manual testing confirms: 3 projects (2 with backlog), 1 global server registration, all agents show 1 success + 0 failures
+- [x] #6 Manual testing confirms: 3 projects (2 with backlog), 1 global server registration, all agents show 1 success + 0 failures
 
-- [ ] #7 Migration guide added for users with existing backlog-project* registrations
+- [x] #7 Migration guide added for users with existing backlog-project* registrations
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -229,4 +229,12 @@ When Claude starts in project1:
 - **Claude Code MCP**: https://docs.claude.com/en/docs/claude-code/mcp
 - **Codex MCP**: https://developers.openai.com/codex/mcp/
 - **Gemini CLI MCP**: https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html
+
+### Implementation Summary (2025-10-17)
+- Added fallback detection in `src/mcp/server.ts` so the server exposes only `backlog://init-required` when invoked outside an initialized project and boots normally otherwise.
+- Introduced `src/mcp/resources/init-required` plus `src/guidelines/mcp/init-required.md` and wired the guide through `MCP_INIT_REQUIRED_GUIDE` for MCP resources and tests.
+- Simplified CLI registration by replacing the per-project server name helper with a shared `MCP_SERVER_NAME = "backlog"`, ensuring all agents register the same global MCP target during `backlog init`.
+- Expanded automated coverage with the new `src/test/mcp-fallback.test.ts` suite and refreshed existing MCP server and task integration tests to exercise the fallback path.
+- Manually validated fallback mode and global registration idempotency: started the server from an uninitialized temp directory via Inspector stdio, and reran `claude/codex/gemini mcp add backlog -- backlog mcp start` + respective list commands to confirm duplicate adds report "already configured" without extra entries.
+- Ran the full regression pack with `bun test` to ensure the broader CLI surface still passes.
 <!-- SECTION:NOTES:END -->
