@@ -9,35 +9,49 @@ interface TaskPathContext {
 }
 
 /**
- * Normalize a task ID to ensure it starts with "task-"
+ * Normalize a task ID by ensuring the "task-" prefix is present (case-insensitive)
+ * while preserving the numeric/content portion as provided.
  */
 export function normalizeTaskId(taskId: string): string {
-	return taskId.startsWith("task-") ? taskId : `task-${taskId}`;
+	const trimmed = taskId.trim();
+	const match = trimmed.match(/^task-(.+)$/i);
+	const body = match ? match[1] : trimmed;
+	return `task-${body}`;
 }
 
-function parseIdSegments(id: string): number[] | null {
-	const withoutPrefix = id.startsWith("task-") ? id.slice(5) : id;
-	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) return null;
-	return withoutPrefix.split(".").map((seg) => Number.parseInt(seg, 10));
+function extractTaskBody(value: string): string | null {
+	const trimmed = value.trim();
+	if (trimmed === "") return "";
+	const match = trimmed.match(/^(?:task-)?([0-9]+(?:\.[0-9]+)*)$/i);
+	return match?.[1] ?? null;
 }
 
-function extractSegmentsFromFilename(filename: string): number[] | null {
-	const m = filename.match(/^task-([0-9]+(?:\.[0-9]+)*)/);
-	if (!m || !m[1]) return null;
-	const idPart = m[1];
-	return idPart.split(".").map((seg) => Number.parseInt(seg, 10));
+function extractTaskIdFromFilename(filename: string): string | null {
+	const match = filename.match(/^task-([0-9]+(?:\.[0-9]+)*)/i);
+	if (!match || !match[1]) return null;
+	return normalizeTaskId(`task-${match[1]}`);
+}
+
+export function taskIdsEqual(left: string, right: string): boolean {
+	const leftBody = extractTaskBody(left);
+	const rightBody = extractTaskBody(right);
+
+	if (leftBody && rightBody) {
+		const leftSegs = leftBody.split(".").map((seg) => Number.parseInt(seg, 10));
+		const rightSegs = rightBody.split(".").map((seg) => Number.parseInt(seg, 10));
+		if (leftSegs.length !== rightSegs.length) {
+			return false;
+		}
+		return leftSegs.every((value, index) => value === rightSegs[index]);
+	}
+
+	return normalizeTaskId(left).toLowerCase() === normalizeTaskId(right).toLowerCase();
 }
 
 function idsMatchLoosely(inputId: string, filename: string): boolean {
-	const inputSegs = parseIdSegments(inputId);
-	if (!inputSegs) return false;
-	const fileSegs = extractSegmentsFromFilename(filename);
-	if (!fileSegs) return false;
-	if (inputSegs.length !== fileSegs.length) return false;
-	for (let i = 0; i < inputSegs.length; i++) {
-		if (inputSegs[i] !== fileSegs[i]) return false;
-	}
-	return true;
+	const candidate = extractTaskIdFromFilename(filename);
+	if (!candidate) return false;
+	return taskIdsEqual(inputId, candidate);
 }
 
 /**

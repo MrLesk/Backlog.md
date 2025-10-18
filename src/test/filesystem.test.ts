@@ -407,6 +407,31 @@ describe("FileSystem", () => {
 			const nested = docs.find((doc) => doc.id === "doc-3");
 			expect(nested?.path).toBe(join("guides", "doc-3 - Nested-Guide.md"));
 		});
+
+		it("should load documents using flexible ID formats", async () => {
+			await filesystem.saveDocument({
+				...sampleDocument,
+				id: "doc-7",
+				title: "Operations Reference",
+				rawContent: "Ops content",
+			});
+
+			const uppercase = await filesystem.loadDocument("DOC-7");
+			expect(uppercase.id).toBe("doc-7");
+
+			const zeroPadded = await filesystem.loadDocument("0007");
+			expect(zeroPadded.id).toBe("doc-7");
+
+			await filesystem.saveDocument({
+				...sampleDocument,
+				id: "DOC-0009",
+				title: "Padded Uppercase",
+				rawContent: "Content",
+			});
+
+			const canonicalFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir }));
+			expect(canonicalFiles.some((file) => file.startsWith("doc-0009"))).toBe(true);
+		});
 	});
 
 	describe("edge cases", () => {

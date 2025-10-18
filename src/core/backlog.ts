@@ -15,6 +15,7 @@ import type {
 	TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
+import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
@@ -26,7 +27,7 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
-import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
+import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
@@ -106,10 +107,8 @@ export class Core {
 			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
 		}
 		if (filters.parentTaskId) {
-			const canonicalParent = filters.parentTaskId.startsWith("task-")
-				? filters.parentTaskId
-				: `task-${filters.parentTaskId}`;
-			result = result.filter((task) => task.parentTaskId === canonicalParent);
+			const parentFilter = filters.parentTaskId;
+			result = result.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId));
 		}
 		return result;
 	}
@@ -187,11 +186,13 @@ export class Core {
 
 	async getTask(taskId: string): Promise<Task | null> {
 		const store = await this.getContentStore();
-		const canonicalId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-		const match = store.getTasks().find((task) => task.id === canonicalId);
+		const tasks = store.getTasks();
+		const match = tasks.find((task) => taskIdsEqual(taskId, task.id));
 		if (match) {
 			return match;
 		}
+
+		const canonicalId = normalizeTaskId(taskId);
 		return await this.fs.loadTask(canonicalId);
 	}
 
@@ -199,6 +200,25 @@ export class Core {
 		const filePath = await getTaskPath(taskId, this);
 		if (!filePath) return null;
 		return await Bun.file(filePath).text();
+	}
+
+	async getDocument(documentId: string): Promise<Document | null> {
+		const documents = await this.fs.listDocuments();
+		const match = documents.find((doc) => documentIdsEqual(documentId, doc.id));
+		return match ?? null;
+	}
+
+	async getDocumentContent(documentId: string): Promise<string | null> {
+		const document = await this.getDocument(documentId);
+		if (!document) return null;
+
+		const relativePath = document.path ?? `${document.id}.md`;
+		const filePath = join(this.fs.docsDir, relativePath);
+		try {
+			return await Bun.file(filePath).text();
+		} catch {
+			return null;
+		}
 	}
 
 	disposeSearchService(): void {
@@ -349,7 +369,7 @@ export class Core {
 		}
 
 		if (parent) {
-			const prefix = parent.startsWith("task-") ? parent : `task-${parent}`;
+			const prefix = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
 			let max = 0;
 			// Iterate over allIds (which now includes both local and remote)
 			for (const id of allIds) {

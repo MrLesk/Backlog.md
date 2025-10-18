@@ -124,6 +124,25 @@ describe("Core", () => {
 			expect(lastCommit).toContain("backlog: Demote task task-1");
 		});
 
+		it("should resolve tasks using flexible ID formats", async () => {
+			const standardTask: Task = { ...sampleTask, id: "task-5", title: "Standard" };
+			const paddedTask: Task = { ...sampleTask, id: "task-007", title: "Padded" };
+			await core.createTask(standardTask, false);
+			await core.createTask(paddedTask, false);
+
+			const uppercase = await core.getTask("TASK-5");
+			expect(uppercase?.id).toBe("task-5");
+
+			const bare = await core.getTask("5");
+			expect(bare?.id).toBe("task-5");
+
+			const zeroPadded = await core.getTask("0007");
+			expect(zeroPadded?.id).toBe("task-007");
+
+			const mixedCase = await core.getTask("Task-007");
+			expect(mixedCase?.id).toBe("task-007");
+		});
+
 		it("should return false when archiving non-existent task", async () => {
 			const archived = await core.archiveTask("non-existent", true);
 			expect(archived).toBe(false);

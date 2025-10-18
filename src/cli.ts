@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { $, spawn } from "bun";
@@ -46,7 +46,7 @@ import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelectio
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { parsePositiveIndexList, processAcceptanceCriteriaOptions, toStringArray } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
-import { getTaskFilename, getTaskPath } from "./utils/task-path.ts";
+import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getVersion } from "./utils/version.ts";
 
@@ -1047,24 +1047,23 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 function normalizeDependencies(dependencies: unknown): string[] {
 	if (!dependencies) return [];
 
-	// Handle multiple flags: --dep task-1 --dep task-2
+	const normalizeList = (values: string[]): string[] =>
+		values
+			.map((value) => value.trim())
+			.filter((value): value is string => value.length > 0)
+			.map((value) => normalizeTaskId(value));
+
 	if (Array.isArray(dependencies)) {
-		return dependencies
-			.flatMap((dep) =>
+		return normalizeList(
+			dependencies.flatMap((dep) =>
 				String(dep)
 					.split(",")
 					.map((d) => d.trim()),
-			)
-			.filter(Boolean)
-			.map((dep) => (dep.startsWith("task-") ? dep : `task-${dep}`));
+			),
+		);
 	}
 
-	// Handle comma-separated: --dep task-1,task-2,task-3
-	return String(dependencies)
-		.split(",")
-		.map((dep) => dep.trim())
-		.filter(Boolean)
-		.map((dep) => (dep.startsWith("task-") ? dep : `task-${dep}`));
+	return normalizeList(String(dependencies).split(","));
 }
 
 async function validateDependencies(
@@ -1081,11 +1080,11 @@ async function validateDependencies(
 	// Load both tasks and drafts to validate dependencies
 	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.fs.listDrafts()]);
 
-	const allTaskIds = new Set([...tasks.map((t) => t.id), ...drafts.map((d) => d.id)]);
-
+	const knownIds = [...tasks.map((task) => task.id), ...drafts.map((draft) => draft.id)];
 	for (const dep of dependencies) {
-		if (allTaskIds.has(dep)) {
-			valid.push(dep);
+		const match = knownIds.find((id) => taskIdsEqual(dep, id));
+		if (match) {
+			valid.push(match);
 		} else {
 			invalid.push(dep);
 		}
@@ -1096,11 +1095,7 @@ async function validateDependencies(
 
 function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
 	const parentInput = options.parent ? String(options.parent) : undefined;
-	const normalizedParent = parentInput
-		? parentInput.startsWith("task-")
-			? parentInput
-			: `task-${parentInput}`
-		: undefined;
+	const normalizedParent = parentInput ? normalizeTaskId(parentInput) : undefined;
 
 	const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
@@ -1481,15 +1476,16 @@ taskCmd
 
 		let parentId: string | undefined;
 		if (options.parent) {
-			parentId = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
-			baseFilters.parentTaskId = parentId;
+			const parentInput = String(options.parent);
+			parentId = normalizeTaskId(parentInput);
+			baseFilters.parentTaskId = parentInput;
 		}
 
 		const tasks = await core.queryTasks({ filters: baseFilters });
 		const config = await core.filesystem.loadConfig();
 
 		if (parentId) {
-			const parentExists = (await core.queryTasks()).some((task) => task.id === parentId);
+			const parentExists = (await core.queryTasks()).some((task) => taskIdsEqual(parentId, task.id));
 			if (!parentExists) {
 				console.error(`Parent task ${parentId} not found.`);
 				process.exitCode = 1;
@@ -1515,12 +1511,12 @@ taskCmd
 
 		let filtered = sortedTasks;
 		if (parentId) {
-			filtered = filtered.filter((task) => task.parentTaskId === parentId);
+			filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
 		}
 
 		if (filtered.length === 0) {
 			if (options.parent) {
-				const canonicalParent = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
+				const canonicalParent = normalizeTaskId(String(options.parent));
 				console.log(`No child tasks found for parent task ${canonicalParent}.`);
 			} else {
 				console.log("No tasks found.");
@@ -1594,8 +1590,7 @@ taskCmd
 		if (options.status) activeFilters.push(`Status: ${options.status}`);
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
 		if (options.parent) {
-			const canonicalParent = options.parent.startsWith("task-") ? options.parent : `task-${options.parent}`;
-			activeFilters.push(`Parent: ${canonicalParent}`);
+			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
 		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
@@ -1680,8 +1675,8 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const canonicalId = taskId.startsWith("task-") ? taskId : `task-${taskId}`;
-		const existingTask = await core.filesystem.loadTask(canonicalId);
+		const canonicalId = normalizeTaskId(taskId);
+		const existingTask = await core.getTask(canonicalId);
 
 		if (!existingTask) {
 			console.error(`Task ${taskId} not found.`);
@@ -1833,8 +1828,7 @@ taskCmd
 
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
-			const filePath = await getTaskPath(updatedTask.id, core);
-			console.log(formatTaskPlainText(updatedTask, { filePathOverride: filePath ?? undefined }));
+			console.log(formatTaskPlainText(updatedTask));
 			return;
 		}
 
@@ -1850,14 +1844,7 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const filePath = await getTaskPath(taskId, core);
-
-		if (!filePath) {
-			console.error(`Task ${taskId} not found.`);
-			return;
-		}
-		const task = await core.filesystem.loadTask(taskId);
-
+		const task = await core.getTask(taskId);
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			return;
@@ -1865,7 +1852,7 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
+			console.log(formatTaskPlainText(task));
 			return;
 		}
 
@@ -1922,13 +1909,7 @@ taskCmd
 			return;
 		}
 
-		const filePath = await getTaskPath(taskId, core);
-		if (!filePath) {
-			console.error(`Task ${taskId} not found.`);
-			return;
-		}
-		const task = await core.filesystem.loadTask(taskId);
-
+		const task = await core.getTask(taskId);
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			return;
@@ -1936,7 +1917,7 @@ taskCmd
 
 		// Plain text output for AI agents
 		if (options && (options.plain || process.argv.includes("--plain"))) {
-			console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
+			console.log(formatTaskPlainText(task));
 			return;
 		}
 
@@ -2317,21 +2298,16 @@ docCmd
 	.action(async (docId: string) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const files = await Array.fromAsync(new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.docsDir }));
-		const normalizedId = docId.startsWith("doc-") ? docId : `doc-${docId}`;
-		const docFile = files.find(
-			(f) => f.startsWith(`${normalizedId} -`) || f.endsWith(`/${normalizedId}.md`) || f === `${normalizedId}.md`,
-		);
-
-		if (!docFile) {
+		try {
+			const content = await core.getDocumentContent(docId);
+			if (content === null) {
+				console.error(`Document ${docId} not found.`);
+				return;
+			}
+			await scrollableViewer(content);
+		} catch {
 			console.error(`Document ${docId} not found.`);
-			return;
 		}
-
-		const filePath = join(core.filesystem.docsDir, docFile);
-		const content = await Bun.file(filePath).text();
-
-		await scrollableViewer(content);
 	});
 
 const decisionCmd = program.command("decision");
@@ -2864,23 +2840,22 @@ program
 			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
 
 			for (const task of tasksToMove) {
-				// Get paths before moving
-				const taskPath = await getTaskPath(task.id, core);
-				const taskFilename = await getTaskFilename(task.id, core);
+				const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
 
-				if (taskPath && taskFilename) {
-					const fromPath = taskPath;
-					const toPath = join(core.filesystem.completedDir, taskFilename);
+				if (!fromPath) {
+					console.error(`Failed to locate file for task ${task.id}`);
+					continue;
+				}
 
-					const success = await core.completeTask(task.id);
-					if (success) {
-						successCount++;
-						movedTasks.push({ fromPath, toPath, taskId: task.id });
-					} else {
-						console.error(`Failed to move task ${task.id}`);
-					}
+				const taskFilename = basename(fromPath);
+				const toPath = join(core.filesystem.completedDir, taskFilename);
+
+				const success = await core.completeTask(task.id);
+				if (success) {
+					successCount++;
+					movedTasks.push({ fromPath, toPath, taskId: task.id });
 				} else {
-					console.error(`Failed to get paths for task ${task.id}`);
+					console.error(`Failed to move task ${task.id}`);
 				}
 			}
 

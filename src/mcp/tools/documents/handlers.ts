@@ -31,10 +31,6 @@ export type DocumentSearchArgs = {
 export class DocumentHandlers {
 	constructor(private readonly core: McpServer) {}
 
-	private normalizeDocumentId(id: string): string {
-		return id.startsWith("doc-") ? id : `doc-${id}`;
-	}
-
 	private formatDocumentSummaryLine(document: Document): string {
 		const metadata: string[] = [`type: ${document.type}`, `created: ${document.createdDate}`];
 		if (document.updatedDate) {
@@ -57,9 +53,7 @@ export class DocumentHandlers {
 	}
 
 	private async loadDocumentOrThrow(id: string): Promise<Document> {
-		const normalizedId = this.normalizeDocumentId(id);
-		const documents = await this.core.filesystem.listDocuments();
-		const document = documents.find((doc) => doc.id === normalizedId);
+		const document = await this.core.getDocument(id);
 		if (!document) {
 			throw new McpError(`Document not found: ${id}`, "DOCUMENT_NOT_FOUND");
 		}
@@ -129,8 +123,10 @@ export class DocumentHandlers {
 
 		try {
 			await this.core.updateDocument(nextDocument, args.content);
-			const normalizedId = this.normalizeDocumentId(args.id);
-			const refreshed = await this.core.filesystem.loadDocument(normalizedId);
+			const refreshed = await this.core.getDocument(existing.id);
+			if (!refreshed) {
+				throw new McpError(`Document not found: ${args.id}`, "DOCUMENT_NOT_FOUND");
+			}
 			return await formatDocumentCallResult(refreshed, {
 				summaryLines: ["Document updated successfully."],
 			});

@@ -4,6 +4,7 @@ import { basename, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import { taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 interface ContentSnapshot {
@@ -106,8 +107,8 @@ export class ContentStore {
 			tasks = tasks.filter((task) => (task.priority ?? "").toLowerCase() === priority);
 		}
 		if (filter?.parentTaskId) {
-			const parentId = filter.parentTaskId.startsWith("task-") ? filter.parentTaskId : `task-${filter.parentTaskId}`;
-			tasks = tasks.filter((task) => task.parentTaskId === parentId);
+			const parentFilter = filter.parentTaskId;
+			tasks = tasks.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId));
 		}
 
 		return tasks.slice();

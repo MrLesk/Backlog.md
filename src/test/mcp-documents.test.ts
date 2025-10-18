@@ -96,7 +96,7 @@ describe("MCP document tools", () => {
 		expect(filteredText).not.toContain("Engineering Guidelines");
 	});
 
-	it("views documents with and without the doc- prefix", async () => {
+	it("views documents regardless of ID casing or padding", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "document_create",
@@ -113,12 +113,22 @@ describe("MCP document tools", () => {
 		const withoutPrefix = await mcpServer.testInterface.callTool({
 			params: { name: "document_view", arguments: { id: "1" } },
 		});
+		const uppercase = await mcpServer.testInterface.callTool({
+			params: { name: "document_view", arguments: { id: "DOC-0001" } },
+		});
+		const zeroPadded = await mcpServer.testInterface.callTool({
+			params: { name: "document_view", arguments: { id: "0001" } },
+		});
 
 		const prefixText = withPrefix.content?.[0]?.text ?? "";
 		const noPrefixText = withoutPrefix.content?.[0]?.text ?? "";
+		const uppercaseText = uppercase.content?.[0]?.text ?? "";
+		const zeroPaddedText = zeroPadded.content?.[0]?.text ?? "";
 		expect(prefixText).toContain("Document doc-1 - Runbook");
 		expect(prefixText).toContain("Step 1: Do the thing.");
 		expect(noPrefixText).toContain("Document doc-1 - Runbook");
+		expect(uppercaseText).toContain("Document doc-1 - Runbook");
+		expect(zeroPaddedText).toContain("Document doc-1 - Runbook");
 	});
 
 	it("updates documents including title changes", async () => {
@@ -136,7 +146,7 @@ describe("MCP document tools", () => {
 			params: {
 				name: "document_update",
 				arguments: {
-					id: "doc-1",
+					id: "DOC-0001",
 					title: "Incident Response Handbook",
 					content: "Updated procedures",
 				},

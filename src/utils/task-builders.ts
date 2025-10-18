@@ -1,4 +1,5 @@
 import type { Core } from "../core/backlog.ts";
+import { normalizeTaskId, taskIdsEqual } from "./task-path.ts";
 
 /**
  * Shared utilities for building tasks and validating dependencies
@@ -11,23 +12,23 @@ import type { Core } from "../core/backlog.ts";
  */
 export function normalizeDependencies(dependencies: unknown): string[] {
 	if (!dependencies) return [];
-	// Handle multiple flags: --dep task-1 --dep task-2
+	const normalizeList = (values: string[]): string[] =>
+		values
+			.map((value) => value.trim())
+			.filter((value): value is string => value.length > 0)
+			.map((value) => normalizeTaskId(value));
+
 	if (Array.isArray(dependencies)) {
-		return dependencies
-			.flatMap((dep) =>
+		return normalizeList(
+			dependencies.flatMap((dep) =>
 				String(dep)
 					.split(",")
 					.map((d) => d.trim()),
-			)
-			.filter(Boolean)
-			.map((dep) => (dep.startsWith("task-") ? dep : `task-${dep}`));
+			),
+		);
 	}
-	// Handle comma-separated: --dep task-1,task-2,task-3
-	return String(dependencies)
-		.split(",")
-		.map((dep) => dep.trim())
-		.filter(Boolean)
-		.map((dep) => (dep.startsWith("task-") ? dep : `task-${dep}`));
+
+	return normalizeList(String(dependencies).split(","));
 }
 
 /**
@@ -45,10 +46,11 @@ export async function validateDependencies(
 	}
 	// Load both tasks and drafts to validate dependencies
 	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
-	const allTaskIds = new Set([...tasks.map((t) => t.id), ...drafts.map((d) => d.id)]);
+	const knownIds = [...tasks.map((t) => t.id), ...drafts.map((d) => d.id)];
 	for (const dep of dependencies) {
-		if (allTaskIds.has(dep)) {
-			valid.push(dep);
+		const match = knownIds.find((id) => taskIdsEqual(dep, id));
+		if (match) {
+			valid.push(match);
 		} else {
 			invalid.push(dep);
 		}

@@ -688,14 +688,10 @@ export class BacklogServer {
 
 	private async handleGetDoc(docId: string): Promise<Response> {
 		try {
-			const store = await this.getContentStoreInstance();
-			const documents = store.getDocuments();
-			const doc = documents.find((d) => d.id === docId || d.title === docId);
-
+			const doc = await this.core.getDocument(docId);
 			if (!doc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
-
 			return Response.json(doc);
 		} catch (error) {
 			console.error("Error loading document:", error);
@@ -735,14 +731,7 @@ export class BacklogServer {
 				}
 			}
 
-			const store = await this.getContentStoreInstance();
-			const documents = store.getDocuments();
-			const existingDoc = documents.find((document) => {
-				if (document.id === docId) return true;
-				if (document.id === `doc-${docId}`) return true;
-				return document.title === docId;
-			});
-
+			const existingDoc = await this.core.getDocument(docId);
 			if (!existingDoc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
