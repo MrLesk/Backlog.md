@@ -29,16 +29,35 @@ jobs:
             ${{ runner.os }}-${{ matrix.os }}-bun-
       - run: bun install --frozen-lockfile --linker=isolated
       - run: bun run lint
+
+      # Windows: Disable Windows Defender real-time scanning for test directory
+      - name: Optimize Windows test environment
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          # Add test directory to Windows Defender exclusions
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE\src\test" -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionProcess "bun.exe" -ErrorAction SilentlyContinue
+
       - name: Run tests
         run: |
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            # Run tests with increased timeout on Windows to handle slower file operations
-            bun test --timeout=15000 --reporter=junit --reporter-outfile=test-results.xml
+            # Windows: Reduce concurrency to minimize file system contention
+            # and use longer timeout due to Defender overhead
+            bun test --max-concurrency=5 --timeout=15000 --reporter=junit --reporter-outfile=test-results.xml
           else
-            # Run tests with increased timeout to handle Bun shell operations
+            # Unix: Use default concurrency (20) with shorter timeout
             bun test --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
           fi
         shell: bash
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results.xml
+          retention-days: 30
 
   build-test:
     name: compile-and-smoke-test
