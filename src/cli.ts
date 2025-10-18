@@ -1676,7 +1676,7 @@ taskCmd
 		const cwd = process.cwd();
 		const core = new Core(cwd);
 		const canonicalId = normalizeTaskId(taskId);
-		const existingTask = await core.getTask(canonicalId);
+		const existingTask = await core.loadTaskById(canonicalId);
 
 		if (!existingTask) {
 			console.error(`Task ${taskId} not found.`);
@@ -1844,7 +1844,7 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = process.cwd();
 		const core = new Core(cwd);
-		const task = await core.getTask(taskId);
+		const task = await core.loadTaskById(taskId);
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			return;
@@ -1909,7 +1909,7 @@ taskCmd
 			return;
 		}
 
-		const task = await core.getTask(taskId);
+		const task = await core.loadTaskById(taskId);
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			return;

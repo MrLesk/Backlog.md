@@ -196,6 +196,11 @@ export class Core {
 		return await this.fs.loadTask(canonicalId);
 	}
 
+	async loadTaskById(taskId: string): Promise<Task | null> {
+		const canonicalId = normalizeTaskId(taskId);
+		return await this.fs.loadTask(canonicalId);
+	}
+
 	async getTaskContent(taskId: string): Promise<string | null> {
 		const filePath = await getTaskPath(taskId, this);
 		if (!filePath) return null;
