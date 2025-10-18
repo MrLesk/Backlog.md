@@ -34,10 +34,10 @@ Align ID parsing with Issue #404 requirements so CLI, MCP, and APIs accept varia
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-- Task comparisons rely on the updated helpers in src/utils/task-path.ts and src/utils/document-id.ts.
-- FileSystem.saveDocument now canonicalizes IDs and cleans up existing files using padding-insensitive comparison.
-- CLI dependency normalization resolves against known IDs to avoid creating padded variants.
-
+- Task and document comparisons now rely on dedicated helpers (`src/utils/task-path.ts` and `src/utils/document-id.ts`) so every caller works through a single normalization/equality path.
+- CLI commands use `Core.getDocumentContent`/`Core.loadTaskById` to avoid touching the filesystem directly; `loadTaskById` exists specifically to bypass long-lived watchers so short-lived CLI processes (and Windows CI) exit cleanly.
+- ID normalization is applied at construction-time (task creation, document saves) and whenever dependencies/parents are parsed, preventing accidental mixed-prefix storage.
+- Added MCP/server bindings to those helpers, so task/document tools accept case-insensitive and zero-padded IDs without duplicating logic.
 - Pending: coordinate with Claude for an additional review as requested.
 
 - Verified flexible ID handling for CLI, MCP, server, and filesystem pathways.
