@@ -1,11 +1,11 @@
 ---
 id: task-302
 title: Support flexible ID formats for tasks and docs
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-17 22:09'
-updated_date: '2025-10-18 19:23'
+updated_date: '2025-10-18 20:30'
 labels: []
 dependencies: []
 ---
@@ -18,9 +18,9 @@ Align ID parsing with Issue #404 requirements so CLI, MCP, and APIs accept varia
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Task lookup accepts TASK-<id>, task-<id>, bare numeric id, and zero-padded variants.
-- [ ] #2 Document lookup accepts DOC-<id>, doc-<id>, bare numeric id, and zero-padded variants.
-- [ ] #3 Tests cover new parsing helper for both tasks and documents.
+- [x] #1 Task lookup accepts TASK-<id>, task-<id>, bare numeric id, and zero-padded variants.
+- [x] #2 Document lookup accepts DOC-<id>, doc-<id>, bare numeric id, and zero-padded variants.
+- [x] #3 Tests cover new parsing helper for both tasks and documents.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -39,4 +39,6 @@ Align ID parsing with Issue #404 requirements so CLI, MCP, and APIs accept varia
 - CLI dependency normalization resolves against known IDs to avoid creating padded variants.
 
 - Pending: coordinate with Claude for an additional review as requested.
+
+- Verified flexible ID handling for CLI, MCP, server, and filesystem pathways.
 <!-- SECTION:NOTES:END -->
