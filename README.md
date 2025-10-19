@@ -120,7 +120,7 @@ Connect Backlog.md to an MCP-compatible AI tool so it can launch `backlog mcp st
   <summary><strong>Codex</strong></summary>
 
   ```bash
-  codex mcp add backlog mcp start backlog
+  codex mcp add backlog backlog mcp start
   ```
 
 </details>
