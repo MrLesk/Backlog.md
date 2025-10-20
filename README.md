@@ -103,9 +103,15 @@ backlog browser --no-open
 
 ## 🔧 MCP Integration (Model Context Protocol)
 
-Connect Backlog.md to an MCP-compatible AI tool so it can launch `backlog mcp start` automatically whenever it needs project access.
+The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, and Gemini CLI is via the MCP protocol.
+You can run `backlog init` (even if you already initialized Backlog.md) to set up MCP integration automatically, or follow the manual steps below.
 
 ### Client guides
+
+> [!IMPORTANT]
+> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md. 
+> This step is not required when using `backlog init` as it adds these instructions automatically.
+> Backlog.md's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
 
 <details>
   <summary><strong>Claude Code</strong></summary>

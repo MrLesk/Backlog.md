@@ -405,7 +405,6 @@ program
 				}
 
 				let integrationMode: IntegrationMode | null = integrationOption ?? (isNonInteractive ? "mcp" : null);
-				const _needsInteractiveIntegration = !integrationOption && !isNonInteractive;
 				const mcpServerName = MCP_SERVER_NAME;
 				type AgentSelection = AgentSelectionValue;
 				let agentFiles: AgentInstructionFile[] = [];
@@ -681,7 +680,7 @@ program
 									const result = await runMcpClientCommand("Claude Code", "claude", [
 										"mcp",
 										"add",
-										"--scope",
+										"-s",
 										"user",
 										mcpServerName,
 										"--",
@@ -697,10 +696,10 @@ program
 									const result = await runMcpClientCommand("OpenAI Codex", "codex", [
 										"mcp",
 										"add",
+										mcpServerName,
 										"backlog",
 										"mcp",
 										"start",
-										mcpServerName,
 									]);
 									results.push(result);
 									await recordGuidelinesForClient(client);
