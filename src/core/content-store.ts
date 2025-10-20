@@ -4,6 +4,7 @@ import { basename, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import { taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 interface ContentSnapshot {
@@ -44,6 +45,14 @@ export class ContentStore {
 	private restoreFilesystemPatch?: () => void;
 	private chainTail: Promise<void> = Promise.resolve();
 	private watchersInitialized = false;
+
+	private attachWatcherErrorHandler(watcher: FSWatcher, context: string): void {
+		watcher.on("error", (error) => {
+			if (process.env.DEBUG) {
+				console.warn(`Watcher error (${context})`, error);
+			}
+		});
+	}
 
 	constructor(private readonly filesystem: FileSystem) {
 		this.patchFilesystem();
@@ -98,8 +107,8 @@ export class ContentStore {
 			tasks = tasks.filter((task) => (task.priority ?? "").toLowerCase() === priority);
 		}
 		if (filter?.parentTaskId) {
-			const parentId = filter.parentTaskId.startsWith("task-") ? filter.parentTaskId : `task-${filter.parentTaskId}`;
-			tasks = tasks.filter((task) => task.parentTaskId === parentId);
+			const parentFilter = filter.parentTaskId;
+			tasks = tasks.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId));
 		}
 
 		return tasks.slice();
@@ -251,6 +260,7 @@ export class ContentStore {
 					this.notify("tasks");
 				});
 			});
+			this.attachWatcherErrorHandler(watcher, "config");
 
 			return {
 				stop() {
@@ -329,6 +339,7 @@ export class ContentStore {
 				this.notify("tasks");
 			});
 		});
+		this.attachWatcherErrorHandler(watcher, "tasks");
 
 		return {
 			stop() {
@@ -400,6 +411,7 @@ export class ContentStore {
 				this.notify("decisions");
 			});
 		});
+		this.attachWatcherErrorHandler(watcher, "decisions");
 
 		return {
 			stop() {
@@ -502,6 +514,7 @@ export class ContentStore {
 					await handler(eventType, absolutePath, relativePath);
 				});
 			});
+			this.attachWatcherErrorHandler(watcher, `dir:${rootDir}`);
 
 			return {
 				stop() {
@@ -570,9 +583,10 @@ export class ContentStore {
 			return result;
 		}) as FileSystem["saveTask"];
 
-		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<void> => {
-			await originalSaveDocument.call(this.filesystem, document, subPath);
+		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<string> => {
+			const result = await originalSaveDocument.call(this.filesystem, document, subPath);
 			await this.handleDocumentWrite(document.id);
+			return result;
 		}) as FileSystem["saveDocument"];
 
 		this.filesystem.saveDecision = (async (decision: Decision): Promise<void> => {
@@ -765,6 +779,7 @@ export class ContentStore {
 					}
 				});
 			});
+			this.attachWatcherErrorHandler(watcher, `manual:${dir}`);
 
 			watchers.set(dir, watcher);
 

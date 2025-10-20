@@ -18,7 +18,6 @@ describe("exportKanbanBoardToFile", () => {
 				createdDate: "",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 		];
 
@@ -49,7 +48,6 @@ describe("exportKanbanBoardToFile", () => {
 				updatedDate: "2025-01-08 10:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 			{
 				id: "task-3",
@@ -60,7 +58,6 @@ describe("exportKanbanBoardToFile", () => {
 				updatedDate: "2025-01-09 10:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 			{
 				id: "task-2",
@@ -71,7 +68,6 @@ describe("exportKanbanBoardToFile", () => {
 				updatedDate: "2025-01-10 12:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 			{
 				id: "task-4",
@@ -82,7 +78,6 @@ describe("exportKanbanBoardToFile", () => {
 				updatedDate: "2025-01-05 10:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 			{
 				id: "task-5",
@@ -93,7 +88,6 @@ describe("exportKanbanBoardToFile", () => {
 				updatedDate: "2025-01-10 14:00",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 		];
 
@@ -141,7 +135,6 @@ describe("exportKanbanBoardToFile", () => {
 				createdDate: "2025-01-01",
 				labels: ["enhancement", "ui"],
 				dependencies: [],
-				rawContent: "",
 			},
 			{
 				id: "task-205",
@@ -151,7 +144,6 @@ describe("exportKanbanBoardToFile", () => {
 				createdDate: "2025-01-02",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 				parentTaskId: "task-204",
 			},
 		];
@@ -188,7 +180,6 @@ describe("exportKanbanBoardToFile", () => {
 				createdDate: "2025-01-01",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 		];
 
@@ -223,7 +214,6 @@ describe("buildKanbanStatusGroups", () => {
 				createdDate: "2025-01-02",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 			{
 				id: "task-2",
@@ -233,7 +223,6 @@ describe("buildKanbanStatusGroups", () => {
 				createdDate: "2025-01-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "",
 			},
 		];
 

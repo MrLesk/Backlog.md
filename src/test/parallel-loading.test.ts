@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import { loadRemoteTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
 import type { GitOperations } from "../git/operations.ts";
@@ -82,6 +82,16 @@ dependencies: []
 }
 
 describe("Parallel remote task loading", () => {
+	let consoleErrorSpy: ReturnType<typeof spyOn>;
+
+	beforeEach(() => {
+		consoleErrorSpy = spyOn(console, "error");
+	});
+
+	afterEach(() => {
+		consoleErrorSpy?.mockRestore();
+	});
+
 	it("should load tasks from multiple branches in parallel", async () => {
 		const mockGitOperations = new MockGitOperations() as unknown as GitOperations;
 
@@ -111,13 +121,12 @@ describe("Parallel remote task loading", () => {
 	});
 
 	it("should handle errors gracefully", async () => {
-		// Mock console.error to suppress expected error output
-		const originalConsoleError = console.error;
-		console.error = () => {};
-
 		// Create a mock that throws an error
 		const errorGitOperations = {
 			fetch: async () => {
+				throw new Error("Network error");
+			},
+			listRecentRemoteBranches: async (_daysAgo: number) => {
 				throw new Error("Network error");
 			},
 		} as unknown as GitOperations;
@@ -126,8 +135,9 @@ describe("Parallel remote task loading", () => {
 		const remoteTasks = await loadRemoteTasks(errorGitOperations, null);
 		expect(remoteTasks).toEqual([]);
 
-		// Restore console.error
-		console.error = originalConsoleError;
+		// Verify error was logged
+		expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+		expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to fetch remote tasks:", expect.any(Error));
 	});
 
 	it("should resolve task conflicts correctly", async () => {
@@ -141,7 +151,7 @@ describe("Parallel remote task loading", () => {
 			createdDate: "2025-06-13",
 			labels: [],
 			dependencies: [],
-			rawContent: "Local version",
+			description: "Local version",
 			source: "local",
 			lastModified: new Date("2025-06-13T10:00:00Z"),
 		};
@@ -154,7 +164,7 @@ describe("Parallel remote task loading", () => {
 			createdDate: "2025-06-13",
 			labels: [],
 			dependencies: [],
-			rawContent: "Remote version",
+			description: "Remote version",
 			source: "remote",
 			branch: "feature",
 			lastModified: new Date("2025-06-13T12:00:00Z"),

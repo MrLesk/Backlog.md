@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
+import type { Document, Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -54,7 +54,7 @@ describe("Core", () => {
 			createdDate: "2025-06-07",
 			labels: ["test"],
 			dependencies: [],
-			rawContent: "This is a test task",
+			description: "This is a test task",
 		};
 
 		beforeEach(async () => {
@@ -92,8 +92,7 @@ describe("Core", () => {
 			const originalTask = await core.filesystem.loadTask("task-1");
 			expect(originalTask?.title).toBe("Test Task");
 
-			const updatedTask = { ...sampleTask, title: "Updated Task" };
-			await core.updateTask(updatedTask, true);
+			await core.updateTaskFromInput("task-1", { title: "Updated Task" }, true);
 
 			// Check if task was updated
 			const loadedTask = await core.filesystem.loadTask("task-1");
@@ -125,6 +124,25 @@ describe("Core", () => {
 			expect(lastCommit).toContain("backlog: Demote task task-1");
 		});
 
+		it("should resolve tasks using flexible ID formats", async () => {
+			const standardTask: Task = { ...sampleTask, id: "task-5", title: "Standard" };
+			const paddedTask: Task = { ...sampleTask, id: "task-007", title: "Padded" };
+			await core.createTask(standardTask, false);
+			await core.createTask(paddedTask, false);
+
+			const uppercase = await core.getTask("TASK-5");
+			expect(uppercase?.id).toBe("task-5");
+
+			const bare = await core.getTask("5");
+			expect(bare?.id).toBe("task-5");
+
+			const zeroPadded = await core.getTask("0007");
+			expect(zeroPadded?.id).toBe("task-007");
+
+			const mixedCase = await core.getTask("Task-007");
+			expect(mixedCase?.id).toBe("task-007");
+		});
+
 		it("should return false when archiving non-existent task", async () => {
 			const archived = await core.archiveTask("non-existent", true);
 			expect(archived).toBe(false);
@@ -154,29 +172,32 @@ describe("Core", () => {
 			expect(loadedTask?.status).toBe("In Progress");
 		});
 
-		it("should not add description header when missing", async () => {
+		it("should preserve description text when saving without header markers", async () => {
 			const taskNoHeader: Task = {
 				...sampleTask,
 				id: "task-2",
-				rawContent: "Just text",
+				description: "Just text",
 			};
 
 			await core.createTask(taskNoHeader, false);
 			const loaded = await core.filesystem.loadTask("task-2");
-			expect(loaded?.rawContent).toBe("Just text");
+			expect(loaded?.description).toBe("Just text");
+			const body = await core.getTaskContent("task-2");
+			const matches = (body?.match(/## Description/g) ?? []).length;
+			expect(matches).toBe(1);
 		});
 
-		it("should not duplicate description header", async () => {
+		it("should not duplicate description header in saved content", async () => {
 			const taskWithHeader: Task = {
 				...sampleTask,
 				id: "task-3",
-				rawContent: "## Description\n\nExisting",
+				description: "Existing",
 			};
 
 			await core.createTask(taskWithHeader, false);
-			const loaded = await core.filesystem.loadTask("task-3");
-			const matches = loaded?.rawContent.match(/## Description/g) || [];
-			expect(matches.length).toBe(1);
+			const body = await core.getTaskContent("task-3");
+			const matches = (body?.match(/## Description/g) ?? []).length;
+			expect(matches).toBe(1);
 		});
 
 		it("should handle task creation without auto-commit when git fails", async () => {
@@ -216,21 +237,107 @@ describe("Core", () => {
 		it("should normalize assignee when updating tasks", async () => {
 			await core.createTask(sampleTask, false);
 
-			const updateString = {
-				...sampleTask,
-				assignee: "@carol",
-			} as unknown as Task;
-			await core.updateTask(updateString, false);
+			await core.updateTaskFromInput("task-1", { assignee: ["@carol"] }, false);
 			let loaded = await core.filesystem.loadTask("task-1");
 			expect(loaded?.assignee).toEqual(["@carol"]);
 
-			const updateArray: Task = {
-				...sampleTask,
-				assignee: ["@dave"],
-			};
-			await core.updateTask(updateArray, false);
+			await core.updateTaskFromInput("task-1", { assignee: ["@dave"] }, false);
 			loaded = await core.filesystem.loadTask("task-1");
 			expect(loaded?.assignee).toEqual(["@dave"]);
+		});
+
+		it("should create sub-tasks with proper hierarchical IDs", async () => {
+			await core.initializeProject("Subtask Project", true);
+
+			// Create parent task
+			const { task: parent } = await core.createTaskFromInput({
+				title: "Parent Task",
+				status: "To Do",
+			});
+			expect(parent.id).toBe("task-1");
+
+			// Create first sub-task
+			const { task: child1 } = await core.createTaskFromInput({
+				title: "First Child",
+				parentTaskId: parent.id,
+				status: "To Do",
+			});
+			expect(child1.id).toBe("task-1.1");
+			expect(child1.parentTaskId).toBe("task-1");
+
+			// Create second sub-task
+			const { task: child2 } = await core.createTaskFromInput({
+				title: "Second Child",
+				parentTaskId: parent.id,
+				status: "To Do",
+			});
+			expect(child2.id).toBe("task-1.2");
+			expect(child2.parentTaskId).toBe("task-1");
+
+			// Create another parent task to ensure sequential numbering still works
+			const { task: parent2 } = await core.createTaskFromInput({
+				title: "Second Parent",
+				status: "To Do",
+			});
+			expect(parent2.id).toBe("task-2");
+		});
+	});
+
+	describe("document operations", () => {
+		const baseDocument: Document = {
+			id: "doc-1",
+			title: "Operations Guide",
+			type: "guide",
+			createdDate: "2025-06-07",
+			rawContent: "# Ops Guide",
+		};
+
+		beforeEach(async () => {
+			await core.initializeProject("Test Project", false);
+		});
+
+		it("updates a document title without leaving the previous file behind", async () => {
+			await core.createDocument(baseDocument, false);
+
+			const [initialFile] = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			expect(initialFile).toBe("doc-1 - Operations-Guide.md");
+
+			const documents = await core.filesystem.listDocuments();
+			const existingDoc = documents[0];
+			if (!existingDoc) {
+				throw new Error("Expected document to exist after creation");
+			}
+			expect(existingDoc.title).toBe("Operations Guide");
+
+			await core.updateDocument({ ...existingDoc, title: "Operations Guide Updated" }, "# Updated content", false);
+
+			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			expect(docFiles).toHaveLength(1);
+			expect(docFiles[0]).toBe("doc-1 - Operations-Guide-Updated.md");
+
+			const updatedDocs = await core.filesystem.listDocuments();
+			expect(updatedDocs[0]?.title).toBe("Operations Guide Updated");
+		});
+
+		it("shows a git rename when the document title changes", async () => {
+			await core.createDocument(baseDocument, true);
+
+			const renamedDoc: Document = {
+				...baseDocument,
+				title: "Operations Guide Renamed",
+			};
+
+			await core.updateDocument(renamedDoc, "# Ops Guide", false);
+
+			await $`git add -A`.cwd(TEST_DIR).quiet();
+			const diffResult = await $`git diff --name-status -M HEAD`.cwd(TEST_DIR).quiet();
+			const diff = diffResult.stdout.toString();
+			const previousPath = "backlog/docs/doc-1 - Operations-Guide.md";
+			const renamedPath = "backlog/docs/doc-1 - Operations-Guide-Renamed.md";
+			const escapeForRegex = (value: string) => value.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
+			expect(diff).toMatch(
+				new RegExp(`^R\\d*\\t${escapeForRegex(previousPath)}\\t${escapeForRegex(renamedPath)}`, "m"),
+			);
 		});
 	});
 
@@ -243,7 +350,7 @@ describe("Core", () => {
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
-			rawContent: "Draft task",
+			description: "Draft task",
 		};
 
 		beforeEach(async () => {
@@ -331,7 +438,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task without status",
+				description: "Task without status",
 			};
 
 			await core.createTask(taskWithoutStatus, false);
@@ -359,7 +466,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task without status",
+				description: "Task without status",
 			};
 
 			await core.createTask(taskWithoutStatus, false);
@@ -381,7 +488,7 @@ describe("Core", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Testing directory accessors",
+				description: "Testing directory accessors",
 			};
 
 			// Create task without auto-commit to avoid potential git timing issues

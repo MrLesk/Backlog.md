@@ -184,6 +184,7 @@ describe("Offline Mode Configuration", () => {
 					throw new Error("This should not be called");
 				},
 				listRemoteBranches: async () => [],
+				listRecentRemoteBranches: async (_daysAgo: number) => [],
 			} as unknown as GitOperations;
 
 			const remoteTasks = await loadRemoteTasks(mockGitOperations, config, onProgress);
@@ -211,6 +212,7 @@ describe("Offline Mode Configuration", () => {
 					fetchCalled = true;
 				},
 				listRemoteBranches: async () => [],
+				listRecentRemoteBranches: async (_daysAgo: number) => [],
 			} as unknown as GitOperations;
 
 			const remoteTasks = await loadRemoteTasks(mockGitOperations, config, onProgress);
@@ -230,6 +232,7 @@ describe("Offline Mode Configuration", () => {
 					fetchCalled = true;
 				},
 				listRemoteBranches: async () => [],
+				listRecentRemoteBranches: async (_daysAgo: number) => [],
 			} as unknown as GitOperations;
 
 			const remoteTasks = await loadRemoteTasks(mockGitOperations, null, onProgress);

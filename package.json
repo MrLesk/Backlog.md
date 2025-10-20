@@ -1,6 +1,6 @@
 {
 	"name": "backlog.md",
-	"version": "1.15.2",
+	"version": "1.17.1",
 	"type": "module",
 	"files": [
 		"scripts/*.cjs",
@@ -21,6 +21,7 @@
 		"@biomejs/biome": "2.2.4",
 		"@tailwindcss/cli": "4.1.13",
 		"@types/bun": "1.2.22",
+		"@modelcontextprotocol/sdk": "^1.18.0",
 		"@types/prompts": "2.4.9",
 		"@types/react": "19.1.13",
 		"@types/react-dom": "19.1.9",
@@ -52,6 +53,7 @@
 		"build:css": "bun ./node_modules/@tailwindcss/cli/dist/index.mjs -i src/web/styles/source.css -o src/web/styles/style.css --minify",
 		"build": "bun run build:css && bun build --production --compile --minify --outfile=dist/backlog src/cli.ts",
 		"cli": "bun run build:css && bun src/cli.ts",
+		"mcp": "bun src/cli.ts mcp start",
 		"update-nix": "sh scripts/update-nix.sh",
 		"postinstall": "sh -c 'command -v bun2nix >/dev/null 2>&1 && bun2nix -o bun.nix || (command -v nix >/dev/null 2>&1 && nix --extra-experimental-features \"nix-command flakes\" run github:baileyluTCD/bun2nix -- -o bun.nix || true)'"
 	},

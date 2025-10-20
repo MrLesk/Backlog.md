@@ -158,13 +158,14 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
         status,
         assignee,
         labels,
-        priority: priority as "high" | "medium" | "low" | undefined,
+        priority: (priority === "" ? undefined : priority) as "high" | "medium" | "low" | undefined,
         dependencies,
       };
 
       if (isCreateMode && onSubmit) {
         // Create new task
         await onSubmit(taskData);
+        // Only close if successful (no error thrown)
         onClose();
       } else if (task) {
         // Update existing task
@@ -173,7 +174,18 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
         if (onSaved) await onSaved();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // Extract and display the error message from API response
+      let errorMessage = 'Failed to save task';
+
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'object' && err !== null && 'error' in err) {
+        errorMessage = String((err as any).error);
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+
+      setError(errorMessage);
     } finally {
       setSaving(false);
     }

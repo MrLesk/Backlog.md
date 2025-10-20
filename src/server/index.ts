@@ -4,7 +4,7 @@ import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
-import type { SearchPriorityFilter, SearchResultType, Task } from "../types/index.ts";
+import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
 
@@ -514,9 +514,40 @@ export class BacklogServer {
 	}
 
 	private async handleCreateTask(req: Request): Promise<Response> {
-		const taskData = await req.json();
-		const task = await this.core.createTaskFromData(taskData);
-		return Response.json(task, { status: 201 });
+		const payload = await req.json();
+
+		if (!payload || typeof payload.title !== "string" || payload.title.trim().length === 0) {
+			return Response.json({ error: "Title is required" }, { status: 400 });
+		}
+
+		const acceptanceCriteria = Array.isArray(payload.acceptanceCriteriaItems)
+			? payload.acceptanceCriteriaItems
+					.map((item: { text?: string; checked?: boolean }) => ({
+						text: String(item?.text ?? "").trim(),
+						checked: Boolean(item?.checked),
+					}))
+					.filter((item: { text: string }) => item.text.length > 0)
+			: [];
+
+		try {
+			const { task: createdTask } = await this.core.createTaskFromInput({
+				title: payload.title,
+				description: payload.description,
+				status: payload.status,
+				priority: payload.priority,
+				labels: payload.labels,
+				assignee: payload.assignee,
+				dependencies: payload.dependencies,
+				parentTaskId: payload.parentTaskId,
+				implementationPlan: payload.implementationPlan,
+				implementationNotes: payload.implementationNotes,
+				acceptanceCriteria,
+			});
+			return Response.json(createdTask, { status: 201 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to create task";
+			return Response.json({ error: message }, { status: 400 });
+		}
 	}
 
 	private async handleGetTask(taskId: string): Promise<Response> {
@@ -542,13 +573,60 @@ export class BacklogServer {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
 
-		const updatedTask: Task = {
-			...existingTask,
-			...updates,
-		};
+		const updateInput: TaskUpdateInput = {};
 
-		await this.core.updateTask(updatedTask);
-		return Response.json(updatedTask);
+		if ("title" in updates && typeof updates.title === "string") {
+			updateInput.title = updates.title;
+		}
+
+		if ("description" in updates && typeof updates.description === "string") {
+			updateInput.description = updates.description;
+		}
+
+		if ("status" in updates && typeof updates.status === "string") {
+			updateInput.status = updates.status;
+		}
+
+		if ("priority" in updates && typeof updates.priority === "string") {
+			updateInput.priority = updates.priority;
+		}
+
+		if ("labels" in updates && Array.isArray(updates.labels)) {
+			updateInput.labels = updates.labels;
+		}
+
+		if ("assignee" in updates && Array.isArray(updates.assignee)) {
+			updateInput.assignee = updates.assignee;
+		}
+
+		if ("dependencies" in updates && Array.isArray(updates.dependencies)) {
+			updateInput.dependencies = updates.dependencies;
+		}
+
+		if ("implementationPlan" in updates && typeof updates.implementationPlan === "string") {
+			updateInput.implementationPlan = updates.implementationPlan;
+		}
+
+		if ("implementationNotes" in updates && typeof updates.implementationNotes === "string") {
+			updateInput.implementationNotes = updates.implementationNotes;
+		}
+
+		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
+			updateInput.acceptanceCriteria = updates.acceptanceCriteriaItems
+				.map((item: { text?: string; checked?: boolean }) => ({
+					text: String(item?.text ?? "").trim(),
+					checked: Boolean(item?.checked),
+				}))
+				.filter((item: { text: string }) => item.text.length > 0);
+		}
+
+		try {
+			const updatedTask = await this.core.updateTaskFromInput(taskId, updateInput);
+			return Response.json(updatedTask);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to update task";
+			return Response.json({ error: message }, { status: 400 });
+		}
 	}
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
@@ -610,14 +688,10 @@ export class BacklogServer {
 
 	private async handleGetDoc(docId: string): Promise<Response> {
 		try {
-			const store = await this.getContentStoreInstance();
-			const documents = store.getDocuments();
-			const doc = documents.find((d) => d.id === docId || d.title === docId);
-
+			const doc = await this.core.getDocument(docId);
 			if (!doc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
-
 			return Response.json(doc);
 		} catch (error) {
 			console.error("Error loading document:", error);
@@ -639,21 +713,38 @@ export class BacklogServer {
 	}
 
 	private async handleUpdateDoc(req: Request, docId: string): Promise<Response> {
-		const content = await req.text();
-
 		try {
-			const store = await this.getContentStoreInstance();
-			const documents = store.getDocuments();
-			const existingDoc = documents.find((d) => d.id === docId || d.title === docId);
+			const body = await req.json();
+			const content = typeof body?.content === "string" ? body.content : undefined;
+			const title = typeof body?.title === "string" ? body.title : undefined;
 
+			if (typeof content !== "string") {
+				return Response.json({ error: "Document content is required" }, { status: 400 });
+			}
+
+			let normalizedTitle: string | undefined;
+
+			if (typeof title === "string") {
+				normalizedTitle = title.trim();
+				if (normalizedTitle.length === 0) {
+					return Response.json({ error: "Document title cannot be empty" }, { status: 400 });
+				}
+			}
+
+			const existingDoc = await this.core.getDocument(docId);
 			if (!existingDoc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
 
-			await this.core.updateDocument(existingDoc, content);
+			const nextDoc = normalizedTitle ? { ...existingDoc, title: normalizedTitle } : { ...existingDoc };
+
+			await this.core.updateDocument(nextDoc, content);
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error updating document:", error);
+			if (error instanceof SyntaxError) {
+				return Response.json({ error: "Invalid request payload" }, { status: 400 });
+			}
 			return Response.json({ error: "Failed to update document" }, { status: 500 });
 		}
 	}

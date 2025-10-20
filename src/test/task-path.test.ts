@@ -55,6 +55,11 @@ describe("Task path utilities", () => {
 		it("should handle empty strings", () => {
 			expect(normalizeTaskId("")).toBe("task-");
 		});
+
+		it("should normalize mixed-case prefixes and preserve numeric padding", () => {
+			expect(normalizeTaskId("TASK-001")).toBe("task-001");
+			expect(normalizeTaskId("Task-42")).toBe("task-42");
+		});
 	});
 
 	describe("getTaskPath", () => {
@@ -83,6 +88,16 @@ describe("Task path utilities", () => {
 			expect(path2).toContain("task-123 - Test Task.md");
 		});
 
+		it("should resolve case-insensitive task IDs", async () => {
+			const uppercase = await getTaskPath("TASK-0001", core);
+			expect(uppercase).toBeTruthy();
+			expect(uppercase).toContain("task-0001 - Padded One.md");
+
+			const mixedCase = await getTaskPath("Task-456", core);
+			expect(mixedCase).toBeTruthy();
+			expect(mixedCase).toContain("task-456 - Another Task.md");
+		});
+
 		it("should return null for non-existent task", async () => {
 			const path = await getTaskPath("999", core);
 			expect(path).toBeNull();
@@ -104,6 +119,11 @@ describe("Task path utilities", () => {
 		it("should resolve dotted IDs ignoring leading zeros in segments", async () => {
 			const filename = await getTaskFilename("3.1", core);
 			expect(filename).toBe("task-3.01 - Subtask Padded.md");
+		});
+
+		it("should resolve case-insensitive IDs when fetching filenames", async () => {
+			const filename = await getTaskFilename("TASK-789", core);
+			expect(filename).toBe("task-789 - Final Task.md");
 		});
 
 		it("should return null for non-existent task", async () => {

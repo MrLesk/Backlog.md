@@ -3,7 +3,6 @@ import type { BoxInterface } from "neo-neo-bblessed";
 import { box, scrollablebox } from "neo-neo-bblessed";
 import type { Core } from "../index.ts";
 import type { Sequence, Task } from "../types/index.ts";
-import { getTaskPath } from "../utils/task-path.ts";
 import { createTaskPopup } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 
@@ -316,15 +315,7 @@ export async function runSequencesView(
 		if (popupOpen) return;
 		popupOpen = true;
 
-		let content = "";
-		try {
-			const filePath = await getTaskPath(task.id, core);
-			if (filePath) content = await Bun.file(filePath).text();
-		} catch {
-			/* ignore */
-		}
-
-		const popup = await createTaskPopup(screen, task, content);
+		const popup = await createTaskPopup(screen, task);
 		if (!popup) {
 			popupOpen = false;
 			return;
@@ -398,7 +389,7 @@ export async function runSequencesView(
 		const task = item.seqIdx === -1 ? data.unsequenced[item.taskIdx] : seq2?.tasks[item.taskIdx];
 		if (!task) return;
 		// Persist changes based on target
-		const allTasks = await core.filesystem.listTasks();
+		const allTasks = await core.queryTasks();
 		const tgt = moveTargets[targetPos];
 		if (tgt?.kind === "unsequenced") {
 			const { planMoveToUnsequenced } = await import("../core/sequences.ts");
@@ -430,7 +421,7 @@ export async function runSequencesView(
 			}
 		}
 		// Reload and rerender
-		const tasksNew = await core.filesystem.listTasks();
+		const tasksNew = await core.queryTasks();
 		const active = tasksNew.filter((t) => (t.status || "").toLowerCase() !== "done");
 		const { computeSequences: recompute } = await import("../core/sequences.ts");
 		const next = recompute(active);

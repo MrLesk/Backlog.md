@@ -121,7 +121,7 @@ describe("Implementation Notes CLI", () => {
 				createdDate: "2025-07-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 			await core.createTask(task1, false);
 
@@ -148,7 +148,8 @@ describe("Implementation Notes CLI", () => {
 				createdDate: "2025-07-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description\n\n## Implementation Notes\n\nInitial implementation completed",
+				description: "Test description",
+				implementationNotes: "Initial implementation completed",
 			};
 			await core.createTask(task2, false);
 
@@ -163,7 +164,7 @@ describe("Implementation Notes CLI", () => {
 
 			updatedTask = await core.filesystem.loadTask("task-2");
 			expect(updatedTask).not.toBeNull();
-			const notesSection = updatedTask?.rawContent.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i);
+			const notesSection = updatedTask?.rawContent?.match(/## Implementation Notes\s*\n([\s\S]*?)(?=\n## |$)/i);
 			expect(notesSection?.[1]).not.toContain("Initial implementation completed");
 			expect(notesSection?.[1]).toContain("Added error handling");
 
@@ -176,7 +177,11 @@ describe("Implementation Notes CLI", () => {
 				createdDate: "2025-07-03",
 				labels: ["feature"],
 				dependencies: [],
-				rawContent: "Implement new feature\n\n## Acceptance Criteria\n\n- [ ] Feature works\n- [ ] Tests pass",
+				description: "Implement new feature",
+				acceptanceCriteriaItems: [
+					{ index: 1, text: "Feature works", checked: false },
+					{ index: 2, text: "Tests pass", checked: false },
+				],
 			};
 			await core.createTask(task3, false);
 
@@ -207,7 +212,7 @@ describe("Implementation Notes CLI", () => {
 				createdDate: "2025-07-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "Complex task description",
+				description: "Complex task description",
 			};
 			await core.createTask(task4, false);
 
@@ -277,7 +282,7 @@ Technical decisions:
 				createdDate: "2025-07-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "Test description",
+				description: "Test description",
 			};
 			await core.createTask(task6, false);
 

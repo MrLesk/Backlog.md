@@ -180,6 +180,7 @@ describe("CLI Integration", () => {
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			expect(agentsFile).toBe(false);
 			expect(claudeFile).toBe(false);
+			expect(output).toContain("AI Integration: CLI commands (legacy)");
 			expect(output).toContain("Skipping agent instruction files per selection.");
 		});
 
@@ -194,9 +195,75 @@ describe("CLI Integration", () => {
 
 			expect(output).toContain("Initialization Summary:");
 			expect(output).toContain("Project Name: SummaryProj");
+			expect(output).toContain("AI Integration: CLI commands (legacy)");
 			expect(output).toContain("Advanced settings: unchanged");
 			expect(output).not.toContain("Remote operations:");
 			expect(output).not.toContain("Zero-padded IDs:");
+		});
+
+		it("should support MCP integration mode via flag", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output = await $`bun ${CLI_PATH} init McpProj --defaults --integration-mode mcp`.cwd(TEST_DIR).text();
+
+			expect(output).toContain("AI Integration: MCP connector");
+			expect(output).toContain("Agent instruction files: guidance is provided through the MCP connector.");
+			expect(output).toContain("MCP server name: backlog");
+			expect(output).toContain("MCP client setup: skipped (non-interactive)");
+			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
+			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
+			expect(agentsFile).toBe(false);
+			expect(claudeFile).toBe(false);
+		});
+
+		it("should default to MCP integration when no mode is specified", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output = await $`bun ${CLI_PATH} init DefaultMcpProj --defaults`.cwd(TEST_DIR).text();
+
+			expect(output).toContain("AI Integration: MCP connector");
+			expect(output).toContain("MCP server name: backlog");
+			expect(output).toContain("MCP client setup: skipped (non-interactive)");
+		});
+
+		it("should allow skipping AI integration via flag", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`.cwd(TEST_DIR).text();
+
+			expect(output).not.toContain("AI Integration:");
+			expect(output).toContain("AI integration skipped");
+			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
+			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
+			expect(agentsFile).toBe(false);
+			expect(claudeFile).toBe(false);
+		});
+
+		it("should reject MCP integration when agent instruction flags are provided", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			let failed = false;
+			let combinedOutput = "";
+			try {
+				await $`bun ${CLI_PATH} init ConflictProj --defaults --integration-mode mcp --agent-instructions claude`
+					.cwd(TEST_DIR)
+					.text();
+			} catch (err) {
+				failed = true;
+				const e = err as { stdout?: unknown; stderr?: unknown };
+				combinedOutput = String(e.stdout ?? "") + String(e.stderr ?? "");
+			}
+
+			expect(failed).toBe(true);
+			expect(combinedOutput).toContain("cannot be combined");
 		});
 
 		it("should ignore 'none' when other agent instructions are provided", async () => {
@@ -631,13 +698,15 @@ describe("CLI Integration", () => {
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 
-			if (task) {
-				task.title = "Updated Title";
-				task.description = "Updated description";
-				task.status = "In Progress";
-
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput(
+				"task-1",
+				{
+					title: "Updated Title",
+					description: "Updated description",
+					status: "In Progress",
+				},
+				false,
+			);
 
 			// Verify changes were persisted
 			const updatedTask = await core.filesystem.loadTask("task-1");
@@ -667,11 +736,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Update assignee
-			const task = await core.filesystem.loadTask("task-2");
-			if (task) {
-				task.assignee = ["newuser@example.com"];
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput("task-2", { assignee: ["newuser@example.com"] }, false);
 
 			// Verify assignee was updated
 			const updatedTask = await core.filesystem.loadTask("task-2");
@@ -697,11 +762,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Replace all labels
-			const task = await core.filesystem.loadTask("task-3");
-			if (task) {
-				task.labels = ["new1", "new2", "new3"];
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput("task-3", { labels: ["new1", "new2", "new3"] }, false);
 
 			// Verify labels were replaced
 			const updatedTask = await core.filesystem.loadTask("task-3");
@@ -727,18 +788,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Add new labels
-			const task = await core.filesystem.loadTask("task-4");
-			if (task) {
-				const newLabels = [...task.labels];
-				const labelsToAdd = ["added1", "added2"];
-				for (const label of labelsToAdd) {
-					if (!newLabels.includes(label)) {
-						newLabels.push(label);
-					}
-				}
-				task.labels = newLabels;
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput("task-4", { addLabels: ["added1", "added2"] }, false);
 
 			// Verify labels were added
 			const updatedTask = await core.filesystem.loadTask("task-4");
@@ -764,12 +814,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Remove specific label
-			const task = await core.filesystem.loadTask("task-5");
-			if (task) {
-				const newLabels = task.labels.filter((label) => label !== "remove");
-				task.labels = newLabels;
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput("task-5", { removeLabels: ["remove"] }, false);
 
 			// Verify label was removed
 			const updatedTask = await core.filesystem.loadTask("task-5");
@@ -802,11 +847,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Edit the task (without manually setting updatedDate)
-			const task = await core.filesystem.loadTask("task-6");
-			if (task) {
-				task.title = "Updated Title";
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput("task-6", { title: "Updated Title" }, false);
 
 			// Verify updated_date was automatically set to today's date
 			const updatedTask = await core.filesystem.loadTask("task-6");
@@ -834,11 +875,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Edit the task with auto-commit enabled
-			const task = await core.filesystem.loadTask("task-7");
-			if (task) {
-				task.title = "Updated for Commit";
-				await core.updateTask(task, true); // autoCommit = true
-			}
+			await core.updateTaskFromInput("task-7", { title: "Updated for Commit" }, true);
 
 			// Verify the task was updated (this confirms the update functionality works)
 			const updatedTask = await core.filesystem.loadTask("task-7");
@@ -867,12 +904,14 @@ describe("CLI Integration", () => {
 			);
 
 			// Edit the task
-			const task = await core.filesystem.loadTask("task-8");
-			if (task) {
-				task.title = "Updated YAML Test";
-				task.status = "In Progress";
-				await core.updateTask(task, false);
-			}
+			await core.updateTaskFromInput(
+				"task-8",
+				{
+					title: "Updated YAML Test",
+					status: "In Progress",
+				},
+				false,
+			);
 
 			// Verify all frontmatter fields are preserved
 			const updatedTask = await core.filesystem.loadTask("task-8");
@@ -1359,7 +1398,7 @@ describe("CLI Integration", () => {
 
 			// create branch with updated status
 			await $`git checkout -b feature`.cwd(TEST_DIR).quiet();
-			await core.updateTask({ ...task, status: "Done" }, true);
+			await core.updateTaskFromInput("task-1", { status: "Done" }, true);
 			await $`git push -u origin feature`.cwd(TEST_DIR).quiet();
 
 			// Update remote-tracking branches to ensure they are recognized

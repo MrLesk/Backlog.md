@@ -5,7 +5,8 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constan
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
-import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
+import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { getTaskFilename, getTaskPath, normalizeTaskId } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 // Interface for task path resolution context
@@ -67,6 +68,9 @@ export class FileSystem {
 			const content = await file.text();
 			return this.parseConfig(content);
 		} catch (_error) {
+			if (process.env.DEBUG) {
+				console.error("Error loading config:", _error);
+			}
 			return null;
 		}
 	}
@@ -153,7 +157,7 @@ export class FileSystem {
 
 	// Task operations
 	async saveTask(task: Task): Promise<string> {
-		const taskId = task.id.startsWith("task-") ? task.id : `task-${task.id}`;
+		const taskId = normalizeTaskId(task.id);
 		const filename = `${taskId} - ${this.sanitizeFilename(task.title)}.md`;
 		const tasksDir = await this.getTasksDir();
 		const filepath = join(tasksDir, filename);
@@ -184,7 +188,8 @@ export class FileSystem {
 			if (!filepath) return null;
 
 			const content = await Bun.file(filepath).text();
-			return parseTask(content);
+			const task = parseTask(content);
+			return { ...task, filePath: filepath };
 		} catch (_error) {
 			return null;
 		}
@@ -199,7 +204,8 @@ export class FileSystem {
 			for (const file of taskFiles) {
 				const filepath = join(tasksDir, file);
 				const content = await Bun.file(filepath).text();
-				tasks.push(parseTask(content));
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
 			}
 
 			if (filter?.status) {
@@ -227,7 +233,8 @@ export class FileSystem {
 			for (const file of taskFiles) {
 				const filepath = join(completedDir, file);
 				const content = await Bun.file(filepath).text();
-				tasks.push(parseTask(content));
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
 			}
 
 			return sortByTaskId(tasks);
@@ -358,7 +365,7 @@ export class FileSystem {
 
 	// Draft operations
 	async saveDraft(task: Task): Promise<string> {
-		const taskId = task.id.startsWith("task-") ? task.id : `task-${task.id}`;
+		const taskId = normalizeTaskId(task.id);
 		const filename = `${taskId} - ${this.sanitizeFilename(task.title)}.md`;
 		const draftsDir = await this.getDraftsDir();
 		const filepath = join(draftsDir, filename);
@@ -388,7 +395,8 @@ export class FileSystem {
 			if (!filepath) return null;
 
 			const content = await Bun.file(filepath).text();
-			return parseTask(content);
+			const task = parseTask(content);
+			return { ...task, filePath: filepath };
 		} catch {
 			return null;
 		}
@@ -403,7 +411,8 @@ export class FileSystem {
 			for (const file of taskFiles) {
 				const filepath = join(draftsDir, file);
 				const content = await Bun.file(filepath).text();
-				tasks.push(parseTask(content));
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
 			}
 
 			return sortByTaskId(tasks);
@@ -445,17 +454,64 @@ export class FileSystem {
 	}
 
 	// Document operations
-	async saveDocument(document: Document, subPath = ""): Promise<void> {
+	async saveDocument(document: Document, subPath = ""): Promise<string> {
 		const docsDir = await this.getDocsDir();
-		const dir = join(docsDir, subPath);
-		// Normalize ID - remove "doc-" prefix if present
-		const normalizedId = document.id.replace(/^doc-/, "");
-		const filename = `doc-${normalizedId} - ${this.sanitizeFilename(document.title)}.md`;
-		const filepath = join(dir, filename);
+		const canonicalId = normalizeDocumentId(document.id);
+		document.id = canonicalId;
+		const filename = `${canonicalId} - ${this.sanitizeFilename(document.title)}.md`;
+		const subPathSegments = subPath
+			.split(/[\\/]+/)
+			.map((segment) => segment.trim())
+			.filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+		const relativePath = subPathSegments.length > 0 ? join(...subPathSegments, filename) : filename;
+		const filepath = join(docsDir, relativePath);
 		const content = serializeDocument(document);
 
 		await this.ensureDirectoryExists(dirname(filepath));
+
+		const glob = new Bun.Glob("**/doc-*.md");
+		const existingMatches = await Array.fromAsync(glob.scan({ cwd: docsDir }));
+		const matchesForId = existingMatches.filter((relative) => {
+			const base = relative.split("/").pop() || relative;
+			const [candidateId] = base.split(" - ");
+			if (!candidateId) return false;
+			return documentIdsEqual(canonicalId, candidateId);
+		});
+
+		let sourceRelativePath = document.path;
+		if (!sourceRelativePath && matchesForId.length > 0) {
+			sourceRelativePath = matchesForId[0];
+		}
+
+		if (sourceRelativePath && sourceRelativePath !== relativePath) {
+			const sourcePath = join(docsDir, sourceRelativePath);
+			try {
+				await this.ensureDirectoryExists(dirname(filepath));
+				await rename(sourcePath, filepath);
+			} catch (error) {
+				const code = (error as NodeJS.ErrnoException | undefined)?.code;
+				if (code !== "ENOENT") {
+					throw error;
+				}
+			}
+		}
+
+		for (const match of matchesForId) {
+			const matchPath = join(docsDir, match);
+			if (matchPath === filepath) {
+				continue;
+			}
+			try {
+				await unlink(matchPath);
+			} catch {
+				// Ignore cleanup errors - file may have been removed already
+			}
+		}
+
 		await Bun.write(filepath, content);
+
+		document.path = relativePath;
+		return relativePath;
 	}
 
 	async listDecisions(): Promise<Decision[]> {
@@ -490,7 +546,11 @@ export class FileSystem {
 				if (base.toLowerCase() === "readme.md") continue;
 				const filepath = join(docsDir, file);
 				const content = await Bun.file(filepath).text();
-				docs.push(parseDocument(content));
+				const parsed = parseDocument(content);
+				docs.push({
+					...parsed,
+					path: file,
+				});
 			}
 
 			// Stable sort by title for UI/CLI listing
@@ -498,6 +558,15 @@ export class FileSystem {
 		} catch {
 			return [];
 		}
+	}
+
+	async loadDocument(id: string): Promise<Document> {
+		const documents = await this.listDocuments();
+		const document = documents.find((doc) => documentIdsEqual(id, doc.id));
+		if (!document) {
+			throw new Error(`Document not found: ${id}`);
+		}
+		return document;
 	}
 
 	// Config operations

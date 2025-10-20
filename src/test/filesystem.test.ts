@@ -54,7 +54,7 @@ describe("FileSystem", () => {
 			labels: ["test"],
 			milestone: "v1.0",
 			dependencies: [],
-			rawContent: "This is a test task",
+			description: "This is a test task",
 		};
 
 		it("should save and load a task", async () => {
@@ -64,7 +64,7 @@ describe("FileSystem", () => {
 			expect(loadedTask?.id).toBe(sampleTask.id);
 			expect(loadedTask?.title).toBe(sampleTask.title);
 			expect(loadedTask?.status).toBe(sampleTask.status);
-			expect(loadedTask?.rawContent).toBe(sampleTask.rawContent);
+			expect(loadedTask?.description).toBe(sampleTask.description);
 		});
 
 		it("should return null for non-existent task", async () => {
@@ -182,7 +182,7 @@ describe("FileSystem", () => {
 			createdDate: "2025-06-07",
 			labels: [],
 			dependencies: [],
-			rawContent: "Draft description",
+			description: "Draft description",
 		};
 
 		it("should save and load a draft", async () => {
@@ -373,10 +373,64 @@ describe("FileSystem", () => {
 			expect(docsFiles.some((f) => f.includes("Simple-Doc"))).toBe(true);
 		});
 
+		it("removes the previous document file when the title changes", async () => {
+			await filesystem.saveDocument(sampleDocument);
+
+			await filesystem.saveDocument({
+				...sampleDocument,
+				title: "API Guide Updated",
+				rawContent: "Updated content",
+			});
+
+			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir }));
+			expect(docFiles).toHaveLength(1);
+			expect(docFiles[0]).toBe("doc-1 - API-Guide-Updated.md");
+		});
+
 		it("should list documents", async () => {
 			await filesystem.saveDocument(sampleDocument);
 			const list = await filesystem.listDocuments();
 			expect(list.some((d) => d.id === sampleDocument.id)).toBe(true);
+		});
+
+		it("should include relative path metadata when listing documents", async () => {
+			await filesystem.saveDocument(
+				{
+					...sampleDocument,
+					id: "doc-3",
+					title: "Nested Guide",
+				},
+				"guides",
+			);
+
+			const docs = await filesystem.listDocuments();
+			const nested = docs.find((doc) => doc.id === "doc-3");
+			expect(nested?.path).toBe(join("guides", "doc-3 - Nested-Guide.md"));
+		});
+
+		it("should load documents using flexible ID formats", async () => {
+			await filesystem.saveDocument({
+				...sampleDocument,
+				id: "doc-7",
+				title: "Operations Reference",
+				rawContent: "Ops content",
+			});
+
+			const uppercase = await filesystem.loadDocument("DOC-7");
+			expect(uppercase.id).toBe("doc-7");
+
+			const zeroPadded = await filesystem.loadDocument("0007");
+			expect(zeroPadded.id).toBe("doc-7");
+
+			await filesystem.saveDocument({
+				...sampleDocument,
+				id: "DOC-0009",
+				title: "Padded Uppercase",
+				rawContent: "Content",
+			});
+
+			const canonicalFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir }));
+			expect(canonicalFiles.some((file) => file.startsWith("doc-0009"))).toBe(true);
 		});
 	});
 
@@ -390,7 +444,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task with task- prefix",
+				description: "Task with task- prefix",
 			};
 
 			await filesystem.saveTask(taskWithPrefix);
@@ -408,7 +462,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task without prefix",
+				description: "Task without prefix",
 			};
 
 			await filesystem.saveTask(taskWithoutPrefix);
@@ -471,7 +525,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task with special characters in title",
+				description: "Task with special characters in title",
 			};
 
 			await filesystem.saveTask(taskWithSpecialChars);
@@ -489,7 +543,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Task with mixed case title",
+				description: "Task with mixed case title",
 			};
 
 			await filesystem.saveTask(taskWithMixedCase);
@@ -513,7 +567,7 @@ describe("FileSystem", () => {
 				createdDate: "2025-06-07",
 				labels: [],
 				dependencies: [],
-				rawContent: "Check double dashes",
+				description: "Check double dashes",
 			};
 
 			await filesystem.saveTask(weirdTask);

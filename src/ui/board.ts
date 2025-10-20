@@ -350,18 +350,7 @@ export async function renderBoardTui(
 			if (!task) return;
 			popupOpen = true;
 
-			let content = "";
-			try {
-				const core = new Core(process.cwd());
-				const filePath = await getTaskPath(task.id, core);
-				if (filePath) {
-					content = await Bun.file(filePath).text();
-				}
-			} catch {
-				// Ignore read errors and fall back to empty content
-			}
-
-			const popup = await createTaskPopup(screen, task, content);
+			const popup = await createTaskPopup(screen, task);
 			if (!popup) {
 				popupOpen = false;
 				return;

@@ -324,7 +324,7 @@ describe("Markdown Serializer", () => {
 				labels: ["bug", "frontend"],
 				milestone: "v1.0",
 				dependencies: ["task-0"],
-				rawContent: "This is a test task description.",
+				description: "This is a test task description.",
 			};
 
 			const result = serializeTask(task);
@@ -336,6 +336,7 @@ describe("Markdown Serializer", () => {
 			expect(result).toContain("labels:");
 			expect(result).toContain("- bug");
 			expect(result).toContain("- frontend");
+			expect(result).toContain("## Description");
 			expect(result).toContain("This is a test task description.");
 		});
 
@@ -348,7 +349,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "A parent task with subtasks.",
+				description: "A parent task with subtasks.",
 				subtasks: ["task-parent.1", "task-parent.2"],
 			};
 
@@ -368,7 +369,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "A subtask.",
+				description: "A subtask.",
 				parentTaskId: "task-1",
 			};
 
@@ -386,7 +387,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-03",
 				labels: [],
 				dependencies: [],
-				rawContent: "Minimal task.",
+				description: "Minimal task.",
 			};
 
 			const result = serializeTask(task);
@@ -399,8 +400,6 @@ describe("Markdown Serializer", () => {
 		});
 
 		it("removes acceptance criteria section when list becomes empty", () => {
-			const body =
-				"## Description\n\nSome details\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old criterion\n<!-- AC:END -->";
 			const task: Task = {
 				id: "task-clean",
 				title: "Cleanup Task",
@@ -409,7 +408,7 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-10",
 				labels: [],
 				dependencies: [],
-				rawContent: body,
+				description: "Some details",
 				acceptanceCriteriaItems: [],
 			};
 
@@ -421,9 +420,7 @@ describe("Markdown Serializer", () => {
 			expect(result).toContain("Some details");
 		});
 
-		it("preserves freeform acceptance criteria text when no structured items exist", () => {
-			const body =
-				"## Description\n\nSome details\n\n## Acceptance Criteria\nPlease see the product spec for success measures.";
+		it("serializes acceptance criteria when structured items exist", () => {
 			const task: Task = {
 				id: "task-freeform",
 				title: "Legacy Criteria Task",
@@ -432,14 +429,14 @@ describe("Markdown Serializer", () => {
 				createdDate: "2025-06-11",
 				labels: [],
 				dependencies: [],
-				rawContent: body,
-				acceptanceCriteriaItems: [],
+				description: "Some details",
+				acceptanceCriteriaItems: [{ index: 1, text: "Criterion A", checked: false }],
 			};
 
 			const result = serializeTask(task);
 
 			expect(result).toContain("## Acceptance Criteria");
-			expect(result).toContain("Please see the product spec for success measures.");
+			expect(result).toContain("- [ ] #1 Criterion A");
 		});
 	});
 

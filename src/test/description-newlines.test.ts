@@ -36,8 +36,8 @@ describe("CLI description newline handling", () => {
 		await $`bun ${[cliPath, "task", "create", "Multi-line", "--desc", desc]}`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		const task = await core.filesystem.loadTask("task-1");
-		expect(task?.rawContent).toContain(desc);
+		const body = await core.getTaskContent("task-1");
+		expect(body).toContain(desc);
 	});
 
 	it("should preserve literal newlines when editing task", async () => {
@@ -51,7 +51,7 @@ describe("CLI description newline handling", () => {
 				createdDate: "2025-07-04",
 				labels: [],
 				dependencies: [],
-				rawContent: "## Description\n\nOriginal",
+				description: "Original",
 			},
 			false,
 		);
@@ -59,8 +59,8 @@ describe("CLI description newline handling", () => {
 		const desc = "First line\nSecond line\n\nThird paragraph";
 		await $`bun ${[cliPath, "task", "edit", "1", "--desc", desc]}`.cwd(TEST_DIR).quiet();
 
-		const updated = await core.filesystem.loadTask("task-1");
-		expect(updated?.rawContent).toContain(desc);
+		const updatedBody = await core.getTaskContent("task-1");
+		expect(updatedBody).toContain(desc);
 	});
 
 	it("should not interpret \\n sequences as newlines", async () => {
@@ -68,7 +68,7 @@ describe("CLI description newline handling", () => {
 		await $`bun ${[cliPath, "task", "create", "Literal", "--desc", literal]}`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		const task = await core.filesystem.loadTask("task-1");
-		expect(task?.rawContent).toContain("First line\\nSecond line");
+		const body = await core.getTaskContent("task-1");
+		expect(body).toContain("First line\\nSecond line");
 	});
 });
