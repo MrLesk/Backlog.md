@@ -7,7 +7,7 @@
 3. **Summarize the work** - Use `task_edit` (notesAppend field) to document what changed and why (treat it like a PR description)
 4. **Confirm the implementation plan is captured and current** - Update the plan in Backlog if the executed approach deviated
 5. **Update task status** - Set status to "Done" via `task_edit`
-5. **Propose next steps** - Never autonomously create or start new tasks
+6. **Propose next steps** - Never autonomously create or start new tasks
 
 ### Definition of Done Checklist
 
@@ -36,7 +36,9 @@
 - Document subtask-specific outcomes in the subtask's notes
 - Only update parent task status when ALL subtasks are complete (or when explicitly instructed)
 
-### Capturing Learnings
+### Implementation notes (PR summary)
+
+The implementation notes are often used as the summary of changes made, similar to a pull request description.
 
 Use `task_edit` (notesAppend field) to record:
 - Implementation decisions and rationale
@@ -45,3 +47,6 @@ Use `task_edit` (notesAppend field) to record:
 - Testing approach and results
 
 These notes help future developers (including AI agents) understand the context.
+Do not repeat the same information that is clearly understandable from the code.
+
+Write a structured summary that highlights the key points of the implementation.

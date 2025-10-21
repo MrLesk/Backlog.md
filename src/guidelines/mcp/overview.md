@@ -28,9 +28,9 @@ Ask yourself: "Do I need to think about HOW to do this?"
 
 When the user requests non-trivial work:
 1. **Search first:** Use `task_search` or `task_list` (with status filters) - work might already be tracked
-2. **If found:** Work on the existing task
-3. **If not found:** Create task(s) based on scope (single task or present breakdown for approval)
-4. **Execute:** Follow planning and execution guidelines
+2. **If found:** Work on the existing task. Check task-execution workflow to know how to proceed
+3. **If not found:** Create task(s) based on scope (single task or present breakdown for approval). Check task-creation workflow for details
+4. **Execute:** Follow task-execution guidelines
 
 Searching first avoids duplicate tasks and helps you understand existing context.
 
@@ -57,4 +57,4 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_edit` — update task metadata, status, plan, notes, acceptance criteria, and dependencies
 - `task_archive` — archive completed tasks
 
-**Always operate through MCP tools. Never edit markdown files directly—so relationships, metadata, and history stay consistent.**
+**Always operate through MCP tools. Never edit markdown files directly so relationships, metadata, and history stay consistent.**
