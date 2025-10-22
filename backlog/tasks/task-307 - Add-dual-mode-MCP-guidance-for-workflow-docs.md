@@ -1,11 +1,11 @@
 ---
 id: task-307
 title: Add dual-mode MCP guidance for workflow docs
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-22 19:18'
-updated_date: '2025-10-22 19:24'
+updated_date: '2025-10-22 20:35'
 labels: []
 dependencies: []
 ---
@@ -26,10 +26,10 @@ This keeps guidance consistent and makes the connector work for a broader set of
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MCP server registers tool handlers that return the same markdown as the existing workflow resources (overview, task creation, task execution, task completion).
-- [ ] #2 Agent nudge text references both the resource URIs and the fallback tools, clarifying when to use each.
-- [ ] #3 Existing resource handlers remain available and their content continues to match the tool output.
-- [ ] #4 Tests or docs are updated if needed to reflect the dual-mode behavior.
+- [x] #1 MCP server registers tool handlers that return the same markdown as the existing workflow resources (overview, task creation, task execution, task completion).
+- [x] #2 Agent nudge text references both the resource URIs and the fallback tools, clarifying when to use each.
+- [x] #3 Existing resource handlers remain available and their content continues to match the tool output.
+- [x] #4 Tests or docs are updated if needed to reflect the dual-mode behavior.
 <!-- AC:END -->
 
 ## Implementation Plan
