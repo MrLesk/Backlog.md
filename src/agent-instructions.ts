@@ -189,7 +189,7 @@ export async function addAgentInstructions(
 
 export { loadContent as _loadAgentGuideline };
 
-function hasMcpGuidelines(content: string, fileName: string): boolean {
+function _hasMcpGuidelines(content: string, fileName: string): boolean {
 	const { start } = getMarkers(fileName, "mcp");
 	return content.includes(start);
 }
