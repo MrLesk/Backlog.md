@@ -5,10 +5,12 @@ import {
 	MCP_TASK_CREATION_GUIDE,
 	MCP_TASK_EXECUTION_GUIDE,
 	MCP_WORKFLOW_OVERVIEW,
+	MCP_WORKFLOW_OVERVIEW_TOOLS,
 } from "../guidelines/mcp/index.ts";
 import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
+import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -25,8 +27,9 @@ async function bootstrapServer(): Promise<McpServer> {
 
 	await server.initializeProject("Test Project");
 
-	// Register workflow resources manually (normally done in createMcpServer)
+	// Register workflow resources and tools manually (normally done in createMcpServer)
 	registerWorkflowResources(server);
+	registerWorkflowTools(server);
 
 	return server;
 }
@@ -40,7 +43,12 @@ describe("McpServer bootstrap", () => {
 		const server = await bootstrapServer();
 
 		const tools = await server.testInterface.listTools();
-		expect(tools.tools.map((tool) => tool.name)).toEqual([]);
+		expect(tools.tools.map((tool) => tool.name)).toEqual([
+			"get_workflow_overview",
+			"get_task_creation_guide",
+			"get_task_execution_guide",
+			"get_task_completion_guide",
+		]);
 
 		const resources = await server.testInterface.listResources();
 		expect(resources.resources.map((r) => r.uri)).toEqual([
@@ -112,6 +120,22 @@ describe("McpServer bootstrap", () => {
 		await server.stop();
 	});
 
+	it("workflow tools mirror resource content", async () => {
+		const server = await bootstrapServer();
+
+		const overview = await server.testInterface.callTool({
+			params: { name: "get_workflow_overview", arguments: {} },
+		});
+		expect(overview.content?.[0]?.text).toBe(MCP_WORKFLOW_OVERVIEW_TOOLS);
+
+		const creation = await server.testInterface.callTool({
+			params: { name: "get_task_creation_guide", arguments: {} },
+		});
+		expect(creation.content?.[0]?.text).toBe(MCP_TASK_CREATION_GUIDE);
+
+		await server.stop();
+	});
+
 	it("registers task tools via helpers", async () => {
 		const server = await bootstrapServer();
 		const config = await server.filesystem.loadConfig();
@@ -123,7 +147,18 @@ describe("McpServer bootstrap", () => {
 
 		const tools = await server.testInterface.listTools();
 		const toolNames = tools.tools.map((tool) => tool.name).sort();
-		expect(toolNames).toEqual(["task_archive", "task_create", "task_edit", "task_list", "task_search", "task_view"]);
+		expect(toolNames).toEqual([
+			"get_task_completion_guide",
+			"get_task_creation_guide",
+			"get_task_execution_guide",
+			"get_workflow_overview",
+			"task_archive",
+			"task_create",
+			"task_edit",
+			"task_list",
+			"task_search",
+			"task_view",
+		]);
 
 		const resources = await server.testInterface.listResources();
 		expect(resources.resources.map((r) => r.uri)).toEqual([
@@ -155,6 +190,10 @@ describe("McpServer bootstrap", () => {
 
 		const tools = await server.testInterface.listTools();
 		expect(tools.tools.map((tool) => tool.name)).toEqual([
+			"get_workflow_overview",
+			"get_task_creation_guide",
+			"get_task_execution_guide",
+			"get_task_completion_guide",
 			"task_create",
 			"task_list",
 			"task_search",

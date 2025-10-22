@@ -73,10 +73,11 @@ function stripGuidelineSection(
 	content: string,
 	fileName: string,
 	kind: GuidelineMarkerKind,
-): { content: string; removed: boolean } {
+): { content: string; removed: boolean; firstIndex?: number } {
 	const { start, end } = getMarkers(fileName, kind);
 	let removed = false;
 	let result = content;
+	let firstIndex: number | undefined;
 
 	while (true) {
 		const startIndex = result.indexOf(start);
@@ -110,11 +111,14 @@ function stripGuidelineSection(
 			removalEnd += 1;
 		}
 
+		if (firstIndex === undefined) {
+			firstIndex = removalStart;
+		}
 		result = result.slice(0, removalStart) + result.slice(removalEnd);
 		removed = true;
 	}
 
-	return { content: result, removed };
+	return { content: result, removed, firstIndex };
 }
 
 export async function addAgentInstructions(
@@ -211,38 +215,51 @@ export async function ensureMcpGuidelines(
 	const filePath = join(projectRoot, fileName);
 	const fileExists = existsSync(filePath);
 	let existing = "";
+	let original = "";
+	let insertIndex: number | null = null;
 
 	if (fileExists) {
 		try {
 			existing = await readExistingFile(filePath);
+			original = existing;
 			const cliStripped = stripGuidelineSection(existing, fileName, "default");
-			const removedCli = cliStripped.removed;
+			if (cliStripped.removed && cliStripped.firstIndex !== undefined) {
+				insertIndex = cliStripped.firstIndex;
+			}
 			existing = cliStripped.content;
-
-			if (!removedCli && hasMcpGuidelines(existing, fileName)) {
-				return { changed: false, created: false, fileName, filePath };
-			}
-
 			const mcpStripped = stripGuidelineSection(existing, fileName, "mcp");
-			if (mcpStripped.removed) {
-				existing = mcpStripped.content;
+			if (mcpStripped.removed && mcpStripped.firstIndex !== undefined) {
+				insertIndex = mcpStripped.firstIndex;
 			}
+			existing = mcpStripped.content;
 		} catch (error) {
 			console.error(`Error reading existing file ${filePath}:`, error);
 			existing = "";
 		}
 	}
 
-	let nextContent = existing;
-	if (nextContent && !nextContent.endsWith("\n")) {
-		nextContent += "\n";
+	const nudgeBlock = wrapWithMarkers(MCP_AGENT_NUDGE, fileName, "mcp");
+	let nextContent: string;
+	if (insertIndex !== null) {
+		const normalizedIndex = Math.max(0, Math.min(insertIndex, existing.length));
+		nextContent = existing.slice(0, normalizedIndex) + nudgeBlock + existing.slice(normalizedIndex);
+	} else {
+		nextContent = existing;
+		if (nextContent && !nextContent.endsWith("\n")) {
+			nextContent += "\n";
+		}
+		nextContent += nudgeBlock;
 	}
-	nextContent += wrapWithMarkers(MCP_AGENT_NUDGE, fileName, "mcp");
+
+	const finalContent = nextContent;
+	const changed = !fileExists || finalContent !== original;
 
 	await mkdir(dirname(filePath), { recursive: true });
-	await Bun.write(filePath, nextContent);
+	if (changed) {
+		await Bun.write(filePath, finalContent);
+	}
 
-	return { changed: true, created: !fileExists, fileName, filePath };
+	return { changed, created: !fileExists, fileName, filePath };
 }
 
 /**
