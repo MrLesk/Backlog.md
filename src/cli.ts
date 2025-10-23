@@ -7,6 +7,7 @@ import { $, spawn } from "bun";
 import { Command } from "commander";
 import prompts from "prompts";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
+import { registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
@@ -2952,6 +2953,9 @@ program
 			process.exitCode = 1;
 		}
 	});
+
+// Completion command group
+registerCompletionCommand(program);
 
 // MCP command group
 registerMcpCommand(program);

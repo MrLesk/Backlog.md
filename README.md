@@ -400,6 +400,31 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 
 ---
 
+## 💡 Shell Tab Completion
+
+Backlog.md includes built-in intelligent tab completion for bash, zsh, and fish shells. Completion scripts are embedded in the binary—no external files needed.
+
+**Quick Installation:**
+```bash
+# Auto-detect and install for your current shell
+backlog completion install
+
+# Or specify shell explicitly
+backlog completion install --shell bash
+backlog completion install --shell zsh
+backlog completion install --shell fish
+```
+
+**What you get:**
+- Command completion: `backlog <TAB>` → shows all commands
+- Dynamic task IDs: `backlog task edit <TAB>` → shows actual task IDs from your backlog
+- Smart flags: `--status <TAB>` → shows configured status values
+- Context-aware suggestions for priorities, labels, and assignees
+
+📖 **Full documentation**: See [completions/README.md](completions/README.md) for detailed installation instructions, troubleshooting, and examples.
+
+---
+
 ## <img src="./.github/sharing-export-256.png" alt="Sharing & Export" width="28" height="28" align="center"> Sharing & Export
 
 ### Board Export
