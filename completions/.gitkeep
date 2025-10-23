@@ -1,0 +1,14 @@
+# Completion Scripts Reference
+
+The shell completion scripts in this directory serve as reference documentation.
+The actual scripts are embedded in the backlog binary (see src/commands/completion.ts).
+
+During development, the CLI will read these files first if they exist,
+otherwise it falls back to the embedded versions.
+
+Files:
+- backlog.bash - Bash completion reference
+- _backlog - Zsh completion reference  
+- backlog.fish - Fish completion reference
+- README.md - Installation and usage guide
+- EXAMPLES.md - Detailed examples and how it works
