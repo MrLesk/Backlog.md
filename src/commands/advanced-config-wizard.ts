@@ -14,6 +14,7 @@ interface WizardOptions {
 export interface AdvancedConfigWizardResult {
 	config: Partial<BacklogConfig>;
 	installClaudeAgent: boolean;
+	installShellCompletions: boolean;
 }
 
 function handlePromptCancel(message: string) {
@@ -40,6 +41,19 @@ export async function runAdvancedConfigWizard({
 	let defaultPort = config?.defaultPort ?? 6420;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let installClaudeAgent = false;
+	let installShellCompletions = false;
+
+	const completionPrompt = await promptImpl(
+		{
+			type: "confirm",
+			name: "installCompletions",
+			message: "Install shell completions now?",
+			hint: "Adds TAB completion support for backlog commands in your shell",
+			initial: true,
+		},
+		{ onCancel },
+	);
+	installShellCompletions = Boolean(completionPrompt?.installCompletions);
 
 	const crossBranchPrompt = await promptImpl(
 		{
@@ -238,5 +252,6 @@ export async function runAdvancedConfigWizard({
 			autoOpenBrowser,
 		},
 		installClaudeAgent,
+		installShellCompletions,
 	};
 }

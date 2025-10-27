@@ -7,7 +7,7 @@ import { $, spawn } from "bun";
 import { Command } from "commander";
 import prompts from "prompts";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
-import { registerCompletionCommand } from "./commands/completion.ts";
+import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
@@ -761,6 +761,9 @@ program
 				let advancedConfig: Partial<BacklogConfig> = { ...defaultAdvancedConfig };
 				let advancedConfigured = false;
 				let installClaudeAgentSelection = false;
+				let installShellCompletionsSelection = false;
+				let completionInstallResult: CompletionInstallResult | null = null;
+				let completionInstallError: string | null = null;
 
 				if (isNonInteractive) {
 					advancedConfig = applyAdvancedOptionOverrides();
@@ -791,6 +794,14 @@ program
 						});
 						advancedConfig = { ...defaultAdvancedConfig, ...wizardResult.config };
 						installClaudeAgentSelection = integrationMode === "cli" ? wizardResult.installClaudeAgent : false;
+						installShellCompletionsSelection = wizardResult.installShellCompletions;
+						if (wizardResult.installShellCompletions) {
+							try {
+								completionInstallResult = await installCompletion();
+							} catch (error) {
+								completionInstallError = error instanceof Error ? error.message : String(error);
+							}
+						}
 						advancedConfigured = true;
 					}
 				}
@@ -838,6 +849,17 @@ program
 						"  AI integration skipped. Configure later via `backlog init` or by registering the MCP server manually.",
 					);
 				}
+				let completionSummary: string;
+				if (completionInstallResult) {
+					completionSummary = `installed to ${completionInstallResult.installPath}`;
+				} else if (installShellCompletionsSelection) {
+					completionSummary = "installation failed (see warning below)";
+				} else if (advancedConfigured) {
+					completionSummary = "skipped";
+				} else {
+					completionSummary = "not configured";
+				}
+				console.log(`  Shell completions: ${completionSummary}`);
 				if (advancedConfigured) {
 					console.log("  Advanced settings:");
 					console.log(`    Check active branches: ${config.checkActiveBranches}`);
@@ -855,6 +877,26 @@ program
 					console.log("  Advanced settings: unchanged (run `backlog config` to customize).");
 				}
 				console.log("");
+
+				if (completionInstallResult) {
+					const instructions = completionInstallResult.instructions.trim();
+					console.log(
+						[
+							`Shell completion script installed for ${completionInstallResult.shell}.`,
+							`  Path: ${completionInstallResult.installPath}`,
+							instructions,
+							"",
+						].join("\n"),
+					);
+				} else if (completionInstallError) {
+					const indentedError = completionInstallError
+						.split("\n")
+						.map((line) => `  ${line}`)
+						.join("\n");
+					console.warn(
+						`⚠️  Shell completion installation failed:\n${indentedError}\n  Run \`backlog completion install\` later to retry.\n`,
+					);
+				}
 
 				// Initialize or update project
 				if (isReInitialization) {
@@ -2406,7 +2448,21 @@ const configCmd = program
 				process.exit(1);
 			}
 
-			const { mergedConfig, installClaudeAgent: shouldInstallClaude } = await configureAdvancedSettings(core);
+			const {
+				mergedConfig,
+				installClaudeAgent: shouldInstallClaude,
+				installShellCompletions: shouldInstallCompletions,
+			} = await configureAdvancedSettings(core);
+
+			let completionResult: CompletionInstallResult | null = null;
+			let completionError: string | null = null;
+			if (shouldInstallCompletions) {
+				try {
+					completionResult = await installCompletion();
+				} catch (error) {
+					completionError = error instanceof Error ? error.message : String(error);
+				}
+			}
 
 			console.log("\nAdvanced configuration updated.");
 			console.log(`  Check active branches: ${mergedConfig.checkActiveBranches ?? true}`);
@@ -2420,12 +2476,39 @@ const configCmd = program
 			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
 			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
 			console.log(`  Auto commit: ${mergedConfig.autoCommit ?? false}`);
+			if (completionResult) {
+				console.log(`  Shell completions: installed to ${completionResult.installPath}`);
+			} else if (completionError) {
+				console.log("  Shell completions: installation failed (see warning below)");
+			} else {
+				console.log("  Shell completions: skipped");
+			}
 			if (mergedConfig.defaultEditor) {
 				console.log(`  Default editor: ${mergedConfig.defaultEditor}`);
 			}
 			if (shouldInstallClaude) {
 				await installClaudeAgent(cwd);
 				console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
+			}
+			if (completionResult) {
+				const instructions = completionResult.instructions.trim();
+				console.log(
+					[
+						"",
+						`Shell completion script installed for ${completionResult.shell}.`,
+						`  Path: ${completionResult.installPath}`,
+						instructions,
+						"",
+					].join("\n"),
+				);
+			} else if (completionError) {
+				const indentedError = completionError
+					.split("\n")
+					.map((line) => `  ${line}`)
+					.join("\n");
+				console.warn(
+					`⚠️  Shell completion installation failed:\n${indentedError}\n  Run \`backlog completion install\` later to retry.\n`,
+				);
 			}
 			console.log("\nUse `backlog config list` to review all configuration values.");
 		} catch (err) {

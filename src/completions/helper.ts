@@ -1,8 +1,6 @@
 import type { Command } from "commander";
 import {
-	type CommandInfo,
 	extractCommandStructure,
-	findSubcommand,
 	getExpectedArguments,
 	getOptionFlags,
 	getSubcommandNames,
@@ -47,6 +45,9 @@ export function parseCompletionContext(line: string, point: number): CompletionC
 
 	for (let i = 0; i < completedWords.length; i++) {
 		const word = completedWords[i];
+		if (!word) {
+			continue;
+		}
 		if (word.startsWith("-")) {
 			lastFlag = word;
 		} else if (!command) {
@@ -156,11 +157,13 @@ export async function getCompletions(program: Command, line: string, point: numb
 	// If we're at a position where an argument is expected
 	if (expectedArgs.length > context.argPosition) {
 		const expectedArg = expectedArgs[context.argPosition];
-		const argCompletions = await getArgumentCompletions(expectedArg.name);
+		if (expectedArg) {
+			const argCompletions = await getArgumentCompletions(expectedArg.name);
 
-		// Also include flags
-		const flags = getOptionFlags(cmdInfo, context.command, context.subcommand);
-		return filterCompletions([...argCompletions, ...flags], context.partial);
+			// Also include flags
+			const flags = getOptionFlags(cmdInfo, context.command, context.subcommand);
+			return filterCompletions([...argCompletions, ...flags], context.partial);
+		}
 	}
 
 	// No more positional arguments expected, just show flags

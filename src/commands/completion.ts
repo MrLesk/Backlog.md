@@ -8,7 +8,13 @@ import { getCompletions } from "../completions/helper.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-type Shell = "bash" | "zsh" | "fish";
+export type Shell = "bash" | "zsh" | "fish";
+
+export interface CompletionInstallResult {
+	shell: Shell;
+	installPath: string;
+	instructions: string;
+}
 
 /**
  * Detect the user's current shell
@@ -225,24 +231,24 @@ function getEnableInstructions(shell: Shell, installPath: string): string {
 	const instructions: Record<Shell, string> = {
 		bash: `
 To enable completions, add this to your ~/.bashrc:
-  source ${installPath}
+source ${installPath}
 
 Then restart your shell or run:
-  source ~/.bashrc
+source ~/.bashrc
 `,
 		zsh: `
 To enable completions, ensure the directory is in your fpath.
 Add this to your ~/.zshrc:
-  fpath=(${dirname(installPath)} $fpath)
-  autoload -Uz compinit && compinit
+fpath=(${dirname(installPath)} $fpath)
+autoload -Uz compinit && compinit
 
 Then restart your shell or run:
-  source ~/.zshrc
+source ~/.zshrc
 `,
 		fish: `
 Completions should be automatically loaded by fish.
 Restart your shell or run:
-  exec fish
+exec fish
 `,
 	};
 
@@ -252,35 +258,32 @@ Restart your shell or run:
 /**
  * Install completion script
  */
-async function installCompletion(shell?: string): Promise<void> {
+export async function installCompletion(shell?: string): Promise<CompletionInstallResult> {
 	// Detect shell if not provided
 	const targetShell = shell as Shell | undefined;
 	const detectedShell = targetShell || detectShell();
 
 	if (!detectedShell) {
-		console.error("❌ Could not detect your shell.");
-		console.error("   Please specify it manually:");
-		console.error("   backlog completion install --shell bash");
-		console.error("   backlog completion install --shell zsh");
-		console.error("   backlog completion install --shell fish");
-		process.exit(1);
+		const message = [
+			"Could not detect your shell.",
+			"Please specify it manually:",
+			"  backlog completion install --shell bash",
+			"  backlog completion install --shell zsh",
+			"  backlog completion install --shell fish",
+		].join("\n");
+		throw new Error(message);
 	}
 
 	if (!["bash", "zsh", "fish"].includes(detectedShell)) {
-		console.error(`❌ Unsupported shell: ${detectedShell}`);
-		console.error("   Supported shells: bash, zsh, fish");
-		process.exit(1);
+		throw new Error(`Unsupported shell: ${detectedShell}\nSupported shells: bash, zsh, fish`);
 	}
-
-	console.log(`📦 Installing ${detectedShell} completion for backlog CLI...`);
 
 	// Get completion script content
 	let scriptContent: string;
 	try {
 		scriptContent = await getCompletionScript(detectedShell);
 	} catch (error) {
-		console.error(`❌ ${error}`);
-		process.exit(1);
+		throw new Error(error instanceof Error ? error.message : String(error));
 	}
 
 	// Get installation paths
@@ -298,23 +301,27 @@ async function installCompletion(shell?: string): Promise<void> {
 
 		// Write the completion script
 		await writeFile(installPath, scriptContent, "utf-8");
-
-		console.log(`✅ Completion script installed to ${installPath}`);
-		console.log(getEnableInstructions(detectedShell, installPath));
 	} catch (error) {
-		console.error(`❌ Failed to install completion script: ${error}`);
-		console.error("\nYou can try manual installation:");
-		console.error("\n1. System-wide installation (requires sudo):");
-		console.error(
+		const manualInstructions = [
+			"Failed to install completion script automatically.",
+			"",
+			"Manual installation options:",
+			"1. System-wide installation (requires sudo):",
 			`   sudo cp completions/${detectedShell === "zsh" ? "_backlog" : `backlog.${detectedShell}`} ${paths.system}`,
-		);
-		console.error("\n2. User installation:");
-		console.error(`   mkdir -p ${installDir}`);
-		console.error(
+			"",
+			"2. User installation:",
+			`   mkdir -p ${installDir}`,
 			`   cp completions/${detectedShell === "zsh" ? "_backlog" : `backlog.${detectedShell}`} ${installPath}`,
-		);
-		process.exit(1);
+		].join("\n");
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		throw new Error(`${errorMessage}\n\n${manualInstructions}`);
 	}
+
+	return {
+		shell: detectedShell,
+		installPath,
+		instructions: getEnableInstructions(detectedShell, installPath),
+	};
 }
 
 /**
@@ -339,7 +346,7 @@ export function registerCompletionCommand(program: Command): void {
 					console.log(completion);
 				}
 				process.exit(0);
-			} catch (error) {
+			} catch (_error) {
 				// Silent failure - completion should never break the shell
 				process.exit(1);
 			}
@@ -351,6 +358,15 @@ export function registerCompletionCommand(program: Command): void {
 		.description("install shell completion script")
 		.option("--shell <shell>", "shell type (bash, zsh, fish)")
 		.action(async (options: { shell?: string }) => {
-			await installCompletion(options.shell);
+			try {
+				const result = await installCompletion(options.shell);
+				console.log(`📦 Installed ${result.shell} completion for backlog CLI.`);
+				console.log(`✅ Completion script written to ${result.installPath}`);
+				console.log(result.instructions.trimEnd());
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(`❌ ${message}`);
+				process.exit(1);
+			}
 		});
 }

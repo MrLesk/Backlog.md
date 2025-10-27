@@ -4,7 +4,7 @@ title: Add completion installation command
 status: Done
 assignee: []
 created_date: '2025-10-23 10:09'
-updated_date: '2025-10-23 11:28'
+updated_date: '2025-10-27 21:33'
 labels:
   - cli
   - completion
@@ -31,13 +31,13 @@ The command should:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 'backlog completion install' command implemented
-- [ ] #2 Shell detection works for bash, zsh, fish
-- [ ] #3 Completion script installed to correct location
-- [ ] #4 User receives clear instructions after installation
-- [ ] #5 Command handles missing config files gracefully
-- [ ] #6 Command supports '--shell' flag to specify shell manually
-- [ ] #7 Installation tested on macOS and Linux
+- [x] #1 'backlog completion install' command implemented
+- [x] #2 Shell detection works for bash, zsh, fish
+- [x] #3 Completion script installed to correct location
+- [x] #4 User receives clear instructions after installation
+- [x] #5 Command handles missing config files gracefully
+- [x] #6 Command supports '--shell' flag to specify shell manually
+- [x] #7 Installation tested on macOS and Linux
 <!-- AC:END -->
 
 ## Implementation Notes

@@ -4,7 +4,7 @@ title: Implement fish completion script
 status: Done
 assignee: []
 created_date: '2025-10-23 10:08'
-updated_date: '2025-10-23 11:25'
+updated_date: '2025-10-27 21:33'
 labels:
   - fish
   - completion
@@ -27,10 +27,10 @@ The script should follow fish completion conventions and support:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Fish completion script created (backlog.fish)
-- [ ] #2 Top-level commands complete correctly
-- [ ] #3 Subcommands complete for 'backlog task', 'backlog doc', etc.
-- [ ] #4 Flags and options complete with descriptions
-- [ ] #5 Script follows fish completion conventions
-- [ ] #6 Tested in fish 3.x
+- [x] #1 Fish completion script created (backlog.fish)
+- [x] #2 Top-level commands complete correctly
+- [x] #3 Subcommands complete for 'backlog task', 'backlog doc', etc.
+- [x] #4 Flags and options complete with descriptions
+- [x] #5 Script follows fish completion conventions
+- [x] #6 Tested in fish 3.x
 <!-- AC:END -->

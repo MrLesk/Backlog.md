@@ -2,9 +2,10 @@
 id: task-308
 title: Add shell tab completion support for CLI commands
 status: Done
-assignee: []
+assignee:
+  - '@codex'
 created_date: '2025-10-23 10:08'
-updated_date: '2025-10-23 11:40'
+updated_date: '2025-10-27 21:32'
 labels:
   - enhancement
   - cli
@@ -23,16 +24,17 @@ This will support bash, zsh, and fish shells with dynamic completions based on t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Pressing TAB after 'backlog' shows all available commands
-- [ ] #2 Pressing TAB after 'backlog task' shows task subcommands (create, edit, list, etc.)
-- [ ] #3 Pressing TAB after 'backlog task edit' shows options like --status, --priority, etc.
-- [ ] #4 Completion works in bash shell
-- [ ] #5 Completion works in zsh shell
-- [ ] #6 Completion works in fish shell
-- [ ] #7 Dynamic completions suggest actual task IDs when relevant
-- [ ] #8 Dynamic completions suggest config values (status, priority) when relevant
-- [ ] #9 Installation command available (e.g., 'backlog completion install')
-- [ ] #10 Documentation added to README
+- [x] #1 Pressing TAB after 'backlog' shows all available commands
+- [x] #2 Pressing TAB after 'backlog task' shows task subcommands (create, edit, list, etc.)
+- [x] #3 Pressing TAB after 'backlog task edit' shows options like --status, --priority, etc.
+- [x] #4 Completion works in bash shell
+- [x] #5 Completion works in zsh shell
+- [x] #6 Completion works in fish shell
+- [x] #7 Dynamic completions suggest actual task IDs when relevant
+- [x] #8 Dynamic completions suggest config values (status, priority) when relevant
+- [x] #9 Installation command available (e.g., 'backlog completion install')
+- [x] #10 Documentation added to README
+- [x] #11 Advanced configuration wizard offers to install completions immediately after backlog init
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -171,6 +173,12 @@ backlog __complete "backlog task edit " 19
 2. **Integration tests**: End-to-end completion scenarios
 3. **Manual testing**: Real shell environments
 4. **CI/CD**: Automated tests in Bun test suite
+
+### Phase 5: Post-init Advanced Wizard Integration
+1. Hook into the advanced configuration wizard flow that runs right after `backlog init`.
+2. Prompt the user, before other questions, to install shell completions.
+3. If the user accepts, invoke the shared completion installation helper (respecting shell detection and options).
+4. Surface clear success/skip messaging so the wizard summary reflects the choice.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -294,4 +302,8 @@ backlog task <TAB>
 backlog task edit <TAB>
 backlog task create --status <TAB>
 ```
+
+Outstanding work: Integrate the completion installer into the advanced wizard prompt so users can opt in immediately after initialization.
+
+Verified shell completion install prompt in wizard CLI flows, tmux, Terminal, and Warp (with PATH override). Tests: bun test, bunx tsc --noEmit, bun run check ..
 <!-- SECTION:NOTES:END -->

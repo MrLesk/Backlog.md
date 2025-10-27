@@ -52,7 +52,13 @@ function extractCommandInfo(command: Command): CommandInfo {
  */
 function extractArguments(command: Command): ArgumentInfo[] {
 	// Commander.js v14 has registeredArguments or processedArgs
-	const args = (command as any).registeredArguments || (command as any).args || [];
+	type CommandWithArgs = Command & {
+		registeredArguments?: Argument[];
+		args?: Argument[];
+	};
+
+	const commandWithArgs = command as CommandWithArgs;
+	const args = commandWithArgs.registeredArguments || commandWithArgs.args || [];
 
 	return args.map((arg: Argument) => ({
 		name: arg.name(),
@@ -144,10 +150,10 @@ export function getOptionFlags(info: CommandInfo, commandName?: string, subcomma
 	const flags: string[] = [];
 	for (const opt of targetCommand.options) {
 		if (opt.long) {
-			flags.push(`--${opt.long}`);
+			flags.push(opt.long);
 		}
 		if (opt.short) {
-			flags.push(`-${opt.short}`);
+			flags.push(opt.short);
 		}
 	}
 	return flags;

@@ -4,7 +4,7 @@ title: Add completion documentation and tests
 status: Done
 assignee: []
 created_date: '2025-10-23 10:09'
-updated_date: '2025-10-23 11:33'
+updated_date: '2025-10-27 21:33'
 labels:
   - documentation
   - testing
@@ -33,13 +33,13 @@ Tests should verify:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 README includes completion installation section
-- [ ] #2 Installation documented for bash, zsh, and fish
-- [ ] #3 Usage examples with screenshots or code blocks added
-- [ ] #4 Troubleshooting section added
-- [ ] #5 Tests added for completion helper command
-- [ ] #6 Tests verify correct completion suggestions
-- [ ] #7 Tests verify installation command works
+- [x] #1 README includes completion installation section
+- [x] #2 Installation documented for bash, zsh, and fish
+- [x] #3 Usage examples with screenshots or code blocks added
+- [x] #4 Troubleshooting section added
+- [x] #5 Tests added for completion helper command
+- [x] #6 Tests verify correct completion suggestions
+- [x] #7 Tests verify installation command works
 <!-- AC:END -->
 
 ## Implementation Notes

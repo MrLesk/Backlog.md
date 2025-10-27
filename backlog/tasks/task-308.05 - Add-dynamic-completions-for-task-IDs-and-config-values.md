@@ -4,7 +4,7 @@ title: Add dynamic completions for task IDs and config values
 status: Done
 assignee: []
 created_date: '2025-10-23 10:09'
-updated_date: '2025-10-23 11:25'
+updated_date: '2025-10-27 21:33'
 labels:
   - completion
   - dynamic
@@ -32,13 +32,13 @@ This requires the CLI to provide a completion helper command that shells can inv
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CLI provides completion helper command (e.g., 'backlog __complete')
-- [ ] #2 Task IDs complete when editing tasks
-- [ ] #3 Status values complete from actual config
-- [ ] #4 Priority values complete correctly
-- [ ] #5 Labels complete from existing tasks
-- [ ] #6 Assignees complete from existing tasks
-- [ ] #7 Dynamic completions work in bash, zsh, and fish
+- [x] #1 CLI provides completion helper command (e.g., 'backlog __complete')
+- [x] #2 Task IDs complete when editing tasks
+- [x] #3 Status values complete from actual config
+- [x] #4 Priority values complete correctly
+- [x] #5 Labels complete from existing tasks
+- [x] #6 Assignees complete from existing tasks
+- [x] #7 Dynamic completions work in bash, zsh, and fish
 <!-- AC:END -->
 
 ## Implementation Notes
