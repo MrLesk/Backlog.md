@@ -123,6 +123,8 @@ export function parseTask(content: string): Task {
 	const notesSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationNotes) || undefined;
 
 	return {
+		// Spread frontmatter first, then override with parsed/validated values
+		...frontmatter,
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),

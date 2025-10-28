@@ -11,6 +11,7 @@ import { type CompletionInstallResult, installCompletion, registerCompletionComm
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
+import { PluginRouter } from "./core/plugin-router.ts";
 import { computeSequences } from "./core/sequences.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
@@ -179,29 +180,44 @@ if (process.env.BUN_OPTIONS) {
 // Get version from package.json
 const version = await getVersion();
 
+// Plugin routing - check BEFORE Commander initialization to prevent 'unknown command' errors
+const rawArgs = process.argv.slice(2);
+const pluginRouter = new PluginRouter();
+const { shouldRoute, pluginName, pluginArgs } = pluginRouter.shouldRouteToPlugin(rawArgs);
+
+if (shouldRoute && pluginName && pluginArgs) {
+	// Route to plugin before Commander gets a chance to validate commands
+	const exitCode = await pluginRouter.executePlugin(pluginName, pluginArgs);
+	// Restore BUN_OPTIONS before exiting
+	if (originalBunOptions) {
+		process.env.BUN_OPTIONS = originalBunOptions;
+	}
+	process.exit(exitCode);
+}
+
 // Bare-run splash screen handling (before Commander parses commands)
 // Show a welcome splash when invoked without subcommands, unless help/version requested
 try {
-	let rawArgs = process.argv.slice(2);
+	let splashArgs = process.argv.slice(2);
 	// Some package managers (e.g., Bun global shims) may inject the resolved
 	// binary path as the first non-node argument. Strip it if detected.
-	if (rawArgs.length > 0) {
-		const first = rawArgs[0];
+	if (splashArgs.length > 0) {
+		const first = splashArgs[0];
 		if (
 			typeof first === "string" &&
 			/node_modules[\\/]+backlog\.md-(darwin|linux|windows)-[^\\/]+[\\/]+backlog(\.exe)?$/.test(first)
 		) {
-			rawArgs = rawArgs.slice(1);
+			splashArgs = splashArgs.slice(1);
 		}
 	}
-	const wantsHelp = rawArgs.includes("-h") || rawArgs.includes("--help");
-	const wantsVersion = rawArgs.includes("-v") || rawArgs.includes("--version");
+	const wantsHelp = splashArgs.includes("-h") || splashArgs.includes("--help");
+	const wantsVersion = splashArgs.includes("-v") || splashArgs.includes("--version");
 	// Treat only --plain as allowed flag for splash; any other args means use normal CLI parsing
-	const onlyPlain = rawArgs.length === 1 && rawArgs[0] === "--plain";
-	const isBare = rawArgs.length === 0 || onlyPlain;
+	const onlyPlain = splashArgs.length === 1 && splashArgs[0] === "--plain";
+	const isBare = splashArgs.length === 0 || onlyPlain;
 	if (isBare && !wantsHelp && !wantsVersion) {
 		const isTTY = !!process.stdout.isTTY;
-		const forcePlain = rawArgs.includes("--plain");
+		const forcePlain = splashArgs.includes("--plain");
 		const noColor = !!process.env.NO_COLOR || !isTTY;
 
 		let initialized = false;
@@ -3043,6 +3059,7 @@ registerCompletionCommand(program);
 // MCP command group
 registerMcpCommand(program);
 
+// Normal Commander parsing (plugin routing already handled above)
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
 	if (originalBunOptions) {
