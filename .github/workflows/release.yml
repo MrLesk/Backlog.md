@@ -45,6 +45,18 @@ jobs:
         run: |
           TAG="${GITHUB_REF##refs/tags/v}"
           jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
+      - name: Prime Bun cache for baseline target (Windows workaround)
+        if: ${{ contains(matrix.target, 'baseline') && contains(matrix.target, 'windows') }}
+        shell: bash
+        run: |
+          # Workaround for https://github.com/oven-sh/bun/issues/13513
+          # Build a dummy project from C:\ to prime the baseline binary cache
+          cd /c
+          mkdir -p bun-cache-primer
+          cd bun-cache-primer
+          echo 'console.log("cache primer")' > index.js
+          bun build --compile --target=${{ matrix.target }} ./index.js --outfile primer.exe || true
+          cd $GITHUB_WORKSPACE
       - name: Compile standalone binary
         shell: bash
         run: |

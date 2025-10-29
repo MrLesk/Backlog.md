@@ -67,6 +67,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.os }}-bun-
       - run: bun install --frozen-lockfile --linker=isolated
+      - name: Prime Bun cache for baseline target (Windows workaround)
+        if: ${{ contains(matrix.target, 'baseline') && matrix.os == 'windows-latest' }}
+        shell: bash
+        run: |
+          # Workaround for https://github.com/oven-sh/bun/issues/13513
+          # Build a dummy project from C:\ to prime the baseline binary cache
+          cd /c
+          mkdir -p bun-cache-primer
+          cd bun-cache-primer
+          echo 'console.log("cache primer")' > index.js
+          bun build --compile --target=${{ matrix.target }} ./index.js --outfile primer.exe || true
+          cd $GITHUB_WORKSPACE
       - name: Build standalone binary
         shell: bash
         run: |
