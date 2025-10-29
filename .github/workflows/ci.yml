@@ -46,7 +46,17 @@ jobs:
     name: compile-and-smoke-test
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+          - os: ubuntu-latest
+            target: bun-linux-x64-baseline
+          - os: macos-latest
+            target: bun-darwin-x64
+          - os: windows-latest
+            target: bun-windows-x64
+          - os: windows-latest
+            target: bun-windows-x64-baseline
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -65,15 +75,16 @@ jobs:
         shell: bash
         run: |
           VER="$(jq -r .version package.json)"
-          OUT="backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          OUT="backlog-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
           bun build src/cli.ts \
             --compile --minify --sourcemap \
+            --target=${{ matrix.target }} \
             --define __EMBEDDED_VERSION__="\"${VER}\"" \
             --outfile="$OUT"
       - name: Smoke-test binary
         shell: bash
         run: |
-          FILE="backlog-test${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          FILE="backlog-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
           chmod +x "$FILE"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             powershell -command ".\\$FILE --version"

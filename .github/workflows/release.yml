@@ -17,6 +17,8 @@ jobs:
           - os: ubuntu-latest
             target: bun-linux-x64
           - os: ubuntu-latest
+            target: bun-linux-x64-baseline
+          - os: ubuntu-latest
             target: bun-linux-arm64
           - os: macos-latest
             target: bun-darwin-x64
@@ -24,6 +26,8 @@ jobs:
             target: bun-darwin-arm64
           - os: windows-latest
             target: bun-windows-x64
+          - os: windows-latest
+            target: bun-windows-x64-baseline
     runs-on: ${{ matrix.os }}
     env:
       BIN: backlog-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
@@ -92,10 +96,12 @@ jobs:
               .repository = {"type":"git","url":"https://github.com/MrLesk/Backlog.md"} |
               .optionalDependencies = {
                 "backlog.md-linux-x64"  : "'$TAG'",
+                "backlog.md-linux-x64-baseline": "'$TAG'",
                 "backlog.md-linux-arm64": "'$TAG'",
                 "backlog.md-darwin-x64" : "'$TAG'",
                 "backlog.md-darwin-arm64": "'$TAG'",
-                "backlog.md-windows-x64": "'$TAG'"
+                "backlog.md-windows-x64": "'$TAG'",
+                "backlog.md-windows-x64-baseline": "'$TAG'"
               }' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v5
@@ -125,6 +131,10 @@ jobs:
             package: backlog.md-linux-x64
             os: linux
             cpu: x64
+          - target: bun-linux-x64-baseline
+            package: backlog.md-linux-x64-baseline
+            os: linux
+            cpu: x64
           - target: bun-linux-arm64
             package: backlog.md-linux-arm64
             os: linux
@@ -139,6 +149,10 @@ jobs:
             cpu: arm64
           - target: bun-windows-x64
             package: backlog.md-windows-x64
+            os: win32
+            cpu: x64
+          - target: bun-windows-x64-baseline
+            package: backlog.md-windows-x64-baseline
             os: win32
             cpu: x64
     runs-on: ubuntu-latest
