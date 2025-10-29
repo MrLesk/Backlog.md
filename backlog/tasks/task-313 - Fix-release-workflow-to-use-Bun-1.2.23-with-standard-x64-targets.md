@@ -1,10 +1,10 @@
 ---
 id: task-313
 title: Fix release workflow to use Bun 1.2.23 with standard x64 targets
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-10-29 18:46'
-updated_date: '2025-10-29 18:46'
+updated_date: '2025-10-29 18:47'
 labels:
   - bug
   - ci-cd
