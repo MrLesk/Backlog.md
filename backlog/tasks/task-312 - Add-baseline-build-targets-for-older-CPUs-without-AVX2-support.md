@@ -1,10 +1,10 @@
 ---
 id: task-312
 title: Add baseline build targets for older CPUs without AVX2 support
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-10-29 18:13'
-updated_date: '2025-10-29 18:20'
+updated_date: '2025-10-29 18:33'
 labels:
   - bug
   - ci-cd
