@@ -1,10 +1,10 @@
 ---
 id: task-314
 title: Fix release workflow to use Bun 1.2.23 with baseline targets
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-10-29 18:54'
-updated_date: '2025-10-29 19:00'
+updated_date: '2025-10-29 19:28'
 labels:
   - bug
   - ci-cd
