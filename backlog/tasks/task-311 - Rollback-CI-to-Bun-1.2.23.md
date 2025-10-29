@@ -1,7 +1,7 @@
 ---
 id: task-311
 title: Rollback CI to Bun 1.2.23
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-29 17:53'
@@ -31,10 +31,10 @@ dependencies: []
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All CI workflows that install Bun pin version 1.2.23
-- [ ] #2 Local development documentation references Bun 1.2.23 if a specific version is mentioned
-- [ ] #3 CI run (or equivalent local validation) completes successfully using Bun 1.2.23
-- [ ] #4 Lean change log entry or pull request notes mention the rollback rationale
+- [x] #1 All CI workflows that install Bun pin version 1.2.23
+- [x] #2 Local development documentation references Bun 1.2.23 if a specific version is mentioned
+- [x] #3 CI run (or equivalent local validation) completes successfully using Bun 1.2.23
+- [x] #4 Lean change log entry or pull request notes mention the rollback rationale
 <!-- AC:END -->
 
 ## Implementation Plan

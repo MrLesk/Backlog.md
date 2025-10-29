@@ -71,23 +71,6 @@ Claude please implement all tasks related to the web search functionality (task-
 
 All data is saved under `backlog` folder as human‑readable Markdown with the following format `task-<task-id> - <task-title>.md` (e.g. `task-10 - Add core search functionality.md`).
 
-### CPU Compatibility
-
-If you encounter an **"Illegal instruction"** error on older CPUs (pre-2013), you may need to use the baseline builds:
-
-**Standard builds** (default) require **AVX2** instructions (Intel Haswell/4th gen Core or newer, 2013+).
-
-**Baseline builds** support older CPUs with **SSE4.2** (Intel Nehalem or newer, 2008+):
-```bash
-# For Linux x64 older CPUs
-npm install -g backlog.md-linux-x64-baseline
-
-# For Windows x64 older CPUs
-npm install -g backlog.md-windows-x64-baseline
-```
-
-Baseline builds are slightly slower but work on CPUs from 2008-2013 that lack AVX2 support (e.g., Intel i7-3770, i7-3612QE).
-
 ---
 
 ## <img src="./.github/web-interface-256.png" alt="Web Interface" width="28" height="28" align="center"> Web Interface
