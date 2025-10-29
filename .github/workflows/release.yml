@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: bun-linux-x64-baseline
+            target: bun-linux-x64
           - os: ubuntu-latest
             target: bun-linux-arm64
           - os: macos-latest
@@ -23,13 +23,15 @@ jobs:
           - os: macos-latest
             target: bun-darwin-arm64
           - os: windows-latest
-            target: bun-windows-x64-baseline
+            target: bun-windows-x64
     runs-on: ${{ matrix.os }}
     env:
       BIN: backlog-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.2.23
       - uses: actions/cache@v4
         id: cache
         with:
@@ -119,7 +121,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: bun-linux-x64-baseline
+          - target: bun-linux-x64
             package: backlog.md-linux-x64
             os: linux
             cpu: x64
@@ -135,7 +137,7 @@ jobs:
             package: backlog.md-darwin-arm64
             os: darwin
             cpu: arm64
-          - target: bun-windows-x64-baseline
+          - target: bun-windows-x64
             package: backlog.md-windows-x64
             os: win32
             cpu: x64
