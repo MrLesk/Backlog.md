@@ -4,7 +4,7 @@ title: Fix NixOS flake to use baseline Bun for build process
 status: Done
 assignee: []
 created_date: '2025-10-30 20:26'
-updated_date: '2025-10-30 20:45'
+updated_date: '2025-10-30 22:25'
 labels:
   - bug
   - nixos
@@ -131,4 +131,18 @@ Since we don't have direct access to a NixOS system with an older CPU:
 - Added bunx to installPhase alongside bun binary
 - Ensures feature parity with standard pkgs.bun package
 - Committed and pushed fix: ce0e371
+
+## PR #425 Merged with Bug
+
+- PR #425 was merged at 20:46 with the bunx error
+- Build fails with: `cp: cannot stat 'bun-linux-x64-baseline/bunx': No such file or directory`
+- Created new PR #426 with overlay fix
+
+## New PR Created
+
+- PR #426: https://github.com/MrLesk/Backlog.md/pull/426
+- Branch: tasks/task-315-overlay-fix
+- Commit: 202f33e
+- Uses erdosxx's Nix overlay approach
+- Fixes the bunx error properly
 <!-- SECTION:NOTES:END -->
