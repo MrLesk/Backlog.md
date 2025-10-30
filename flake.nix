@@ -50,7 +50,9 @@
             installPhase = ''
               mkdir -p $out/bin
               cp bun-linux-x64-baseline/bun $out/bin/bun
+              cp bun-linux-x64-baseline/bunx $out/bin/bunx
               chmod +x $out/bin/bun
+              chmod +x $out/bin/bunx
             '';
           }
         else
