@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -245,6 +246,10 @@ export class BacklogServer {
 					"/api/sequences/move": {
 						POST: async (req: Request) => await this.handleMoveSequence(req),
 					},
+					// Serve files placed under backlog/assets at /assets/<relative-path>
+					"/assets/*": {
+						GET: async (req: Request) => await this.handleAssetRequest(req),
+					},
 				},
 				fetch: async (req: Request, server: Server) => {
 					return await this.handleRequest(req, server);
@@ -371,6 +376,53 @@ export class BacklogServer {
 		} catch (error) {
 			console.warn("⚠️  Failed to open browser automatically:", error);
 			console.log("💡 Please open your browser manually and navigate to the URL above");
+		}
+	}
+
+	private async handleAssetRequest(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const pathname = decodeURIComponent(url.pathname || "");
+			const prefix = "/assets/";
+			if (!pathname.startsWith(prefix)) return new Response("Not Found", { status: 404 });
+
+			// Path relative to backlog/assets
+			const relPath = pathname.slice(prefix.length);
+
+			// disallow traversal
+			if (relPath.includes("..")) return new Response("Not Found", { status: 404 });
+
+			// derive backlog root from docsDir (parent of backlog/docs)
+			const docsDir = this.core.filesystem.docsDir;
+			const backlogRoot = dirname(docsDir);
+			const assetsRoot = join(backlogRoot, "assets");
+			const filePath = join(assetsRoot, relPath);
+
+			if (!filePath.startsWith(assetsRoot)) return new Response("Not Found", { status: 404 });
+
+			const file = Bun.file(filePath);
+			if (!(await file.exists())) return new Response("Not Found", { status: 404 });
+
+			const ext = (filePath.match(/\.([^./]+)$/) || [])[1]?.toLowerCase() || "";
+			const mimeMap: Record<string, string> = {
+				png: "image/png",
+				jpg: "image/jpeg",
+				jpeg: "image/jpeg",
+				gif: "image/gif",
+				svg: "image/svg+xml",
+				webp: "image/webp",
+				avif: "image/avif",
+				pdf: "application/pdf",
+				txt: "text/plain",
+				css: "text/css",
+				js: "application/javascript",
+			};
+
+			const mime = mimeMap[ext] ?? "application/octet-stream";
+			return new Response(file, { headers: { "Content-Type": mime } });
+		} catch (error) {
+			console.error("Error serving asset:", error);
+			return new Response("Internal Server Error", { status: 500 });
 		}
 	}
 
