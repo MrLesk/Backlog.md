@@ -2,6 +2,7 @@ import React, {useState, useEffect, memo, useCallback} from 'react';
 import {useParams, useNavigate, useSearchParams} from 'react-router-dom';
 import {apiClient} from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
+import MermaidMarkdown from './MermaidMarkdown';
 import {type Document} from '../../types';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {SuccessToast} from './SuccessToast';
@@ -26,7 +27,7 @@ const MarkdownEditor = memo(function MarkdownEditor({
             <div
                 className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
                 data-color-mode={theme}>
-                <MDEditor.Markdown source={value}/>
+                <MermaidMarkdown source={value} />
             </div>
         );
     }

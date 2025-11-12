@@ -5,6 +5,7 @@ import { apiClient } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
+import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 
@@ -343,7 +344,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
             {mode === "preview" ? (
               description ? (
                 <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MDEditor.Markdown source={description} />
+                  <MermaidMarkdown source={description} />
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No description</div>
@@ -397,7 +398,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
             {mode === "preview" ? (
               plan ? (
                 <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MDEditor.Markdown source={plan} />
+                  <MermaidMarkdown source={plan} />
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No plan</div>
@@ -421,7 +422,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
             {mode === "preview" ? (
               notes ? (
                 <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MDEditor.Markdown source={notes} />
+                  <MermaidMarkdown source={notes} />
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No notes</div>

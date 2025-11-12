@@ -2,6 +2,7 @@ import React, { useState, useEffect, memo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
+import MermaidMarkdown from './MermaidMarkdown';
 import { type Decision } from '../../types';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
@@ -28,11 +29,11 @@ const MarkdownEditor = memo(function MarkdownEditor({
 	const { theme } = useTheme();
 	if (!isEditing) {
 		// Preview mode - just show the rendered markdown without editor UI
-		return (
-			<div className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" data-color-mode={theme}>
-				<MDEditor.Markdown source={value} />
-			</div>
-		);
+			return (
+				<div className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" data-color-mode={theme}>
+					<MermaidMarkdown source={value} />
+				</div>
+			);
 	}
 
 	// Edit mode - show full editor that fills the available space
