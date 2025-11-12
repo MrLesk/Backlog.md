@@ -1,7 +1,7 @@
 ---
 id: task-316
 title: Serve backlog images and static assets under /assets/backlog
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-11-11 14:24'
