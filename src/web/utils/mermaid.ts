@@ -28,10 +28,21 @@ interface MermaidModule {
 	default: MermaidAPI;
 }
 
+type MermaidGlobal = typeof globalThis & {
+	__MERMAID_MOCK__?: MermaidModule;
+};
+
 let mermaidModule: MermaidModule | null = null;
 let initializationPromise: Promise<void> | null = null;
 
 export async function ensureMermaid(): Promise<MermaidModule> {
+	const mock = (globalThis as MermaidGlobal).__MERMAID_MOCK__;
+	if (mock) {
+		// Reset cached initialization so each mock can configure itself.
+		initializationPromise = null;
+		return mock;
+	}
+
 	if (mermaidModule) return mermaidModule;
 
 	// Dynamic import so client bundles can tree-shake and server doesn't need it
@@ -84,6 +95,15 @@ export async function renderMermaidIn(element: HTMLElement): Promise<void> {
 			}
 
 			try {
+				if (m?.default?.run) {
+					try {
+						await m.default.run({ nodes: [wrapper] });
+						continue;
+					} catch {
+						// Continue to render fallback if run fails
+					}
+				}
+
 				if (m?.default?.render) {
 					const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
 					try {
