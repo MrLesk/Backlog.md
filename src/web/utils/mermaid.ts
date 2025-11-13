@@ -69,12 +69,17 @@ async function initializeMermaid(mermaid: MermaidAPI): Promise<void> {
 }
 
 export async function renderMermaidIn(element: HTMLElement): Promise<void> {
+	// Check for mermaid blocks before touching the heavy library so plain markdown stays fast.
+	const codeBlocks = Array.from(element.querySelectorAll("pre > code.language-mermaid")) as HTMLElement[];
+	if (codeBlocks.length === 0) {
+		return;
+	}
+
 	try {
 		const m = await ensureMermaid();
 		await initializeMermaid(m.default);
 
 		// Find mermaid code blocks and render each into a generated div
-		const codeBlocks = Array.from(element.querySelectorAll("pre > code.language-mermaid")) as HTMLElement[];
 		for (const codeEl of codeBlocks) {
 			const parent = codeEl.parentElement as HTMLElement;
 			if (!parent) continue;
