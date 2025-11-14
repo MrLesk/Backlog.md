@@ -1,15 +1,16 @@
 ---
 id: task-317
 title: Add Mermaid diagram rendering in web UI
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-11-12 17:51'
-updated_date: '2025-11-12 21:00'
+updated_date: '2025-11-14 10:15'
 labels:
   - feature
   - web
 dependencies: []
+ordinal: 24000
 ---
 
 ## Description
