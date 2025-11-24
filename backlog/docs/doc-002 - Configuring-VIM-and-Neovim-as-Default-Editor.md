@@ -99,7 +99,7 @@ export EDITOR="vim +startinsert"
 **Cause**: Prior to task-318, Backlog.md used Bun's `$` shell template which didn't properly inherit stdio streams. This prevented interactive editors from having full terminal control.
 
 **Solution**:
-- Ensure you're using Backlog.md version with task-318 fix (or later)
+- Ensure you're using Backlog.md v1.21.0 (or later)
 - The fix uses `Bun.spawn()` with explicit `stdio: "inherit"` configuration
 - If still experiencing issues, try setting `TERM` explicitly:
   ```bash
@@ -269,7 +269,7 @@ When editing from the TUI (board view), Backlog.md:
 
 If you encounter issues not covered here:
 
-1. Check the GitHub issues: https://github.com/samvincent/backlog.md/issues
+1. Check the GitHub issues: https://github.com/MrLesk/Backlog.md/issues
 2. Create a new issue with:
    - Your editor command (`echo $EDITOR`)
    - Backlog.md version (`backlog --version`)
