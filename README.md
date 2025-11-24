@@ -388,6 +388,8 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 | `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
 | `activeBranchDays` | How many days a branch is considered active | `30` |
 
+> Editor setup guide: See [Configuring VIM and Neovim as Default Editor](backlog/docs/doc-002%20-%20Configuring-VIM-and-Neovim-as-Default-Editor.md) for configuration tips and troubleshooting interactive editors.
+
 > **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
 > **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.

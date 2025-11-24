@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@samvincent'
 created_date: '2025-11-18 06:03'
-updated_date: '2025-11-18 06:59'
+updated_date: '2025-11-24 21:16'
 labels:
   - bug
   - editor
@@ -21,12 +21,12 @@ Currently the editor launcher uses Bun's $ shell template which doesn't properly
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 vim opens with full terminal control and renders correctly,neovim opens with full terminal control and renders correctly,All existing editor tests pass,Editor can be interrupted with Ctrl+C
+- [x] #1 vim opens with full terminal control and renders correctly,neovim opens with full terminal control and renders correctly,All existing editor tests pass,Editor can be interrupted with Ctrl+C
 
-- [ ] #2 vim opens with full terminal control and renders correctly
-- [ ] #3 neovim opens with full terminal control and renders correctly
-- [ ] #4 All existing editor tests pass
-- [ ] #5 Editor can be interrupted with Ctrl+C
+- [x] #2 vim opens with full terminal control and renders correctly
+- [x] #3 neovim opens with full terminal control and renders correctly
+- [x] #4 All existing editor tests pass
+- [x] #5 Editor can be interrupted with Ctrl+C
 <!-- AC:END -->
 
 ## Implementation Plan
