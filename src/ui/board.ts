@@ -34,6 +34,22 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 		if (columnIsDone) {
 			return compareTaskIds(b.id, a.id);
 		}
+
+		// Use ordinal for custom sorting if available
+		const aOrd = a.ordinal;
+		const bOrd = b.ordinal;
+
+		// If both have ordinals, compare them
+		if (typeof aOrd === "number" && typeof bOrd === "number") {
+			if (aOrd !== bOrd) return aOrd - bOrd;
+		} else if (typeof aOrd === "number") {
+			// Only A has ordinal -> A comes first
+			return -1;
+		} else if (typeof bOrd === "number") {
+			// Only B has ordinal -> B comes first
+			return 1;
+		}
+
 		return compareTaskIds(a.id, b.id);
 	});
 
@@ -70,7 +86,7 @@ function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
 	});
 }
 
-function formatTaskListItem(task: Task): string {
+function formatTaskListItem(task: Task, isMoving = false): string {
 	const assignee = task.assignee?.[0]
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
@@ -78,14 +94,15 @@ function formatTaskListItem(task: Task): string {
 	const branch = (task as Task & { branch?: string }).branch
 		? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}`
 		: "";
-	return `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}${branch}`;
+	const content = `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}${branch}`;
+	return isMoving ? `{magenta-fg}► ${content}{/}` : content;
 }
 
 function formatColumnLabel(status: string, count: number): string {
 	return `\u00A0${getStatusIcon(status)} ${status || "No Status"} (${count})\u00A0`;
 }
 
-function arraysEqual(left: string[], right: string[]): boolean {
+function _arraysEqual(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
 	for (let index = 0; index < left.length; index += 1) {
 		if (left[index] !== right[index]) return false;
@@ -124,7 +141,7 @@ export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]):
  * (e.g. piping output to a file or running in CI).
  */
 export async function renderBoardTui(
-	tasks: Task[],
+	initialTasks: Task[],
 	statuses: string[],
 	_layout: BoardLayout,
 	_maxColumnWidth: number,
@@ -136,11 +153,11 @@ export async function renderBoardTui(
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
-		console.log(generateKanbanBoardWithMetadata(tasks, statuses, "Project"));
+		console.log(generateKanbanBoardWithMetadata(initialTasks, statuses, "Project"));
 		return;
 	}
 
-	const initialColumns = prepareBoardColumns(tasks, statuses);
+	const initialColumns = prepareBoardColumns(initialTasks, statuses);
 	if (initialColumns.length === 0) {
 		console.log("No tasks available for the Kanban board.");
 		return;
@@ -154,11 +171,31 @@ export async function renderBoardTui(
 			height: "100%",
 		});
 
+		let currentTasks = initialTasks;
 		let columns: ColumnView[] = [];
 		let currentColumnsData = initialColumns;
 		let currentStatuses = currentColumnsData.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
+
+		// Move mode state
+		type MoveOperation = {
+			taskId: string;
+			targetStatus: string;
+			targetIndex: number;
+		};
+		let moveOp: MoveOperation | null = null;
+
+		const footerBox = box({
+			parent: screen,
+			bottom: 0,
+			left: 0,
+			height: 1,
+			width: "100%",
+			tags: true,
+			content:
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit",
+		});
 
 		const clearColumns = () => {
 			for (const column of columns) {
@@ -168,6 +205,10 @@ export async function renderBoardTui(
 		};
 
 		const columnWidthFor = (count: number) => Math.max(1, Math.floor(100 / Math.max(1, count)));
+
+		const getFormattedItems = (tasks: Task[]) => {
+			return tasks.map((task) => formatTaskListItem(task, moveOp?.taskId === task.id));
+		};
 
 		const createColumnViews = (data: ColumnData[]) => {
 			clearColumns();
@@ -200,7 +241,7 @@ export async function renderBoardTui(
 					style: { selected: { fg: "white" } },
 				});
 
-				taskList.setItems(columnData.tasks.map(formatTaskListItem));
+				taskList.setItems(getFormattedItems(columnData.tasks));
 				columns.push({ status: columnData.status, tasks: columnData.tasks, list: taskList, box: columnBox });
 			});
 		};
@@ -208,7 +249,8 @@ export async function renderBoardTui(
 		const setColumnActiveState = (column: ColumnView | undefined, active: boolean) => {
 			if (!column) return;
 			const listStyle = column.list.style as { selected?: { bg?: string } };
-			if (listStyle.selected) listStyle.selected.bg = active ? "blue" : undefined;
+			// In move mode, use green highlight for the moving task
+			if (listStyle.selected) listStyle.selected.bg = moveOp && active ? "green" : active ? "blue" : undefined;
 			const boxStyle = column.box.style as { border?: { fg?: string } };
 			if (boxStyle.border) boxStyle.border.fg = active ? "yellow" : "gray";
 		};
@@ -266,7 +308,7 @@ export async function renderBoardTui(
 				if (!column) return;
 				column.status = columnData.status;
 				column.tasks = columnData.tasks;
-				column.list.setItems(columnData.tasks.map(formatTaskListItem));
+				column.list.setItems(getFormattedItems(columnData.tasks));
 				column.box.setLabel?.(formatColumnLabel(columnData.status, columnData.tasks.length));
 			});
 			restoreSelection(selectedTaskId);
@@ -277,6 +319,68 @@ export async function renderBoardTui(
 			currentStatuses = data.map((column) => column.status);
 			createColumnViews(data);
 			restoreSelection(selectedTaskId);
+		};
+
+		// Pure function to calculate the projected board state
+		const getProjectedColumns = (allTasks: Task[], operation: MoveOperation | null): ColumnData[] => {
+			if (!operation) {
+				return prepareBoardColumns(allTasks, currentStatuses);
+			}
+
+			// 1. Filter out the moving task from the source
+			const tasksWithoutMoving = allTasks.filter((t) => t.id !== operation.taskId);
+			const movingTask = allTasks.find((t) => t.id === operation.taskId);
+
+			if (!movingTask) {
+				return prepareBoardColumns(allTasks, currentStatuses);
+			}
+
+			// 2. Prepare columns without the moving task
+			const columns = prepareBoardColumns(tasksWithoutMoving, currentStatuses);
+
+			// 3. Insert the moving task into the target column at the target index
+			const targetColumn = columns.find((c) => c.status === operation.targetStatus);
+			if (targetColumn) {
+				// Create a "ghost" task with updated status
+				const ghostTask = { ...movingTask, status: operation.targetStatus };
+
+				// Clamp index to valid bounds
+				const safeIndex = Math.max(0, Math.min(operation.targetIndex, targetColumn.tasks.length));
+				targetColumn.tasks.splice(safeIndex, 0, ghostTask);
+			}
+
+			return columns;
+		};
+
+		const updateFooter = () => {
+			if (moveOp) {
+				footerBox.setContent(
+					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
+				);
+			} else {
+				footerBox.setContent(
+					" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit",
+				);
+			}
+		};
+
+		const renderView = () => {
+			const projectedData = getProjectedColumns(currentTasks, moveOp);
+
+			// If we are moving, we want to select the moving task
+			const selectedId = moveOp ? moveOp.taskId : getSelectedTaskId();
+
+			if (projectedData.length === 0) {
+				const fallbackStatus = currentStatuses[0] ?? "No Status";
+				rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedId);
+			} else if (shouldRebuildColumns(currentColumnsData, projectedData)) {
+				rebuildColumns(projectedData, selectedId);
+			} else {
+				applyColumnData(projectedData, selectedId);
+			}
+
+			updateFooter();
+			screen.render();
 		};
 
 		rebuildColumns(initialColumns);
@@ -291,57 +395,105 @@ export async function renderBoardTui(
 		}
 
 		const updateBoard = (nextTasks: Task[], nextStatuses: string[]) => {
-			const nextData = prepareBoardColumns(nextTasks, nextStatuses);
-			const selectedTaskId = getSelectedTaskId();
-			if (nextData.length === 0) {
-				const fallbackStatus = nextStatuses[0] ?? "No Status";
-				rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedTaskId);
-				screen.render();
-				return;
-			}
+			// Update source of truth
+			currentTasks = nextTasks;
+			// Only update statuses if they changed (rare in TUI)
+			if (nextStatuses.length > 0) currentStatuses = nextStatuses;
 
-			const nextStatusOrder = nextData.map((column) => column.status);
-			if (!arraysEqual(currentStatuses, nextStatusOrder) || shouldRebuildColumns(currentColumnsData, nextData)) {
-				rebuildColumns(nextData, selectedTaskId);
-			} else {
-				applyColumnData(nextData, selectedTaskId);
-			}
-			screen.render();
+			renderView();
 		};
 
 		options?.subscribeUpdates?.(updateBoard);
 
-		screen.key(["left", "h"], () => focusColumn(currentCol - 1));
-		screen.key(["right", "l"], () => focusColumn(currentCol + 1));
+		screen.key(["left", "h"], () => {
+			if (moveOp) {
+				// Find current status index
+				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
+				if (currentStatusIndex > 0) {
+					const prevStatus = currentStatuses[currentStatusIndex - 1];
+
+					// We need to know how many items are in the target column to clamp the index
+					// Note: This is an approximation since we don't have the projected column yet
+					// But since we render immediately after, it visualizes correctly
+					moveOp.targetStatus = prevStatus;
+
+					// When switching columns, try to maintain relative vertical position but clamp to size
+					// We can just let the next render clamp it, or reset to 0.
+					// Let's keep current index, renderView will clamp it.
+					renderView();
+				}
+			} else {
+				focusColumn(currentCol - 1);
+			}
+		});
+
+		screen.key(["right", "l"], () => {
+			if (moveOp) {
+				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
+				if (currentStatusIndex < currentStatuses.length - 1) {
+					const nextStatus = currentStatuses[currentStatusIndex + 1];
+					moveOp.targetStatus = nextStatus;
+					renderView();
+				}
+			} else {
+				focusColumn(currentCol + 1);
+			}
+		});
 
 		screen.key(["up", "k"], () => {
 			if (popupOpen) return;
-			const column = columns[currentCol];
-			if (!column) return;
-			const total = column.tasks.length;
-			if (total === 0) return;
-			const listWidget = column.list;
-			const selected = listWidget.selected ?? 0;
-			const nextIndex = selected > 0 ? selected - 1 : total - 1;
-			listWidget.select(nextIndex);
-			screen.render();
+
+			if (moveOp) {
+				if (moveOp.targetIndex > 0) {
+					moveOp.targetIndex--;
+					renderView();
+				}
+			} else {
+				const column = columns[currentCol];
+				if (!column) return;
+				const listWidget = column.list;
+				const selected = listWidget.selected ?? 0;
+				const total = column.tasks.length;
+				if (total === 0) return;
+				const nextIndex = selected > 0 ? selected - 1 : total - 1;
+				listWidget.select(nextIndex);
+				screen.render();
+			}
 		});
 
 		screen.key(["down", "j"], () => {
 			if (popupOpen) return;
-			const column = columns[currentCol];
-			if (!column) return;
-			const total = column.tasks.length;
-			if (total === 0) return;
-			const listWidget = column.list;
-			const selected = listWidget.selected ?? 0;
-			const nextIndex = selected < total - 1 ? selected + 1 : 0;
-			listWidget.select(nextIndex);
-			screen.render();
+
+			if (moveOp) {
+				const column = columns[currentCol];
+				// We need to check the projected length to know if we can move down
+				// The current rendered column has the correct length including the ghost task
+				if (column && moveOp.targetIndex < column.tasks.length - 1) {
+					moveOp.targetIndex++;
+					renderView();
+				}
+			} else {
+				const column = columns[currentCol];
+				if (!column) return;
+				const listWidget = column.list;
+				const selected = listWidget.selected ?? 0;
+				const total = column.tasks.length;
+				if (total === 0) return;
+				const nextIndex = selected < total - 1 ? selected + 1 : 0;
+				listWidget.select(nextIndex);
+				screen.render();
+			}
 		});
 
 		screen.key(["enter"], async () => {
 			if (popupOpen) return;
+
+			// In move mode, Enter confirms the move
+			if (moveOp) {
+				await performTaskMove();
+				return;
+			}
+
 			const column = columns[currentCol];
 			if (!column) return;
 			const idx = column.list.selected ?? 0;
@@ -429,15 +581,73 @@ export async function renderBoardTui(
 			}
 		});
 
-		box({
-			parent: screen,
-			bottom: 0,
-			left: 0,
-			height: 1,
-			width: "100%",
-			tags: true,
-			content:
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit",
+		const performTaskMove = async () => {
+			if (!moveOp) return;
+
+			try {
+				const core = new Core(process.cwd());
+				const config = await core.fs.loadConfig();
+
+				// Get the final state from the projection
+				const projectedData = getProjectedColumns(currentTasks, moveOp);
+				const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
+
+				if (!targetColumn) return;
+
+				const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
+
+				// Persist the move using core API
+				await core.reorderTask({
+					taskId: moveOp.taskId,
+					targetStatus: moveOp.targetStatus,
+					orderedTaskIds,
+					autoCommit: config?.autoCommit ?? false,
+				});
+
+				// Exit move mode
+				moveOp = null;
+
+				// Update UI
+				renderView();
+
+				// Refresh board data
+				const allTasks = await core.queryTasks();
+				updateBoard(allTasks, currentStatuses);
+			} catch (_error) {
+				// Silently handle errors
+			}
+		};
+		const cancelMove = () => {
+			if (!moveOp) return;
+
+			// Exit move mode - pure state reset
+			moveOp = null;
+
+			renderView();
+		};
+
+		screen.key(["m", "M"], async () => {
+			if (popupOpen) return;
+
+			if (!moveOp) {
+				const column = columns[currentCol];
+				if (!column) return;
+				const taskIndex = column.list.selected ?? 0;
+				const task = column.tasks[taskIndex];
+				if (!task) return;
+
+				// Enter move mode
+				moveOp = {
+					taskId: task.id,
+					targetStatus: column.status,
+					targetIndex: taskIndex,
+				};
+
+				renderView();
+			} else {
+				// Confirm move (same as Enter in move mode)
+				await performTaskMove();
+			}
 		});
 
 		screen.key(["tab"], async () => {
@@ -471,6 +681,12 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["escape"], () => {
+			// In move mode, ESC cancels and restores original position
+			if (moveOp) {
+				cancelMove();
+				return;
+			}
+
 			if (!popupOpen) {
 				screen.destroy();
 				resolve();
