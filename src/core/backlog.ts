@@ -941,22 +941,33 @@ export class Core {
 		const loadedTasks = await Promise.all(
 			orderedTaskIds.map(async (id) => {
 				const task = await this.fs.loadTask(id);
-				if (!task) throw new Error(`Task ${id} not found`);
+				// Return null if task not found (e.g. archived in completed/)
+				// We don't throw here to allow reordering remaining active tasks
 				return task;
 			}),
 		);
 
-		const targetIndex = orderedTaskIds.indexOf(taskId);
-		if (targetIndex === -1) {
-			throw new Error("orderedTaskIds must contain the moved task");
-		}
-		const movedTask = loadedTasks[targetIndex];
+		// Filter out missing tasks
+		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
+
+		// Verify the moved task itself exists in the active set
+		const movedTask = validTasks.find((t) => t.id === taskId);
 		if (!movedTask) {
-			throw new Error(`Task ${taskId} not found while reordering`);
+			throw new Error(`Task ${taskId} not found in active tasks while reordering`);
 		}
 
-		const previousTask = targetIndex > 0 ? loadedTasks[targetIndex - 1] : null;
-		const nextTask = targetIndex < loadedTasks.length - 1 ? loadedTasks[targetIndex + 1] : null;
+		// Calculate target index within the valid tasks list
+		// We use the requested order, filtering out missing IDs to match validTasks order
+		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => t.id === id));
+		const targetIndex = validOrderedIds.indexOf(taskId);
+
+		if (targetIndex === -1) {
+			// This should technically be impossible given the check above
+			throw new Error("Implementation error: Task found in validTasks but index missing");
+		}
+
+		const previousTask = targetIndex > 0 ? validTasks[targetIndex - 1] : null;
+		const nextTask = targetIndex < validTasks.length - 1 ? validTasks[targetIndex + 1] : null;
 
 		const { ordinal: newOrdinal, requiresRebalance } = calculateNewOrdinal({
 			previous: previousTask,
@@ -970,7 +981,7 @@ export class Core {
 			ordinal: newOrdinal,
 		};
 
-		const tasksInOrder: Task[] = loadedTasks.map((task, index) => (index === targetIndex ? updatedMoved : task));
+		const tasksInOrder: Task[] = validTasks.map((task, index) => (index === targetIndex ? updatedMoved : task));
 		const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, {
 			defaultStep,
 			startOrdinal: defaultStep,
@@ -985,7 +996,7 @@ export class Core {
 			updatesMap.set(updatedMoved.id, updatedMoved);
 		}
 
-		const originalMap = new Map(loadedTasks.map((task) => [task.id, task]));
+		const originalMap = new Map(validTasks.map((task) => [task.id, task]));
 		const changedTasks = Array.from(updatesMap.values()).filter((task) => {
 			const original = originalMap.get(task.id);
 			if (!original) return true;

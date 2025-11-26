@@ -613,8 +613,11 @@ export async function renderBoardTui(
 				// Refresh board data
 				const allTasks = await core.queryTasks();
 				updateBoard(allTasks, currentStatuses);
-			} catch (_error) {
-				// Silently handle errors
+			} catch (error) {
+				// Log error for debugging but prevent crash
+				if (process.env.DEBUG) {
+					console.error("Move failed:", error);
+				}
 			}
 		};
 		const cancelMove = () => {
