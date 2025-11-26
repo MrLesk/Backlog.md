@@ -938,6 +938,7 @@ export class Core {
 			seen.add(id);
 		}
 
+		const completedTaskIds = new Set<string>();
 		const loadedTasks = await Promise.all(
 			orderedTaskIds.map(async (id) => {
 				// Try loading active task first
@@ -948,8 +949,8 @@ export class Core {
 					const completedTasks = await this.fs.listCompletedTasks();
 					const completed = completedTasks.find((t) => t.id === id);
 					if (completed) {
-						// Mark as completed source to prevent saving later
-						return { ...completed, _source: "completed" } as Task & { _source?: string };
+						completedTaskIds.add(id);
+						return completed;
 					}
 				}
 				return task;
@@ -957,7 +958,7 @@ export class Core {
 		);
 
 		// Filter out missing tasks (truly missing, not just in completed)
-		const validTasks = loadedTasks.filter((t): t is Task & { _source?: string } => t !== null);
+		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
 
 		// Verify the moved task itself exists
 		const movedTask = validTasks.find((t) => t.id === taskId);
@@ -995,8 +996,6 @@ export class Core {
 			status: targetStatus,
 			ordinal: newOrdinal,
 		};
-		// Remove internal flag before saving
-		if ("_source" in updatedMoved) delete (updatedMoved as any)._source;
 
 		const tasksInOrder: Task[] = validTasks.map((task, index) => (index === targetIndex ? updatedMoved : task));
 		const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, {
@@ -1017,11 +1016,11 @@ export class Core {
 		const changedTasks = Array.from(updatesMap.values()).filter((task) => {
 			// Don't update tasks that are in completed folder (read-only anchors)
 			// Unless it is the moved task itself (which we are explicitly modifying)
-			const original = originalMap.get(task.id);
-			if (original && "_source" in original && original._source === "completed" && task.id !== taskId) {
+			if (completedTaskIds.has(task.id) && task.id !== taskId) {
 				return false;
 			}
 
+			const original = originalMap.get(task.id);
 			if (!original) return true;
 			return (original.ordinal ?? null) !== (task.ordinal ?? null) || (original.status ?? "") !== (task.status ?? "");
 		});
