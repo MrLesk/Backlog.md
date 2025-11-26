@@ -30,11 +30,6 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 	const topLevel: Task[] = [];
 	const childrenByParent = new Map<string, Task[]>();
 	const sorted = items.slice().sort((a, b) => {
-		const columnIsDone = isDoneStatus(status);
-		if (columnIsDone) {
-			return compareTaskIds(b.id, a.id);
-		}
-
 		// Use ordinal for custom sorting if available
 		const aOrd = a.ordinal;
 		const bOrd = b.ordinal;
@@ -48,6 +43,11 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 		} else if (typeof bOrd === "number") {
 			// Only B has ordinal -> B comes first
 			return 1;
+		}
+
+		const columnIsDone = isDoneStatus(status);
+		if (columnIsDone) {
+			return compareTaskIds(b.id, a.id);
 		}
 
 		return compareTaskIds(a.id, b.id);
