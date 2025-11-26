@@ -44,6 +44,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 !.claude/agents
 !.claude/agents/**
 
+# Gemini CLI session data
+.gemini
+
 # Example project folder
 example-project/
 
