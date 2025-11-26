@@ -940,29 +940,44 @@ export class Core {
 
 		const loadedTasks = await Promise.all(
 			orderedTaskIds.map(async (id) => {
+				// Try loading active task first
 				const task = await this.fs.loadTask(id);
-				// Return null if task not found (e.g. archived in completed/)
-				// We don't throw here to allow reordering remaining active tasks
+
+				// If not found, try loading from completed tasks (for read-only context)
+				if (!task) {
+					const completedTasks = await this.fs.listCompletedTasks();
+					const completed = completedTasks.find((t) => t.id === id);
+					if (completed) {
+						// Mark as completed source to prevent saving later
+						return { ...completed, _source: "completed" } as Task & { _source?: string };
+					}
+				}
 				return task;
 			}),
 		);
 
-		// Filter out missing tasks
-		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
+		// Filter out missing tasks (truly missing, not just in completed)
+		const validTasks = loadedTasks.filter((t): t is Task & { _source?: string } => t !== null);
 
-		// Verify the moved task itself exists in the active set
+		// Verify the moved task itself exists
 		const movedTask = validTasks.find((t) => t.id === taskId);
 		if (!movedTask) {
-			throw new Error(`Task ${taskId} not found in active tasks while reordering`);
+			throw new Error(`Task ${taskId} not found in active or completed tasks while reordering`);
 		}
 
+		// If the moved task itself is in completed, we shouldn't be moving it (per rules)
+		// But the UI might allow it if it's in the Done column.
+		// If we move a completed task, it essentially "revives" it to active if we save it.
+		// Let's assume reordering implies making it active/updated if it wasn't.
+		// ACTUALLY, if targetStatus is 'Done', it might stay completed?
+		// Let's just ensure we don't accidentally duplicate it.
+		// For now, let's stick to the plan: Treat completed neighbors as anchors.
+
 		// Calculate target index within the valid tasks list
-		// We use the requested order, filtering out missing IDs to match validTasks order
 		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => t.id === id));
 		const targetIndex = validOrderedIds.indexOf(taskId);
 
 		if (targetIndex === -1) {
-			// This should technically be impossible given the check above
 			throw new Error("Implementation error: Task found in validTasks but index missing");
 		}
 
@@ -980,6 +995,8 @@ export class Core {
 			status: targetStatus,
 			ordinal: newOrdinal,
 		};
+		// Remove internal flag before saving
+		if ("_source" in updatedMoved) delete (updatedMoved as any)._source;
 
 		const tasksInOrder: Task[] = validTasks.map((task, index) => (index === targetIndex ? updatedMoved : task));
 		const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, {
@@ -998,11 +1015,16 @@ export class Core {
 
 		const originalMap = new Map(validTasks.map((task) => [task.id, task]));
 		const changedTasks = Array.from(updatesMap.values()).filter((task) => {
+			// Don't update tasks that are in completed folder (read-only anchors)
+			// Unless it is the moved task itself (which we are explicitly modifying)
 			const original = originalMap.get(task.id);
+			if (original && "_source" in original && original._source === "completed" && task.id !== taskId) {
+				return false;
+			}
+
 			if (!original) return true;
 			return (original.ordinal ?? null) !== (task.ordinal ?? null) || (original.status ?? "") !== (task.status ?? "");
 		});
-
 		if (changedTasks.length > 0) {
 			await this.updateTasksBulk(
 				changedTasks,
