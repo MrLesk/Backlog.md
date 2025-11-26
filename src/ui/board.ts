@@ -611,7 +611,10 @@ export async function renderBoardTui(
 				renderView();
 
 				// Refresh board data
-				const allTasks = await core.queryTasks();
+				// We use loadBoardTasks instead of queryTasks to ensure consistency with the initial load,
+				// specifically to include remote tasks and potentially completed tasks if they were loaded initially.
+				// This prevents tasks from disappearing from the board after a move if they aren't in the local cache.
+				const allTasks = await core.loadBoardTasks();
 				updateBoard(allTasks, currentStatuses);
 			} catch (error) {
 				// Log error for debugging but prevent crash
