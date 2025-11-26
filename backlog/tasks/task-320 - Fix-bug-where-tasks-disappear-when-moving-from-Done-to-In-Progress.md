@@ -1,10 +1,11 @@
 ---
 id: task-320
 title: Fix bug where tasks disappear when moving from Done to In Progress
-status: To Do
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-11-26 21:47'
+updated_date: '2025-11-26 21:53'
 labels:
   - bug
   - tui
@@ -32,8 +33,8 @@ The issue might be related to how the TUI updates its local state (`currentTasks
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Reproduce the issue where tasks disappear from Done column when moving a task out of it
-- [ ] #2 Fix: Moving a task from "Done" to "In Progress" should update the task correctly and preserve other Done tasks visibility
-- [ ] #3 Fix: Moving a task from "To Do" to "Done" should work correctly without errors
-- [ ] #4 Ensure `completed/` folder is strictly for archiving and not accessed for active board operations
+- [x] #1 Reproduce the issue where tasks disappear from Done column when moving a task out of it
+- [x] #2 Fix: Moving a task from "Done" to "In Progress" should update the task correctly and preserve other Done tasks visibility
+- [x] #3 Fix: Moving a task from "To Do" to "Done" should work correctly without errors
+- [x] #4 Ensure `completed/` folder is strictly for archiving and not accessed for active board operations
 <!-- AC:END -->
