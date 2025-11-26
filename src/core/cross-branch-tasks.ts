@@ -230,7 +230,7 @@ export async function getLatestTaskStatesForIds(
 
 /**
  * Filter tasks based on their latest directory location across all branches
- * Only returns tasks whose latest directory type is "task" or "completed" (not draft or archived)
+ * Only returns tasks whose latest directory type is "task" (not draft, archived, or completed)
  */
 export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<string, TaskDirectoryInfo>): Task[] {
 	return tasks.filter((task) => {
@@ -241,7 +241,8 @@ export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<s
 			return true;
 		}
 
-		// Show tasks whose latest directory type is "task" or "completed"
-		return latestDirectory.type === "task" || latestDirectory.type === "completed";
+		// Only show tasks whose latest directory type is "task"
+		// Completed, archived, and draft tasks should not appear on the main board
+		return latestDirectory.type === "task";
 	});
 }
