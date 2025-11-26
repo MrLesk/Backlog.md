@@ -407,7 +407,7 @@ export class GitOperations {
 			let i = 0;
 
 			while (i < parts.length) {
-				const timestampStr = parts[i];
+				const timestampStr = parts[i]?.trim();
 				if (timestampStr && /^\d+$/.test(timestampStr)) {
 					// This is a timestamp, files follow until next timestamp
 					const epoch = Number(timestampStr);
@@ -415,8 +415,9 @@ export class GitOperations {
 					i++;
 
 					// Process files until we hit another timestamp or end
-					while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i] || "")) {
-						const file = parts[i];
+					// Check if next part looks like a timestamp (digits only)
+					while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i]?.trim() || "")) {
+						const file = parts[i]?.trim();
 						// First time we see a file is its last modification
 						if (file && !out.has(file)) {
 							out.set(file, date);
