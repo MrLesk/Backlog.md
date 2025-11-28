@@ -20,6 +20,7 @@ export function serializeTask(task: Task): string {
 		...(task.subtasks && task.subtasks.length > 0 && { subtasks: task.subtasks }),
 		...(task.priority && { priority: task.priority }),
 		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
+		...(task.onStatusChange && { onStatusChange: task.onStatusChange }),
 	};
 
 	let contentBody = task.rawContent ?? "";

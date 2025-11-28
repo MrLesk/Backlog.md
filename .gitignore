@@ -54,9 +54,12 @@ example-project/
 
 # Test temp directories created by bun tests
 tmp/
+.tmp-test-*
 
 # Local files
 *.local.*
 
 # Performance benchmark artifacts
 test-benchmark-report.json
+
+.conductor

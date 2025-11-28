@@ -21,6 +21,7 @@ import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
 } from "../utils/status.ts";
+import { executeStatusCallback } from "../utils/status-callback.ts";
 import {
 	normalizeDependencies,
 	normalizeStringList,
@@ -570,6 +571,12 @@ export class Core {
 	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
 		normalizeAssignee(task);
 
+		// Load original task to detect status changes for callbacks
+		const originalTask = await this.fs.loadTask(task.id);
+		const oldStatus = originalTask?.status ?? "";
+		const newStatus = task.status ?? "";
+		const statusChanged = oldStatus !== newStatus;
+
 		// Always set updatedDate when updating a task
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
@@ -580,6 +587,11 @@ export class Core {
 			if (filePath) {
 				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
 			}
+		}
+
+		// Fire status change callback if status changed
+		if (statusChanged) {
+			await this.executeStatusChangeCallback(task, oldStatus, newStatus);
 		}
 	}
 
@@ -890,6 +902,43 @@ export class Core {
 		await this.updateTask(task, autoCommit);
 		const refreshed = await this.fs.loadTask(taskId);
 		return refreshed ?? task;
+	}
+
+	/**
+	 * Execute the onStatusChange callback if configured.
+	 * Per-task callback takes precedence over global config.
+	 * Failures are logged but don't block the status change.
+	 */
+	private async executeStatusChangeCallback(task: Task, oldStatus: string, newStatus: string): Promise<void> {
+		const config = await this.fs.loadConfig();
+
+		// Per-task callback takes precedence over global config
+		const callbackCommand = task.onStatusChange ?? config?.onStatusChange;
+		if (!callbackCommand) {
+			return;
+		}
+
+		try {
+			const result = await executeStatusCallback({
+				command: callbackCommand,
+				taskId: task.id,
+				oldStatus,
+				newStatus,
+				taskTitle: task.title,
+				cwd: this.fs.rootDir,
+			});
+
+			if (!result.success) {
+				console.error(`Status change callback failed for ${task.id}: ${result.error ?? "Unknown error"}`);
+				if (result.output) {
+					console.error(`Callback output: ${result.output}`);
+				}
+			} else if (process.env.DEBUG && result.output) {
+				console.log(`Status change callback output for ${task.id}: ${result.output}`);
+			}
+		} catch (error) {
+			console.error(`Failed to execute status change callback for ${task.id}:`, error);
+		}
 	}
 
 	async editTask(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {

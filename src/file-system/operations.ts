@@ -98,6 +98,11 @@ export class FileSystem {
 		return join(this.backlogDir, DEFAULT_FILES.CONFIG);
 	}
 
+	/** Get the project root directory */
+	get rootDir(): string {
+		return this.projectRoot;
+	}
+
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
 	}
@@ -758,6 +763,11 @@ export class FileSystem {
 				case "active_branch_days":
 					config.activeBranchDays = Number.parseInt(value, 10);
 					break;
+				case "onStatusChange":
+				case "on_status_change":
+					// Remove surrounding quotes if present, but preserve inner content
+					config.onStatusChange = value.replace(/^['"]|['"]$/g, "");
+					break;
 			}
 		}
 
@@ -780,6 +790,7 @@ export class FileSystem {
 			bypassGitHooks: config.bypassGitHooks,
 			checkActiveBranches: config.checkActiveBranches,
 			activeBranchDays: config.activeBranchDays,
+			onStatusChange: config.onStatusChange,
 		};
 	}
 
@@ -805,6 +816,7 @@ export class FileSystem {
 				? [`check_active_branches: ${config.checkActiveBranches}`]
 				: []),
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
+			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;
