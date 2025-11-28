@@ -425,11 +425,13 @@ export async function renderBoardTui(
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex > 0) {
 					const prevStatus = currentStatuses[currentStatusIndex - 1];
-					const prevColumnSize = getTargetColumnSize(prevStatus);
-					moveOp.targetStatus = prevStatus;
-					// Clamp index to valid range for new column (0 to size, where size means append at end)
-					moveOp.targetIndex = Math.min(moveOp.targetIndex, prevColumnSize);
-					renderView();
+					if (prevStatus) {
+						const prevColumnSize = getTargetColumnSize(prevStatus);
+						moveOp.targetStatus = prevStatus;
+						// Clamp index to valid range for new column (0 to size, where size means append at end)
+						moveOp.targetIndex = Math.min(moveOp.targetIndex, prevColumnSize);
+						renderView();
+					}
 				}
 			} else {
 				focusColumn(currentCol - 1);
@@ -441,11 +443,13 @@ export async function renderBoardTui(
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex < currentStatuses.length - 1) {
 					const nextStatus = currentStatuses[currentStatusIndex + 1];
-					const nextColumnSize = getTargetColumnSize(nextStatus);
-					moveOp.targetStatus = nextStatus;
-					// Clamp index to valid range for new column
-					moveOp.targetIndex = Math.min(moveOp.targetIndex, nextColumnSize);
-					renderView();
+					if (nextStatus) {
+						const nextColumnSize = getTargetColumnSize(nextStatus);
+						moveOp.targetStatus = nextStatus;
+						// Clamp index to valid range for new column
+						moveOp.targetIndex = Math.min(moveOp.targetIndex, nextColumnSize);
+						renderView();
+					}
 				}
 			} else {
 				focusColumn(currentCol + 1);
