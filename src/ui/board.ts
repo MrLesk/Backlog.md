@@ -181,6 +181,8 @@ export async function renderBoardTui(
 		// Move mode state
 		type MoveOperation = {
 			taskId: string;
+			originalStatus: string;
+			originalIndex: number;
 			targetStatus: string;
 			targetIndex: number;
 		};
@@ -405,21 +407,28 @@ export async function renderBoardTui(
 
 		options?.subscribeUpdates?.(updateBoard);
 
+		// Helper to get target column size (excluding the moving task if it's currently there)
+		const getTargetColumnSize = (status: string): number => {
+			const columnData = currentColumnsData.find((c) => c.status === status);
+			if (!columnData) return 0;
+			// If the moving task is currently in this column, we need to account for it
+			if (moveOp && moveOp.targetStatus === status) {
+				// The task is already "in" this column in the projected view
+				return columnData.tasks.length;
+			}
+			// Otherwise, the task will be added to this column
+			return columnData.tasks.length;
+		};
+
 		screen.key(["left", "h"], () => {
 			if (moveOp) {
-				// Find current status index
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex > 0) {
 					const prevStatus = currentStatuses[currentStatusIndex - 1];
-
-					// We need to know how many items are in the target column to clamp the index
-					// Note: This is an approximation since we don't have the projected column yet
-					// But since we render immediately after, it visualizes correctly
+					const prevColumnSize = getTargetColumnSize(prevStatus);
 					moveOp.targetStatus = prevStatus;
-
-					// When switching columns, try to maintain relative vertical position but clamp to size
-					// We can just let the next render clamp it, or reset to 0.
-					// Let's keep current index, renderView will clamp it.
+					// Clamp index to valid range for new column (0 to size, where size means append at end)
+					moveOp.targetIndex = Math.min(moveOp.targetIndex, prevColumnSize);
 					renderView();
 				}
 			} else {
@@ -432,7 +441,10 @@ export async function renderBoardTui(
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex < currentStatuses.length - 1) {
 					const nextStatus = currentStatuses[currentStatusIndex + 1];
+					const nextColumnSize = getTargetColumnSize(nextStatus);
 					moveOp.targetStatus = nextStatus;
+					// Clamp index to valid range for new column
+					moveOp.targetIndex = Math.min(moveOp.targetIndex, nextColumnSize);
 					renderView();
 				}
 			} else {
@@ -584,6 +596,16 @@ export async function renderBoardTui(
 		const performTaskMove = async () => {
 			if (!moveOp) return;
 
+			// Check if any actual change occurred
+			const noChange = moveOp.targetStatus === moveOp.originalStatus && moveOp.targetIndex === moveOp.originalIndex;
+
+			if (noChange) {
+				// No change, just exit move mode
+				moveOp = null;
+				renderView();
+				return;
+			}
+
 			try {
 				const core = new Core(process.cwd());
 				const config = await core.fs.loadConfig();
@@ -592,7 +614,11 @@ export async function renderBoardTui(
 				const projectedData = getProjectedColumns(currentTasks, moveOp);
 				const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
 
-				if (!targetColumn) return;
+				if (!targetColumn) {
+					moveOp = null;
+					renderView();
+					return;
+				}
 
 				const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
 
@@ -604,23 +630,24 @@ export async function renderBoardTui(
 					autoCommit: config?.autoCommit ?? false,
 				});
 
+				// Update local state to reflect the move without expensive reload
+				// Find and update the moved task in currentTasks
+				const movedTaskId = moveOp.taskId;
+				const newStatus = moveOp.targetStatus;
+				currentTasks = currentTasks.map((t) => (t.id === movedTaskId ? { ...t, status: newStatus } : t));
+
 				// Exit move mode
 				moveOp = null;
 
-				// Update UI
+				// Render with updated local state
 				renderView();
-
-				// Refresh board data
-				// We use loadBoardTasks instead of queryTasks to ensure consistency with the initial load,
-				// specifically to include remote tasks and potentially completed tasks if they were loaded initially.
-				// This prevents tasks from disappearing from the board after a move if they aren't in the local cache.
-				const allTasks = await core.loadBoardTasks();
-				updateBoard(allTasks, currentStatuses);
 			} catch (error) {
-				// Log error for debugging but prevent crash
+				// On error, cancel the move and restore original position
 				if (process.env.DEBUG) {
 					console.error("Move failed:", error);
 				}
+				moveOp = null;
+				renderView();
 			}
 		};
 		const cancelMove = () => {
@@ -642,9 +669,11 @@ export async function renderBoardTui(
 				const task = column.tasks[taskIndex];
 				if (!task) return;
 
-				// Enter move mode
+				// Enter move mode - store original position for cancel
 				moveOp = {
 					taskId: task.id,
+					originalStatus: column.status,
+					originalIndex: taskIndex,
 					targetStatus: column.status,
 					targetIndex: taskIndex,
 				};

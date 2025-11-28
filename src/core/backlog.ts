@@ -938,41 +938,22 @@ export class Core {
 			seen.add(id);
 		}
 
-		const completedTaskIds = new Set<string>();
+		// Load all tasks from the ordered list - only active tasks should be included
 		const loadedTasks = await Promise.all(
 			orderedTaskIds.map(async (id) => {
-				// Try loading active task first
 				const task = await this.fs.loadTask(id);
-
-				// If not found, try loading from completed tasks (for read-only context)
-				if (!task) {
-					const completedTasks = await this.fs.listCompletedTasks();
-					const completed = completedTasks.find((t) => t.id === id);
-					if (completed) {
-						completedTaskIds.add(id);
-						return completed;
-					}
-				}
 				return task;
 			}),
 		);
 
-		// Filter out missing tasks (truly missing, not just in completed)
+		// Filter out any tasks that couldn't be loaded (may have been moved/deleted)
 		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
 
 		// Verify the moved task itself exists
 		const movedTask = validTasks.find((t) => t.id === taskId);
 		if (!movedTask) {
-			throw new Error(`Task ${taskId} not found in active or completed tasks while reordering`);
+			throw new Error(`Task ${taskId} not found while reordering`);
 		}
-
-		// If the moved task itself is in completed, we shouldn't be moving it (per rules)
-		// But the UI might allow it if it's in the Done column.
-		// If we move a completed task, it essentially "revives" it to active if we save it.
-		// Let's assume reordering implies making it active/updated if it wasn't.
-		// ACTUALLY, if targetStatus is 'Done', it might stay completed?
-		// Let's just ensure we don't accidentally duplicate it.
-		// For now, let's stick to the plan: Treat completed neighbors as anchors.
 
 		// Calculate target index within the valid tasks list
 		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => t.id === id));
@@ -1014,16 +995,11 @@ export class Core {
 
 		const originalMap = new Map(validTasks.map((task) => [task.id, task]));
 		const changedTasks = Array.from(updatesMap.values()).filter((task) => {
-			// Don't update tasks that are in completed folder (read-only anchors)
-			// Unless it is the moved task itself (which we are explicitly modifying)
-			if (completedTaskIds.has(task.id) && task.id !== taskId) {
-				return false;
-			}
-
 			const original = originalMap.get(task.id);
 			if (!original) return true;
 			return (original.ordinal ?? null) !== (task.ordinal ?? null) || (original.status ?? "") !== (task.status ?? "");
 		});
+
 		if (changedTasks.length > 0) {
 			await this.updateTasksBulk(
 				changedTasks,
