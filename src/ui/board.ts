@@ -627,18 +627,17 @@ export async function renderBoardTui(
 				const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
 
 				// Persist the move using core API
-				await core.reorderTask({
+				const { updatedTask, changedTasks } = await core.reorderTask({
 					taskId: moveOp.taskId,
 					targetStatus: moveOp.targetStatus,
 					orderedTaskIds,
 					autoCommit: config?.autoCommit ?? false,
 				});
 
-				// Update local state to reflect the move without expensive reload
-				// Find and update the moved task in currentTasks
-				const movedTaskId = moveOp.taskId;
-				const newStatus = moveOp.targetStatus;
-				currentTasks = currentTasks.map((t) => (t.id === movedTaskId ? { ...t, status: newStatus } : t));
+				// Update local state with all changed tasks (includes ordinal updates)
+				const changedTasksMap = new Map(changedTasks.map((t) => [t.id, t]));
+				changedTasksMap.set(updatedTask.id, updatedTask);
+				currentTasks = currentTasks.map((t) => changedTasksMap.get(t.id) ?? t);
 
 				// Exit move mode
 				moveOp = null;
