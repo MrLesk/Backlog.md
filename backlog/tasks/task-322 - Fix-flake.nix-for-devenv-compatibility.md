@@ -34,7 +34,7 @@ PR #419 reported that when using the flake package in devenv.sh, running `backlo
 - [x] #2 The unnecessary `bun run build:css` step is removed from buildPhase
 - [x] #3 The x86_64-linux baseline Bun overlay for older CPUs (issue #412) is preserved
 - [x] #4 `nix build` produces a working `backlog` binary
-- [ ] #5 The flake package works correctly when used as a devenv input
+- [x] #5 The flake package works correctly when used as a devenv input
 - [x] #6 `nix develop` shell continues to work with all expected tooling
 - [x] #7 All existing tests pass
 <!-- AC:END -->
