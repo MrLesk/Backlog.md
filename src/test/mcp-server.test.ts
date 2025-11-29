@@ -13,6 +13,16 @@ import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
+// Helpers to extract text from MCP responses (handles union types)
+const getText = (content: unknown[] | undefined, index = 0): string => {
+	const item = content?.[index] as { text?: string } | undefined;
+	return item?.text ?? "";
+};
+const getContentsText = (contents: unknown[] | undefined, index = 0): string => {
+	const item = contents?.[index] as { text?: string } | undefined;
+	return item?.text ?? "";
+};
+
 let TEST_DIR: string;
 
 async function bootstrapServer(): Promise<McpServer> {
@@ -75,7 +85,7 @@ describe("McpServer bootstrap", () => {
 		});
 
 		expect(result.contents).toHaveLength(1);
-		expect(result.contents[0]?.text).toBe(MCP_WORKFLOW_OVERVIEW);
+		expect(getContentsText(result.contents)).toBe(MCP_WORKFLOW_OVERVIEW);
 		expect(result.contents[0]?.mimeType).toBe("text/markdown");
 
 		await server.stop();
@@ -89,7 +99,7 @@ describe("McpServer bootstrap", () => {
 		});
 
 		expect(result.contents).toHaveLength(1);
-		expect(result.contents[0]?.text).toBe(MCP_TASK_CREATION_GUIDE);
+		expect(getContentsText(result.contents)).toBe(MCP_TASK_CREATION_GUIDE);
 
 		await server.stop();
 	});
@@ -102,7 +112,7 @@ describe("McpServer bootstrap", () => {
 		});
 
 		expect(result.contents).toHaveLength(1);
-		expect(result.contents[0]?.text).toBe(MCP_TASK_EXECUTION_GUIDE);
+		expect(getContentsText(result.contents)).toBe(MCP_TASK_EXECUTION_GUIDE);
 
 		await server.stop();
 	});
@@ -115,7 +125,7 @@ describe("McpServer bootstrap", () => {
 		});
 
 		expect(result.contents).toHaveLength(1);
-		expect(result.contents[0]?.text).toBe(MCP_TASK_COMPLETION_GUIDE);
+		expect(getContentsText(result.contents)).toBe(MCP_TASK_COMPLETION_GUIDE);
 
 		await server.stop();
 	});
@@ -126,12 +136,12 @@ describe("McpServer bootstrap", () => {
 		const overview = await server.testInterface.callTool({
 			params: { name: "get_workflow_overview", arguments: {} },
 		});
-		expect(overview.content?.[0]?.text).toBe(MCP_WORKFLOW_OVERVIEW_TOOLS);
+		expect(getText(overview.content)).toBe(MCP_WORKFLOW_OVERVIEW_TOOLS);
 
 		const creation = await server.testInterface.callTool({
 			params: { name: "get_task_creation_guide", arguments: {} },
 		});
-		expect(creation.content?.[0]?.text).toBe(MCP_TASK_CREATION_GUIDE);
+		expect(getText(creation.content)).toBe(MCP_TASK_CREATION_GUIDE);
 
 		await server.stop();
 	});

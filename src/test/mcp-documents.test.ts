@@ -4,6 +4,12 @@ import { McpServer } from "../mcp/server.ts";
 import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
+// Helper to extract text from MCP content (handles union types)
+const getText = (content: unknown[] | undefined, index = 0): string => {
+	const item = content?.[index] as { text?: string } | undefined;
+	return item?.text ?? "";
+};
+
 let TEST_DIR: string;
 let mcpServer: McpServer;
 
@@ -50,7 +56,7 @@ describe("MCP document tools", () => {
 			},
 		});
 
-		const createText = createResult.content?.[0]?.text ?? "";
+		const createText = getText(createResult.content);
 		expect(createText).toContain("Document created successfully.");
 		expect(createText).toContain("Document doc-1 - Engineering Guidelines");
 		expect(createText).toContain("# Overview");
@@ -59,7 +65,7 @@ describe("MCP document tools", () => {
 			params: { name: "document_list", arguments: {} },
 		});
 
-		const listText = listResult.content?.[0]?.text ?? "";
+		const listText = getText(listResult.content);
 		expect(listText).toContain("Documents:");
 		expect(listText).toContain("doc-1 - Engineering Guidelines");
 		expect(listText).toContain("tags: (none)");
@@ -90,7 +96,7 @@ describe("MCP document tools", () => {
 			params: { name: "document_list", arguments: { search: "strat" } },
 		});
 
-		const filteredText = filteredResult.content?.[0]?.text ?? "";
+		const filteredText = getText(filteredResult.content);
 		expect(filteredText).toContain("Documents:");
 		expect(filteredText).toContain("Product Strategy");
 		expect(filteredText).not.toContain("Engineering Guidelines");
@@ -120,10 +126,10 @@ describe("MCP document tools", () => {
 			params: { name: "document_view", arguments: { id: "0001" } },
 		});
 
-		const prefixText = withPrefix.content?.[0]?.text ?? "";
-		const noPrefixText = withoutPrefix.content?.[0]?.text ?? "";
-		const uppercaseText = uppercase.content?.[0]?.text ?? "";
-		const zeroPaddedText = zeroPadded.content?.[0]?.text ?? "";
+		const prefixText = getText(withPrefix.content);
+		const noPrefixText = getText(withoutPrefix.content);
+		const uppercaseText = getText(uppercase.content);
+		const zeroPaddedText = getText(zeroPadded.content);
 		expect(prefixText).toContain("Document doc-1 - Runbook");
 		expect(prefixText).toContain("Step 1: Do the thing.");
 		expect(noPrefixText).toContain("Document doc-1 - Runbook");
@@ -153,7 +159,7 @@ describe("MCP document tools", () => {
 			},
 		});
 
-		const updateText = updateResult.content?.[0]?.text ?? "";
+		const updateText = getText(updateResult.content);
 		expect(updateText).toContain("Document updated successfully.");
 		expect(updateText).toContain("Document doc-1 - Incident Response Handbook");
 		expect(updateText).toContain("Updated procedures");
@@ -161,7 +167,7 @@ describe("MCP document tools", () => {
 		const viewResult = await mcpServer.testInterface.callTool({
 			params: { name: "document_view", arguments: { id: "doc-1" } },
 		});
-		const viewText = viewResult.content?.[0]?.text ?? "";
+		const viewText = getText(viewResult.content);
 		expect(viewText).toContain("Incident Response Handbook");
 		expect(viewText).toContain("Updated procedures");
 	});
@@ -186,7 +192,7 @@ describe("MCP document tools", () => {
 			},
 		});
 
-		const searchText = searchResult.content?.[0]?.text ?? "";
+		const searchText = getText(searchResult.content);
 		expect(searchText).toContain("Documents:");
 		expect(searchText).toMatch(/Architecture Overview/);
 		expect(searchText).toMatch(/\[score [0-1]\.\d{3}]/);

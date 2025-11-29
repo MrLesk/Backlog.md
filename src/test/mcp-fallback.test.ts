@@ -5,6 +5,12 @@ import { join } from "node:path";
 import { MCP_INIT_REQUIRED_GUIDE } from "../guidelines/mcp/index.ts";
 import { createMcpServer } from "../mcp/server.ts";
 
+// Helper to extract text from MCP contents (handles union types)
+const getContentsText = (contents: unknown[] | undefined, index = 0): string => {
+	const item = contents?.[index] as { text?: string } | undefined;
+	return item?.text ?? "";
+};
+
 describe("MCP Server Fallback Mode", () => {
 	let tempDir: string;
 
@@ -45,7 +51,7 @@ describe("MCP Server Fallback Mode", () => {
 
 		expect(result.contents).toHaveLength(1);
 		expect(result.contents[0]?.uri).toBe("backlog://init-required");
-		expect(result.contents[0]?.text).toBe(MCP_INIT_REQUIRED_GUIDE);
+		expect(getContentsText(result.contents)).toBe(MCP_INIT_REQUIRED_GUIDE);
 	});
 
 	test("should not provide task tools in fallback mode", async () => {

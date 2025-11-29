@@ -51,7 +51,7 @@ import indexHtml from "../web/index.html";
 
 export class BacklogServer {
 	private core: Core;
-	private server: Server | null = null;
+	private server: Server<unknown> | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
@@ -251,7 +251,7 @@ export class BacklogServer {
 						GET: async (req: Request) => await this.handleAssetRequest(req),
 					},
 				},
-				fetch: async (req: Request, server: Server) => {
+				fetch: async (req: Request, server: Server<unknown>) => {
 					return await this.handleRequest(req, server);
 				},
 				error: this.handleError.bind(this),
@@ -426,13 +426,13 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleRequest(req: Request, server: Server): Promise<Response> {
+	private async handleRequest(req: Request, server: Server<unknown>): Promise<Response> {
 		const url = new URL(req.url);
 		const pathname = url.pathname;
 
 		// Handle WebSocket upgrade
 		if (req.headers.get("upgrade") === "websocket") {
-			const success = server.upgrade(req);
+			const success = server.upgrade(req, { data: undefined });
 			if (success) {
 				return new Response(null, { status: 101 }); // WebSocket upgrade response
 			}
