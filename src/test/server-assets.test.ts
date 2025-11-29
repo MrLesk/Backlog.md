@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
-import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
+import { createTestDir, retry, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 let filesystem: FileSystem;
@@ -12,7 +12,7 @@ let serverPort = 0;
 
 describe("BacklogServer asset serving", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("server-assets");
+		TEST_DIR = await createTestDir("server-assets");
 		filesystem = new FileSystem(TEST_DIR);
 		await filesystem.ensureBacklogStructure();
 

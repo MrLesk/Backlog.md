@@ -1,21 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("CLI Splash (bare run)", () => {
 	beforeEach(async () => {
-		TEST_DIR = join(process.cwd(), `.tmp-test-${Math.random().toString(36).slice(2)}`);
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		TEST_DIR = await createTestDir("test-splash");
 		await mkdir(TEST_DIR, { recursive: true });
 	});
 
 	afterEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("prints minimal splash in non-initialized repo (non-TTY)", async () => {
@@ -29,9 +29,6 @@ describe("CLI Splash (bare run)", () => {
 
 	it("prints quickstart (initialized repo)", async () => {
 		// Initialize Git + project via Core
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name Test`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Splash Test");
 

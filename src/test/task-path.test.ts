@@ -1,24 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists } from "../utils/task-path.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Task path utilities", () => {
 	let TEST_DIR: string;
 	let core: Core;
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-task-path");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
-		await mkdir(TEST_DIR, { recursive: true });
-
+		TEST_DIR = await createTestDir("test-task-path");
 		// Configure git for tests - required for CI
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
 		await core.initializeProject("Test Project");

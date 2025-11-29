@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -11,15 +10,9 @@ describe("CLI description newline handling", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-desc-newlines");
+		TEST_DIR = await createTestDir("test-desc-newlines");
 		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
 		} catch {}
-		await mkdir(TEST_DIR, { recursive: true });
-
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email "test@example.com"`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Desc Newlines Test Project");

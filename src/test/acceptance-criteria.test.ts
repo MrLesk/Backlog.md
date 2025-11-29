@@ -1,23 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Acceptance Criteria CLI", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-acceptance-criteria");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
-		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
+		TEST_DIR = await createTestDir("test-acceptance-criteria");
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("AC Test Project");
 	});
@@ -461,13 +454,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 	const CLI_PATH_UNIT = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		TEST_DIR_UNIT = createUniqueTestDir("test-acceptance-criteria-unit");
-		await rm(TEST_DIR_UNIT, { recursive: true, force: true }).catch(() => {});
-		await mkdir(TEST_DIR_UNIT, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR_UNIT).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR_UNIT).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR_UNIT).quiet();
-
+		TEST_DIR_UNIT = await createTestDir("test-acceptance-criteria-unit");
 		const core = new Core(TEST_DIR_UNIT);
 		await core.initializeProject("AC Unit Test Project");
 	});

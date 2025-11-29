@@ -6,18 +6,15 @@ import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { editTaskPlatformAware } from "./test-helpers.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-notes");
+		TEST_DIR = await createTestDir("test-notes");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Implementation Notes Test Project");

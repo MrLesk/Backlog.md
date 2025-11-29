@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -11,12 +11,8 @@ describe("CLI search command", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-search");
+		TEST_DIR = await createTestDir("test-cli-search");
 		await mkdir(TEST_DIR, { recursive: true });
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Search Command Project");

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
@@ -11,18 +11,14 @@ let TEST_DIR: string;
 
 describe("CLI Zero Padded IDs Feature", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-zero-padded-ids");
+		TEST_DIR = await createTestDir("test-zero-padded-ids");
 		try {
 			await rm(TEST_DIR, { recursive: true, force: true });
 		} catch {
 			// Ignore cleanup errors
 		}
-		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git and backlog project
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Padding Test", false); // No auto-commit for init

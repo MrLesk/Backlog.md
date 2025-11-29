@@ -1,21 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createTaskPlatformAware, getCliHelpPlatformAware } from "./test-helpers.ts";
+import { createTestDir } from "./test-utils.ts";
 
 describe("CLI parent shorthand option", () => {
 	let testDir: string;
 
 	beforeAll(async () => {
-		testDir = await mkdtemp(join(tmpdir(), "backlog-test-"));
-
-		// Initialize git repository first to avoid interactive prompts
-		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
+		testDir = await createTestDir("backlog-test-parent-shorthand");
 
 		// Initialize backlog project using Core (simulating CLI)
 		const core = new Core(testDir);

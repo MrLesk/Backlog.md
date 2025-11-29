@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ContentStore, type ContentStoreEvent } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
-import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
+import { createTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -43,7 +43,7 @@ describe("ContentStore", () => {
 	};
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-content-store");
+		TEST_DIR = await createTestDir("test-content-store");
 		filesystem = new FileSystem(TEST_DIR);
 		await filesystem.ensureBacklogStructure();
 		store = new ContentStore(filesystem);

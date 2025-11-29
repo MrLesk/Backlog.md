@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Decision, Document, Task } from "../types";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -14,14 +13,9 @@ describe("CLI ID Incrementing Behavior", () => {
 	let core: Core;
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-incrementing-ids");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
-		await mkdir(TEST_DIR, { recursive: true });
+		TEST_DIR = await createTestDir("test-cli-incrementing-ids");
 		core = new Core(TEST_DIR);
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		await core.initializeProject("ID Incrementing Test");
 	});

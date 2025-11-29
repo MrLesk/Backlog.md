@@ -1,27 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { writeFile } from "node:fs/promises";
 import { join, join as joinPath } from "node:path";
 import { $ } from "bun";
 import { loadRemoteTasks } from "../core/remote-tasks.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Missing git remote preflight", () => {
 	let tempDir: string;
 
 	beforeEach(async () => {
-		tempDir = await mkdtemp(join(tmpdir(), "backlog-noremote-"));
-		await $`git init`.cwd(tempDir).quiet();
-		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
-		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
+		tempDir = await createTestDir("backlog-noremote");
 		await writeFile(join(tempDir, "README.md"), "# Test");
 		await $`git add README.md`.cwd(tempDir).quiet();
 		await $`git commit -m "init"`.cwd(tempDir).quiet();
 	});
 
 	afterEach(async () => {
-		await rm(tempDir, { recursive: true, force: true });
+		await safeCleanup(tempDir);
 	});
 
 	it("GitOperations.fetch() silently skips when no remotes exist", async () => {

@@ -1,22 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig } from "../types/index.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Offline Integration Tests", () => {
 	let tempDir: string;
 	let core: Core;
 
 	beforeEach(async () => {
-		tempDir = await mkdtemp(join(tmpdir(), "backlog-offline-integration-"));
-
-		// Initialize a git repo without remote
-		await $`git init`.cwd(tempDir).quiet();
-		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
-		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
+		tempDir = await createTestDir("backlog-offline-integration");
 
 		// Create initial commit
 		await writeFile(join(tempDir, "README.md"), "# Test Project");
@@ -56,7 +51,7 @@ remote_operations: false
 
 	afterEach(async () => {
 		if (tempDir) {
-			await rm(tempDir, { recursive: true, force: true });
+			await safeCleanup(tempDir);
 		}
 	});
 

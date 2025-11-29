@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const isWindows = platform() === "win32";
@@ -11,9 +10,7 @@ const executableName = isWindows ? "backlog.exe" : "backlog";
 
 describe("CLI packaging", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-build");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
-		await mkdir(TEST_DIR, { recursive: true });
+		TEST_DIR = await createTestDir("test-build");
 	});
 
 	afterEach(async () => {

@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
 import {
 	MCP_TASK_COMPLETION_GUIDE,
 	MCP_TASK_CREATION_GUIDE,
@@ -11,7 +10,7 @@ import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 // Helpers to extract text from MCP responses (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -26,14 +25,11 @@ const getContentsText = (contents: unknown[] | undefined, index = 0): string => 
 let TEST_DIR: string;
 
 async function bootstrapServer(): Promise<McpServer> {
-	TEST_DIR = createUniqueTestDir("mcp-server");
+	TEST_DIR = await createTestDir("mcp-server");
 	// Use normal mode instructions for bootstrapped test server
 	const server = new McpServer(TEST_DIR, "Test instructions");
 
 	await server.filesystem.ensureBacklogStructure();
-	await $`git init -b main`.cwd(TEST_DIR).quiet();
-	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 	await server.initializeProject("Test Project");
 
@@ -186,13 +182,11 @@ describe("McpServer bootstrap", () => {
 	});
 
 	it("createMcpServer wires stdio-ready instance", async () => {
-		TEST_DIR = createUniqueTestDir("mcp-server-factory");
+		TEST_DIR = await createTestDir("mcp-server-factory");
 
 		const bootstrap = new McpServer(TEST_DIR, "Bootstrap instructions");
 		await bootstrap.filesystem.ensureBacklogStructure();
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
 		await bootstrap.initializeProject("Factory Project");
 		await bootstrap.stop();
 

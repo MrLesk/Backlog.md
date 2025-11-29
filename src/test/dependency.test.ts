@@ -1,30 +1,21 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Task Dependencies", () => {
 	let tempDir: string;
 	let core: Core;
 
 	beforeEach(async () => {
-		tempDir = mkdtempSync(join(tmpdir(), "backlog-dependency-test-"));
-
-		// Initialize git repository first using the same pattern as other tests
-		await $`git init -b main`.cwd(tempDir).quiet();
-		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
-		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
-
+		tempDir = await createTestDir("backlog-dependency-test");
 		core = new Core(tempDir);
 		await core.initializeProject("test-project");
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		try {
-			rmSync(tempDir, { recursive: true, force: true });
+			await safeCleanup(tempDir);
 		} catch (error) {
 			console.warn(`Failed to clean up temp directory: ${error}`);
 		}

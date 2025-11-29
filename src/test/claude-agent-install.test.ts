@@ -4,13 +4,13 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { installClaudeAgent } from "../agent-instructions.ts";
 import { CLAUDE_AGENT_CONTENT } from "../constants/index.ts";
-import { createUniqueTestDir } from "./test-utils.ts";
+import { createTestDir } from "./test-utils.ts";
 
 describe("installClaudeAgent", () => {
 	let TEST_PROJECT: string;
 
 	beforeEach(async () => {
-		TEST_PROJECT = createUniqueTestDir("test-claude-agent");
+		TEST_PROJECT = await createTestDir("test-claude-agent");
 		await rm(TEST_PROJECT, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_PROJECT, { recursive: true });
 	});

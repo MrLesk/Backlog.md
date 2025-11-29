@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 // Helper to extract text from MCP content (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -25,13 +24,9 @@ async function loadConfig(server: McpServer) {
 
 describe("MCP task tools (MVP)", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("mcp-tasks");
+		TEST_DIR = await createTestDir("mcp-tasks");
 		mcpServer = new McpServer(TEST_DIR, "Test instructions");
 		await mcpServer.filesystem.ensureBacklogStructure();
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		await mcpServer.initializeProject("Test Project");
 

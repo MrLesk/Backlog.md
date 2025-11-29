@@ -11,7 +11,7 @@ import type {
 	Task,
 	TaskSearchResult,
 } from "../types/index.ts";
-import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
+import { createTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -54,7 +54,7 @@ describe("SearchService", () => {
 	};
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("search-service");
+		TEST_DIR = await createTestDir("search-service");
 		filesystem = new FileSystem(TEST_DIR);
 		await filesystem.ensureBacklogStructure();
 		store = new ContentStore(filesystem);

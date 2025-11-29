@@ -3,7 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -11,7 +11,7 @@ describe("FileSystem", () => {
 	let filesystem: FileSystem;
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-backlog");
+		TEST_DIR = await createTestDir("test-backlog");
 		filesystem = new FileSystem(TEST_DIR);
 		await filesystem.ensureBacklogStructure();
 	});

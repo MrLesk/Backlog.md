@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	_loadAgentGuideline,
@@ -11,15 +10,13 @@ import {
 	GEMINI_GUIDELINES,
 	README_GUIDELINES,
 } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
 describe("addAgentInstructions", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-agent-instructions");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
-		await mkdir(TEST_DIR, { recursive: true });
+		TEST_DIR = await createTestDir("test-agent-instructions");
 	});
 
 	afterEach(async () => {

@@ -1,25 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
-async function initGitRepo(dir: string) {
-	await $`git init -b main`.cwd(dir).quiet();
-	await $`git config user.name "Test User"`.cwd(dir).quiet();
-	await $`git config user.email test@example.com`.cwd(dir).quiet();
-}
-
 describe("CLI parent task id normalization", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-parent-normalization");
-		await mkdir(TEST_DIR, { recursive: true });
-		await initGitRepo(TEST_DIR);
+		TEST_DIR = await createTestDir("test-parent-normalization");
 	});
 
 	afterEach(async () => {

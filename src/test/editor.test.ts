@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BacklogConfig } from "../types/index.ts";
 import { isEditorAvailable, openInEditor, resolveEditor } from "../utils/editor.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Editor utilities", () => {
 	let originalEditor: string | undefined;
@@ -117,7 +117,7 @@ describe("Editor utilities", () => {
 		let testFile: string;
 
 		beforeEach(async () => {
-			TEST_DIR = createUniqueTestDir("test-editor");
+			TEST_DIR = await createTestDir("test-editor");
 			testFile = join(TEST_DIR, "test.txt");
 			await mkdir(TEST_DIR, { recursive: true });
 			await writeFile(testFile, "Test content");

@@ -4,18 +4,83 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 
 /**
- * Creates a unique test directory name to avoid conflicts in parallel execution
- * All test directories are created under tmp/ to keep the root directory clean
+ * Creates a unique test directory path to avoid conflicts in parallel execution.
+ * All test directories are created under tmp/ to keep the root directory clean.
+ * NOTE: This only generates the path, it doesn't create the directory.
  */
-export function createUniqueTestDir(prefix: string): string {
+function createUniqueTestPath(prefix: string): string {
 	const uuid = randomUUID().slice(0, 8); // Short UUID for readability
 	const timestamp = Date.now().toString(36); // Base36 timestamp
 	const pid = process.pid.toString(36); // Process ID for additional uniqueness
 	return join(process.cwd(), "tmp", `${prefix}-${timestamp}-${pid}-${uuid}`);
+}
+
+// Singleton template directory for git repos - initialized once per test run
+let gitTemplateDir: string | null = null;
+let templateInitPromise: Promise<string> | null = null;
+
+/**
+ * Gets or creates a pre-initialized git template directory.
+ * This is a MAJOR Windows optimization: instead of running `git init` + `git config`
+ * for every test (~3 process spawns × ~80ms each on Windows = ~240ms/test),
+ * we initialize once and copy the directory (~10ms on Windows).
+ *
+ * Performance impact: ~45 test files × 240ms savings = ~10+ seconds on Windows
+ */
+async function getGitTemplate(): Promise<string> {
+	if (gitTemplateDir) return gitTemplateDir;
+
+	// Use a promise to prevent race conditions during parallel test startup
+	if (!templateInitPromise) {
+		templateInitPromise = (async () => {
+			const templatePath = join(process.cwd(), "tmp", ".git-template");
+			await mkdir(templatePath, { recursive: true });
+
+			// Check if already initialized (from a previous test run in same process)
+			const gitDir = join(templatePath, ".git");
+			try {
+				const stat = await Bun.file(join(gitDir, "HEAD")).exists();
+				if (stat) {
+					gitTemplateDir = templatePath;
+					return templatePath;
+				}
+			} catch {
+				// Not initialized yet
+			}
+
+			// Initialize the template repo once
+			await $`git init -b main`.cwd(templatePath).quiet();
+			await $`git config user.name "Test User"`.cwd(templatePath).quiet();
+			await $`git config user.email test@example.com`.cwd(templatePath).quiet();
+
+			gitTemplateDir = templatePath;
+			return templatePath;
+		})();
+	}
+
+	return templateInitPromise;
+}
+
+/**
+ * Creates a unique test directory with a pre-initialized git repository.
+ * This is 20-30x faster than running git init in each test on Windows.
+ *
+ * @param prefix - Prefix for the directory name
+ * @returns Path to the new test directory with git already initialized
+ */
+export async function createTestDir(prefix: string): Promise<string> {
+	const testDir = createUniqueTestPath(prefix);
+
+	// Get the template and copy it
+	const template = await getGitTemplate();
+	await cp(template, testDir, { recursive: true });
+
+	return testDir;
 }
 
 /**

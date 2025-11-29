@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { Core } from "../index.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
 describe("Docs recursive listing and ID generation", () => {
 	beforeEach(async () => {
-		TEST_DIR = join(process.cwd(), `.tmp-test-docs-${Math.random().toString(36).slice(2)}`);
-		await rm(TEST_DIR, { recursive: true, force: true });
-		await mkdir(TEST_DIR, { recursive: true });
+		TEST_DIR = await createTestDir("test-docs-recursive");
 
 		// Init backlog project
 		const core = new Core(TEST_DIR);
@@ -24,7 +21,7 @@ describe("Docs recursive listing and ID generation", () => {
 	});
 
 	afterEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true });
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("lists and views documents from subdirectories and generates unique IDs", async () => {

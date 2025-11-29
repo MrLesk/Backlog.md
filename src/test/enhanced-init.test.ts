@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Enhanced init command", () => {
 	let tmpDir: string;
 
 	beforeEach(async () => {
-		tmpDir = createUniqueTestDir("test-enhanced-init");
+		tmpDir = await createTestDir("test-enhanced-init");
 	});
 
 	afterEach(async () => {
