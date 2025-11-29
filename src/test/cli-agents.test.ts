@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createGitTestDir, createUniqueTestDir, initGitInDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -11,14 +11,7 @@ describe("CLI agents command", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-agents-cli");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
-		await mkdir(TEST_DIR, { recursive: true });
-
-		// Initialize git repo first
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		TEST_DIR = await createGitTestDir("test-agents-cli");
 
 		// Initialize backlog project using Core
 		const core = new Core(TEST_DIR);
@@ -79,26 +72,18 @@ describe("CLI agents command", () => {
 
 	it("should fail when not in a backlog project", async () => {
 		// Use OS temp directory to ensure complete isolation from project
-		const tempDir = await import("node:os").then((os) => os.tmpdir());
-		const nonBacklogDir = join(tempDir, `test-non-backlog-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+		const nonBacklogDir = createUniqueTestDir("test-non-backlog");
 
-		// Ensure clean state first
-		await rm(nonBacklogDir, { recursive: true, force: true }).catch(() => {});
-
-		// Create a temporary directory that's not a backlog project
+		// Create a git repo without backlog project
 		await mkdir(nonBacklogDir, { recursive: true });
-
-		// Initialize git repo
-		await $`git init`.cwd(nonBacklogDir).quiet();
-		await $`git config user.name "Test User"`.cwd(nonBacklogDir).quiet();
-		await $`git config user.email test@example.com`.cwd(nonBacklogDir).quiet();
+		await initGitInDir(nonBacklogDir);
 
 		const result = await $`bun ${cliPath} agents --update-instructions`.cwd(nonBacklogDir).nothrow().quiet();
 
 		expect(result.exitCode).toBe(1);
 
 		// Cleanup
-		await rm(nonBacklogDir, { recursive: true, force: true }).catch(() => {});
+		await safeCleanup(nonBacklogDir);
 	});
 
 	it("should update multiple selected files", async () => {

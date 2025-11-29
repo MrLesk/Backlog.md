@@ -5,7 +5,7 @@ import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initGitInDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -19,9 +19,7 @@ describe("Config commands", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await initGitInDir(TEST_DIR);
 
 		core = new Core(TEST_DIR);
 		await core.initializeProject("Test Config Project");

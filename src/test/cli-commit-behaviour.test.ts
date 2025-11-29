@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { GitOperations } from "../git/operations.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createGitTestDir, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
@@ -19,14 +19,11 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	let git: GitOperations;
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-commit-false");
+		TEST_DIR = await createGitTestDir("test-cli-commit-false");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		git = new GitOperations(TEST_DIR);
@@ -100,13 +97,9 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	let git: GitOperations;
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-commit-true");
+		TEST_DIR = await createGitTestDir("test-cli-commit-true");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
-
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		git = new GitOperations(TEST_DIR);

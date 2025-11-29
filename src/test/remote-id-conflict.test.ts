@@ -3,18 +3,12 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initGitInDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 let REMOTE_DIR: string;
 let LOCAL_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
-
-async function initRepo(dir: string) {
-	await $`git init -b main`.cwd(dir).quiet();
-	await $`git config user.name Test`.cwd(dir).quiet();
-	await $`git config user.email test@example.com`.cwd(dir).quiet();
-}
 
 describe("next id across remote branches", () => {
 	beforeAll(async () => {
@@ -24,7 +18,7 @@ describe("next id across remote branches", () => {
 		await mkdir(REMOTE_DIR, { recursive: true });
 		await $`git init --bare -b main`.cwd(REMOTE_DIR).quiet();
 		await mkdir(LOCAL_DIR, { recursive: true });
-		await initRepo(LOCAL_DIR);
+		await initGitInDir(LOCAL_DIR);
 		await $`git remote add origin ${REMOTE_DIR}`.cwd(LOCAL_DIR).quiet();
 
 		const core = new Core(LOCAL_DIR);

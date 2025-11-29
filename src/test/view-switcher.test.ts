@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { type ViewState, ViewSwitcher } from "../ui/view-switcher.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initGitInDir, safeCleanup } from "./test-utils.ts";
 
 describe("View Switcher", () => {
 	let TEST_DIR: string;
@@ -15,9 +14,7 @@ describe("View Switcher", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await initGitInDir(TEST_DIR);
 
 		core = new Core(TEST_DIR);
 		await core.initializeProject("Test View Switcher Project");

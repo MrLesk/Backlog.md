@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createGitTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -24,7 +23,7 @@ describe("Cleanup functionality", () => {
 	};
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cleanup");
+		TEST_DIR = await createGitTestDir("test-cleanup");
 		try {
 			await rm(TEST_DIR, { recursive: true, force: true });
 		} catch {
@@ -33,9 +32,6 @@ describe("Cleanup functionality", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project
 		core = new Core(TEST_DIR);
