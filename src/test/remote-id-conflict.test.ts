@@ -1,24 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createTestDir, safeCleanup } from "./test-utils.ts";
 
-let TEST_DIR: string;
 let REMOTE_DIR: string;
 let LOCAL_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("next id across remote branches", () => {
 	beforeAll(async () => {
-		// Create local repo with git already initialized
+		// Create two separate test directories
 		LOCAL_DIR = await createTestDir("test-remote-id-local");
-		TEST_DIR = join(LOCAL_DIR, "..");
-		REMOTE_DIR = join(TEST_DIR, "remote.git");
+		REMOTE_DIR = await createTestDir("test-remote-id-remote");
 
-		// Create bare remote repo
-		await mkdir(REMOTE_DIR, { recursive: true });
+		// Re-initialize REMOTE_DIR as a bare repo (createTestDir gives us a normal repo)
+		await $`rm -rf .git`.cwd(REMOTE_DIR).quiet();
 		await $`git init --bare -b main`.cwd(REMOTE_DIR).quiet();
 
 		// Link local to remote
@@ -49,11 +46,9 @@ describe("next id across remote branches", () => {
 	});
 
 	afterAll(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		// Clean up both directories separately
+		await safeCleanup(LOCAL_DIR).catch(() => {});
+		await safeCleanup(REMOTE_DIR).catch(() => {});
 	});
 
 	it("uses id after highest remote task", async () => {
