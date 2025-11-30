@@ -1,7 +1,7 @@
 ---
 id: task-323
 title: Optimize Windows CI with shared git template
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-11-29 22:20'
 updated_date: '2025-11-30 13:00'
@@ -76,8 +76,8 @@ export async function initGitInDir(targetDir: string): Promise<void>
 - [x] #2 test-utils.ts contains getGitTemplate(), createGitTestDir(), and initGitInDir() functions
 - [x] #3 All tests pass on macOS/Linux (bun test)
 - [x] #4 All lint/format checks pass (bun run check)
-- [ ] #5 Windows CI time reduced to under 90 seconds
-- [ ] #6 No behavioral changes to tests - same isolation guarantees
+- [x] #5 Windows CI time reduced to under 90 seconds
+- [x] #6 No behavioral changes to tests - same isolation guarantees
 <!-- AC:END -->
 
 ## Implementation Plan
