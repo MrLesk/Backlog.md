@@ -9,6 +9,7 @@ import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import TaskDetailsModal from './components/TaskDetailsModal';
+import InitializationScreen from './components/InitializationScreen';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import {
@@ -33,6 +34,9 @@ function App() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
   
+  // Initialization state
+  const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
+  
   // Centralized data state
   const [tasks, setTasks] = useState<Task[]>([]);
   const [docs, setDocs] = useState<Document[]>([]);
@@ -50,6 +54,25 @@ function App() {
         document.body.setAttribute('data-version', `Backlog.md - v${version}`);
       }
     });
+  }, []);
+
+  // Check initialization status on mount
+  React.useEffect(() => {
+    const checkInitStatus = async () => {
+      try {
+        const status = await apiClient.checkStatus();
+        setIsInitialized(status.initialized);
+      } catch (error) {
+        // If we can't check status, assume not initialized
+        console.error('Failed to check initialization status:', error);
+        setIsInitialized(false);
+      }
+    };
+    checkInitStatus();
+  }, []);
+
+  const handleInitialized = useCallback(() => {
+    setIsInitialized(true);
   }, []);
 
   const applySearchResults = useCallback((results: SearchResult[]) => {
@@ -82,8 +105,11 @@ function App() {
   }, [applySearchResults]);
 
   React.useEffect(() => {
-    loadAllData();
-  }, [loadAllData]);
+    // Only load data when initialized
+    if (isInitialized === true) {
+      loadAllData();
+    }
+  }, [loadAllData, isInitialized]);
 
   // Reload data when connection is restored
   React.useEffect(() => {
@@ -214,6 +240,26 @@ function App() {
       console.error('Failed to archive task:', error);
     }
   };
+
+  // Show loading state while checking initialization
+  if (isInitialized === null) {
+    return (
+      <ThemeProvider>
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+          <div className="text-lg text-gray-600 dark:text-gray-300">Loading...</div>
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Show initialization screen if not initialized
+  if (isInitialized === false) {
+    return (
+      <ThemeProvider>
+        <InitializationScreen onInitialized={handleInitialized} />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider>

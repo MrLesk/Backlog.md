@@ -3,6 +3,7 @@ import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
+import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
@@ -230,6 +231,12 @@ export class BacklogServer {
 					},
 					"/api/statistics": {
 						GET: async () => await this.handleGetStatistics(),
+					},
+					"/api/status": {
+						GET: async () => await this.handleGetStatus(),
+					},
+					"/api/init": {
+						POST: async (req: Request) => await this.handleInit(req),
 					},
 					"/api/search": {
 						GET: async (req: Request) => await this.handleSearch(req),
@@ -1117,6 +1124,74 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error getting statistics:", error);
 			return Response.json({ error: "Failed to get statistics" }, { status: 500 });
+		}
+	}
+
+	private async handleGetStatus(): Promise<Response> {
+		try {
+			const config = await this.core.filesystem.loadConfig();
+			return Response.json({
+				initialized: !!config,
+				projectPath: this.core.filesystem.rootDir,
+			});
+		} catch (error) {
+			console.error("Error getting status:", error);
+			return Response.json({
+				initialized: false,
+				projectPath: this.core.filesystem.rootDir,
+			});
+		}
+	}
+
+	private async handleInit(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const projectName = typeof body.projectName === "string" ? body.projectName.trim() : "";
+			const integrationMode = body.integrationMode as "mcp" | "cli" | "none" | undefined;
+			const mcpClients = Array.isArray(body.mcpClients) ? body.mcpClients : [];
+			const agentInstructions = Array.isArray(body.agentInstructions) ? body.agentInstructions : [];
+			const installClaudeAgentFlag = Boolean(body.installClaudeAgent);
+			const advancedConfig = body.advancedConfig || {};
+
+			// Input validation (browser layer responsibility)
+			if (!projectName) {
+				return Response.json({ error: "Project name is required" }, { status: 400 });
+			}
+
+			// Check if already initialized (for browser, we don't allow re-init)
+			const existingConfig = await this.core.filesystem.loadConfig();
+			if (existingConfig) {
+				return Response.json({ error: "Project is already initialized" }, { status: 400 });
+			}
+
+			// Call shared core init function
+			const result = await initializeProject(this.core, {
+				projectName,
+				integrationMode: integrationMode || "none",
+				mcpClients,
+				agentInstructions,
+				installClaudeAgent: installClaudeAgentFlag,
+				advancedConfig,
+				existingConfig: null,
+			});
+
+			// Update server's project name
+			this.projectName = result.projectName;
+
+			// Ensure config watcher is set up now that config file exists
+			if (this.contentStore) {
+				this.contentStore.ensureConfigWatcher();
+			}
+
+			return Response.json({
+				success: result.success,
+				projectName: result.projectName,
+				mcpResults: result.mcpResults,
+			});
+		} catch (error) {
+			console.error("Error initializing project:", error);
+			const message = error instanceof Error ? error.message : "Failed to initialize project";
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 }

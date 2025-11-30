@@ -11,6 +11,7 @@ import { type CompletionInstallResult, installCompletion, registerCompletionComm
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
+import { initializeProject } from "./core/init.ts";
 import { computeSequences } from "./core/sequences.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
@@ -805,27 +806,28 @@ program
 						advancedConfigured = true;
 					}
 				}
-				// Prepare configuration object preserving existing values
-				const config = {
+				// Call shared core init function
+				const initResult = await initializeProject(core, {
 					projectName: name,
-					statuses: existingConfig?.statuses || ["To Do", "In Progress", "Done"],
-					labels: existingConfig?.labels || [],
-					milestones: existingConfig?.milestones || [],
-					defaultStatus: existingConfig?.defaultStatus || "To Do",
-					dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
-					maxColumnWidth: existingConfig?.maxColumnWidth || 20,
-					autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? false,
-					remoteOperations: advancedConfig.remoteOperations ?? true,
-					bypassGitHooks: advancedConfig.bypassGitHooks ?? false,
-					checkActiveBranches: advancedConfig.checkActiveBranches ?? true,
-					activeBranchDays: advancedConfig.activeBranchDays ?? 30,
-					...(advancedConfig.defaultEditor ? { defaultEditor: advancedConfig.defaultEditor } : {}),
-					defaultPort: advancedConfig.defaultPort ?? 6420,
-					autoOpenBrowser: advancedConfig.autoOpenBrowser ?? true,
-					...(typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0
-						? { zeroPaddedIds: advancedConfig.zeroPaddedIds }
-						: {}),
-				};
+					integrationMode: integrationMode || "none",
+					mcpClients: [], // MCP clients are handled separately in CLI with interactive prompts
+					agentInstructions: agentFiles,
+					installClaudeAgent: installClaudeAgentSelection,
+					advancedConfig: {
+						checkActiveBranches: advancedConfig.checkActiveBranches,
+						remoteOperations: advancedConfig.remoteOperations,
+						activeBranchDays: advancedConfig.activeBranchDays,
+						bypassGitHooks: advancedConfig.bypassGitHooks,
+						autoCommit: advancedConfig.autoCommit,
+						zeroPaddedIds: advancedConfig.zeroPaddedIds,
+						defaultEditor: advancedConfig.defaultEditor,
+						defaultPort: advancedConfig.defaultPort,
+						autoOpenBrowser: advancedConfig.autoOpenBrowser,
+					},
+					existingConfig,
+				});
+
+				const config = initResult.config;
 
 				// Show configuration summary
 				console.log("\nInitialization Summary:");
@@ -898,31 +900,25 @@ program
 					);
 				}
 
-				// Initialize or update project
-				if (isReInitialization) {
-					await core.filesystem.saveConfig(config);
+				// Log init result
+				if (initResult.isReInitialization) {
 					console.log(`Updated backlog project configuration: ${name}`);
 				} else {
-					await core.filesystem.ensureBacklogStructure();
-					await core.filesystem.saveConfig(config);
-					await core.ensureConfigLoaded();
 					console.log(`Initialized backlog project: ${name}`);
 				}
 
-				// Add agent instruction files if selected
+				// Log agent files result from shared init
 				if (integrationMode === "cli") {
-					if (agentFiles.length > 0) {
-						await addAgentInstructions(cwd, core.gitOps, agentFiles, config.autoCommit);
-						console.log(`✓ Created agent instruction files: ${agentFiles.join(", ")}`);
+					if (initResult.mcpResults?.agentFiles) {
+						console.log(`✓ ${initResult.mcpResults.agentFiles}`);
 					} else if (agentInstructionsSkipped) {
 						console.log("Skipping agent instruction files per selection.");
 					}
 				}
 
-				// Install Claude agent if selected
-				if (integrationMode === "cli" && installClaudeAgentSelection) {
-					await installClaudeAgent(cwd);
-					console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
+				// Log Claude agent result from shared init
+				if (integrationMode === "cli" && initResult.mcpResults?.claudeAgent) {
+					console.log(`✓ Claude Code Backlog.md agent ${initResult.mcpResults.claudeAgent}`);
 				}
 
 				// Final warning if remote operations were enabled but no git remotes are configured

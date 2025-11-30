@@ -45,6 +45,7 @@ export class ContentStore {
 	private restoreFilesystemPatch?: () => void;
 	private chainTail: Promise<void> = Promise.resolve();
 	private watchersInitialized = false;
+	private configWatcherActive = false;
 
 	private attachWatcherErrorHandler(watcher: FSWatcher, context: string): void {
 		watcher.on("error", (error) => {
@@ -240,10 +241,32 @@ export class ContentStore {
 			const configWatcher = this.createConfigWatcher();
 			if (configWatcher) {
 				this.watchers.push(configWatcher);
+				this.configWatcherActive = true;
 			}
 		} catch (error) {
 			if (process.env.DEBUG) {
 				console.error("Failed to initialize config watcher", error);
+			}
+		}
+	}
+
+	/**
+	 * Retry setting up the config watcher after initialization.
+	 * Called when the config file is created after the server started.
+	 */
+	ensureConfigWatcher(): void {
+		if (this.configWatcherActive) {
+			return;
+		}
+		try {
+			const configWatcher = this.createConfigWatcher();
+			if (configWatcher) {
+				this.watchers.push(configWatcher);
+				this.configWatcherActive = true;
+			}
+		} catch (error) {
+			if (process.env.DEBUG) {
+				console.error("Failed to setup config watcher after init", error);
 			}
 		}
 	}

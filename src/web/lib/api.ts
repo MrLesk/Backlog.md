@@ -388,6 +388,37 @@ export class ApiClient {
 			TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
 		>(`${API_BASE}/statistics`);
 	}
+
+	async checkStatus(): Promise<{ initialized: boolean; projectPath: string }> {
+		return this.fetchJson<{ initialized: boolean; projectPath: string }>(`${API_BASE}/status`);
+	}
+
+	async initializeProject(options: {
+		projectName: string;
+		integrationMode: "mcp" | "cli" | "none";
+		mcpClients?: ("claude" | "codex" | "gemini" | "guide")[];
+		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];
+		installClaudeAgent?: boolean;
+		advancedConfig?: {
+			checkActiveBranches?: boolean;
+			remoteOperations?: boolean;
+			activeBranchDays?: number;
+			bypassGitHooks?: boolean;
+			autoCommit?: boolean;
+			zeroPaddedIds?: number;
+			defaultEditor?: string;
+			defaultPort?: number;
+			autoOpenBrowser?: boolean;
+		};
+	}): Promise<{ success: boolean; projectName: string; mcpResults?: Record<string, string> }> {
+		return this.fetchJson<{ success: boolean; projectName: string; mcpResults?: Record<string, string> }>(
+			`${API_BASE}/init`,
+			{
+				method: "POST",
+				body: JSON.stringify(options),
+			},
+		);
+	}
 }
 
 export const apiClient = new ApiClient();
