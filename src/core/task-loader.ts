@@ -260,3 +260,96 @@ export function chooseWinners(
 
 	return winners;
 }
+
+/**
+ * Find and load a specific task from remote branches
+ * Searches through recent remote branches for the task and returns the newest version
+ */
+export async function findTaskInRemoteBranches(
+	git: GitOperations,
+	taskId: string,
+	backlogDir = "backlog",
+	sinceDays = 30,
+): Promise<Task | null> {
+	try {
+		// Check if we have any remote
+		if (!(await git.hasAnyRemote())) return null;
+
+		// Get recent remote branches
+		const branches = await git.listRecentRemoteBranches(sinceDays);
+		if (branches.length === 0) return null;
+
+		// Build task index for remote branches
+		const remoteIndex = await buildRemoteTaskIndex(git, branches, backlogDir, sinceDays);
+
+		// Check if the task exists in the index
+		const entries = remoteIndex.get(taskId);
+		if (!entries || entries.length === 0) return null;
+
+		// Get the newest version
+		const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+
+		// Hydrate the task
+		const ref = `origin/${best.branch}`;
+		const content = await git.showFile(ref, best.path);
+		const task = parseTask(content);
+		if (task) {
+			task.source = "remote";
+			task.branch = best.branch;
+		}
+		return task;
+	} catch (error) {
+		if (process.env.DEBUG) {
+			console.error(`Failed to find task ${taskId} in remote branches:`, error);
+		}
+		return null;
+	}
+}
+
+/**
+ * Find and load a specific task from local branches (excluding current branch)
+ * Searches through recent local branches for the task and returns the newest version
+ */
+export async function findTaskInLocalBranches(
+	git: GitOperations,
+	taskId: string,
+	backlogDir = "backlog",
+	sinceDays = 30,
+): Promise<Task | null> {
+	try {
+		const currentBranch = await git.getCurrentBranch();
+		if (!currentBranch) return null;
+
+		// Get recent local branches
+		const allBranches = await git.listRecentBranches(sinceDays);
+		const localBranches = allBranches.filter(
+			(b) => !b.startsWith("origin/") && !b.startsWith("refs/remotes/") && b !== "origin",
+		);
+
+		if (localBranches.length <= 1) return null; // Only current branch
+
+		// Build task index for local branches
+		const localIndex = await buildLocalBranchTaskIndex(git, localBranches, currentBranch, backlogDir, sinceDays);
+
+		// Check if the task exists in the index
+		const entries = localIndex.get(taskId);
+		if (!entries || entries.length === 0) return null;
+
+		// Get the newest version
+		const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+
+		// Hydrate the task
+		const content = await git.showFile(best.branch, best.path);
+		const task = parseTask(content);
+		if (task) {
+			task.source = "local-branch";
+			task.branch = best.branch;
+		}
+		return task;
+	} catch (error) {
+		if (process.env.DEBUG) {
+			console.error(`Failed to find task ${taskId} in local branches:`, error);
+		}
+		return null;
+	}
+}

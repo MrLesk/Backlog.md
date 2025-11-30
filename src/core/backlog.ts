@@ -36,6 +36,7 @@ import { loadLocalBranchTasks, loadRemoteTasks, resolveTaskConflict } from "./re
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
+import { findTaskInLocalBranches, findTaskInRemoteBranches } from "./task-loader.ts";
 
 interface BlessedScreen {
 	program: {
@@ -199,7 +200,29 @@ export class Core {
 
 	async loadTaskById(taskId: string): Promise<Task | null> {
 		const canonicalId = normalizeTaskId(taskId);
-		return await this.fs.loadTask(canonicalId);
+
+		// First try local filesystem
+		const localTask = await this.fs.loadTask(canonicalId);
+		if (localTask) return localTask;
+
+		// Check config for remote operations
+		const config = await this.fs.loadConfig();
+		const sinceDays = config?.activeBranchDays ?? 30;
+
+		// Try other local branches first (faster than remote)
+		const localBranchTask = await findTaskInLocalBranches(
+			this.git,
+			canonicalId,
+			DEFAULT_DIRECTORIES.BACKLOG,
+			sinceDays,
+		);
+		if (localBranchTask) return localBranchTask;
+
+		// Skip remote if disabled
+		if (config?.remoteOperations === false) return null;
+
+		// Try remote branches
+		return await findTaskInRemoteBranches(this.git, canonicalId, DEFAULT_DIRECTORIES.BACKLOG, sinceDays);
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
