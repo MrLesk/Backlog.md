@@ -5,7 +5,7 @@
 import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitOperations as GitOps } from "../git/operations.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { buildRemoteTaskIndex, chooseWinners, hydrateTasks } from "./task-loader.ts";
+import { buildLocalBranchTaskIndex, buildRemoteTaskIndex, chooseWinners, hydrateTasks } from "./task-loader.ts";
 
 /**
  * Get the appropriate loading message based on remote operations configuration
@@ -138,4 +138,119 @@ export function resolveTaskConflict(
 	}
 
 	return existing;
+}
+
+/**
+ * Load tasks from other local branches (not current branch, not remote)
+ * Uses the same optimized index-first, hydrate-later pattern as remote loading
+ */
+export async function loadLocalBranchTasks(
+	gitOps: GitOps,
+	userConfig: BacklogConfig | null = null,
+	onProgress?: (message: string) => void,
+	localTasks?: Task[], // Tasks from current branch filesystem
+): Promise<TaskWithMetadata[]> {
+	try {
+		const currentBranch = await gitOps.getCurrentBranch();
+		if (!currentBranch) {
+			// Not on a branch (detached HEAD), skip local branch loading
+			return [];
+		}
+
+		// Get recent local branches (excludes remote refs)
+		const days = userConfig?.activeBranchDays ?? 30;
+		const allBranches = await gitOps.listRecentBranches(days);
+
+		// Filter to only local branches (not origin/*)
+		const localBranches = allBranches.filter(
+			(b) => !b.startsWith("origin/") && !b.startsWith("refs/remotes/") && b !== "origin",
+		);
+
+		if (localBranches.length <= 1) {
+			// Only current branch or no branches
+			return [];
+		}
+
+		onProgress?.(`Indexing ${localBranches.length - 1} other local branches...`);
+
+		// Build index of tasks from other local branches
+		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const localBranchIndex = await buildLocalBranchTaskIndex(gitOps, localBranches, currentBranch, backlogDir, days);
+
+		if (localBranchIndex.size === 0) {
+			return [];
+		}
+
+		onProgress?.(`Found ${localBranchIndex.size} unique tasks in other local branches`);
+
+		// Determine which tasks to hydrate
+		let winners: Array<{ id: string; ref: string; path: string }>;
+
+		if (localTasks && localTasks.length > 0) {
+			// Build local task map for comparison
+			const localById = new Map(localTasks.map((t) => [t.id, t]));
+			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
+
+			// Only hydrate tasks that are missing locally or potentially newer
+			winners = [];
+			for (const [id, entries] of localBranchIndex) {
+				const local = localById.get(id);
+
+				if (!local) {
+					// Task doesn't exist locally - take the newest from other branches
+					const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+					winners.push({ id, ref: best.branch, path: best.path });
+					continue;
+				}
+
+				// For existing tasks, check if any other branch version is newer
+				if (strategy === "most_recent") {
+					const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+					const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+
+					if (newestOther.lastModified.getTime() > localTs) {
+						winners.push({ id, ref: newestOther.branch, path: newestOther.path });
+					}
+				} else {
+					// For most_progressed, we need to hydrate to check status
+					const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+					const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
+
+					if (maybeNewer) {
+						const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+						winners.push({ id, ref: newestOther.branch, path: newestOther.path });
+					}
+				}
+			}
+		} else {
+			// No local tasks, hydrate all from other branches (take newest of each)
+			winners = [];
+			for (const [id, entries] of localBranchIndex) {
+				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+				winners.push({ id, ref: best.branch, path: best.path });
+			}
+		}
+
+		if (winners.length === 0) {
+			return [];
+		}
+
+		onProgress?.(`Hydrating ${winners.length} tasks from other local branches...`);
+
+		// Hydrate the tasks - note: ref is the branch name directly (not origin/)
+		const hydratedTasks = await hydrateTasks(gitOps, winners);
+
+		// Mark these as coming from local branches
+		for (const task of hydratedTasks) {
+			task.source = "local-branch";
+		}
+
+		onProgress?.(`Loaded ${hydratedTasks.length} tasks from other local branches`);
+		return hydratedTasks;
+	} catch (error) {
+		if (process.env.DEBUG) {
+			console.error("Failed to load local branch tasks:", error);
+		}
+		return [];
+	}
 }

@@ -4,6 +4,7 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
+import { loadLocalBranchTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
@@ -60,6 +61,8 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	private lastLocalBranchRefresh = 0;
+	private readonly LOCAL_BRANCH_REFRESH_INTERVAL_MS = 5000; // Refresh every 5 seconds max
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath);
@@ -68,6 +71,7 @@ export class BacklogServer {
 	private async ensureServicesReady(): Promise<void> {
 		const store = await this.core.getContentStore();
 		this.contentStore = store;
+
 		if (!this.unsubscribeContentStore) {
 			this.unsubscribeContentStore = store.subscribe((event) => {
 				if (event.type === "ready") {
@@ -87,6 +91,44 @@ export class BacklogServer {
 
 		const search = await this.core.getSearchService();
 		this.searchService = search;
+	}
+
+	/**
+	 * Refresh tasks from other local branches into the content store
+	 * Called periodically to keep cross-branch tasks up to date
+	 */
+	private async refreshLocalBranchTasks(): Promise<void> {
+		const now = Date.now();
+		if (now - this.lastLocalBranchRefresh < this.LOCAL_BRANCH_REFRESH_INTERVAL_MS) {
+			return; // Skip if refreshed recently
+		}
+		this.lastLocalBranchRefresh = now;
+
+		try {
+			const store = await this.getContentStoreInstance();
+			const config = await this.core.fs.loadConfig();
+			const baseTasks = store.getTasks();
+
+			// Load tasks from other local branches
+			const localBranchTasks = await loadLocalBranchTasks(this.core.git, config, undefined, baseTasks);
+
+			if (localBranchTasks.length === 0) {
+				return;
+			}
+
+			// Inject/update each task in the store
+			for (const task of localBranchTasks) {
+				store.upsertTask(task);
+			}
+
+			if (process.env.DEBUG) {
+				console.log(`Refreshed ${localBranchTasks.length} tasks from other local branches`);
+			}
+		} catch (error) {
+			if (process.env.DEBUG) {
+				console.error("Failed to refresh local branch tasks:", error);
+			}
+		}
 	}
 
 	private async getContentStoreInstance(): Promise<ContentStore> {
@@ -460,11 +502,15 @@ export class BacklogServer {
 
 	// Task handlers
 	private async handleListTasks(req: Request): Promise<Response> {
+		// Refresh local branch tasks periodically
+		await this.refreshLocalBranchTasks();
+
 		const url = new URL(req.url);
 		const status = url.searchParams.get("status") || undefined;
 		const assignee = url.searchParams.get("assignee") || undefined;
 		const parent = url.searchParams.get("parent") || undefined;
 		const priorityParam = url.searchParams.get("priority") || undefined;
+		const crossBranch = url.searchParams.get("crossBranch") === "true";
 
 		let priority: SearchPriorityFilter | undefined;
 		if (priorityParam) {
@@ -477,7 +523,13 @@ export class BacklogServer {
 		}
 
 		const store = await this.getContentStoreInstance();
-		const baseTasks = store.getTasks();
+		let baseTasks = store.getTasks();
+
+		// If crossBranch is enabled, merge in tasks from other local branches
+		if (crossBranch) {
+			baseTasks = await this.mergeLocalBranchTasks(baseTasks);
+		}
+
 		const filter: { status?: string; assignee?: string; priority?: SearchPriorityFilter; parentTaskId?: string } = {};
 		if (status) filter.status = status;
 		if (assignee) filter.assignee = assignee;
@@ -500,12 +552,70 @@ export class BacklogServer {
 			filter.parentTaskId = parentTask.id;
 		}
 
-		const tasks = store.getTasks(filter);
+		// Apply filters to the merged tasks
+		let tasks = baseTasks;
+		if (filter.status) {
+			const statusLower = filter.status.toLowerCase();
+			tasks = tasks.filter((t) => (t.status ?? "").toLowerCase() === statusLower);
+		}
+		if (filter.assignee) {
+			const assigneeLower = filter.assignee.toLowerCase();
+			tasks = tasks.filter((t) => (t.assignee ?? []).some((a) => a.toLowerCase() === assigneeLower));
+		}
+		if (filter.priority) {
+			const priorityLower = filter.priority.toLowerCase();
+			tasks = tasks.filter((t) => (t.priority ?? "").toLowerCase() === priorityLower);
+		}
+		if (filter.parentTaskId) {
+			tasks = tasks.filter((t) => t.parentTaskId === filter.parentTaskId);
+		}
+
 		return Response.json(tasks);
+	}
+
+	/**
+	 * Merge tasks from other local branches with the base tasks
+	 */
+	private async mergeLocalBranchTasks(baseTasks: Task[]): Promise<Task[]> {
+		try {
+			const config = await this.core.fs.loadConfig();
+			const statuses = (config?.statuses || ["To Do", "In Progress", "Done"]) as string[];
+			const strategy = (config?.taskResolutionStrategy || "most_progressed") as "most_recent" | "most_progressed";
+
+			// Load tasks from other local branches
+			const localBranchTasks = await loadLocalBranchTasks(this.core.git, config, undefined, baseTasks);
+
+			if (localBranchTasks.length === 0) {
+				return baseTasks;
+			}
+
+			// Merge with base tasks
+			const tasksById = new Map<string, Task>(baseTasks.map((t) => [t.id, { ...t, source: "local" as const }]));
+
+			for (const branchTask of localBranchTasks) {
+				const existing = tasksById.get(branchTask.id);
+				if (!existing) {
+					tasksById.set(branchTask.id, branchTask);
+				} else {
+					const resolved = resolveTaskConflict(existing, branchTask, statuses, strategy);
+					tasksById.set(branchTask.id, resolved);
+				}
+			}
+
+			return Array.from(tasksById.values());
+		} catch (error) {
+			if (process.env.DEBUG) {
+				console.error("Failed to merge local branch tasks:", error);
+			}
+			return baseTasks;
+		}
 	}
 
 	private async handleSearch(req: Request): Promise<Response> {
 		try {
+			// Refresh local branch tasks before search
+			await this.refreshLocalBranchTasks();
+
 			const searchService = await this.getSearchServiceInstance();
 			const url = new URL(req.url);
 			const query = url.searchParams.get("query") ?? undefined;

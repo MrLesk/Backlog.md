@@ -26,6 +26,21 @@ function normalizeRemoteBranch(branch: string): string | null {
 }
 
 /**
+ * Normalize a local branch name, filtering out invalid entries
+ */
+function normalizeLocalBranch(branch: string, currentBranch: string): string | null {
+	const br = branch.trim();
+	if (!br) return null;
+	// Skip HEAD, origin refs, and current branch
+	if (br === "HEAD" || br.includes("HEAD")) return null;
+	if (br.startsWith("origin/") || br.startsWith("refs/remotes/")) return null;
+	if (br === "origin") return null;
+	// Skip current branch - we already have its tasks from filesystem
+	if (br === currentBranch) return null;
+	return br;
+}
+
+/**
  * Build a cheap index of remote tasks without fetching content
  * This is VERY fast as it only lists files and gets modification times in batch
  */
@@ -124,6 +139,71 @@ export async function hydrateTasks(
 
 	await Promise.all(Array.from({ length: Math.min(CONCURRENCY, winners.length) }, worker));
 	return result;
+}
+
+/**
+ * Build a cheap index of tasks from local branches (excluding current branch)
+ * Similar to buildRemoteTaskIndex but for local refs
+ */
+export async function buildLocalBranchTaskIndex(
+	git: GitOperations,
+	branches: string[],
+	currentBranch: string,
+	backlogDir = "backlog",
+	sinceDays?: number,
+): Promise<Map<string, RemoteIndexEntry[]>> {
+	const out = new Map<string, RemoteIndexEntry[]>();
+
+	const normalized = branches.map((b) => normalizeLocalBranch(b, currentBranch)).filter((b): b is string => Boolean(b));
+
+	if (normalized.length === 0) {
+		return out;
+	}
+
+	// Do branches in parallel but not unbounded
+	const CONCURRENCY = 4;
+	const queue = [...normalized];
+
+	const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+		while (queue.length) {
+			const br = queue.pop();
+			if (!br) break;
+
+			try {
+				// Get all task files in this branch (use branch name directly, not origin/)
+				const files = await git.listFilesInTree(br, `${backlogDir}/tasks`);
+				if (files.length === 0) continue;
+
+				// Get last modified times for all files in one pass
+				const lm = await git.getBranchLastModifiedMap(br, `${backlogDir}/tasks`, sinceDays);
+
+				for (const f of files) {
+					// Extract task ID from filename (support subtasks like task-123.01)
+					const m = f.match(/task-(\d+(?:\.\d+)?)/);
+					if (!m) continue;
+
+					const id = `task-${m[1]}`;
+					const lastModified = lm.get(f) ?? new Date(0);
+					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
+
+					const arr = out.get(id);
+					if (arr) {
+						arr.push(entry);
+					} else {
+						out.set(id, [entry]);
+					}
+				}
+			} catch (error) {
+				// Branch might not have backlog directory, skip it
+				if (process.env.DEBUG) {
+					console.debug(`Skipping local branch ${br}: ${error}`);
+				}
+			}
+		}
+	});
+
+	await Promise.all(workers);
+	return out;
 }
 
 /**

@@ -32,7 +32,7 @@ import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
-import { loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
+import { loadLocalBranchTasks, loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
@@ -1536,13 +1536,11 @@ export class Core {
 			this.fs.listCompletedTasks(),
 		]);
 
-		// Now load remote tasks with local tasks for optimization
-		const remoteTasks = await loadRemoteTasks(
-			this.git,
-			config,
-			progressCallback,
-			localTasks, // Pass local tasks to optimize remote loading
-		);
+		// Load remote tasks and local branch tasks in parallel
+		const [remoteTasks, localBranchTasks] = await Promise.all([
+			loadRemoteTasks(this.git, config, progressCallback, localTasks),
+			loadLocalBranchTasks(this.git, config, progressCallback, localTasks),
+		]);
 		progressCallback?.("Loaded tasks");
 
 		// Create map with local tasks
@@ -1555,8 +1553,19 @@ export class Core {
 			}
 		}
 
-		// Merge remote tasks with local tasks
+		// Merge tasks from other local branches
 		progressCallback?.("Merging tasks...");
+		for (const branchTask of localBranchTasks) {
+			const existing = tasksById.get(branchTask.id);
+			if (!existing) {
+				tasksById.set(branchTask.id, branchTask);
+			} else {
+				const resolved = resolveTaskConflict(existing, branchTask, statuses, resolutionStrategy);
+				tasksById.set(branchTask.id, resolved);
+			}
+		}
+
+		// Merge remote tasks with local tasks
 		for (const remoteTask of remoteTasks) {
 			const existing = tasksById.get(remoteTask.id);
 			if (!existing) {
@@ -1615,13 +1624,21 @@ export class Core {
 			throw new Error("Loading cancelled");
 		}
 
-		// Load local and remote tasks in parallel
+		// Load local filesystem tasks first (needed for optimization)
+		const localTasks = await this.listTasksWithMetadata();
+
+		// Check for cancellation
+		if (abortSignal?.aborted) {
+			throw new Error("Loading cancelled");
+		}
+
+		// Load tasks from remote branches and other local branches in parallel
 		const { getTaskLoadingMessage } = await import("./remote-tasks.ts");
 		progressCallback?.(getTaskLoadingMessage(config));
 
-		const [localTasks, remoteTasks] = await Promise.all([
-			this.listTasksWithMetadata(),
-			loadRemoteTasks(this.git, config, progressCallback),
+		const [remoteTasks, localBranchTasks] = await Promise.all([
+			loadRemoteTasks(this.git, config, progressCallback, localTasks),
+			loadLocalBranchTasks(this.git, config, progressCallback, localTasks),
 		]);
 
 		// Check for cancellation after loading
@@ -1629,8 +1646,23 @@ export class Core {
 			throw new Error("Loading cancelled");
 		}
 
-		// Create map with local tasks
+		// Create map with local tasks (current branch filesystem)
 		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
+
+		// Merge tasks from other local branches
+		for (const branchTask of localBranchTasks) {
+			if (abortSignal?.aborted) {
+				throw new Error("Loading cancelled");
+			}
+
+			const existing = tasksById.get(branchTask.id);
+			if (!existing) {
+				tasksById.set(branchTask.id, branchTask);
+			} else {
+				const resolved = resolveTaskConflict(existing, branchTask, statuses, resolutionStrategy);
+				tasksById.set(branchTask.id, resolved);
+			}
+		}
 
 		// Merge remote tasks with local tasks
 		for (const remoteTask of remoteTasks) {

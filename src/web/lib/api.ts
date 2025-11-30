@@ -129,12 +129,15 @@ export class ApiClient {
 		assignee?: string;
 		parent?: string;
 		priority?: SearchPriorityFilter;
+		crossBranch?: boolean;
 	}): Promise<Task[]> {
 		const params = new URLSearchParams();
 		if (options?.status) params.append("status", options.status);
 		if (options?.assignee) params.append("assignee", options.assignee);
 		if (options?.parent) params.append("parent", options.parent);
 		if (options?.priority) params.append("priority", options.priority);
+		// Default to true for cross-branch loading to match TUI behavior
+		if (options?.crossBranch !== false) params.append("crossBranch", "true");
 
 		const url = `${API_BASE}/tasks${params.toString() ? `?${params.toString()}` : ""}`;
 		return this.fetchJson<Task[]>(url);

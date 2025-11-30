@@ -4,7 +4,7 @@ title: Add browser UI initialization flow for uninitialized projects
 status: Done
 assignee: []
 created_date: '2025-11-30 14:51'
-updated_date: '2025-11-30 15:12'
+updated_date: '2025-11-30 19:20'
 labels:
   - enhancement
   - browser
@@ -177,5 +177,5 @@ Final: Initialize
 - `src/web/lib/api.ts` - Full options support
 - `src/web/App.tsx` - Init status check
 
-Build passes, tests pass, committed to `tasks/task-324-browser-init-flow` branch.
+Build passes, tests pass.
 <!-- SECTION:NOTES:END -->
