@@ -5,6 +5,7 @@ import {
 	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "../agent-instructions.ts";
+import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import type { Core } from "./backlog.ts";
 
@@ -85,6 +86,7 @@ export async function initializeProject(
 	const projectRoot = core.filesystem.rootDir;
 
 	// Build config, preserving existing values for re-initialization
+	const d = DEFAULT_INIT_CONFIG;
 	const config: BacklogConfig = {
 		projectName,
 		statuses: existingConfig?.statuses || ["To Do", "In Progress", "Done"],
@@ -93,13 +95,14 @@ export async function initializeProject(
 		defaultStatus: existingConfig?.defaultStatus || "To Do",
 		dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
 		maxColumnWidth: existingConfig?.maxColumnWidth || 20,
-		autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? false,
-		remoteOperations: advancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? true,
-		bypassGitHooks: advancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? false,
-		checkActiveBranches: advancedConfig.checkActiveBranches ?? existingConfig?.checkActiveBranches ?? true,
-		activeBranchDays: advancedConfig.activeBranchDays ?? existingConfig?.activeBranchDays ?? 30,
-		defaultPort: advancedConfig.defaultPort ?? existingConfig?.defaultPort ?? 6420,
-		autoOpenBrowser: advancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? true,
+		autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
+		remoteOperations: advancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
+		bypassGitHooks: advancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
+		checkActiveBranches:
+			advancedConfig.checkActiveBranches ?? existingConfig?.checkActiveBranches ?? d.checkActiveBranches,
+		activeBranchDays: advancedConfig.activeBranchDays ?? existingConfig?.activeBranchDays ?? d.activeBranchDays,
+		defaultPort: advancedConfig.defaultPort ?? existingConfig?.defaultPort ?? d.defaultPort,
+		autoOpenBrowser: advancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? d.autoOpenBrowser,
 		taskResolutionStrategy: existingConfig?.taskResolutionStrategy || "most_recent",
 		...(advancedConfig.defaultEditor ? { defaultEditor: advancedConfig.defaultEditor } : {}),
 		...(typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0

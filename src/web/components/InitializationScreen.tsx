@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { DEFAULT_INIT_CONFIG } from "../../constants/index.ts";
 import { apiClient } from "../lib/api";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -35,15 +36,15 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 	const [installClaudeAgent, setInstallClaudeAgent] = useState(false);
 	const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
 	const [advancedConfig, setAdvancedConfig] = useState<AdvancedConfig>({
-		checkActiveBranches: true,
-		remoteOperations: true,
-		activeBranchDays: 30,
-		bypassGitHooks: false,
-		autoCommit: true,
-		zeroPaddedIds: null,
-		defaultEditor: "",
-		defaultPort: 6420,
-		autoOpenBrowser: true,
+		checkActiveBranches: DEFAULT_INIT_CONFIG.checkActiveBranches,
+		remoteOperations: DEFAULT_INIT_CONFIG.remoteOperations,
+		activeBranchDays: DEFAULT_INIT_CONFIG.activeBranchDays,
+		bypassGitHooks: DEFAULT_INIT_CONFIG.bypassGitHooks,
+		autoCommit: DEFAULT_INIT_CONFIG.autoCommit,
+		zeroPaddedIds: DEFAULT_INIT_CONFIG.zeroPaddedIds ?? null,
+		defaultEditor: DEFAULT_INIT_CONFIG.defaultEditor ?? "",
+		defaultPort: DEFAULT_INIT_CONFIG.defaultPort,
+		autoOpenBrowser: DEFAULT_INIT_CONFIG.autoOpenBrowser,
 	});
 
 	// UI state

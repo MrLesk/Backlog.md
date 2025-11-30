@@ -47,4 +47,20 @@ export const FALLBACK_STATUS = "To Do";
  */
 export const WRAP_LIMIT = 72;
 
+/**
+ * Default values for advanced configuration options used during project initialization.
+ * Shared between CLI and browser wizard to ensure consistent defaults.
+ */
+export const DEFAULT_INIT_CONFIG = {
+	checkActiveBranches: true,
+	remoteOperations: true,
+	activeBranchDays: 30,
+	bypassGitHooks: false,
+	autoCommit: false,
+	zeroPaddedIds: undefined as number | undefined,
+	defaultEditor: undefined as string | undefined,
+	defaultPort: 6420,
+	autoOpenBrowser: true,
+} as const;
+
 export * from "../guidelines/index.ts";
