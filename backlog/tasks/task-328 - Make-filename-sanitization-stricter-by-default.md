@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-12-01 21:54'
-updated_date: '2025-12-01 21:57'
+updated_date: '2025-12-01 22:29'
 labels:
   - feature
 dependencies: []
@@ -27,9 +27,9 @@ Implement the stricter slug behavior discussed in issue #435 so filenames drop p
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-- Update sanitizeFilename to drop additional punctuation while keeping dash collapsing and trimming.
-- Add focused tests covering the new slug output and backward compatibility (loading existing files by ID).
-- Run relevant tests and summarize impact (note renames on save).
+- Ensure decision save removes legacy filenames so new sanitized filenames remain canonical.
+- Keep stricter sanitizeFilename behavior consistent across tasks/drafts/decisions/docs.
+- Add regression tests for decision legacy filenames; rerun checks/tests and summarize impacts.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -38,6 +38,10 @@ Implement the stricter slug behavior discussed in issue #435 so filenames drop p
 Implemented stricter default filename sanitization (drops punctuation like quotes/parentheses and collapses dashes) shared across tasks/drafts/decisions/docs.
 
 Added filesystem tests covering the new slug output, legacy filename loading by ID, and sanitized decisions/documents.
+
+bun test src/test/filesystem.test.ts
+
+Handled legacy decision filenames by cleaning up old files during save to keep sanitized slug canonical; added regression coverage in filesystem tests.
 
 bun test src/test/filesystem.test.ts
 <!-- SECTION:NOTES:END -->

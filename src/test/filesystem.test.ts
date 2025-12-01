@@ -342,6 +342,32 @@ describe("FileSystem", () => {
 			expect(loaded?.alternatives).toBe("Considered JavaScript");
 		});
 
+		it("should remove legacy decision filenames when resaving", async () => {
+			const legacyDecision: Decision = {
+				...sampleDecision,
+				id: "decision-legacy",
+				title: "Legacy Decision (OAuth)!",
+				decision: "First draft",
+			};
+
+			await filesystem.saveDecision(legacyDecision);
+
+			const files = await readdir(filesystem.decisionsDir);
+			const sanitized = files.find((f) => f.startsWith("decision-legacy -"));
+			expect(sanitized).toBe("decision-legacy - Legacy-Decision-OAuth.md");
+
+			const legacyFilename = "decision-legacy - Legacy-Decision-(OAuth)!.md";
+			await rename(join(filesystem.decisionsDir, sanitized as string), join(filesystem.decisionsDir, legacyFilename));
+
+			await filesystem.saveDecision({ ...legacyDecision, decision: "Updated decision" });
+
+			const finalFiles = await readdir(filesystem.decisionsDir);
+			expect(finalFiles).toEqual(["decision-legacy - Legacy-Decision-OAuth.md"]);
+
+			const loaded = await filesystem.loadDecision("decision-legacy");
+			expect(loaded?.decision).toBe("Updated decision");
+		});
+
 		it("should list decision logs", async () => {
 			await filesystem.saveDecision(sampleDecision);
 			const list = await filesystem.listDecisions();
