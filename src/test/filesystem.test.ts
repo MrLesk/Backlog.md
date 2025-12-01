@@ -650,6 +650,52 @@ describe("FileSystem", () => {
 			expect(loaded?.title).toBe("Legacy user's login (OAuth)");
 		});
 
+		it("should sanitize a variety of problematic task titles", async () => {
+			const cases: Array<{ id: string; title: string; expected: string }> = [
+				{
+					id: "task-bad-1",
+					title: "Fix the user's login (OAuth)! #1",
+					expected: "Fix-the-users-login-OAuth-1",
+				},
+				{
+					id: "task-bad-2",
+					title: "Crazy!@#$%^&*()Name",
+					expected: "Crazy-Name",
+				},
+				{
+					id: "task-bad-3",
+					title: "File with <bad> |chars| and /slashes\\",
+					expected: "File-with-bad-chars-and-slashes",
+				},
+				{
+					id: "task-bad-4",
+					title: "Tabs\tand\nnewlines",
+					expected: "Tabs-and-newlines",
+				},
+				{
+					id: "task-bad-5",
+					title: "Edge -- dashes ???",
+					expected: "Edge-dashes",
+				},
+			];
+
+			for (const { id, title, expected } of cases) {
+				await filesystem.saveTask({
+					id,
+					title,
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-07",
+					labels: [],
+					dependencies: [],
+					description: "Sanitization test",
+				});
+
+				const files = await readdir(filesystem.tasksDir);
+				expect(files).toContain(`${id} - ${expected}.md`);
+			}
+		});
+
 		it("should avoid double dashes in filenames", async () => {
 			const weirdTask: Task = {
 				id: "task-dashes",

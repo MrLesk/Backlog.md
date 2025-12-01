@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-12-01 21:54'
-updated_date: '2025-12-01 22:29'
+updated_date: '2025-12-01 22:47'
 labels:
   - feature
 dependencies: []
@@ -44,4 +44,8 @@ bun test src/test/filesystem.test.ts
 Handled legacy decision filenames by cleaning up old files during save to keep sanitized slug canonical; added regression coverage in filesystem tests.
 
 bun test src/test/filesystem.test.ts
+
+Adding extra test coverage for multiple problematic task titles.
+
+Added table-driven test covering multiple problematic task titles to confirm sanitized filenames.
 <!-- SECTION:NOTES:END -->
