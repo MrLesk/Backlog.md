@@ -698,6 +698,7 @@ export class FileSystem {
 	private sanitizeFilename(filename: string): string {
 		return filename
 			.replace(/[<>:"/\\|?*]/g, "-")
+			.replace(/['(),!@#$%^&+=[\]{};]/g, "")
 			.replace(/\s+/g, "-")
 			.replace(/-+/g, "-")
 			.replace(/^-|-$/g, "");

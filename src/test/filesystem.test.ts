@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
@@ -318,6 +318,17 @@ describe("FileSystem", () => {
 			expect(decision).toBeNull();
 		});
 
+		it("should sanitize decision filenames", async () => {
+			await filesystem.saveDecision({
+				...sampleDecision,
+				id: "decision-3",
+				title: "Use OAuth (v2)!",
+			});
+
+			const decisionFiles = await readdir(filesystem.decisionsDir);
+			expect(decisionFiles).toContain("decision-3 - Use-OAuth-v2.md");
+		});
+
 		it("should save decision log with alternatives", async () => {
 			const decisionWithAlternatives: Decision = {
 				...sampleDecision,
@@ -371,6 +382,17 @@ describe("FileSystem", () => {
 
 			const docsFiles = await readdir(filesystem.docsDir);
 			expect(docsFiles.some((f) => f.includes("Simple-Doc"))).toBe(true);
+		});
+
+		it("should sanitize document filenames", async () => {
+			await filesystem.saveDocument({
+				...sampleDocument,
+				id: "doc-9",
+				title: "Docs (Guide)! #1",
+			});
+
+			const docsFiles = await readdir(filesystem.docsDir);
+			expect(docsFiles).toContain("doc-9 - Docs-Guide-1.md");
 		});
 
 		it("removes the previous document file when the title changes", async () => {
@@ -556,6 +578,50 @@ describe("FileSystem", () => {
 			// Verify the task can be loaded
 			const loaded = await filesystem.loadTask("task-mixed");
 			expect(loaded?.title).toBe("Fix Task List Ordering");
+		});
+
+		it("should strip punctuation from filenames", async () => {
+			const taskWithPunctuation: Task = {
+				id: "task-punct",
+				title: "Fix the user's login (OAuth)! #1",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Task with punctuation in the title",
+			};
+
+			await filesystem.saveTask(taskWithPunctuation);
+
+			const files = await readdir(filesystem.tasksDir);
+			const filename = files.find((f) => f.startsWith("task-punct -"));
+			expect(filename).toBe("task-punct - Fix-the-users-login-OAuth-1.md");
+		});
+
+		it("should load tasks with legacy filenames containing punctuation", async () => {
+			const legacyTask: Task = {
+				id: "task-legacy",
+				title: "Legacy user's login (OAuth)",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Legacy punctuation task",
+			};
+
+			await filesystem.saveTask(legacyTask);
+
+			const files = await readdir(filesystem.tasksDir);
+			const originalFilename = files.find((f) => f.startsWith("task-legacy -"));
+			expect(originalFilename).toBeDefined();
+
+			const legacyFilename = "task-legacy - Legacy-user's-login-(OAuth).md";
+			await rename(join(filesystem.tasksDir, originalFilename as string), join(filesystem.tasksDir, legacyFilename));
+
+			const loaded = await filesystem.loadTask("task-legacy");
+			expect(loaded?.title).toBe("Legacy user's login (OAuth)");
 		});
 
 		it("should avoid double dashes in filenames", async () => {
