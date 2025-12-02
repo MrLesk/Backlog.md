@@ -57,7 +57,7 @@ export class McpServer extends Core {
 	private readonly prompts = new Map<string, McpPromptHandler>();
 
 	constructor(projectRoot: string, instructions: string) {
-		super(projectRoot, { skipWatchers: false });
+		super(projectRoot, { enableWatchers: true });
 
 		this.server = new Server(
 			{

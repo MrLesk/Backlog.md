@@ -58,7 +58,7 @@ export class ContentStore {
 	constructor(
 		private readonly filesystem: FileSystem,
 		private readonly taskLoader?: () => Promise<Task[]>,
-		private readonly skipWatchers = false,
+		private readonly enableWatchers = false,
 	) {
 		this.patchFilesystem();
 	}
@@ -210,7 +210,7 @@ export class ContentStore {
 		this.replaceDecisions(decisions);
 
 		this.initialized = true;
-		if (!this.skipWatchers) {
+		if (this.enableWatchers) {
 			await this.setupWatchers();
 		}
 		this.notify("ready");

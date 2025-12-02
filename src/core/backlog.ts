@@ -67,21 +67,21 @@ export class Core {
 	public git: GitOperations;
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
-	private readonly skipWatchers: boolean;
+	private readonly enableWatchers: boolean;
 
-	constructor(projectRoot: string, options?: { skipWatchers?: boolean }) {
+	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot);
-		// Skip watchers by default for CLI commands (non-interactive)
-		// Interactive modes (TUI, browser) should explicitly pass skipWatchers: false
-		this.skipWatchers = options?.skipWatchers ?? true;
+		// Disable watchers by default for CLI commands (non-interactive)
+		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
+		this.enableWatchers = options?.enableWatchers ?? false;
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
 			// Use loadTasks as the task loader to include cross-branch tasks
-			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.skipWatchers);
+			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.enableWatchers);
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
