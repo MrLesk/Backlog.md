@@ -1010,10 +1010,10 @@ export class Core {
 			seen.add(id);
 		}
 
-		// Load all tasks from the ordered list - only active tasks should be included
+		// Load all tasks from the ordered list - use getTask to include cross-branch tasks from the store
 		const loadedTasks = await Promise.all(
 			orderedTaskIds.map(async (id) => {
-				const task = await this.fs.loadTask(id);
+				const task = await this.getTask(id);
 				return task;
 			}),
 		);
@@ -1025,6 +1025,13 @@ export class Core {
 		const movedTask = validTasks.find((t) => t.id === taskId);
 		if (!movedTask) {
 			throw new Error(`Task ${taskId} not found while reordering`);
+		}
+
+		// Reject reordering tasks from other branches - they can only be modified in their source branch
+		if (movedTask.branch) {
+			throw new Error(
+				`Task ${taskId} exists in branch "${movedTask.branch}" and cannot be reordered from the current branch. Switch to that branch to modify it.`,
+			);
 		}
 
 		// Calculate target index within the valid tasks list

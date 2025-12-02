@@ -37,7 +37,7 @@ export interface Task {
 	filePath?: string;
 	// Metadata fields (previously in TaskWithMetadata)
 	lastModified?: Date;
-	source?: "local" | "remote" | "completed";
+	source?: "local" | "remote" | "completed" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
 }

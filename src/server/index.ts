@@ -109,6 +109,9 @@ export class BacklogServer {
 			const config = await this.core.fs.loadConfig();
 			const baseTasks = store.getTasks();
 
+			// Build a set of task IDs that exist locally (no branch property = current branch)
+			const localTaskIds = new Set(baseTasks.filter((t) => !t.branch).map((t) => t.id));
+
 			// Load tasks from other local branches
 			const localBranchTasks = await loadLocalBranchTasks(this.core.git, config, undefined, baseTasks);
 
@@ -116,13 +119,18 @@ export class BacklogServer {
 				return;
 			}
 
-			// Inject/update each task in the store
+			// Only inject tasks that don't exist locally - tasks that exist on current branch
+			// should not be overwritten with versions from other branches
+			let injectedCount = 0;
 			for (const task of localBranchTasks) {
-				store.upsertTask(task);
+				if (!localTaskIds.has(task.id)) {
+					store.upsertTask(task);
+					injectedCount++;
+				}
 			}
 
-			if (process.env.DEBUG) {
-				console.log(`Refreshed ${localBranchTasks.length} tasks from other local branches`);
+			if (process.env.DEBUG && injectedCount > 0) {
+				console.log(`Refreshed ${injectedCount} tasks from other local branches`);
 			}
 		} catch (error) {
 			if (process.env.DEBUG) {
@@ -1080,6 +1088,9 @@ export class BacklogServer {
 					{ status: 400 },
 				);
 			}
+
+			// Refresh local branch tasks to ensure cross-branch tasks are in the store
+			await this.refreshLocalBranchTasks();
 
 			const { updatedTask } = await this.core.reorderTask({
 				taskId,
