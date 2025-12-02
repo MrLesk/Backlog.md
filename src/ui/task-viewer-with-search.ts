@@ -20,6 +20,7 @@ import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
 import { createGenericList, type GenericList } from "./components/generic-list.ts";
 import { formatHeading } from "./heading.ts";
+import { createLoadingScreen } from "./loading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
 
@@ -100,16 +101,42 @@ export async function viewTaskEnhanced(
 	// Get project root and setup services
 	const cwd = process.cwd();
 	const core = options.core || new Core(cwd, { enableWatchers: true });
-	const searchService = await core.getSearchService();
-	const contentStore = await core.getContentStore();
-	const config = await core.filesystem.loadConfig();
-	const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
-	const priorities = ["high", "medium", "low"];
 
-	// Initialize with all tasks
-	const allTasks = (options.tasks || (await core.queryTasks())).filter(
-		(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
-	);
+	// Show loading screen while loading tasks (can be slow with cross-branch loading)
+	let allTasks: Task[];
+	let statuses: string[];
+	let priorities: string[];
+	let searchService: Awaited<ReturnType<typeof core.getSearchService>>;
+	let contentStore: Awaited<ReturnType<typeof core.getContentStore>>;
+
+	if (options.tasks) {
+		// Tasks already provided, no loading needed
+		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		const config = await core.filesystem.loadConfig();
+		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+		priorities = ["high", "medium", "low"];
+		searchService = await core.getSearchService();
+		contentStore = await core.getContentStore();
+	} else {
+		// Need to load tasks - show loading screen
+		const loadingScreen = await createLoadingScreen("Loading tasks");
+		try {
+			loadingScreen?.update("Loading configuration...");
+			const config = await core.filesystem.loadConfig();
+			statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+			priorities = ["high", "medium", "low"];
+
+			loadingScreen?.update("Loading tasks from branches...");
+			contentStore = await core.getContentStore();
+			searchService = await core.getSearchService();
+
+			loadingScreen?.update("Preparing task list...");
+			const tasks = await core.queryTasks();
+			allTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		} finally {
+			await loadingScreen?.close();
+		}
+	}
 
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
