@@ -67,17 +67,21 @@ export class Core {
 	public git: GitOperations;
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
+	private readonly skipWatchers: boolean;
 
-	constructor(projectRoot: string) {
+	constructor(projectRoot: string, options?: { skipWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot);
+		// Skip watchers by default for CLI commands (non-interactive)
+		// Interactive modes (TUI, browser) should explicitly pass skipWatchers: false
+		this.skipWatchers = options?.skipWatchers ?? true;
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
-			// Use loadBoardTasks as the task loader to include cross-branch tasks
-			this.contentStore = new ContentStore(this.fs, () => this.loadBoardTasks());
+			// Use loadTasks as the task loader to include cross-branch tasks
+			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.skipWatchers);
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
@@ -319,16 +323,18 @@ export class Core {
 
 	// ID generation
 	async generateNextId(parent?: string): Promise<string> {
-		// Ensure git operations have access to the config
-		await this.ensureConfigLoaded();
-
 		const config = await this.fs.loadConfig();
-		// Load local tasks and drafts in parallel
-		const [tasks, drafts] = await Promise.all([this.fs.listTasks(), this.fs.listDrafts()]);
+
+		// Use ContentStore for all tasks (local + cross-branch + remote)
+		// This is the single source of truth for task IDs
+		const store = await this.getContentStore();
+		const tasks = store.getTasks();
+
+		// Also include drafts (which aren't in ContentStore yet)
+		const drafts = await this.fs.listDrafts();
 
 		const allIds: string[] = [];
 
-		// Add local task and draft IDs first
 		for (const t of tasks) {
 			allIds.push(t.id);
 		}
@@ -336,72 +342,9 @@ export class Core {
 			allIds.push(d.id);
 		}
 
-		try {
-			const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-
-			// Skip remote operations if disabled
-			if (config?.remoteOperations === false) {
-				if (process.env.DEBUG) {
-					console.log("Remote operations disabled - generating ID from local tasks only");
-				}
-			} else {
-				await this.git.fetch();
-			}
-
-			// Use recent branches for better performance when generating IDs
-			const days = config?.activeBranchDays ?? 30;
-			const branches =
-				config?.remoteOperations === false
-					? await this.git.listLocalBranches()
-					: await this.git.listRecentBranches(days);
-
-			// Filter and normalize branch names - handle both local and remote branches
-			const normalizedBranches = branches
-				.flatMap((branch) => {
-					// For remote branches like "origin/feature", extract just "feature"
-					// But also try the full remote ref in case it's needed
-					if (branch.startsWith("origin/")) {
-						return [branch, branch.replace("origin/", "")];
-					}
-					return [branch];
-				})
-				// Remove duplicates and filter out HEAD
-				.filter((branch, index, arr) => arr.indexOf(branch) === index && branch !== "HEAD" && !branch.includes("HEAD"));
-
-			// Load files from all branches in parallel with better error handling
-			const branchFilePromises = normalizedBranches.map(async (branch) => {
-				try {
-					const files = await this.git.listFilesInTree(branch, `${backlogDir}/tasks`);
-					return files
-						.map((file) => {
-							const match = file.match(/task-(\d+)/);
-							return match ? `task-${match[1]}` : null;
-						})
-						.filter((id): id is string => id !== null);
-				} catch (error) {
-					// Silently ignore errors for individual branches (they might not exist or be accessible)
-					if (process.env.DEBUG) {
-						console.log(`Could not access branch ${branch}:`, error);
-					}
-					return [];
-				}
-			});
-
-			const branchResults = await Promise.all(branchFilePromises);
-			for (const branchIds of branchResults) {
-				allIds.push(...branchIds);
-			}
-		} catch (error) {
-			// Suppress errors for offline mode or other git issues
-			if (process.env.DEBUG) {
-				console.error("Could not fetch remote task IDs:", error);
-			}
-		}
-
 		if (parent) {
 			const prefix = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
 			let max = 0;
-			// Iterate over allIds (which now includes both local and remote)
 			for (const id of allIds) {
 				if (id.startsWith(`${prefix}.`)) {
 					const rest = id.slice(prefix.length + 1);
@@ -413,8 +356,6 @@ export class Core {
 			const padding = config?.zeroPaddedIds;
 
 			if (padding && padding > 0) {
-				// Pad sub-tasks to 2 digits. This supports up to 99 sub-tasks,
-				// which is a reasonable limit and keeps IDs from getting too long.
 				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
 				return `${prefix}.${paddedSubId}`;
 			}
@@ -423,7 +364,6 @@ export class Core {
 		}
 
 		let max = 0;
-		// Iterate over allIds (which now includes both local and remote)
 		for (const id of allIds) {
 			const match = id.match(/^task-(\d+)/);
 			if (match) {
@@ -1642,10 +1582,10 @@ export class Core {
 	}
 
 	/**
-	 * Load board data (tasks) with optimized cross-branch checking
-	 * This is the shared logic for both CLI and UI board views
+	 * Load all tasks with cross-branch support
+	 * This is the single entry point for loading tasks across all interfaces
 	 */
-	async loadBoardTasks(progressCallback?: (msg: string) => void, abortSignal?: AbortSignal): Promise<Task[]> {
+	async loadTasks(progressCallback?: (msg: string) => void, abortSignal?: AbortSignal): Promise<Task[]> {
 		const config = await this.fs.loadConfig();
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";

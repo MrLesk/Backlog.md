@@ -62,7 +62,7 @@ export class BacklogServer {
 	private configWatcher: { stop: () => void } | null = null;
 
 	constructor(projectPath: string) {
-		this.core = new Core(projectPath);
+		this.core = new Core(projectPath, { skipWatchers: false });
 	}
 
 	private async ensureServicesReady(): Promise<void> {

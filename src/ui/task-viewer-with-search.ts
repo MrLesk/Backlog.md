@@ -99,7 +99,7 @@ export async function viewTaskEnhanced(
 
 	// Get project root and setup services
 	const cwd = process.cwd();
-	const core = options.core || new Core(cwd);
+	const core = options.core || new Core(cwd, { skipWatchers: false });
 	const searchService = await core.getSearchService();
 	const contentStore = await core.getContentStore();
 	const config = await core.filesystem.loadConfig();

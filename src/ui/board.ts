@@ -540,7 +540,7 @@ export async function renderBoardTui(
 
 			contentArea.key(["e", "E"], async () => {
 				try {
-					const core = new Core(process.cwd());
+					const core = new Core(process.cwd(), { skipWatchers: false });
 					const filePath = await getTaskPath(task.id, core);
 					if (!filePath) return;
 					type ProgWithPause = { pause?: () => () => void };
@@ -578,7 +578,7 @@ export async function renderBoardTui(
 			const task = column.tasks[idx];
 			if (!task) return;
 			try {
-				const core = new Core(process.cwd());
+				const core = new Core(process.cwd(), { skipWatchers: false });
 				const filePath = await getTaskPath(task.id, core);
 				if (!filePath) return;
 				type ProgWithPause = { pause?: () => () => void };
@@ -618,7 +618,7 @@ export async function renderBoardTui(
 			}
 
 			try {
-				const core = new Core(process.cwd());
+				const core = new Core(process.cwd(), { skipWatchers: false });
 				const config = await core.fs.loadConfig();
 
 				// Get the final state from the projection

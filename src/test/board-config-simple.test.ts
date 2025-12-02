@@ -16,7 +16,7 @@ describe("Board loading with checkActiveBranches config", () => {
 		description: `This is test task ${id}`,
 	});
 
-	it("should respect checkActiveBranches=false in Core.loadBoardTasks", async () => {
+	it("should respect checkActiveBranches=false in Core.loadTasks", async () => {
 		// Create a mock Core with controlled filesystem and git operations
 		const mockFs = {
 			loadConfig: async () =>
@@ -56,7 +56,7 @@ describe("Board loading with checkActiveBranches config", () => {
 
 		// Load tasks and capture progress messages
 		try {
-			await core.loadBoardTasks((msg) => {
+			await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 
@@ -75,7 +75,7 @@ describe("Board loading with checkActiveBranches config", () => {
 		}
 	});
 
-	it("should respect checkActiveBranches=true in Core.loadBoardTasks", async () => {
+	it("should respect checkActiveBranches=true in Core.loadTasks", async () => {
 		// Create a mock Core with controlled filesystem and git operations
 		const mockFs = {
 			loadConfig: async () =>
@@ -115,7 +115,7 @@ describe("Board loading with checkActiveBranches config", () => {
 
 		// Load tasks and capture progress messages
 		try {
-			await core.loadBoardTasks((msg) => {
+			await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 
@@ -173,7 +173,7 @@ describe("Board loading with checkActiveBranches config", () => {
 
 		// Load tasks and capture progress messages
 		try {
-			await core.loadBoardTasks((msg) => {
+			await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 

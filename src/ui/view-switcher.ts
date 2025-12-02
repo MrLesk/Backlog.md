@@ -131,7 +131,7 @@ class BackgroundLoader {
 			};
 
 			// Use the shared Core method for loading board tasks
-			const filteredTasks = await this.core.loadBoardTasks(progressWrapper, this.abortController?.signal);
+			const filteredTasks = await this.core.loadTasks(progressWrapper, this.abortController?.signal);
 
 			// Cache the results
 			this.cachedTasks = filteredTasks;

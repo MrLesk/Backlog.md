@@ -2167,7 +2167,7 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 		const loadingScreen = await createLoadingScreen("Loading board");
 
 		try {
-			const tasks = await core.loadBoardTasks((msg) => {
+			const tasks = await core.loadTasks((msg) => {
 				loadingScreen?.update(msg);
 			});
 
@@ -2224,7 +2224,7 @@ boardCmd
 		let finalTasks: Task[];
 		try {
 			// Use the shared Core method for loading board tasks
-			finalTasks = await core.loadBoardTasks((msg) => {
+			finalTasks = await core.loadTasks((msg) => {
 				loadingScreen?.update(msg);
 			});
 
