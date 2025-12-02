@@ -4,7 +4,6 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
-import { loadLocalBranchTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
@@ -61,8 +60,6 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
-	private lastLocalBranchRefresh = 0;
-	private readonly LOCAL_BRANCH_REFRESH_INTERVAL_MS = 5000; // Refresh every 5 seconds max
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath);
@@ -91,52 +88,6 @@ export class BacklogServer {
 
 		const search = await this.core.getSearchService();
 		this.searchService = search;
-	}
-
-	/**
-	 * Refresh tasks from other local branches into the content store
-	 * Called periodically to keep cross-branch tasks up to date
-	 */
-	private async refreshLocalBranchTasks(): Promise<void> {
-		const now = Date.now();
-		if (now - this.lastLocalBranchRefresh < this.LOCAL_BRANCH_REFRESH_INTERVAL_MS) {
-			return; // Skip if refreshed recently
-		}
-		this.lastLocalBranchRefresh = now;
-
-		try {
-			const store = await this.getContentStoreInstance();
-			const config = await this.core.fs.loadConfig();
-			const baseTasks = store.getTasks();
-
-			// Build a set of task IDs that exist locally (no branch property = current branch)
-			const localTaskIds = new Set(baseTasks.filter((t) => !t.branch).map((t) => t.id));
-
-			// Load tasks from other local branches
-			const localBranchTasks = await loadLocalBranchTasks(this.core.git, config, undefined, baseTasks);
-
-			if (localBranchTasks.length === 0) {
-				return;
-			}
-
-			// Only inject tasks that don't exist locally - tasks that exist on current branch
-			// should not be overwritten with versions from other branches
-			let injectedCount = 0;
-			for (const task of localBranchTasks) {
-				if (!localTaskIds.has(task.id)) {
-					store.upsertTask(task);
-					injectedCount++;
-				}
-			}
-
-			if (process.env.DEBUG && injectedCount > 0) {
-				console.log(`Refreshed ${injectedCount} tasks from other local branches`);
-			}
-		} catch (error) {
-			if (process.env.DEBUG) {
-				console.error("Failed to refresh local branch tasks:", error);
-			}
-		}
 	}
 
 	private async getContentStoreInstance(): Promise<ContentStore> {
@@ -510,9 +461,6 @@ export class BacklogServer {
 
 	// Task handlers
 	private async handleListTasks(req: Request): Promise<Response> {
-		// Refresh local branch tasks periodically
-		await this.refreshLocalBranchTasks();
-
 		const url = new URL(req.url);
 		const status = url.searchParams.get("status") || undefined;
 		const assignee = url.searchParams.get("assignee") || undefined;
@@ -621,9 +569,6 @@ export class BacklogServer {
 
 	private async handleSearch(req: Request): Promise<Response> {
 		try {
-			// Refresh local branch tasks before search
-			await this.refreshLocalBranchTasks();
-
 			const searchService = await this.getSearchServiceInstance();
 			const url = new URL(req.url);
 			const query = url.searchParams.get("query") ?? undefined;
@@ -1088,9 +1033,6 @@ export class BacklogServer {
 					{ status: 400 },
 				);
 			}
-
-			// Refresh local branch tasks to ensure cross-branch tasks are in the store
-			await this.refreshLocalBranchTasks();
 
 			const { updatedTask } = await this.core.reorderTask({
 				taskId,

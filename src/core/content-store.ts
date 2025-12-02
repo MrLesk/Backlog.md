@@ -55,7 +55,10 @@ export class ContentStore {
 		});
 	}
 
-	constructor(private readonly filesystem: FileSystem) {
+	constructor(
+		private readonly filesystem: FileSystem,
+		private readonly taskLoader?: () => Promise<Task[]>,
+	) {
 		this.patchFilesystem();
 	}
 
@@ -193,8 +196,10 @@ export class ContentStore {
 	private async loadInitialData(): Promise<void> {
 		await this.filesystem.ensureBacklogStructure();
 
+		// Use custom task loader if provided (e.g., loadBoardTasks for cross-branch support)
+		// Otherwise fall back to filesystem-only loading
 		const [tasks, documents, decisions] = await Promise.all([
-			this.filesystem.listTasks(),
+			this.taskLoader ? this.taskLoader() : this.filesystem.listTasks(),
 			this.filesystem.listDocuments(),
 			this.filesystem.listDecisions(),
 		]);

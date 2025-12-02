@@ -76,7 +76,8 @@ export class Core {
 
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
-			this.contentStore = new ContentStore(this.fs);
+			// Use loadBoardTasks as the task loader to include cross-branch tasks
+			this.contentStore = new ContentStore(this.fs, () => this.loadBoardTasks());
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
