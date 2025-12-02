@@ -12,8 +12,20 @@ interface TaskCardProps {
 
 const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status }) => {
   const [isDragging, setIsDragging] = React.useState(false);
+  const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
+
+  // Check if task is from another branch (read-only)
+  const isFromOtherBranch = Boolean(task.branch);
 
   const handleDragStart = (e: React.DragEvent) => {
+    // Prevent dragging cross-branch tasks
+    if (isFromOtherBranch) {
+      e.preventDefault();
+      setShowBranchTooltip(true);
+      setTimeout(() => setShowBranchTooltip(false), 3000);
+      return;
+    }
+
     e.dataTransfer.setData('text/plain', task.id);
     if (status) {
       e.dataTransfer.setData('text/status', status);
@@ -63,21 +75,55 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
   };
 
   return (
-    <div
-      className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 cursor-pointer transition-all duration-200 hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400 ${getPriorityClass(task.priority)} ${
-        isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
-      }`}
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onClick={() => onEdit(task)}
-    >
-      <div className="mb-2">
-        <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 line-clamp-2 transition-colors duration-200">
-          {task.title}
-        </h4>
-        <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">{task.id}</span>
-      </div>
+    <div className="relative">
+      {/* Branch tooltip when trying to drag cross-branch task */}
+      {showBranchTooltip && isFromOtherBranch && (
+        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 z-50 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-md shadow-lg whitespace-nowrap">
+          <div className="flex items-center gap-1">
+            <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            Switch to <span className="font-semibold text-amber-300">{task.branch}</span> branch to move this task
+          </div>
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-gray-700"></div>
+        </div>
+      )}
+
+      <div
+        className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 transition-all duration-200 ${
+          isFromOtherBranch 
+            ? 'opacity-75 cursor-not-allowed border-dashed' 
+            : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400'
+        } ${getPriorityClass(task.priority)} ${
+          isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
+        }`}
+        draggable={!isFromOtherBranch}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onClick={() => onEdit(task)}
+      >
+        {/* Cross-branch indicator banner */}
+        {isFromOtherBranch && (
+          <div className="flex items-center gap-1.5 mb-2 px-2 py-1 -mx-1 -mt-1 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 rounded-t text-xs text-amber-700 dark:text-amber-300">
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span className="truncate">
+              From <span className="font-semibold">{task.branch}</span> branch
+            </span>
+          </div>
+        )}
+
+        <div className="mb-2">
+          <h4 className={`font-semibold text-sm line-clamp-2 transition-colors duration-200 ${
+            isFromOtherBranch 
+              ? 'text-gray-600 dark:text-gray-400' 
+              : 'text-gray-900 dark:text-gray-100'
+          }`}>
+            {task.title}
+          </h4>
+          <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">{task.id}</span>
+        </div>
       
       {task.description?.trim() && (
         <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-3 transition-colors duration-200">
@@ -127,6 +173,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             {task.priority}
           </span>
         )}
+      </div>
       </div>
     </div>
   );
