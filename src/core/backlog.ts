@@ -32,11 +32,17 @@ import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
-import { loadLocalBranchTasks, loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
-import { findTaskInLocalBranches, findTaskInRemoteBranches } from "./task-loader.ts";
+import {
+	findTaskInLocalBranches,
+	findTaskInRemoteBranches,
+	getTaskLoadingMessage,
+	loadLocalBranchTasks,
+	loadRemoteTasks,
+	resolveTaskConflict,
+} from "./task-loader.ts";
 
 interface BlessedScreen {
 	program: {
@@ -1604,7 +1610,6 @@ export class Core {
 		}
 
 		// Load tasks from remote branches and other local branches in parallel
-		const { getTaskLoadingMessage } = await import("./remote-tasks.ts");
 		progressCallback?.(getTaskLoadingMessage(config));
 
 		const [remoteTasks, localBranchTasks] = await Promise.all([
