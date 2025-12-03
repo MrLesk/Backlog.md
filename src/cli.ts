@@ -26,18 +26,19 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
-import type {
-	BacklogConfig,
-	Decision,
-	DecisionSearchResult,
-	Document as DocType,
-	DocumentSearchResult,
-	SearchPriorityFilter,
-	SearchResult,
-	SearchResultType,
-	Task,
-	TaskListFilter,
-	TaskSearchResult,
+import {
+	type BacklogConfig,
+	type Decision,
+	type DecisionSearchResult,
+	type Document as DocType,
+	type DocumentSearchResult,
+	isLocalEditableTask,
+	type SearchPriorityFilter,
+	type SearchResult,
+	type SearchResultType,
+	type Task,
+	type TaskListFilter,
+	type TaskSearchResult,
 } from "./types/index.ts";
 import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
@@ -1428,19 +1429,24 @@ function printSearchResults(results: SearchResult[]): void {
 		decisions.push(result);
 	}
 
-	if (tasks.length > 0) {
+	const localTasks = tasks.filter((t) => isLocalEditableTask(t.task));
+
+	let printed = false;
+
+	if (localTasks.length > 0) {
 		console.log("Tasks:");
-		for (const taskResult of tasks) {
+		for (const taskResult of localTasks) {
 			const { task } = taskResult;
 			const scoreText = formatScore(taskResult.score);
 			const statusText = task.status ? ` (${task.status})` : "";
 			const priorityText = task.priority ? ` [${task.priority.toUpperCase()}]` : "";
 			console.log(`  ${task.id} - ${task.title}${statusText}${priorityText}${scoreText}`);
 		}
+		printed = true;
 	}
 
 	if (documents.length > 0) {
-		if (tasks.length > 0) {
+		if (printed) {
 			console.log("");
 		}
 		console.log("Documents:");
@@ -1449,10 +1455,11 @@ function printSearchResults(results: SearchResult[]): void {
 			const scoreText = formatScore(documentResult.score);
 			console.log(`  ${document.id} - ${document.title}${scoreText}`);
 		}
+		printed = true;
 	}
 
 	if (decisions.length > 0) {
-		if (tasks.length > 0 || documents.length > 0) {
+		if (printed) {
 			console.log("");
 		}
 		console.log("Decisions:");
@@ -1461,6 +1468,11 @@ function printSearchResults(results: SearchResult[]): void {
 			const scoreText = formatScore(decisionResult.score);
 			console.log(`  ${decision.id} - ${decision.title}${scoreText}`);
 		}
+		printed = true;
+	}
+
+	if (!printed) {
+		console.log("No results found.");
 	}
 }
 
@@ -1519,20 +1531,6 @@ taskCmd
 			baseFilters.parentTaskId = parentInput;
 		}
 
-		const tasks = await core.queryTasks({ filters: baseFilters });
-		const config = await core.filesystem.loadConfig();
-
-		if (parentId) {
-			const parentExists = (await core.queryTasks()).some((task) => taskIdsEqual(parentId, task.id));
-			if (!parentExists) {
-				console.error(`Parent task ${parentId} not found.`);
-				process.exitCode = 1;
-				cleanup();
-				return;
-			}
-		}
-
-		let sortedTasks = tasks;
 		if (options.sort) {
 			const validSortFields = ["priority", "id"];
 			const sortField = options.sort.toLowerCase();
@@ -1542,29 +1540,56 @@ taskCmd
 				cleanup();
 				return;
 			}
-			sortedTasks = sortTasks(tasks, sortField);
-		} else {
-			sortedTasks = sortTasks(tasks, "priority");
-		}
-
-		let filtered = sortedTasks;
-		if (parentId) {
-			filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
-		}
-
-		if (filtered.length === 0) {
-			if (options.parent) {
-				const canonicalParent = normalizeTaskId(String(options.parent));
-				console.log(`No child tasks found for parent task ${canonicalParent}.`);
-			} else {
-				console.log("No tasks found.");
-			}
-			cleanup();
-			return;
 		}
 
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 		if (isPlainFlag) {
+			const tasks = await core.queryTasks({ filters: baseFilters, includeCrossBranch: false });
+			const config = await core.filesystem.loadConfig();
+
+			if (parentId) {
+				const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
+					taskIdsEqual(parentId, task.id),
+				);
+				if (!parentExists) {
+					console.error(`Parent task ${parentId} not found.`);
+					process.exitCode = 1;
+					cleanup();
+					return;
+				}
+			}
+
+			let sortedTasks = tasks;
+			if (options.sort) {
+				const validSortFields = ["priority", "id"];
+				const sortField = options.sort.toLowerCase();
+				if (!validSortFields.includes(sortField)) {
+					console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+					process.exitCode = 1;
+					cleanup();
+					return;
+				}
+				sortedTasks = sortTasks(tasks, sortField);
+			} else {
+				sortedTasks = sortTasks(tasks, "priority");
+			}
+
+			let filtered = sortedTasks;
+			if (parentId) {
+				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
+			}
+
+			if (filtered.length === 0) {
+				if (options.parent) {
+					const canonicalParent = normalizeTaskId(String(options.parent));
+					console.log(`No child tasks found for parent task ${canonicalParent}.`);
+				} else {
+					console.log("No tasks found.");
+				}
+				cleanup();
+				return;
+			}
+
 			if (options.sort && options.sort.toLowerCase() === "priority") {
 				const sortedByPriority = sortTasks(filtered, "priority");
 				console.log("Tasks (sorted by priority):");
@@ -1615,13 +1640,6 @@ taskCmd
 			return;
 		}
 
-		const firstTask = filtered[0];
-		if (!firstTask) {
-			console.log("No tasks found.");
-			cleanup();
-			return;
-		}
-
 		let filterDescription = "";
 		let title = "Tasks";
 		const activeFilters: string[] = [];
@@ -1642,8 +1660,44 @@ taskCmd
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
-			selectedTask: firstTask,
-			tasks: filtered,
+			tasksLoader: async (updateProgress) => {
+				updateProgress("Loading configuration...");
+				const config = await core.filesystem.loadConfig();
+
+				updateProgress("Loading tasks...");
+				const tasks = await core.queryTasks({ filters: baseFilters, includeCrossBranch: false });
+
+				if (parentId) {
+					const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
+						taskIdsEqual(parentId, task.id),
+					);
+					if (!parentExists) {
+						throw new Error(`Parent task ${parentId} not found.`);
+					}
+				}
+
+				let sortedTasks = tasks;
+				if (options.sort) {
+					const validSortFields = ["priority", "id"];
+					const sortField = options.sort.toLowerCase();
+					if (!validSortFields.includes(sortField)) {
+						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+					}
+					sortedTasks = sortTasks(tasks, sortField);
+				} else {
+					sortedTasks = sortTasks(tasks, "priority");
+				}
+
+				let filtered = sortedTasks;
+				if (parentId) {
+					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
+				}
+
+				return {
+					tasks: filtered,
+					statuses: config?.statuses || [],
+				};
+			},
 			filter: {
 				status: options.status,
 				assignee: options.assignee,
@@ -2155,34 +2209,10 @@ function addBoardOptions(cmd: Command) {
 		.option("--vertical", "use vertical layout (shortcut for --layout vertical)");
 }
 
-// TaskWithMetadata and resolveTaskConflict are now imported from remote-tasks.ts
-
 async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
 	const cwd = process.cwd();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
-
-	// Load tasks with loading screen for better user experience
-	const allTasks = await (async () => {
-		const loadingScreen = await createLoadingScreen("Loading board");
-
-		try {
-			const tasks = await core.loadBoardTasks((msg) => {
-				loadingScreen?.update(msg);
-			});
-
-			loadingScreen?.close();
-			return tasks;
-		} catch (error) {
-			loadingScreen?.close();
-			throw error;
-		}
-	})();
-
-	if (allTasks.length === 0) {
-		console.log("No tasks found.");
-		return;
-	}
 
 	const _layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const _maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
@@ -2193,11 +2223,14 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 	await runUnifiedView({
 		core,
 		initialView: "kanban",
-		tasks: allTasks.map((t) => ({ ...t, status: t.status || "" })), // Ensure tasks have status
-		// Pass the already-loaded kanban data to avoid duplicate loading
-		preloadedKanbanData: {
-			tasks: allTasks,
-			statuses,
+		tasksLoader: async (updateProgress) => {
+			const tasks = await core.loadTasks((msg) => {
+				updateProgress(msg);
+			});
+			return {
+				tasks: tasks.map((t) => ({ ...t, status: t.status || "" })),
+				statuses,
+			};
 		},
 	});
 }
@@ -2224,7 +2257,7 @@ boardCmd
 		let finalTasks: Task[];
 		try {
 			// Use the shared Core method for loading board tasks
-			finalTasks = await core.loadBoardTasks((msg) => {
+			finalTasks = await core.loadTasks((msg) => {
 				loadingScreen?.update(msg);
 			});
 

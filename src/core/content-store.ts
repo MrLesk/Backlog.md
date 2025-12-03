@@ -55,7 +55,11 @@ export class ContentStore {
 		});
 	}
 
-	constructor(private readonly filesystem: FileSystem) {
+	constructor(
+		private readonly filesystem: FileSystem,
+		private readonly taskLoader?: () => Promise<Task[]>,
+		private readonly enableWatchers = false,
+	) {
 		this.patchFilesystem();
 	}
 
@@ -193,8 +197,10 @@ export class ContentStore {
 	private async loadInitialData(): Promise<void> {
 		await this.filesystem.ensureBacklogStructure();
 
+		// Use custom task loader if provided (e.g., loadTasks for cross-branch support)
+		// Otherwise fall back to filesystem-only loading
 		const [tasks, documents, decisions] = await Promise.all([
-			this.filesystem.listTasks(),
+			this.loadTasksWithLoader(),
 			this.filesystem.listDocuments(),
 			this.filesystem.listDecisions(),
 		]);
@@ -204,7 +210,9 @@ export class ContentStore {
 		this.replaceDecisions(decisions);
 
 		this.initialized = true;
-		await this.setupWatchers();
+		if (this.enableWatchers) {
+			await this.setupWatchers();
+		}
 		this.notify("ready");
 	}
 
@@ -652,7 +660,7 @@ export class ContentStore {
 
 	private async refreshTasksFromDisk(expectedId?: string, previous?: Task): Promise<void> {
 		const tasks = await this.retryRead(
-			async () => this.filesystem.listTasks(),
+			async () => this.loadTasksWithLoader(),
 			(expected) => {
 				if (!expectedId) {
 					return true;
@@ -878,6 +886,13 @@ export class ContentStore {
 					console.error("ContentStore update failed", error);
 				}
 			});
+	}
+
+	private async loadTasksWithLoader(): Promise<Task[]> {
+		if (this.taskLoader) {
+			return await this.taskLoader();
+		}
+		return await this.filesystem.listTasks();
 	}
 }
 

@@ -3,7 +3,6 @@
  */
 
 import type { Core } from "../core/backlog.ts";
-import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import type { Task } from "../types/index.ts";
 import { renderBoardTui } from "./board.ts";
 import { viewTaskEnhanced } from "./task-viewer-with-search.ts";
@@ -23,7 +22,7 @@ export interface SimpleUnifiedViewOptions {
 		filterDescription?: string;
 	};
 	preloadedKanbanData?: {
-		tasks: TaskWithMetadata[];
+		tasks: Task[];
 		statuses: string[];
 	};
 }
@@ -93,7 +92,7 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 	};
 
 	const showKanbanBoard = async (): Promise<void> => {
-		let kanbanTasks: TaskWithMetadata[];
+		let kanbanTasks: Task[];
 		let statuses: string[];
 
 		if (options.preloadedKanbanData) {

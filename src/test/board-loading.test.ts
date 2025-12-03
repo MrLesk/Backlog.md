@@ -31,7 +31,7 @@ describe("Board Loading with checkActiveBranches", () => {
 		}
 	});
 
-	describe("Core.loadBoardTasks()", () => {
+	describe("Core.loadTasks()", () => {
 		const createTestTask = (id: string, status = "To Do"): Task => ({
 			id,
 			title: `Test Task ${id}`,
@@ -55,7 +55,7 @@ describe("Board Loading with checkActiveBranches", () => {
 		});
 
 		it("should load tasks with default configuration", async () => {
-			const tasks = await core.loadBoardTasks();
+			const tasks = await core.loadTasks();
 
 			expect(tasks).toHaveLength(3);
 			expect(tasks.find((t) => t.id === "task-1")).toBeDefined();
@@ -75,7 +75,7 @@ describe("Board Loading with checkActiveBranches", () => {
 
 			// Track progress messages
 			const progressMessages: string[] = [];
-			const tasks = await core.loadBoardTasks((msg) => {
+			const tasks = await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 
@@ -106,7 +106,7 @@ describe("Board Loading with checkActiveBranches", () => {
 
 			// Track progress messages
 			const progressMessages: string[] = [];
-			const tasks = await core.loadBoardTasks((msg) => {
+			const tasks = await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 
@@ -152,7 +152,7 @@ describe("Board Loading with checkActiveBranches", () => {
 
 			// Track progress messages
 			const progressMessages: string[] = [];
-			const tasks = await core.loadBoardTasks((msg) => {
+			const tasks = await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 
@@ -177,14 +177,14 @@ describe("Board Loading with checkActiveBranches", () => {
 			controller.abort();
 
 			// Should throw an error
-			await expect(core.loadBoardTasks(undefined, controller.signal)).rejects.toThrow("Loading cancelled");
+			await expect(core.loadTasks(undefined, controller.signal)).rejects.toThrow("Loading cancelled");
 		});
 
 		it("should handle empty task list gracefully", async () => {
 			// Remove all tasks
 			await $`rm -rf backlog/tasks/*`.cwd(TEST_DIR).quiet();
 
-			const tasks = await core.loadBoardTasks();
+			const tasks = await core.loadTasks();
 			expect(tasks).toEqual([]);
 		});
 
@@ -194,7 +194,7 @@ describe("Board Loading with checkActiveBranches", () => {
 				progressMessages.push(msg);
 			});
 
-			await core.loadBoardTasks(progressCallback);
+			await core.loadTasks(progressCallback);
 
 			// Verify callback was called
 			expect(progressCallback).toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe("Board Loading with checkActiveBranches", () => {
 			);
 
 			const progressMessages: string[] = [];
-			const tasks = await core.loadBoardTasks((msg) => {
+			const tasks = await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 
@@ -259,7 +259,7 @@ describe("Board Loading with checkActiveBranches", () => {
 			});
 
 			const progressMessages: string[] = [];
-			await core.loadBoardTasks((msg) => {
+			await core.loadTasks((msg) => {
 				progressMessages.push(msg);
 			});
 

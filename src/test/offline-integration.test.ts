@@ -203,7 +203,7 @@ backlog_directory: "backlog"
 		expect(config?.remoteOperations).toBe(false);
 
 		// Import loadRemoteTasks
-		const { loadRemoteTasks } = await import("../core/remote-tasks.ts");
+		const { loadRemoteTasks } = await import("../core/task-loader.ts");
 
 		const progressMessages: string[] = [];
 		const remoteTasks = await loadRemoteTasks(core.gitOps, config, (msg: string) => progressMessages.push(msg));

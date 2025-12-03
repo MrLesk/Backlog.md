@@ -1,10 +1,11 @@
 ---
 id: task-309
 title: Improve TUI empty state when task filters return no results
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-10-27 21:36'
+updated_date: '2025-12-03 20:39'
 labels: []
 dependencies: []
 ---
@@ -28,7 +29,26 @@ When a user applies search text or filters in the TUI task list that yield no ma
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With a search/filter that yields zero matching tasks, the list pane no longer displays any stale tasks from previous results.
-- [ ] #2 When no matches are available, the list pane displays a clear empty-state message (e.g. "No tasks match your current filters") inline where tasks would normally appear.
-- [ ] #3 Selecting or moving focus in the list pane while filters return zero results does not re-surface stale tasks until filters actually yield matches.
+- [x] #1 With a search/filter that yields zero matching tasks, the list pane no longer displays any stale tasks from previous results.
+- [x] #2 When no matches are available, the list pane displays a clear empty-state message (e.g. "No tasks match your current filters") inline where tasks would normally appear.
+- [x] #3 Selecting or moving focus in the list pane while filters return zero results does not re-surface stale tasks until filters actually yield matches.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Fix Summary
+
+### Changes Made
+
+1. **`src/ui/components/generic-list.ts`** - Fixed `destroy()` method to also destroy the underlying `listBox` component, not just the screen. This was the root cause - the old list items remained visible because the listBox wasn't being removed from the parent container.
+
+2. **`src/ui/task-viewer-with-search.ts`** - Added empty state display in the list pane:
+   - Added `listEmptyStateBox` variable to track the empty state UI element
+   - Added `showListEmptyState()` and `hideListEmptyState()` helper functions
+   - When filters return 0 results, now shows "No matching tasks" with active filter summary in the list pane
+   - When filters return results, properly hides the empty state before showing the new list
+
+### Result
+Both panes now show consistent empty state messaging when search/filters return no results. The stale task list no longer remains visible.
+<!-- SECTION:NOTES:END -->

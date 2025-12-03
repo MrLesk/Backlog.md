@@ -131,7 +131,7 @@ class BackgroundLoader {
 			};
 
 			// Use the shared Core method for loading board tasks
-			const filteredTasks = await this.core.loadBoardTasks(progressWrapper, this.abortController?.signal);
+			const filteredTasks = await this.core.loadTasks(progressWrapper, this.abortController?.signal);
 
 			// Cache the results
 			this.cachedTasks = filteredTasks;
@@ -163,6 +163,14 @@ class BackgroundLoader {
 	}
 
 	/**
+	 * Seed the cache with pre-loaded tasks to avoid redundant loading
+	 */
+	seedCache(tasks: Task[]): void {
+		this.cachedTasks = tasks;
+		this.lastLoadTime = Date.now();
+	}
+
+	/**
 	 * Cancel any ongoing loading operations
 	 */
 	cancelLoading(): void {
@@ -187,10 +195,12 @@ export class ViewSwitcher {
 		this.backgroundLoader = new BackgroundLoader(options.core);
 		this.onViewChange = options.onViewChange;
 
-		// Start background loading if we're in a task view OR starting with kanban view
-		if (this.state.type === "task-list" || this.state.type === "task-detail" || this.state.type === "kanban") {
-			this.backgroundLoader.startLoading();
+		// If starting with kanban view and we already have loaded tasks, seed the cache
+		if (this.state.type === "kanban" && this.state.kanbanData?.tasks && !this.state.kanbanData.isLoading) {
+			this.backgroundLoader.seedCache(this.state.kanbanData.tasks);
 		}
+		// Note: We no longer auto-start background loading - tasks are loaded once
+		// at the unified view level and passed through
 	}
 
 	/**

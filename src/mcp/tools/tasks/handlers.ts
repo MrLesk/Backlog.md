@@ -1,4 +1,10 @@
-import type { SearchPriorityFilter, Task, TaskListFilter, TaskSearchResult } from "../../../types/index.ts";
+import {
+	isLocalEditableTask,
+	type SearchPriorityFilter,
+	type Task,
+	type TaskListFilter,
+	type TaskSearchResult,
+} from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { sortTasks } from "../../../utils/task-sorting.ts";
@@ -93,12 +99,13 @@ export class TaskHandlers {
 			query: args.search,
 			limit: args.limit,
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
+			includeCrossBranch: false,
 		});
 
-		let filteredByLabels = tasks;
+		let filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
 		const labelFilters = args.labels ?? [];
 		if (labelFilters.length > 0) {
-			filteredByLabels = tasks.filter((task) => {
+			filteredByLabels = filteredByLabels.filter((task) => {
 				const taskLabels = task.labels ?? [];
 				return labelFilters.every((label) => taskLabels.includes(label));
 			});
@@ -186,7 +193,9 @@ export class TaskHandlers {
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
 		});
 
-		const taskResults = results.filter((result): result is TaskSearchResult => result.type === "task");
+		const taskResults = results
+			.filter((result): result is TaskSearchResult => result.type === "task")
+			.filter((result) => isLocalEditableTask(result.task));
 		if (taskResults.length === 0) {
 			return {
 				content: [

@@ -91,11 +91,18 @@ function formatTaskListItem(task: Task, isMoving = false): string {
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
 	const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
-	const branch = (task as Task & { branch?: string }).branch
-		? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}`
-		: "";
+	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
+	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
+
+	// Cross-branch tasks are dimmed to indicate read-only status
 	const content = `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}${branch}`;
-	return isMoving ? `{magenta-fg}► ${content}{/}` : content;
+	if (isMoving) {
+		return `{magenta-fg}► ${content}{/}`;
+	}
+	if (isCrossBranch) {
+		return `{gray-fg}${content}{/}`;
+	}
+	return content;
 }
 
 function formatColumnLabel(status: string, count: number): string {
@@ -533,7 +540,7 @@ export async function renderBoardTui(
 
 			contentArea.key(["e", "E"], async () => {
 				try {
-					const core = new Core(process.cwd());
+					const core = new Core(process.cwd(), { enableWatchers: true });
 					const filePath = await getTaskPath(task.id, core);
 					if (!filePath) return;
 					type ProgWithPause = { pause?: () => () => void };
@@ -571,7 +578,7 @@ export async function renderBoardTui(
 			const task = column.tasks[idx];
 			if (!task) return;
 			try {
-				const core = new Core(process.cwd());
+				const core = new Core(process.cwd(), { enableWatchers: true });
 				const filePath = await getTaskPath(task.id, core);
 				if (!filePath) return;
 				type ProgWithPause = { pause?: () => () => void };
@@ -611,7 +618,7 @@ export async function renderBoardTui(
 			}
 
 			try {
-				const core = new Core(process.cwd());
+				const core = new Core(process.cwd(), { enableWatchers: true });
 				const config = await core.fs.loadConfig();
 
 				// Get the final state from the projection
@@ -671,6 +678,21 @@ export async function renderBoardTui(
 				const taskIndex = column.list.selected ?? 0;
 				const task = column.tasks[taskIndex];
 				if (!task) return;
+
+				// Prevent move mode for cross-branch tasks
+				if (task.branch) {
+					footerBox.setContent(
+						` {red-fg}Cannot move task from branch "${task.branch}". Switch to that branch to modify it.{/}`,
+					);
+					screen.render();
+					setTimeout(() => {
+						footerBox.setContent(
+							" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit",
+						);
+						screen.render();
+					}, 3000);
+					return;
+				}
 
 				// Enter move mode - store original position for cancel
 				moveOp = {

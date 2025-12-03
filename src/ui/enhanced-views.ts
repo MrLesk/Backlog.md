@@ -3,7 +3,6 @@
  */
 
 import type { Core } from "../core/backlog.ts";
-import type { TaskWithMetadata } from "../core/remote-tasks.ts";
 import type { Task } from "../types/index.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -171,7 +170,7 @@ async function viewTaskEnhancedWithSwitching(
  * Enhanced kanban board that supports view switching
  */
 async function renderBoardTuiWithSwitching(
-	tasks: TaskWithMetadata[],
+	tasks: Task[],
 	statuses: string[],
 	_options: {
 		viewSwitcher?: ViewSwitcher;

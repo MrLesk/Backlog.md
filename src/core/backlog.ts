@@ -14,6 +14,7 @@ import type {
 	TaskListFilter,
 	TaskUpdateInput,
 } from "../types/index.ts";
+import { isLocalEditableTask } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
@@ -32,11 +33,17 @@ import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
-import { loadLocalBranchTasks, loadRemoteTasks, resolveTaskConflict } from "./remote-tasks.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
-import { findTaskInLocalBranches, findTaskInRemoteBranches } from "./task-loader.ts";
+import {
+	findTaskInLocalBranches,
+	findTaskInRemoteBranches,
+	getTaskLoadingMessage,
+	loadLocalBranchTasks,
+	loadRemoteTasks,
+	resolveTaskConflict,
+} from "./task-loader.ts";
 
 interface BlessedScreen {
 	program: {
@@ -60,6 +67,7 @@ interface TaskQueryOptions {
 	filters?: TaskListFilter;
 	query?: string;
 	limit?: number;
+	includeCrossBranch?: boolean;
 }
 
 export class Core {
@@ -67,16 +75,21 @@ export class Core {
 	public git: GitOperations;
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
+	private readonly enableWatchers: boolean;
 
-	constructor(projectRoot: string) {
+	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot);
+		// Disable watchers by default for CLI commands (non-interactive)
+		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
+		this.enableWatchers = options?.enableWatchers ?? false;
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
-			this.contentStore = new ContentStore(this.fs);
+			// Use loadTasks as the task loader to include cross-branch tasks
+			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.enableWatchers);
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
@@ -115,6 +128,10 @@ export class Core {
 		return result;
 	}
 
+	private filterLocalEditableTasks(tasks: Task[]): Task[] {
+		return tasks.filter(isLocalEditableTask);
+	}
+
 	private async requireCanonicalStatus(status: string): Promise<string> {
 		const canonical = await resolveCanonicalStatus(status, this);
 		if (canonical) {
@@ -139,9 +156,13 @@ export class Core {
 	async queryTasks(options: TaskQueryOptions = {}): Promise<Task[]> {
 		const { filters, query, limit } = options;
 		const trimmedQuery = query?.trim();
+		const includeCrossBranch = options.includeCrossBranch ?? true;
 
 		const applyFiltersAndLimit = (collection: Task[]): Task[] => {
-			const filtered = this.applyTaskFilters(collection, filters);
+			let filtered = this.applyTaskFilters(collection, filters);
+			if (!includeCrossBranch) {
+				filtered = this.filterLocalEditableTasks(filtered);
+			}
 			if (typeof limit === "number" && limit >= 0) {
 				return filtered.slice(0, limit);
 			}
@@ -318,16 +339,18 @@ export class Core {
 
 	// ID generation
 	async generateNextId(parent?: string): Promise<string> {
-		// Ensure git operations have access to the config
-		await this.ensureConfigLoaded();
-
 		const config = await this.fs.loadConfig();
-		// Load local tasks and drafts in parallel
-		const [tasks, drafts] = await Promise.all([this.fs.listTasks(), this.fs.listDrafts()]);
+
+		// Use ContentStore for all tasks (local + cross-branch + remote)
+		// This is the single source of truth for task IDs
+		const store = await this.getContentStore();
+		const tasks = store.getTasks();
+
+		// Also include drafts (which aren't in ContentStore yet)
+		const drafts = await this.fs.listDrafts();
 
 		const allIds: string[] = [];
 
-		// Add local task and draft IDs first
 		for (const t of tasks) {
 			allIds.push(t.id);
 		}
@@ -335,72 +358,9 @@ export class Core {
 			allIds.push(d.id);
 		}
 
-		try {
-			const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-
-			// Skip remote operations if disabled
-			if (config?.remoteOperations === false) {
-				if (process.env.DEBUG) {
-					console.log("Remote operations disabled - generating ID from local tasks only");
-				}
-			} else {
-				await this.git.fetch();
-			}
-
-			// Use recent branches for better performance when generating IDs
-			const days = config?.activeBranchDays ?? 30;
-			const branches =
-				config?.remoteOperations === false
-					? await this.git.listLocalBranches()
-					: await this.git.listRecentBranches(days);
-
-			// Filter and normalize branch names - handle both local and remote branches
-			const normalizedBranches = branches
-				.flatMap((branch) => {
-					// For remote branches like "origin/feature", extract just "feature"
-					// But also try the full remote ref in case it's needed
-					if (branch.startsWith("origin/")) {
-						return [branch, branch.replace("origin/", "")];
-					}
-					return [branch];
-				})
-				// Remove duplicates and filter out HEAD
-				.filter((branch, index, arr) => arr.indexOf(branch) === index && branch !== "HEAD" && !branch.includes("HEAD"));
-
-			// Load files from all branches in parallel with better error handling
-			const branchFilePromises = normalizedBranches.map(async (branch) => {
-				try {
-					const files = await this.git.listFilesInTree(branch, `${backlogDir}/tasks`);
-					return files
-						.map((file) => {
-							const match = file.match(/task-(\d+)/);
-							return match ? `task-${match[1]}` : null;
-						})
-						.filter((id): id is string => id !== null);
-				} catch (error) {
-					// Silently ignore errors for individual branches (they might not exist or be accessible)
-					if (process.env.DEBUG) {
-						console.log(`Could not access branch ${branch}:`, error);
-					}
-					return [];
-				}
-			});
-
-			const branchResults = await Promise.all(branchFilePromises);
-			for (const branchIds of branchResults) {
-				allIds.push(...branchIds);
-			}
-		} catch (error) {
-			// Suppress errors for offline mode or other git issues
-			if (process.env.DEBUG) {
-				console.error("Could not fetch remote task IDs:", error);
-			}
-		}
-
 		if (parent) {
 			const prefix = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
 			let max = 0;
-			// Iterate over allIds (which now includes both local and remote)
 			for (const id of allIds) {
 				if (id.startsWith(`${prefix}.`)) {
 					const rest = id.slice(prefix.length + 1);
@@ -412,8 +372,6 @@ export class Core {
 			const padding = config?.zeroPaddedIds;
 
 			if (padding && padding > 0) {
-				// Pad sub-tasks to 2 digits. This supports up to 99 sub-tasks,
-				// which is a reasonable limit and keeps IDs from getting too long.
 				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
 				return `${prefix}.${paddedSubId}`;
 			}
@@ -422,7 +380,6 @@ export class Core {
 		}
 
 		let max = 0;
-		// Iterate over allIds (which now includes both local and remote)
 		for (const id of allIds) {
 			const match = id.match(/^task-(\d+)/);
 			if (match) {
@@ -1010,10 +967,10 @@ export class Core {
 			seen.add(id);
 		}
 
-		// Load all tasks from the ordered list - only active tasks should be included
+		// Load all tasks from the ordered list - use getTask to include cross-branch tasks from the store
 		const loadedTasks = await Promise.all(
 			orderedTaskIds.map(async (id) => {
-				const task = await this.fs.loadTask(id);
+				const task = await this.getTask(id);
 				return task;
 			}),
 		);
@@ -1025,6 +982,13 @@ export class Core {
 		const movedTask = validTasks.find((t) => t.id === taskId);
 		if (!movedTask) {
 			throw new Error(`Task ${taskId} not found while reordering`);
+		}
+
+		// Reject reordering tasks from other branches - they can only be modified in their source branch
+		if (movedTask.branch) {
+			throw new Error(
+				`Task ${taskId} exists in branch "${movedTask.branch}" and cannot be reordered from the current branch. Switch to that branch to modify it.`,
+			);
 		}
 
 		// Calculate target index within the valid tasks list
@@ -1634,10 +1598,10 @@ export class Core {
 	}
 
 	/**
-	 * Load board data (tasks) with optimized cross-branch checking
-	 * This is the shared logic for both CLI and UI board views
+	 * Load all tasks with cross-branch support
+	 * This is the single entry point for loading tasks across all interfaces
 	 */
-	async loadBoardTasks(progressCallback?: (msg: string) => void, abortSignal?: AbortSignal): Promise<Task[]> {
+	async loadTasks(progressCallback?: (msg: string) => void, abortSignal?: AbortSignal): Promise<Task[]> {
 		const config = await this.fs.loadConfig();
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
@@ -1656,7 +1620,6 @@ export class Core {
 		}
 
 		// Load tasks from remote branches and other local branches in parallel
-		const { getTaskLoadingMessage } = await import("./remote-tasks.ts");
 		progressCallback?.(getTaskLoadingMessage(config));
 
 		const [remoteTasks, localBranchTasks] = await Promise.all([
