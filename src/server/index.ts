@@ -4,9 +4,9 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
-import { loadLocalBranchTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
+import { loadLocalBranchTasks, resolveTaskConflict } from "../core/task-loader.ts";
 import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
@@ -776,8 +776,9 @@ export class BacklogServer {
 			this.broadcastTasksUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to complete task";
 			console.error("Error completing task:", error);
-			return Response.json({ error: "Failed to complete task" }, { status: 500 });
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 
@@ -1044,8 +1045,15 @@ export class BacklogServer {
 
 			return Response.json({ success: true, task: updatedTask });
 		} catch (error) {
-			console.error("Error reordering task:", error);
-			return Response.json({ error: "Failed to reorder task" }, { status: 500 });
+			const message = error instanceof Error ? error.message : "Failed to reorder task";
+			// Cross-branch and validation errors are client errors (400), not server errors (500)
+			const isCrossBranchError = message.includes("exists in branch");
+			const isValidationError = message.includes("not found") || message.includes("Missing required");
+			const status = isCrossBranchError || isValidationError ? 400 : 500;
+			if (status === 500) {
+				console.error("Error reordering task:", error);
+			}
+			return Response.json({ error: message }, { status });
 		}
 	}
 

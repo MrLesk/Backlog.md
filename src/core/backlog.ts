@@ -14,6 +14,7 @@ import type {
 	TaskListFilter,
 	TaskUpdateInput,
 } from "../types/index.ts";
+import { isLocalEditableTask } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
@@ -66,6 +67,7 @@ interface TaskQueryOptions {
 	filters?: TaskListFilter;
 	query?: string;
 	limit?: number;
+	includeCrossBranch?: boolean;
 }
 
 export class Core {
@@ -126,6 +128,10 @@ export class Core {
 		return result;
 	}
 
+	private filterLocalEditableTasks(tasks: Task[]): Task[] {
+		return tasks.filter(isLocalEditableTask);
+	}
+
 	private async requireCanonicalStatus(status: string): Promise<string> {
 		const canonical = await resolveCanonicalStatus(status, this);
 		if (canonical) {
@@ -150,9 +156,13 @@ export class Core {
 	async queryTasks(options: TaskQueryOptions = {}): Promise<Task[]> {
 		const { filters, query, limit } = options;
 		const trimmedQuery = query?.trim();
+		const includeCrossBranch = options.includeCrossBranch ?? true;
 
 		const applyFiltersAndLimit = (collection: Task[]): Task[] => {
-			const filtered = this.applyTaskFilters(collection, filters);
+			let filtered = this.applyTaskFilters(collection, filters);
+			if (!includeCrossBranch) {
+				filtered = this.filterLocalEditableTasks(filtered);
+			}
 			if (typeof limit === "number" && limit >= 0) {
 				return filtered.slice(0, limit);
 			}

@@ -35,11 +35,18 @@ export interface Task {
 	branch?: string;
 	ordinal?: number;
 	filePath?: string;
-	// Metadata fields (previously in TaskWithMetadata)
+	// Metadata fields
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
+}
+
+/**
+ * Check if a task is locally editable (not from a remote or other local branch)
+ */
+export function isLocalEditableTask(task: Task): boolean {
+	return task.source === undefined || task.source === "local" || task.source === "completed";
 }
 
 export interface TaskCreateInput {

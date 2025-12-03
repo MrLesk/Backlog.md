@@ -13,9 +13,6 @@ import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 
-// TaskWithMetadata is now just an alias for Task (for backward compatibility)
-export type TaskWithMetadata = Task;
-
 /**
  * Get the appropriate loading message based on remote operations configuration
  */
@@ -25,7 +22,7 @@ export function getTaskLoadingMessage(config: BacklogConfig | null): string {
 		: "Loading tasks from local and remote branches...";
 }
 
-export interface RemoteIndexEntry {
+interface RemoteIndexEntry {
 	id: string;
 	branch: string;
 	path: string; // "backlog/tasks/task-123 - title.md"
@@ -123,7 +120,7 @@ export async function buildRemoteTaskIndex(
  * Hydrate tasks by fetching their content
  * Only call this for the "winner" tasks that we actually need
  */
-export async function hydrateTasks(
+async function hydrateTasks(
 	git: GitOperations,
 	winners: Array<{ id: string; ref: string; path: string }>,
 ): Promise<Task[]> {
@@ -228,7 +225,7 @@ export async function buildLocalBranchTaskIndex(
  * Choose which remote tasks need to be hydrated based on strategy
  * Returns only the tasks that are newer or more progressed than local versions
  */
-export function chooseWinners(
+function chooseWinners(
 	localById: Map<string, Task>,
 	remoteIndex: Map<string, RemoteIndexEntry[]>,
 	strategy: "most_recent" | "most_progressed" = "most_progressed",
@@ -451,6 +448,13 @@ export async function loadRemoteTasks(
 /**
  * Resolve conflicts between local and remote tasks based on strategy
  */
+function getTaskDate(task: Task): Date {
+	if (task.updatedDate) {
+		return new Date(task.updatedDate);
+	}
+	return task.lastModified ?? new Date(0);
+}
+
 export function resolveTaskConflict(
 	existing: Task,
 	incoming: Task,
@@ -458,14 +462,9 @@ export function resolveTaskConflict(
 	strategy: "most_recent" | "most_progressed" = "most_progressed",
 ): Task {
 	if (strategy === "most_recent") {
-		// First try to use updated_date from the task metadata
-		const existingDate = existing.updatedDate ? new Date(existing.updatedDate) : existing.lastModified;
-		const incomingDate = incoming.updatedDate ? new Date(incoming.updatedDate) : incoming.lastModified;
-
-		if (existingDate && incomingDate) {
-			return existingDate >= incomingDate ? existing : incoming;
-		}
-		// If we can't compare dates, fall back to most_progressed
+		const existingDate = getTaskDate(existing);
+		const incomingDate = getTaskDate(incoming);
+		return existingDate >= incomingDate ? existing : incoming;
 	}
 
 	// Default to most_progressed strategy
@@ -480,14 +479,11 @@ export function resolveTaskConflict(
 		return incoming;
 	}
 
-	// If statuses are equal and we have dates, use the most recent
+	// If statuses are equal, use the most recent
 	if (newRank === currentRank) {
-		const existingDate = existing.updatedDate ? new Date(existing.updatedDate) : existing.lastModified;
-		const incomingDate = incoming.updatedDate ? new Date(incoming.updatedDate) : incoming.lastModified;
-
-		if (existingDate && incomingDate) {
-			return existingDate >= incomingDate ? existing : incoming;
-		}
+		const existingDate = getTaskDate(existing);
+		const incomingDate = getTaskDate(incoming);
+		return existingDate >= incomingDate ? existing : incoming;
 	}
 
 	return existing;

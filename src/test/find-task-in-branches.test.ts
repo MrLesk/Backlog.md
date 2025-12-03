@@ -1,32 +1,35 @@
 import { describe, expect, it } from "bun:test";
 import { findTaskInLocalBranches, findTaskInRemoteBranches } from "../core/task-loader.ts";
+import type { GitOperations } from "../git/operations.ts";
+
+type PartialGitOps = Partial<GitOperations>;
 
 describe("findTaskInRemoteBranches", () => {
 	it("should return null when git has no remotes", async () => {
-		const mockGit = {
+		const mockGit: PartialGitOps = {
 			hasAnyRemote: async () => false,
 		};
-		const result = await findTaskInRemoteBranches(mockGit as any, "task-999");
+		const result = await findTaskInRemoteBranches(mockGit as GitOperations, "task-999");
 		expect(result).toBeNull();
 	});
 
 	it("should return null when no branches exist", async () => {
-		const mockGit = {
+		const mockGit: PartialGitOps = {
 			hasAnyRemote: async () => true,
 			listRecentRemoteBranches: async () => [],
 		};
-		const result = await findTaskInRemoteBranches(mockGit as any, "task-999");
+		const result = await findTaskInRemoteBranches(mockGit as GitOperations, "task-999");
 		expect(result).toBeNull();
 	});
 
 	it("should return null when task is not in any branch", async () => {
-		const mockGit = {
+		const mockGit: PartialGitOps = {
 			hasAnyRemote: async () => true,
 			listRecentRemoteBranches: async () => ["main"],
 			listFilesInTree: async () => ["backlog/tasks/task-1 - some task.md"],
 			getBranchLastModifiedMap: async () => new Map([["backlog/tasks/task-1 - some task.md", new Date()]]),
 		};
-		const result = await findTaskInRemoteBranches(mockGit as any, "task-999");
+		const result = await findTaskInRemoteBranches(mockGit as GitOperations, "task-999");
 		expect(result).toBeNull();
 	});
 
@@ -45,7 +48,7 @@ dependencies: []
 
 Test description
 `;
-		const mockGit = {
+		const mockGit: PartialGitOps = {
 			hasAnyRemote: async () => true,
 			listRecentRemoteBranches: async () => ["feature"],
 			listFilesInTree: async () => ["backlog/tasks/task-123 - Test Task.md"],
@@ -54,7 +57,7 @@ Test description
 			showFile: async () => mockTaskContent,
 		};
 
-		const result = await findTaskInRemoteBranches(mockGit as any, "task-123");
+		const result = await findTaskInRemoteBranches(mockGit as GitOperations, "task-123");
 		expect(result).not.toBeNull();
 		expect(result?.id).toBe("task-123");
 		expect(result?.source).toBe("remote");
@@ -64,19 +67,19 @@ Test description
 
 describe("findTaskInLocalBranches", () => {
 	it("should return null when on detached HEAD", async () => {
-		const mockGit = {
-			getCurrentBranch: async () => null,
+		const mockGit: PartialGitOps = {
+			getCurrentBranch: async () => "",
 		};
-		const result = await findTaskInLocalBranches(mockGit as any, "task-999");
+		const result = await findTaskInLocalBranches(mockGit as GitOperations, "task-999");
 		expect(result).toBeNull();
 	});
 
 	it("should return null when only current branch exists", async () => {
-		const mockGit = {
+		const mockGit: PartialGitOps = {
 			getCurrentBranch: async () => "main",
 			listRecentBranches: async () => ["main"],
 		};
-		const result = await findTaskInLocalBranches(mockGit as any, "task-999");
+		const result = await findTaskInLocalBranches(mockGit as GitOperations, "task-999");
 		expect(result).toBeNull();
 	});
 
@@ -95,7 +98,7 @@ dependencies: []
 
 From local branch
 `;
-		const mockGit = {
+		const mockGit: PartialGitOps = {
 			getCurrentBranch: async () => "main",
 			listRecentBranches: async () => ["main", "feature-branch"],
 			listFilesInTree: async () => ["backlog/tasks/task-456 - Local Branch Task.md"],
@@ -104,7 +107,7 @@ From local branch
 			showFile: async () => mockTaskContent,
 		};
 
-		const result = await findTaskInLocalBranches(mockGit as any, "task-456");
+		const result = await findTaskInLocalBranches(mockGit as GitOperations, "task-456");
 		expect(result).not.toBeNull();
 		expect(result?.id).toBe("task-456");
 		expect(result?.source).toBe("local-branch");

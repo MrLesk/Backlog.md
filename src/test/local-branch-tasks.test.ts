@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import type { TaskWithMetadata } from "../core/remote-tasks.ts";
-import { loadLocalBranchTasks } from "../core/remote-tasks.ts";
-import { buildLocalBranchTaskIndex } from "../core/task-loader.ts";
+import { buildLocalBranchTaskIndex, loadLocalBranchTasks } from "../core/task-loader.ts";
 import type { GitOperations } from "../git/operations.ts";
+import type { Task } from "../types/index.ts";
 
 // Mock GitOperations for testing
 class MockGitOperations implements Partial<GitOperations> {
@@ -154,7 +153,7 @@ describe("Local branch task discovery", () => {
 			const mockGit = new MockGitOperations() as unknown as GitOperations;
 
 			// Simulate that task-1 already exists in filesystem
-			const localTasks: TaskWithMetadata[] = [
+			const localTasks: Task[] = [
 				{
 					id: "task-1",
 					title: "Main Task (local)",

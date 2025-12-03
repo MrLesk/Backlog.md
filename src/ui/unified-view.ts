@@ -16,6 +16,8 @@ export interface UnifiedViewOptions {
 	initialView: ViewType;
 	selectedTask?: Task;
 	tasks?: Task[];
+	tasksLoader?: (updateProgress: (message: string) => void) => Promise<{ tasks: Task[]; statuses: string[] }>;
+	loadingScreenFactory?: (initialMessage: string) => Promise<LoadingScreen | null>;
 	title?: string;
 	filter?: {
 		status?: string;
@@ -33,6 +35,56 @@ export interface UnifiedViewOptions {
 	};
 }
 
+type LoadingScreen = {
+	update(message: string): void;
+	close(): Promise<void> | void;
+};
+
+export interface UnifiedViewLoadResult {
+	tasks: Task[];
+	statuses: string[];
+}
+
+export async function loadTasksForUnifiedView(
+	core: Core,
+	options: Pick<UnifiedViewOptions, "tasks" | "tasksLoader" | "loadingScreenFactory">,
+): Promise<UnifiedViewLoadResult> {
+	if (options.tasks && options.tasks.length > 0) {
+		const config = await core.filesystem.loadConfig();
+		return {
+			tasks: options.tasks,
+			statuses: config?.statuses || ["To Do", "In Progress", "Done"],
+		};
+	}
+
+	const loader =
+		options.tasksLoader ||
+		(async (updateProgress: (message: string) => void): Promise<{ tasks: Task[]; statuses: string[] }> => {
+			const tasks = await core.loadTasks(updateProgress);
+			const config = await core.filesystem.loadConfig();
+			return {
+				tasks,
+				statuses: config?.statuses || ["To Do", "In Progress", "Done"],
+			};
+		});
+
+	const loadingScreenFactory = options.loadingScreenFactory || createLoadingScreen;
+	const loadingScreen = await loadingScreenFactory("Loading tasks");
+
+	try {
+		const result = await loader((message) => {
+			loadingScreen?.update(message);
+		});
+
+		return {
+			tasks: result.tasks,
+			statuses: result.statuses,
+		};
+	} finally {
+		await loadingScreen?.close();
+	}
+}
+
 type ViewResult = "switch" | "exit";
 
 /**
@@ -40,9 +92,21 @@ type ViewResult = "switch" | "exit";
  */
 export async function runUnifiedView(options: UnifiedViewOptions): Promise<void> {
 	try {
-		const baseTasks = (options.tasks || options.preloadedKanbanData?.tasks || []).filter(
-			(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
-		);
+		const { tasks: loadedTasks, statuses: loadedStatuses } = await loadTasksForUnifiedView(options.core, {
+			tasks: options.tasks,
+			tasksLoader: options.tasksLoader,
+			loadingScreenFactory: options.loadingScreenFactory,
+		});
+
+		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		if (baseTasks.length === 0) {
+			if (options.filter?.parentTaskId) {
+				console.log(`No child tasks found for parent task ${options.filter.parentTaskId}.`);
+			} else {
+				console.log("No tasks found.");
+			}
+			return;
+		}
 		const initialState: ViewState = {
 			type: options.initialView,
 			selectedTask: options.selectedTask,
@@ -51,19 +115,11 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			// Initialize kanban data if starting with kanban view
 			kanbanData:
 				options.initialView === "kanban"
-					? options.preloadedKanbanData
-						? {
-								tasks: options.preloadedKanbanData.tasks.filter(
-									(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
-								),
-								statuses: options.preloadedKanbanData.statuses,
-								isLoading: false, // Data is already loaded!
-							}
-						: {
-								tasks: [],
-								statuses: [],
-								isLoading: true,
-							}
+					? {
+							tasks: baseTasks,
+							statuses: loadedStatuses,
+							isLoading: false,
+						}
 					: undefined,
 		};
 
@@ -72,7 +128,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let currentView: ViewType = options.initialView;
 		let selectedTask: Task | undefined = options.selectedTask;
 		let tasks = baseTasks;
-		let kanbanStatuses = options.preloadedKanbanData?.statuses ?? [];
+		let kanbanStatuses = loadedStatuses ?? [];
 		let boardUpdater: ((nextTasks: Task[], nextStatuses: string[]) => void) | null = null;
 
 		const getRenderableTasks = () =>
@@ -214,55 +270,10 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 
 		// Function to show kanban view
 		const showKanbanView = async (): Promise<ViewResult> => {
-			let kanbanTasks: Task[];
-			let statuses: string[];
+			// Use the already-loaded tasks - no need for separate kanban loading
+			const kanbanTasks = getRenderableTasks();
+			const statuses = kanbanStatuses;
 
-			if (options.preloadedKanbanData) {
-				// Use preloaded data but filter for valid tasks
-				kanbanTasks = options.preloadedKanbanData.tasks.filter(
-					(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
-				);
-				statuses = options.preloadedKanbanData.statuses;
-			} else {
-				// Fallback: use existing tasks or load from ViewSwitcher
-				if (viewSwitcher) {
-					// Check if data is ready for instant switching
-					if (!viewSwitcher.isKanbanReady()) {
-						// Show loading screen while fetching data
-						const loadingScreen = await createLoadingScreen("Loading board");
-						try {
-							// Set progress callback to update loading screen BEFORE calling getKanbanData
-							viewSwitcher.setProgressCallback((message) => {
-								loadingScreen?.update(message);
-							});
-							const kanbanData = await viewSwitcher.getKanbanData();
-							kanbanTasks = kanbanData.tasks;
-							statuses = kanbanData.statuses;
-						} catch (error) {
-							console.error("Failed to load kanban data:", error);
-							return "exit";
-						} finally {
-							await loadingScreen?.close();
-						}
-					} else {
-						// Data is ready, get it without loading screen
-						try {
-							const kanbanData = await viewSwitcher.getKanbanData();
-							kanbanTasks = kanbanData.tasks;
-							statuses = kanbanData.statuses;
-						} catch (error) {
-							console.error("Failed to load kanban data:", error);
-							return "exit";
-						}
-					}
-				} else {
-					kanbanTasks = options.tasks || [];
-					const config = await options.core.filesystem.loadConfig();
-					statuses = config?.statuses || [];
-				}
-			}
-
-			kanbanStatuses = [...statuses];
 			const config = await options.core.filesystem.loadConfig();
 			const layout = "horizontal" as const;
 			const maxColumnWidth = config?.maxColumnWidth || 20;
@@ -333,7 +344,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			}
 		}
 	} catch (error) {
-		console.error("Error in unified view:", error);
+		console.error(error instanceof Error ? error.message : error);
 		process.exit(1);
 	}
 }

@@ -16,6 +16,7 @@ import {
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
 import type { Task, TaskSearchResult } from "../types/index.ts";
+import { createTaskSearchIndex } from "../utils/task-search.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
 import { createGenericList, type GenericList } from "./components/generic-list.ts";
@@ -106,17 +107,18 @@ export async function viewTaskEnhanced(
 	let allTasks: Task[];
 	let statuses: string[];
 	let priorities: string[];
-	let searchService: Awaited<ReturnType<typeof core.getSearchService>>;
-	let contentStore: Awaited<ReturnType<typeof core.getContentStore>>;
+	// When tasks are provided, use in-memory search; otherwise use ContentStore-backed search
+	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
+	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
+	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
 
 	if (options.tasks) {
-		// Tasks already provided, no loading needed
+		// Tasks already provided - use in-memory search (no ContentStore loading)
 		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
 		const config = await core.filesystem.loadConfig();
 		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
 		priorities = ["high", "medium", "low"];
-		searchService = await core.getSearchService();
-		contentStore = await core.getContentStore();
+		taskSearchIndex = createTaskSearchIndex(allTasks);
 	} else {
 		// Need to load tasks - show loading screen
 		const loadingScreen = await createLoadingScreen("Loading tasks");
@@ -384,20 +386,28 @@ export async function viewTaskEnhanced(
 
 	// Function to apply filters and refresh the task list
 	function applyFilters() {
-		// Use search service for comprehensive filtering
 		// Check for non-empty search query or active filters
 		if (searchQuery.trim() || statusFilter || priorityFilter) {
-			const searchResults = searchService.search({
-				query: searchQuery,
-				filters: {
+			// Use in-memory search if available, otherwise use ContentStore-backed search
+			if (taskSearchIndex) {
+				filteredTasks = taskSearchIndex.search({
+					query: searchQuery,
 					status: statusFilter || undefined,
 					priority: priorityFilter as "high" | "medium" | "low" | undefined,
-				},
-				types: ["task"],
-			});
-
-			// Extract tasks from search results
-			filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
+				});
+			} else if (searchService) {
+				const searchResults = searchService.search({
+					query: searchQuery,
+					filters: {
+						status: statusFilter || undefined,
+						priority: priorityFilter as "high" | "medium" | "low" | undefined,
+					},
+					types: ["task"],
+				});
+				filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
+			} else {
+				filteredTasks = [...allTasks];
+			}
 		} else {
 			// No filters, show all tasks
 			filteredTasks = [...allTasks];
@@ -424,18 +434,23 @@ export async function viewTaskEnhanced(
 			if (priorityFilter) {
 				activeFilters.push(`Priority: {cyan-fg}${priorityFilter}{/}`);
 			}
+			let listPaneMessage: string;
 			if (activeFilters.length > 0) {
 				noResultsMessage = `{bold}No tasks match your current filters{/bold}\n${activeFilters.map((f) => ` • ${f}`).join("\n")}\n\n{gray-fg}Try adjusting the search or clearing filters.{/}`;
+				listPaneMessage = `{bold}No matching tasks{/bold}\n\n${activeFilters.map((f) => ` • ${f}`).join("\n")}`;
 			} else {
 				noResultsMessage =
 					"{bold}No tasks available{/bold}\n{gray-fg}Create a task with {cyan-fg}backlog task create{/cyan-fg}.{/}";
+				listPaneMessage = "{bold}No tasks available{/bold}";
 			}
+			showListEmptyState(listPaneMessage);
 			refreshDetailPane();
 			screen.render();
 			return;
 		}
 
 		noResultsMessage = null;
+		hideListEmptyState();
 
 		if (taskList) {
 			taskList.destroy();
@@ -457,11 +472,39 @@ export async function viewTaskEnhanced(
 			requireInitialFilterSelection = false;
 		}
 
+		// Ensure detail pane is refreshed when transitioning from no-results to results
+		refreshDetailPane();
 		screen.render();
 	}
 
 	// Task list component
 	let taskList: GenericList<Task> | null = null;
+	let listEmptyStateBox: BoxInterface | null = null;
+
+	function showListEmptyState(message: string) {
+		if (listEmptyStateBox) {
+			listEmptyStateBox.destroy();
+		}
+		listEmptyStateBox = box({
+			parent: taskListPane,
+			top: 1,
+			left: 1,
+			width: "100%-4",
+			height: "100%-3",
+			content: message,
+			tags: true,
+			style: {
+				fg: "gray",
+			},
+		});
+	}
+
+	function hideListEmptyState() {
+		if (listEmptyStateBox) {
+			listEmptyStateBox.destroy();
+			listEmptyStateBox = null;
+		}
+	}
 
 	async function applySelection(selectedTask: Task | null) {
 		if (!selectedTask) return;
@@ -509,8 +552,12 @@ export async function viewTaskEnhanced(
 					: "";
 				const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
 				const priorityText = getPriorityDisplay(task.priority);
+				const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
+				const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 
-				return `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}`;
+				const content = `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+				// Dim cross-branch tasks to indicate read-only status
+				return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 			},
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
@@ -658,21 +705,35 @@ export async function viewTaskEnhanced(
 
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
+		const detailContent = generateDetailContent(currentSelectedTask);
+
+		// Calculate header height based on content and available width
+		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
+		const availableWidth = detailPaneWidth - 6; // 2 for border, 2 for box padding, 2 for header padding
+
+		let headerLineCount = 0;
+		for (const line of detailContent.headerContent) {
+			const plainText = line.replace(/\{[^}]+\}/g, "");
+			const lineCount = Math.max(1, Math.ceil(plainText.length / availableWidth));
+			headerLineCount += lineCount;
+		}
+
 		headerDetailBox = box({
 			parent: detailPane,
 			top: 0,
 			left: 1,
 			right: 1,
-			height: "shrink",
+			height: headerLineCount,
 			tags: true,
 			wrap: true,
 			scrollable: false,
 			padding: { left: 1, right: 1 },
+			content: detailContent.headerContent.join("\n"),
 		});
 
 		divider = line({
 			parent: detailPane,
-			top: typeof headerDetailBox.bottom === "number" ? headerDetailBox.bottom : 0,
+			top: headerLineCount,
 			left: 1,
 			right: 1,
 			orientation: "horizontal",
@@ -683,7 +744,7 @@ export async function viewTaskEnhanced(
 
 		const bodyContainer = scrollabletext({
 			parent: detailPane,
-			top: (typeof headerDetailBox.bottom === "number" ? headerDetailBox.bottom : 0) + 1,
+			top: headerLineCount + 1,
 			left: 1,
 			right: 1,
 			bottom: 1,
@@ -693,11 +754,9 @@ export async function viewTaskEnhanced(
 			tags: true,
 			wrap: true,
 			padding: { left: 1, right: 1, top: 0, bottom: 0 },
+			content: detailContent.bodyContent.join("\n"),
 		});
 
-		const detailContent = generateDetailContent(currentSelectedTask);
-		headerDetailBox.setContent(detailContent.headerContent.join("\n"));
-		bodyContainer.setContent(detailContent.bodyContent.join("\n"));
 		configureDetailBox(bodyContainer);
 	}
 
@@ -1009,8 +1068,8 @@ export async function viewTaskEnhanced(
 		} else {
 			// If already in task list, quit
 			stopSearchMonitoring();
-			searchService.dispose();
-			contentStore.dispose();
+			searchService?.dispose();
+			contentStore?.dispose();
 			screen.destroy();
 			process.exit(0);
 		}
@@ -1060,8 +1119,8 @@ export async function viewTaskEnhanced(
 			// Only switch views if we're in the task list, not in filters
 			if (currentFocus === "list") {
 				// Cleanup before switching
-				searchService.dispose();
-				contentStore.dispose();
+				searchService?.dispose();
+				contentStore?.dispose();
 				screen.destroy();
 				await options.onTabPress?.();
 			}
@@ -1072,8 +1131,8 @@ export async function viewTaskEnhanced(
 	// Quit handlers
 	screen.key(["q", "C-c"], () => {
 		stopSearchMonitoring();
-		searchService.dispose();
-		contentStore.dispose();
+		searchService?.dispose();
+		contentStore?.dispose();
 		screen.destroy();
 		process.exit(0);
 	});
@@ -1108,8 +1167,8 @@ export async function viewTaskEnhanced(
 	return new Promise<void>((resolve) => {
 		screen.on("destroy", () => {
 			stopSearchMonitoring();
-			searchService.dispose();
-			contentStore.dispose();
+			searchService?.dispose();
+			contentStore?.dispose();
 			resolve();
 		});
 	});
@@ -1119,6 +1178,15 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 	const headerContent = [
 		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
+
+	// Add cross-branch indicator if task is from another branch
+	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
+	if (isCrossBranch) {
+		const branchName = (task as Task & { branch?: string }).branch;
+		headerContent.push(
+			` {yellow-fg}⚠ Read-only:{/} This task exists in branch {green-fg}${branchName}{/}. Switch to that branch to edit it.`,
+		);
+	}
 
 	const bodyContent: string[] = [];
 	bodyContent.push(formatHeading("Details", 2));
@@ -1248,12 +1316,26 @@ export async function createTaskPopup(
 
 	const { headerContent, bodyContent } = generateDetailContent(task);
 
-	const headerBox = box({
+	// Calculate header height based on content and available width
+	// Account for popup padding, border, and header padding
+	const popupWidth = typeof popup.width === "number" ? popup.width : 80;
+	const availableWidth = popupWidth - 6; // 2 for border, 2 for box padding, 2 for header padding
+
+	// Calculate wrapped line count for header content
+	let headerLineCount = 0;
+	for (const line of headerContent) {
+		// Strip blessed tags for length calculation
+		const plainText = line.replace(/\{[^}]+\}/g, "");
+		const lineCount = Math.max(1, Math.ceil(plainText.length / availableWidth));
+		headerLineCount += lineCount;
+	}
+
+	box({
 		parent: popup,
 		top: 0,
 		left: 1,
 		right: 1,
-		height: "shrink",
+		height: headerLineCount,
 		tags: true,
 		wrap: true,
 		scrollable: false,
@@ -1263,7 +1345,7 @@ export async function createTaskPopup(
 
 	line({
 		parent: popup,
-		top: headerBox.bottom,
+		top: headerLineCount,
 		left: 1,
 		right: 1,
 		orientation: "horizontal",
@@ -1287,7 +1369,7 @@ export async function createTaskPopup(
 
 	const contentArea = scrollabletext({
 		parent: popup,
-		top: (typeof headerBox.bottom === "number" ? headerBox.bottom : 0) + 1,
+		top: headerLineCount + 1,
 		left: 1,
 		right: 1,
 		bottom: 1,

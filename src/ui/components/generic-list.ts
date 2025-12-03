@@ -436,6 +436,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	}
 
 	public destroy(): void {
+		if (this.listBox) {
+			this.listBox.destroy();
+		}
 		if (this.screen) {
 			this.screen.destroy();
 		}

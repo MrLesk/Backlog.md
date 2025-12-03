@@ -109,7 +109,42 @@ describe("ContentStore", () => {
 		expect(documents.some((doc) => doc.id === "doc-2")).toBe(true);
 	});
 
+	it("preserves cross-branch tasks from the task loader during refresh", async () => {
+		await filesystem.saveTask(sampleTask);
+
+		const remoteTask: Task = {
+			id: "task-remote",
+			title: "Remote Task",
+			status: "In Progress",
+			assignee: ["alice"],
+			createdDate: "2025-10-01 12:00",
+			labels: ["remote"],
+			dependencies: [],
+			rawContent: "## Description\nRemote content",
+			source: "remote",
+		};
+
+		let loaderCalls = 0;
+		store.dispose();
+		store = new ContentStore(filesystem, async () => {
+			loaderCalls += 1;
+			const localTasks = await filesystem.listTasks();
+			return [...localTasks, remoteTask];
+		});
+
+		await store.ensureInitialized();
+		expect(store.getTasks().map((task) => task.id)).toContain("task-remote");
+
+		await (store as unknown as { refreshTasksFromDisk: () => Promise<void> }).refreshTasksFromDisk();
+
+		const refreshedTasks = store.getTasks();
+		expect(refreshedTasks.map((task) => task.id)).toContain("task-remote");
+		expect(loaderCalls).toBeGreaterThanOrEqual(2);
+	});
+
 	it("removes decisions when files are deleted", async () => {
+		store.dispose();
+		store = new ContentStore(filesystem, undefined, true);
 		await filesystem.saveDecision(sampleDecision);
 		await store.ensureInitialized();
 

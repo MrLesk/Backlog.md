@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, join as joinPath } from "node:path";
 import { $ } from "bun";
-import { loadRemoteTasks } from "../core/remote-tasks.ts";
+import { loadRemoteTasks } from "../core/task-loader.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
 

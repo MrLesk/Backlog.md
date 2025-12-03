@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import type { TaskWithMetadata } from "../core/remote-tasks.ts";
-import { loadRemoteTasks, resolveTaskConflict } from "../core/remote-tasks.ts";
+import { loadRemoteTasks, resolveTaskConflict } from "../core/task-loader.ts";
 import type { GitOperations } from "../git/operations.ts";
+import type { Task } from "../types/index.ts";
 
 // Mock GitOperations for testing
 class MockGitOperations implements Partial<GitOperations> {
@@ -143,7 +143,7 @@ describe("Parallel remote task loading", () => {
 	it("should resolve task conflicts correctly", async () => {
 		const statuses = ["To Do", "In Progress", "Done"];
 
-		const localTask: TaskWithMetadata = {
+		const localTask: Task = {
 			id: "task-1",
 			title: "Local Task",
 			status: "To Do",
@@ -156,7 +156,7 @@ describe("Parallel remote task loading", () => {
 			lastModified: new Date("2025-06-13T10:00:00Z"),
 		};
 
-		const remoteTask: TaskWithMetadata = {
+		const remoteTask: Task = {
 			id: "task-1",
 			title: "Remote Task",
 			status: "Done",
