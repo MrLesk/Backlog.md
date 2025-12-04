@@ -46,6 +46,7 @@ import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
+import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { parsePositiveIndexList, processAcceptanceCriteriaOptions, toStringArray } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
@@ -163,6 +164,20 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
 	};
 }
 
+/**
+ * Resolves the Backlog.md project root from the current working directory.
+ * Walks up the directory tree to find backlog/ or backlog.json, with git root fallback.
+ * Exits with error message if no Backlog.md project is found.
+ */
+async function requireProjectRoot(): Promise<string> {
+	const root = await findBacklogRoot(process.cwd());
+	if (!root) {
+		console.error("No Backlog.md project found. Run `backlog init` to initialize.");
+		process.exit(1);
+	}
+	return root;
+}
+
 // Windows color fix
 if (process.platform === "win32") {
 	const term = process.env.TERM;
@@ -208,9 +223,12 @@ try {
 
 		let initialized = false;
 		try {
-			const core = new Core(process.cwd());
-			const cfg = await core.filesystem.loadConfig();
-			initialized = !!cfg;
+			const projectRoot = await findBacklogRoot(process.cwd());
+			if (projectRoot) {
+				const core = new Core(projectRoot);
+				const cfg = await core.filesystem.loadConfig();
+				initialized = !!cfg;
+			}
 		} catch {
 			initialized = false;
 		}
@@ -244,13 +262,15 @@ const shouldRunMigration =
 
 if (shouldRunMigration) {
 	try {
-		const cwd = process.cwd();
-		const core = new Core(cwd);
+		const projectRoot = await findBacklogRoot(process.cwd());
+		if (projectRoot) {
+			const core = new Core(projectRoot);
 
-		// Only migrate if config already exists (project is already initialized)
-		const config = await core.filesystem.loadConfig();
-		if (config) {
-			await core.ensureConfigMigrated();
+			// Only migrate if config already exists (project is already initialized)
+			const config = await core.filesystem.loadConfig();
+			if (config) {
+				await core.ensureConfigMigrated();
+			}
 		}
 	} catch (_error) {
 		// Silently ignore migration errors - project might not be initialized yet
@@ -300,6 +320,7 @@ program
 			},
 		) => {
 			try {
+				// init command uses process.cwd() directly - it initializes in the current directory
 				const cwd = process.cwd();
 				const isRepo = await isGitRepository(cwd);
 
@@ -1204,7 +1225,7 @@ taskCmd
 		return [...soFar, value];
 	})
 	.action(async (title: string, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
 		const id = await core.generateNextId(options.parent);
@@ -1284,7 +1305,7 @@ program
 	.option("--limit <number>", "limit total results returned")
 	.option("--plain", "print plain text output instead of interactive UI")
 	.action(async (query: string | undefined, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const searchService = await core.getSearchService();
 		const contentStore = await core.getContentStore();
@@ -1499,7 +1520,7 @@ taskCmd
 	.option("--sort <field>", "sort tasks by field (priority, id)")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const cleanup = () => {
 			core.disposeSearchService();
@@ -1765,7 +1786,7 @@ taskCmd
 		return [...soFar, value];
 	})
 	.action(async (taskId: string, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const canonicalId = normalizeTaskId(taskId);
 		const existingTask = await core.loadTaskById(canonicalId);
@@ -1934,7 +1955,7 @@ taskCmd
 	.description("display task details")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const task = await core.loadTaskById(taskId);
 		if (!task) {
@@ -1956,7 +1977,7 @@ taskCmd
 	.command("archive <taskId>")
 	.description("archive a task")
 	.action(async (taskId: string) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const success = await core.archiveTask(taskId);
 		if (success) {
@@ -1970,7 +1991,7 @@ taskCmd
 	.command("demote <taskId>")
 	.description("move task back to drafts")
 	.action(async (taskId: string) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const success = await core.demoteTask(taskId);
 		if (success) {
@@ -1984,7 +2005,7 @@ taskCmd
 	.argument("[taskId]")
 	.option("--plain", "use plain text output")
 	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
@@ -2032,7 +2053,7 @@ draftCmd
 	.option("--sort <field>", "sort drafts by field (priority, id)")
 	.option("--plain", "use plain text output")
 	.action(async (options: { plain?: boolean; sort?: string }) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
 		const drafts = await core.filesystem.listDrafts();
@@ -2097,7 +2118,7 @@ draftCmd
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.action(async (title: string, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
 		const id = await core.generateNextId();
@@ -2111,7 +2132,7 @@ draftCmd
 	.command("archive <taskId>")
 	.description("archive a draft")
 	.action(async (taskId: string) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const success = await core.archiveDraft(taskId);
 		if (success) {
@@ -2125,7 +2146,7 @@ draftCmd
 	.command("promote <taskId>")
 	.description("promote draft to task")
 	.action(async (taskId: string) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const success = await core.promoteDraft(taskId);
 		if (success) {
@@ -2140,7 +2161,7 @@ draftCmd
 	.description("display draft details")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const { getDraftPath } = await import("./utils/task-path.ts");
 		const filePath = await getDraftPath(taskId, core);
@@ -2175,7 +2196,7 @@ draftCmd
 			return;
 		}
 
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const { getDraftPath } = await import("./utils/task-path.ts");
 		const filePath = await getDraftPath(taskId, core);
@@ -2210,7 +2231,7 @@ function addBoardOptions(cmd: Command) {
 }
 
 async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
-	const cwd = process.cwd();
+	const cwd = await requireProjectRoot();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
 
@@ -2246,7 +2267,7 @@ boardCmd
 	.option("--readme", "export to README.md with markers")
 	.option("--export-version <version>", "version to include in the export")
 	.action(async (filename, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
@@ -2311,7 +2332,7 @@ docCmd
 	.option("-p, --path <path>")
 	.option("-t, --type <type>")
 	.action(async (title: string, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const id = await generateNextDocId(core);
 		const document: DocType = {
@@ -2329,7 +2350,7 @@ docCmd
 	.command("list")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const docs = await core.filesystem.listDocuments();
 		if (docs.length === 0) {
@@ -2367,7 +2388,7 @@ docCmd
 	.command("view <docId>")
 	.description("view a document")
 	.action(async (docId: string) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
 			const content = await core.getDocumentContent(docId);
@@ -2387,7 +2408,7 @@ decisionCmd
 	.command("create <title>")
 	.option("-s, --status <status>")
 	.action(async (title: string, options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const id = await generateNextDecisionId(core);
 		const decision: Decision = {
@@ -2419,7 +2440,7 @@ agentsCmd
 			return;
 		}
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
 
 			// Check if backlog project is initialized
@@ -2468,7 +2489,7 @@ const configCmd = program
 	.description("manage backlog configuration")
 	.action(async () => {
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
 			const existingConfig = await core.filesystem.loadConfig();
 
@@ -2555,7 +2576,7 @@ sequenceCmd
 	.description("list sequences (interactive by default; use --plain for text output)")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
-		const cwd = process.cwd();
+		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const tasks = await core.queryTasks();
 		// Exclude tasks marked as Done from sequences (case-insensitive)
@@ -2592,7 +2613,7 @@ configCmd
 	.description("get a configuration value")
 	.action(async (key: string) => {
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
 			const config = await core.filesystem.loadConfig();
 
@@ -2674,7 +2695,7 @@ configCmd
 	.description("set a configuration value")
 	.action(async (key: string, value: string) => {
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
 			const config = await core.filesystem.loadConfig();
 
@@ -2831,7 +2852,7 @@ configCmd
 	.description("list all configuration values")
 	.action(async () => {
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
 			const config = await core.filesystem.loadConfig();
 
@@ -2869,7 +2890,7 @@ program
 	.description("move completed tasks to completed folder based on age")
 	.action(async () => {
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
 
 			// Check if backlog project is initialized
@@ -3001,7 +3022,7 @@ program
 	.option("--no-open", "don't automatically open browser")
 	.action(async (options) => {
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const { BacklogServer } = await import("./server/index.ts");
 			const server = new BacklogServer(cwd);
 
@@ -3048,7 +3069,7 @@ program
 	.description("display project statistics and metrics")
 	.action(async () => {
 		try {
-			const cwd = process.cwd();
+			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
 			const config = await core.filesystem.loadConfig();
 
