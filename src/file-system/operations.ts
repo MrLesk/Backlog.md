@@ -248,6 +248,25 @@ export class FileSystem {
 		}
 	}
 
+	async listArchivedTasks(): Promise<Task[]> {
+		try {
+			const archiveTasksDir = await this.getArchiveTasksDir();
+			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: archiveTasksDir }));
+
+			const tasks: Task[] = [];
+			for (const file of taskFiles) {
+				const filepath = join(archiveTasksDir, file);
+				const content = await Bun.file(filepath).text();
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
+			}
+
+			return sortByTaskId(tasks);
+		} catch (_error) {
+			return [];
+		}
+	}
+
 	async archiveTask(taskId: string): Promise<boolean> {
 		try {
 			const tasksDir = await this.getTasksDir();

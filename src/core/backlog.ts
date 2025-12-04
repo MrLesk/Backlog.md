@@ -349,6 +349,14 @@ export class Core {
 		// Also include drafts (which aren't in ContentStore yet)
 		const drafts = await this.fs.listDrafts();
 
+		// CRITICAL: Include archived and completed tasks to prevent ID reuse
+		// When all active tasks are archived/completed, we must still scan these
+		// directories to find the highest ID and continue from there.
+		// Without this, task IDs reset to task-1, causing potential collisions
+		// when tasks are moved back to active state.
+		const archivedTasks = await this.fs.listArchivedTasks();
+		const completedTasks = await this.fs.listCompletedTasks();
+
 		const allIds: string[] = [];
 
 		for (const t of tasks) {
@@ -356,6 +364,12 @@ export class Core {
 		}
 		for (const d of drafts) {
 			allIds.push(d.id);
+		}
+		for (const a of archivedTasks) {
+			allIds.push(a.id);
+		}
+		for (const c of completedTasks) {
+			allIds.push(c.id);
 		}
 
 		if (parent) {
