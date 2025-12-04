@@ -454,6 +454,17 @@ export class FileSystem {
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
 
+		const matches = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir }));
+		for (const match of matches) {
+			if (match === filename) continue;
+			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
+			try {
+				await unlink(join(decisionsDir, match));
+			} catch {
+				// Ignore cleanup errors
+			}
+		}
+
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 	}
@@ -696,11 +707,16 @@ export class FileSystem {
 
 	// Utility methods
 	private sanitizeFilename(filename: string): string {
-		return filename
-			.replace(/[<>:"/\\|?*]/g, "-")
-			.replace(/\s+/g, "-")
-			.replace(/-+/g, "-")
-			.replace(/^-|-$/g, "");
+		// Remove path-unsafe characters, then strip noisy punctuation before normalizing whitespace
+		return (
+			filename
+				.replace(/[<>:"/\\|?*]/g, "-")
+				// biome-ignore lint/complexity/noUselessEscapeInRegex: we need explicit escapes inside the character class
+				.replace(/['(),!@#$%^&+=\[\]{};]/g, "")
+				.replace(/\s+/g, "-")
+				.replace(/-+/g, "-")
+				.replace(/^-|-$/g, "")
+		);
 	}
 
 	private async ensureDirectoryExists(dirPath: string): Promise<void> {

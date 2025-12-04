@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
@@ -318,6 +318,17 @@ describe("FileSystem", () => {
 			expect(decision).toBeNull();
 		});
 
+		it("should sanitize decision filenames", async () => {
+			await filesystem.saveDecision({
+				...sampleDecision,
+				id: "decision-3",
+				title: "Use OAuth (v2)!",
+			});
+
+			const decisionFiles = await readdir(filesystem.decisionsDir);
+			expect(decisionFiles).toContain("decision-3 - Use-OAuth-v2.md");
+		});
+
 		it("should save decision log with alternatives", async () => {
 			const decisionWithAlternatives: Decision = {
 				...sampleDecision,
@@ -329,6 +340,32 @@ describe("FileSystem", () => {
 			const loaded = await filesystem.loadDecision("decision-2");
 
 			expect(loaded?.alternatives).toBe("Considered JavaScript");
+		});
+
+		it("should remove legacy decision filenames when resaving", async () => {
+			const legacyDecision: Decision = {
+				...sampleDecision,
+				id: "decision-legacy",
+				title: "Legacy Decision (OAuth)!",
+				decision: "First draft",
+			};
+
+			await filesystem.saveDecision(legacyDecision);
+
+			const files = await readdir(filesystem.decisionsDir);
+			const sanitized = files.find((f) => f.startsWith("decision-legacy -"));
+			expect(sanitized).toBe("decision-legacy - Legacy-Decision-OAuth.md");
+
+			const legacyFilename = "decision-legacy - Legacy-Decision-(OAuth)!.md";
+			await rename(join(filesystem.decisionsDir, sanitized as string), join(filesystem.decisionsDir, legacyFilename));
+
+			await filesystem.saveDecision({ ...legacyDecision, decision: "Updated decision" });
+
+			const finalFiles = await readdir(filesystem.decisionsDir);
+			expect(finalFiles).toEqual(["decision-legacy - Legacy-Decision-OAuth.md"]);
+
+			const loaded = await filesystem.loadDecision("decision-legacy");
+			expect(loaded?.decision).toBe("Updated decision");
 		});
 
 		it("should list decision logs", async () => {
@@ -371,6 +408,17 @@ describe("FileSystem", () => {
 
 			const docsFiles = await readdir(filesystem.docsDir);
 			expect(docsFiles.some((f) => f.includes("Simple-Doc"))).toBe(true);
+		});
+
+		it("should sanitize document filenames", async () => {
+			await filesystem.saveDocument({
+				...sampleDocument,
+				id: "doc-9",
+				title: "Docs (Guide)! #1",
+			});
+
+			const docsFiles = await readdir(filesystem.docsDir);
+			expect(docsFiles).toContain("doc-9 - Docs-Guide-1.md");
 		});
 
 		it("removes the previous document file when the title changes", async () => {
@@ -556,6 +604,96 @@ describe("FileSystem", () => {
 			// Verify the task can be loaded
 			const loaded = await filesystem.loadTask("task-mixed");
 			expect(loaded?.title).toBe("Fix Task List Ordering");
+		});
+
+		it("should strip punctuation from filenames", async () => {
+			const taskWithPunctuation: Task = {
+				id: "task-punct",
+				title: "Fix the user's login (OAuth)! #1",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Task with punctuation in the title",
+			};
+
+			await filesystem.saveTask(taskWithPunctuation);
+
+			const files = await readdir(filesystem.tasksDir);
+			const filename = files.find((f) => f.startsWith("task-punct -"));
+			expect(filename).toBe("task-punct - Fix-the-users-login-OAuth-1.md");
+		});
+
+		it("should load tasks with legacy filenames containing punctuation", async () => {
+			const legacyTask: Task = {
+				id: "task-legacy",
+				title: "Legacy user's login (OAuth)",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Legacy punctuation task",
+			};
+
+			await filesystem.saveTask(legacyTask);
+
+			const files = await readdir(filesystem.tasksDir);
+			const originalFilename = files.find((f) => f.startsWith("task-legacy -"));
+			expect(originalFilename).toBeDefined();
+
+			const legacyFilename = "task-legacy - Legacy-user's-login-(OAuth).md";
+			await rename(join(filesystem.tasksDir, originalFilename as string), join(filesystem.tasksDir, legacyFilename));
+
+			const loaded = await filesystem.loadTask("task-legacy");
+			expect(loaded?.title).toBe("Legacy user's login (OAuth)");
+		});
+
+		it("should sanitize a variety of problematic task titles", async () => {
+			const cases: Array<{ id: string; title: string; expected: string }> = [
+				{
+					id: "task-bad-1",
+					title: "Fix the user's login (OAuth)! #1",
+					expected: "Fix-the-users-login-OAuth-1",
+				},
+				{
+					id: "task-bad-2",
+					title: "Crazy!@#$%^&*()Name",
+					expected: "Crazy-Name",
+				},
+				{
+					id: "task-bad-3",
+					title: "File with <bad> |chars| and /slashes\\",
+					expected: "File-with-bad-chars-and-slashes",
+				},
+				{
+					id: "task-bad-4",
+					title: "Tabs\tand\nnewlines",
+					expected: "Tabs-and-newlines",
+				},
+				{
+					id: "task-bad-5",
+					title: "Edge -- dashes ???",
+					expected: "Edge-dashes",
+				},
+			];
+
+			for (const { id, title, expected } of cases) {
+				await filesystem.saveTask({
+					id,
+					title,
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-07",
+					labels: [],
+					dependencies: [],
+					description: "Sanitization test",
+				});
+
+				const files = await readdir(filesystem.tasksDir);
+				expect(files).toContain(`${id} - ${expected}.md`);
+			}
 		});
 
 		it("should avoid double dashes in filenames", async () => {
