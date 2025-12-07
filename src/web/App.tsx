@@ -30,6 +30,7 @@ function App() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
+  const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
@@ -96,6 +97,7 @@ function App() {
 
       setStatuses(statusesData);
       setProjectName(configData.projectName);
+      setAvailableLabels(configData.labels || []);
       applySearchResults(searchResults);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -301,6 +303,7 @@ function App() {
                   onNewTask={handleNewTask}
                   tasks={tasks}
                   availableStatuses={statuses}
+                  availableLabels={availableLabels}
                   onRefreshData={refreshData}
                 />
               }

@@ -165,6 +165,17 @@ export class Core {
 			const parentFilter = filters.parentTaskId;
 			result = result.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId));
 		}
+		if (filters.labels && filters.labels.length > 0) {
+			const requiredLabels = filters.labels.map((label) => label.toLowerCase()).filter(Boolean);
+			if (requiredLabels.length > 0) {
+				result = result.filter((task) => {
+					const taskLabels = task.labels?.map((label) => label.toLowerCase()) || [];
+					if (taskLabels.length === 0) return false;
+					const labelSet = new Set(taskLabels);
+					return requiredLabels.some((label) => labelSet.has(label));
+				});
+			}
+		}
 		return result;
 	}
 
@@ -225,6 +236,9 @@ export class Core {
 		}
 		if (filters?.assignee) {
 			searchFilters.assignee = filters.assignee;
+		}
+		if (filters?.labels) {
+			searchFilters.labels = filters.labels;
 		}
 
 		const searchResults = searchService.search({

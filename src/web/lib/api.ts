@@ -129,6 +129,7 @@ export class ApiClient {
 		assignee?: string;
 		parent?: string;
 		priority?: SearchPriorityFilter;
+		labels?: string[];
 		crossBranch?: boolean;
 	}): Promise<Task[]> {
 		const params = new URLSearchParams();
@@ -136,6 +137,13 @@ export class ApiClient {
 		if (options?.assignee) params.append("assignee", options.assignee);
 		if (options?.parent) params.append("parent", options.parent);
 		if (options?.priority) params.append("priority", options.priority);
+		if (options?.labels) {
+			for (const label of options.labels) {
+				if (label && label.trim().length > 0) {
+					params.append("label", label.trim());
+				}
+			}
+		}
 		// Default to true for cross-branch loading to match TUI behavior
 		if (options?.crossBranch !== false) params.append("crossBranch", "true");
 
@@ -149,6 +157,7 @@ export class ApiClient {
 			types?: SearchResultType[];
 			status?: string | string[];
 			priority?: SearchPriorityFilter | SearchPriorityFilter[];
+			labels?: string[];
 			limit?: number;
 		} = {},
 	): Promise<SearchResult[]> {
@@ -171,6 +180,13 @@ export class ApiClient {
 			const priorities = Array.isArray(options.priority) ? options.priority : [options.priority];
 			for (const priority of priorities) {
 				params.append("priority", priority);
+			}
+		}
+		if (options.labels) {
+			for (const label of options.labels) {
+				if (label && label.trim().length > 0) {
+					params.append("label", label.trim());
+				}
 			}
 		}
 		if (options.limit !== undefined) {
