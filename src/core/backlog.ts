@@ -32,11 +32,11 @@ import {
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
-import { filterTasksByLatestState, getLatestTaskStatesForIds } from "./cross-branch-tasks.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
 import {
+	type BranchTaskStateEntry,
 	findTaskInLocalBranches,
 	findTaskInRemoteBranches,
 	getTaskLoadingMessage,
@@ -68,6 +68,46 @@ interface TaskQueryOptions {
 	query?: string;
 	limit?: number;
 	includeCrossBranch?: boolean;
+}
+
+function buildLatestStateMap(
+	stateEntries: BranchTaskStateEntry[] = [],
+	localTasks: Array<Task & { lastModified?: Date; updatedDate?: string }> = [],
+): Map<string, BranchTaskStateEntry> {
+	const latest = new Map<string, BranchTaskStateEntry>();
+	const update = (entry: BranchTaskStateEntry) => {
+		const existing = latest.get(entry.id);
+		if (!existing || entry.lastModified > existing.lastModified) {
+			latest.set(entry.id, entry);
+		}
+	};
+
+	for (const entry of stateEntries) {
+		update(entry);
+	}
+
+	for (const task of localTasks) {
+		if (!task.id) continue;
+		const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
+
+		update({
+			id: task.id,
+			type: "task",
+			branch: "local",
+			path: "",
+			lastModified,
+		});
+	}
+
+	return latest;
+}
+
+function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, BranchTaskStateEntry>): Task[] {
+	return tasks.filter((task) => {
+		const latest = latestState.get(task.id);
+		if (!latest) return true;
+		return latest.type === "task";
+	});
 }
 
 export class Core {
@@ -1538,9 +1578,11 @@ export class Core {
 		]);
 
 		// Load remote tasks and local branch tasks in parallel
+		const branchStateEntries: BranchTaskStateEntry[] | undefined =
+			config?.checkActiveBranches === false ? undefined : [];
 		const [remoteTasks, localBranchTasks] = await Promise.all([
-			loadRemoteTasks(this.git, config, progressCallback, localTasks),
-			loadLocalBranchTasks(this.git, config, progressCallback, localTasks),
+			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
+			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
 		]);
 		progressCallback?.("Loaded tasks");
 
@@ -1582,26 +1624,10 @@ export class Core {
 		let activeTasks: Task[];
 
 		if (config?.checkActiveBranches === false) {
-			// Skip cross-branch checking for maximum performance
-			progressCallback?.("Skipping cross-branch check (disabled in config)...");
 			activeTasks = tasks;
 		} else {
-			// Get the latest state of each task across all branches
-			progressCallback?.("Checking task states across branches...");
-			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(
-				this.git,
-				this.fs,
-				taskIds,
-				progressCallback || (() => {}),
-				{
-					recentBranchesOnly: true,
-					daysAgo: config?.activeBranchDays ?? 30,
-				},
-			);
-
-			// Filter tasks based on their latest directory location
-			activeTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+			progressCallback?.("Applying latest task states from branch scans...");
+			activeTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
 		}
 
 		// Load drafts
@@ -1636,9 +1662,11 @@ export class Core {
 		// Load tasks from remote branches and other local branches in parallel
 		progressCallback?.(getTaskLoadingMessage(config));
 
+		const branchStateEntries: BranchTaskStateEntry[] | undefined =
+			config?.checkActiveBranches === false ? undefined : [];
 		const [remoteTasks, localBranchTasks] = await Promise.all([
-			loadRemoteTasks(this.git, config, progressCallback, localTasks),
-			loadLocalBranchTasks(this.git, config, progressCallback, localTasks),
+			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
+			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
 		]);
 
 		// Check for cancellation after loading
@@ -1687,28 +1715,18 @@ export class Core {
 
 		// Get the latest directory location of each task across all branches
 		const tasks = Array.from(tasksById.values());
+
+		if (abortSignal?.aborted) {
+			throw new Error("Loading cancelled");
+		}
+
 		let filteredTasks: Task[];
 
 		if (config?.checkActiveBranches === false) {
-			// Skip cross-branch checking for maximum performance
-			progressCallback?.("Skipping cross-branch check (disabled in config)...");
 			filteredTasks = tasks;
 		} else {
-			progressCallback?.("Resolving task states across branches...");
-			const taskIds = tasks.map((t) => t.id);
-			const latestTaskDirectories = await getLatestTaskStatesForIds(this.git, this.fs, taskIds, progressCallback, {
-				recentBranchesOnly: true,
-				daysAgo: config?.activeBranchDays ?? 30,
-			});
-
-			// Check for cancellation before filtering
-			if (abortSignal?.aborted) {
-				throw new Error("Loading cancelled");
-			}
-
-			// Filter tasks based on their latest directory location
-			progressCallback?.("Filtering active tasks...");
-			filteredTasks = filterTasksByLatestState(tasks, latestTaskDirectories);
+			progressCallback?.("Applying latest task states from branch scans...");
+			filteredTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
 		}
 
 		return filteredTasks;

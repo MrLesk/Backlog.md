@@ -142,6 +142,48 @@ describe("SearchService", () => {
 		expect(combinedFiltered.map((result) => result.task.id)).toStrictEqual(["task-3"]);
 	});
 
+	it("filters tasks by labels (requiring all selected labels)", async () => {
+		const uiTask: Task = {
+			...baseTask,
+			id: "task-2",
+			title: "UI polish",
+			status: "To Do",
+			labels: ["ui", "frontend"],
+			rawContent: "## Description\nUI work",
+		};
+
+		const docsTask: Task = {
+			...baseTask,
+			id: "task-3",
+			title: "Docs update",
+			status: "Done",
+			labels: ["docs"],
+			rawContent: "## Description\nDocs",
+		};
+
+		await filesystem.saveTask(baseTask);
+		await filesystem.saveTask(uiTask);
+		await filesystem.saveTask(docsTask);
+
+		await search.ensureInitialized();
+
+		const uiFiltered = search
+			.search({
+				types: ["task"],
+				filters: { labels: ["ui"] },
+			})
+			.filter(isTaskResult);
+		expect(uiFiltered.map((result) => result.task.id)).toStrictEqual(["task-2"]);
+
+		const anyFiltered = search
+			.search({
+				types: ["task"],
+				filters: { labels: ["ui", "frontend"] },
+			})
+			.filter(isTaskResult);
+		expect(anyFiltered.map((result) => result.task.id)).toStrictEqual(["task-2"]);
+	});
+
 	it("refreshes the index when content changes", async () => {
 		await filesystem.saveTask(baseTask);
 		await search.ensureInitialized();

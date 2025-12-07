@@ -23,6 +23,7 @@ export interface UnifiedViewOptions {
 		status?: string;
 		assignee?: string;
 		priority?: string;
+		labels?: string[];
 		sort?: string;
 		title?: string;
 		filterDescription?: string;
@@ -145,6 +146,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			searchQuery: options.filter?.searchQuery || "",
 			statusFilter: options.filter?.status || "",
 			priorityFilter: options.filter?.priority || "",
+			labelFilter: options.filter?.labels || [],
 		};
 
 		// Create view switcher (without problematic onViewChange callback)
@@ -246,6 +248,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					searchQuery: currentFilters.searchQuery,
 					statusFilter: currentFilters.statusFilter,
 					priorityFilter: currentFilters.priorityFilter,
+					labelFilter: currentFilters.labelFilter,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					onTaskChange: (newTask) => {
@@ -256,6 +259,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentFilters.searchQuery = filters.searchQuery;
 						currentFilters.statusFilter = filters.statusFilter;
 						currentFilters.priorityFilter = filters.priorityFilter;
+						currentFilters.labelFilter = filters.labelFilter;
 					},
 					onTabPress,
 				}).then(() => {

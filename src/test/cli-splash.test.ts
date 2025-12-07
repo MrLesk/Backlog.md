@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -9,8 +10,7 @@ const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("CLI Splash (bare run)", () => {
 	beforeEach(async () => {
-		TEST_DIR = join(process.cwd(), `.tmp-test-${Math.random().toString(36).slice(2)}`);
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		TEST_DIR = await mkdtemp(join(tmpdir(), "backlog-splash-"));
 		await mkdir(TEST_DIR, { recursive: true });
 	});
 
