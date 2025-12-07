@@ -204,6 +204,38 @@ Test task with reporter.`;
 
 			expect(task.reporter).toBe("@MrLesk");
 		});
+
+		it("should parse inline assignee lists with unquoted @ handles", () => {
+			const content = `---
+id: task-7
+title: "Inline Assignees"
+assignee: [@alice, "@bob"]
+status: To Do
+created_date: 2025-06-08
+---
+
+Test task with inline list.`;
+
+			const task = parseTask(content);
+
+			expect(task.assignee).toEqual(["@alice", "@bob"]);
+		});
+
+		it("should escape backslashes in inline @ lists", () => {
+			const content = `---
+id: task-8
+title: "Backslash Inline Assignees"
+assignee: [@domain\\\\user]
+status: To Do
+created_date: 2025-06-08
+---
+
+Test task with inline list containing backslash.`;
+
+			const task = parseTask(content);
+
+			expect(task.assignee).toEqual(["@domain\\\\user"]);
+		});
 	});
 
 	describe("parseDecision", () => {
