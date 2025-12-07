@@ -1693,10 +1693,13 @@ taskCmd
 
 				// Now query with filters - this will use the already-populated ContentStore
 				updateProgress("Applying filters...");
-				const tasks = await core.queryTasks({ filters: baseFilters });
+				const [tasks, allTasksForParentCheck] = await Promise.all([
+					core.queryTasks({ filters: baseFilters }),
+					parentId ? core.queryTasks() : Promise.resolve(undefined),
+				]);
 
-				if (parentId) {
-					const parentExists = tasks.some((task) => taskIdsEqual(parentId, task.id));
+				if (parentId && allTasksForParentCheck) {
+					const parentExists = allTasksForParentCheck.some((task) => taskIdsEqual(parentId, task.id));
 					if (!parentExists) {
 						throw new Error(`Parent task ${parentId} not found.`);
 					}
