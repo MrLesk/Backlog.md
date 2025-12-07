@@ -12,6 +12,34 @@ import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
+
+export interface BranchTaskStateEntry {
+	id: string;
+	type: TaskDirectoryType;
+	lastModified: Date;
+	branch: string;
+	path: string;
+}
+
+const STATE_DIRECTORIES: Array<{ path: string; type: TaskDirectoryType }> = [
+	{ path: "tasks", type: "task" },
+	{ path: "drafts", type: "draft" },
+	{ path: "archive/tasks", type: "archived" },
+	{ path: "completed", type: "completed" },
+];
+
+function getTaskTypeFromPath(path: string, backlogDir: string): TaskDirectoryType | null {
+	const normalized = path.startsWith(`${backlogDir}/`) ? path.slice(backlogDir.length + 1) : path;
+
+	for (const { path: dir, type } of STATE_DIRECTORIES) {
+		if (normalized.startsWith(`${dir}/`)) {
+			return type;
+		}
+	}
+
+	return null;
+}
 
 /**
  * Get the appropriate loading message based on remote operations configuration
@@ -64,6 +92,7 @@ export async function buildRemoteTaskIndex(
 	branches: string[],
 	backlogDir = "backlog",
 	sinceDays?: number,
+	stateCollector?: BranchTaskStateEntry[],
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -81,12 +110,14 @@ export async function buildRemoteTaskIndex(
 			const ref = `origin/${br}`;
 
 			try {
-				// Get all task files in this branch
-				const files = await git.listFilesInTree(ref, `${backlogDir}/tasks`);
+				const listPath = stateCollector ? backlogDir : `${backlogDir}/tasks`;
+
+				// Get backlog files for this branch
+				const files = await git.listFilesInTree(ref, listPath);
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
-				const lm = await git.getBranchLastModifiedMap(ref, `${backlogDir}/tasks`, sinceDays);
+				const lm = await git.getBranchLastModifiedMap(ref, listPath, sinceDays);
 
 				for (const f of files) {
 					// Extract task ID from filename
@@ -98,11 +129,29 @@ export async function buildRemoteTaskIndex(
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
-					const arr = out.get(id);
-					if (arr) {
-						arr.push(entry);
-					} else {
-						out.set(id, [entry]);
+					// Collect full state info when requested
+					const type = getTaskTypeFromPath(f, backlogDir);
+					if (!stateCollector && type !== "task") {
+						continue;
+					}
+					if (type && stateCollector) {
+						stateCollector.push({
+							id,
+							type,
+							branch: br,
+							path: f,
+							lastModified,
+						});
+					}
+
+					// Only index active tasks for hydration selection
+					if (type === "task") {
+						const arr = out.get(id);
+						if (arr) {
+							arr.push(entry);
+						} else {
+							out.set(id, [entry]);
+						}
 					}
 				}
 			} catch (error) {
@@ -166,6 +215,7 @@ export async function buildLocalBranchTaskIndex(
 	currentBranch: string,
 	backlogDir = "backlog",
 	sinceDays?: number,
+	stateCollector?: BranchTaskStateEntry[],
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -185,12 +235,14 @@ export async function buildLocalBranchTaskIndex(
 			if (!br) break;
 
 			try {
-				// Get all task files in this branch (use branch name directly, not origin/)
-				const files = await git.listFilesInTree(br, `${backlogDir}/tasks`);
+				const listPath = stateCollector ? backlogDir : `${backlogDir}/tasks`;
+
+				// Get backlog files in this branch
+				const files = await git.listFilesInTree(br, listPath);
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
-				const lm = await git.getBranchLastModifiedMap(br, `${backlogDir}/tasks`, sinceDays);
+				const lm = await git.getBranchLastModifiedMap(br, listPath, sinceDays);
 
 				for (const f of files) {
 					// Extract task ID from filename (support subtasks like task-123.01)
@@ -201,11 +253,29 @@ export async function buildLocalBranchTaskIndex(
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
-					const arr = out.get(id);
-					if (arr) {
-						arr.push(entry);
-					} else {
-						out.set(id, [entry]);
+					// Collect full state info when requested
+					const type = getTaskTypeFromPath(f, backlogDir);
+					if (!stateCollector && type !== "task") {
+						continue;
+					}
+					if (type && stateCollector) {
+						stateCollector.push({
+							id,
+							type,
+							branch: br,
+							path: f,
+							lastModified,
+						});
+					}
+
+					// Only index active tasks for hydration selection
+					if (type === "task") {
+						const arr = out.get(id);
+						if (arr) {
+							arr.push(entry);
+						} else {
+							out.set(id, [entry]);
+						}
 					}
 				}
 			} catch (error) {
@@ -378,6 +448,7 @@ export async function loadRemoteTasks(
 	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
+	stateCollector?: BranchTaskStateEntry[],
 ): Promise<Task[]> {
 	try {
 		// Skip remote operations if disabled
@@ -403,7 +474,7 @@ export async function loadRemoteTasks(
 
 		// Build a cheap index without fetching content
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir, days);
+		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir, days, stateCollector);
 
 		if (remoteIndex.size === 0) {
 			onProgress?.("No remote tasks found");
@@ -498,6 +569,7 @@ export async function loadLocalBranchTasks(
 	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
+	stateCollector?: BranchTaskStateEntry[],
 ): Promise<Task[]> {
 	try {
 		const currentBranch = await gitOps.getCurrentBranch();
@@ -524,7 +596,14 @@ export async function loadLocalBranchTasks(
 
 		// Build index of tasks from other local branches
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-		const localBranchIndex = await buildLocalBranchTaskIndex(gitOps, localBranches, currentBranch, backlogDir, days);
+		const localBranchIndex = await buildLocalBranchTaskIndex(
+			gitOps,
+			localBranches,
+			currentBranch,
+			backlogDir,
+			days,
+			stateCollector,
+		);
 
 		if (localBranchIndex.size === 0) {
 			return [];
