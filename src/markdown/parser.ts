@@ -2,6 +2,31 @@ import matter from "gray-matter";
 import type { AcceptanceCriterion, Decision, Document, ParsedMarkdown, Task } from "../types/index.ts";
 import { AcceptanceCriteriaManager, extractStructuredSection, STRUCTURED_SECTION_KEYS } from "./structured-sections.ts";
 
+function normalizeFlowList(prefix: string, rawValue: string): string | null {
+	// Handle inline lists like assignee: [@user, "someone"]
+	const match = rawValue.match(/^\[(.*)\]\s*(#.*)?$/);
+	if (!match) return null;
+
+	const [, listBody, comment] = match;
+	const items = listBody
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
+
+	const normalizedItems = items.map((entry) => {
+		if (entry.startsWith("'") || entry.startsWith('"')) {
+			return entry;
+		}
+		if (entry.startsWith("@")) {
+			return `"${entry.replace(/"/g, '\\"')}"`;
+		}
+		return entry;
+	});
+
+	const trailingComment = comment ? ` ${comment}` : "";
+	return `${prefix}[${normalizedItems.join(", ")}]${trailingComment}`;
+}
+
 function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
 		.split(/\r?\n/) // Handle both Windows (\r\n) and Unix (\n) line endings
@@ -12,6 +37,11 @@ function preprocessFrontmatter(frontmatter: string): string {
 
 			const [, prefix, raw] = match;
 			const value = raw?.trim() || "";
+
+			const normalizedFlowList = normalizeFlowList(prefix, value);
+			if (normalizedFlowList !== null) {
+				return normalizedFlowList;
+			}
 
 			if (
 				value &&

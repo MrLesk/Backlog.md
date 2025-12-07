@@ -85,6 +85,31 @@ describe("FileSystem", () => {
 			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2"]);
 		});
 
+		it("should list tasks even when one file has invalid frontmatter", async () => {
+			await filesystem.saveTask(sampleTask);
+			await filesystem.saveTask({
+				...sampleTask,
+				id: "task-2",
+				title: "Second Task",
+			});
+
+			const invalidPath = join(filesystem.tasksDir, "task-99 - invalid.md");
+			await Bun.write(
+				invalidPath,
+				`---
+id: task-99
+assignee: [@broken
+status: To Do
+title: Broken Task
+---
+
+Invalid content`,
+			);
+
+			const tasks = await filesystem.listTasks();
+			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2"]);
+		});
+
 		it("should sort tasks numerically by ID", async () => {
 			// Create tasks with IDs that would sort incorrectly with string comparison
 			const taskIds = ["task-2", "task-10", "task-1", "task-20", "task-3"];

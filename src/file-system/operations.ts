@@ -201,70 +201,109 @@ export class FileSystem {
 	}
 
 	async listTasks(filter?: TaskListFilter): Promise<Task[]> {
+		let tasksDir: string;
 		try {
-			const tasksDir = await this.getTasksDir();
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: tasksDir }));
-
-			let tasks: Task[] = [];
-			for (const file of taskFiles) {
-				const filepath = join(tasksDir, file);
-				const content = await Bun.file(filepath).text();
-				const task = parseTask(content);
-				tasks.push({ ...task, filePath: filepath });
-			}
-
-			if (filter?.status) {
-				const statusLower = filter.status.toLowerCase();
-				tasks = tasks.filter((t) => t.status.toLowerCase() === statusLower);
-			}
-
-			if (filter?.assignee) {
-				const assignee = filter.assignee;
-				tasks = tasks.filter((t) => t.assignee.includes(assignee));
-			}
-
-			return sortByTaskId(tasks);
+			tasksDir = await this.getTasksDir();
 		} catch (_error) {
 			return [];
 		}
+
+		let taskFiles: string[];
+		try {
+			taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: tasksDir }));
+		} catch (_error) {
+			return [];
+		}
+
+		let tasks: Task[] = [];
+		for (const file of taskFiles) {
+			const filepath = join(tasksDir, file);
+			try {
+				const content = await Bun.file(filepath).text();
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
+			} catch (error) {
+				if (process.env.DEBUG) {
+					console.error(`Failed to parse task file ${filepath}`, error);
+				}
+			}
+		}
+
+		if (filter?.status) {
+			const statusLower = filter.status.toLowerCase();
+			tasks = tasks.filter((t) => t.status.toLowerCase() === statusLower);
+		}
+
+		if (filter?.assignee) {
+			const assignee = filter.assignee;
+			tasks = tasks.filter((t) => t.assignee.includes(assignee));
+		}
+
+		return sortByTaskId(tasks);
 	}
 
 	async listCompletedTasks(): Promise<Task[]> {
+		let completedDir: string;
 		try {
-			const completedDir = await this.getCompletedDir();
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: completedDir }));
-
-			const tasks: Task[] = [];
-			for (const file of taskFiles) {
-				const filepath = join(completedDir, file);
-				const content = await Bun.file(filepath).text();
-				const task = parseTask(content);
-				tasks.push({ ...task, filePath: filepath });
-			}
-
-			return sortByTaskId(tasks);
+			completedDir = await this.getCompletedDir();
 		} catch (_error) {
 			return [];
 		}
+
+		let taskFiles: string[];
+		try {
+			taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: completedDir }));
+		} catch (_error) {
+			return [];
+		}
+
+		const tasks: Task[] = [];
+		for (const file of taskFiles) {
+			const filepath = join(completedDir, file);
+			try {
+				const content = await Bun.file(filepath).text();
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
+			} catch (error) {
+				if (process.env.DEBUG) {
+					console.error(`Failed to parse completed task file ${filepath}`, error);
+				}
+			}
+		}
+
+		return sortByTaskId(tasks);
 	}
 
 	async listArchivedTasks(): Promise<Task[]> {
+		let archiveTasksDir: string;
 		try {
-			const archiveTasksDir = await this.getArchiveTasksDir();
-			const taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: archiveTasksDir }));
-
-			const tasks: Task[] = [];
-			for (const file of taskFiles) {
-				const filepath = join(archiveTasksDir, file);
-				const content = await Bun.file(filepath).text();
-				const task = parseTask(content);
-				tasks.push({ ...task, filePath: filepath });
-			}
-
-			return sortByTaskId(tasks);
+			archiveTasksDir = await this.getArchiveTasksDir();
 		} catch (_error) {
 			return [];
 		}
+
+		let taskFiles: string[];
+		try {
+			taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: archiveTasksDir }));
+		} catch (_error) {
+			return [];
+		}
+
+		const tasks: Task[] = [];
+		for (const file of taskFiles) {
+			const filepath = join(archiveTasksDir, file);
+			try {
+				const content = await Bun.file(filepath).text();
+				const task = parseTask(content);
+				tasks.push({ ...task, filePath: filepath });
+			} catch (error) {
+				if (process.env.DEBUG) {
+					console.error(`Failed to parse archived task file ${filepath}`, error);
+				}
+			}
+		}
+
+		return sortByTaskId(tasks);
 	}
 
 	async archiveTask(taskId: string): Promise<boolean> {
