@@ -24,6 +24,7 @@ interface TaskSearchEntity extends BaseSearchEntity {
 	readonly task: Task;
 	readonly statusLower: string;
 	readonly priorityLower?: SearchPriorityFilter;
+	readonly labelsLower: string[];
 	readonly idVariants: string[];
 	readonly dependencyIds: string[];
 }
@@ -43,6 +44,7 @@ type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEnti
 type NormalizedFilters = {
 	statuses?: string[];
 	priorities?: SearchPriorityFilter[];
+	labels?: string[];
 };
 
 const TASK_ID_PREFIX = "task-";
@@ -190,6 +192,7 @@ export class SearchService {
 			task,
 			statusLower: task.status.toLowerCase(),
 			priorityLower: task.priority ? (task.priority.toLowerCase() as SearchPriorityFilter) : undefined,
+			labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 			idVariants: createTaskIdVariants(task.id),
 			dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
 		}));
@@ -289,6 +292,15 @@ export class SearchService {
 				return allowedPriorities.has(task.priorityLower);
 			});
 		}
+		if (filters.labels && filters.labels.length > 0) {
+			const requiredLabels = new Set(filters.labels);
+			filtered = filtered.filter((task) => {
+				if (!task.labelsLower || task.labelsLower.length === 0) {
+					return false;
+				}
+				return task.labelsLower.some((label) => requiredLabels.has(label));
+			});
+		}
 		return filtered;
 	}
 
@@ -305,6 +317,17 @@ export class SearchService {
 			}
 		}
 
+		if (filters.labels && filters.labels.length > 0) {
+			if (!task.labelsLower || task.labelsLower.length === 0) {
+				return false;
+			}
+			const labelSet = new Set(task.labelsLower);
+			const anyMatch = filters.labels.some((label) => labelSet.has(label));
+			if (!anyMatch) {
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -315,14 +338,27 @@ export class SearchService {
 
 		const statuses = this.normalizeStringArray(filters.status);
 		const priorities = this.normalizePriorityArray(filters.priority);
+		const labels = this.normalizeLabelsArray(filters.labels);
 
 		return {
 			statuses,
 			priorities,
+			labels,
 		};
 	}
 
 	private normalizeStringArray(value?: string | string[]): string[] | undefined {
+		if (!value) {
+			return undefined;
+		}
+
+		const values = Array.isArray(value) ? value : [value];
+		const normalized = values.map((item) => item.trim().toLowerCase()).filter((item) => item.length > 0);
+
+		return normalized.length > 0 ? normalized : undefined;
+	}
+
+	private normalizeLabelsArray(value?: string | string[]): string[] | undefined {
 		if (!value) {
 			return undefined;
 		}

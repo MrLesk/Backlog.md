@@ -42,8 +42,9 @@ export interface GenericListOptions<T extends GenericListItem> {
 	style?: {
 		border?: { fg: string };
 		selected?: { fg: string; bg: string };
-		item?: { fg: string };
+		item?: { fg: string; bg?: string };
 		focus?: { border: { fg: string } };
+		bg?: string;
 	};
 	showHelp?: boolean;
 }
@@ -135,6 +136,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 		const style = { ...defaultStyle, ...this.options.style };
 
+		// Extract bg for direct application to list widget
+		const listBg = this.options.style?.bg;
+
 		this.listBox = list({
 			parent,
 			label: this.options.title ? `\u00A0${this.options.title}\u00A0` : undefined,
@@ -143,7 +147,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			width: this.options.width || (parent === this.screen ? "90%" : "100%"),
 			height: this.options.height || (parent === this.screen ? "80%" : "100%"),
 			border: this.options.border !== false ? "line" : undefined,
-			style,
+			style: {
+				...style,
+				bg: listBg,
+			},
 			tags: true,
 			// Disable built-in key handling to avoid double-processing with our custom handlers
 			keys: false,
@@ -344,7 +351,15 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		} else {
 			this.selectedIndices.add(index);
 		}
-		this.refreshList();
+		// Update just the current item's display without full refresh
+		const item = this.filteredItems[index];
+		if (item) {
+			const isSelected = this.selectedIndices.has(index);
+			const rendered = this.itemRenderer(item, index, isSelected);
+			const prefix = isSelected ? "[✓] " : "[ ] ";
+			(this.listBox as { setItem?: (i: number, content: string) => void }).setItem?.(index, prefix + rendered);
+			this.getScreen()?.render?.();
+		}
 	}
 
 	private confirmSelection(): void {

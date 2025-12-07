@@ -1685,13 +1685,18 @@ taskCmd
 				updateProgress("Loading configuration...");
 				const config = await core.filesystem.loadConfig();
 
-				updateProgress("Loading tasks...");
-				const tasks = await core.queryTasks({ filters: baseFilters, includeCrossBranch: false });
+				// Use loadTasks with progress callback for consistent loading experience
+				// This populates the ContentStore, so subsequent queryTasks calls are fast
+				await core.loadTasks((msg) => {
+					updateProgress(msg);
+				});
+
+				// Now query with filters - this will use the already-populated ContentStore
+				updateProgress("Applying filters...");
+				const tasks = await core.queryTasks({ filters: baseFilters });
 
 				if (parentId) {
-					const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
-						taskIdsEqual(parentId, task.id),
-					);
+					const parentExists = tasks.some((task) => taskIdsEqual(parentId, task.id));
 					if (!parentExists) {
 						throw new Error(`Parent task ${parentId} not found.`);
 					}

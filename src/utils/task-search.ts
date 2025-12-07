@@ -10,6 +10,7 @@ interface TaskSearchOptions {
 	query?: string;
 	status?: string;
 	priority?: "high" | "medium" | "low";
+	labels?: string[];
 }
 
 interface TaskSearchIndex {
@@ -52,6 +53,7 @@ interface SearchableTask {
 	idVariants: string[];
 	statusLower: string;
 	priorityLower?: string;
+	labelsLower: string[];
 }
 
 function buildSearchableTask(task: Task): SearchableTask {
@@ -70,6 +72,7 @@ function buildSearchableTask(task: Task): SearchableTask {
 		idVariants: createTaskIdVariants(task.id),
 		statusLower: (task.status || "").toLowerCase(),
 		priorityLower: task.priority?.toLowerCase(),
+		labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 	};
 }
 
@@ -115,6 +118,18 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 			if (options.priority) {
 				const priorityLower = options.priority.toLowerCase();
 				results = results.filter((t) => t.priorityLower === priorityLower);
+			}
+
+			// Apply label filters (task must include any selected label)
+			if (options.labels && options.labels.length > 0) {
+				const required = options.labels.map((label) => label.toLowerCase());
+				results = results.filter((t) => {
+					if (!t.labelsLower || t.labelsLower.length === 0) {
+						return false;
+					}
+					const labelSet = new Set(t.labelsLower);
+					return required.some((label) => labelSet.has(label));
+				});
 			}
 
 			return results.map((r) => r.task);
