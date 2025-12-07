@@ -220,6 +220,22 @@ Test task with inline list.`;
 
 			expect(task.assignee).toEqual(["@alice", "@bob"]);
 		});
+
+		it("should escape backslashes in inline @ lists", () => {
+			const content = `---
+id: task-8
+title: "Backslash Inline Assignees"
+assignee: [@domain\\\\user]
+status: To Do
+created_date: 2025-06-08
+---
+
+Test task with inline list containing backslash.`;
+
+			const task = parseTask(content);
+
+			expect(task.assignee).toEqual(["@domain\\\\user"]);
+		});
 	});
 
 	describe("parseDecision", () => {

@@ -18,7 +18,8 @@ function normalizeFlowList(prefix: string, rawValue: string): string | null {
 			return entry;
 		}
 		if (entry.startsWith("@")) {
-			return `"${entry.replace(/"/g, '\\"')}"`;
+			const escaped = entry.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+			return `"${escaped}"`;
 		}
 		return entry;
 	});
