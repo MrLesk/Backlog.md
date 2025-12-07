@@ -260,7 +260,16 @@ export class BacklogServer {
 					},
 				},
 				fetch: async (req: Request, server: Server<unknown>) => {
-					return await this.handleRequest(req, server);
+					const res = await this.handleRequest(req, server);
+
+					// Disable caching for GET/HEAD so browser always fetches latest content
+					if (req.method === "GET" || req.method === "HEAD") {
+						res.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
+						res.headers.set("Pragma", "no-cache");
+						res.headers.set("Expires", "0");
+					}
+
+					return res;
 				},
 				error: this.handleError.bind(this),
 				websocket: {
@@ -467,6 +476,12 @@ export class BacklogServer {
 		const parent = url.searchParams.get("parent") || undefined;
 		const priorityParam = url.searchParams.get("priority") || undefined;
 		const crossBranch = url.searchParams.get("crossBranch") === "true";
+		const labelParams = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
+		const labelsCsv = url.searchParams.get("labels");
+		if (labelsCsv) {
+			labelParams.push(...labelsCsv.split(","));
+		}
+		const labels = labelParams.map((label) => label.trim()).filter((label) => label.length > 0);
 
 		let priority: "high" | "medium" | "low" | undefined;
 		if (priorityParam) {
@@ -501,7 +516,7 @@ export class BacklogServer {
 
 		// Use Core.queryTasks which handles all filtering and cross-branch logic
 		const tasks = await this.core.queryTasks({
-			filters: { status, assignee, priority, parentTaskId },
+			filters: { status, assignee, priority, parentTaskId, labels: labels.length > 0 ? labels : undefined },
 			includeCrossBranch: crossBranch,
 		});
 
@@ -517,6 +532,11 @@ export class BacklogServer {
 			const typeParams = [...url.searchParams.getAll("type"), ...url.searchParams.getAll("types")];
 			const statusParams = url.searchParams.getAll("status");
 			const priorityParamsRaw = url.searchParams.getAll("priority");
+			const labelParamsRaw = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
+			const labelsCsv = url.searchParams.get("labels");
+			if (labelsCsv) {
+				labelParamsRaw.push(...labelsCsv.split(","));
+			}
 
 			let limit: number | undefined;
 			if (limitParam) {
@@ -544,6 +564,7 @@ export class BacklogServer {
 			const filters: {
 				status?: string | string[];
 				priority?: SearchPriorityFilter | SearchPriorityFilter[];
+				labels?: string | string[];
 			} = {};
 
 			if (statusParams.length === 1) {
@@ -566,6 +587,13 @@ export class BacklogServer {
 				}
 				const casted = normalizedPriorities as SearchPriorityFilter[];
 				filters.priority = casted.length === 1 ? casted[0] : casted;
+			}
+
+			if (labelParamsRaw.length > 0) {
+				const normalizedLabels = labelParamsRaw.map((value) => value.trim()).filter((value) => value.length > 0);
+				if (normalizedLabels.length > 0) {
+					filters.labels = normalizedLabels.length === 1 ? normalizedLabels[0] : normalizedLabels;
+				}
 			}
 
 			const results = searchService.search({ query, limit, types, filters });

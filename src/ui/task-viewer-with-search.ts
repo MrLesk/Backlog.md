@@ -176,13 +176,43 @@ export async function viewTaskEnhanced(
 			tags: true,
 		});
 
+		const resolveDimension = (value: number | string | undefined, total: number): number => {
+			if (typeof value === "number") return value;
+			if (typeof value === "string") {
+				if (value.endsWith("%")) {
+					const pct = Number.parseFloat(value);
+					return Number.isFinite(pct) ? Math.floor((pct / 100) * total) : 0;
+				}
+			}
+			return 0;
+		};
+
+		const resolvePosition = (value: number | string | undefined, total: number, size: number): number => {
+			if (typeof value === "number") return value;
+			if (value === "center") return Math.max(0, Math.floor((total - size) / 2));
+			if (typeof value === "string" && value.endsWith("%")) {
+				const pct = Number.parseFloat(value);
+				if (Number.isFinite(pct)) {
+					return Math.floor((pct / 100) * total);
+				}
+			}
+			return 0;
+		};
+
+		const screenWidth = screen.width ?? 0;
+		const screenHeight = screen.height ?? 0;
+		const popupWidth = resolveDimension(popup.width ?? "50%", screenWidth);
+		const popupHeight = resolveDimension(popup.height ?? "70%", screenHeight);
+		const popupTop = resolvePosition(popup.top ?? "center", screenHeight, popupHeight);
+		const popupLeft = resolvePosition(popup.left ?? "center", screenWidth, popupWidth);
+
 		// Create backdrop behind the popup
 		const backdrop = box({
 			parent: screen,
-			top: Number(popup.top ?? 0) - 1,
-			left: Number(popup.left ?? 0) - 2,
-			width: Number(popup.width ?? 0) + 4,
-			height: Number(popup.height ?? 0) + 2,
+			top: Math.max(0, popupTop - 1),
+			left: Math.max(0, popupLeft - 2),
+			width: Math.min(screenWidth, popupWidth + 4),
+			height: Math.min(screenHeight, popupHeight + 2),
 			style: {
 				bg: "black",
 			},

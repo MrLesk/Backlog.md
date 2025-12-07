@@ -96,6 +96,7 @@ export interface TaskListFilter {
 	assignee?: string;
 	priority?: "high" | "medium" | "low";
 	parentTaskId?: string;
+	labels?: string[];
 }
 
 export interface Decision {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../lib/api";
 import type {
@@ -6,6 +6,7 @@ import type {
 	Task,
 	TaskSearchResult,
 } from "../../types";
+import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import CleanupModal from "./CleanupModal";
 import { SuccessToast } from "./SuccessToast";
 
@@ -14,6 +15,7 @@ interface TaskListProps {
 	onNewTask: () => void;
 	tasks: Task[];
 	availableStatuses: string[];
+	availableLabels: string[];
 	onRefreshData?: () => Promise<void>;
 }
 
@@ -32,27 +34,54 @@ function sortTasksByIdDescending(list: Task[]): Task[] {
 	});
 }
 
-const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, availableStatuses, onRefreshData }) => {
+const TaskList: React.FC<TaskListProps> = ({
+	onEditTask,
+	onNewTask,
+	tasks,
+	availableStatuses,
+	availableLabels,
+	onRefreshData,
+}) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [searchValue, setSearchValue] = useState(() => searchParams.get("query") ?? "");
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
 	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
 		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
 	);
+	const initialLabelParams = useMemo(() => {
+		const labels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
+		const labelsCsv = searchParams.get("labels");
+		if (labelsCsv) labels.push(...labelsCsv.split(","));
+		return labels.map((label) => label.trim()).filter((label) => label.length > 0);
+	}, []);
+	const [labelFilter, setLabelFilter] = useState<string[]>(initialLabelParams);
 	const [displayTasks, setDisplayTasks] = useState<Task[]>(() => sortTasksByIdDescending(tasks));
 	const [error, setError] = useState<string | null>(null);
 	const [showCleanupModal, setShowCleanupModal] = useState(false);
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
+	const [showLabelsMenu, setShowLabelsMenu] = useState(false);
+	const labelsButtonRef = useRef<HTMLButtonElement | null>(null);
+	const labelsMenuRef = useRef<HTMLDivElement | null>(null);
 
 	const sortedBaseTasks = useMemo(() => sortTasksByIdDescending(tasks), [tasks]);
+	const mergedAvailableLabels = useMemo(
+		() => collectAvailableLabels(tasks, availableLabels),
+		[tasks, availableLabels],
+	);
 	const normalizedSearch = searchValue.trim();
-	const hasActiveFilters = Boolean(normalizedSearch || statusFilter || priorityFilter);
+	const hasActiveFilters = Boolean(normalizedSearch || statusFilter || priorityFilter || labelFilter.length > 0);
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
 		const paramQuery = searchParams.get("query") ?? "";
 		const paramStatus = searchParams.get("status") ?? "";
 		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
+		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
+		const labelsCsv = searchParams.get("labels");
+		if (labelsCsv) {
+			paramLabels.push(...labelsCsv.split(","));
+		}
+		const normalizedLabels = paramLabels.map((label) => label.trim()).filter((label) => label.length > 0);
 
 		if (paramQuery !== searchValue) {
 			setSearchValue(paramQuery);
@@ -62,6 +91,9 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 		}
 		if (paramPriority !== priorityFilter) {
 			setPriorityFilter(paramPriority);
+		}
+		if (normalizedLabels.join("|") !== labelFilter.join("|")) {
+			setLabelFilter(normalizedLabels);
 		}
 	}, [searchParams]);
 
@@ -87,6 +119,7 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 					types: ["task"],
 					status: statusFilter || undefined,
 					priority: (priorityFilter || undefined) as SearchPriorityFilter | undefined,
+					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				});
 				if (cancelled) {
 					return;
@@ -107,9 +140,14 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 		return () => {
 			cancelled = true;
 		};
-	}, [hasActiveFilters, normalizedSearch, priorityFilter, statusFilter, tasks]);
+	}, [hasActiveFilters, normalizedSearch, priorityFilter, statusFilter, labelFilter, tasks]);
 
-	const syncUrl = (nextQuery: string, nextStatus: string, nextPriority: "" | SearchPriorityFilter) => {
+	const syncUrl = (
+		nextQuery: string,
+		nextStatus: string,
+		nextPriority: "" | SearchPriorityFilter,
+		nextLabels: string[],
+	) => {
 		const params = new URLSearchParams();
 		const trimmedQuery = nextQuery.trim();
 		if (trimmedQuery) {
@@ -121,32 +159,61 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 		if (nextPriority) {
 			params.set("priority", nextPriority);
 		}
+		if (nextLabels.length > 0) {
+			for (const label of nextLabels) {
+				params.append("label", label);
+			}
+		}
 		setSearchParams(params, { replace: true });
 	};
 
 	const handleSearchChange = (value: string) => {
 		setSearchValue(value);
-		syncUrl(value, statusFilter, priorityFilter);
+		syncUrl(value, statusFilter, priorityFilter, labelFilter);
 	};
 
 	const handleStatusChange = (value: string) => {
 		setStatusFilter(value);
-		syncUrl(searchValue, value, priorityFilter);
+		syncUrl(searchValue, value, priorityFilter, labelFilter);
 	};
 
 	const handlePriorityChange = (value: "" | SearchPriorityFilter) => {
 		setPriorityFilter(value);
-		syncUrl(searchValue, statusFilter, value);
+		syncUrl(searchValue, statusFilter, value, labelFilter);
+	};
+
+	const handleLabelChange = (next: string[]) => {
+		const normalized = next.map((label) => label.trim()).filter((label) => label.length > 0);
+		setLabelFilter(normalized);
+		syncUrl(searchValue, statusFilter, priorityFilter, normalized);
 	};
 
 	const handleClearFilters = () => {
 		setSearchValue("");
 		setStatusFilter("");
 		setPriorityFilter("");
-		syncUrl("", "", "");
+		setLabelFilter([]);
+		syncUrl("", "", "", []);
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
+
+	useEffect(() => {
+		if (!showLabelsMenu) return;
+		const handleClickOutside = (event: MouseEvent) => {
+			const target = event.target as Node;
+			if (
+				labelsButtonRef.current &&
+				labelsMenuRef.current &&
+				!labelsButtonRef.current.contains(target) &&
+				!labelsMenuRef.current.contains(target)
+			) {
+				setShowLabelsMenu(false);
+			}
+		};
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [showLabelsMenu]);
 
 	const handleCleanupSuccess = async (movedCount: number) => {
 		setShowCleanupModal(false);
@@ -194,7 +261,7 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
 			<div className="flex flex-col gap-4 mb-6">
-				<div className="flex items-center justify-between">
+				<div className="flex items-center justify-between gap-3">
 					<h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
 					<button
 						className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
@@ -204,13 +271,14 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 					</button>
 				</div>
 
-				<div className="flex flex-wrap items-center gap-3">
-					<div className="relative flex-1 min-w-[220px]">
-						<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
-							<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-							</svg>
-						</span>
+				<div className="flex flex-wrap items-center gap-3 justify-between">
+					<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+						<div className="relative flex-1 basis-[320px] min-w-[240px] max-w-[420px]">
+							<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
+								<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+								</svg>
+							</span>
 						<input
 							type="text"
 							value={searchValue}
@@ -229,12 +297,12 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 								</svg>
 							</button>
 						)}
-					</div>
+						</div>
 
 					<select
 						value={statusFilter}
 						onChange={(event) => handleStatusChange(event.target.value)}
-						className="min-w-[160px] py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+						className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 					>
 						<option value="">All statuses</option>
 						{availableStatuses.map((status) => (
@@ -247,7 +315,7 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 					<select
 						value={priorityFilter}
 						onChange={(event) => handlePriorityChange(event.target.value as "" | SearchPriorityFilter)}
-						className="min-w-[160px] py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+						className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 					>
 						{PRIORITY_OPTIONS.map((option) => (
 							<option key={option.value || "all"} value={option.value}>
@@ -256,32 +324,103 @@ const TaskList: React.FC<TaskListProps> = ({ onEditTask, onNewTask, tasks, avail
 						))}
 					</select>
 
-					{statusFilter.toLowerCase() === 'done' && displayTasks.length > 0 && (
+					<div className="relative">
 						<button
 							type="button"
-							onClick={() => setShowCleanupModal(true)}
-							className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer flex items-center gap-2"
-							title="Clean up old completed tasks"
+							ref={labelsButtonRef}
+							onClick={() => setShowLabelsMenu((open) => !open)}
+							className="min-w-[200px] py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200 text-left"
 						>
-							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-							</svg>
-							Clean Up
+							<div className="flex items-center justify-between gap-2">
+								<span>Labels</span>
+								<span className="text-xs text-gray-500 dark:text-gray-400">
+									{labelFilter.length === 0
+										? "All"
+										: labelFilter.length === 1
+											? labelFilter[0]
+											: `${labelFilter.length} selected`}
+								</span>
+							</div>
 						</button>
-					)}
+						{showLabelsMenu && (
+							<div
+								ref={labelsMenuRef}
+								className="absolute z-10 mt-2 w-[220px] max-h-56 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
+							>
+								{mergedAvailableLabels.length === 0 ? (
+									<div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No labels</div>
+								) : (
+									mergedAvailableLabels.map((label) => {
+										const isSelected = labelFilter.includes(label);
+										return (
+											<label
+												key={label}
+												className="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+											>
+												<input
+													type="checkbox"
+													checked={isSelected}
+													onChange={() => {
+														const next = isSelected
+															? labelFilter.filter((item) => item !== label)
+															: [...labelFilter, label];
+														handleLabelChange(next);
+													}}
+													className="h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
+												/>
+												<span className="truncate">{label}</span>
+											</label>
+										);
+									})
+								)}
+								{labelFilter.length > 0 && (
+									<button
+										type="button"
+										className="w-full text-left px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 border-t border-gray-200 dark:border-gray-700"
+										onClick={() => {
+											handleLabelChange([]);
+											setShowLabelsMenu(false);
+										}}
+									>
+										Clear label filter
+									</button>
+								)}
+							</div>
+						)}
+					</div>
 
-					{hasActiveFilters && (
-						<button
-							type="button"
-							onClick={handleClearFilters}
-							className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
-						>
-							Clear filters
-						</button>
-					)}
+					</div>
 
-					<div className="ml-auto text-sm text-gray-600 dark:text-gray-300">
-						Showing {currentCount} of {totalTasks} tasks
+					<div className="flex items-center gap-3 flex-shrink-0">
+						{statusFilter.toLowerCase() === 'done' && displayTasks.length > 0 && (
+							<button
+								type="button"
+								onClick={() => setShowCleanupModal(true)}
+								className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap"
+								title="Clean up old completed tasks"
+							>
+								<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+								Clean Up
+							</button>
+						)}
+
+						<div className="relative">
+							<button
+								type="button"
+								onClick={hasActiveFilters ? handleClearFilters : undefined}
+								className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+								style={{ visibility: hasActiveFilters ? "visible" : "hidden" }}
+								aria-hidden={!hasActiveFilters}
+							>
+								Clear filters
+							</button>
+						</div>
+
+						<div className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap text-right min-w-[170px]">
+							Showing {currentCount} of {totalTasks} tasks
+						</div>
 					</div>
 				</div>
 

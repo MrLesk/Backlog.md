@@ -38,7 +38,7 @@ export default function Layout({
 			/>
 			<div className="flex-1 flex flex-col min-h-0">
 				<Navigation projectName={projectName} />
-				<main className="flex-1 overflow-auto">
+				<main className="flex-1 overflow-y-scroll overflow-x-hidden">
 					<Outlet context={{ tasks, docs, decisions, isLoading, onRefreshData }} />
 				</main>
 			</div>
