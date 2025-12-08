@@ -13,9 +13,13 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+# Pin to bun2nix V1 (rev 85d692d) which produces the V1 format compatible with our flake.nix
+# The V2 format (function-based) is incompatible with the mkBunDerivation API we use
+BUN2NIX_REV="85d692d68a5345d868d3bb1158b953d2996d70f7"
+
 # Run bun2nix in Docker
 docker run --rm -v "$(pwd):/app" -w /app nixos/nix:latest \
-  nix --extra-experimental-features "nix-command flakes" run github:baileyluTCD/bun2nix -- -o bun.nix
+  nix --extra-experimental-features "nix-command flakes" run "github:baileyluTCD/bun2nix/${BUN2NIX_REV}" -- -o bun.nix
 
 echo "✅ bun.nix has been regenerated successfully"
 echo "   Don't forget to commit the updated bun.nix file!"
