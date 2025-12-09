@@ -20,6 +20,8 @@ export interface Task {
 	reporter?: string;
 	createdDate: string;
 	updatedDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 	labels: string[];
 	milestone?: string;
 	dependencies: string[];
@@ -62,6 +64,8 @@ export interface TaskCreateInput {
 	implementationNotes?: string;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
 	rawContent?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 }
 
 export interface TaskUpdateInput {
@@ -89,6 +93,8 @@ export interface TaskUpdateInput {
 	checkAcceptanceCriteria?: number[];
 	uncheckAcceptanceCriteria?: number[];
 	rawContent?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 }
 
 export interface TaskListFilter {

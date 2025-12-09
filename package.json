@@ -36,7 +36,6 @@
 		"husky": "9.1.7",
 		"install": "0.13.0",
 		"lint-staged": "16.2.7",
-		"mermaid": "11.12.2",
 		"jsdom": "27.2.0",
 		"neo-neo-bblessed": "1.0.9",
 		"prompts": "2.4.2",
@@ -46,6 +45,9 @@
 		"react-tooltip": "5.30.0",
 		"tailwindcss": "4.1.17"
 	},
+	"dependencies": {
+		"mermaid": "11.12.2"
+	},
 	"scripts": {
 		"test": "bun test",
 		"format": "biome format --write .",
@@ -54,7 +56,7 @@
 		"check:types": "bunx tsc --noEmit",
 		"prepare": "husky",
 		"build:css": "bun ./node_modules/@tailwindcss/cli/dist/index.mjs -i src/web/styles/source.css -o src/web/styles/style.css --minify",
-		"build": "bun run build:css && bun build --production --compile --minify --outfile=dist/backlog src/cli.ts",
+		"build": "bun run build:css && bun build --production --compile --minify --external mermaid --outfile=dist/backlog src/cli.ts",
 		"cli": "bun run build:css && bun src/cli.ts",
 		"mcp": "bun src/cli.ts mcp start",
 		"update-nix": "sh scripts/update-nix.sh",

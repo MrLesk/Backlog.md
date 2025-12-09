@@ -236,6 +236,24 @@ Test task with inline list containing backslash.`;
 
 			expect(task.assignee).toEqual(["@domain\\\\user"]);
 		});
+
+		it("should parse planned_start and planned_end as normalized dates", () => {
+			const content = `---
+id: task-9
+title: "Planned dates task"
+created_date: 2025-06-10
+planned_start: "2025-06-15"
+planned_end: "2025-06-20 13:45"
+---
+
+Task with planned dates.`;
+
+			const task = parseTask(content);
+
+			expect(task.createdDate).toBe("2025-06-10");
+			expect(task.plannedStart).toBe("2025-06-15");
+			expect(task.plannedEnd).toBe("2025-06-20 13:45");
+		});
 	});
 
 	describe("parseDecision", () => {
@@ -353,6 +371,8 @@ describe("Markdown Serializer", () => {
 				assignee: ["@developer"],
 				reporter: "@manager",
 				createdDate: "2025-06-03",
+				plannedStart: "2025-06-10",
+				plannedEnd: "2025-06-15 09:30",
 				labels: ["bug", "frontend"],
 				milestone: "v1.0",
 				dependencies: ["task-0"],
@@ -365,6 +385,8 @@ describe("Markdown Serializer", () => {
 			expect(result).toContain("title: Test Task");
 			expect(result).toContain("status: To Do");
 			expect(result).toContain("created_date: '2025-06-03'");
+			expect(result).toContain("planned_start: '2025-06-10'");
+			expect(result).toContain("planned_end: '2025-06-15 09:30'");
 			expect(result).toContain("labels:");
 			expect(result).toContain("- bug");
 			expect(result).toContain("- frontend");

@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Layout from './components/Layout';
-import BoardPage from './components/BoardPage';
-import DocumentationDetail from './components/DocumentationDetail';
-import DecisionDetail from './components/DecisionDetail';
-import TaskList from './components/TaskList';
-import DraftsList from './components/DraftsList';
-import Settings from './components/Settings';
-import Statistics from './components/Statistics';
-import TaskDetailsModal from './components/TaskDetailsModal';
-import InitializationScreen from './components/InitializationScreen';
+import Layout from "./components/Layout";
+import BoardPage from "./components/BoardPage";
+import DocumentationDetail from "./components/DocumentationDetail";
+import DecisionDetail from "./components/DecisionDetail";
+import TaskList from "./components/TaskList";
+import DraftsList from "./components/DraftsList";
+import Settings from "./components/Settings";
+import Statistics from "./components/Statistics";
+import TaskDetailsModal from "./components/TaskDetailsModal";
+import InitializationScreen from "./components/InitializationScreen";
+import GanttPage from "./components/GanttPage";
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import {
@@ -294,6 +295,10 @@ function App() {
                   isLoading={isLoading}
                 />
               }
+            />
+            <Route
+              path="gantt"
+              element={<GanttPage tasks={tasks} onEditTask={handleEditTask} />}
             />
             <Route
               path="tasks"

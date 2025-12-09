@@ -16,6 +16,8 @@ assignee: "@MrLesk"
 reporter: "@MrLesk"
 created_date: 2025-06-03
 completed_date: 2025-06-03
+planned_start: 2025-06-10
+planned_end: 2025-06-15
 labels: ["project-setup", "meta", "milestone-0"]
 milestone: "M0 - Project Setup"
 ---
@@ -42,4 +44,22 @@ Describe the approach you plan to take to implement this task. This can include:
 
 ## Notes & Comments (Optional)
 This task serves as the foundation for the Backlog.md project, ensuring that all subsequent tasks and milestones are built upon a solid structure. It is crucial for maintaining organization and clarity throughout the project lifecycle.
+```
+
+## Planned dates & Gantt view
+
+- Optional scheduling fields:
+  - `planned_start`: planned start date (`YYYY-MM-DD` or `YYYY-MM-DD HH:mm`)
+  - `planned_end`: planned end date (`YYYY-MM-DD` or `YYYY-MM-DD HH:mm`)
+- These are used by:
+  - The web UI (task modal sidebar) to display/edit planned dates.
+  - The Kanban board and All Tasks views (showing a "Planned: start → end" line).
+  - The Gantt view (`backlog browser` → **Gantt** tab) to render timeline bars.
+
+You can also set planned dates via the CLI:
+
+```bash
+backlog task edit task-123 \
+  --planned-start 2025-07-01 \
+  --planned-end   2025-07-15
 ```

@@ -7,6 +7,8 @@ export interface TaskEditArgs {
 	addLabels?: string[];
 	removeLabels?: string[];
 	assignee?: string[];
+	plannedStart?: string;
+	plannedEnd?: string;
 	ordinal?: number;
 	dependencies?: string[];
 	implementationPlan?: string;

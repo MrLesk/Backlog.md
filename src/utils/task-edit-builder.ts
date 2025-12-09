@@ -44,6 +44,14 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.priority = args.priority;
 	}
 
+	if (typeof args.plannedStart === "string") {
+		updateInput.plannedStart = args.plannedStart;
+	}
+
+	if (typeof args.plannedEnd === "string") {
+		updateInput.plannedEnd = args.plannedEnd;
+	}
+
 	if (typeof args.ordinal === "number") {
 		updateInput.ordinal = args.ordinal;
 	}

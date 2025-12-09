@@ -571,6 +571,8 @@ export class Core {
 			createdDate,
 			...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
 			...(priority && { priority }),
+			...(typeof input.plannedStart === "string" && { plannedStart: input.plannedStart }),
+			...(typeof input.plannedEnd === "string" && { plannedEnd: input.plannedEnd }),
 			...(typeof input.description === "string" && { description: input.description }),
 			...(typeof input.implementationPlan === "string" && { implementationPlan: input.implementationPlan }),
 			...(typeof input.implementationNotes === "string" && { implementationNotes: input.implementationNotes }),
@@ -678,6 +680,14 @@ export class Core {
 
 		applyStringField(input.description, task.description, (next) => {
 			task.description = next;
+		});
+
+		applyStringField(input.plannedStart, task.plannedStart, (next) => {
+			task.plannedStart = next;
+		});
+
+		applyStringField(input.plannedEnd, task.plannedEnd, (next) => {
+			task.plannedEnd = next;
 		});
 
 		if (input.status !== undefined) {

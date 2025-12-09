@@ -55,6 +55,8 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const [plannedStart, setPlannedStart] = useState<string>(task?.plannedStart || "");
+  const [plannedEnd, setPlannedEnd] = useState<string>(task?.plannedEnd || "");
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({
@@ -63,6 +65,8 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     plan: task?.implementationPlan || "",
     notes: task?.implementationNotes || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
+    plannedStart: task?.plannedStart || "",
+    plannedEnd: task?.plannedEnd || "",
   }), [task]);
 
   const isDirty = useMemo(() => {
@@ -71,9 +75,11 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
       description !== baseline.description ||
       plan !== baseline.plan ||
       notes !== baseline.notes ||
-      JSON.stringify(criteria) !== baseline.criteria
+      JSON.stringify(criteria) !== baseline.criteria ||
+      plannedStart !== baseline.plannedStart ||
+      plannedEnd !== baseline.plannedEnd
     );
-  }, [title, description, plan, notes, criteria, baseline]);
+  }, [title, description, plan, notes, criteria, plannedStart, plannedEnd, baseline]);
 
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
@@ -115,6 +121,8 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     setLabels(task?.labels || []);
     setPriority(task?.priority || "");
     setDependencies(task?.dependencies || []);
+    setPlannedStart(task?.plannedStart || "");
+    setPlannedEnd(task?.plannedEnd || "");
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
     // Preload tasks for dependency picker
@@ -162,6 +170,8 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
         labels,
         priority: (priority === "" ? undefined : priority) as "high" | "medium" | "low" | undefined,
         dependencies,
+        plannedStart: plannedStart || undefined,
+        plannedEnd: plannedEnd || undefined,
       };
 
       if (isCreateMode && onSubmit) {
@@ -258,6 +268,20 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
   const isDoneStatus = (status || "").toLowerCase().includes("done");
 
   const displayId = useMemo(() => task?.id?.replace(/^task-/i, "TASK-") || "", [task?.id]);
+
+  const handleInlinePlannedDateChange = async (field: "plannedStart" | "plannedEnd", value: string) => {
+    // Only inline-update persisted tasks; create mode will persist on Save
+    if (!task || isFromOtherBranch) return;
+    const updates: Partial<Task> = { [field]: value || undefined };
+    // Optimistic local state is already updated by caller
+    try {
+      await apiClient.updateTask(task.id, updates);
+      // We intentionally DON'T call onSaved/refreshData here; websocket "tasks-updated"
+      // will cause the main App to reload tasks in the background.
+    } catch (err) {
+      console.error("Failed to update planned date", err);
+    }
+  };
 
   return (
     <Modal
@@ -515,6 +539,43 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
               <option value="medium">Medium</option>
               <option value="high">High</option>
             </select>
+          </div>
+
+          {/* Planned dates */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 space-y-3">
+            <SectionHeader title="Planned Dates" />
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                Planned start
+                <input
+                  type="date"
+                  className={`mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  placeholder="YYYY-MM-DD"
+                  value={plannedStart}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPlannedStart(value);
+                    void handleInlinePlannedDateChange("plannedStart", value);
+                  }}
+                  disabled={isFromOtherBranch}
+                />
+              </label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                Planned end
+                <input
+                  type="date"
+                  className={`mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  placeholder="YYYY-MM-DD"
+                  value={plannedEnd}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPlannedEnd(value);
+                    void handleInlinePlannedDateChange("plannedEnd", value);
+                  }}
+                  disabled={isFromOtherBranch}
+                />
+              </label>
+            </div>
           </div>
 
           {/* Dependencies */}

@@ -633,6 +633,8 @@ export class BacklogServer {
 				implementationPlan: payload.implementationPlan,
 				implementationNotes: payload.implementationNotes,
 				acceptanceCriteria,
+				plannedStart: payload.plannedStart,
+				plannedEnd: payload.plannedEnd,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -700,6 +702,14 @@ export class BacklogServer {
 
 		if ("implementationNotes" in updates && typeof updates.implementationNotes === "string") {
 			updateInput.implementationNotes = updates.implementationNotes;
+		}
+
+		if ("plannedStart" in updates && typeof updates.plannedStart === "string") {
+			updateInput.plannedStart = updates.plannedStart;
+		}
+
+		if ("plannedEnd" in updates && typeof updates.plannedEnd === "string") {
+			updateInput.plannedEnd = updates.plannedEnd;
 		}
 
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {

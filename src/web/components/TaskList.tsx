@@ -483,11 +483,23 @@ const TaskList: React.FC<TaskListProps> = ({
 											</span>
 										)}
 									</div>
-									<div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
+									<div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
 										<span>{task.id}</span>
 										<span>Created: {new Date(task.createdDate).toLocaleDateString()}</span>
 										{task.updatedDate && (
 											<span>Updated: {new Date(task.updatedDate).toLocaleDateString()}</span>
+										)}
+										{(task.plannedStart || task.plannedEnd) && (
+											<span>
+												Planned:{" "}
+												{task.plannedStart
+													? new Date(task.plannedStart.replace(" ", "T") + (task.plannedStart.includes(" ") ? ":00Z" : "T00:00:00Z")).toLocaleDateString()
+													: "—"}
+												{" → "}
+												{task.plannedEnd
+													? new Date(task.plannedEnd.replace(" ", "T") + (task.plannedEnd.includes(" ") ? ":00Z" : "T00:00:00Z")).toLocaleDateString()
+													: "—"}
+											</span>
 										)}
 									</div>
 									{task.assignee && task.assignee.length > 0 && (

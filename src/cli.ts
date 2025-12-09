@@ -1754,6 +1754,8 @@ taskCmd
 	.option("-l, --label <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
+	.option("--planned-start <date>", "set planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "set planned end date (YYYY-MM-DD)")
 	.option("--plain", "use plain text output after editing")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
@@ -1896,6 +1898,12 @@ taskCmd
 		}
 		if (normalizedPriority) {
 			editArgs.priority = normalizedPriority;
+		}
+		if (typeof options.plannedStart === "string") {
+			editArgs.plannedStart = String(options.plannedStart);
+		}
+		if (typeof options.plannedEnd === "string") {
+			editArgs.plannedEnd = String(options.plannedEnd);
 		}
 		if (ordinalValue !== undefined) {
 			editArgs.ordinal = ordinalValue;

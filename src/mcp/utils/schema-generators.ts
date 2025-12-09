@@ -63,6 +63,16 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 50,
 				},
 			},
+			plannedStart: {
+				type: "string",
+				maxLength: 25,
+				description: "Optional planned start date (YYYY-MM-DD or YYYY-MM-DD HH:mm)",
+			},
+			plannedEnd: {
+				type: "string",
+				maxLength: 25,
+				description: "Optional planned end date (YYYY-MM-DD or YYYY-MM-DD HH:mm)",
+			},
 			acceptanceCriteria: {
 				type: "array",
 				items: {
@@ -125,6 +135,16 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					type: "string",
 					maxLength: 50,
 				},
+			},
+			plannedStart: {
+				type: "string",
+				maxLength: 25,
+				description: "Optional planned start date (YYYY-MM-DD or YYYY-MM-DD HH:mm)",
+			},
+			plannedEnd: {
+				type: "string",
+				maxLength: 25,
+				description: "Optional planned end date (YYYY-MM-DD or YYYY-MM-DD HH:mm)",
 			},
 			implementationNotes: {
 				type: "string",

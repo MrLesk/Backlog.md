@@ -32,7 +32,7 @@ describe("CLI packaging", () => {
 		const version = packageJson.version;
 
 		try {
-			await $`bun build src/cli.ts --compile --define __EMBEDDED_VERSION__="\"${version}\"" --outfile ${OUTFILE}`.quiet();
+			await $`bun build src/cli.ts --compile --external mermaid --define __EMBEDDED_VERSION__="\"${version}\"" --outfile ${OUTFILE}`.quiet();
 		} catch (error: unknown) {
 			// Skip test if build fails due to cross-filesystem issues (e.g., virtiofs)
 			// This is environment-specific and doesn't indicate a code problem

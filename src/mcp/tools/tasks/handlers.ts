@@ -23,6 +23,8 @@ export type TaskCreateArgs = {
 	parentTaskId?: string;
 	acceptanceCriteria?: string[];
 	dependencies?: string[];
+	plannedStart?: string;
+	plannedEnd?: string;
 };
 
 export type TaskListArgs = {
@@ -75,6 +77,8 @@ export class TaskHandlers {
 				dependencies: args.dependencies,
 				parentTaskId: args.parentTaskId,
 				acceptanceCriteria,
+				plannedStart: args.plannedStart,
+				plannedEnd: args.plannedEnd,
 			});
 
 			return await formatTaskCallResult(createdTask);

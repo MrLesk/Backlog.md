@@ -163,7 +163,17 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       )}
       
       <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-3 pt-2 border-t border-gray-100 dark:border-gray-600 transition-colors duration-200">
-        <span>Created: {formatDate(task.createdDate)}</span>
+        <div className="flex flex-col">
+          <span>Created: {formatDate(task.createdDate)}</span>
+          {(task.plannedStart || task.plannedEnd) && (
+            <span className="mt-0.5">
+              Planned:{" "}
+              {task.plannedStart ? formatDate(task.plannedStart) : "—"}
+              {" → "}
+              {task.plannedEnd ? formatDate(task.plannedEnd) : "—"}
+            </span>
+          )}
+        </div>
         {task.priority && (
           <span className={`font-medium transition-colors duration-200 ${
             task.priority === 'high' ? 'text-red-600 dark:text-red-400' :

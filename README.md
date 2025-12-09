@@ -214,6 +214,7 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` (replaces existing) |
 | Append notes | `backlog task edit 7 --append-notes "New findings"` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
+| Set planned dates | `backlog task edit 7 --planned-start 2025-01-10 --planned-end 2025-01-20` |
 | Archive     | `backlog task archive 7`                             |
 
 #### Multi‑line input (description/plan/notes)

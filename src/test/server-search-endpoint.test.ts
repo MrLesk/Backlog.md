@@ -17,6 +17,8 @@ const baseTask: Task = {
 	reporter: "@codex",
 	createdDate: "2025-09-20 10:00",
 	updatedDate: "2025-09-20 10:00",
+	plannedStart: "2025-09-21",
+	plannedEnd: "2025-09-22 15:00",
 	labels: ["search"],
 	dependencies: [],
 	description: "Alpha token appears here",
@@ -169,15 +171,21 @@ describe("BacklogServer search endpoint", () => {
 				title: "Immediate fetch",
 				status: "In Progress",
 				description: "Immediate availability",
+				plannedStart: "2025-10-01",
+				plannedEnd: "2025-10-05",
 			}),
 		});
 		expect(createResponse.ok).toBe(true);
 		const created = (await createResponse.json()) as Task;
 		expect(created.title).toBe("Immediate fetch");
+		expect(created.plannedStart).toBe("2025-10-01");
+		expect(created.plannedEnd).toBe("2025-10-05");
 		const shortId = created.id.replace(/^task-/, "");
 		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
 		expect(fetched.id).toBe(created.id);
 		expect(fetched.title).toBe("Immediate fetch");
+		expect(fetched.plannedStart).toBe("2025-10-01");
+		expect(fetched.plannedEnd).toBe("2025-10-05");
 	});
 
 	it("rebuilds the Fuse index when markdown content changes", async () => {
