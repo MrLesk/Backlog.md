@@ -724,7 +724,7 @@ export class FileSystem {
 		// Build milestone content
 		const content = `---
 id: ${id}
-title: "${title.replace(/"/g, '\\"')}"
+title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
 ---
 
 ## Description
