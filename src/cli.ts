@@ -2235,10 +2235,11 @@ const boardCmd = program.command("board");
 function addBoardOptions(cmd: Command) {
 	return cmd
 		.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
-		.option("--vertical", "use vertical layout (shortcut for --layout vertical)");
+		.option("--vertical", "use vertical layout (shortcut for --layout vertical)")
+		.option("-m, --milestones", "group tasks by milestone");
 }
 
-async function handleBoardView(options: { layout?: string; vertical?: boolean }) {
+async function handleBoardView(options: { layout?: string; vertical?: boolean; milestones?: boolean }) {
 	const cwd = await requireProjectRoot();
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
@@ -2246,12 +2247,15 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean })
 	const _layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const _maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
 	const statuses = config?.statuses || [];
+	const milestones = config?.milestones || [];
 
 	// Use unified view for Tab switching support
 	const { runUnifiedView } = await import("./ui/unified-view.ts");
 	await runUnifiedView({
 		core,
 		initialView: "kanban",
+		milestoneMode: options.milestones,
+		milestones,
 		tasksLoader: async (updateProgress) => {
 			const tasks = await core.loadTasks((msg) => {
 				updateProgress(msg);

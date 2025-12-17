@@ -42,6 +42,12 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				enum: ["high", "medium", "low"],
 			},
+			milestone: {
+				type: "string",
+				minLength: 1,
+				maxLength: 100,
+				description: "Optional milestone label (trimmed).",
+			},
 			labels: {
 				type: "array",
 				items: {
@@ -104,6 +110,12 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			priority: {
 				type: "string",
 				enum: ["high", "medium", "low"],
+			},
+			milestone: {
+				type: "string",
+				minLength: 1,
+				maxLength: 100,
+				description: "Set milestone label (string) or clear it (null).",
 			},
 			labels: {
 				type: "array",

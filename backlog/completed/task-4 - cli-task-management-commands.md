@@ -10,7 +10,7 @@ completed_date: '2025-06-09'
 labels:
   - cli
   - command
-milestone: M1 - CLI
+milestone: m-1
 dependencies:
   - task-3
 ---

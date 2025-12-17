@@ -20,6 +20,8 @@ export const DEFAULT_DIRECTORIES = {
 	DOCS: "docs",
 	/** Decision logs directory */
 	DECISIONS: "decisions",
+	/** Milestones directory */
+	MILESTONES: "milestones",
 } as const;
 
 /**

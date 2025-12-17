@@ -3,6 +3,7 @@ import type {
 	BacklogConfig,
 	Decision,
 	Document,
+	Milestone,
 	SearchPriorityFilter,
 	SearchResult,
 	SearchResultType,
@@ -16,6 +17,7 @@ export interface ReorderTaskPayload {
 	taskId: string;
 	targetStatus: string;
 	orderedTaskIds: string[];
+	targetMilestone?: string | null;
 }
 
 // Enhanced error types for better error handling
@@ -396,6 +398,37 @@ export class ApiClient {
 		});
 		if (!response.ok) {
 			throw new Error("Failed to create decision");
+		}
+		return response.json();
+	}
+
+	async fetchMilestones(): Promise<Milestone[]> {
+		const response = await fetch(`${API_BASE}/milestones`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch milestones");
+		}
+		return response.json();
+	}
+
+	async fetchMilestone(id: string): Promise<Milestone> {
+		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch milestone");
+		}
+		return response.json();
+	}
+
+	async createMilestone(title: string, description?: string): Promise<Milestone> {
+		const response = await fetch(`${API_BASE}/milestones`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ title, description }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create milestone");
 		}
 		return response.json();
 	}

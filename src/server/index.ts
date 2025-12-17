@@ -158,6 +158,7 @@ export class BacklogServer {
 				routes: {
 					"/": indexHtml,
 					"/tasks": indexHtml,
+					"/milestones": indexHtml,
 					"/drafts": indexHtml,
 					"/documentation": indexHtml,
 					"/documentation/*": indexHtml,
@@ -217,6 +218,13 @@ export class BacklogServer {
 					},
 					"/api/drafts/:id/promote": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
+					},
+					"/api/milestones": {
+						GET: async () => await this.handleListMilestones(),
+						POST: async (req: Request) => await this.handleCreateMilestone(req),
+					},
+					"/api/milestones/:id": {
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
 					},
 					"/api/tasks/reorder": {
 						POST: async (req: Request) => await this.handleReorderTask(req),
@@ -682,6 +690,10 @@ export class BacklogServer {
 			updateInput.priority = updates.priority;
 		}
 
+		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {
+			updateInput.milestone = updates.milestone;
+		}
+
 		if ("labels" in updates && Array.isArray(updates.labels)) {
 			updateInput.labels = updates.labels;
 		}
@@ -980,6 +992,55 @@ export class BacklogServer {
 		}
 	}
 
+	// Milestone handlers
+	private async handleListMilestones(): Promise<Response> {
+		try {
+			const milestones = await this.core.filesystem.listMilestones();
+			return Response.json(milestones);
+		} catch (error) {
+			console.error("Error listing milestones:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleGetMilestone(milestoneId: string): Promise<Response> {
+		try {
+			const milestone = await this.core.filesystem.loadMilestone(milestoneId);
+			if (!milestone) {
+				return Response.json({ error: "Milestone not found" }, { status: 404 });
+			}
+			return Response.json(milestone);
+		} catch (error) {
+			console.error("Error loading milestone:", error);
+			return Response.json({ error: "Milestone not found" }, { status: 404 });
+		}
+	}
+
+	private async handleCreateMilestone(req: Request): Promise<Response> {
+		try {
+			const body = (await req.json()) as { title?: string; description?: string };
+			const title = body.title?.trim();
+
+			if (!title) {
+				return Response.json({ error: "Milestone title is required" }, { status: 400 });
+			}
+
+			// Check for duplicates
+			const existingMilestones = await this.core.filesystem.listMilestones();
+			const titleLower = title.toLowerCase();
+			const duplicate = existingMilestones.find((m) => m.title.toLowerCase() === titleLower);
+			if (duplicate) {
+				return Response.json({ error: "A milestone with this title already exists" }, { status: 400 });
+			}
+
+			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			return Response.json(milestone, { status: 201 });
+		} catch (error) {
+			console.error("Error creating milestone:", error);
+			return Response.json({ error: "Failed to create milestone" }, { status: 500 });
+		}
+	}
+
 	private async handleGetVersion(): Promise<Response> {
 		try {
 			const version = await getVersion();
@@ -996,6 +1057,12 @@ export class BacklogServer {
 			const taskId = typeof body.taskId === "string" ? body.taskId : "";
 			const targetStatus = typeof body.targetStatus === "string" ? body.targetStatus : "";
 			const orderedTaskIds = Array.isArray(body.orderedTaskIds) ? body.orderedTaskIds : [];
+			const targetMilestone =
+				typeof body.targetMilestone === "string"
+					? body.targetMilestone
+					: body.targetMilestone === null
+						? null
+						: undefined;
 
 			if (!taskId || !targetStatus || orderedTaskIds.length === 0) {
 				return Response.json(
@@ -1008,6 +1075,7 @@ export class BacklogServer {
 				taskId,
 				targetStatus,
 				orderedTaskIds,
+				targetMilestone,
 				commitMessage: `Reorder tasks in ${targetStatus}`,
 			});
 

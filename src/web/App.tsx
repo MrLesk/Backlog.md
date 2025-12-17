@@ -8,6 +8,7 @@ import TaskList from './components/TaskList';
 import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
+import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
 import { SuccessToast } from './components/SuccessToast';
@@ -17,6 +18,8 @@ import {
 	type DecisionSearchResult,
 	type Document,
 	type DocumentSearchResult,
+	type BacklogConfig,
+	type Milestone,
 	type SearchResult,
 	type Task,
 	type TaskSearchResult,
@@ -24,6 +27,7 @@ import {
 import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
+import { collectMilestoneIds } from './utils/milestones';
 
 function App() {
   const [showModal, setShowModal] = useState(false);
@@ -32,6 +36,9 @@ function App() {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
+  const [config, setConfig] = useState<BacklogConfig | null>(null);
+  const [milestones, setMilestones] = useState<string[]>([]);
+  const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
   
@@ -81,24 +88,35 @@ function App() {
     const documentResults = results.filter((result): result is DocumentSearchResult => result.type === 'document');
     const decisionResults = results.filter((result): result is DecisionSearchResult => result.type === 'decision');
 
-    setTasks(taskResults.map((result) => result.task));
-    setDocs(documentResults.map((result) => result.document));
-    setDecisions(decisionResults.map((result) => result.decision));
+    const tasksList = taskResults.map((result) => result.task);
+    const docsList = documentResults.map((result) => result.document);
+    const decisionsList = decisionResults.map((result) => result.decision);
+
+    setTasks(tasksList);
+    setDocs(docsList);
+    setDecisions(decisionsList);
+
+    return { tasks: tasksList, docs: docsList, decisions: decisionsList };
   }, []);
 
   const loadAllData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [statusesData, configData, searchResults] = await Promise.all([
+      const [statusesData, configData, searchResults, milestonesData] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
         apiClient.search(),
+        apiClient.fetchMilestones(),
       ]);
+
+      const { tasks: tasksList } = applySearchResults(searchResults);
 
       setStatuses(statusesData);
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
-      applySearchResults(searchResults);
+      setConfig(configData);
+      setMilestoneEntities(milestonesData);
+      setMilestones(collectMilestoneIds(tasksList, milestonesData));
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -119,8 +137,13 @@ function App() {
       // Connection restored, reload data
       const loadData = async () => {
         try {
-          const results = await apiClient.search();
-          applySearchResults(results);
+          const [results, milestonesData] = await Promise.all([
+            apiClient.search(),
+            apiClient.fetchMilestones(),
+          ]);
+          const { tasks: tasksList } = applySearchResults(results);
+          setMilestoneEntities(milestonesData);
+          setMilestones(collectMilestoneIds(tasksList, milestonesData));
         } catch (error) {
           console.error('Failed to reload data:', error);
         }
@@ -288,13 +311,15 @@ function App() {
                 <BoardPage
                   onEditTask={handleEditTask}
                   onNewTask={handleNewTask}
-                  tasks={tasks}
-                  onRefreshData={refreshData}
-                  statuses={statuses}
-                  isLoading={isLoading}
-                />
-              }
-            />
+                tasks={tasks}
+                onRefreshData={refreshData}
+                statuses={statuses}
+                milestones={milestones}
+                milestoneEntities={milestoneEntities}
+                isLoading={isLoading}
+              />
+            }
+          />
             <Route
               path="tasks"
               element={
@@ -304,10 +329,25 @@ function App() {
                   tasks={tasks}
                   availableStatuses={statuses}
                   availableLabels={availableLabels}
+                  availableMilestones={milestones}
+                  milestoneEntities={milestoneEntities}
                   onRefreshData={refreshData}
                 />
               }
             />
+            <Route
+              path="milestones"
+              element={
+              <MilestonesPage
+                tasks={tasks}
+                statuses={statuses}
+                milestones={milestones}
+                milestoneEntities={milestoneEntities}
+                onEditTask={handleEditTask}
+                onRefreshData={refreshData}
+              />
+            }
+          />
             <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
             <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
@@ -328,6 +368,8 @@ function App() {
           onSubmit={handleSubmitTask}
           onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
           availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+          availableMilestones={milestones}
+          milestoneEntities={milestoneEntities}
           isDraftMode={isDraftMode}
         />
 

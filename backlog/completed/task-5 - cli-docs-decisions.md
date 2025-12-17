@@ -6,7 +6,7 @@ assignee: []
 reporter: @MrLesk
 created_date: 2025-06-04
 labels: ["cli", "command"]
-milestone: "M1 - CLI"
+milestone: m-1
 dependencies: ["task-3"]
 ---
 

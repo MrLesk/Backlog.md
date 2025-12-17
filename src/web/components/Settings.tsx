@@ -166,7 +166,7 @@ const Settings: React.FC = () => {
 									id="dateFormat"
 									value={config.dateFormat}
 									onChange={(e) => handleInputChange('dateFormat', e.target.value)}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									className="w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 								>
 									<option value="yyyy-mm-dd">yyyy-mm-dd</option>
 									<option value="dd/mm/yyyy">dd/mm/yyyy</option>
@@ -228,7 +228,7 @@ const Settings: React.FC = () => {
 									id="defaultStatus"
 									value={config.defaultStatus}
 									onChange={(e) => handleInputChange('defaultStatus', e.target.value)}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									className="w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 								>
 									{statuses.map(status => (
 										<option key={status} value={status}>{status}</option>
@@ -336,7 +336,7 @@ const Settings: React.FC = () => {
 									id="taskResolutionStrategy"
 									value={config.taskResolutionStrategy}
 									onChange={(e) => handleInputChange('taskResolutionStrategy', e.target.value as 'most_recent' | 'most_progressed')}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									className="w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 								>
 									<option value="most_recent">Most Recent</option>
 									<option value="most_progressed">Most Progressed</option>
@@ -367,22 +367,22 @@ const Settings: React.FC = () => {
 					</div>
 
 					{/* Save/Cancel Buttons */}
-					<div className="flex items-center justify-end space-x-4">
-						<button
-							onClick={handleCancel}
-							disabled={!hasUnsavedChanges || saving}
-							className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-						>
-							Cancel
-						</button>
-						<button
-							onClick={handleSave}
-							disabled={!hasUnsavedChanges || saving}
-							className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-						>
-							{saving ? 'Saving...' : 'Save Changes'}
-						</button>
-					</div>
+						<div className="flex items-center justify-end space-x-4">
+							<button
+								onClick={handleCancel}
+								disabled={!hasUnsavedChanges || saving}
+								className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 disabled:opacity-50 transition-colors duration-200"
+							>
+								Cancel
+							</button>
+							<button
+								onClick={handleSave}
+								disabled={!hasUnsavedChanges || saving}
+								className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 transition-colors duration-200"
+							>
+								{saving ? 'Saving...' : 'Save Changes'}
+							</button>
+						</div>
 				</div>
 			</div>
 

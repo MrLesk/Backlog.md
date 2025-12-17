@@ -4,13 +4,13 @@ import { useTheme } from '../contexts/ThemeContext';
 const ThemeToggle: React.FC = () => {
 	const { theme, toggleTheme } = useTheme();
 
-	return (
-		<button
-			onClick={toggleTheme}
-			className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 dark:focus:ring-stone-400 dark:focus:ring-offset-gray-900 cursor-pointer"
-			aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-			title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-		>
+		return (
+			<button
+				onClick={toggleTheme}
+				className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 dark:focus:ring-stone-400 dark:focus:ring-offset-gray-900"
+				aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+				title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+			>
 			{theme === 'light' ? (
 				// Moon icon - show when in light mode (to switch to dark)
 				<svg

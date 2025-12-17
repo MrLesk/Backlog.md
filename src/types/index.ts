@@ -42,6 +42,23 @@ export interface Task {
 	onStatusChange?: string;
 }
 
+export interface MilestoneBucket {
+	key: string;
+	label: string;
+	milestone?: string;
+	isNoMilestone: boolean;
+	tasks: Task[];
+	statusCounts: Record<string, number>;
+	total: number;
+	doneCount: number;
+	progress: number;
+}
+
+export interface MilestoneSummary {
+	milestones: string[];
+	buckets: MilestoneBucket[];
+}
+
 /**
  * Check if a task is locally editable (not from a remote or other local branch)
  */
@@ -54,6 +71,7 @@ export interface TaskCreateInput {
 	description?: string;
 	status?: TaskStatus;
 	priority?: "high" | "medium" | "low";
+	milestone?: string;
 	labels?: string[];
 	assignee?: string[];
 	dependencies?: string[];
@@ -69,6 +87,7 @@ export interface TaskUpdateInput {
 	description?: string;
 	status?: TaskStatus;
 	priority?: "high" | "medium" | "low";
+	milestone?: string | null;
 	labels?: string[];
 	addLabels?: string[];
 	removeLabels?: string[];
@@ -108,6 +127,13 @@ export interface Decision {
 	decision: string;
 	consequences: string;
 	alternatives?: string;
+	readonly rawContent: string; // Raw markdown content without frontmatter
+}
+
+export interface Milestone {
+	id: string;
+	title: string;
+	description: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
 }
 

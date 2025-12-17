@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../lib/api";
 import type {
+	Milestone,
 	SearchPriorityFilter,
 	Task,
 	TaskSearchResult,
 } from "../../types";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
+import { getMilestoneLabel } from "../utils/milestones";
 import CleanupModal from "./CleanupModal";
 import { SuccessToast } from "./SuccessToast";
 
@@ -16,6 +18,8 @@ interface TaskListProps {
 	tasks: Task[];
 	availableStatuses: string[];
 	availableLabels: string[];
+	availableMilestones: string[];
+	milestoneEntities: Milestone[];
 	onRefreshData?: () => Promise<void>;
 }
 
@@ -40,6 +44,8 @@ const TaskList: React.FC<TaskListProps> = ({
 	tasks,
 	availableStatuses,
 	availableLabels,
+	availableMilestones,
+	milestoneEntities,
 	onRefreshData,
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -48,6 +54,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
 		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
 	);
+	const [milestoneFilter, setMilestoneFilter] = useState(() => searchParams.get("milestone") ?? "");
 	const initialLabelParams = useMemo(() => {
 		const labels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
 		const labelsCsv = searchParams.get("labels");
@@ -68,14 +75,21 @@ const TaskList: React.FC<TaskListProps> = ({
 		() => collectAvailableLabels(tasks, availableLabels),
 		[tasks, availableLabels],
 	);
+	const milestoneOptions = useMemo(() => {
+		const uniqueMilestones = Array.from(new Set([...availableMilestones.map((m) => m.trim()).filter(Boolean)]));
+		return uniqueMilestones;
+	}, [availableMilestones]);
 	const normalizedSearch = searchValue.trim();
-	const hasActiveFilters = Boolean(normalizedSearch || statusFilter || priorityFilter || labelFilter.length > 0);
+	const hasActiveFilters = Boolean(
+		normalizedSearch || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+	);
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
 		const paramQuery = searchParams.get("query") ?? "";
 		const paramStatus = searchParams.get("status") ?? "";
 		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
+		const paramMilestone = searchParams.get("milestone") ?? "";
 		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
 		const labelsCsv = searchParams.get("labels");
 		if (labelsCsv) {
@@ -92,6 +106,9 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (paramPriority !== priorityFilter) {
 			setPriorityFilter(paramPriority);
 		}
+		if (paramMilestone !== milestoneFilter) {
+			setMilestoneFilter(paramMilestone);
+		}
 		if (normalizedLabels.join("|") !== labelFilter.join("|")) {
 			setLabelFilter(normalizedLabels);
 		}
@@ -105,6 +122,17 @@ const TaskList: React.FC<TaskListProps> = ({
 	}, [hasActiveFilters, sortedBaseTasks]);
 
 	useEffect(() => {
+		const normalizeMilestone = (value: string) => value.trim();
+		const filterByMilestone = (list: Task[]): Task[] => {
+			const normalized = normalizeMilestone(milestoneFilter);
+			if (!normalized) return list;
+			if (normalized === "__none") return list.filter((task) => !task.milestone || task.milestone.trim() === "");
+			return list.filter((task) => task.milestone?.trim() === normalized);
+		};
+
+		const shouldUseApi =
+			Boolean(normalizedSearch) || Boolean(statusFilter) || Boolean(priorityFilter) || labelFilter.length > 0;
+
 		if (!hasActiveFilters) {
 			return;
 		}
@@ -113,6 +141,11 @@ const TaskList: React.FC<TaskListProps> = ({
 		setError(null);
 
 		const fetchFilteredTasks = async () => {
+			// If only milestone filter is active, filter locally to avoid an extra request
+			if (!shouldUseApi) {
+				setDisplayTasks(filterByMilestone(sortedBaseTasks));
+				return;
+			}
 			try {
 				const results = await apiClient.search({
 					query: normalizedSearch || undefined,
@@ -125,7 +158,8 @@ const TaskList: React.FC<TaskListProps> = ({
 					return;
 				}
 				const taskResults = results.filter((result): result is TaskSearchResult => result.type === "task");
-				setDisplayTasks(sortTasksByIdDescending(taskResults.map((result) => result.task)));
+				const filtered = filterByMilestone(taskResults.map((result) => result.task));
+				setDisplayTasks(sortTasksByIdDescending(filtered));
 			} catch (err) {
 				console.error("Failed to apply task filters:", err);
 				if (!cancelled) {
@@ -140,13 +174,14 @@ const TaskList: React.FC<TaskListProps> = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [hasActiveFilters, normalizedSearch, priorityFilter, statusFilter, labelFilter, tasks]);
+	}, [hasActiveFilters, normalizedSearch, priorityFilter, statusFilter, labelFilter, tasks, milestoneFilter, sortedBaseTasks]);
 
 	const syncUrl = (
 		nextQuery: string,
 		nextStatus: string,
 		nextPriority: "" | SearchPriorityFilter,
 		nextLabels: string[],
+		nextMilestone: string,
 	) => {
 		const params = new URLSearchParams();
 		const trimmedQuery = nextQuery.trim();
@@ -164,28 +199,36 @@ const TaskList: React.FC<TaskListProps> = ({
 				params.append("label", label);
 			}
 		}
+		if (nextMilestone) {
+			params.set("milestone", nextMilestone);
+		}
 		setSearchParams(params, { replace: true });
 	};
 
 	const handleSearchChange = (value: string) => {
 		setSearchValue(value);
-		syncUrl(value, statusFilter, priorityFilter, labelFilter);
+		syncUrl(value, statusFilter, priorityFilter, labelFilter, milestoneFilter);
 	};
 
 	const handleStatusChange = (value: string) => {
 		setStatusFilter(value);
-		syncUrl(searchValue, value, priorityFilter, labelFilter);
+		syncUrl(searchValue, value, priorityFilter, labelFilter, milestoneFilter);
 	};
 
 	const handlePriorityChange = (value: "" | SearchPriorityFilter) => {
 		setPriorityFilter(value);
-		syncUrl(searchValue, statusFilter, value, labelFilter);
+		syncUrl(searchValue, statusFilter, value, labelFilter, milestoneFilter);
 	};
 
 	const handleLabelChange = (next: string[]) => {
 		const normalized = next.map((label) => label.trim()).filter((label) => label.length > 0);
 		setLabelFilter(normalized);
-		syncUrl(searchValue, statusFilter, priorityFilter, normalized);
+		syncUrl(searchValue, statusFilter, priorityFilter, normalized, milestoneFilter);
+	};
+
+	const handleMilestoneChange = (value: string) => {
+		setMilestoneFilter(value);
+		syncUrl(searchValue, statusFilter, priorityFilter, labelFilter, value);
 	};
 
 	const handleClearFilters = () => {
@@ -193,7 +236,8 @@ const TaskList: React.FC<TaskListProps> = ({
 		setStatusFilter("");
 		setPriorityFilter("");
 		setLabelFilter([]);
-		syncUrl("", "", "", []);
+		setMilestoneFilter("");
+		syncUrl("", "", "", [], "");
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
@@ -262,18 +306,18 @@ const TaskList: React.FC<TaskListProps> = ({
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
 			<div className="flex flex-col gap-4 mb-6">
 				<div className="flex items-center justify-between gap-3">
-					<h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
-					<button
-						className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
-						onClick={onNewTask}
-					>
-						+ New Task
+						<h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
+						<button
+							className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+							onClick={onNewTask}
+						>
+							+ New Task
 					</button>
 				</div>
 
 				<div className="flex flex-wrap items-center gap-3 justify-between">
 					<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
-						<div className="relative flex-1 basis-[320px] min-w-[240px] max-w-[420px]">
+						<div className="relative flex-1 basis-[200px] min-w-[180px] max-w-[280px]">
 							<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
 								<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -287,13 +331,13 @@ const TaskList: React.FC<TaskListProps> = ({
 							className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
 						/>
 						{searchValue && (
-							<button
-								type="button"
-								onClick={() => handleSearchChange("")}
-								className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer"
-							>
-								<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+								<button
+									type="button"
+									onClick={() => handleSearchChange("")}
+									className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+								>
+									<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
 								</svg>
 							</button>
 						)}
@@ -320,6 +364,20 @@ const TaskList: React.FC<TaskListProps> = ({
 						{PRIORITY_OPTIONS.map((option) => (
 							<option key={option.value || "all"} value={option.value}>
 								{option.label}
+							</option>
+						))}
+					</select>
+
+					<select
+						value={milestoneFilter}
+						onChange={(event) => handleMilestoneChange(event.target.value)}
+						className="min-w-[160px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+					>
+						<option value="">All milestones</option>
+						<option value="__none">No milestone</option>
+						{milestoneOptions.map((milestone) => (
+							<option key={milestone} value={milestone}>
+								{getMilestoneLabel(milestone, milestoneEntities)}
 							</option>
 						))}
 					</select>
@@ -393,28 +451,28 @@ const TaskList: React.FC<TaskListProps> = ({
 
 					<div className="flex items-center gap-3 flex-shrink-0">
 						{statusFilter.toLowerCase() === 'done' && displayTasks.length > 0 && (
-							<button
-								type="button"
-								onClick={() => setShowCleanupModal(true)}
-								className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap"
-								title="Clean up old completed tasks"
-							>
-								<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								<button
+									type="button"
+									onClick={() => setShowCleanupModal(true)}
+									className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 flex items-center gap-2 whitespace-nowrap"
+									title="Clean up old completed tasks"
+								>
+									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 								</svg>
 								Clean Up
 							</button>
 						)}
 
-						<div className="relative">
-							<button
-								type="button"
-								onClick={hasActiveFilters ? handleClearFilters : undefined}
-								className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-								style={{ visibility: hasActiveFilters ? "visible" : "hidden" }}
-								aria-hidden={!hasActiveFilters}
-							>
-								Clear filters
+							<div className="relative">
+								<button
+									type="button"
+									onClick={hasActiveFilters ? handleClearFilters : undefined}
+									className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+									style={{ visibility: hasActiveFilters ? "visible" : "hidden" }}
+									aria-hidden={!hasActiveFilters}
+								>
+									Clear filters
 							</button>
 						</div>
 

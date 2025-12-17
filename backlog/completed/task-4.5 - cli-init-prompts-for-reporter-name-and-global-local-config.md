@@ -7,7 +7,7 @@ reporter: @MrLesk
 created_date: 2025-06-08
 updated_date: 2025-06-08
 labels: ["cli", "config"]
-milestone: "M1 - CLI"
+milestone: m-1
 dependencies: ["task-3"]
 parent_task_id: task-4
 ---

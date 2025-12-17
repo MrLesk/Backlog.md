@@ -8,9 +8,10 @@ interface TaskCardProps {
   onDragStart?: () => void;
   onDragEnd?: () => void;
   status?: string;
+  laneId?: string;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
 
@@ -29,6 +30,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     e.dataTransfer.setData('text/plain', task.id);
     if (status) {
       e.dataTransfer.setData('text/status', status);
+    }
+    if (laneId !== undefined) {
+      e.dataTransfer.setData('text/lane', laneId);
     }
     e.dataTransfer.effectAllowed = 'move';
     setIsDragging(true);
@@ -49,29 +53,29 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     }
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatRelativeDate = (dateStr: string) => {
     // Handle both date-only and datetime formats
     const hasTime = dateStr.includes(" ") || dateStr.includes("T");
     const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
-    
-    if (hasTime) {
-      // Show date and time for datetime values
-      return date.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } else {
-      // Show only date for date-only values
-      return date.toLocaleDateString();
-    }
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'today';
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+    return `${Math.floor(diffDays / 365)}y ago`;
   };
 
-  const truncateText = (text: string, maxLength: number = 120): string => {
-    if (!text || text.length <= maxLength) return text;
-    return text.substring(0, maxLength).trim() + '...';
+  const getPriorityBadge = (priority?: string) => {
+    switch (priority) {
+      case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
+      case 'medium': return { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', label: 'Med' };
+      case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: 'Low' };
+      default: return null;
+    }
   };
 
   return (
@@ -114,66 +118,56 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        <div className="mb-2">
-          <h4 className={`font-semibold text-sm line-clamp-2 transition-colors duration-200 ${
-            isFromOtherBranch 
-              ? 'text-gray-600 dark:text-gray-400' 
-              : 'text-gray-900 dark:text-gray-100'
-          }`}>
-            {task.title}
-          </h4>
-          <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">{task.id}</span>
+        {/* Header row with priority badge and task ID */}
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+          {(() => {
+            const badge = getPriorityBadge(task.priority);
+            return badge ? (
+              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
+                {badge.label}
+              </span>
+            ) : null;
+          })()}
         </div>
-      
-      {task.description?.trim() && (
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-3 transition-colors duration-200">
-          {truncateText(task.description.trim())}
-        </p>
-      )}
-      
-      {task.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {task.labels.map(label => (
-            <span
-              key={label}
-              className="inline-block px-2 py-1 text-xs bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded transition-colors duration-200"
-            >
-              {label}
-            </span>
-          ))}
-        </div>
-      )}
-      
-      {task.assignee.length > 0 && (
-        <div className="flex items-center gap-1 mb-2">
-          <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">Assignee:</span>
-          <span className="text-xs text-gray-700 dark:text-gray-300 transition-colors duration-200">
-            {task.assignee.join(', ')}
-          </span>
-        </div>
-      )}
-      
-      {task.dependencies.length > 0 && (
-        <div className="flex items-center gap-1 mb-2">
-          <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">Depends on:</span>
-          <span className="text-xs text-gray-700 dark:text-gray-300 transition-colors duration-200">
-            {task.dependencies.join(', ')}
-          </span>
-        </div>
-      )}
-      
-      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-3 pt-2 border-t border-gray-100 dark:border-gray-600 transition-colors duration-200">
-        <span>Created: {formatDate(task.createdDate)}</span>
-        {task.priority && (
-          <span className={`font-medium transition-colors duration-200 ${
-            task.priority === 'high' ? 'text-red-600 dark:text-red-400' :
-            task.priority === 'medium' ? 'text-yellow-600 dark:text-yellow-400' :
-            'text-green-600 dark:text-green-400'
-          }`}>
-            {task.priority}
-          </span>
+
+        {/* Title */}
+        <h4 className={`font-semibold text-sm line-clamp-2 transition-colors duration-200 ${
+          isFromOtherBranch
+            ? 'text-gray-600 dark:text-gray-400'
+            : 'text-gray-900 dark:text-gray-100'
+        }`}>
+          {task.title}
+        </h4>
+
+        {/* Labels - limit to 3 */}
+        {task.labels.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {task.labels.slice(0, 3).map(label => (
+              <span
+                key={label}
+                className="inline-block px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors duration-200"
+              >
+                {label}
+              </span>
+            ))}
+            {task.labels.length > 3 && (
+              <span className="inline-block px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+                +{task.labels.length - 3}
+              </span>
+            )}
+          </div>
         )}
-      </div>
+
+        {/* Footer with date */}
+        <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
+          <span>{formatRelativeDate(task.createdDate)}</span>
+          {task.assignee.length > 0 && (
+            <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
+              {task.assignee[0]}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

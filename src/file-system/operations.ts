@@ -2,9 +2,9 @@ import { mkdir, rename, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
-import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
+import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
@@ -94,6 +94,10 @@ export class FileSystem {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.DOCS);
 	}
 
+	get milestonesDir(): string {
+		return join(this.backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
+	}
+
 	get configFilePath(): string {
 		return join(this.backlogDir, DEFAULT_FILES.CONFIG);
 	}
@@ -135,6 +139,11 @@ export class FileSystem {
 	private async getDocsDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.DOCS);
+	}
+
+	private async getMilestonesDir(): Promise<string> {
+		const backlogDir = await this.getBacklogDir();
+		return join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
 	}
 
 	private async getCompletedDir(): Promise<string> {
@@ -641,6 +650,97 @@ export class FileSystem {
 			throw new Error(`Document not found: ${id}`);
 		}
 		return document;
+	}
+
+	// Milestone operations
+	async listMilestones(): Promise<Milestone[]> {
+		try {
+			const milestonesDir = await this.getMilestonesDir();
+			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const milestones: Milestone[] = [];
+			for (const file of milestoneFiles) {
+				// Filter out README files
+				if (file.toLowerCase() === "readme.md") {
+					continue;
+				}
+				const filepath = join(milestonesDir, file);
+				const content = await Bun.file(filepath).text();
+				milestones.push(parseMilestone(content));
+			}
+			// Sort by ID for consistent ordering
+			return milestones.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+		} catch {
+			return [];
+		}
+	}
+
+	async loadMilestone(id: string): Promise<Milestone | null> {
+		try {
+			const milestonesDir = await this.getMilestonesDir();
+			const files = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+
+			// Normalize ID - remove "m-" prefix if present
+			const normalizedId = id.replace(/^m-/, "");
+			const milestoneFile = files.find(
+				(file) => file.startsWith(`m-${normalizedId} -`) || file === `m-${normalizedId}.md`,
+			);
+
+			if (!milestoneFile) return null;
+
+			const filepath = join(milestonesDir, milestoneFile);
+			const content = await Bun.file(filepath).text();
+			return parseMilestone(content);
+		} catch (_error) {
+			return null;
+		}
+	}
+
+	async createMilestone(title: string, description?: string): Promise<Milestone> {
+		const milestonesDir = await this.getMilestonesDir();
+
+		// Ensure milestones directory exists
+		await mkdir(milestonesDir, { recursive: true });
+
+		// Find next available milestone ID
+		const existingFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+		const existingIds = existingFiles
+			.map((f) => {
+				const match = f.match(/^m-(\d+)/);
+				return match?.[1] ? Number.parseInt(match[1], 10) : -1;
+			})
+			.filter((id) => id >= 0);
+
+		const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 0;
+		const id = `m-${nextId}`;
+
+		// Create safe filename from title
+		const safeTitle = title
+			.replace(/[<>:"/\\|?*]/g, "")
+			.replace(/\s+/g, "-")
+			.toLowerCase()
+			.slice(0, 50);
+		const filename = `${id} - ${safeTitle}.md`;
+
+		// Build milestone content
+		const content = `---
+id: ${id}
+title: "${title.replace(/"/g, '\\"')}"
+---
+
+## Description
+
+${description || `Milestone: ${title}`}
+`;
+
+		const filepath = join(milestonesDir, filename);
+		await Bun.write(filepath, content);
+
+		return {
+			id,
+			title,
+			description: description || `Milestone: ${title}`,
+			rawContent: content,
+		};
 	}
 
 	// Config operations

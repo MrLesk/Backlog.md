@@ -42,13 +42,13 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
 					<h2 id="modal-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
 					<div className="flex items-center gap-2">
 						{actions}
-						<button
-							onClick={onClose}
-							className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 transition-colors duration-200 text-2xl leading-none w-8 h-8 flex items-center justify-center cursor-pointer"
-							aria-label="Close modal"
-						>
-							×
-						</button>
+							<button
+								onClick={onClose}
+								className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 transition-colors duration-200 text-2xl leading-none w-8 h-8 flex items-center justify-center"
+								aria-label="Close modal"
+							>
+								×
+							</button>
 					</div>
 				</div>
 				<div className="px-6 pt-4 pb-6">

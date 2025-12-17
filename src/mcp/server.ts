@@ -15,6 +15,7 @@ import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
 import { registerDocumentTools } from "./tools/documents/index.ts";
+import { registerMilestoneTools } from "./tools/milestones/index.ts";
 import { registerTaskTools } from "./tools/tasks/index.ts";
 import { registerWorkflowTools } from "./tools/workflow/index.ts";
 import type {
@@ -279,6 +280,7 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	registerWorkflowResources(server);
 	registerWorkflowTools(server);
 	registerTaskTools(server, config);
+	registerMilestoneTools(server);
 	registerDocumentTools(server, config);
 
 	if (options.debug) {

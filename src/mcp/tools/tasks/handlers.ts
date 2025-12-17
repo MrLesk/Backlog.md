@@ -1,3 +1,4 @@
+import { basename, join } from "node:path";
 import {
 	isLocalEditableTask,
 	type SearchPriorityFilter,
@@ -20,6 +21,7 @@ export type TaskCreateArgs = {
 	assignee?: string[];
 	priority?: "high" | "medium" | "low";
 	status?: string;
+	milestone?: string;
 	parentTaskId?: string;
 	acceptanceCriteria?: string[];
 	dependencies?: string[];
@@ -42,6 +44,11 @@ export type TaskSearchArgs = {
 
 export class TaskHandlers {
 	constructor(private readonly core: McpServer) {}
+
+	private isDoneStatus(status?: string | null): boolean {
+		const normalized = (status ?? "").trim().toLowerCase();
+		return normalized.includes("done") || normalized.includes("complete");
+	}
 
 	private formatTaskSummaryLine(task: Task, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
@@ -70,6 +77,7 @@ export class TaskHandlers {
 				description: args.description,
 				status: args.status,
 				priority: args.priority,
+				milestone: args.milestone,
 				labels: args.labels,
 				assignee: args.assignee,
 				dependencies: args.dependencies,
@@ -229,6 +237,18 @@ export class TaskHandlers {
 
 	async archiveTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
+
+		if (!isLocalEditableTask(task)) {
+			throw new McpError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
+		}
+
+		if (this.isDoneStatus(task.status)) {
+			throw new McpError(
+				`Task ${task.id} is Done. Done tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
+				"VALIDATION_ERROR",
+			);
+		}
+
 		const success = await this.core.archiveTask(task.id);
 		if (!success) {
 			throw new McpError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
@@ -236,6 +256,33 @@ export class TaskHandlers {
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
 		return await formatTaskCallResult(refreshed);
+	}
+
+	async completeTask(args: { id: string }): Promise<CallToolResult> {
+		const task = await this.loadTaskOrThrow(args.id);
+
+		if (!isLocalEditableTask(task)) {
+			throw new McpError(`Cannot complete task from another branch: ${task.id}`, "VALIDATION_ERROR");
+		}
+
+		if (!this.isDoneStatus(task.status)) {
+			throw new McpError(
+				`Task ${task.id} is not Done. Set status to "Done" with task_edit before completing it.`,
+				"VALIDATION_ERROR",
+			);
+		}
+
+		const filePath = task.filePath ?? null;
+		const completedFilePath = filePath ? join(this.core.filesystem.completedDir, basename(filePath)) : undefined;
+
+		const success = await this.core.completeTask(task.id);
+		if (!success) {
+			throw new McpError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
+		}
+
+		return await formatTaskCallResult(task, [`Completed task ${task.id}.`], {
+			filePathOverride: completedFilePath,
+		});
 	}
 
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {
