@@ -177,6 +177,84 @@ Project: ${projectName}
 	return `${header}${table}\n`;
 }
 
+export function generateMilestoneGroupedBoard(
+	tasks: Task[],
+	statuses: string[],
+	milestones: string[],
+	projectName: string,
+): string {
+	const now = new Date();
+	const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
+
+	// Collect unique milestones from config and tasks
+	const milestoneSeen = new Set<string>();
+	const allMilestones: string[] = [];
+	for (const m of milestones) {
+		const normalized = m.trim();
+		if (normalized && !milestoneSeen.has(normalized.toLowerCase())) {
+			milestoneSeen.add(normalized.toLowerCase());
+			allMilestones.push(normalized);
+		}
+	}
+	for (const task of tasks) {
+		const normalized = task.milestone?.trim();
+		if (normalized && !milestoneSeen.has(normalized.toLowerCase())) {
+			milestoneSeen.add(normalized.toLowerCase());
+			allMilestones.push(normalized);
+		}
+	}
+
+	const header = `# Kanban Board by Milestone (powered by Backlog.md)
+Generated on: ${timestamp}
+Project: ${projectName}
+
+`;
+
+	const sections: string[] = [];
+
+	// No milestone section
+	const noMilestoneTasks = tasks.filter((t) => !t.milestone?.trim());
+	if (noMilestoneTasks.length > 0) {
+		sections.push(generateMilestoneSection("No Milestone", noMilestoneTasks, statuses));
+	}
+
+	// Each milestone section
+	for (const milestone of allMilestones) {
+		const milestoneTasks = tasks.filter((t) => t.milestone?.trim().toLowerCase() === milestone.toLowerCase());
+		if (milestoneTasks.length > 0) {
+			sections.push(generateMilestoneSection(milestone, milestoneTasks, statuses));
+		}
+	}
+
+	if (sections.length === 0) {
+		return `${header}No tasks found.\n`;
+	}
+
+	return `${header}${sections.join("\n\n")}\n`;
+}
+
+function generateMilestoneSection(milestone: string, tasks: Task[], statuses: string[]): string {
+	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
+
+	const sectionHeader = `## ${milestone} (${tasks.length} tasks)\n`;
+
+	if (orderedStatuses.length === 0) {
+		return `${sectionHeader}\nNo tasks.\n`;
+	}
+
+	const statusLines = orderedStatuses.map((status) => {
+		const statusTasks = groupedTasks.get(status) || [];
+		const taskLines = statusTasks.map((t) => {
+			const id = t.id.toUpperCase();
+			const assignees = t.assignee?.length ? ` [@${t.assignee.join(", @")}]` : "";
+			return `  - **${id}** - ${t.title}${assignees}`;
+		});
+		return `### ${status} (${statusTasks.length})\n${taskLines.length > 0 ? taskLines.join("\n") : "  (empty)"}`;
+	});
+
+	return `${sectionHeader}\n${statusLines.join("\n\n")}`;
+}
+
 export async function exportKanbanBoardToFile(
 	tasks: Task[],
 	statuses: string[],

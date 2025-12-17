@@ -8,7 +8,7 @@ created_date: 2025-06-04
 updated_date: 2025-06-09
 completed_date: 2025-06-09
 labels: ["cli", "command"]
-milestone: "M2 - CLI Kanban Board"
+milestone: m-2
 dependencies: ["task-3"]
 ---
 

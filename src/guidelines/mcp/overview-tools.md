@@ -37,7 +37,9 @@ Each tool returns the same content that resource-capable clients read via `backl
 1. **Search first:** call `task_search` or `task_list` with filters to find existing work
 2. **If found:** read details via `task_view`; follow execution/plan guidance from the retrieved markdown
 3. **If not found:** consult `get_task_creation_guide`, then create tasks with `task_create`
-4. **Execute & complete:** use the execution/completion guides to manage status, plans, notes, and acceptance criteria (`task_edit`, `task_archive`)
+4. **Execute & complete:** use the execution/completion guides to manage status, plans, notes, and acceptance criteria via `task_edit`
+
+**Note:** "Done" tasks stay in Done until periodic cleanup. Moving to the completed folder (`task_complete`) is a batch operation run occasionally, not part of finishing each task. Do not use `task_archive` for completed work—archive is only for duplicate, canceled, or invalid tasks.
 
 ### Core Principle
 
@@ -46,7 +48,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 ### MCP Tools Quick Reference
 
 - `get_workflow_overview`, `get_task_creation_guide`, `get_task_execution_guide`, `get_task_completion_guide`
-- `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_archive`
+- `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_complete`, `task_archive`
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`
 
 **Always operate through the MCP tools above. Never edit markdown files directly; use the tools so relationships, metadata, and history stay consistent.**

@@ -44,6 +44,13 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.priority = args.priority;
 	}
 
+	if (args.milestone === null) {
+		updateInput.milestone = null;
+	} else if (typeof args.milestone === "string") {
+		const trimmed = args.milestone.trim();
+		updateInput.milestone = trimmed.length > 0 ? trimmed : null;
+	}
+
 	if (typeof args.ordinal === "number") {
 		updateInput.ordinal = args.ordinal;
 	}

@@ -50,11 +50,14 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 ### MCP Tools Quick Reference
 
+**Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.
+
 - `task_list` — list tasks with optional filtering by status, assignee, or labels
 - `task_search` — search tasks by title and description
 - `task_view` — read full task context (description, plan, notes, acceptance criteria)
 - `task_create` — create new tasks with description and acceptance criteria
 - `task_edit` — update task metadata, status, plan, notes, acceptance criteria, and dependencies
-- `task_archive` — archive completed tasks
+- `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
+- `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid)
 
 **Always operate through MCP tools. Never edit markdown files directly so relationships, metadata, and history stay consistent.**

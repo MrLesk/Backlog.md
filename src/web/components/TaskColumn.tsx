@@ -10,9 +10,12 @@ interface TaskColumnProps {
   onEditTask: (task: Task) => void;
   onTaskReorder?: (payload: ReorderTaskPayload) => void;
   dragSourceStatus?: string | null;
-  onDragStart?: () => void;
+  dragSourceLane?: string | null;
+  onDragStart?: (context: { status: string; laneId?: string | null }) => void;
   onDragEnd?: () => void;
   onCleanup?: () => void;
+  laneId?: string;
+  targetMilestone?: string | null;
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
@@ -22,9 +25,12 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onEditTask,
   onTaskReorder,
   dragSourceStatus,
+  dragSourceLane,
   onDragStart,
   onDragEnd,
-  onCleanup
+  onCleanup,
+  laneId,
+  targetMilestone
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -86,7 +92,12 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       return;
     }
 
-    onTaskReorder({ taskId: droppedTaskId, targetStatus: title, orderedTaskIds });
+    onTaskReorder({
+      taskId: droppedTaskId,
+      targetStatus: title,
+      orderedTaskIds,
+      ...(targetMilestone !== undefined ? { targetMilestone } : {}),
+    });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -116,12 +127,18 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     }
   };
 
+  const isEmpty = tasks.length === 0;
+
   return (
     <div
-      className={`rounded-lg p-4 min-h-96 transition-colors duration-200 ${
-        isDragOver && dragSourceStatus !== title
+      className={`rounded-lg p-4 transition-colors duration-200 ${
+        isEmpty ? 'min-h-24' : 'min-h-96'
+      } ${
+        isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null))
           ? 'bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 border-dashed'
-          : 'bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700'
+          : isEmpty
+            ? 'bg-gray-50/50 dark:bg-gray-800/30 border border-gray-200/50 dark:border-gray-700/50'
+            : 'bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700'
       }`}
       onDrop={handleDrop}
       onDragOver={handleDragOverColumn}
@@ -169,7 +186,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               onEdit={onEditTask}
               onDragStart={() => {
                 setDraggedTaskId(task.id);
-                onDragStart?.();
+                onDragStart?.({ status: title, laneId: laneId ?? null });
               }}
               onDragEnd={() => {
                 setDraggedTaskId(null);
@@ -177,6 +194,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
                 onDragEnd?.();
               }}
               status={title}
+              laneId={laneId}
             />
             
             {/* Drop indicator for after this task */}
@@ -195,24 +213,24 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           </div>
         )}
         
-        {tasks.length === 0 && !isDragOver && (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm transition-colors duration-200">
+        {isEmpty && !isDragOver && (
+          <div className="text-center py-2 text-gray-400 dark:text-gray-500 text-xs transition-colors duration-200">
             {dragSourceStatus && dragSourceStatus !== title
-              ? `Drop here to move to ${title}`
-              : `No tasks in ${title}`}
+              ? `Drop to move`
+              : `Empty`}
           </div>
         )}
 
         {/* Cleanup button for Done column */}
         {onCleanup && title.toLowerCase() === 'done' && tasks.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <button
-              onClick={onCleanup}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors duration-200 cursor-pointer"
-              title="Clean up old completed tasks"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+	            <button
+	              onClick={onCleanup}
+	              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors duration-200"
+	              title="Clean up old completed tasks"
+	            >
+	              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+	                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
               Clean Up Old Tasks
             </button>

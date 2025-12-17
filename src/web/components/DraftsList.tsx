@@ -88,17 +88,17 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-red-600 dark:text-red-400">Error: {error}</div>
-        <button 
-          onClick={loadDrafts}
-          className="ml-4 inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors cursor-pointer"
-        >
-          Retry
-        </button>
-      </div>
+	  if (error) {
+	    return (
+	      <div className="flex-1 flex items-center justify-center">
+	        <div className="text-red-600 dark:text-red-400">Error: {error}</div>
+	        <button 
+	          onClick={loadDrafts}
+	          className="ml-4 inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors"
+	        >
+	          Retry
+	        </button>
+	      </div>
     );
   }
 
@@ -110,11 +110,11 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
             <div className="text-sm text-gray-600 dark:text-gray-300">
               {drafts.length} draft{drafts.length !== 1 ? 's' : ''}
             </div>
-            <button 
-              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer" 
-              onClick={onNewDraft}
-            >
-              + New Draft
+	            <button 
+	              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200" 
+	              onClick={onNewDraft}
+	            >
+	              + New Draft
             </button>
           </div>
         </div>

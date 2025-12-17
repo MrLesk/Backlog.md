@@ -30,12 +30,12 @@ const DefaultErrorFallback: React.FC<{ error?: Error; resetError: () => void }> 
 					</pre>
 				</details>
 			)}
-			<button
-				onClick={resetError}
-				className="mt-4 inline-flex items-center px-4 py-2 bg-red-600 dark:bg-red-700 text-white text-sm font-medium rounded-lg hover:bg-red-700 dark:hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors duration-200 cursor-pointer"
-			>
-				Try Again
-			</button>
+				<button
+					onClick={resetError}
+					className="mt-4 inline-flex items-center px-4 py-2 bg-red-600 dark:bg-red-700 text-white text-sm font-medium rounded-lg hover:bg-red-700 dark:hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors duration-200"
+				>
+					Try Again
+				</button>
 		</div>
 	</div>
 );

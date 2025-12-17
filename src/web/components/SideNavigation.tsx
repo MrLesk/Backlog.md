@@ -137,6 +137,13 @@ const Icons = {
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
 		</svg>
 	),
+	Milestone: () => (
+		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<circle cx="12" cy="12" r="9" strokeWidth={2} />
+			<circle cx="12" cy="12" r="5" strokeWidth={2} />
+			<circle cx="12" cy="12" r="1" strokeWidth={2} />
+		</svg>
+	),
 };
 
 interface SideNavigationProps {
@@ -331,7 +338,7 @@ const SideNavigation = memo(function SideNavigation({
 				{/* Collapse Toggle Button - Always positioned on the border */}
 				<button
 					onClick={toggleCollapse}
-					className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200 cursor-pointer"
+					className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
 					aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 					title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 				>
@@ -352,26 +359,26 @@ const SideNavigation = memo(function SideNavigation({
 								onChange={(e) => setSearchQuery(e.target.value)}
 								className="w-full pl-10 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
 							/>
-							{searchQuery && (
-								<button
-									onClick={() => setSearchQuery('')}
-									className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer transition-colors duration-200"
-								>
-									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+								{searchQuery && (
+									<button
+										onClick={() => setSearchQuery('')}
+										className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-200"
+									>
+										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
 									</svg>
 								</button>
 							)}
 						</div>
 					</div>
 				) : (
-					<div className="flex items-center justify-center">
-						<button
-							onClick={() => setIsCollapsed(false)}
-							className="flex items-center justify-center p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 cursor-pointer"
-							title="Search (⌘K)"
-						>
-							<Icons.Search />
+						<div className="flex items-center justify-center">
+							<button
+								onClick={() => setIsCollapsed(false)}
+								className="flex items-center justify-center p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200"
+								title="Search (⌘K)"
+							>
+								<Icons.Search />
 						</button>
 					</div>
 				)}
@@ -460,13 +467,13 @@ const SideNavigation = memo(function SideNavigation({
 					<div className="px-4 py-4">
 						<div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
 							<p className="text-sm text-red-700 dark:text-red-400 mb-2">Failed to load navigation</p>
-							{onRetry && (
-								<button
-									onClick={onRetry}
-									className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200 cursor-pointer"
-								>
-									Retry
-								</button>
+								{onRetry && (
+									<button
+										onClick={onRetry}
+										className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200"
+									>
+										Retry
+									</button>
 							)}
 						</div>
 					</div>
@@ -515,6 +522,21 @@ const SideNavigation = memo(function SideNavigation({
 							<span className="ml-3 text-sm font-medium">All Tasks</span>
 						</NavLink>
 
+						{/* Milestones Navigation */}
+						<NavLink
+							to="/milestones"
+							className={({ isActive }) =>
+								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
+									isActive
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+								}`
+							}
+						>
+							<Icons.Milestone />
+							<span className="ml-3 text-sm font-medium">Milestones</span>
+						</NavLink>
+
 						{/* Drafts Navigation */}
 						<NavLink
 							to="/drafts"
@@ -555,23 +577,23 @@ const SideNavigation = memo(function SideNavigation({
 						{/* Documents Section */}
 						<div className="px-4 py-4">
 							<div className="flex items-center justify-between mb-4">
-								<div className="flex items-center space-x-3">
-									<button
-										onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
-										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200 cursor-pointer"
-										title={isDocsCollapsed ? "Expand documents" : "Collapse documents"}
-									>
-										{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
+									<div className="flex items-center space-x-3">
+										<button
+											onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
+											className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
+											title={isDocsCollapsed ? "Expand documents" : "Collapse documents"}
+										>
+											{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
 									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Documents ({docs.length})</span>
 								</div>
-								<button
-									onClick={handleCreateDocument}
-									className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-									title="Create new document"
-								>
-									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<button
+										onClick={handleCreateDocument}
+										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200"
+										title="Create new document"
+									>
+										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
 										<circle cx="12" cy="12" r="10" />
 									</svg>
@@ -611,13 +633,13 @@ const SideNavigation = memo(function SideNavigation({
 						{/* Decisions Section */}
 						<div className="px-4 py-4">
 							<div className="flex items-center justify-between mb-4">
-								<div className="flex items-center space-x-3">
-									<button
-										onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
-										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200 cursor-pointer"
-										title={isDecisionsCollapsed ? "Expand decisions" : "Collapse decisions"}
-									>
-										{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
+									<div className="flex items-center space-x-3">
+										<button
+											onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
+											className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
+											title={isDecisionsCollapsed ? "Expand decisions" : "Collapse decisions"}
+										>
+											{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
 									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Decisions ({decisions.length})</span>
@@ -717,6 +739,23 @@ const SideNavigation = memo(function SideNavigation({
 								<Icons.Draft />
 							</div>
 						</NavLink>
+						{/* Milestones Navigation */}
+						<NavLink
+							to="/milestones"
+							data-tooltip-id="sidebar-tooltip"
+							data-tooltip-content="Milestones"
+							className={({ isActive }) =>
+								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
+									isActive
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+								}`
+							}
+						>
+							<div className="w-6 h-6 flex items-center justify-center">
+								<Icons.Milestone />
+							</div>
+						</NavLink>
 						{/* Statistics Navigation */}
 						<NavLink
 							to="/statistics"
@@ -739,13 +778,13 @@ const SideNavigation = memo(function SideNavigation({
 								setIsCollapsed(false);
 								setIsDocsCollapsed(false);
 							}}
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Documentation"
-							className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 cursor-pointer w-full ${
-								location.pathname.startsWith('/documentation')
-									? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-									: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-							}`}
+								data-tooltip-id="sidebar-tooltip"
+								data-tooltip-content="Documentation"
+								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
+									location.pathname.startsWith('/documentation')
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+								}`}
 						>
 							<div className="w-6 h-6 flex items-center justify-center">
 								<Icons.Document />
@@ -756,13 +795,13 @@ const SideNavigation = memo(function SideNavigation({
 								setIsCollapsed(false);
 								setIsDecisionsCollapsed(false);
 							}}
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Decisions"
-							className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 cursor-pointer w-full ${
-								location.pathname.startsWith('/decisions')
-									? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-									: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-							}`}
+								data-tooltip-id="sidebar-tooltip"
+								data-tooltip-content="Decisions"
+								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
+									location.pathname.startsWith('/decisions')
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+								}`}
 						>
 							<div className="w-6 h-6 flex items-center justify-center">
 								<Icons.Decision />

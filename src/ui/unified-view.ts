@@ -34,6 +34,8 @@ export interface UnifiedViewOptions {
 		tasks: Task[];
 		statuses: string[];
 	};
+	milestoneMode?: boolean;
+	milestones?: string[];
 }
 
 type LoadingScreen = {
@@ -299,6 +301,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						boardUpdater = updater;
 						emitBoardUpdate();
 					},
+					milestoneMode: options.milestoneMode,
+					milestones: options.milestones,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

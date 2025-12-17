@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { AcceptanceCriterion, Task } from "../../types";
+import type { AcceptanceCriterion, Milestone, Task } from "../../types";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
@@ -18,6 +18,8 @@ interface Props {
   onArchive?: () => void; // For archiving tasks
   availableStatuses?: string[]; // Available statuses for new tasks
   isDraftMode?: boolean; // Whether creating a draft
+  availableMilestones?: string[];
+  milestoneEntities?: Milestone[];
 }
 
 type Mode = "preview" | "edit" | "create";
@@ -31,7 +33,18 @@ const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ t
   </div>
 );
 
-export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSaved, onSubmit, onArchive, availableStatuses, isDraftMode }) => {
+export const TaskDetailsModal: React.FC<Props> = ({
+  task,
+  isOpen,
+  onClose,
+  onSaved,
+  onSubmit,
+  onArchive,
+  availableStatuses,
+  availableMilestones,
+  milestoneEntities,
+  isDraftMode,
+}) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
   const isFromOtherBranch = Boolean(task?.branch);
@@ -54,6 +67,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
+  const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
 
   // Keep a baseline for dirty-check
@@ -115,6 +129,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     setLabels(task?.labels || []);
     setPriority(task?.priority || "");
     setDependencies(task?.dependencies || []);
+    setMilestone(task?.milestone || "");
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
     // Preload tasks for dependency picker
@@ -162,6 +177,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
         labels,
         priority: (priority === "" ? undefined : priority) as "high" | "medium" | "low" | undefined,
         dependencies,
+        milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
       };
 
       if (isCreateMode && onSubmit) {
@@ -219,6 +235,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
     if (updates.labels !== undefined) setLabels(updates.labels as string[]);
     if (updates.priority !== undefined) setPriority(String(updates.priority));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
+    if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
 
     // Only update server if editing existing task
     if (task) {
@@ -234,13 +251,13 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
 
   // labels handled via ChipInput; no textarea parsing
 
-  const handleComplete = async () => {
-    if (!task) return;
-    if (!window.confirm("Complete this task? It will be moved to the completed archive.")) return;
-    try {
-      await apiClient.completeTask(task.id);
-      if (onSaved) await onSaved();
-      onClose();
+	const handleComplete = async () => {
+		if (!task) return;
+		if (!window.confirm("Complete this task? It will be moved to the completed folder.")) return;
+		try {
+			await apiClient.completeTask(task.id);
+			if (onSaved) await onSaved();
+			onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -274,21 +291,21 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
       disableEscapeClose={mode === "edit" || mode === "create"}
       actions={
         <div className="flex items-center gap-2">
-          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
-            <button
-              onClick={handleComplete}
-              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
-              title="Mark as completed (archive from board)"
-            >
-              Mark as completed
-            </button>
-          )}
-          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
-            <button
-              onClick={() => setMode("edit")}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
-              title="Edit"
-            >
+		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
+		            <button
+		              onClick={handleComplete}
+		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		              title="Move to completed folder (removes from board)"
+		            >
+		              Mark as completed
+		            </button>
+		          )}
+		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
+		            <button
+		              onClick={() => setMode("edit")}
+		              className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		              title="Edit"
+		            >
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -297,22 +314,22 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
             </button>
           ) : (mode === "edit" || mode === "create") ? (
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleCancelEdit}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 cursor-pointer"
-                title="Cancel"
-              >
+		              <button
+		                onClick={handleCancelEdit}
+		                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		                title="Cancel"
+		              >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
                 Cancel
               </button>
-              <button
-                onClick={() => void handleSave()}
-                disabled={saving}
-                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                title="Save"
-              >
+		              <button
+		                onClick={() => void handleSave()}
+		                disabled={saving}
+		                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50"
+		                title="Save"
+		              >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -469,6 +486,32 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
               )}
             </div>
           )}
+          {/* Title (editable for existing tasks) */}
+          {task && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+              <SectionHeader title="Title" />
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                }}
+                onBlur={() => {
+                  if (title.trim() && title !== task.title) {
+                    void handleInlineMetaUpdate({ title: title.trim() });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.currentTarget.blur();
+                  }
+                }}
+                disabled={isFromOtherBranch}
+                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              />
+            </div>
+          )}
+
           {/* Status */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Status" />
@@ -505,7 +548,7 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Priority" />
             <select
-              className={`w-full px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={priority}
               onChange={(e) => handleInlineMetaUpdate({ priority: e.target.value as any })}
               disabled={isFromOtherBranch}
@@ -514,6 +557,28 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
+            </select>
+          </div>
+
+          {/* Milestone */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <SectionHeader title="Milestone" />
+            <select
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              value={milestone}
+              onChange={(e) => {
+                const value = e.target.value;
+                setMilestone(value);
+                handleInlineMetaUpdate({ milestone: value.trim().length > 0 ? value : undefined });
+              }}
+              disabled={isFromOtherBranch}
+            >
+              <option value="">No milestone</option>
+              {(milestoneEntities ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.title}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -530,22 +595,15 @@ export const TaskDetailsModal: React.FC<Props> = ({ task, isOpen, onClose, onSav
             />
           </div>
 
-          {/* Metadata (render only if content exists) */}
-          {task?.milestone ? (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-              <div>Milestone: {task.milestone}</div>
-            </div>
-          ) : null}
-
           {/* Archive button at bottom of sidebar */}
-          {task && onArchive && !isFromOtherBranch && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-              <button
-                onClick={handleArchive}
-                className="w-full inline-flex items-center justify-center px-4 py-2 bg-red-500 dark:bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-600 dark:hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-red-400 dark:focus:ring-red-500 transition-colors duration-200 cursor-pointer"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+		          {task && onArchive && !isFromOtherBranch && (
+		            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+		              <button
+		                onClick={handleArchive}
+		                className="w-full inline-flex items-center justify-center px-4 py-2 bg-red-500 dark:bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-600 dark:hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-red-400 dark:focus:ring-red-500 transition-colors duration-200"
+		              >
+		                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                 </svg>
                 Archive Task
               </button>
@@ -564,7 +622,7 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void; d
   }, []);
   return (
     <select
-      className={`w-full px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+      className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
       value={current}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}

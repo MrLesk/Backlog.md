@@ -765,25 +765,25 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 
 				{/* Navigation Buttons */}
 				<div className="flex justify-between">
-					<button
-						type="button"
-						onClick={handleBack}
-						disabled={currentStep === "projectName" || isInitializing}
-						className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-					>
-						Back
-					</button>
-
-					{currentStep === "summary" ? (
 						<button
 							type="button"
-							onClick={handleInitialize}
-							disabled={isInitializing}
-							className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer font-medium"
+							onClick={handleBack}
+							disabled={currentStep === "projectName" || isInitializing}
+							className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors duration-200"
 						>
-							{isInitializing ? (
-								<span className="flex items-center">
-									<svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+							Back
+						</button>
+
+					{currentStep === "summary" ? (
+							<button
+								type="button"
+								onClick={handleInitialize}
+								disabled={isInitializing}
+								className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 transition-colors duration-200 font-medium"
+							>
+								{isInitializing ? (
+									<span className="flex items-center">
+										<svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
 										<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
 										<path
 											className="opacity-75"
@@ -798,14 +798,14 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 							)}
 						</button>
 					) : (
-						<button
-							type="button"
-							onClick={handleNext}
-							disabled={!canProceed()}
-							className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer font-medium"
-						>
-							Next
-						</button>
+							<button
+								type="button"
+								onClick={handleNext}
+								disabled={!canProceed()}
+								className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 transition-colors duration-200 font-medium"
+							>
+								Next
+							</button>
 					)}
 				</div>
 			</div>

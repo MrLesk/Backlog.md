@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { AcceptanceCriterion, Decision, Document, ParsedMarkdown, Task } from "../types/index.ts";
+import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import { AcceptanceCriteriaManager, extractStructuredSection, STRUCTURED_SECTION_KEYS } from "./structured-sections.ts";
 
 function normalizeFlowList(prefix: string, rawValue: string): string | null {
@@ -7,7 +7,8 @@ function normalizeFlowList(prefix: string, rawValue: string): string | null {
 	const match = rawValue.match(/^\[(.*)\]\s*(#.*)?$/);
 	if (!match) return null;
 
-	const [, listBody, comment] = match;
+	const listBody = match[1] ?? "";
+	const comment = match[2];
 	const items = listBody
 		.split(",")
 		.map((entry) => entry.trim())
@@ -36,8 +37,9 @@ function preprocessFrontmatter(frontmatter: string): string {
 			const match = line.match(/^(\s*(?:assignee|reporter):\s*)(.*)$/);
 			if (!match) return line;
 
-			const [, prefix, raw] = match;
-			const value = raw?.trim() || "";
+			const prefix = match[1] ?? "";
+			const raw = match[2] ?? "";
+			const value = raw.trim();
 
 			const normalizedFlowList = normalizeFlowList(prefix, value);
 			if (normalizedFlowList !== null) {
@@ -208,6 +210,17 @@ export function parseDocument(content: string): Document {
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
 		rawContent,
 		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+	};
+}
+
+export function parseMilestone(content: string): Milestone {
+	const { frontmatter, content: rawContent } = parseMarkdown(content);
+
+	return {
+		id: String(frontmatter.id || ""),
+		title: String(frontmatter.title || ""),
+		description: extractSection(rawContent, "Description") || "",
+		rawContent,
 	};
 }
 

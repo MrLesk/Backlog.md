@@ -9,6 +9,10 @@
 5. **Update task status** - Set status to "Done" via `task_edit`
 6. **Propose next steps** - Never autonomously create or start new tasks
 
+**Note:** Tasks stay in "Done" status until periodic cleanup. Moving to the completed folder (`task_complete` or CLI cleanup) is a batch operation run occasionally, not part of finishing each task.
+
+**Important:** Do not use `task_archive` for completed work. Archive is only for tasks that should not be completed (duplicate, canceled, invalid).
+
 ### Definition of Done Checklist
 
 - Implementation plan exists in the task record (`task_edit` planSet/planAppend) and reflects the final solution

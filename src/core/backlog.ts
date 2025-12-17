@@ -481,6 +481,7 @@ export class Core {
 			acceptanceCriteriaItems?: import("../types/index.ts").AcceptanceCriterion[];
 			implementationPlan?: string;
 			implementationNotes?: string;
+			milestone?: string;
 		},
 		autoCommit?: boolean,
 	): Promise<Task> {
@@ -497,6 +498,10 @@ export class Core {
 			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
 			...(taskData.priority && { priority: taskData.priority }),
+			...(typeof taskData.milestone === "string" &&
+				taskData.milestone.trim().length > 0 && {
+					milestone: taskData.milestone.trim(),
+				}),
 			...(typeof taskData.description === "string" && { description: taskData.description }),
 			...(Array.isArray(taskData.acceptanceCriteriaItems) &&
 				taskData.acceptanceCriteriaItems.length > 0 && {
@@ -571,6 +576,10 @@ export class Core {
 			createdDate,
 			...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
 			...(priority && { priority }),
+			...(typeof input.milestone === "string" &&
+				input.milestone.trim().length > 0 && {
+					milestone: input.milestone.trim(),
+				}),
 			...(typeof input.description === "string" && { description: input.description }),
 			...(typeof input.implementationPlan === "string" && { implementationPlan: input.implementationPlan }),
 			...(typeof input.implementationNotes === "string" && { implementationNotes: input.implementationNotes }),
@@ -693,6 +702,19 @@ export class Core {
 			const normalizedPriority = this.normalizePriority(String(input.priority));
 			if (task.priority !== normalizedPriority) {
 				task.priority = normalizedPriority;
+				mutated = true;
+			}
+		}
+
+		if (input.milestone !== undefined) {
+			const normalizedMilestone =
+				input.milestone === null ? undefined : input.milestone.trim().length > 0 ? input.milestone.trim() : undefined;
+			if ((task.milestone ?? undefined) !== normalizedMilestone) {
+				if (normalizedMilestone === undefined) {
+					delete task.milestone;
+				} else {
+					task.milestone = normalizedMilestone;
+				}
 				mutated = true;
 			}
 		}
@@ -1011,6 +1033,7 @@ export class Core {
 		taskId: string;
 		targetStatus: string;
 		orderedTaskIds: string[];
+		targetMilestone?: string | null;
 		commitMessage?: string;
 		autoCommit?: boolean;
 		defaultStep?: number;
@@ -1059,6 +1082,14 @@ export class Core {
 			);
 		}
 
+		const hasTargetMilestone = params.targetMilestone !== undefined;
+		const normalizedTargetMilestone =
+			params.targetMilestone === null
+				? undefined
+				: typeof params.targetMilestone === "string" && params.targetMilestone.trim().length > 0
+					? params.targetMilestone.trim()
+					: undefined;
+
 		// Calculate target index within the valid tasks list
 		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => t.id === id));
 		const targetIndex = validOrderedIds.indexOf(taskId);
@@ -1079,6 +1110,7 @@ export class Core {
 		const updatedMoved: Task = {
 			...movedTask,
 			status: targetStatus,
+			...(hasTargetMilestone ? { milestone: normalizedTargetMilestone } : {}),
 			ordinal: newOrdinal,
 		};
 
@@ -1101,7 +1133,11 @@ export class Core {
 		const changedTasks = Array.from(updatesMap.values()).filter((task) => {
 			const original = originalMap.get(task.id);
 			if (!original) return true;
-			return (original.ordinal ?? null) !== (task.ordinal ?? null) || (original.status ?? "") !== (task.status ?? "");
+			return (
+				(original.ordinal ?? null) !== (task.ordinal ?? null) ||
+				(original.status ?? "") !== (task.status ?? "") ||
+				(original.milestone ?? "") !== (task.milestone ?? "")
+			);
 		});
 
 		if (changedTasks.length > 0) {

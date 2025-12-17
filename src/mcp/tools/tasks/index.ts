@@ -5,7 +5,7 @@ import { generateTaskCreateSchema, generateTaskEditSchema } from "../../utils/sc
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -74,13 +74,24 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		async (input) => handlers.archiveTask(input as { id: string }),
 	);
 
+	const completeTaskTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_complete",
+			description: "Complete a Backlog.md task (move it to the completed folder)",
+			inputSchema: taskCompleteSchema,
+		},
+		taskCompleteSchema,
+		async (input) => handlers.completeTask(input as { id: string }),
+	);
+
 	server.addTool(createTaskTool);
 	server.addTool(listTaskTool);
 	server.addTool(searchTaskTool);
 	server.addTool(editTaskTool);
 	server.addTool(viewTaskTool);
 	server.addTool(archiveTaskTool);
+	server.addTool(completeTaskTool);
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
-export { taskArchiveSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+export { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";

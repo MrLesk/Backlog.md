@@ -1,6 +1,11 @@
 import type { BoxInterface, ListInterface } from "neo-neo-bblessed";
 import { box, list } from "neo-neo-bblessed";
-import { type BoardLayout, buildKanbanStatusGroups, generateKanbanBoardWithMetadata } from "../board.ts";
+import {
+	type BoardLayout,
+	buildKanbanStatusGroups,
+	generateKanbanBoardWithMetadata,
+	generateMilestoneGroupedBoard,
+} from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
@@ -157,10 +162,16 @@ export async function renderBoardTui(
 		onTaskSelect?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
 		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[]) => void) => void;
+		milestoneMode?: boolean;
+		milestones?: string[];
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
-		console.log(generateKanbanBoardWithMetadata(initialTasks, statuses, "Project"));
+		if (options?.milestoneMode) {
+			console.log(generateMilestoneGroupedBoard(initialTasks, statuses, options.milestones ?? [], "Project"));
+		} else {
+			console.log(generateKanbanBoardWithMetadata(initialTasks, statuses, "Project"));
+		}
 		return;
 	}
 
