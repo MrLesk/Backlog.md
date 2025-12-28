@@ -53,6 +53,11 @@ interface BlessedScreen {
 		showCursor(): void;
 		input: NodeJS.EventEmitter;
 		pause?: () => (() => void) | undefined;
+		flush?: () => void;
+		put?: {
+			keypad_local?: () => void;
+			keypad_xmit?: () => void;
+		};
 	};
 	leave(): void;
 	enter(): void;
@@ -1576,27 +1581,36 @@ export class Core {
 			return await openInEditor(filePath, config);
 		}
 
-		// Store all event listeners before removing them
-		const inputListeners = new Map<string, Array<(...args: unknown[]) => void>>();
-		const eventNames = ["keypress", "data", "readable"];
-
-		for (const eventName of eventNames) {
-			const listeners = screen.program.input.listeners(eventName) as Array<(...args: unknown[]) => void>;
-			if (listeners.length > 0) {
-				inputListeners.set(eventName, [...listeners]);
+		const program = screen.program;
+		if (typeof program.put?.keypad_local === "function") {
+			program.put.keypad_local();
+			if (typeof program.flush === "function") {
+				program.flush();
 			}
+		} else {
+			try {
+				process.stdout.write("\u001b[?1l\u001b>");
+			} catch {}
 		}
 
 		// Properly pause the terminal (raw mode off, normal buffer) if supported
-		const resume = typeof screen.program.pause === "function" ? screen.program.pause() : undefined;
+		const resume = typeof program.pause === "function" ? program.pause() : undefined;
 		try {
-			// Ensure we are out of alt buffer
-			screen.leave();
 			return await openInEditor(filePath, config);
 		} finally {
 			// Resume terminal state
 			if (typeof resume === "function") {
 				resume();
+				if (typeof program.put?.keypad_xmit === "function") {
+					program.put.keypad_xmit();
+					if (typeof program.flush === "function") {
+						program.flush();
+					}
+				} else {
+					try {
+						process.stdout.write("\u001b[?1h\u001b=");
+					} catch {}
+				}
 			} else {
 				screen.enter();
 			}
