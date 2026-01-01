@@ -519,6 +519,17 @@ export async function renderBoardTui(
 			}
 		});
 
+		const openTaskEditor = async (task: Task) => {
+			try {
+				const core = new Core(process.cwd(), { enableWatchers: true });
+				const filePath = await getTaskPath(task.id, core);
+				if (!filePath) return;
+				await core.openEditor(filePath, screen);
+			} catch (_error) {
+				// Silently handle errors
+			}
+		};
+
 		screen.key(["enter"], async () => {
 			if (popupOpen) return;
 
@@ -549,38 +560,14 @@ export async function renderBoardTui(
 				columns[currentCol]?.list.focus();
 			});
 
-			contentArea.key(["e", "E"], async () => {
-				try {
-					const core = new Core(process.cwd(), { enableWatchers: true });
-					const filePath = await getTaskPath(task.id, core);
-					if (!filePath) return;
-					type ProgWithPause = { pause?: () => () => void };
-					const scr = screen as unknown as { program?: ProgWithPause; leave?: () => void; enter?: () => void };
-					const prog = scr.program;
-					const resumeProgram = typeof prog?.pause === "function" ? prog.pause() : undefined;
-					try {
-						scr.leave?.();
-					} catch {}
-					try {
-						await core.openEditor(filePath);
-					} finally {
-						try {
-							scr.enter?.();
-						} catch {}
-						try {
-							if (typeof resumeProgram === "function") resumeProgram();
-						} catch {}
-						screen.render();
-					}
-				} catch (_error) {
-					// Silently handle errors
-				}
+			contentArea.key(["e", "E", "S-e"], async () => {
+				await openTaskEditor(task);
 			});
 
 			screen.render();
 		});
 
-		screen.key(["e", "E"], async () => {
+		screen.key(["e", "E", "S-e"], async () => {
 			if (popupOpen) return;
 			const column = columns[currentCol];
 			if (!column) return;
@@ -588,31 +575,7 @@ export async function renderBoardTui(
 			if (idx < 0 || idx >= column.tasks.length) return;
 			const task = column.tasks[idx];
 			if (!task) return;
-			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
-				const filePath = await getTaskPath(task.id, core);
-				if (!filePath) return;
-				type ProgWithPause = { pause?: () => () => void };
-				const scr = screen as unknown as { program?: ProgWithPause; leave?: () => void; enter?: () => void };
-				const prog = scr.program;
-				const resumeProgram = typeof prog?.pause === "function" ? prog.pause() : undefined;
-				try {
-					scr.leave?.();
-				} catch {}
-				try {
-					await core.openEditor(filePath);
-				} finally {
-					try {
-						scr.enter?.();
-					} catch {}
-					try {
-						if (typeof resumeProgram === "function") resumeProgram();
-					} catch {}
-					screen.render();
-				}
-			} catch (_error) {
-				// Silently handle errors
-			}
+			await openTaskEditor(task);
 		});
 
 		const performTaskMove = async () => {
@@ -680,7 +643,7 @@ export async function renderBoardTui(
 			renderView();
 		};
 
-		screen.key(["m", "M"], async () => {
+		screen.key(["m", "M", "S-m"], async () => {
 			if (popupOpen) return;
 
 			if (!moveOp) {

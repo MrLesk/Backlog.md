@@ -53,6 +53,11 @@ interface BlessedScreen {
 		showCursor(): void;
 		input: NodeJS.EventEmitter;
 		pause?: () => (() => void) | undefined;
+		flush?: () => void;
+		put?: {
+			keypad_local?: () => void;
+			keypad_xmit?: () => void;
+		};
 	};
 	leave(): void;
 	enter(): void;
@@ -1576,36 +1581,47 @@ export class Core {
 			return await openInEditor(filePath, config);
 		}
 
-		// Store all event listeners before removing them
-		const inputListeners = new Map<string, Array<(...args: unknown[]) => void>>();
-		const eventNames = ["keypress", "data", "readable"];
+		const program = screen.program;
 
-		for (const eventName of eventNames) {
-			const listeners = screen.program.input.listeners(eventName) as Array<(...args: unknown[]) => void>;
-			if (listeners.length > 0) {
-				inputListeners.set(eventName, [...listeners]);
+		// Leave alternate screen buffer FIRST
+		screen.leave();
+
+		// Reset keypad/cursor mode using terminfo if available
+		if (typeof program.put?.keypad_local === "function") {
+			program.put.keypad_local();
+			if (typeof program.flush === "function") {
+				program.flush();
 			}
 		}
 
-		// Properly pause the terminal (raw mode off, normal buffer) if supported
-		const resume = typeof screen.program.pause === "function" ? screen.program.pause() : undefined;
+		// Send escape sequences directly as reinforcement
+		// ESC[0m   = Reset all SGR attributes (fixes white background in nano)
+		// ESC[?25h = Show cursor (ensure cursor is visible)
+		// ESC[?1l  = Reset DECCKM (cursor keys send CSI sequences)
+		// ESC>     = DECKPNM (numeric keypad mode)
+		const fs = await import("node:fs");
+		fs.writeSync(1, "\u001b[0m\u001b[?25h\u001b[?1l\u001b>");
+
+		// Pause the terminal AFTER leaving alt buffer (disables raw mode, releases terminal)
+		const resume = typeof program.pause === "function" ? program.pause() : undefined;
 		try {
-			// Ensure we are out of alt buffer
-			screen.leave();
 			return await openInEditor(filePath, config);
 		} finally {
-			// Resume terminal state
+			// Resume terminal state FIRST (re-enables raw mode)
 			if (typeof resume === "function") {
 				resume();
-			} else {
-				screen.enter();
+			}
+			// Re-enter alternate screen buffer
+			screen.enter();
+			// Restore application cursor mode
+			if (typeof program.put?.keypad_xmit === "function") {
+				program.put.keypad_xmit();
+				if (typeof program.flush === "function") {
+					program.flush();
+				}
 			}
 			// Full redraw
-			screen.clearRegion(0, screen.width, 0, screen.height);
 			screen.render();
-			process.nextTick(() => {
-				screen.emit("resize");
-			});
 		}
 	}
 
