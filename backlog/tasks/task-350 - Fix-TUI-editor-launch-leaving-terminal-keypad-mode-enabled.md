@@ -1,7 +1,7 @@
 ---
 id: task-350
 title: Fix TUI editor launch leaving terminal keypad mode enabled
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-12-22 19:22'
@@ -19,9 +19,9 @@ Users report that opening an editor from `backlog board` leaves the terminal in 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Opening a task from `backlog board` with E allows arrow-key navigation in common terminal editors the same way as launching the editor directly.
-- [ ] #2 The board UI restores correctly after the editor exits and continues to accept input.
-- [ ] #3 The terminal is not left in an application cursor/keypad mode after launching an editor from the board.
+- [x] #1 Opening a task from `backlog board` with E allows arrow-key navigation in common terminal editors the same way as launching the editor directly.
+- [x] #2 The board UI restores correctly after the editor exits and continues to accept input.
+- [x] #3 The terminal is not left in an application cursor/keypad mode after launching an editor from the board.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -39,4 +39,12 @@ Add a raw escape-sequence fallback to disable/restore application cursor mode wh
 
 <!-- SECTION:NOTES:BEGIN -->
 Repro: run `TERM=screen-256color ARROW_DUMP_FILE=tmp/arrow-board.txt EDITOR=./tmp/arrow-dump.sh bun run cli board` inside tmux, press E then an arrow key. Before fix the sequence captured was `1b4f41` (application mode); after fix it is `1b5b41` (normal mode).
+
+**Final fix (2026-01-01):** Added SGR reset and cursor visibility sequences to `Core.openEditor` in `src/core/backlog.ts`:
+- `\u001b[0m` - Reset all SGR attributes (fixes white background issue in nano)
+- `\u001b[?25h` - Show cursor (ensure cursor is visible)
+- `\u001b[?1l` - Reset DECCKM (cursor keys send CSI sequences)
+- `\u001b>` - DECKPNM (numeric keypad mode)
+
+Verified with ttyd + Chrome DevTools MCP that cursor is visible and arrow keys work correctly in nano editor.
 <!-- SECTION:NOTES:END -->

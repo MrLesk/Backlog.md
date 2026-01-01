@@ -560,14 +560,14 @@ export async function renderBoardTui(
 				columns[currentCol]?.list.focus();
 			});
 
-			contentArea.key(["e", "E"], async () => {
+			contentArea.key(["e", "E", "S-e"], async () => {
 				await openTaskEditor(task);
 			});
 
 			screen.render();
 		});
 
-		screen.key(["e", "E"], async () => {
+		screen.key(["e", "E", "S-e"], async () => {
 			if (popupOpen) return;
 			const column = columns[currentCol];
 			if (!column) return;
@@ -643,7 +643,7 @@ export async function renderBoardTui(
 			renderView();
 		};
 
-		screen.key(["m", "M"], async () => {
+		screen.key(["m", "M", "S-m"], async () => {
 			if (popupOpen) return;
 
 			if (!moveOp) {
