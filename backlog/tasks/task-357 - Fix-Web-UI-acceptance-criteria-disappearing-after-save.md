@@ -5,7 +5,7 @@ status: Done
 assignee:
   - Claude
 created_date: '2026-01-01 23:43'
-updated_date: '2026-01-01 23:55'
+updated_date: '2026-01-02 00:13'
 labels:
   - bug
   - web-ui
@@ -53,19 +53,21 @@ After successful save, update editingTask in the parent (App.tsx) with the refre
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Fix implemented in src/web/App.tsx:216-225.
+Fix implemented in src/web/App.tsx:216-234.
 
-Added useEffect that watches [tasks, editingTask, showModal] and syncs editingTask when:
-- Modal is open (showModal=true)
-- editingTask exists
-- A matching task is found in refreshed tasks array
-- The found task is a different object reference (prevents infinite loop)
+Added useEffect that syncs editingTask with refreshed tasks, but ONLY after
+our own save operation (tracked via pendingEditingTaskSyncRef). This prevents
+background WebSocket refreshes from overwriting in-progress edits.
+
+Key changes:
+- Added pendingEditingTaskSyncRef to track when sync is expected
+- handleTaskSaved callback sets ref before calling refreshData
+- useEffect only syncs when ref is true, then resets it
 
 Tested via Chrome DevTools MCP:
-- Added acceptance criterion to task-345
-- Clicked Save
-- Verified criterion remained visible (previously showed "No acceptance criteria")
-- Cleaned up test data
+- Added acceptance criterion to task-345, saved, verified visible
+- All tests pass (exit code 0)
 
-All tests pass (exit code 0). Committed as 9a2c43e.
+Addressed PR feedback: Original fix would have overwritten unsaved edits
+during background refreshes. Fixed by only syncing after explicit save.
 <!-- SECTION:NOTES:END -->

@@ -54,6 +54,7 @@ function App() {
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
+  const pendingEditingTaskSyncRef = useRef(false);
 
   // Set version data attribute on body
   React.useEffect(() => {
@@ -215,14 +216,22 @@ function App() {
 
   // Sync editingTask with refreshed tasks data to prevent stale state
   // This fixes the bug where acceptance criteria disappears after save (GitHub #467)
+  // Only sync after our own save (pendingEditingTaskSyncRef), not on background refreshes
   useEffect(() => {
-    if (editingTask && showModal) {
+    if (editingTask && showModal && pendingEditingTaskSyncRef.current) {
       const updatedTask = tasks.find(t => t.id === editingTask.id);
       if (updatedTask && updatedTask !== editingTask) {
         setEditingTask(updatedTask);
       }
+      pendingEditingTaskSyncRef.current = false;
     }
   }, [tasks, editingTask, showModal]);
+
+  // Callback for TaskDetailsModal onSaved - flags that we expect a sync after refresh
+  const handleTaskSaved = useCallback(async () => {
+    pendingEditingTaskSyncRef.current = true;
+    await refreshData();
+  }, [refreshData]);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -375,7 +384,7 @@ function App() {
           task={editingTask || undefined}
           isOpen={showModal}
           onClose={handleCloseModal}
-          onSaved={refreshData}
+          onSaved={handleTaskSaved}
           onSubmit={handleSubmitTask}
           onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
           availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
