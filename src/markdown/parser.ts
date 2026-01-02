@@ -53,7 +53,7 @@ function preprocessFrontmatter(frontmatter: string): string {
 				!value.startsWith('"') &&
 				!value.startsWith("-")
 			) {
-				return `${prefix}"${value.replace(/"/g, '\\"')}"`;
+				return `${prefix}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 			}
 			return line;
 		})

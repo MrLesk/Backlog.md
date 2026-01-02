@@ -213,6 +213,17 @@ function App() {
     await loadAllData();
   }, [loadAllData]);
 
+  // Sync editingTask with refreshed tasks data to prevent stale state
+  // This fixes the bug where acceptance criteria disappears after save (GitHub #467)
+  useEffect(() => {
+    if (editingTask && showModal) {
+      const updatedTask = tasks.find(t => t.id === editingTask.id);
+      if (updatedTask && updatedTask !== editingTask) {
+        setEditingTask(updatedTask);
+      }
+    }
+  }, [tasks, editingTask, showModal]);
+
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
