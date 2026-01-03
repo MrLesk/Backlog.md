@@ -205,6 +205,17 @@ export interface Sequence {
 	tasks: Task[];
 }
 
+/**
+ * Configuration for ID prefixes used in task and draft files.
+ * Allows customization of prefixes (e.g., "JIRA-", "issue-", "bug-").
+ */
+export interface PrefixConfig {
+	/** Prefix for task IDs (default: "task") - produces IDs like task-1, task-2 */
+	task: string;
+	/** Prefix for draft IDs (default: "draft") - produces IDs like draft-1, draft-2 */
+	draft: string;
+}
+
 export interface BacklogConfig {
 	projectName: string;
 	defaultAssignee?: string;
@@ -229,6 +240,8 @@ export interface BacklogConfig {
 	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */
 	onStatusChange?: string;
+	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
+	prefixes?: PrefixConfig;
 	mcp?: {
 		http?: {
 			host?: string;

@@ -1,9 +1,11 @@
 ---
 id: task-345.01
 title: Create PrefixConfig abstraction layer
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2026-01-03 20:43'
+updated_date: '2026-01-03 20:56'
 labels:
   - enhancement
   - refactor
@@ -48,10 +50,21 @@ Create the foundational abstraction layer for configurable ID prefixes. This is 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 PrefixConfig interface defined with task and draft fields
-- [ ] #2 Helper functions created: normalizeId, extractIdNumber, buildGlobPattern, buildIdRegex
-- [ ] #3 Default config returns { task: "task", draft: "draft" }
-- [ ] #4 Config loads from backlog/config.yml with fallback to defaults
-- [ ] #5 Unit tests cover all helper functions
-- [ ] #6 JSDoc documentation added for all exports
+- [x] #1 PrefixConfig interface defined with task and draft fields
+- [x] #2 Helper functions created: normalizeId, extractIdNumber, buildGlobPattern, buildIdRegex
+- [x] #3 Default config returns { task: "task", draft: "draft" }
+- [x] #4 Config loads from backlog/config.yml with fallback to defaults
+- [x] #5 Unit tests cover all helper functions
+- [x] #6 JSDoc documentation added for all exports
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Completed implementation:
+- Added PrefixConfig interface to src/types/index.ts
+- Added prefixes field to BacklogConfig
+- Created src/utils/prefix-config.ts with all helper functions
+- Created src/test/prefix-config.test.ts with 52 unit tests
+- All tests pass, TypeScript compiles
+<!-- SECTION:NOTES:END -->
