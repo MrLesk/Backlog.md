@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-12-16 20:18'
-updated_date: '2026-01-03 20:48'
+updated_date: '2026-01-03 21:10'
 labels:
   - enhancement
   - refactor
@@ -93,3 +93,45 @@ task-345.01 (PrefixConfig)
 ### Related GitHub Issues
 - #392 - Jira sync (will benefit from custom prefixes)
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Progress as of 2026-01-03
+
+**Completed:**
+- task-345.01 (PrefixConfig abstraction) - DONE
+- Created 8 subtasks total (345.01-345.08)
+- Branch: `tasks/task-345-draft-prefix`
+- Commit: `13dd3e7`
+
+**Next steps:**
+- task-345.02 (ID generation) or task-345.03 (file system ops)
+- Both depend only on 345.01 which is done
+- task-345.08 (migration) was added per user request
+
+**Key files created:**
+- `src/utils/prefix-config.ts` - Core helpers
+- `src/test/prefix-config.test.ts` - 52 tests
+
+## Notes for Future Self
+
+**Key design decisions:**
+1. NO backward compatibility for drafts - breaking change is OK (user confirmed)
+2. Separate ID counters for tasks vs drafts (draft-5 promoted → task-N, not task-5)
+3. `src/utils/prefix-config.ts` has ALL the helpers you need - use them!
+
+**Watch out for:**
+- ~500 hardcoded `task-` references in tests - update systematically
+- `normalizeTaskId()` in `task-path.ts` will conflict with new `normalizeId()` - refactor to use new one
+- UI components filter with `.startsWith("task-")` - need prefix-aware check
+
+**Testing strategy:**
+- Run `bun test src/test/prefix-config.test.ts` first (fast, 52 tests)
+- Then `bunx tsc --noEmit` for type checking
+- Full suite: `CLAUDECODE=1 bun test --timeout 180000`
+
+**Don't forget:**
+- task-345.08 (migration) must run AFTER 345.03 (file system ops)
+- Each subtask includes its own tests - don't batch them
+<!-- SECTION:NOTES:END -->
