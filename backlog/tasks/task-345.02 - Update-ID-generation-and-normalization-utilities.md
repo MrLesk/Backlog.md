@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-03 20:43'
-updated_date: '2026-01-03 22:08'
+updated_date: '2026-01-04 22:16'
 labels:
   - enhancement
   - refactor
@@ -101,4 +101,74 @@ Refactor ID generation and normalization to use the PrefixConfig abstraction.
 - **task-345.03**: File system operations need updating (saveDraft, loadDraft, etc.) to use draft- prefix
 - CLI draft create has TODO comment to switch to EntityType.Draft when 345.03 is complete
 - Current draft creation still uses task- prefix until file system operations are updated
+
+## Session 2 - Completing Uppercase ID Implementation
+
+### Context
+Continued from previous session where ID generation/normalization was updated. This session fixed all failing tests after the uppercase ID change.
+
+### Key Issue Discovered
+The `normalizeId()` function was only uppercasing the prefix ("TASK-") but not the body. For ID "task-accessor", it produced "TASK-accessor" instead of "TASK-ACCESSOR".
+
+### Fixes Applied
+
+1. **normalizeId() in prefix-config.ts**
+   - Changed from: `return \`${upperPrefix}-${body}\``
+   - Changed to: `return \`${upperPrefix}-${body.toUpperCase()}\``
+   - Now entire ID is uppercase: TASK-123, TASK-ACCESSOR, TASK-DRAFT
+
+2. **Search Service (search-service.ts)**
+   - Made `parseTaskIdSegments()` case-insensitive by lowercasing input
+   - Updated `createTaskIdVariants()` to:
+     - Use lowercase for prefix matching
+     - Add individual numeric segments as variants (for short-query matching)
+     - Include both original and lowercased ID forms
+   - This allows searching "7" to find "TASK-0007"
+
+3. **File Operations (operations.ts)**
+   - `saveTask()` normalizes task.id and task.parentTaskId to uppercase before serialization
+   - Uses `idForFilename()` for lowercase filename: `task-123 - Title.md`
+   - Same pattern for `saveDraft()`
+
+4. **Path Resolution (task-path.ts)**
+   - `getTaskPath()`, `getDraftPath()`, `getTaskFilename()` use `idForFilename()` for filename matching
+   - Pattern: files stored as lowercase, IDs returned as uppercase
+
+5. **Core Operations (backlog.ts)**
+   - Commit messages use `normalizeTaskId()` for uppercase: "backlog: Archive task TASK-123"
+   - `reorderTask()` normalizes taskId and orderedTaskIds at method start
+
+### Test Files Updated (to expect uppercase IDs)
+- board-loading.test.ts: TASK-1, TASK-2, TASK-3, TASK-4
+- cli-incrementing-ids.test.ts: TASK-1 through TASK-10
+- cli-parent-filter.test.ts: TASK-1.1, TASK-1.2, TASK-2
+- core.test.ts: TASK-DRAFT, TASK-ACCESSOR, TASK-1 through TASK-5
+- id-generation.test.ts: TASK-1 through TASK-7, TASK-5.1
+- mcp-task-complete.test.ts: TASK-1
+- mcp-tasks.test.ts: TASK-1, TASK-2
+- offline-integration.test.ts: TASK-1, TASK-2
+- parent-id-normalization.test.ts: TASK-123
+- prefix-config.test.ts: TASK-123, JIRA-456, etc.
+- reorder-utils.test.ts: TASK-1, TASK-2, TASK-3
+- search-service.test.ts: TASK-1, TASK-2, TASK-3
+- server-search-endpoint.test.ts: TASK-0007, TASK-0008
+- task-path.test.ts: TASK-1, TASK-123
+
+### Commit
+```
+993d050 TASK-345.02 - Implement uppercase IDs with lowercase filename prefixes
+```
+
+### Design Pattern Summary
+- **Canonical ID format**: Uppercase (TASK-123, DRAFT-5, TASK-ACCESSOR)
+- **Filename format**: Lowercase prefix (task-123 - Title.md, draft-5 - Title.md)
+- **Conversion helpers**:
+  - `normalizeId(id, prefix)` → uppercase canonical ID
+  - `idForFilename(id)` → lowercase for filenames
+  - `normalizeTaskId(id)` → convenience wrapper using "task" prefix
+
+### Verification
+- All tests pass (exit code 0)
+- TypeScript compiles without errors
+- Biome lint/format checks pass
 <!-- SECTION:NOTES:END -->
