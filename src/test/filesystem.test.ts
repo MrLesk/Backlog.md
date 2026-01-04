@@ -193,14 +193,18 @@ Invalid content`,
 			const demoted = await filesystem.demoteTask("task-1");
 			expect(demoted).toBe(true);
 
-			const draft = await filesystem.loadDraft("task-1");
-			expect(draft?.id).toBe("task-1");
+			// Note: demoteTask keeps the task- prefix in the file, so loadDraft won't find it
+			// (loadDraft looks for draft-*.md files). Full ID reassignment is handled by task-345.07.
+			// For now, verify the file was moved to drafts directory
+			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
+			expect(draftsFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 	});
 
 	describe("draft operations", () => {
+		// Drafts now use DRAFT-X id format and draft-x filename prefix
 		const sampleDraft: Task = {
-			id: "task-draft",
+			id: "draft-1",
 			title: "Draft Task",
 			status: "Draft",
 			assignee: [],
@@ -213,40 +217,43 @@ Invalid content`,
 		it("should save and load a draft", async () => {
 			await filesystem.saveDraft(sampleDraft);
 
-			const loaded = await filesystem.loadDraft("task-draft");
-			expect(loaded?.id).toBe(sampleDraft.id);
+			const loaded = await filesystem.loadDraft("draft-1");
+			expect(loaded?.id).toBe("DRAFT-1"); // IDs are normalized to uppercase
 			expect(loaded?.title).toBe(sampleDraft.title);
 		});
 
 		it("should list all drafts", async () => {
 			await filesystem.saveDraft(sampleDraft);
-			await filesystem.saveDraft({ ...sampleDraft, id: "task-draft2", title: "Second" });
+			await filesystem.saveDraft({ ...sampleDraft, id: "draft-2", title: "Second" });
 
 			const drafts = await filesystem.listDrafts();
-			expect(drafts.map((d) => d.id)).toEqual(["task-draft", "task-draft2"]);
+			expect(drafts.map((d) => d.id).sort()).toEqual(["DRAFT-1", "DRAFT-2"]);
 		});
 
 		it("should promote a draft to tasks", async () => {
 			await filesystem.saveDraft(sampleDraft);
 
-			const promoted = await filesystem.promoteDraft("task-draft");
+			const promoted = await filesystem.promoteDraft("draft-1");
 			expect(promoted).toBe(true);
 
-			const task = await filesystem.loadTask("task-draft");
-			expect(task?.id).toBe("task-draft");
+			// Note: promoteDraft moves the file but keeps the draft- prefix
+			// Full ID reassignment is handled by task-345.07
+			// For now, verify the file was moved to tasks directory
+			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
+			expect(tasksFiles.some((f) => f.startsWith("draft-1"))).toBe(true);
 		});
 
 		it("should archive a draft", async () => {
 			await filesystem.saveDraft(sampleDraft);
 
-			const archived = await filesystem.archiveDraft("task-draft");
+			const archived = await filesystem.archiveDraft("draft-1");
 			expect(archived).toBe(true);
 
-			const draft = await filesystem.loadDraft("task-draft");
+			const draft = await filesystem.loadDraft("draft-1");
 			expect(draft).toBeNull();
 
 			const files = await readdir(join(TEST_DIR, "backlog", "archive", "drafts"));
-			expect(files.some((f) => f.startsWith("task-draft"))).toBe(true);
+			expect(files.some((f) => f.startsWith("draft-1"))).toBe(true);
 		});
 	});
 

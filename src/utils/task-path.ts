@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
-import { buildFilenameIdRegex, idForFilename, normalizeId } from "./prefix-config.ts";
+import { buildFilenameIdRegex, buildGlobPattern, idForFilename, normalizeId } from "./prefix-config.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -143,21 +143,80 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 	}
 }
 
+/** Default prefix for drafts */
+const DEFAULT_DRAFT_PREFIX = "draft";
+
+/**
+ * Normalize a draft ID by ensuring the draft prefix is present (uppercase).
+ */
+function normalizeDraftId(draftId: string): string {
+	return normalizeId(draftId, DEFAULT_DRAFT_PREFIX);
+}
+
+/**
+ * Checks if an input ID matches a filename loosely for drafts.
+ */
+function draftIdsMatchLoosely(inputId: string, filename: string): boolean {
+	const candidate = extractDraftIdFromFilename(filename);
+	if (!candidate) return false;
+	return draftIdsEqual(inputId, candidate);
+}
+
+/**
+ * Extracts the draft ID from a filename.
+ */
+function extractDraftIdFromFilename(filename: string): string | null {
+	const regex = buildFilenameIdRegex(DEFAULT_DRAFT_PREFIX);
+	const match = filename.match(regex);
+	if (!match || !match[1]) return null;
+	return normalizeDraftId(`${DEFAULT_DRAFT_PREFIX}-${match[1]}`);
+}
+
+/**
+ * Compares two draft IDs for equality.
+ */
+function draftIdsEqual(left: string, right: string): boolean {
+	const leftBody = extractDraftBody(left);
+	const rightBody = extractDraftBody(right);
+
+	if (leftBody && rightBody) {
+		const leftSegs = leftBody.split(".").map((seg) => Number.parseInt(seg, 10));
+		const rightSegs = rightBody.split(".").map((seg) => Number.parseInt(seg, 10));
+		if (leftSegs.length !== rightSegs.length) {
+			return false;
+		}
+		return leftSegs.every((value, index) => value === rightSegs[index]);
+	}
+
+	return normalizeDraftId(left).toLowerCase() === normalizeDraftId(right).toLowerCase();
+}
+
+/**
+ * Extracts the body from a draft ID.
+ */
+function extractDraftBody(value: string): string | null {
+	const trimmed = value.trim();
+	if (trimmed === "") return "";
+	const prefixPattern = new RegExp(`^(?:${escapeRegex(DEFAULT_DRAFT_PREFIX)}-)?([0-9]+(?:\\.[0-9]+)*)$`, "i");
+	const match = trimmed.match(prefixPattern);
+	return match?.[1] ?? null;
+}
+
 /**
  * Get the file path for a draft by ID
  */
-export async function getDraftPath(taskId: string, core: Core): Promise<string | null> {
+export async function getDraftPath(draftId: string, core: Core): Promise<string | null> {
 	try {
 		const draftsDir = await core.filesystem.getDraftsDir();
-		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: draftsDir }));
-		const normalizedId = normalizeTaskId(taskId);
+		const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir }));
+		const normalizedId = normalizeDraftId(draftId);
 		// Use lowercase ID for filename matching (filenames use lowercase prefix)
 		const filenameId = idForFilename(normalizedId);
 		// First exact match
 		let draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
 		// Fallback to loose numeric match ignoring leading zeros
 		if (!draftFile) {
-			draftFile = files.find((f) => idsMatchLoosely(taskId, f));
+			draftFile = files.find((f) => draftIdsMatchLoosely(draftId, f));
 		}
 
 		if (draftFile) {

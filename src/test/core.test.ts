@@ -342,8 +342,9 @@ describe("Core", () => {
 	});
 
 	describe("draft operations", () => {
+		// Drafts now use DRAFT-X id format and draft-x filename prefix
 		const sampleDraft: Task = {
-			id: "task-draft",
+			id: "draft-1",
 			title: "Draft Task",
 			status: "Draft",
 			assignee: [],
@@ -360,15 +361,15 @@ describe("Core", () => {
 		it("should create draft without auto-commit", async () => {
 			await core.createDraft(sampleDraft, false);
 
-			const loaded = await core.filesystem.loadDraft("task-draft");
-			expect(loaded?.id).toBe("TASK-DRAFT");
+			const loaded = await core.filesystem.loadDraft("draft-1");
+			expect(loaded?.id).toBe("DRAFT-1");
 		});
 
 		it("should create draft with auto-commit", async () => {
 			await core.createDraft(sampleDraft, true);
 
-			const loaded = await core.filesystem.loadDraft("task-draft");
-			expect(loaded?.id).toBe("TASK-DRAFT");
+			const loaded = await core.filesystem.loadDraft("draft-1");
+			expect(loaded?.id).toBe("DRAFT-1");
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toBeDefined();
@@ -378,42 +379,42 @@ describe("Core", () => {
 		it("should promote draft with auto-commit", async () => {
 			await core.createDraft(sampleDraft, true);
 
-			const promoted = await core.promoteDraft("task-draft", true);
+			const promoted = await core.promoteDraft("draft-1", true);
 			expect(promoted).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Promote draft TASK-DRAFT");
+			expect(lastCommit).toContain("backlog: Promote draft DRAFT-1");
 		});
 
 		it("should archive draft with auto-commit", async () => {
 			await core.createDraft(sampleDraft, true);
 
-			const archived = await core.archiveDraft("task-draft", true);
+			const archived = await core.archiveDraft("draft-1", true);
 			expect(archived).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Archive draft TASK-DRAFT");
+			expect(lastCommit).toContain("backlog: Archive draft DRAFT-1");
 		});
 
 		it("should normalize assignee for string and array inputs", async () => {
 			const draftString = {
 				...sampleDraft,
-				id: "task-draft-1",
+				id: "draft-2",
 				title: "Draft String",
 				assignee: "@erin",
 			} as unknown as Task;
 			await core.createDraft(draftString, false);
-			const loadedString = await core.filesystem.loadDraft("task-draft-1");
+			const loadedString = await core.filesystem.loadDraft("draft-2");
 			expect(loadedString?.assignee).toEqual(["@erin"]);
 
 			const draftArray: Task = {
 				...sampleDraft,
-				id: "task-draft-2",
+				id: "draft-3",
 				title: "Draft Array",
 				assignee: ["@frank"],
 			};
 			await core.createDraft(draftArray, false);
-			const loadedArray = await core.filesystem.loadDraft("task-draft-2");
+			const loadedArray = await core.filesystem.loadDraft("draft-3");
 			expect(loadedArray?.assignee).toEqual(["@frank"]);
 		});
 	});

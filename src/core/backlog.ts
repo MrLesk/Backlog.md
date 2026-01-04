@@ -19,7 +19,7 @@ import {
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
-import { buildIdRegex, getPrefixForType } from "../utils/prefix-config.ts";
+import { buildIdRegex, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -512,7 +512,10 @@ export class Core {
 		},
 		autoCommit?: boolean,
 	): Promise<Task> {
-		const id = await this.generateNextId(EntityType.Task, taskData.parentTaskId);
+		// Determine entity type before generating ID - drafts get DRAFT-X, tasks get TASK-X
+		const isDraft = taskData.status?.toLowerCase() === "draft";
+		const entityType = isDraft ? EntityType.Draft : EntityType.Task;
+		const id = await this.generateNextId(entityType, isDraft ? undefined : taskData.parentTaskId);
 
 		const task: Task = {
 			id,
@@ -538,8 +541,8 @@ export class Core {
 			...(typeof taskData.implementationNotes === "string" && { implementationNotes: taskData.implementationNotes }),
 		};
 
-		// Check if this should be a draft based on status
-		if (task.status && task.status.toLowerCase() === "draft") {
+		// Save as draft or task based on status
+		if (isDraft) {
 			await this.createDraft(task, autoCommit);
 		} else {
 			await this.createTask(task, autoCommit);
@@ -553,7 +556,13 @@ export class Core {
 			throw new Error("Title is required to create a task.");
 		}
 
-		const id = await this.generateNextId(EntityType.Task, input.parentTaskId);
+		// Determine if this is a draft BEFORE generating the ID
+		const requestedStatus = input.status?.trim();
+		const isDraft = requestedStatus?.toLowerCase() === "draft";
+
+		// Generate ID with appropriate entity type - drafts get DRAFT-X, tasks get TASK-X
+		const entityType = isDraft ? EntityType.Draft : EntityType.Task;
+		const id = await this.generateNextId(entityType, isDraft ? undefined : input.parentTaskId);
 
 		const normalizedLabels = normalizeStringList(input.labels) ?? [];
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
@@ -569,10 +578,9 @@ export class Core {
 			);
 		}
 
-		const requestedStatus = input.status?.trim();
 		let status = "";
 		if (requestedStatus) {
-			if (requestedStatus.toLowerCase() === "draft") {
+			if (isDraft) {
 				status = "Draft";
 			} else {
 				status = await this.requireCanonicalStatus(requestedStatus);
@@ -613,10 +621,10 @@ export class Core {
 			...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
 		};
 
-		const isDraft = (status || "").toLowerCase() === "draft";
 		const filePath = isDraft ? await this.createDraft(task, autoCommit) : await this.createTask(task, autoCommit);
 
-		const savedTask = await this.fs.loadTask(id);
+		// Load the saved task/draft to return updated data
+		const savedTask = isDraft ? await this.fs.loadDraft(id) : await this.fs.loadTask(id);
 		return { task: savedTask ?? task, filePath };
 	}
 
@@ -1281,25 +1289,25 @@ export class Core {
 		});
 	}
 
-	async archiveDraft(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.archiveDraft(taskId);
+	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		const success = await this.fs.archiveDraft(draftId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Archive draft ${normalizeTaskId(taskId)}`);
+			await this.git.commitChanges(`backlog: Archive draft ${normalizeId(draftId, "draft")}`);
 		}
 
 		return success;
 	}
 
-	async promoteDraft(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.promoteDraft(taskId);
+	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		const success = await this.fs.promoteDraft(draftId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${normalizeTaskId(taskId)}`);
+			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draftId, "draft")}`);
 		}
 
 		return success;

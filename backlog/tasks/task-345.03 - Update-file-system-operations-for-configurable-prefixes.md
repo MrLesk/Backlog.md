@@ -1,11 +1,11 @@
 ---
 id: task-345.03
 title: Update file system operations for configurable prefixes
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-03 20:43'
-updated_date: '2026-01-04 22:19'
+updated_date: '2026-01-04 23:13'
 labels:
   - enhancement
   - refactor
@@ -51,13 +51,13 @@ Existing drafts with `task-` prefix will no longer appear in draft listings. Use
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 listTasks uses configured task prefix glob pattern
-- [ ] #2 listDrafts scans for draft-*.md only (no backward compat)
-- [ ] #3 saveDraft creates files with draft- prefix
-- [ ] #4 getTaskPath uses configured task prefix
-- [ ] #5 getDraftPath finds draft- prefixed files only
-- [ ] #6 Tests verify custom prefix file operations
-- [ ] #7 Breaking change documented in release notes
+- [x] #1 listTasks uses configured task prefix glob pattern
+- [x] #2 listDrafts scans for draft-*.md only (no backward compat)
+- [x] #3 saveDraft creates files with draft- prefix
+- [x] #4 getTaskPath uses configured task prefix
+- [x] #5 getDraftPath finds draft- prefixed files only
+- [x] #6 Tests verify custom prefix file operations
+- [x] #7 Breaking change documented in release notes
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -174,4 +174,33 @@ CLAUDECODE=1 bun test --timeout 180000 # Full suite
 
 ### Breaking Change Notice
 Existing drafts with `task-` prefix will NOT be found after this change. This is intentional per user confirmation. Document in release notes.
+
+## Breaking Change Documentation
+
+### Draft ID Prefix Change
+
+**Breaking Change:** Drafts now use `draft-` prefix instead of `task-` prefix.
+
+**Impact:**
+- Draft IDs are now `DRAFT-X` (uppercase) instead of `TASK-X`
+- Draft filenames are now `draft-x - Title.md` (lowercase) instead of `task-x - Title.md`
+- `listDrafts()` only finds `draft-*.md` files
+- Existing drafts with `task-` prefix will NOT be found
+
+**Migration Required:**
+Users must manually rename existing draft files from `task-*.md` to `draft-*.md` format, or recreate them. A migration utility will be provided in task-345.08.
+
+**Note on Demote/Promote:**
+The `demoteTask()` operation moves files to drafts/ but keeps the `task-` prefix. Similarly, `promoteDraft()` moves files to tasks/ but keeps the `draft-` prefix. Full ID reassignment during promote/demote is handled by task-345.07.
+
+## Implementation Summary
+
+1. Updated `listDrafts()` to scan for `draft-*.md` pattern
+2. Updated `saveDraft()` to normalize IDs with draft prefix
+3. Updated `loadDraft()` to find draft-prefixed files
+4. Updated `archiveDraft()` and `promoteDraft()` to find draft-prefixed files
+5. Updated `getDraftPath()` in task-path.ts for draft prefix
+6. Updated `createTaskFromData()` and `createTaskFromInput()` to use EntityType.Draft
+7. Updated Core commit messages to use proper draft ID normalization
+8. Updated all draft-related tests to use DRAFT-X format
 <!-- SECTION:NOTES:END -->
