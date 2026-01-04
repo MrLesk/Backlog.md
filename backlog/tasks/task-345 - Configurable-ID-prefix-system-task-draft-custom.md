@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-12-16 20:18'
-updated_date: '2026-01-04 22:17'
+updated_date: '2026-01-04 22:19'
 labels:
   - enhancement
   - refactor
@@ -156,4 +156,47 @@ task-345.01 (PrefixConfig)
 - File operations already use idForFilename() - just need draft prefix support
 
 **Branch:** tasks/task-345-draft-prefix (4 commits ahead of origin)
+
+## Quick Reference - Available Helpers
+
+**From `src/utils/prefix-config.ts`:**
+```typescript
+import {
+  normalizeId,           // (id, prefix) → "TASK-123"
+  idForFilename,         // (id) → "task-123" (lowercase)
+  buildGlobPattern,      // (prefix) → "prefix-*.md"
+  buildIdRegex,          // (prefix) → /^prefix-(\d+)/i
+  buildFilenameIdRegex,  // (prefix) → for filename parsing
+  extractIdBody,         // (id, prefix) → "123" (without prefix)
+  extractIdNumbers,      // (id, prefix) → [5, 2, 1] for "task-5.2.1"
+  hasPrefix,             // (id, prefix) → boolean
+  idsEqual,              // (id1, id2, prefix) → boolean
+  generateNextId,        // (existingIds, prefix) → "PREFIX-N"
+  generateNextSubtaskId, // (existingIds, parentId, prefix) → "PREFIX-5.3"
+  getPrefixForType,      // (EntityType, config?) → prefix string
+  DEFAULT_PREFIX_CONFIG, // { task: "task", draft: "draft" }
+} from "../utils/prefix-config.ts";
+```
+
+**From `src/utils/task-path.ts`:**
+```typescript
+import {
+  normalizeTaskId,  // (id, prefix?) → "TASK-123" (convenience wrapper)
+  taskIdsEqual,     // (left, right, prefix?) → boolean
+  extractTaskBody,  // (value, prefix?) → body without prefix
+  getTaskPath,      // async (taskId, core?) → file path or null
+  getDraftPath,     // async (draftId, core?) → file path or null  
+  getTaskFilename,  // async (taskId, core?) → filename or null
+} from "../utils/task-path.ts";
+```
+
+**EntityType enum** (`src/types/index.ts`):
+```typescript
+export enum EntityType {
+  Task = "task",
+  Draft = "draft",
+  Document = "document",
+  Decision = "decision",
+}
+```
 <!-- SECTION:NOTES:END -->
