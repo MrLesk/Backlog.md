@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-12-16 20:18'
-updated_date: '2026-01-03 21:10'
+updated_date: '2026-01-04 22:17'
 labels:
   - enhancement
   - refactor
@@ -134,4 +134,26 @@ task-345.01 (PrefixConfig)
 **Don't forget:**
 - task-345.08 (migration) must run AFTER 345.03 (file system ops)
 - Each subtask includes its own tests - don't batch them
+
+## Session 2 Update (2026-01-04)
+
+**Completed:** task-345.02 (ID generation and normalization)
+
+**Key implementation details:**
+- IDs are now UPPERCASE: TASK-123, TASK-ACCESSOR, DRAFT-5
+- Filenames use lowercase prefix: task-123 - Title.md
+- `normalizeId(id, prefix)` → uppercase canonical ID
+- `idForFilename(id)` → lowercase for filenames
+- Search service updated for case-insensitive ID matching
+
+**Commits:**
+- `993d050` - TASK-345.02 - Implement uppercase IDs with lowercase filename prefixes
+- `20a523c` - TASK-345.02 - Add implementation notes for session 2
+
+**Next task to work on:** task-345.03 (File system operations)
+- Need to update saveDraft/loadDraft to use draft- prefix
+- Use EntityType.Draft with generateNextId()
+- File operations already use idForFilename() - just need draft prefix support
+
+**Branch:** tasks/task-345-draft-prefix (4 commits ahead of origin)
 <!-- SECTION:NOTES:END -->
