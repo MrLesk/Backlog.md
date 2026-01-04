@@ -1,4 +1,4 @@
-import type { PrefixConfig } from "../types/index.ts";
+import { type BacklogConfig, EntityType, type PrefixConfig } from "../types/index.ts";
 
 /**
  * Default prefix configuration.
@@ -32,26 +32,27 @@ export function mergePrefixConfig(config?: Partial<PrefixConfig>): PrefixConfig 
 }
 
 /**
- * Normalizes an ID to ensure it has the correct prefix.
- * If the ID already has the prefix (case-insensitive), it normalizes the case.
- * If the ID is numeric only, it adds the prefix.
+ * Normalizes an ID to ensure it has the correct prefix (uppercase).
+ * If the ID already has the prefix (case-insensitive), it normalizes to uppercase.
+ * If the ID is numeric only, it adds the uppercase prefix.
  *
  * @param id - The ID to normalize (e.g., "123", "task-123", "TASK-123")
  * @param prefix - The prefix to use (e.g., "task", "draft", "JIRA")
- * @returns Normalized ID with prefix (e.g., "task-123")
+ * @returns Normalized ID with uppercase prefix (e.g., "TASK-123")
  *
  * @example
- * normalizeId("123", "task") // => "task-123"
- * normalizeId("task-123", "task") // => "task-123"
- * normalizeId("TASK-123", "task") // => "task-123"
- * normalizeId("JIRA-456", "JIRA") // => "JIRA-456"
+ * normalizeId("123", "task") // => "TASK-123"
+ * normalizeId("task-123", "task") // => "TASK-123"
+ * normalizeId("TASK-123", "task") // => "TASK-123"
+ * normalizeId("jira-456", "JIRA") // => "JIRA-456"
  */
 export function normalizeId(id: string, prefix: string): string {
 	const trimmed = id.trim();
+	const upperPrefix = prefix.toUpperCase();
 	const prefixPattern = new RegExp(`^${escapeRegex(prefix)}-(.+)$`, "i");
 	const match = trimmed.match(prefixPattern);
-	const body = match ? match[1] : trimmed;
-	return `${prefix}-${body}`;
+	const body = match?.[1] ?? trimmed;
+	return `${upperPrefix}-${body.toUpperCase()}`;
 }
 
 /**
@@ -188,6 +189,7 @@ export function idsEqual(id1: string, id2: string, prefix: string): boolean {
  */
 export function generateNextId(existingIds: string[], prefix: string, zeroPadding?: number): string {
 	const regex = buildIdRegex(prefix);
+	const upperPrefix = prefix.toUpperCase();
 	let max = 0;
 
 	for (const id of existingIds) {
@@ -207,10 +209,10 @@ export function generateNextId(existingIds: string[], prefix: string, zeroPaddin
 	const nextNum = max + 1;
 
 	if (zeroPadding && zeroPadding > 0) {
-		return `${prefix}-${String(nextNum).padStart(zeroPadding, "0")}`;
+		return `${upperPrefix}-${String(nextNum).padStart(zeroPadding, "0")}`;
 	}
 
-	return `${prefix}-${nextNum}`;
+	return `${upperPrefix}-${nextNum}`;
 }
 
 /**
@@ -260,9 +262,54 @@ export function generateNextSubtaskId(
 }
 
 /**
+ * Converts an ID to lowercase format for use in filenames.
+ * IDs are uppercase (TASK-123) but filenames use lowercase (task-123 - Title.md).
+ *
+ * @param id - The ID to convert (e.g., "TASK-123", "DRAFT-5")
+ * @returns Lowercase version for filenames (e.g., "task-123", "draft-5")
+ *
+ * @example
+ * idForFilename("TASK-123") // => "task-123"
+ * idForFilename("DRAFT-5") // => "draft-5"
+ */
+export function idForFilename(id: string): string {
+	return id.toLowerCase();
+}
+
+/**
  * Escapes special regex characters in a string.
  * Used internally to safely build regex patterns from user-provided prefixes.
  */
 function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Gets the prefix for a given entity type.
+ * Only tasks have configurable prefixes (via config); other types use hardcoded prefixes.
+ *
+ * @param type - The entity type
+ * @param config - Optional backlog config (only used for Task type)
+ * @returns The prefix string for the entity type
+ *
+ * @example
+ * getPrefixForType(EntityType.Task) // => "task"
+ * getPrefixForType(EntityType.Task, { prefixes: { task: "JIRA" } }) // => "JIRA"
+ * getPrefixForType(EntityType.Draft) // => "draft"
+ * getPrefixForType(EntityType.Document) // => "doc"
+ * getPrefixForType(EntityType.Decision) // => "decision"
+ */
+export function getPrefixForType(type: EntityType, config?: BacklogConfig): string {
+	switch (type) {
+		case EntityType.Task:
+			return config?.prefixes?.task ?? DEFAULT_PREFIX_CONFIG.task;
+		case EntityType.Draft:
+			return DEFAULT_PREFIX_CONFIG.draft;
+		case EntityType.Document:
+			return "doc";
+		case EntityType.Decision:
+			return "decision";
+		default:
+			return type;
+	}
 }

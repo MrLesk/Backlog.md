@@ -32,6 +32,7 @@ import {
 	type DecisionSearchResult,
 	type Document as DocType,
 	type DocumentSearchResult,
+	EntityType,
 	isLocalEditableTask,
 	type SearchPriorityFilter,
 	type SearchResult,
@@ -1228,7 +1229,7 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await core.generateNextId(options.parent);
+		const id = await core.generateNextId(EntityType.Task, options.parent);
 		const task = buildTaskFromOptions(id, title, options);
 
 		// Normalize and validate status if provided (case-insensitive)
@@ -2129,7 +2130,9 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await core.generateNextId();
+		// TODO: Change to EntityType.Draft when file system operations are updated (task 345.03)
+		// For now, drafts still use task- prefix until saveDraft/loadDraft are updated
+		const id = await core.generateNextId(EntityType.Task);
 		const task = buildTaskFromOptions(id, title, options);
 		const filepath = await core.createDraft(task);
 		console.log(`Created draft ${id}`);

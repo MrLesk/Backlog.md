@@ -83,7 +83,7 @@ describe("SearchService", () => {
 
 		const taskResult = results.find(isTaskResult);
 		expect(taskResult).toBeDefined();
-		expect(taskResult?.task.id).toBe("task-1");
+		expect(taskResult?.task.id).toBe("TASK-1");
 		expect(taskResult?.score).not.toBeNull();
 
 		const docResult = results.find(isDocumentResult);
@@ -122,7 +122,7 @@ describe("SearchService", () => {
 				filters: { status: "In Progress" },
 			})
 			.filter(isTaskResult);
-		expect(statusFiltered.map((result) => result.task.id)).toStrictEqual(["task-1", "task-3"]);
+		expect(statusFiltered.map((result) => result.task.id)).toStrictEqual(["TASK-1", "TASK-3"]);
 
 		const priorityFiltered = search
 			.search({
@@ -131,7 +131,7 @@ describe("SearchService", () => {
 			})
 			.filter(isTaskResult);
 		expect(priorityFiltered).toHaveLength(1);
-		expect(priorityFiltered[0]?.task.id).toBe("task-1");
+		expect(priorityFiltered[0]?.task.id).toBe("TASK-1");
 
 		const combinedFiltered = search
 			.search({
@@ -139,7 +139,7 @@ describe("SearchService", () => {
 				filters: { status: ["In Progress"], priority: ["medium"] },
 			})
 			.filter(isTaskResult);
-		expect(combinedFiltered.map((result) => result.task.id)).toStrictEqual(["task-3"]);
+		expect(combinedFiltered.map((result) => result.task.id)).toStrictEqual(["TASK-3"]);
 	});
 
 	it("filters tasks by labels (requiring all selected labels)", async () => {
@@ -173,7 +173,7 @@ describe("SearchService", () => {
 				filters: { labels: ["ui"] },
 			})
 			.filter(isTaskResult);
-		expect(uiFiltered.map((result) => result.task.id)).toStrictEqual(["task-2"]);
+		expect(uiFiltered.map((result) => result.task.id)).toStrictEqual(["TASK-2"]);
 
 		const anyFiltered = search
 			.search({
@@ -181,7 +181,7 @@ describe("SearchService", () => {
 				filters: { labels: ["ui", "frontend"] },
 			})
 			.filter(isTaskResult);
-		expect(anyFiltered.map((result) => result.task.id)).toStrictEqual(["task-2"]);
+		expect(anyFiltered.map((result) => result.task.id)).toStrictEqual(["TASK-2"]);
 	});
 
 	it("refreshes the index when content changes", async () => {

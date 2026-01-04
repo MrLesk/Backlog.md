@@ -1,5 +1,16 @@
 export type TaskStatus = string;
 
+/**
+ * Entity types in the backlog system.
+ * Used for ID generation and prefix resolution.
+ */
+export enum EntityType {
+	Task = "task",
+	Draft = "draft",
+	Document = "document",
+	Decision = "decision",
+}
+
 // Structured Acceptance Criterion (domain-level)
 export interface AcceptanceCriterion {
 	index: number; // 1-based

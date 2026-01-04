@@ -50,7 +50,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
-		expect(result.stdout.toString()).toContain("Created task task-2");
+		expect(result.stdout.toString()).toContain("Created task TASK-2");
 
 		const task2 = await core.filesystem.loadTask("task-2");
 		expect(task2).toBeDefined();

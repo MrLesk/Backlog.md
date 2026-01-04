@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { type BacklogConfig, EntityType } from "../types/index.ts";
 import {
 	buildFilenameIdRegex,
 	buildGlobPattern,
@@ -9,6 +10,7 @@ import {
 	generateNextId,
 	generateNextSubtaskId,
 	getDefaultPrefixConfig,
+	getPrefixForType,
 	hasPrefix,
 	idsEqual,
 	mergePrefixConfig,
@@ -56,35 +58,36 @@ describe("prefix-config", () => {
 	});
 
 	describe("normalizeId", () => {
-		test("adds prefix to numeric ID", () => {
-			expect(normalizeId("123", "task")).toBe("task-123");
-			expect(normalizeId("456", "draft")).toBe("draft-456");
+		test("adds uppercase prefix to numeric ID", () => {
+			expect(normalizeId("123", "task")).toBe("TASK-123");
+			expect(normalizeId("456", "draft")).toBe("DRAFT-456");
 		});
 
-		test("preserves existing prefix", () => {
-			expect(normalizeId("task-123", "task")).toBe("task-123");
-			expect(normalizeId("draft-456", "draft")).toBe("draft-456");
+		test("normalizes existing prefix to uppercase", () => {
+			expect(normalizeId("task-123", "task")).toBe("TASK-123");
+			expect(normalizeId("draft-456", "draft")).toBe("DRAFT-456");
 		});
 
-		test("normalizes case of prefix", () => {
-			expect(normalizeId("TASK-123", "task")).toBe("task-123");
-			expect(normalizeId("Task-456", "task")).toBe("task-456");
+		test("normalizes mixed case to uppercase", () => {
+			expect(normalizeId("TASK-123", "task")).toBe("TASK-123");
+			expect(normalizeId("Task-456", "task")).toBe("TASK-456");
 		});
 
-		test("works with custom prefixes", () => {
+		test("works with custom prefixes (uppercase output)", () => {
 			expect(normalizeId("789", "JIRA")).toBe("JIRA-789");
 			expect(normalizeId("JIRA-789", "JIRA")).toBe("JIRA-789");
 			expect(normalizeId("jira-789", "JIRA")).toBe("JIRA-789");
+			expect(normalizeId("789", "jira")).toBe("JIRA-789");
 		});
 
 		test("handles hierarchical IDs", () => {
-			expect(normalizeId("5.2.1", "task")).toBe("task-5.2.1");
-			expect(normalizeId("task-5.2.1", "task")).toBe("task-5.2.1");
+			expect(normalizeId("5.2.1", "task")).toBe("TASK-5.2.1");
+			expect(normalizeId("task-5.2.1", "task")).toBe("TASK-5.2.1");
 		});
 
 		test("trims whitespace", () => {
-			expect(normalizeId("  123  ", "task")).toBe("task-123");
-			expect(normalizeId("  task-123  ", "task")).toBe("task-123");
+			expect(normalizeId("  123  ", "task")).toBe("TASK-123");
+			expect(normalizeId("  task-123  ", "task")).toBe("TASK-123");
 		});
 	});
 
@@ -236,50 +239,50 @@ describe("prefix-config", () => {
 	});
 
 	describe("generateNextId", () => {
-		test("generates next ID in sequence", () => {
-			expect(generateNextId(["task-1", "task-2", "task-3"], "task")).toBe("task-4");
+		test("generates next ID in sequence (uppercase)", () => {
+			expect(generateNextId(["task-1", "task-2", "task-3"], "task")).toBe("TASK-4");
 		});
 
 		test("handles gaps in sequence", () => {
-			expect(generateNextId(["task-1", "task-5", "task-10"], "task")).toBe("task-11");
+			expect(generateNextId(["task-1", "task-5", "task-10"], "task")).toBe("TASK-11");
 		});
 
-		test("returns task-1 for empty list", () => {
-			expect(generateNextId([], "task")).toBe("task-1");
+		test("returns TASK-1 for empty list", () => {
+			expect(generateNextId([], "task")).toBe("TASK-1");
 		});
 
 		test("ignores subtasks when finding max", () => {
-			expect(generateNextId(["task-1", "task-1.1", "task-1.2", "task-2"], "task")).toBe("task-3");
+			expect(generateNextId(["task-1", "task-1.1", "task-1.2", "task-2"], "task")).toBe("TASK-3");
 		});
 
 		test("handles zero padding", () => {
-			expect(generateNextId(["task-001", "task-002"], "task", 3)).toBe("task-003");
+			expect(generateNextId(["task-001", "task-002"], "task", 3)).toBe("TASK-003");
 		});
 
-		test("works with custom prefixes", () => {
+		test("works with custom prefixes (uppercase)", () => {
 			expect(generateNextId(["JIRA-100", "JIRA-101"], "JIRA")).toBe("JIRA-102");
 		});
 
 		test("ignores IDs with wrong prefix", () => {
-			expect(generateNextId(["task-5", "draft-10", "task-3"], "task")).toBe("task-6");
+			expect(generateNextId(["task-5", "draft-10", "task-3"], "task")).toBe("TASK-6");
 		});
 	});
 
 	describe("generateNextSubtaskId", () => {
-		test("generates next subtask ID", () => {
-			expect(generateNextSubtaskId(["task-5", "task-5.1", "task-5.2"], "task-5", "task")).toBe("task-5.3");
+		test("generates next subtask ID (uppercase)", () => {
+			expect(generateNextSubtaskId(["task-5", "task-5.1", "task-5.2"], "task-5", "task")).toBe("TASK-5.3");
 		});
 
 		test("returns .1 for first subtask", () => {
-			expect(generateNextSubtaskId(["task-5"], "task-5", "task")).toBe("task-5.1");
+			expect(generateNextSubtaskId(["task-5"], "task-5", "task")).toBe("TASK-5.1");
 		});
 
 		test("handles gaps in subtask sequence", () => {
-			expect(generateNextSubtaskId(["task-5", "task-5.1", "task-5.5"], "task-5", "task")).toBe("task-5.6");
+			expect(generateNextSubtaskId(["task-5", "task-5.1", "task-5.5"], "task-5", "task")).toBe("TASK-5.6");
 		});
 
 		test("handles zero padding", () => {
-			expect(generateNextSubtaskId(["task-5", "task-5.01"], "task-5", "task", 2)).toBe("task-5.02");
+			expect(generateNextSubtaskId(["task-5", "task-5.01"], "task-5", "task", 2)).toBe("TASK-5.02");
 		});
 
 		test("works with custom prefixes", () => {
@@ -287,7 +290,41 @@ describe("prefix-config", () => {
 		});
 
 		test("handles unnormalized parent ID", () => {
-			expect(generateNextSubtaskId(["task-5", "task-5.1"], "5", "task")).toBe("task-5.2");
+			expect(generateNextSubtaskId(["task-5", "task-5.1"], "5", "task")).toBe("TASK-5.2");
+		});
+	});
+
+	describe("getPrefixForType", () => {
+		test("returns default task prefix without config", () => {
+			expect(getPrefixForType(EntityType.Task)).toBe("task");
+		});
+
+		test("returns configured task prefix", () => {
+			const config = { prefixes: { task: "JIRA", draft: "draft" } } as BacklogConfig;
+			expect(getPrefixForType(EntityType.Task, config)).toBe("JIRA");
+		});
+
+		test("returns default task prefix when config has no prefixes", () => {
+			const config = {} as BacklogConfig;
+			expect(getPrefixForType(EntityType.Task, config)).toBe("task");
+		});
+
+		test("returns hardcoded draft prefix (not configurable)", () => {
+			expect(getPrefixForType(EntityType.Draft)).toBe("draft");
+		});
+
+		test("draft prefix ignores config", () => {
+			const config = { prefixes: { task: "JIRA", draft: "CUSTOM" } } as BacklogConfig;
+			// Draft prefix is hardcoded, config is ignored
+			expect(getPrefixForType(EntityType.Draft, config)).toBe("draft");
+		});
+
+		test("returns doc prefix for Document type", () => {
+			expect(getPrefixForType(EntityType.Document)).toBe("doc");
+		});
+
+		test("returns decision prefix for Decision type", () => {
+			expect(getPrefixForType(EntityType.Decision)).toBe("decision");
 		});
 	});
 });

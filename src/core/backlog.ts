@@ -2,22 +2,24 @@ import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
-import type {
-	AcceptanceCriterion,
-	BacklogConfig,
-	Decision,
-	Document,
-	SearchFilters,
-	Sequence,
-	Task,
-	TaskCreateInput,
-	TaskListFilter,
-	TaskUpdateInput,
+import {
+	type AcceptanceCriterion,
+	type BacklogConfig,
+	type Decision,
+	type Document,
+	EntityType,
+	isLocalEditableTask,
+	type SearchFilters,
+	type Sequence,
+	type Task,
+	type TaskCreateInput,
+	type TaskListFilter,
+	type TaskUpdateInput,
 } from "../types/index.ts";
-import { isLocalEditableTask } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
+import { buildIdRegex, getPrefixForType } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -397,46 +399,33 @@ export class Core {
 	}
 
 	// ID generation
-	async generateNextId(parent?: string): Promise<string> {
+	/**
+	 * Generates the next ID for a given entity type.
+	 *
+	 * @param type - The entity type (Task, Draft, Document, Decision). Defaults to Task.
+	 * @param parent - Optional parent ID for subtask generation (only applicable for tasks).
+	 * @returns The next available ID (e.g., "task-42", "draft-5", "doc-3")
+	 *
+	 * Folder scanning by type:
+	 * - Task: /tasks, /completed, cross-branch (if enabled), remote (if enabled)
+	 * - Draft: /drafts only
+	 * - Document: /documents only
+	 * - Decision: /decisions only
+	 */
+	async generateNextId(type: EntityType = EntityType.Task, parent?: string): Promise<string> {
 		const config = await this.fs.loadConfig();
+		const prefix = getPrefixForType(type, config ?? undefined);
 
-		// Use ContentStore for all tasks (local + cross-branch + remote)
-		// This is the single source of truth for task IDs
-		const store = await this.getContentStore();
-		const tasks = store.getTasks();
-
-		// Also include drafts (which aren't in ContentStore yet)
-		const drafts = await this.fs.listDrafts();
-
-		// CRITICAL: Include archived and completed tasks to prevent ID reuse
-		// When all active tasks are archived/completed, we must still scan these
-		// directories to find the highest ID and continue from there.
-		// Without this, task IDs reset to task-1, causing potential collisions
-		// when tasks are moved back to active state.
-		const archivedTasks = await this.fs.listArchivedTasks();
-		const completedTasks = await this.fs.listCompletedTasks();
-
-		const allIds: string[] = [];
-
-		for (const t of tasks) {
-			allIds.push(t.id);
-		}
-		for (const d of drafts) {
-			allIds.push(d.id);
-		}
-		for (const a of archivedTasks) {
-			allIds.push(a.id);
-		}
-		for (const c of completedTasks) {
-			allIds.push(c.id);
-		}
+		// Collect existing IDs based on entity type
+		const allIds = await this.getExistingIdsForType(type);
 
 		if (parent) {
-			const prefix = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
+			// Subtask generation (only applicable for tasks)
+			const normalizedParent = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
 			let max = 0;
 			for (const id of allIds) {
-				if (id.startsWith(`${prefix}.`)) {
-					const rest = id.slice(prefix.length + 1);
+				if (id.startsWith(`${normalizedParent}.`)) {
+					const rest = id.slice(normalizedParent.length + 1);
 					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
 					if (num > max) max = num;
 				}
@@ -446,17 +435,20 @@ export class Core {
 
 			if (padding && padding > 0) {
 				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
-				return `${prefix}.${paddedSubId}`;
+				return `${normalizedParent}.${paddedSubId}`;
 			}
 
-			return `${prefix}.${nextSubIdNumber}`;
+			return `${normalizedParent}.${nextSubIdNumber}`;
 		}
 
+		// Top-level ID generation using prefix-aware regex
+		const regex = buildIdRegex(prefix);
+		const upperPrefix = prefix.toUpperCase();
 		let max = 0;
 		for (const id of allIds) {
-			const match = id.match(/^task-(\d+)/);
-			if (match) {
-				const num = Number.parseInt(match[1] || "0", 10);
+			const match = id.match(regex);
+			if (match?.[1] && !match[1].includes(".")) {
+				const num = Number.parseInt(match[1], 10);
 				if (num > max) max = num;
 			}
 		}
@@ -465,10 +457,40 @@ export class Core {
 
 		if (padding && padding > 0) {
 			const paddedId = String(nextIdNumber).padStart(padding, "0");
-			return `task-${paddedId}`;
+			return `${upperPrefix}-${paddedId}`;
 		}
 
-		return `task-${nextIdNumber}`;
+		return `${upperPrefix}-${nextIdNumber}`;
+	}
+
+	/**
+	 * Gets all existing IDs for a given entity type.
+	 * Used internally by generateNextId to determine the next available ID.
+	 */
+	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
+		switch (type) {
+			case EntityType.Task: {
+				// Tasks: /tasks + /completed + cross-branch + remote (via ContentStore)
+				const store = await this.getContentStore();
+				const tasks = store.getTasks();
+				const completedTasks = await this.fs.listCompletedTasks();
+				return [...tasks.map((t) => t.id), ...completedTasks.map((c) => c.id)];
+			}
+			case EntityType.Draft: {
+				const drafts = await this.fs.listDrafts();
+				return drafts.map((d) => d.id);
+			}
+			case EntityType.Document: {
+				const documents = await this.fs.listDocuments();
+				return documents.map((d) => d.id);
+			}
+			case EntityType.Decision: {
+				const decisions = await this.fs.listDecisions();
+				return decisions.map((d) => d.id);
+			}
+			default:
+				return [];
+		}
 	}
 
 	// High-level operations that combine filesystem and git
@@ -490,7 +512,7 @@ export class Core {
 		},
 		autoCommit?: boolean,
 	): Promise<Task> {
-		const id = await this.generateNextId(taskData.parentTaskId);
+		const id = await this.generateNextId(EntityType.Task, taskData.parentTaskId);
 
 		const task: Task = {
 			id,
@@ -531,7 +553,7 @@ export class Core {
 			throw new Error("Title is required to create a task.");
 		}
 
-		const id = await this.generateNextId(input.parentTaskId);
+		const id = await this.generateNextId(EntityType.Task, input.parentTaskId);
 
 		const normalizedLabels = normalizeStringList(input.labels) ?? [];
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
@@ -1043,9 +1065,9 @@ export class Core {
 		autoCommit?: boolean;
 		defaultStep?: number;
 	}): Promise<{ updatedTask: Task; changedTasks: Task[] }> {
-		const taskId = String(params.taskId || "").trim();
+		const taskId = normalizeTaskId(String(params.taskId || "").trim());
 		const targetStatus = String(params.targetStatus || "").trim();
-		const orderedTaskIds = params.orderedTaskIds.map((id) => String(id || "").trim()).filter(Boolean);
+		const orderedTaskIds = params.orderedTaskIds.map((id) => normalizeTaskId(String(id || "").trim())).filter(Boolean);
 		const defaultStep = params.defaultStep ?? DEFAULT_ORDINAL_STEP;
 
 		if (!taskId) throw new Error("taskId is required");
@@ -1214,7 +1236,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			// Stage the file move for proper Git tracking
 			await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Archive task ${taskId}`);
+			await this.git.commitChanges(`backlog: Archive task ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;
@@ -1236,7 +1258,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			// Stage the file move for proper Git tracking
 			await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Complete task ${taskId}`);
+			await this.git.commitChanges(`backlog: Complete task ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;
@@ -1265,7 +1287,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Archive draft ${taskId}`);
+			await this.git.commitChanges(`backlog: Archive draft ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;
@@ -1277,7 +1299,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${taskId}`);
+			await this.git.commitChanges(`backlog: Promote draft ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;
@@ -1289,7 +1311,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Demote task ${taskId}`);
+			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;

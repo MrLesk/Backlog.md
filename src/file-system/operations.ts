@@ -6,6 +6,7 @@ import { parseDecision, parseDocument, parseMilestone, parseTask } from "../mark
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { idForFilename } from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -172,10 +173,16 @@ export class FileSystem {
 	// Task operations
 	async saveTask(task: Task): Promise<string> {
 		const taskId = normalizeTaskId(task.id);
-		const filename = `${taskId} - ${this.sanitizeFilename(task.title)}.md`;
+		const filename = `${idForFilename(taskId)} - ${this.sanitizeFilename(task.title)}.md`;
 		const tasksDir = await this.getTasksDir();
 		const filepath = join(tasksDir, filename);
-		const content = serializeTask(task);
+		// Normalize task ID and parentTaskId to uppercase before serialization
+		const normalizedTask = {
+			...task,
+			id: taskId,
+			parentTaskId: task.parentTaskId ? normalizeTaskId(task.parentTaskId) : undefined,
+		};
+		const content = serializeTask(normalizedTask);
 
 		// Delete any existing task files with the same ID but different filenames
 		try {
@@ -438,10 +445,12 @@ export class FileSystem {
 	// Draft operations
 	async saveDraft(task: Task): Promise<string> {
 		const taskId = normalizeTaskId(task.id);
-		const filename = `${taskId} - ${this.sanitizeFilename(task.title)}.md`;
+		const filename = `${idForFilename(taskId)} - ${this.sanitizeFilename(task.title)}.md`;
 		const draftsDir = await this.getDraftsDir();
 		const filepath = join(draftsDir, filename);
-		const content = serializeTask(task);
+		// Normalize the task ID to uppercase before serialization
+		const normalizedTask = { ...task, id: taskId };
+		const content = serializeTask(normalizedTask);
 
 		try {
 			const core = { filesystem: { tasksDir: draftsDir } };

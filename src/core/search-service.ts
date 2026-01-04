@@ -50,7 +50,8 @@ type NormalizedFilters = {
 const TASK_ID_PREFIX = "task-";
 
 function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = value.startsWith(TASK_ID_PREFIX) ? value.slice(TASK_ID_PREFIX.length) : value;
+	const lowerValue = value.toLowerCase();
+	const withoutPrefix = lowerValue.startsWith(TASK_ID_PREFIX) ? lowerValue.slice(TASK_ID_PREFIX.length) : lowerValue;
 	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
 		return null;
 	}
@@ -58,19 +59,25 @@ function parseTaskIdSegments(value: string): number[] | null {
 }
 
 function createTaskIdVariants(id: string): string[] {
+	const lowerId = id.toLowerCase();
 	const segments = parseTaskIdSegments(id);
 	if (!segments) {
-		const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
-		return id === normalized ? [normalized] : [normalized, id];
+		const normalized = lowerId.startsWith(TASK_ID_PREFIX) ? lowerId : `${TASK_ID_PREFIX}${lowerId}`;
+		return id === normalized ? [normalized] : [normalized, id, lowerId];
 	}
 	const canonicalSuffix = segments.join(".");
 	const variants = new Set<string>();
-	const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
+	const normalized = lowerId.startsWith(TASK_ID_PREFIX) ? lowerId : `${TASK_ID_PREFIX}${lowerId}`;
 	variants.add(normalized);
 	variants.add(`${TASK_ID_PREFIX}${canonicalSuffix}`);
 	variants.add(canonicalSuffix);
+	// Also add individual numeric segments for short-query matching (e.g., "7" matching "TASK-0007")
+	for (const segment of segments) {
+		variants.add(String(segment));
+	}
 	if (id !== normalized) {
 		variants.add(id);
+		variants.add(lowerId);
 	}
 	return Array.from(variants);
 }
