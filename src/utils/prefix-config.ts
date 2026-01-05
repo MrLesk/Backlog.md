@@ -177,6 +177,42 @@ export function hasPrefix(id: string, prefix: string): boolean {
 }
 
 /**
+ * Checks if an ID has any valid prefix pattern (letters followed by dash).
+ * Use this for filtering/validation when you want to accept any prefix.
+ *
+ * @param id - The ID to check
+ * @returns true if the ID matches the pattern: letters-dash-something
+ *
+ * @example
+ * hasAnyPrefix("task-123") // => true
+ * hasAnyPrefix("JIRA-456") // => true
+ * hasAnyPrefix("draft-1") // => true
+ * hasAnyPrefix("123") // => false
+ * hasAnyPrefix("") // => false
+ */
+export function hasAnyPrefix(id: string): boolean {
+	if (!id || typeof id !== "string") return false;
+	return /^[a-zA-Z]+-\S/.test(id.trim());
+}
+
+/**
+ * Strips any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456").
+ * Use this when you need the body/number part without the prefix.
+ *
+ * @param id - The ID to strip
+ * @returns The ID without its prefix, or the original if no prefix
+ *
+ * @example
+ * stripAnyPrefix("task-123") // => "123"
+ * stripAnyPrefix("JIRA-456.1") // => "456.1"
+ * stripAnyPrefix("123") // => "123"
+ */
+export function stripAnyPrefix(id: string): string {
+	if (!id || typeof id !== "string") return id;
+	return id.trim().replace(/^[a-zA-Z]+-/, "");
+}
+
+/**
  * Compares two IDs for equality, ignoring case in the prefix.
  *
  * @param id1 - First ID

@@ -4,6 +4,7 @@
 
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { renderBoardTui } from "./board.ts";
 import { viewTaskEnhanced } from "./task-viewer-with-search.ts";
 import type { ViewType } from "./view-switcher.ts";
@@ -56,7 +57,7 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 
 	const showTaskView = async (): Promise<void> => {
 		// Extra safeguard: filter out any tasks without proper IDs
-		const validTasks = (options.tasks || []).filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		const validTasks = (options.tasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 
 		if (!validTasks || validTasks.length === 0) {
 			console.log("No tasks available.");
@@ -97,15 +98,11 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 
 		if (options.preloadedKanbanData) {
 			// Use preloaded data but filter for valid tasks
-			kanbanTasks = options.preloadedKanbanData.tasks.filter(
-				(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
-			);
+			kanbanTasks = options.preloadedKanbanData.tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 			statuses = options.preloadedKanbanData.statuses;
 		} else {
 			// This shouldn't happen in practice since CLI preloads, but fallback
-			const validKanbanTasks = (options.tasks || []).filter(
-				(t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"),
-			);
+			const validKanbanTasks = (options.tasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 			kanbanTasks = validKanbanTasks.map((t) => ({ ...t, source: "local" as const }));
 			const config = await options.core.filesystem.loadConfig();
 			statuses = config?.statuses || [];

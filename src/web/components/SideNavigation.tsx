@@ -18,10 +18,8 @@ import { apiClient } from '../lib/api';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
-	if (id.startsWith('doc-')) return id.replace('doc-', '');
-	if (id.startsWith('decision-')) return id.replace('decision-', '');
-	if (id.startsWith('task-')) return id.replace('task-', '');
-	return id;
+	// Remove any prefix pattern: letters followed by dash (task-, doc-, decision-, JIRA-, etc.)
+	return id.replace(/^[a-zA-Z]+-/, '');
 };
 
 // Icon components for better semantics and performance

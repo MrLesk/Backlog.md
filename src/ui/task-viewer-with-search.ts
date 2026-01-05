@@ -11,6 +11,7 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { Task, TaskSearchResult } from "../types/index.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
+import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { createTaskSearchIndex } from "../utils/task-search.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
@@ -82,7 +83,7 @@ export async function viewTaskEnhanced(
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
-		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		const config = await core.filesystem.loadConfig();
 		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
 		labels = config?.labels || [];
@@ -102,7 +103,7 @@ export async function viewTaskEnhanced(
 
 			loadingScreen?.update("Preparing task list...");
 			const tasks = await core.queryTasks();
-			allTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+			allTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		} finally {
 			await loadingScreen?.close();
 		}

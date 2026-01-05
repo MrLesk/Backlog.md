@@ -48,6 +48,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { parsePositiveIndexList, processAcceptanceCriteriaOptions, toStringArray } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
@@ -1375,7 +1376,7 @@ program
 		const searchResultTasks = taskResults.map((result) => result.task);
 
 		const allTasks = (await core.queryTasks()).filter(
-			(task) => task.id && task.id.trim() !== "" && task.id.startsWith("task-"),
+			(task) => task.id && task.id.trim() !== "" && hasAnyPrefix(task.id),
 		);
 
 		// If no tasks exist at all, show plain text results
