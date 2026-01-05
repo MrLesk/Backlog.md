@@ -61,7 +61,7 @@ describe("FileSystem", () => {
 			await filesystem.saveTask(sampleTask);
 
 			const loadedTask = await filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe(sampleTask.id);
+			expect(loadedTask?.id).toBe("TASK-1"); // IDs are normalized to uppercase
 			expect(loadedTask?.title).toBe(sampleTask.title);
 			expect(loadedTask?.status).toBe(sampleTask.status);
 			expect(loadedTask?.description).toBe(sampleTask.description);
@@ -82,7 +82,7 @@ describe("FileSystem", () => {
 
 			const tasks = await filesystem.listTasks();
 			expect(tasks).toHaveLength(2);
-			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2"]);
+			expect(tasks.map((t) => t.id)).toEqual(["TASK-1", "TASK-2"]); // IDs are normalized to uppercase
 		});
 
 		it("should list tasks even when one file has invalid frontmatter", async () => {
@@ -107,7 +107,7 @@ Invalid content`,
 			);
 
 			const tasks = await filesystem.listTasks();
-			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2"]);
+			expect(tasks.map((t) => t.id)).toEqual(["TASK-1", "TASK-2"]); // IDs normalized to uppercase
 		});
 
 		it("should sort tasks numerically by ID", async () => {
@@ -122,7 +122,7 @@ Invalid content`,
 			}
 
 			const tasks = await filesystem.listTasks();
-			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3", "task-10", "task-20"]);
+			expect(tasks.map((t) => t.id)).toEqual(["TASK-1", "TASK-2", "TASK-3", "TASK-10", "TASK-20"]); // IDs normalized to uppercase
 		});
 
 		it("should sort tasks with decimal IDs correctly", async () => {
@@ -137,7 +137,7 @@ Invalid content`,
 			}
 
 			const tasks = await filesystem.listTasks();
-			expect(tasks.map((t) => t.id)).toEqual(["task-1", "task-2", "task-2.1", "task-2.2", "task-2.10"]);
+			expect(tasks.map((t) => t.id)).toEqual(["TASK-1", "TASK-2", "TASK-2.1", "TASK-2.2", "TASK-2.10"]); // IDs normalized to uppercase
 		});
 
 		it("should filter tasks by status and assignee", async () => {
@@ -164,13 +164,13 @@ Invalid content`,
 			});
 
 			const statusFiltered = await filesystem.listTasks({ status: "to do" });
-			expect(statusFiltered.map((t) => t.id)).toEqual(["task-1", "task-3"]);
+			expect(statusFiltered.map((t) => t.id)).toEqual(["TASK-1", "TASK-3"]); // IDs normalized to uppercase
 
 			const assigneeFiltered = await filesystem.listTasks({ assignee: "bob" });
-			expect(assigneeFiltered.map((t) => t.id)).toEqual(["task-2", "task-3"]);
+			expect(assigneeFiltered.map((t) => t.id)).toEqual(["TASK-2", "TASK-3"]); // IDs normalized to uppercase
 
 			const combinedFiltered = await filesystem.listTasks({ status: "to do", assignee: "bob" });
-			expect(combinedFiltered.map((t) => t.id)).toEqual(["task-3"]);
+			expect(combinedFiltered.map((t) => t.id)).toEqual(["TASK-3"]); // IDs normalized to uppercase
 		});
 
 		it("should archive a task", async () => {
@@ -187,17 +187,24 @@ Invalid content`,
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
-		it("should demote a task to drafts", async () => {
+		it("should demote a task to drafts with new draft- ID", async () => {
 			await filesystem.saveTask(sampleTask);
 
 			const demoted = await filesystem.demoteTask("task-1");
 			expect(demoted).toBe(true);
 
-			// Note: demoteTask keeps the task- prefix in the file, so loadDraft won't find it
-			// (loadDraft looks for draft-*.md files). Full ID reassignment is handled by task-345.07.
-			// For now, verify the file was moved to drafts directory
+			// Task should be removed from tasks directory
+			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
+			expect(tasksFiles.some((f) => f.startsWith("task-1"))).toBe(false);
+
+			// Draft should exist with new draft- ID
 			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
-			expect(draftsFiles.some((f) => f.startsWith("task-1"))).toBe(true);
+			expect(draftsFiles.some((f) => f.startsWith("draft-1"))).toBe(true);
+
+			// Verify the demoted draft can be loaded and has correct ID
+			const demotedDraft = await filesystem.loadDraft("draft-1");
+			expect(demotedDraft?.id).toBe("DRAFT-1");
+			expect(demotedDraft?.title).toBe(sampleTask.title);
 		});
 	});
 
@@ -230,17 +237,24 @@ Invalid content`,
 			expect(drafts.map((d) => d.id).sort()).toEqual(["DRAFT-1", "DRAFT-2"]);
 		});
 
-		it("should promote a draft to tasks", async () => {
+		it("should promote a draft to tasks with new task- ID", async () => {
 			await filesystem.saveDraft(sampleDraft);
 
 			const promoted = await filesystem.promoteDraft("draft-1");
 			expect(promoted).toBe(true);
 
-			// Note: promoteDraft moves the file but keeps the draft- prefix
-			// Full ID reassignment is handled by task-345.07
-			// For now, verify the file was moved to tasks directory
+			// Draft should be removed from drafts directory
+			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
+			expect(draftsFiles.some((f) => f.startsWith("draft-1"))).toBe(false);
+
+			// Task should exist with new task- ID
 			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
-			expect(tasksFiles.some((f) => f.startsWith("draft-1"))).toBe(true);
+			expect(tasksFiles.some((f) => f.startsWith("task-1"))).toBe(true);
+
+			// Verify the promoted task can be loaded and has correct ID
+			const promotedTask = await filesystem.loadTask("task-1");
+			expect(promotedTask?.id).toBe("TASK-1");
+			expect(promotedTask?.title).toBe(sampleDraft.title);
 		});
 
 		it("should archive a draft", async () => {
@@ -530,7 +544,7 @@ Invalid content`,
 			await filesystem.saveTask(taskWithPrefix);
 			const loaded = await filesystem.loadTask("task-prefixed");
 
-			expect(loaded?.id).toBe("task-prefixed");
+			expect(loaded?.id).toBe("TASK-PREFIXED"); // IDs are normalized to uppercase
 		});
 
 		it("should handle task without task- prefix in id", async () => {
@@ -548,7 +562,8 @@ Invalid content`,
 			await filesystem.saveTask(taskWithoutPrefix);
 			const loaded = await filesystem.loadTask("no-prefix");
 
-			expect(loaded?.id).toBe("no-prefix");
+			// IDs are normalized: without a recognized prefix, it gets task- prefix and becomes uppercase
+			expect(loaded?.id).toBe("TASK-NO-PREFIX");
 		});
 
 		it("should return empty array when listing tasks in empty directory", async () => {

@@ -1,11 +1,11 @@
 ---
 id: task-345.06
 title: Update UI components and CLI for configurable prefixes
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-03 20:43'
-updated_date: '2026-01-05 12:08'
+updated_date: '2026-01-05 12:16'
 labels:
   - enhancement
   - refactor

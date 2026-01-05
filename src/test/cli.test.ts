@@ -390,8 +390,8 @@ describe("CLI Integration", () => {
 
 			expect(todoTasks).toHaveLength(2);
 			expect(doneTasks).toHaveLength(1);
-			expect(todoTasks.map((t) => t.id)).toEqual(["task-1", "task-3"]);
-			expect(doneTasks.map((t) => t.id)).toEqual(["task-2"]);
+			expect(todoTasks.map((t) => t.id)).toEqual(["TASK-1", "TASK-3"]); // IDs normalized to uppercase
+			expect(doneTasks.map((t) => t.id)).toEqual(["TASK-2"]); // IDs normalized to uppercase
 		});
 
 		it("should respect config status order", async () => {
@@ -435,8 +435,8 @@ describe("CLI Integration", () => {
 			const result = await $`bun ${CLI_PATH} task list --plain --status Done`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
 			expect(out).toContain("Done:");
-			expect(out).toContain("task-2 - Second Task");
-			expect(out).not.toContain("task-1");
+			expect(out).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
+			expect(out).not.toContain("TASK-1");
 		});
 
 		it("should filter tasks by status case-insensitively", async () => {
@@ -475,16 +475,16 @@ describe("CLI Integration", () => {
 				const result = await $`bun ${CLI_PATH} task list --plain --status ${status}`.cwd(TEST_DIR).quiet();
 				const out = result.stdout.toString();
 				expect(out).toContain("Done:");
-				expect(out).toContain("task-2 - Second Task");
-				expect(out).not.toContain("task-1");
+				expect(out).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
+				expect(out).not.toContain("TASK-1");
 			}
 
 			// Test with -s flag
 			const resultShort = await listTasksPlatformAware({ plain: true, status: "done" }, TEST_DIR);
 			const outShort = resultShort.stdout;
 			expect(outShort).toContain("Done:");
-			expect(outShort).toContain("task-2 - Second Task");
-			expect(outShort).not.toContain("task-1");
+			expect(outShort).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
+			expect(outShort).not.toContain("TASK-1");
 		});
 
 		it("should filter tasks by assignee", async () => {
@@ -519,8 +519,8 @@ describe("CLI Integration", () => {
 
 			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
-			expect(out).toContain("task-1 - Assigned Task");
-			expect(out).not.toContain("task-2 - Unassigned Task");
+			expect(out).toContain("TASK-1 - Assigned Task"); // IDs normalized to uppercase
+			expect(out).not.toContain("TASK-2 - Unassigned Task");
 		});
 	});
 
@@ -555,7 +555,7 @@ describe("CLI Integration", () => {
 			// Load the task back
 			const loadedTask = await core.filesystem.loadTask("task-1");
 			expect(loadedTask).not.toBeNull();
-			expect(loadedTask?.id).toBe("task-1");
+			expect(loadedTask?.id).toBe("TASK-1"); // IDs normalized to uppercase
 			expect(loadedTask?.title).toBe("Test View Task");
 			expect(loadedTask?.status).toBe("To Do");
 			expect(loadedTask?.assignee).toEqual(["testuser"]);
@@ -583,12 +583,12 @@ describe("CLI Integration", () => {
 
 			// Test loading with full task-5 ID
 			const taskWithPrefix = await core.filesystem.loadTask("task-5");
-			expect(taskWithPrefix?.id).toBe("task-5");
+			expect(taskWithPrefix?.id).toBe("TASK-5"); // IDs normalized to uppercase
 
 			// Test loading with just numeric ID (5)
 			const taskWithoutPrefix = await core.filesystem.loadTask("5");
 			// The filesystem loadTask should handle normalization
-			expect(taskWithoutPrefix?.id).toBe("task-5");
+			expect(taskWithoutPrefix?.id).toBe("TASK-5"); // IDs normalized to uppercase
 		});
 
 		it("should return null for non-existent tasks", async () => {
@@ -915,7 +915,7 @@ describe("CLI Integration", () => {
 
 			// Verify all frontmatter fields are preserved
 			const updatedTask = await core.filesystem.loadTask("task-8");
-			expect(updatedTask?.id).toBe("task-8");
+			expect(updatedTask?.id).toBe("TASK-8"); // IDs normalized to uppercase
 			expect(updatedTask?.title).toBe("Updated YAML Test");
 			expect(updatedTask?.status).toBe("In Progress");
 			expect(updatedTask?.assignee).toEqual(["testuser"]);
@@ -1004,12 +1004,14 @@ describe("CLI Integration", () => {
 			const task = await core.filesystem.loadTask("task-2");
 			expect(task).toBeNull();
 
-			// Note: demoteTask moves file to drafts/ but keeps task- prefix
-			// loadDraft won't find it (looks for draft-*.md). Full ID reassignment
-			// is handled by task-345.07. For now, verify file was moved.
+			// Verify demoted draft has new draft- ID
 			const { readdir } = await import("node:fs/promises");
 			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
-			expect(draftsFiles.some((f) => f.startsWith("task-2"))).toBe(true);
+			expect(draftsFiles.some((f) => f.startsWith("draft-"))).toBe(true);
+
+			// Verify draft can be loaded with draft- ID
+			const demotedDraft = await core.filesystem.loadDraft("draft-1");
+			expect(demotedDraft?.title).toBe("Demote Test Task");
 		});
 
 		it("should promote draft to tasks", async () => {
@@ -1038,12 +1040,14 @@ describe("CLI Integration", () => {
 			const draft = await core.filesystem.loadDraft("draft-3");
 			expect(draft).toBeNull();
 
-			// Note: promoteDraft moves file to tasks/ but keeps draft- prefix
-			// loadTask won't find it (looks for task-*.md). Full ID reassignment
-			// is handled by task-345.07. For now, verify file was moved.
+			// Verify promoted task has new task- ID
 			const { readdir } = await import("node:fs/promises");
 			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
-			expect(tasksFiles.some((f) => f.startsWith("draft-3"))).toBe(true);
+			expect(tasksFiles.some((f) => f.startsWith("task-"))).toBe(true);
+
+			// Verify task can be loaded with task- ID
+			const promotedTask = await core.filesystem.loadTask("task-1");
+			expect(promotedTask?.title).toBe("Promote Test Draft");
 		});
 
 		it("should archive a draft", async () => {
@@ -1142,9 +1146,12 @@ describe("CLI Integration", () => {
 
 			await core.createTask(originalTask, false);
 
-			// Demote to draft
+			// Demote to draft - note: this generates a new draft ID
 			await core.demoteTask("task-6", false);
-			const asDraft = await core.filesystem.loadDraft("task-6");
+
+			// Find the demoted draft (it will have a new draft- ID)
+			const drafts = await core.filesystem.listDrafts();
+			const asDraft = drafts.find((d) => d.title === originalTask.title);
 
 			expect(asDraft?.title).toBe(originalTask.title);
 			expect(asDraft?.assignee).toEqual(originalTask.assignee);
@@ -1152,9 +1159,13 @@ describe("CLI Integration", () => {
 			expect(asDraft?.dependencies).toEqual(originalTask.dependencies);
 			expect(asDraft?.rawContent).toContain(originalTask.rawContent);
 
-			// Promote back to task
-			await core.promoteDraft("task-6", false);
-			const backToTask = await core.filesystem.loadTask("task-6");
+			// Promote back to task - use the draft's new ID
+			expect(asDraft).toBeDefined();
+			await core.promoteDraft(asDraft!.id, false);
+
+			// Find the promoted task (it will have a new task- ID)
+			const tasks = await core.filesystem.listTasks();
+			const backToTask = tasks.find((t) => t.title === originalTask.title);
 
 			expect(backToTask?.title).toBe(originalTask.title);
 			expect(backToTask?.assignee).toEqual(originalTask.assignee);
@@ -1434,7 +1445,7 @@ describe("CLI Integration", () => {
 				}
 			}
 
-			const final = tasksById.get("task-1");
+			const final = tasksById.get("TASK-1"); // IDs normalized to uppercase
 			expect(final?.status).toBe("Done");
 		});
 

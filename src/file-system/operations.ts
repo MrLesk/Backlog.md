@@ -6,7 +6,7 @@ import { parseDecision, parseDocument, parseMilestone, parseTask } from "../mark
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
-import { buildGlobPattern, idForFilename, normalizeId } from "../utils/prefix-config.ts";
+import { buildGlobPattern, generateNextId, idForFilename, normalizeId } from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -400,26 +400,32 @@ export class FileSystem {
 
 	async promoteDraft(draftId: string): Promise<boolean> {
 		try {
-			const draftsDir = await this.getDraftsDir();
-			const tasksDir = await this.getTasksDir();
+			// Load the draft
+			const draft = await this.loadDraft(draftId);
+			if (!draft || !draft.filePath) return false;
 
-			// Find draft file with draft- prefix
-			const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir }));
-			const normalizedId = normalizeId(draftId, "draft");
-			const filenameId = idForFilename(normalizedId);
-			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
+			// Get task prefix from config (default: "task")
+			const config = await this.loadConfig();
+			const taskPrefix = config?.prefixes?.task ?? "task";
 
-			if (!draftFile) return false;
+			// Get existing task IDs to generate next ID
+			const existingTasks = await this.listTasks();
+			const existingIds = existingTasks.map((t) => t.id);
 
-			const sourcePath = join(draftsDir, draftFile);
-			// Note: File keeps draft- prefix until task-345.07 implements ID reassignment
-			const targetPath = join(tasksDir, draftFile);
+			// Generate new task ID
+			const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
 
-			const content = await Bun.file(sourcePath).text();
-			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
+			// Update draft with new task ID and save as task
+			const promotedTask: Task = {
+				...draft,
+				id: newTaskId,
+				filePath: undefined, // Will be set by saveTask
+			};
 
-			await unlink(sourcePath);
+			await this.saveTask(promotedTask);
+
+			// Delete old draft file
+			await unlink(draft.filePath);
 
 			return true;
 		} catch {
@@ -429,21 +435,30 @@ export class FileSystem {
 
 	async demoteTask(taskId: string): Promise<boolean> {
 		try {
-			const tasksDir = await this.getTasksDir();
-			const draftsDir = await this.getDraftsDir();
-			const core = { filesystem: { tasksDir } };
-			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
-			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
+			// Load the task
+			const task = await this.loadTask(taskId);
+			if (!task || !task.filePath) return false;
 
-			if (!sourcePath || !taskFile) return false;
+			// Get existing draft IDs to generate next ID
+			// Draft prefix is always "draft" (not configurable like task prefix)
+			const existingDrafts = await this.listDrafts();
+			const existingIds = existingDrafts.map((d) => d.id);
 
-			const targetPath = join(draftsDir, taskFile);
+			// Generate new draft ID
+			const config = await this.loadConfig();
+			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
 
-			const content = await Bun.file(sourcePath).text();
-			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
+			// Update task with new draft ID and save as draft
+			const demotedDraft: Task = {
+				...task,
+				id: newDraftId,
+				filePath: undefined, // Will be set by saveDraft
+			};
 
-			await unlink(sourcePath);
+			await this.saveDraft(demotedDraft);
+
+			// Delete old task file
+			await unlink(task.filePath);
 
 			return true;
 		} catch {
