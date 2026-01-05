@@ -1,10 +1,11 @@
 /**
  * Parse a task ID into its numeric components for proper sorting.
- * Handles both simple IDs (task-5) and decimal IDs (task-5.2.1)
+ * Handles both simple IDs (task-5) and decimal IDs (task-5.2.1).
+ * Works with any prefix pattern (task-, draft-, JIRA-, etc.)
  */
 export function parseTaskId(taskId: string): number[] {
-	// Remove the "task-" prefix if present
-	const numericPart = taskId.replace(/^task-/, "");
+	// Remove any prefix pattern (letters followed by dash) - handles task-, draft-, JIRA-, etc.
+	const numericPart = taskId.replace(/^[a-zA-Z]+-/i, "");
 
 	// Try to extract numeric parts from the ID
 	// First check if it's a standard numeric ID (e.g., "1", "1.2", etc.)
