@@ -10,11 +10,10 @@ import {
 	buildGlobPattern,
 	extractAnyPrefix,
 	generateNextId,
-	hasAnyPrefix,
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskId } from "../utils/task-path.ts";
+import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 // Interface for task path resolution context

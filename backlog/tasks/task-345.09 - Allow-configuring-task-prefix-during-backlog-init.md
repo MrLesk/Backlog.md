@@ -1,11 +1,11 @@
 ---
 id: task-345.09
 title: Allow configuring task prefix during backlog init
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-05 13:13'
-updated_date: '2026-01-05 13:22'
+updated_date: '2026-01-05 13:37'
 labels:
   - enhancement
   - cli
@@ -78,16 +78,16 @@ prefixes: existingConfig?.prefixes || {
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CLI: `--task-prefix` flag added to init command
-- [ ] #2 CLI: Interactive prompt asks for prefix during first-time init only
-- [ ] #3 CLI: `config list` shows taskPrefix with (read-only) suffix
-- [ ] #4 CLI: `config set taskPrefix` returns error that it cannot be changed
-- [ ] #5 Browser: Task prefix input in Advanced Settings (ID Formatting section)
-- [ ] #6 Browser: Settings page shows task prefix as read-only
-- [ ] #7 Validation: Only letters allowed, reject numbers/special chars
-- [ ] #8 Re-init: Existing prefix preserved, no prompt shown
-- [ ] #9 Summary: Shows custom prefix in init summary if not default
-- [ ] #10 Tests: Cover CLI flag, interactive prompt, browser wizard, config view, validation
+- [x] #1 CLI: `--task-prefix` flag added to init command
+- [x] #2 CLI: Interactive prompt asks for prefix during first-time init only
+- [x] #3 CLI: `config list` shows taskPrefix with (read-only) suffix
+- [x] #4 CLI: `config set taskPrefix` returns error that it cannot be changed
+- [x] #5 Browser: Task prefix input in Advanced Settings (ID Formatting section)
+- [x] #6 Browser: Settings page shows task prefix as read-only
+- [x] #7 Validation: Only letters allowed, reject numbers/special chars
+- [x] #8 Re-init: Existing prefix preserved, no prompt shown
+- [x] #9 Summary: Shows custom prefix in init summary if not default
+- [x] #10 Tests: Cover CLI flag, interactive prompt, browser wizard, config view, validation
 <!-- AC:END -->
 
 ## Implementation Plan

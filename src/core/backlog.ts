@@ -1567,6 +1567,10 @@ export class Core {
 			dateFormat: "yyyy-mm-dd",
 			maxColumnWidth: 20, // Default for terminal display
 			autoCommit: false, // Default to false for user control
+			prefixes: {
+				task: "task",
+				draft: "draft",
+			},
 		};
 
 		await this.fs.saveConfig(config);
