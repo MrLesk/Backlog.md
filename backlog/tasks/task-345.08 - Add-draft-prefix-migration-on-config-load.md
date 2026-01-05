@@ -1,11 +1,11 @@
 ---
 id: task-345.08
 title: Add draft prefix migration on config load
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-03 20:56'
-updated_date: '2026-01-05 12:33'
+updated_date: '2026-01-05 12:46'
 labels:
   - enhancement
   - migration

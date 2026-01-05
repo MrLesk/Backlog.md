@@ -1,11 +1,11 @@
 ---
 id: task-345
 title: 'Configurable ID prefix system (task-, draft-, custom)'
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-12-16 20:18'
-updated_date: '2026-01-04 22:19'
+updated_date: '2026-01-05 12:46'
 labels:
   - enhancement
   - refactor
@@ -199,4 +199,21 @@ export enum EntityType {
   Decision = "decision",
 }
 ```
+
+## Session 3 Completion (2026-01-05)
+
+**Completed tasks:**
+- task-345.06 - UI components and CLI updates
+- task-345.07 - Promote/demote with ID reassignment
+- task-345.08 - Draft prefix migration on config load
+
+**Summary:**
+Configurable ID prefix system is now fully implemented:
+- IDs are uppercase (TASK-123, DRAFT-5)
+- Filenames use lowercase (task-123.md, draft-5.md)
+- Drafts use `draft-` prefix, tasks use `task-` prefix
+- Auto-migration renames legacy task-*.md files in drafts folder
+- Promote/demote operations reassign IDs (draft → new task ID, task → new draft ID)
+
+**Branch:** tasks/task-345-draft-prefix (7 commits ahead of origin)
 <!-- SECTION:NOTES:END -->
