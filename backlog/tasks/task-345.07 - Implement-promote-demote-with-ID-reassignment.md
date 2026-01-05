@@ -1,11 +1,11 @@
 ---
 id: task-345.07
 title: Implement promote/demote with ID reassignment
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-03 20:43'
-updated_date: '2026-01-05 12:16'
+updated_date: '2026-01-05 12:33'
 labels:
   - enhancement
   - drafts

@@ -34,6 +34,7 @@ import {
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
+import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
@@ -395,6 +396,12 @@ export class Core {
 		if (!config || needsMigration(config)) {
 			config = migrateConfig(config || {});
 			await this.fs.saveConfig(config);
+		}
+
+		// Run draft prefix migration if needed (one-time migration)
+		// This renames task-*.md files in drafts/ to draft-*.md
+		if (needsDraftPrefixMigration(config)) {
+			await migrateDraftPrefixes(this.fs);
 		}
 	}
 

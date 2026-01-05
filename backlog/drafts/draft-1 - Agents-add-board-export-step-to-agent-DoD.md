@@ -1,5 +1,5 @@
 ---
-id: task-26
+id: DRAFT-1
 title: 'Agents: add board export step to agent DoD'
 status: To Do
 assignee: []
@@ -12,10 +12,13 @@ dependencies: []
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 Update the "Definition of Done" sections in CLAUDE.md, AGENTS.md and .cursorrules to instruct agents to run `backlog board export` before committing.
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
-
-- [ ] CLAUDE.md includes a bullet about running `backlog board export` before committing.
-- [ ] AGENTS.md includes the same bullet.
-- [ ] .cursorrules includes the same bullet.
+<!-- AC:BEGIN -->
+- [ ] #1 CLAUDE.md includes a bullet about running `backlog board export` before committing.
+- [ ] #2 AGENTS.md includes the same bullet.
+- [ ] #3 .cursorrules includes the same bullet.
+<!-- AC:END -->
