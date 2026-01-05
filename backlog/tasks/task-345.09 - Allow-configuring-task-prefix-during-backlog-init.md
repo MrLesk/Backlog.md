@@ -1,14 +1,15 @@
 ---
-id: task-359
+id: task-345.09
 title: Allow configuring task prefix during backlog init
 status: To Do
 assignee: []
-created_date: '2026-01-05 13:11'
+created_date: '2026-01-05 13:13'
 labels:
   - enhancement
   - cli
   - id-generation
 dependencies: []
+parent_task_id: task-345
 priority: low
 ---
 

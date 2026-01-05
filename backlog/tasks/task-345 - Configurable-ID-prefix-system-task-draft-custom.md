@@ -1,11 +1,11 @@
 ---
 id: task-345
 title: 'Configurable ID prefix system (task-, draft-, custom)'
-status: Done
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-12-16 20:18'
-updated_date: '2026-01-05 12:46'
+updated_date: '2026-01-05 13:13'
 labels:
   - enhancement
   - refactor
