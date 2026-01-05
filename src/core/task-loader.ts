@@ -12,7 +12,11 @@ import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { buildPathIdRegex } from "../utils/prefix-config.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
+
+/** Default prefix for tasks */
+const DEFAULT_TASK_PREFIX = "task";
 
 export interface BranchTaskStateEntry {
 	id: string;
@@ -93,6 +97,7 @@ export async function buildRemoteTaskIndex(
 	backlogDir = "backlog",
 	sinceDays?: number,
 	stateCollector?: BranchTaskStateEntry[],
+	prefix = DEFAULT_TASK_PREFIX,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -119,13 +124,16 @@ export async function buildRemoteTaskIndex(
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(ref, listPath, sinceDays);
 
-				for (const f of files) {
-					// Extract task ID from filename
-					// Extract task ID from filename (support subtasks like task-123.01)
-					const m = f.match(/task-(\d+(?:\.\d+)?)/);
-					if (!m) continue;
+				// Build regex for configured prefix (no ^ anchor for path matching)
+				const idRegex = buildPathIdRegex(prefix);
 
-					const id = `task-${m[1]}`;
+				for (const f of files) {
+					// Extract task ID from filename using configured prefix
+					const m = f.match(idRegex);
+					if (!m?.[1]) continue;
+
+					// Construct ID in same format as filename (lowercase prefix)
+					const id = `${prefix}-${m[1]}`;
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
@@ -216,6 +224,7 @@ export async function buildLocalBranchTaskIndex(
 	backlogDir = "backlog",
 	sinceDays?: number,
 	stateCollector?: BranchTaskStateEntry[],
+	prefix = DEFAULT_TASK_PREFIX,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -244,12 +253,16 @@ export async function buildLocalBranchTaskIndex(
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(br, listPath, sinceDays);
 
-				for (const f of files) {
-					// Extract task ID from filename (support subtasks like task-123.01)
-					const m = f.match(/task-(\d+(?:\.\d+)?)/);
-					if (!m) continue;
+				// Build regex for configured prefix (no ^ anchor for path matching)
+				const idRegex = buildPathIdRegex(prefix);
 
-					const id = `task-${m[1]}`;
+				for (const f of files) {
+					// Extract task ID from filename using configured prefix
+					const m = f.match(idRegex);
+					if (!m?.[1]) continue;
+
+					// Construct ID in same format as filename (lowercase prefix)
+					const id = `${prefix}-${m[1]}`;
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
@@ -355,6 +368,7 @@ export async function findTaskInRemoteBranches(
 	taskId: string,
 	backlogDir = "backlog",
 	sinceDays = 30,
+	prefix = DEFAULT_TASK_PREFIX,
 ): Promise<Task | null> {
 	try {
 		// Check if we have any remote
@@ -365,10 +379,15 @@ export async function findTaskInRemoteBranches(
 		if (branches.length === 0) return null;
 
 		// Build task index for remote branches
-		const remoteIndex = await buildRemoteTaskIndex(git, branches, backlogDir, sinceDays);
+		const remoteIndex = await buildRemoteTaskIndex(git, branches, backlogDir, sinceDays, undefined, prefix);
+
+		// Normalize the task ID for lookup (match index format: lowercase prefix-number)
+		const normalizedId = taskId.toLowerCase().startsWith(`${prefix.toLowerCase()}-`)
+			? taskId.toLowerCase()
+			: `${prefix.toLowerCase()}-${taskId}`;
 
 		// Check if the task exists in the index
-		const entries = remoteIndex.get(taskId);
+		const entries = remoteIndex.get(normalizedId);
 		if (!entries || entries.length === 0) return null;
 
 		// Get the newest version
@@ -400,6 +419,7 @@ export async function findTaskInLocalBranches(
 	taskId: string,
 	backlogDir = "backlog",
 	sinceDays = 30,
+	prefix = DEFAULT_TASK_PREFIX,
 ): Promise<Task | null> {
 	try {
 		const currentBranch = await git.getCurrentBranch();
@@ -414,10 +434,23 @@ export async function findTaskInLocalBranches(
 		if (localBranches.length <= 1) return null; // Only current branch
 
 		// Build task index for local branches
-		const localIndex = await buildLocalBranchTaskIndex(git, localBranches, currentBranch, backlogDir, sinceDays);
+		const localIndex = await buildLocalBranchTaskIndex(
+			git,
+			localBranches,
+			currentBranch,
+			backlogDir,
+			sinceDays,
+			undefined,
+			prefix,
+		);
+
+		// Normalize the task ID for lookup (match index format: lowercase prefix-number)
+		const normalizedId = taskId.toLowerCase().startsWith(`${prefix.toLowerCase()}-`)
+			? taskId.toLowerCase()
+			: `${prefix.toLowerCase()}-${taskId}`;
 
 		// Check if the task exists in the index
-		const entries = localIndex.get(taskId);
+		const entries = localIndex.get(normalizedId);
 		if (!entries || entries.length === 0) return null;
 
 		// Get the newest version

@@ -143,6 +143,23 @@ export function buildFilenameIdRegex(prefix: string): RegExp {
 }
 
 /**
+ * Builds a regex pattern for extracting IDs from file paths.
+ * Unlike buildIdRegex, this doesn't use ^ anchor so it can match IDs
+ * anywhere in a file path string.
+ *
+ * @param prefix - The prefix to match (e.g., "task", "draft")
+ * @returns RegExp for path matching (matches anywhere in string)
+ *
+ * @example
+ * const regex = buildPathIdRegex("task");
+ * "backlog/tasks/task-123 - Title.md".match(regex) // => ["task-123", "123"]
+ * "task-5.2.1 - Subtask.md".match(regex) // => ["task-5.2.1", "5.2.1"]
+ */
+export function buildPathIdRegex(prefix: string): RegExp {
+	return new RegExp(`${escapeRegex(prefix)}-(\\d+(?:\\.\\d+)*)`, "i");
+}
+
+/**
  * Checks if an ID matches a given prefix pattern.
  *
  * @param id - The ID to check
