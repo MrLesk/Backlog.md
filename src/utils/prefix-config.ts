@@ -213,6 +213,24 @@ export function stripAnyPrefix(id: string): string {
 }
 
 /**
+ * Extracts the prefix from an ID (e.g., "task-123" -> "task", "JIRA-456" -> "JIRA").
+ * Returns null if the ID has no valid prefix pattern.
+ *
+ * @param id - The ID to extract from
+ * @returns The prefix (lowercase), or null if no prefix
+ *
+ * @example
+ * extractAnyPrefix("task-123") // => "task"
+ * extractAnyPrefix("JIRA-456") // => "jira"
+ * extractAnyPrefix("123") // => null
+ */
+export function extractAnyPrefix(id: string): string | null {
+	if (!id || typeof id !== "string") return null;
+	const match = id.trim().match(/^([a-zA-Z]+)-/);
+	return match?.[1] ? match[1].toLowerCase() : null;
+}
+
+/**
  * Compares two IDs for equality, ignoring case in the prefix.
  *
  * @param id1 - First ID

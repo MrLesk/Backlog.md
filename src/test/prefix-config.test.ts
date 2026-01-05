@@ -5,6 +5,7 @@ import {
 	buildGlobPattern,
 	buildIdRegex,
 	DEFAULT_PREFIX_CONFIG,
+	extractAnyPrefix,
 	extractIdBody,
 	extractIdNumbers,
 	generateNextId,
@@ -325,6 +326,45 @@ describe("prefix-config", () => {
 
 		test("returns decision prefix for Decision type", () => {
 			expect(getPrefixForType(EntityType.Decision)).toBe("decision");
+		});
+	});
+
+	describe("extractAnyPrefix", () => {
+		test("extracts task prefix", () => {
+			expect(extractAnyPrefix("task-123")).toBe("task");
+		});
+
+		test("extracts uppercase prefix", () => {
+			expect(extractAnyPrefix("TASK-123")).toBe("task");
+		});
+
+		test("extracts custom prefix", () => {
+			expect(extractAnyPrefix("JIRA-456")).toBe("jira");
+		});
+
+		test("extracts draft prefix", () => {
+			expect(extractAnyPrefix("draft-1")).toBe("draft");
+		});
+
+		test("returns null for plain number", () => {
+			expect(extractAnyPrefix("123")).toBe(null);
+		});
+
+		test("returns null for empty string", () => {
+			expect(extractAnyPrefix("")).toBe(null);
+		});
+
+		test("returns null for null/undefined", () => {
+			expect(extractAnyPrefix(null as unknown as string)).toBe(null);
+			expect(extractAnyPrefix(undefined as unknown as string)).toBe(null);
+		});
+
+		test("handles subtask IDs", () => {
+			expect(extractAnyPrefix("task-5.2.1")).toBe("task");
+		});
+
+		test("handles word IDs", () => {
+			expect(extractAnyPrefix("bug-fix-login")).toBe("bug");
 		});
 	});
 });

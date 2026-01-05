@@ -257,6 +257,39 @@ Invalid content`,
 			expect(promotedTask?.title).toBe(sampleDraft.title);
 		});
 
+		it("should promote draft with custom task prefix", async () => {
+			// Configure custom task prefix
+			const customConfig: BacklogConfig = {
+				projectName: "Custom Prefix Project",
+				statuses: ["To Do", "In Progress", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "yyyy-MM-dd",
+				prefixes: {
+					task: "JIRA",
+					draft: "draft",
+				},
+			};
+			await filesystem.saveConfig(customConfig);
+			await filesystem.saveDraft(sampleDraft);
+
+			const promoted = await filesystem.promoteDraft("draft-1");
+			expect(promoted).toBe(true);
+
+			// Draft should be removed
+			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
+			expect(draftsFiles.some((f) => f.startsWith("draft-1"))).toBe(false);
+
+			// Task should exist with custom JIRA- prefix
+			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
+			expect(tasksFiles.some((f) => f.startsWith("jira-1"))).toBe(true);
+
+			// Verify the promoted task can be loaded with the custom prefix
+			const promotedTask = await filesystem.loadTask("jira-1");
+			expect(promotedTask?.id).toBe("JIRA-1");
+			expect(promotedTask?.title).toBe(sampleDraft.title);
+		});
+
 		it("should archive a draft", async () => {
 			await filesystem.saveDraft(sampleDraft);
 
@@ -548,8 +581,9 @@ Invalid content`,
 		});
 
 		it("should handle task without task- prefix in id", async () => {
+			// ID without any prefix pattern (no letters-dash)
 			const taskWithoutPrefix: Task = {
-				id: "no-prefix",
+				id: "123",
 				title: "No Prefix",
 				status: "To Do",
 				assignee: [],
@@ -560,10 +594,30 @@ Invalid content`,
 			};
 
 			await filesystem.saveTask(taskWithoutPrefix);
-			const loaded = await filesystem.loadTask("no-prefix");
+			const loaded = await filesystem.loadTask("task-123");
 
-			// IDs are normalized: without a recognized prefix, it gets task- prefix and becomes uppercase
-			expect(loaded?.id).toBe("TASK-NO-PREFIX");
+			// IDs without prefix get the configured (or default) task prefix
+			expect(loaded?.id).toBe("TASK-123");
+		});
+
+		it("should preserve custom prefix in id", async () => {
+			// ID with a custom prefix pattern (letters-something)
+			const taskWithCustomPrefix: Task = {
+				id: "JIRA-456",
+				title: "Custom Prefix",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Task with custom prefix",
+			};
+
+			await filesystem.saveTask(taskWithCustomPrefix);
+			const loaded = await filesystem.loadTask("jira-456");
+
+			// IDs with existing prefix are preserved (normalized to uppercase)
+			expect(loaded?.id).toBe("JIRA-456");
 		});
 
 		it("should return empty array when listing tasks in empty directory", async () => {

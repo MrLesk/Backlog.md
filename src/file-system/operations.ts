@@ -6,7 +6,14 @@ import { parseDecision, parseDocument, parseMilestone, parseTask } from "../mark
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
-import { buildGlobPattern, generateNextId, idForFilename, normalizeId } from "../utils/prefix-config.ts";
+import {
+	buildGlobPattern,
+	extractAnyPrefix,
+	generateNextId,
+	hasAnyPrefix,
+	idForFilename,
+	normalizeId,
+} from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -172,7 +179,13 @@ export class FileSystem {
 
 	// Task operations
 	async saveTask(task: Task): Promise<string> {
-		const taskId = normalizeTaskId(task.id);
+		// Extract prefix from task ID, or use configured prefix, or fall back to default "task"
+		let prefix = extractAnyPrefix(task.id);
+		if (!prefix) {
+			const config = await this.loadConfig();
+			prefix = config?.prefixes?.task ?? "task";
+		}
+		const taskId = normalizeId(task.id, prefix);
 		const filename = `${idForFilename(taskId)} - ${this.sanitizeFilename(task.title)}.md`;
 		const tasksDir = await this.getTasksDir();
 		const filepath = join(tasksDir, filename);
@@ -180,7 +193,9 @@ export class FileSystem {
 		const normalizedTask = {
 			...task,
 			id: taskId,
-			parentTaskId: task.parentTaskId ? normalizeTaskId(task.parentTaskId) : undefined,
+			parentTaskId: task.parentTaskId
+				? normalizeId(task.parentTaskId, extractAnyPrefix(task.parentTaskId) ?? prefix)
+				: undefined,
 		};
 		const content = serializeTask(normalizedTask);
 
@@ -224,9 +239,14 @@ export class FileSystem {
 			return [];
 		}
 
+		// Get configured task prefix
+		const config = await this.loadConfig();
+		const taskPrefix = config?.prefixes?.task ?? "task";
+		const globPattern = buildGlobPattern(taskPrefix);
+
 		let taskFiles: string[];
 		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: tasksDir }));
+			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: tasksDir }));
 		} catch (_error) {
 			return [];
 		}
@@ -266,9 +286,14 @@ export class FileSystem {
 			return [];
 		}
 
+		// Get configured task prefix
+		const config = await this.loadConfig();
+		const taskPrefix = config?.prefixes?.task ?? "task";
+		const globPattern = buildGlobPattern(taskPrefix);
+
 		let taskFiles: string[];
 		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: completedDir }));
+			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: completedDir }));
 		} catch (_error) {
 			return [];
 		}
@@ -298,9 +323,14 @@ export class FileSystem {
 			return [];
 		}
 
+		// Get configured task prefix
+		const config = await this.loadConfig();
+		const taskPrefix = config?.prefixes?.task ?? "task";
+		const globPattern = buildGlobPattern(taskPrefix);
+
 		let taskFiles: string[];
 		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: archiveTasksDir }));
+			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: archiveTasksDir }));
 		} catch (_error) {
 			return [];
 		}

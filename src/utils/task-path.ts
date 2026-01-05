@@ -1,6 +1,12 @@
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
-import { buildFilenameIdRegex, buildGlobPattern, idForFilename, normalizeId } from "./prefix-config.ts";
+import {
+	buildFilenameIdRegex,
+	buildGlobPattern,
+	extractAnyPrefix,
+	idForFilename,
+	normalizeId,
+} from "./prefix-config.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -120,9 +126,13 @@ function idsMatchLoosely(inputId: string, filename: string, prefix: string = DEF
 export async function getTaskPath(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
 	const coreInstance = core || new Core(process.cwd());
 
+	// Extract prefix from the taskId, or use default
+	const prefix = extractAnyPrefix(taskId) ?? DEFAULT_TASK_PREFIX;
+	const globPattern = buildGlobPattern(prefix);
+
 	try {
-		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
-		const normalizedId = normalizeTaskId(taskId);
+		const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
+		const normalizedId = normalizeTaskId(taskId, prefix);
 		// Use lowercase ID for filename matching (filenames use lowercase prefix)
 		const filenameId = idForFilename(normalizedId);
 		// First try exact prefix match for speed
@@ -130,7 +140,7 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 
 		// If not found, try loose numeric match ignoring leading zeros
 		if (!taskFile) {
-			taskFile = files.find((f) => idsMatchLoosely(taskId, f));
+			taskFile = files.find((f) => idsMatchLoosely(taskId, f, prefix));
 		}
 
 		if (taskFile) {
@@ -235,15 +245,19 @@ export async function getDraftPath(draftId: string, core: Core): Promise<string 
 export async function getTaskFilename(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
 	const coreInstance = core || new Core(process.cwd());
 
+	// Extract prefix from the taskId, or use default
+	const prefix = extractAnyPrefix(taskId) ?? DEFAULT_TASK_PREFIX;
+	const globPattern = buildGlobPattern(prefix);
+
 	try {
-		const files = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
-		const normalizedId = normalizeTaskId(taskId);
+		const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
+		const normalizedId = normalizeTaskId(taskId, prefix);
 		// Use lowercase ID for filename matching (filenames use lowercase prefix)
 		const filenameId = idForFilename(normalizedId);
 		// First exact match
 		let taskFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
 		if (!taskFile) {
-			taskFile = files.find((f) => idsMatchLoosely(taskId, f));
+			taskFile = files.find((f) => idsMatchLoosely(taskId, f, prefix));
 		}
 
 		return taskFile || null;
