@@ -1,7 +1,7 @@
 ---
 id: task-345
 title: 'Configurable ID prefix system (task-, draft-, custom)'
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-12-16 20:18'
@@ -53,12 +53,12 @@ Actual implementation is split into subtasks, each with its own tests and docs.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All subtasks (task-345.01 through task-345.07) completed
-- [ ] #2 Drafts use draft- prefix by default
-- [ ] #3 Custom task prefixes configurable via config.yml
-- [ ] #4 All tests pass including new prefix-related tests
-- [ ] #5 Documentation updated for prefix configuration
-- [ ] #6 Breaking change for existing task- prefixed drafts documented
+- [x] #1 All subtasks (task-345.01 through task-345.07) completed
+- [x] #2 Drafts use draft- prefix by default
+- [x] #3 Custom task prefixes configurable via config.yml
+- [x] #4 All tests pass including new prefix-related tests
+- [x] #5 Documentation updated for prefix configuration
+- [x] #6 Breaking change for existing task- prefixed drafts documented
 <!-- AC:END -->
 
 ## Implementation Plan
