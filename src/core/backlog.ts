@@ -118,6 +118,20 @@ function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, Bra
 	});
 }
 
+/**
+ * Extract IDs from state map where latest state is "task" or "completed" (not "archived" or "draft")
+ * Used for ID generation to determine which IDs are in use.
+ */
+function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTaskStateEntry>): string[] {
+	const ids: string[] = [];
+	for (const [id, entry] of latestState) {
+		if (entry.type === "task" || entry.type === "completed") {
+			ids.push(id);
+		}
+	}
+	return ids;
+}
+
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
@@ -471,17 +485,79 @@ export class Core {
 	}
 
 	/**
+	 * Gets all task IDs that are in use (active or completed) across all branches.
+	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
+	 *
+	 * This is used for ID generation to determine the next available ID.
+	 */
+	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
+		const config = await this.fs.loadConfig();
+
+		// Load local active and completed tasks
+		const localTasks = await this.listTasksWithMetadata();
+		const localCompletedTasks = await this.fs.listCompletedTasks();
+
+		// Build initial state entries from local tasks
+		const stateEntries: BranchTaskStateEntry[] = [];
+
+		// Add local active tasks to state
+		for (const task of localTasks) {
+			if (!task.id) continue;
+			const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
+			stateEntries.push({
+				id: task.id,
+				type: "task",
+				branch: "local",
+				path: "",
+				lastModified,
+			});
+		}
+
+		// Add local completed tasks to state
+		for (const task of localCompletedTasks) {
+			if (!task.id) continue;
+			const lastModified = task.updatedDate ? new Date(task.updatedDate) : new Date(0);
+			stateEntries.push({
+				id: task.id,
+				type: "completed",
+				branch: "local",
+				path: "",
+				lastModified,
+			});
+		}
+
+		// If cross-branch checking is enabled, scan other branches for task states
+		if (config?.checkActiveBranches !== false) {
+			const branchStateEntries: BranchTaskStateEntry[] = [];
+
+			// Load states from remote and local branches in parallel
+			await Promise.all([
+				loadRemoteTasks(this.git, config, undefined, localTasks, branchStateEntries),
+				loadLocalBranchTasks(this.git, config, undefined, localTasks, branchStateEntries),
+			]);
+
+			// Add branch state entries
+			stateEntries.push(...branchStateEntries);
+		}
+
+		// Build the latest state map and extract active + completed IDs
+		const latestState = buildLatestStateMap(stateEntries, []);
+		return getActiveAndCompletedIdsFromStateMap(latestState);
+	}
+
+	/**
 	 * Gets all existing IDs for a given entity type.
 	 * Used internally by generateNextId to determine the next available ID.
+	 *
+	 * Note: Archived tasks are intentionally excluded - archived IDs can be reused.
+	 * This makes archive act as a soft delete for ID purposes.
 	 */
 	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
 		switch (type) {
 			case EntityType.Task: {
-				// Tasks: /tasks + /completed + cross-branch + remote (via ContentStore)
-				const store = await this.getContentStore();
-				const tasks = store.getTasks();
-				const completedTasks = await this.fs.listCompletedTasks();
-				return [...tasks.map((t) => t.id), ...completedTasks.map((c) => c.id)];
+				// Get active + completed task IDs from all branches (respects config)
+				// Archived IDs are excluded - they can be reused (soft delete behavior)
+				return this.getActiveAndCompletedTaskIds();
 			}
 			case EntityType.Draft: {
 				const drafts = await this.fs.listDrafts();
