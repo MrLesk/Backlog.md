@@ -5,6 +5,7 @@
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
+import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -101,7 +102,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			loadingScreenFactory: options.loadingScreenFactory,
 		});
 
-		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		if (baseTasks.length === 0) {
 			if (options.filter?.parentTaskId) {
 				console.log(`No child tasks found for parent task ${options.filter.parentTaskId}.`);
@@ -134,8 +135,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let kanbanStatuses = loadedStatuses ?? [];
 		let boardUpdater: ((nextTasks: Task[], nextStatuses: string[]) => void) | null = null;
 
-		const getRenderableTasks = () =>
-			tasks.filter((task) => task.id && task.id.trim() !== "" && task.id.startsWith("task-"));
+		const getRenderableTasks = () => tasks.filter((task) => task.id && task.id.trim() !== "" && hasAnyPrefix(task.id));
 
 		const emitBoardUpdate = () => {
 			if (!boardUpdater) return;
@@ -206,7 +206,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 
 		// Function to show task view
 		const showTaskView = async (): Promise<ViewResult> => {
-			const availableTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+			const availableTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 
 			if (availableTasks.length === 0) {
 				console.log("No tasks available.");

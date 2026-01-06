@@ -36,6 +36,15 @@ When you are done implementing, you know much more about a task than when you st
 At this point you can better judge retrospectively what can be the simplest architecture to solve the problem.
 If you can simplify the code, do it.
 
+## Simplicity-first implementation rules
+
+- Prefer a single implementation for similar concerns. Reuse or refactor to a shared helper instead of duplicating.
+- Keep APIs minimal. Favor load + upsert over load/save/update, and do not add unused methods.
+- Avoid extra layers (services, normalizers, versioning) unless there is an immediate, proven need.
+- Keep behavior consistent across similar stores (defaults, parse errors, locking). Divergence requires a clear reason.
+- Don't add new exported helpers just to compute a path; derive from existing paths or add one shared helper only when reused.
+
+
 ## Commands
 
 ### Development

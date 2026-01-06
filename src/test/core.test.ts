@@ -65,7 +65,7 @@ describe("Core", () => {
 			await core.createTask(sampleTask, false);
 
 			const loadedTask = await core.filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe("task-1");
+			expect(loadedTask?.id).toBe("TASK-1");
 			expect(loadedTask?.title).toBe("Test Task");
 		});
 
@@ -74,7 +74,7 @@ describe("Core", () => {
 
 			// Check if task file was created
 			const loadedTask = await core.filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe("task-1");
+			expect(loadedTask?.id).toBe("TASK-1");
 
 			// Check git status to see if there are uncommitted changes
 			const _hasChanges = await core.gitOps.hasUncommittedChanges();
@@ -111,7 +111,7 @@ describe("Core", () => {
 			expect(archived).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Archive task task-1");
+			expect(lastCommit).toContain("backlog: Archive task TASK-1");
 		});
 
 		it("should demote task with auto-commit", async () => {
@@ -121,7 +121,7 @@ describe("Core", () => {
 			expect(demoted).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Demote task task-1");
+			expect(lastCommit).toContain("backlog: Demote task TASK-1");
 		});
 
 		it("should resolve tasks using flexible ID formats", async () => {
@@ -131,16 +131,16 @@ describe("Core", () => {
 			await core.createTask(paddedTask, false);
 
 			const uppercase = await core.getTask("TASK-5");
-			expect(uppercase?.id).toBe("task-5");
+			expect(uppercase?.id).toBe("TASK-5");
 
 			const bare = await core.getTask("5");
-			expect(bare?.id).toBe("task-5");
+			expect(bare?.id).toBe("TASK-5");
 
 			const zeroPadded = await core.getTask("0007");
-			expect(zeroPadded?.id).toBe("task-007");
+			expect(zeroPadded?.id).toBe("TASK-007");
 
 			const mixedCase = await core.getTask("Task-007");
-			expect(mixedCase?.id).toBe("task-007");
+			expect(mixedCase?.id).toBe("TASK-007");
 		});
 
 		it("should return false when archiving non-existent task", async () => {
@@ -209,7 +209,7 @@ describe("Core", () => {
 			await nonGitCore.createTask(sampleTask, false);
 
 			const loadedTask = await nonGitCore.filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe("task-1");
+			expect(loadedTask?.id).toBe("TASK-1");
 		});
 
 		it("should normalize assignee for string and array inputs", async () => {
@@ -254,7 +254,7 @@ describe("Core", () => {
 				title: "Parent Task",
 				status: "To Do",
 			});
-			expect(parent.id).toBe("task-1");
+			expect(parent.id).toBe("TASK-1");
 
 			// Create first sub-task
 			const { task: child1 } = await core.createTaskFromInput({
@@ -262,8 +262,8 @@ describe("Core", () => {
 				parentTaskId: parent.id,
 				status: "To Do",
 			});
-			expect(child1.id).toBe("task-1.1");
-			expect(child1.parentTaskId).toBe("task-1");
+			expect(child1.id).toBe("TASK-1.1");
+			expect(child1.parentTaskId).toBe("TASK-1");
 
 			// Create second sub-task
 			const { task: child2 } = await core.createTaskFromInput({
@@ -271,15 +271,15 @@ describe("Core", () => {
 				parentTaskId: parent.id,
 				status: "To Do",
 			});
-			expect(child2.id).toBe("task-1.2");
-			expect(child2.parentTaskId).toBe("task-1");
+			expect(child2.id).toBe("TASK-1.2");
+			expect(child2.parentTaskId).toBe("TASK-1");
 
 			// Create another parent task to ensure sequential numbering still works
 			const { task: parent2 } = await core.createTaskFromInput({
 				title: "Second Parent",
 				status: "To Do",
 			});
-			expect(parent2.id).toBe("task-2");
+			expect(parent2.id).toBe("TASK-2");
 		});
 	});
 
@@ -342,8 +342,9 @@ describe("Core", () => {
 	});
 
 	describe("draft operations", () => {
+		// Drafts now use DRAFT-X id format and draft-x filename prefix
 		const sampleDraft: Task = {
-			id: "task-draft",
+			id: "draft-1",
 			title: "Draft Task",
 			status: "Draft",
 			assignee: [],
@@ -360,15 +361,15 @@ describe("Core", () => {
 		it("should create draft without auto-commit", async () => {
 			await core.createDraft(sampleDraft, false);
 
-			const loaded = await core.filesystem.loadDraft("task-draft");
-			expect(loaded?.id).toBe("task-draft");
+			const loaded = await core.filesystem.loadDraft("draft-1");
+			expect(loaded?.id).toBe("DRAFT-1");
 		});
 
 		it("should create draft with auto-commit", async () => {
 			await core.createDraft(sampleDraft, true);
 
-			const loaded = await core.filesystem.loadDraft("task-draft");
-			expect(loaded?.id).toBe("task-draft");
+			const loaded = await core.filesystem.loadDraft("draft-1");
+			expect(loaded?.id).toBe("DRAFT-1");
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toBeDefined();
@@ -378,42 +379,42 @@ describe("Core", () => {
 		it("should promote draft with auto-commit", async () => {
 			await core.createDraft(sampleDraft, true);
 
-			const promoted = await core.promoteDraft("task-draft", true);
+			const promoted = await core.promoteDraft("draft-1", true);
 			expect(promoted).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Promote draft task-draft");
+			expect(lastCommit).toContain("backlog: Promote draft DRAFT-1");
 		});
 
 		it("should archive draft with auto-commit", async () => {
 			await core.createDraft(sampleDraft, true);
 
-			const archived = await core.archiveDraft("task-draft", true);
+			const archived = await core.archiveDraft("draft-1", true);
 			expect(archived).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Archive draft task-draft");
+			expect(lastCommit).toContain("backlog: Archive draft DRAFT-1");
 		});
 
 		it("should normalize assignee for string and array inputs", async () => {
 			const draftString = {
 				...sampleDraft,
-				id: "task-draft-1",
+				id: "draft-2",
 				title: "Draft String",
 				assignee: "@erin",
 			} as unknown as Task;
 			await core.createDraft(draftString, false);
-			const loadedString = await core.filesystem.loadDraft("task-draft-1");
+			const loadedString = await core.filesystem.loadDraft("draft-2");
 			expect(loadedString?.assignee).toEqual(["@erin"]);
 
 			const draftArray: Task = {
 				...sampleDraft,
-				id: "task-draft-2",
+				id: "draft-3",
 				title: "Draft Array",
 				assignee: ["@frank"],
 			};
 			await core.createDraft(draftArray, false);
-			const loadedArray = await core.filesystem.loadDraft("task-draft-2");
+			const loadedArray = await core.filesystem.loadDraft("draft-3");
 			expect(loadedArray?.assignee).toEqual(["@frank"]);
 		});
 	});
@@ -501,7 +502,7 @@ describe("Core", () => {
 			const allFiles = await core.filesystem.listTasks();
 
 			// Check that a task with the expected ID exists
-			const createdTask = allFiles.find((t) => t.id === "task-accessor");
+			const createdTask = allFiles.find((t) => t.id === "TASK-ACCESSOR");
 			expect(createdTask).toBeDefined();
 			expect(createdTask?.title).toBe("Accessor Test Task");
 		}, 10000);

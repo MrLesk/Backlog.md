@@ -58,9 +58,9 @@ describe("Board Loading with checkActiveBranches", () => {
 			const tasks = await core.loadTasks();
 
 			expect(tasks).toHaveLength(3);
-			expect(tasks.find((t) => t.id === "task-1")).toBeDefined();
-			expect(tasks.find((t) => t.id === "task-2")).toBeDefined();
-			expect(tasks.find((t) => t.id === "task-3")).toBeDefined();
+			expect(tasks.find((t) => t.id === "TASK-1")).toBeDefined();
+			expect(tasks.find((t) => t.id === "TASK-2")).toBeDefined();
+			expect(tasks.find((t) => t.id === "TASK-3")).toBeDefined();
 		});
 
 		it("should skip cross-branch checking when checkActiveBranches is false", async () => {
@@ -151,7 +151,7 @@ describe("Board Loading with checkActiveBranches", () => {
 			// The task-4 from old branch should not be included if branch checking is working
 			// However, since we're in main branch, we should only see the 3 main tasks
 			expect(tasks).toHaveLength(3);
-			expect(tasks.find((t) => t.id === "task-4")).toBeUndefined();
+			expect(tasks.find((t) => t.id === "TASK-4")).toBeUndefined();
 
 			// Check that branch checking happened with the right days
 			const _branchCheckMessage = progressMessages.find(

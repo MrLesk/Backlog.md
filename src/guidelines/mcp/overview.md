@@ -58,6 +58,6 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_create` — create new tasks with description and acceptance criteria
 - `task_edit` — update task metadata, status, plan, notes, acceptance criteria, and dependencies
 - `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
-- `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid)
+- `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Note: archived task IDs can be reused by new tasks (soft delete behavior).
 
 **Always operate through MCP tools. Never edit markdown files directly so relationships, metadata, and history stay consistent.**

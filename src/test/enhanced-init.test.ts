@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { initializeProject } from "../core/init.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -236,5 +237,142 @@ describe("Enhanced init command", () => {
 		// Verify the padding config is preserved
 		// (ID generation happens in CLI, not in Core.createTask)
 		expect(existingConfig?.zeroPaddedIds).toBe(4);
+	});
+
+	test("should create default task prefix when not specified", async () => {
+		const core = new Core(tmpDir);
+
+		// Initialize project without custom prefix
+		await core.initializeProject("Default Prefix Project");
+
+		// Verify default prefix is "task"
+		const config = await core.filesystem.loadConfig();
+		expect(config?.prefixes).toBeTruthy();
+		expect(config?.prefixes?.task).toBe("task");
+		expect(config?.prefixes?.draft).toBe("draft");
+	});
+
+	test("should handle custom task prefix in config", async () => {
+		const core = new Core(tmpDir);
+
+		// Create config with custom prefix
+		const customPrefixConfig = {
+			projectName: "JIRA Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			backlogDirectory: "backlog",
+			autoCommit: false,
+			prefixes: {
+				task: "JIRA",
+				draft: "draft",
+			},
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(customPrefixConfig);
+
+		// Verify custom prefix was saved
+		const loadedConfig = await core.filesystem.loadConfig();
+		expect(loadedConfig?.prefixes?.task).toBe("JIRA");
+		expect(loadedConfig?.prefixes?.draft).toBe("draft");
+	});
+
+	test("should preserve existing prefix during re-initialization", async () => {
+		const core = new Core(tmpDir);
+
+		// Create initial config with custom prefix
+		const initialConfig = {
+			projectName: "Custom Prefix Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			backlogDirectory: "backlog",
+			autoCommit: false,
+			prefixes: {
+				task: "BUG",
+				draft: "draft",
+			},
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(initialConfig);
+
+		// Simulate re-initialization by loading existing config
+		const existingConfig = await core.filesystem.loadConfig();
+		expect(existingConfig).toBeTruthy();
+		expect(existingConfig?.prefixes?.task).toBe("BUG");
+
+		// Verify the prefix is preserved (cannot be changed after init)
+		expect(existingConfig?.prefixes?.task).toBe("BUG");
+	});
+
+	test("initializeProject should use custom taskPrefix from advancedConfig", async () => {
+		const core = new Core(tmpDir);
+
+		// Initialize project with custom prefix via initializeProject function
+		const result = await initializeProject(core, {
+			projectName: "JIRA Init Test",
+			integrationMode: "none",
+			advancedConfig: {
+				taskPrefix: "JIRA",
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.config.prefixes?.task).toBe("JIRA");
+		expect(result.config.prefixes?.draft).toBe("draft");
+
+		// Verify it was saved
+		const loadedConfig = await core.filesystem.loadConfig();
+		expect(loadedConfig?.prefixes?.task).toBe("JIRA");
+	});
+
+	test("initializeProject should preserve existing prefix on re-init", async () => {
+		const core = new Core(tmpDir);
+
+		// First init with custom prefix
+		await initializeProject(core, {
+			projectName: "Re-Init Test",
+			integrationMode: "none",
+			advancedConfig: {
+				taskPrefix: "ISSUE",
+			},
+		});
+
+		// Verify initial prefix
+		const initialConfig = await core.filesystem.loadConfig();
+		expect(initialConfig?.prefixes?.task).toBe("ISSUE");
+
+		// Re-initialize (simulating re-init with different taskPrefix - should be ignored)
+		const result = await initializeProject(core, {
+			projectName: "Re-Init Test Updated",
+			integrationMode: "none",
+			existingConfig: initialConfig,
+			advancedConfig: {
+				taskPrefix: "CHANGED", // This should be ignored since existingConfig has prefixes
+			},
+		});
+
+		// Verify prefix was preserved from existingConfig
+		expect(result.config.prefixes?.task).toBe("ISSUE");
+	});
+
+	test("initializeProject should use default prefix when not specified", async () => {
+		const core = new Core(tmpDir);
+
+		// Initialize without custom prefix
+		const result = await initializeProject(core, {
+			projectName: "Default Prefix Init",
+			integrationMode: "none",
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.config.prefixes?.task).toBe("task");
+		expect(result.config.prefixes?.draft).toBe("draft");
 	});
 });

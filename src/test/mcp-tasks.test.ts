@@ -62,7 +62,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(createResult.content)).toContain("Task task-1 - Agent onboarding checklist");
+		expect(getText(createResult.content)).toContain("Task TASK-1 - Agent onboarding checklist");
 
 		const listResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_list", arguments: { search: "onboarding" } },
@@ -70,7 +70,7 @@ describe("MCP task tools (MVP)", () => {
 
 		const listText = (listResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
 		expect(listText).toContain("To Do:");
-		expect(listText).toContain("[HIGH] task-1 - Agent onboarding checklist");
+		expect(listText).toContain("[HIGH] TASK-1 - Agent onboarding checklist");
 		expect(listText).not.toContain("Implementation Plan:");
 		expect(listText).not.toContain("Acceptance Criteria:");
 
@@ -80,7 +80,7 @@ describe("MCP task tools (MVP)", () => {
 
 		const searchText = getText(searchResult.content);
 		expect(searchText).toContain("Tasks:");
-		expect(searchText).toContain("task-1 - Agent onboarding checklist");
+		expect(searchText).toContain("TASK-1 - Agent onboarding checklist");
 		expect(searchText).toContain("(To Do)");
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
@@ -121,7 +121,7 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const createText = getText(createResult.content);
-		expect(createText).toContain("Task task-1 - Status normalization");
+		expect(createText).toContain("Task TASK-1 - Status normalization");
 
 		const createdTask = await mcpServer.getTask("task-1");
 		expect(createdTask?.status).toBe("Done");
@@ -137,7 +137,7 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const editText = getText(editResult.content);
-		expect(editText).toContain("Task task-1 - Status normalization");
+		expect(editText).toContain("Task TASK-1 - Status normalization");
 
 		const updatedTask = await mcpServer.getTask("task-1");
 		expect(updatedTask?.status).toBe("In Progress");
@@ -155,7 +155,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(seedTask.content)).toContain("Task task-1 - Refine MCP documentation");
+		expect(getText(seedTask.content)).toContain("Task TASK-1 - Refine MCP documentation");
 
 		// Create dependency task
 		const dependencyTask = await mcpServer.testInterface.callTool({
@@ -167,7 +167,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(dependencyTask.content)).toContain("Task task-2 - Placeholder dependency");
+		expect(getText(dependencyTask.content)).toContain("Task TASK-2 - Placeholder dependency");
 
 		const editResult = await mcpServer.testInterface.callTool({
 			params: {
@@ -189,7 +189,7 @@ describe("MCP task tools (MVP)", () => {
 		const editText = getText(editResult.content);
 		expect(editText).toContain("Status: ◒ In Progress");
 		expect(editText).toContain("Labels: docs");
-		expect(editText).toContain("Dependencies: task-2");
+		expect(editText).toContain("Dependencies: TASK-2");
 		expect(editText).toContain("Implementation Plan:");
 		expect(editText).toContain("Implementation Notes:");
 		expect(editText).toContain("#1 Plan documented");

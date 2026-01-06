@@ -363,6 +363,21 @@ const Settings: React.FC = () => {
 									Number of digits for ID padding (0 = disabled, 3 = task-001, 4 = task-0001)
 								</p>
 							</div>
+
+							<div>
+								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+									Task Prefix <span className="text-gray-400 dark:text-gray-500 font-normal">(read-only)</span>
+								</label>
+								<input
+									type="text"
+									value={(config.prefixes?.task || 'task').toUpperCase()}
+									disabled
+									className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
+								/>
+								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									Set during initialization. Cannot be changed to avoid breaking existing task IDs.
+								</p>
+							</div>
 						</div>
 					</div>
 

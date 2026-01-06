@@ -72,7 +72,7 @@ describe("MCP task_complete", () => {
 			},
 		});
 		expect(complete.isError).toBeUndefined();
-		expect(getText(complete.content)).toContain("Completed task task-1");
+		expect(getText(complete.content)).toContain("Completed task TASK-1");
 
 		const activeTask = await server.filesystem.loadTask("task-1");
 		expect(activeTask).toBeNull();

@@ -10,7 +10,7 @@ let filesystem: FileSystem;
 let serverPort = 0;
 
 const baseTask: Task = {
-	id: "task-0007",
+	id: "TASK-0007",
 	title: "Server search task",
 	status: "In Progress",
 	assignee: ["@codex"],
@@ -44,7 +44,7 @@ const baseDecision: Decision = {
 };
 
 const dependentTask: Task = {
-	id: "task-0008",
+	id: "TASK-0008",
 	title: "Follow-up integration",
 	status: "In Progress",
 	assignee: ["@codex"],
@@ -174,7 +174,7 @@ describe("BacklogServer search endpoint", () => {
 		expect(createResponse.ok).toBe(true);
 		const created = (await createResponse.json()) as Task;
 		expect(created.title).toBe("Immediate fetch");
-		const shortId = created.id.replace(/^task-/, "");
+		const shortId = created.id.replace(/^task-/i, "");
 		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
 		expect(fetched.id).toBe(created.id);
 		expect(fetched.title).toBe("Immediate fetch");

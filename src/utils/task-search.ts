@@ -17,28 +17,53 @@ interface TaskSearchIndex {
 	search(options: TaskSearchOptions): Task[];
 }
 
-const TASK_ID_PREFIX = "task-";
+// Regex pattern to match any prefix (letters followed by dash)
+const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
+
+/**
+ * Extract prefix from an ID if present (e.g., "task-" from "task-123")
+ */
+function extractPrefix(id: string): string | null {
+	const match = id.match(PREFIX_PATTERN);
+	return match ? match[0] : null;
+}
+
+/**
+ * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
+ */
+function stripPrefix(id: string): string {
+	return id.replace(PREFIX_PATTERN, "");
+}
 
 function createTaskIdVariants(id: string): string[] {
 	const segments = parseTaskIdSegments(id);
+	const prefix = extractPrefix(id) ?? "task-"; // Default to task- if no prefix
+	const lowerId = id.toLowerCase();
+
 	if (!segments) {
-		const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
-		return id === normalized ? [normalized] : [normalized, id];
+		// Non-numeric ID - just return the ID and its lowercase variant
+		return id === lowerId ? [id] : [id, lowerId];
 	}
+
 	const canonicalSuffix = segments.join(".");
 	const variants = new Set<string>();
-	const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
-	variants.add(normalized);
-	variants.add(`${TASK_ID_PREFIX}${canonicalSuffix}`);
+
+	// Add original ID and lowercase variant
+	variants.add(id);
+	variants.add(lowerId);
+
+	// Add with extracted/default prefix
+	variants.add(`${prefix}${canonicalSuffix}`);
+	variants.add(`${prefix.toLowerCase()}${canonicalSuffix}`);
+
+	// Add just the numeric part
 	variants.add(canonicalSuffix);
-	if (id !== normalized) {
-		variants.add(id);
-	}
+
 	return Array.from(variants);
 }
 
 function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = value.startsWith(TASK_ID_PREFIX) ? value.slice(TASK_ID_PREFIX.length) : value;
+	const withoutPrefix = stripPrefix(value);
 	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
 		return null;
 	}

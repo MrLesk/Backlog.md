@@ -10,10 +10,30 @@ import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } fr
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
 
-const TASK_ID_PREFIX = "task-";
+// Regex pattern to match any prefix (letters followed by dash)
+const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
+const DEFAULT_PREFIX = "task-";
+
+/**
+ * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
+ */
+function stripPrefix(id: string): string {
+	return id.replace(PREFIX_PATTERN, "");
+}
+
+/**
+ * Ensure an ID has a prefix. If it already has one, return as-is.
+ * Otherwise, add the default "task-" prefix.
+ */
+function ensurePrefix(id: string): string {
+	if (PREFIX_PATTERN.test(id)) {
+		return id;
+	}
+	return `${DEFAULT_PREFIX}${id}`;
+}
 
 function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = value.startsWith(TASK_ID_PREFIX) ? value.slice(TASK_ID_PREFIX.length) : value;
+	const withoutPrefix = stripPrefix(value);
 	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
 		return null;
 	}
@@ -21,12 +41,14 @@ function parseTaskIdSegments(value: string): number[] | null {
 }
 
 function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
-	const normalized = inputId.startsWith(TASK_ID_PREFIX) ? inputId : `${TASK_ID_PREFIX}${inputId}`;
-	const exact = tasks.find((task) => task.id === normalized);
+	// First try exact match (case-insensitive)
+	const lowerInputId = inputId.toLowerCase();
+	const exact = tasks.find((task) => task.id.toLowerCase() === lowerInputId);
 	if (exact) {
 		return exact;
 	}
 
+	// Try matching by numeric segments only
 	const inputSegments = parseTaskIdSegments(inputId);
 	if (!inputSegments) {
 		return undefined;
@@ -508,7 +530,7 @@ export class BacklogServer {
 			const allTasks = store.getTasks();
 			let parentTask = findTaskByLooseId(allTasks, parent);
 			if (!parentTask) {
-				const fallbackId = parent.startsWith(TASK_ID_PREFIX) ? parent : `${TASK_ID_PREFIX}${parent}`;
+				const fallbackId = ensurePrefix(parent);
 				const fallback = await this.core.filesystem.loadTask(fallbackId);
 				if (fallback) {
 					store.upsertTask(fallback);
@@ -516,7 +538,7 @@ export class BacklogServer {
 				}
 			}
 			if (!parentTask) {
-				const normalizedParent = parent.startsWith(TASK_ID_PREFIX) ? parent : `${TASK_ID_PREFIX}${parent}`;
+				const normalizedParent = ensurePrefix(parent);
 				return Response.json({ error: `Parent task ${normalizedParent} not found` }, { status: 404 });
 			}
 			parentTaskId = parentTask.id;
@@ -654,7 +676,7 @@ export class BacklogServer {
 		const tasks = store.getTasks();
 		const task = findTaskByLooseId(tasks, taskId);
 		if (!task) {
-			const fallbackId = taskId.startsWith(TASK_ID_PREFIX) ? taskId : `${TASK_ID_PREFIX}${taskId}`;
+			const fallbackId = ensurePrefix(taskId);
 			const fallback = await this.core.filesystem.loadTask(fallbackId);
 			if (fallback) {
 				store.upsertTask(fallback);

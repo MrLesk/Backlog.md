@@ -13,6 +13,7 @@ interface AdvancedConfig {
 	bypassGitHooks: boolean;
 	autoCommit: boolean;
 	zeroPaddedIds: number | null;
+	taskPrefix: string;
 	defaultEditor: string;
 	defaultPort: number;
 	autoOpenBrowser: boolean;
@@ -42,6 +43,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 		bypassGitHooks: DEFAULT_INIT_CONFIG.bypassGitHooks,
 		autoCommit: DEFAULT_INIT_CONFIG.autoCommit,
 		zeroPaddedIds: DEFAULT_INIT_CONFIG.zeroPaddedIds ?? null,
+		taskPrefix: "",
 		defaultEditor: DEFAULT_INIT_CONFIG.defaultEditor ?? "",
 		defaultPort: DEFAULT_INIT_CONFIG.defaultPort,
 		autoOpenBrowser: DEFAULT_INIT_CONFIG.autoOpenBrowser,
@@ -130,6 +132,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					? {
 							...advancedConfig,
 							zeroPaddedIds: advancedConfig.zeroPaddedIds || undefined,
+							taskPrefix: advancedConfig.taskPrefix || undefined,
 							defaultEditor: advancedConfig.defaultEditor || undefined,
 						}
 					: undefined,
@@ -570,6 +573,28 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 								/>
 							</div>
 						)}
+
+						{/* Task Prefix */}
+						<div className="mt-4">
+							<label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
+								Task prefix
+							</label>
+							<input
+								type="text"
+								value={advancedConfig.taskPrefix}
+								onChange={(e) =>
+									setAdvancedConfig((prev) => ({
+										...prev,
+										taskPrefix: e.target.value.replace(/[^a-zA-Z]/g, ""),
+									}))
+								}
+								placeholder="task"
+								className="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700"
+							/>
+							<p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+								Letters only. Cannot be changed later. Examples: JIRA, BUG, ISSUE
+							</p>
+						</div>
 					</div>
 
 					{/* Editor */}
@@ -678,6 +703,14 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 						{showAdvancedConfig ? "Customized" : "Defaults"}
 					</span>
 				</div>
+				{showAdvancedConfig && advancedConfig.taskPrefix && (
+					<div className="flex justify-between">
+						<span className="text-gray-600 dark:text-gray-400">Task Prefix:</span>
+						<span className="font-medium text-gray-900 dark:text-gray-100">
+							{advancedConfig.taskPrefix.toUpperCase()}
+						</span>
+					</div>
+				)}
 			</div>
 
 			{Object.keys(mcpSetupResults).length > 0 && (

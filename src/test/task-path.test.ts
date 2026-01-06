@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists } from "../utils/task-path.ts";
+import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists, taskIdsEqual } from "../utils/task-path.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Task path utilities", () => {
@@ -42,23 +42,63 @@ describe("Task path utilities", () => {
 	});
 
 	describe("normalizeTaskId", () => {
-		it("should add task- prefix if missing", () => {
-			expect(normalizeTaskId("123")).toBe("task-123");
-			expect(normalizeTaskId("456")).toBe("task-456");
+		it("should add uppercase TASK- prefix if missing", () => {
+			expect(normalizeTaskId("123")).toBe("TASK-123");
+			expect(normalizeTaskId("456")).toBe("TASK-456");
 		});
 
-		it("should not modify task IDs that already have task- prefix", () => {
-			expect(normalizeTaskId("task-123")).toBe("task-123");
-			expect(normalizeTaskId("task-456")).toBe("task-456");
+		it("should normalize existing prefix to uppercase", () => {
+			expect(normalizeTaskId("task-123")).toBe("TASK-123");
+			expect(normalizeTaskId("TASK-456")).toBe("TASK-456");
 		});
 
 		it("should handle empty strings", () => {
-			expect(normalizeTaskId("")).toBe("task-");
+			expect(normalizeTaskId("")).toBe("TASK-");
 		});
 
-		it("should normalize mixed-case prefixes and preserve numeric padding", () => {
-			expect(normalizeTaskId("TASK-001")).toBe("task-001");
-			expect(normalizeTaskId("Task-42")).toBe("task-42");
+		it("should normalize mixed-case prefixes to uppercase", () => {
+			expect(normalizeTaskId("TASK-001")).toBe("TASK-001");
+			expect(normalizeTaskId("Task-42")).toBe("TASK-42");
+			expect(normalizeTaskId("task-99")).toBe("TASK-99");
+		});
+
+		it("should work with custom prefixes (uppercase output)", () => {
+			expect(normalizeTaskId("123", "JIRA")).toBe("JIRA-123");
+			expect(normalizeTaskId("JIRA-456", "JIRA")).toBe("JIRA-456");
+			expect(normalizeTaskId("jira-789", "JIRA")).toBe("JIRA-789");
+		});
+
+		it("should work with draft prefix (uppercase output)", () => {
+			expect(normalizeTaskId("1", "draft")).toBe("DRAFT-1");
+			expect(normalizeTaskId("draft-5", "draft")).toBe("DRAFT-5");
+		});
+	});
+
+	describe("taskIdsEqual", () => {
+		it("should compare IDs case-insensitively", () => {
+			expect(taskIdsEqual("task-123", "TASK-123")).toBe(true);
+			expect(taskIdsEqual("Task-456", "task-456")).toBe(true);
+		});
+
+		it("should handle numeric comparison (leading zeros)", () => {
+			expect(taskIdsEqual("task-1", "task-01")).toBe(true);
+			expect(taskIdsEqual("task-001", "task-1")).toBe(true);
+		});
+
+		it("should compare subtask IDs correctly", () => {
+			expect(taskIdsEqual("task-1.2", "task-1.2")).toBe(true);
+			expect(taskIdsEqual("task-1.2", "task-1.02")).toBe(true);
+			expect(taskIdsEqual("task-1.2", "task-1.3")).toBe(false);
+		});
+
+		it("should work with custom prefixes", () => {
+			expect(taskIdsEqual("JIRA-100", "jira-100", "JIRA")).toBe(true);
+			expect(taskIdsEqual("100", "JIRA-100", "JIRA")).toBe(true);
+		});
+
+		it("should return false for different IDs", () => {
+			expect(taskIdsEqual("task-1", "task-2")).toBe(false);
+			expect(taskIdsEqual("task-1.1", "task-1.2")).toBe(false);
 		});
 	});
 

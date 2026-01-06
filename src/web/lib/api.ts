@@ -458,6 +458,7 @@ export class ApiClient {
 			bypassGitHooks?: boolean;
 			autoCommit?: boolean;
 			zeroPaddedIds?: number;
+			taskPrefix?: string;
 			defaultEditor?: string;
 			defaultPort?: number;
 			autoOpenBrowser?: boolean;

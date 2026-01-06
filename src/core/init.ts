@@ -31,6 +31,8 @@ export interface InitializeProjectOptions {
 		defaultEditor?: string;
 		defaultPort?: number;
 		autoOpenBrowser?: boolean;
+		/** Custom task prefix (e.g., "JIRA"). Only set during first init, read-only after. */
+		taskPrefix?: string;
 	};
 	/** Existing config for re-initialization */
 	existingConfig?: BacklogConfig | null;
@@ -104,6 +106,11 @@ export async function initializeProject(
 		defaultPort: advancedConfig.defaultPort ?? existingConfig?.defaultPort ?? d.defaultPort,
 		autoOpenBrowser: advancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? d.autoOpenBrowser,
 		taskResolutionStrategy: existingConfig?.taskResolutionStrategy || "most_recent",
+		// Preserve existing prefixes on re-init, or use custom prefix if provided during first init
+		prefixes: existingConfig?.prefixes || {
+			task: advancedConfig.taskPrefix || "task",
+			draft: "draft",
+		},
 		...(advancedConfig.defaultEditor ? { defaultEditor: advancedConfig.defaultEditor } : {}),
 		...(typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0
 			? { zeroPaddedIds: advancedConfig.zeroPaddedIds }

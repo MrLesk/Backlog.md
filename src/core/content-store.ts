@@ -310,7 +310,8 @@ export class ContentStore {
 		const tasksDir = this.filesystem.tasksDir;
 		const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
-			if (!file || !file.startsWith("task-") || !file.endsWith(".md")) {
+			// Accept any prefix pattern (task-, jira-, etc.) followed by ID and ending in .md
+			if (!file || !/^[a-zA-Z]+-/.test(file) || !file.endsWith(".md")) {
 				this.enqueue(async () => {
 					await this.refreshTasksFromDisk();
 				});

@@ -110,11 +110,11 @@ describe("CLI parent task filtering", () => {
 
 		expect(exitCode).toBe(0);
 		// Should contain only child tasks
-		expect(result.stdout.toString()).toContain("task-1.1 - Child task 1");
-		expect(result.stdout.toString()).toContain("task-1.2 - Child task 2");
+		expect(result.stdout.toString()).toContain("TASK-1.1 - Child task 1");
+		expect(result.stdout.toString()).toContain("TASK-1.2 - Child task 2");
 		// Should not contain parent or standalone tasks
-		expect(result.stdout.toString()).not.toContain("task-1 - Parent task");
-		expect(result.stdout.toString()).not.toContain("task-2 - Standalone task");
+		expect(result.stdout.toString()).not.toContain("TASK-1 - Parent task");
+		expect(result.stdout.toString()).not.toContain("TASK-2 - Standalone task");
 	});
 
 	it("should filter tasks by parent with short task ID", async () => {
@@ -129,11 +129,11 @@ describe("CLI parent task filtering", () => {
 
 		expect(exitCode).toBe(0);
 		// Should contain only child tasks
-		expect(result.stdout.toString()).toContain("task-1.1 - Child task 1");
-		expect(result.stdout.toString()).toContain("task-1.2 - Child task 2");
+		expect(result.stdout.toString()).toContain("TASK-1.1 - Child task 1");
+		expect(result.stdout.toString()).toContain("TASK-1.2 - Child task 2");
 		// Should not contain parent or standalone tasks
-		expect(result.stdout.toString()).not.toContain("task-1 - Parent task");
-		expect(result.stdout.toString()).not.toContain("task-2 - Standalone task");
+		expect(result.stdout.toString()).not.toContain("TASK-1 - Parent task");
+		expect(result.stdout.toString()).not.toContain("TASK-2 - Standalone task");
 	});
 
 	it("should show error for non-existent parent task", async () => {
@@ -142,7 +142,7 @@ describe("CLI parent task filtering", () => {
 		const exitCode = result.exitCode;
 
 		expect(exitCode).toBe(1); // CLI exits with error for non-existent parent
-		expect(result.stderr.toString()).toContain("Parent task task-999 not found.");
+		expect(result.stderr.toString()).toContain("Parent task TASK-999 not found.");
 	});
 
 	it("should show message when parent has no children", async () => {
@@ -156,7 +156,7 @@ describe("CLI parent task filtering", () => {
 		}
 
 		expect(exitCode).toBe(0);
-		expect(result.stdout.toString()).toContain("No child tasks found for parent task task-2.");
+		expect(result.stdout.toString()).toContain("No child tasks found for parent task TASK-2.");
 	});
 
 	it("should work with -p shorthand flag", async () => {
@@ -171,8 +171,8 @@ describe("CLI parent task filtering", () => {
 
 		expect(exitCode).toBe(0);
 		// Should contain only child tasks
-		expect(result.stdout.toString()).toContain("task-1.1 - Child task 1");
-		expect(result.stdout.toString()).toContain("task-1.2 - Child task 2");
+		expect(result.stdout.toString()).toContain("TASK-1.1 - Child task 1");
+		expect(result.stdout.toString()).toContain("TASK-1.2 - Child task 2");
 	});
 
 	it("should combine parent filter with status filter", async () => {
@@ -187,8 +187,8 @@ describe("CLI parent task filtering", () => {
 
 		expect(exitCode).toBe(0);
 		// Should contain only child task with "To Do" status
-		expect(result.stdout.toString()).toContain("task-1.1 - Child task 1");
+		expect(result.stdout.toString()).toContain("TASK-1.1 - Child task 1");
 		// Should not contain child task with "In Progress" status
-		expect(result.stdout.toString()).not.toContain("task-1.2 - Child task 2");
+		expect(result.stdout.toString()).not.toContain("TASK-1.2 - Child task 2");
 	});
 });
