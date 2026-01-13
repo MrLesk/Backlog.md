@@ -2146,9 +2146,7 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		// TODO: Change to EntityType.Draft when file system operations are updated (task 345.03)
-		// For now, drafts still use task- prefix until saveDraft/loadDraft are updated
-		const id = await core.generateNextId(EntityType.Task);
+		const id = await core.generateNextId(EntityType.Draft);
 		const task = buildTaskFromOptions(id, title, options);
 		const filepath = await core.createDraft(task);
 		console.log(`Created draft ${id}`);

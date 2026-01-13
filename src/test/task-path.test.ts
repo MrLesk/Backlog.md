@@ -52,6 +52,11 @@ describe("Task path utilities", () => {
 			expect(normalizeTaskId("TASK-456")).toBe("TASK-456");
 		});
 
+		it("should preserve non-default prefixes when present", () => {
+			expect(normalizeTaskId("JIRA-456")).toBe("JIRA-456");
+			expect(normalizeTaskId("jira-789")).toBe("JIRA-789");
+		});
+
 		it("should handle empty strings", () => {
 			expect(normalizeTaskId("")).toBe("TASK-");
 		});

@@ -240,7 +240,7 @@ export class FileSystem {
 
 		// Get configured task prefix
 		const config = await this.loadConfig();
-		const taskPrefix = config?.prefixes?.task ?? "task";
+		const taskPrefix = (config?.prefixes?.task ?? "task").toLowerCase();
 		const globPattern = buildGlobPattern(taskPrefix);
 
 		let taskFiles: string[];
@@ -287,7 +287,7 @@ export class FileSystem {
 
 		// Get configured task prefix
 		const config = await this.loadConfig();
-		const taskPrefix = config?.prefixes?.task ?? "task";
+		const taskPrefix = (config?.prefixes?.task ?? "task").toLowerCase();
 		const globPattern = buildGlobPattern(taskPrefix);
 
 		let taskFiles: string[];
@@ -324,7 +324,7 @@ export class FileSystem {
 
 		// Get configured task prefix
 		const config = await this.loadConfig();
-		const taskPrefix = config?.prefixes?.task ?? "task";
+		const taskPrefix = (config?.prefixes?.task ?? "task").toLowerCase();
 		const globPattern = buildGlobPattern(taskPrefix);
 
 		let taskFiles: string[];

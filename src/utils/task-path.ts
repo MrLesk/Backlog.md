@@ -20,6 +20,7 @@ const DEFAULT_TASK_PREFIX = "task";
 
 /**
  * Normalize a task ID by ensuring the prefix is present (uppercase).
+ * If no explicit prefix is provided, preserve any prefix already in the input.
  *
  * @param taskId - The ID to normalize (e.g., "123", "task-123", "TASK-123")
  * @param prefix - The prefix to use (default: "task")
@@ -29,9 +30,12 @@ const DEFAULT_TASK_PREFIX = "task";
  * normalizeTaskId("123") // => "TASK-123"
  * normalizeTaskId("task-123") // => "TASK-123"
  * normalizeTaskId("TASK-123") // => "TASK-123"
+ * normalizeTaskId("JIRA-456") // => "JIRA-456"
  */
 export function normalizeTaskId(taskId: string, prefix: string = DEFAULT_TASK_PREFIX): string {
-	return normalizeId(taskId, prefix);
+	const inferredPrefix = extractAnyPrefix(taskId);
+	const effectivePrefix = inferredPrefix && prefix === DEFAULT_TASK_PREFIX ? inferredPrefix : prefix;
+	return normalizeId(taskId, effectivePrefix);
 }
 
 /**
