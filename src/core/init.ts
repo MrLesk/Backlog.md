@@ -109,7 +109,6 @@ export async function initializeProject(
 		// Preserve existing prefixes on re-init, or use custom prefix if provided during first init
 		prefixes: existingConfig?.prefixes || {
 			task: advancedConfig.taskPrefix || "task",
-			draft: "draft",
 		},
 		...(advancedConfig.defaultEditor ? { defaultEditor: advancedConfig.defaultEditor } : {}),
 		...(typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0

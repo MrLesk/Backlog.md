@@ -20,10 +20,9 @@ import {
 
 describe("prefix-config", () => {
 	describe("getDefaultPrefixConfig", () => {
-		test("returns default task and draft prefixes", () => {
+		test("returns default task prefix", () => {
 			const config = getDefaultPrefixConfig();
 			expect(config.task).toBe("task");
-			expect(config.draft).toBe("draft");
 		});
 
 		test("returns a new object each time", () => {
@@ -48,13 +47,11 @@ describe("prefix-config", () => {
 		test("merges partial config with defaults", () => {
 			const config = mergePrefixConfig({ task: "JIRA" });
 			expect(config.task).toBe("JIRA");
-			expect(config.draft).toBe("draft");
 		});
 
-		test("uses all custom values when provided", () => {
-			const config = mergePrefixConfig({ task: "issue", draft: "idea" });
+		test("uses custom task value when provided", () => {
+			const config = mergePrefixConfig({ task: "issue" });
 			expect(config.task).toBe("issue");
-			expect(config.draft).toBe("idea");
 		});
 	});
 
@@ -301,7 +298,7 @@ describe("prefix-config", () => {
 		});
 
 		test("returns configured task prefix", () => {
-			const config = { prefixes: { task: "JIRA", draft: "draft" } } as BacklogConfig;
+			const config = { prefixes: { task: "JIRA" } } as BacklogConfig;
 			expect(getPrefixForType(EntityType.Task, config)).toBe("JIRA");
 		});
 
@@ -314,9 +311,9 @@ describe("prefix-config", () => {
 			expect(getPrefixForType(EntityType.Draft)).toBe("draft");
 		});
 
-		test("draft prefix ignores config", () => {
-			const config = { prefixes: { task: "JIRA", draft: "CUSTOM" } } as BacklogConfig;
-			// Draft prefix is hardcoded, config is ignored
+		test("draft prefix is always hardcoded regardless of config", () => {
+			const config = { prefixes: { task: "JIRA" } } as BacklogConfig;
+			// Draft prefix is hardcoded, not part of config
 			expect(getPrefixForType(EntityType.Draft, config)).toBe("draft");
 		});
 

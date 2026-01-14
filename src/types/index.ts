@@ -217,14 +217,13 @@ export interface Sequence {
 }
 
 /**
- * Configuration for ID prefixes used in task and draft files.
- * Allows customization of prefixes (e.g., "JIRA-", "issue-", "bug-").
+ * Configuration for ID prefixes used in task files.
+ * Allows customization of task prefix (e.g., "JIRA-", "issue-", "bug-").
+ * Note: Draft prefix is always "draft" and not configurable.
  */
 export interface PrefixConfig {
-	/** Prefix for task IDs (default: "task") - produces IDs like task-1, task-2 */
+	/** Prefix for task IDs (default: "task") - produces IDs like TASK-1, TASK-2 */
 	task: string;
-	/** Prefix for draft IDs (default: "draft") - produces IDs like draft-1, draft-2 */
-	draft: string;
 }
 
 export interface BacklogConfig {

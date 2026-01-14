@@ -51,7 +51,6 @@ describe("Draft Prefix Migration", () => {
 				dateFormat: "YYYY-MM-DD",
 				prefixes: {
 					task: "task",
-					draft: "draft",
 				},
 			};
 			expect(needsDraftPrefixMigration(config)).toBe(false);
@@ -77,7 +76,6 @@ describe("Draft Prefix Migration", () => {
 			const config = await filesystem.loadConfig();
 			expect(config?.prefixes).toBeDefined();
 			expect(config?.prefixes?.task).toBe("task");
-			expect(config?.prefixes?.draft).toBe("draft");
 		});
 
 		it("should rename task-*.md files in drafts folder to draft-*.md", async () => {

@@ -1,13 +1,16 @@
 import { type BacklogConfig, EntityType, type PrefixConfig } from "../types/index.ts";
 
 /**
- * Default prefix configuration.
- * Tasks use "task-" prefix, drafts use "draft-" prefix.
+ * Default prefix configuration for tasks.
  */
 export const DEFAULT_PREFIX_CONFIG: PrefixConfig = {
 	task: "task",
-	draft: "draft",
 };
+
+/**
+ * Hardcoded draft prefix. Not configurable - always "draft".
+ */
+export const DRAFT_PREFIX = "draft";
 
 /**
  * Returns the default prefix configuration.
@@ -27,7 +30,6 @@ export function getDefaultPrefixConfig(): PrefixConfig {
 export function mergePrefixConfig(config?: Partial<PrefixConfig>): PrefixConfig {
 	return {
 		task: config?.task ?? DEFAULT_PREFIX_CONFIG.task,
-		draft: config?.draft ?? DEFAULT_PREFIX_CONFIG.draft,
 	};
 }
 
@@ -349,9 +351,16 @@ export function idForFilename(id: string): string {
 
 /**
  * Escapes special regex characters in a string.
- * Used internally to safely build regex patterns from user-provided prefixes.
+ * Used to safely build regex patterns from user-provided prefixes.
+ *
+ * @param str - The string to escape
+ * @returns String with regex special characters escaped
+ *
+ * @example
+ * escapeRegex("task-") // => "task-"
+ * escapeRegex("JIRA.") // => "JIRA\\."
  */
-function escapeRegex(str: string): string {
+export function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -375,7 +384,7 @@ export function getPrefixForType(type: EntityType, config?: BacklogConfig): stri
 		case EntityType.Task:
 			return config?.prefixes?.task ?? DEFAULT_PREFIX_CONFIG.task;
 		case EntityType.Draft:
-			return DEFAULT_PREFIX_CONFIG.draft;
+			return DRAFT_PREFIX;
 		case EntityType.Document:
 			return "doc";
 		case EntityType.Decision:

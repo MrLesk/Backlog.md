@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { readdir, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -267,7 +268,6 @@ Invalid content`,
 				dateFormat: "yyyy-MM-dd",
 				prefixes: {
 					task: "JIRA",
-					draft: "draft",
 				},
 			};
 			await filesystem.saveConfig(customConfig);
@@ -287,6 +287,45 @@ Invalid content`,
 			// Verify the promoted task can be loaded with the custom prefix
 			const promotedTask = await filesystem.loadTask("jira-1");
 			expect(promotedTask?.id).toBe("JIRA-1");
+			expect(promotedTask?.title).toBe(sampleDraft.title);
+		});
+
+		it("should not reuse completed task IDs when promoting draft", async () => {
+			// Create a completed task directly in the completed directory
+			// This simulates a task that was created and completed before the draft
+			const completedDir = join(TEST_DIR, "backlog", "completed");
+			await mkdir(completedDir, { recursive: true });
+
+			const completedTask: Task = {
+				id: "TASK-1",
+				title: "Completed Task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2025-01-01",
+				labels: [],
+				dependencies: [],
+			};
+			const content = serializeTask(completedTask);
+			await Bun.write(join(completedDir, "task-1 - Completed Task.md"), content);
+
+			// Verify no active tasks exist
+			const activeTasks = await filesystem.listTasks();
+			expect(activeTasks.length).toBe(0);
+
+			// Verify completed task exists
+			const completedTasks = await filesystem.listCompletedTasks();
+			expect(completedTasks.length).toBe(1);
+			expect(completedTasks[0]?.id).toBe("TASK-1");
+
+			// Create and promote a draft
+			await filesystem.saveDraft(sampleDraft);
+			const promoted = await filesystem.promoteDraft("draft-1");
+			expect(promoted).toBe(true);
+
+			// BUG: Currently returns TASK-1 because promoteDraft only checks active tasks
+			// Expected: Should return TASK-2 to avoid collision with completed task
+			const promotedTask = await filesystem.loadTask("task-2");
+			expect(promotedTask?.id).toBe("TASK-2");
 			expect(promotedTask?.title).toBe(sampleDraft.title);
 		});
 

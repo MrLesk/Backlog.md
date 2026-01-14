@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
+import type { Task } from "../types/index.ts";
 
 const TEST_DIR = join(tmpdir(), "backlog-id-gen-test");
 
@@ -127,5 +129,31 @@ describe("Task ID Generation with Archives", () => {
 		// Create new task - should reuse archived ID (TASK-001)
 		const result = await core.createTaskFromInput({ title: "Task 2" }, false);
 		expect(result.task.id).toBe("TASK-001");
+	});
+
+	it("should detect existing subtasks with different casing (legacy data)", async () => {
+		// Create parent task via Core (will be uppercase TASK-1)
+		await core.createTaskFromInput({ title: "Parent Task" }, false);
+
+		// Simulate legacy lowercase subtask by directly writing to filesystem
+		// This represents a file created before the uppercase ID change
+		const tasksDir = core.fs.tasksDir;
+		const legacySubtask: Task = {
+			id: "task-1.1", // Lowercase - legacy format
+			title: "Legacy Subtask",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-01-01",
+			labels: [],
+			dependencies: [],
+			parentTaskId: "task-1",
+		};
+		const content = serializeTask(legacySubtask);
+		await Bun.write(join(tasksDir, "task-1.1 - Legacy Subtask.md"), content);
+
+		// Create new subtask via Core - should detect the legacy subtask and get TASK-1.2
+		// BUG: Currently returns TASK-1.1 due to case-sensitive startsWith() check
+		const newSubtask = await core.createTaskFromInput({ title: "New Subtask", parentTaskId: "task-1" }, false);
+		expect(newSubtask.task.id).toBe("TASK-1.2");
 	});
 });

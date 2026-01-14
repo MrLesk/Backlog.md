@@ -249,7 +249,6 @@ describe("Enhanced init command", () => {
 		const config = await core.filesystem.loadConfig();
 		expect(config?.prefixes).toBeTruthy();
 		expect(config?.prefixes?.task).toBe("task");
-		expect(config?.prefixes?.draft).toBe("draft");
 	});
 
 	test("should handle custom task prefix in config", async () => {
@@ -277,7 +276,6 @@ describe("Enhanced init command", () => {
 		// Verify custom prefix was saved
 		const loadedConfig = await core.filesystem.loadConfig();
 		expect(loadedConfig?.prefixes?.task).toBe("JIRA");
-		expect(loadedConfig?.prefixes?.draft).toBe("draft");
 	});
 
 	test("should preserve existing prefix during re-initialization", async () => {
@@ -325,7 +323,6 @@ describe("Enhanced init command", () => {
 
 		expect(result.success).toBe(true);
 		expect(result.config.prefixes?.task).toBe("JIRA");
-		expect(result.config.prefixes?.draft).toBe("draft");
 
 		// Verify it was saved
 		const loadedConfig = await core.filesystem.loadConfig();
@@ -373,6 +370,5 @@ describe("Enhanced init command", () => {
 
 		expect(result.success).toBe(true);
 		expect(result.config.prefixes?.task).toBe("task");
-		expect(result.config.prefixes?.draft).toBe("draft");
 	});
 });

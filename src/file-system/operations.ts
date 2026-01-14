@@ -438,8 +438,10 @@ export class FileSystem {
 			const taskPrefix = config?.prefixes?.task ?? "task";
 
 			// Get existing task IDs to generate next ID
+			// Include both active and completed tasks to prevent ID collisions
 			const existingTasks = await this.listTasks();
-			const existingIds = existingTasks.map((t) => t.id);
+			const completedTasks = await this.listCompletedTasks();
+			const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
 
 			// Generate new task ID
 			const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);

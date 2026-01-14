@@ -89,12 +89,11 @@ async function addPrefixesToConfig(fs: FileSystem): Promise<void> {
 	const config = await fs.loadConfig();
 	if (!config) return;
 
-	// Add default prefixes section
+	// Add default prefixes section (draft prefix is not configurable)
 	const updatedConfig: BacklogConfig = {
 		...config,
 		prefixes: {
 			task: "task",
-			draft: "draft",
 		},
 	};
 

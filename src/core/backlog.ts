@@ -443,9 +443,11 @@ export class Core {
 		if (parent) {
 			// Subtask generation (only applicable for tasks)
 			const normalizedParent = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
+			const upperParent = normalizedParent.toUpperCase();
 			let max = 0;
 			for (const id of allIds) {
-				if (id.startsWith(`${normalizedParent}.`)) {
+				// Case-insensitive comparison to handle legacy lowercase IDs
+				if (id.toUpperCase().startsWith(`${upperParent}.`)) {
 					const rest = id.slice(normalizedParent.length + 1);
 					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
 					if (num > max) max = num;
@@ -1645,7 +1647,6 @@ export class Core {
 			autoCommit: false, // Default to false for user control
 			prefixes: {
 				task: "task",
-				draft: "draft",
 			},
 		};
 

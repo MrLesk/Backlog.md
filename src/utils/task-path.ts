@@ -3,6 +3,7 @@ import { Core } from "../core/backlog.ts";
 import {
 	buildFilenameIdRegex,
 	buildGlobPattern,
+	escapeRegex,
 	extractAnyPrefix,
 	idForFilename,
 	normalizeId,
@@ -106,13 +107,6 @@ export function taskIdsEqual(left: string, right: string, prefix: string = DEFAU
 	}
 
 	return normalizeTaskId(left, prefix).toLowerCase() === normalizeTaskId(right, prefix).toLowerCase();
-}
-
-/**
- * Escapes special regex characters in a string.
- */
-function escapeRegex(str: string): string {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
