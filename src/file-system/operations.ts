@@ -1013,6 +1013,9 @@ ${description || `Milestone: ${title}`}
 					// Remove surrounding quotes if present, but preserve inner content
 					config.onStatusChange = value.replace(/^['"]|['"]$/g, "");
 					break;
+				case "task_prefix":
+					config.prefixes = { task: value.replace(/['"]/g, "") };
+					break;
 			}
 		}
 
@@ -1036,6 +1039,7 @@ ${description || `Milestone: ${title}`}
 			checkActiveBranches: config.checkActiveBranches,
 			activeBranchDays: config.activeBranchDays,
 			onStatusChange: config.onStatusChange,
+			prefixes: config.prefixes,
 		};
 	}
 
@@ -1062,6 +1066,7 @@ ${description || `Milestone: ${title}`}
 				: []),
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
+			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

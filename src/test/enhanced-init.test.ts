@@ -371,4 +371,25 @@ describe("Enhanced init command", () => {
 		expect(result.success).toBe(true);
 		expect(result.config.prefixes?.task).toBe("task");
 	});
+
+	test("prefixes should persist to disk and reload correctly with new Core instance", async () => {
+		const core1 = new Core(tmpDir);
+
+		// Initialize with custom prefix
+		await initializeProject(core1, {
+			projectName: "Disk Persistence Test",
+			integrationMode: "none",
+			advancedConfig: {
+				taskPrefix: "PERSIST",
+			},
+		});
+
+		// Create a NEW Core instance to bypass any in-memory cache
+		// This simulates what happens when a user runs a new command in a new process
+		const core2 = new Core(tmpDir);
+		const loadedConfig = await core2.filesystem.loadConfig();
+
+		// This test would fail if prefixes aren't properly serialized/parsed from disk
+		expect(loadedConfig?.prefixes?.task).toBe("PERSIST");
+	});
 });
