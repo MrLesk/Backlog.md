@@ -82,6 +82,7 @@ function extractTaskIdFromFilename(filename: string, prefix: string = DEFAULT_TA
 /**
  * Compares two task IDs for equality.
  * Handles numeric comparison to treat "task-1" and "task-01" as equal.
+ * Automatically detects prefix from either ID when comparing numeric-only input.
  *
  * @param left - First ID to compare
  * @param right - Second ID to compare
@@ -92,10 +93,16 @@ function extractTaskIdFromFilename(filename: string, prefix: string = DEFAULT_TA
  * taskIdsEqual("task-123", "TASK-123") // => true
  * taskIdsEqual("task-1", "task-01") // => true (numeric comparison)
  * taskIdsEqual("task-1.2", "task-1.2") // => true
+ * taskIdsEqual("358", "BACK-358") // => true (detects prefix from right)
  */
 export function taskIdsEqual(left: string, right: string, prefix: string = DEFAULT_TASK_PREFIX): boolean {
-	const leftBody = extractTaskBody(left, prefix);
-	const rightBody = extractTaskBody(right, prefix);
+	// Detect actual prefix from either ID - if one has a prefix, use it
+	const leftPrefix = extractAnyPrefix(left);
+	const rightPrefix = extractAnyPrefix(right);
+	const effectivePrefix = leftPrefix ?? rightPrefix ?? prefix;
+
+	const leftBody = extractTaskBody(left, effectivePrefix);
+	const rightBody = extractTaskBody(right, effectivePrefix);
 
 	if (leftBody && rightBody) {
 		const leftSegs = leftBody.split(".").map((seg) => Number.parseInt(seg, 10));
@@ -106,7 +113,7 @@ export function taskIdsEqual(left: string, right: string, prefix: string = DEFAU
 		return leftSegs.every((value, index) => value === rightSegs[index]);
 	}
 
-	return normalizeTaskId(left, prefix).toLowerCase() === normalizeTaskId(right, prefix).toLowerCase();
+	return normalizeTaskId(left, effectivePrefix).toLowerCase() === normalizeTaskId(right, effectivePrefix).toLowerCase();
 }
 
 /**
@@ -119,36 +126,101 @@ function idsMatchLoosely(inputId: string, filename: string, prefix: string = DEF
 }
 
 /**
- * Get the file path for a task by ID
+ * Get the file path for a task by ID.
+ * For numeric-only IDs, automatically detects the prefix from existing files.
  */
 export async function getTaskPath(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
 	const coreInstance = core || new Core(process.cwd());
 
-	// Extract prefix from the taskId, or use default
-	const prefix = extractAnyPrefix(taskId) ?? DEFAULT_TASK_PREFIX;
-	const globPattern = buildGlobPattern(prefix);
+	// Extract prefix from the taskId
+	const detectedPrefix = extractAnyPrefix(taskId);
 
-	try {
-		const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
-		const normalizedId = normalizeTaskId(taskId, prefix);
-		// Use lowercase ID for filename matching (filenames use lowercase prefix)
-		const filenameId = idForFilename(normalizedId);
-		// First try exact prefix match for speed
-		let taskFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-
-		// If not found, try loose numeric match ignoring leading zeros
-		if (!taskFile) {
-			taskFile = files.find((f) => idsMatchLoosely(taskId, f, prefix));
+	// If prefix is detected, search only for that prefix
+	if (detectedPrefix) {
+		const globPattern = buildGlobPattern(detectedPrefix);
+		try {
+			const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
+			const taskFile = findMatchingFile(files, taskId, detectedPrefix);
+			if (taskFile) {
+				return join(coreInstance.filesystem.tasksDir, taskFile);
+			}
+		} catch {
+			// Fall through to return null
 		}
+		return null;
+	}
 
-		if (taskFile) {
-			return join(coreInstance.filesystem.tasksDir, taskFile);
+	// For numeric-only IDs, scan all .md files and find one matching the number
+	try {
+		const allFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
+
+		// Look for a file matching this numeric ID with any prefix
+		// Pattern: <prefix>-<number> - <title>.md (e.g., "back-358 - Title.md")
+		const numericPart = taskId.trim();
+		for (const file of allFiles) {
+			// Extract prefix from filename and check if numeric part matches
+			const filePrefix = extractAnyPrefix(file);
+			if (filePrefix) {
+				const fileBody = extractTaskBodyFromFilename(file, filePrefix);
+				if (fileBody && numericPartsEqual(numericPart, fileBody)) {
+					return join(coreInstance.filesystem.tasksDir, file);
+				}
+			}
 		}
 
 		return null;
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Helper to find a matching file from a list of files
+ */
+function findMatchingFile(files: string[], taskId: string, prefix: string): string | undefined {
+	const normalizedId = normalizeTaskId(taskId, prefix);
+	const filenameId = idForFilename(normalizedId);
+
+	// First try exact prefix match for speed
+	let taskFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
+
+	// If not found, try loose numeric match ignoring leading zeros
+	if (!taskFile) {
+		taskFile = files.find((f) => idsMatchLoosely(taskId, f, prefix));
+	}
+
+	return taskFile;
+}
+
+/**
+ * Extract the numeric body from a filename given a prefix
+ */
+function extractTaskBodyFromFilename(filename: string, prefix: string): string | null {
+	// Pattern: <prefix>-<number> - <title>.md or <prefix>-<number>.<subtask> - <title>.md
+	const regex = new RegExp(`^${escapeRegex(prefix)}-(\\d+(?:\\.\\d+)*)\\s*-`, "i");
+	const match = filename.match(regex);
+	return match?.[1] ?? null;
+}
+
+/**
+ * Compare two numeric parts for equality (handles leading zeros)
+ * Returns false if either string contains non-numeric segments
+ */
+function numericPartsEqual(a: string, b: string): boolean {
+	const aSegments = a.split(".");
+	const bSegments = b.split(".");
+
+	// Validate all segments are purely numeric (digits only)
+	const isNumeric = (s: string) => /^\d+$/.test(s);
+	if (!aSegments.every(isNumeric) || !bSegments.every(isNumeric)) {
+		return false;
+	}
+
+	if (aSegments.length !== bSegments.length) return false;
+
+	const aParts = aSegments.map((s) => Number.parseInt(s, 10));
+	const bParts = bSegments.map((s) => Number.parseInt(s, 10));
+	return aParts.every((val, i) => val === bParts[i]);
 }
 
 /** Default prefix for drafts */
@@ -238,27 +310,42 @@ export async function getDraftPath(draftId: string, core: Core): Promise<string 
 }
 
 /**
- * Get the filename (without directory) for a task by ID
+ * Get the filename (without directory) for a task by ID.
+ * For numeric-only IDs, automatically detects the prefix from existing files.
  */
 export async function getTaskFilename(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
 	const coreInstance = core || new Core(process.cwd());
 
-	// Extract prefix from the taskId, or use default
-	const prefix = extractAnyPrefix(taskId) ?? DEFAULT_TASK_PREFIX;
-	const globPattern = buildGlobPattern(prefix);
+	// Extract prefix from the taskId
+	const detectedPrefix = extractAnyPrefix(taskId);
 
+	// If prefix is detected, search only for that prefix
+	if (detectedPrefix) {
+		const globPattern = buildGlobPattern(detectedPrefix);
+		try {
+			const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
+			return findMatchingFile(files, taskId, detectedPrefix) ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	// For numeric-only IDs, scan all .md files and find one matching the number
 	try {
-		const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
-		const normalizedId = normalizeTaskId(taskId, prefix);
-		// Use lowercase ID for filename matching (filenames use lowercase prefix)
-		const filenameId = idForFilename(normalizedId);
-		// First exact match
-		let taskFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-		if (!taskFile) {
-			taskFile = files.find((f) => idsMatchLoosely(taskId, f, prefix));
+		const allFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
+
+		const numericPart = taskId.trim();
+		for (const file of allFiles) {
+			const filePrefix = extractAnyPrefix(file);
+			if (filePrefix) {
+				const fileBody = extractTaskBodyFromFilename(file, filePrefix);
+				if (fileBody && numericPartsEqual(numericPart, fileBody)) {
+					return file;
+				}
+			}
 		}
 
-		return taskFile || null;
+		return null;
 	} catch {
 		return null;
 	}

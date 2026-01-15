@@ -105,6 +105,14 @@ describe("Task path utilities", () => {
 			expect(taskIdsEqual("task-1", "task-2")).toBe(false);
 			expect(taskIdsEqual("task-1.1", "task-1.2")).toBe(false);
 		});
+
+		it("should NOT match IDs with non-numeric suffixes (prevent parseInt coercion)", () => {
+			// IDs with trailing letters should NOT match the numeric portion
+			// This tests the extractTaskBody regex validation
+			expect(taskIdsEqual("task-123a", "task-123")).toBe(false);
+			expect(taskIdsEqual("task-1.2x", "task-1.2")).toBe(false);
+			expect(taskIdsEqual("123a", "task-123")).toBe(false);
+		});
 	});
 
 	describe("getTaskPath", () => {
@@ -113,6 +121,32 @@ describe("Task path utilities", () => {
 			expect(path).toBeTruthy();
 			expect(path).toContain("task-123 - Test Task.md");
 			expect(path).toContain(core.filesystem.tasksDir);
+		});
+
+		it("should NOT match when input has non-numeric characters (e.g., typos)", async () => {
+			// "123a" should NOT match task-123 (prevent parseInt coercion bugs)
+			const path = await getTaskPath("123a", core);
+			expect(path).toBeNull();
+
+			// "456x" should NOT match task-456
+			const path2 = await getTaskPath("456x", core);
+			expect(path2).toBeNull();
+
+			// "1.2x" should NOT match any subtask
+			const path3 = await getTaskPath("1.2x", core);
+			expect(path3).toBeNull();
+
+			// Leading non-numeric characters
+			const path4 = await getTaskPath("a123", core);
+			expect(path4).toBeNull();
+
+			// Mixed non-numeric in dotted segments
+			const path5 = await getTaskPath("3.a1", core);
+			expect(path5).toBeNull();
+
+			// Hex-like input should not match decimal
+			const path6 = await getTaskPath("0x123", core);
+			expect(path6).toBeNull();
 		});
 
 		it("should work with task- prefix", async () => {
@@ -207,6 +241,61 @@ describe("Task path utilities", () => {
 			} finally {
 				process.chdir(originalCwd);
 			}
+		});
+	});
+
+	describe("numeric ID lookup with custom prefix", () => {
+		beforeEach(async () => {
+			// Create tasks with custom prefix (simulating configured prefix)
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "back-358 - Custom Prefix Task.md"), "# Custom Prefix Task");
+			await writeFile(join(tasksDir, "back-5.1 - Custom Subtask.md"), "# Custom Subtask");
+		});
+
+		it("should find task by numeric ID when file has custom prefix", async () => {
+			// Numeric-only lookup should find "back-358" when searching all files
+			const path = await getTaskPath("358", core);
+			expect(path).toBeTruthy();
+			expect(path).toContain("back-358 - Custom Prefix Task.md");
+		});
+
+		it("should find subtask by dotted numeric ID with custom prefix", async () => {
+			const path = await getTaskPath("5.1", core);
+			expect(path).toBeTruthy();
+			expect(path).toContain("back-5.1 - Custom Subtask.md");
+		});
+
+		it("should NOT match numeric ID with typo even when custom prefix exists", async () => {
+			// "358a" should NOT match "back-358" (the core parseInt coercion bug)
+			const path = await getTaskPath("358a", core);
+			expect(path).toBeNull();
+
+			// "5.1x" should NOT match "back-5.1"
+			const path2 = await getTaskPath("5.1x", core);
+			expect(path2).toBeNull();
+		});
+
+		it("should find task when using full prefixed ID", async () => {
+			const path = await getTaskPath("back-358", core);
+			expect(path).toBeTruthy();
+			expect(path).toContain("back-358 - Custom Prefix Task.md");
+		});
+
+		it("should be case-insensitive for prefixed lookups", async () => {
+			const path = await getTaskPath("BACK-358", core);
+			expect(path).toBeTruthy();
+			expect(path).toContain("back-358 - Custom Prefix Task.md");
+		});
+	});
+
+	describe("getTaskFilename with non-numeric input", () => {
+		it("should NOT match filenames when input has non-numeric characters", async () => {
+			// Same validation as getTaskPath applies to getTaskFilename
+			const filename = await getTaskFilename("789x", core);
+			expect(filename).toBeNull();
+
+			const filename2 = await getTaskFilename("3.a1", core);
+			expect(filename2).toBeNull();
 		});
 	});
 });
