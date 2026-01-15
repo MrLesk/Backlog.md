@@ -143,6 +143,58 @@ describe("Core", () => {
 			expect(mixedCase?.id).toBe("TASK-007");
 		});
 
+		it("should resolve numeric-only IDs with custom prefix (BACK-364)", async () => {
+			// Configure custom prefix
+			const config = await core.filesystem.loadConfig();
+			await core.filesystem.saveConfig({
+				...config!,
+				prefixes: { task: "back" },
+			});
+
+			// Create tasks with custom prefix
+			const task1: Task = { ...sampleTask, id: "back-358", title: "Custom Prefix Task" };
+			const task2: Task = { ...sampleTask, id: "back-5.1", title: "Custom Prefix Subtask" };
+			await core.createTask(task1, false);
+			await core.createTask(task2, false);
+
+			// Numeric-only lookup should find task with custom prefix
+			const byNumeric = await core.getTask("358");
+			expect(byNumeric?.id).toBe("BACK-358");
+			expect(byNumeric?.title).toBe("Custom Prefix Task");
+
+			// Dotted numeric lookup should find subtask
+			const byDotted = await core.getTask("5.1");
+			expect(byDotted?.id).toBe("BACK-5.1");
+			expect(byDotted?.title).toBe("Custom Prefix Subtask");
+
+			// Full prefixed ID should also work (case-insensitive)
+			const byFullId = await core.getTask("BACK-358");
+			expect(byFullId?.id).toBe("BACK-358");
+
+			const byLowercase = await core.getTask("back-358");
+			expect(byLowercase?.id).toBe("BACK-358");
+		});
+
+		it("should NOT match numeric ID with typos when using custom prefix (BACK-364)", async () => {
+			// Configure custom prefix
+			const config = await core.filesystem.loadConfig();
+			await core.filesystem.saveConfig({
+				...config!,
+				prefixes: { task: "back" },
+			});
+
+			// Create task with custom prefix
+			const task: Task = { ...sampleTask, id: "back-358", title: "Custom Prefix Task" };
+			await core.createTask(task, false);
+
+			// Typos should NOT match (prevent parseInt coercion bug)
+			const withTypo = await core.getTask("358a");
+			expect(withTypo).toBeNull();
+
+			const withTypo2 = await core.getTask("35x8");
+			expect(withTypo2).toBeNull();
+		});
+
 		it("should return false when archiving non-existent task", async () => {
 			const archived = await core.archiveTask("non-existent", true);
 			expect(archived).toBe(false);
