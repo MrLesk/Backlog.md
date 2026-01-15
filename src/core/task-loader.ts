@@ -507,7 +507,8 @@ export async function loadRemoteTasks(
 
 		// Build a cheap index without fetching content
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir, days, stateCollector);
+		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
+		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir, days, stateCollector, taskPrefix);
 
 		if (remoteIndex.size === 0) {
 			onProgress?.("No remote tasks found");
@@ -629,6 +630,7 @@ export async function loadLocalBranchTasks(
 
 		// Build index of tasks from other local branches
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
 		const localBranchIndex = await buildLocalBranchTaskIndex(
 			gitOps,
 			localBranches,
@@ -636,6 +638,7 @@ export async function loadLocalBranchTasks(
 			backlogDir,
 			days,
 			stateCollector,
+			taskPrefix,
 		);
 
 		if (localBranchIndex.size === 0) {

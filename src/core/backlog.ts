@@ -305,6 +305,7 @@ export class Core {
 		// Check config for remote operations
 		const config = await this.fs.loadConfig();
 		const sinceDays = config?.activeBranchDays ?? 30;
+		const taskPrefix = config?.prefixes?.task ?? "task";
 
 		// Try other local branches first (faster than remote)
 		const localBranchTask = await findTaskInLocalBranches(
@@ -312,6 +313,7 @@ export class Core {
 			canonicalId,
 			DEFAULT_DIRECTORIES.BACKLOG,
 			sinceDays,
+			taskPrefix,
 		);
 		if (localBranchTask) return localBranchTask;
 
@@ -319,7 +321,7 @@ export class Core {
 		if (config?.remoteOperations === false) return null;
 
 		// Try remote branches
-		return await findTaskInRemoteBranches(this.git, canonicalId, DEFAULT_DIRECTORIES.BACKLOG, sinceDays);
+		return await findTaskInRemoteBranches(this.git, canonicalId, DEFAULT_DIRECTORIES.BACKLOG, sinceDays, taskPrefix);
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
