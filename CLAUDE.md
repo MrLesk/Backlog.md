@@ -101,8 +101,8 @@ The pre-commit hook automatically runs `biome check --write` on staged files to 
 - **Separation of Concerns**: CLI logic and utility functions are kept separate to avoid side effects during testing
 - **Utility Functions**: Reusable utility functions (like ID generators) are placed in `src/utils/` directory
 - **No Side Effects on Import**: Modules should not execute CLI code when imported by other modules or tests
-- **Branching**: Use feature branches when working on tasks (e.g. `tasks/task-123-feature-name`)
-- **Committing**: Use the following format: `TASK-123 - Title of the task`
+- **Branching**: Use feature branches when working on tasks (e.g. `tasks/back-123-feature-name`)
+- **Committing**: Use the following format: `BACK-123 - Title of the task`
 - **Github CLI**: Use `gh` whenever possible for PRs and issues
 
 ## MCP Architecture Principles
