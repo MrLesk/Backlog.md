@@ -274,7 +274,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const totalCount = (criteria || []).length;
   const isDoneStatus = (status || "").toLowerCase().includes("done");
 
-  const displayId = useMemo(() => task?.id?.replace(/^task-/i, "TASK-") || "", [task?.id]);
+  const displayId = task?.id ?? "";
 
   return (
     <Modal
