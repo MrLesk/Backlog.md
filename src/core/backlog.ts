@@ -291,21 +291,22 @@ export class Core {
 			return match;
 		}
 
-		const canonicalId = normalizeTaskId(taskId);
-		return await this.fs.loadTask(canonicalId);
+		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
+		return await this.fs.loadTask(taskId);
 	}
 
 	async loadTaskById(taskId: string): Promise<Task | null> {
-		const canonicalId = normalizeTaskId(taskId);
-
-		// First try local filesystem
-		const localTask = await this.fs.loadTask(canonicalId);
+		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
+		const localTask = await this.fs.loadTask(taskId);
 		if (localTask) return localTask;
 
 		// Check config for remote operations
 		const config = await this.fs.loadConfig();
 		const sinceDays = config?.activeBranchDays ?? 30;
 		const taskPrefix = config?.prefixes?.task ?? "task";
+
+		// For cross-branch search, normalize with configured prefix
+		const canonicalId = normalizeTaskId(taskId, taskPrefix);
 
 		// Try other local branches first (faster than remote)
 		const localBranchTask = await findTaskInLocalBranches(
