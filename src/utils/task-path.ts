@@ -204,11 +204,22 @@ function extractTaskBodyFromFilename(filename: string, prefix: string): string |
 
 /**
  * Compare two numeric parts for equality (handles leading zeros)
+ * Returns false if either string contains non-numeric segments
  */
 function numericPartsEqual(a: string, b: string): boolean {
-	const aParts = a.split(".").map((s) => Number.parseInt(s, 10));
-	const bParts = b.split(".").map((s) => Number.parseInt(s, 10));
-	if (aParts.length !== bParts.length) return false;
+	const aSegments = a.split(".");
+	const bSegments = b.split(".");
+
+	// Validate all segments are purely numeric (digits only)
+	const isNumeric = (s: string) => /^\d+$/.test(s);
+	if (!aSegments.every(isNumeric) || !bSegments.every(isNumeric)) {
+		return false;
+	}
+
+	if (aSegments.length !== bSegments.length) return false;
+
+	const aParts = aSegments.map((s) => Number.parseInt(s, 10));
+	const bParts = bSegments.map((s) => Number.parseInt(s, 10));
 	return aParts.every((val, i) => val === bParts[i]);
 }
 
