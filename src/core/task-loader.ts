@@ -133,7 +133,7 @@ export async function buildRemoteTaskIndex(
 					if (!m?.[1]) continue;
 
 					// Construct ID in same format as filename (lowercase prefix)
-					const id = `${prefix}-${m[1]}`;
+					const id = `${prefix.toLowerCase()}-${m[1]}`;
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
@@ -262,7 +262,7 @@ export async function buildLocalBranchTaskIndex(
 					if (!m?.[1]) continue;
 
 					// Construct ID in same format as filename (lowercase prefix)
-					const id = `${prefix}-${m[1]}`;
+					const id = `${prefix.toLowerCase()}-${m[1]}`;
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
