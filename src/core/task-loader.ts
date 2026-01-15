@@ -521,8 +521,8 @@ export async function loadRemoteTasks(
 		let winners: Array<{ id: string; ref: string; path: string }>;
 
 		if (localTasks && localTasks.length > 0) {
-			// Build local task map for comparison
-			const localById = new Map(localTasks.map((t) => [t.id, t]));
+			// Build local task map for comparison (use lowercase keys to match index format)
+			const localById = new Map(localTasks.map((t) => [t.id.toLowerCase(), t]));
 			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
 
 			// Only hydrate remote tasks that are newer or missing locally
@@ -651,8 +651,8 @@ export async function loadLocalBranchTasks(
 		let winners: Array<{ id: string; ref: string; path: string }>;
 
 		if (localTasks && localTasks.length > 0) {
-			// Build local task map for comparison
-			const localById = new Map(localTasks.map((t) => [t.id, t]));
+			// Build local task map for comparison (use lowercase keys to match index format)
+			const localById = new Map(localTasks.map((t) => [t.id.toLowerCase(), t]));
 			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
 
 			// Only hydrate tasks that are missing locally or potentially newer
