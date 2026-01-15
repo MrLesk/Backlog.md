@@ -48,6 +48,6 @@ describe("CLI parent task id normalization", () => {
 		await $`bun run ${CLI_PATH} task create Child --parent 4`.cwd(TEST_DIR).quiet();
 
 		const child = await core.filesystem.loadTask("task-4.1");
-		expect(child?.parentTaskId).toBe("task-4");
+		expect(child?.parentTaskId).toBe("TASK-4");
 	});
 });

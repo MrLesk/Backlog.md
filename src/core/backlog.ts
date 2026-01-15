@@ -2,22 +2,24 @@ import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
-import type {
-	AcceptanceCriterion,
-	BacklogConfig,
-	Decision,
-	Document,
-	SearchFilters,
-	Sequence,
-	Task,
-	TaskCreateInput,
-	TaskListFilter,
-	TaskUpdateInput,
+import {
+	type AcceptanceCriterion,
+	type BacklogConfig,
+	type Decision,
+	type Document,
+	EntityType,
+	isLocalEditableTask,
+	type SearchFilters,
+	type Sequence,
+	type Task,
+	type TaskCreateInput,
+	type TaskListFilter,
+	type TaskUpdateInput,
 } from "../types/index.ts";
-import { isLocalEditableTask } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
+import { buildIdRegex, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -32,6 +34,7 @@ import {
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
+import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
@@ -113,6 +116,20 @@ function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, Bra
 		if (!latest) return true;
 		return latest.type === "task";
 	});
+}
+
+/**
+ * Extract IDs from state map where latest state is "task" or "completed" (not "archived" or "draft")
+ * Used for ID generation to determine which IDs are in use.
+ */
+function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTaskStateEntry>): string[] {
+	const ids: string[] = [];
+	for (const [id, entry] of latestState) {
+		if (entry.type === "task" || entry.type === "completed") {
+			ids.push(id);
+		}
+	}
+	return ids;
 }
 
 export class Core {
@@ -394,49 +411,44 @@ export class Core {
 			config = migrateConfig(config || {});
 			await this.fs.saveConfig(config);
 		}
+
+		// Run draft prefix migration if needed (one-time migration)
+		// This renames task-*.md files in drafts/ to draft-*.md
+		if (needsDraftPrefixMigration(config)) {
+			await migrateDraftPrefixes(this.fs);
+		}
 	}
 
 	// ID generation
-	async generateNextId(parent?: string): Promise<string> {
+	/**
+	 * Generates the next ID for a given entity type.
+	 *
+	 * @param type - The entity type (Task, Draft, Document, Decision). Defaults to Task.
+	 * @param parent - Optional parent ID for subtask generation (only applicable for tasks).
+	 * @returns The next available ID (e.g., "task-42", "draft-5", "doc-3")
+	 *
+	 * Folder scanning by type:
+	 * - Task: /tasks, /completed, cross-branch (if enabled), remote (if enabled)
+	 * - Draft: /drafts only
+	 * - Document: /documents only
+	 * - Decision: /decisions only
+	 */
+	async generateNextId(type: EntityType = EntityType.Task, parent?: string): Promise<string> {
 		const config = await this.fs.loadConfig();
+		const prefix = getPrefixForType(type, config ?? undefined);
 
-		// Use ContentStore for all tasks (local + cross-branch + remote)
-		// This is the single source of truth for task IDs
-		const store = await this.getContentStore();
-		const tasks = store.getTasks();
-
-		// Also include drafts (which aren't in ContentStore yet)
-		const drafts = await this.fs.listDrafts();
-
-		// CRITICAL: Include archived and completed tasks to prevent ID reuse
-		// When all active tasks are archived/completed, we must still scan these
-		// directories to find the highest ID and continue from there.
-		// Without this, task IDs reset to task-1, causing potential collisions
-		// when tasks are moved back to active state.
-		const archivedTasks = await this.fs.listArchivedTasks();
-		const completedTasks = await this.fs.listCompletedTasks();
-
-		const allIds: string[] = [];
-
-		for (const t of tasks) {
-			allIds.push(t.id);
-		}
-		for (const d of drafts) {
-			allIds.push(d.id);
-		}
-		for (const a of archivedTasks) {
-			allIds.push(a.id);
-		}
-		for (const c of completedTasks) {
-			allIds.push(c.id);
-		}
+		// Collect existing IDs based on entity type
+		const allIds = await this.getExistingIdsForType(type);
 
 		if (parent) {
-			const prefix = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
+			// Subtask generation (only applicable for tasks)
+			const normalizedParent = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
+			const upperParent = normalizedParent.toUpperCase();
 			let max = 0;
 			for (const id of allIds) {
-				if (id.startsWith(`${prefix}.`)) {
-					const rest = id.slice(prefix.length + 1);
+				// Case-insensitive comparison to handle legacy lowercase IDs
+				if (id.toUpperCase().startsWith(`${upperParent}.`)) {
+					const rest = id.slice(normalizedParent.length + 1);
 					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
 					if (num > max) max = num;
 				}
@@ -446,17 +458,20 @@ export class Core {
 
 			if (padding && padding > 0) {
 				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
-				return `${prefix}.${paddedSubId}`;
+				return `${normalizedParent}.${paddedSubId}`;
 			}
 
-			return `${prefix}.${nextSubIdNumber}`;
+			return `${normalizedParent}.${nextSubIdNumber}`;
 		}
 
+		// Top-level ID generation using prefix-aware regex
+		const regex = buildIdRegex(prefix);
+		const upperPrefix = prefix.toUpperCase();
 		let max = 0;
 		for (const id of allIds) {
-			const match = id.match(/^task-(\d+)/);
-			if (match) {
-				const num = Number.parseInt(match[1] || "0", 10);
+			const match = id.match(regex);
+			if (match?.[1] && !match[1].includes(".")) {
+				const num = Number.parseInt(match[1], 10);
 				if (num > max) max = num;
 			}
 		}
@@ -465,10 +480,102 @@ export class Core {
 
 		if (padding && padding > 0) {
 			const paddedId = String(nextIdNumber).padStart(padding, "0");
-			return `task-${paddedId}`;
+			return `${upperPrefix}-${paddedId}`;
 		}
 
-		return `task-${nextIdNumber}`;
+		return `${upperPrefix}-${nextIdNumber}`;
+	}
+
+	/**
+	 * Gets all task IDs that are in use (active or completed) across all branches.
+	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
+	 *
+	 * This is used for ID generation to determine the next available ID.
+	 */
+	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
+		const config = await this.fs.loadConfig();
+
+		// Load local active and completed tasks
+		const localTasks = await this.listTasksWithMetadata();
+		const localCompletedTasks = await this.fs.listCompletedTasks();
+
+		// Build initial state entries from local tasks
+		const stateEntries: BranchTaskStateEntry[] = [];
+
+		// Add local active tasks to state
+		for (const task of localTasks) {
+			if (!task.id) continue;
+			const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
+			stateEntries.push({
+				id: task.id,
+				type: "task",
+				branch: "local",
+				path: "",
+				lastModified,
+			});
+		}
+
+		// Add local completed tasks to state
+		for (const task of localCompletedTasks) {
+			if (!task.id) continue;
+			const lastModified = task.updatedDate ? new Date(task.updatedDate) : new Date(0);
+			stateEntries.push({
+				id: task.id,
+				type: "completed",
+				branch: "local",
+				path: "",
+				lastModified,
+			});
+		}
+
+		// If cross-branch checking is enabled, scan other branches for task states
+		if (config?.checkActiveBranches !== false) {
+			const branchStateEntries: BranchTaskStateEntry[] = [];
+
+			// Load states from remote and local branches in parallel
+			await Promise.all([
+				loadRemoteTasks(this.git, config, undefined, localTasks, branchStateEntries),
+				loadLocalBranchTasks(this.git, config, undefined, localTasks, branchStateEntries),
+			]);
+
+			// Add branch state entries
+			stateEntries.push(...branchStateEntries);
+		}
+
+		// Build the latest state map and extract active + completed IDs
+		const latestState = buildLatestStateMap(stateEntries, []);
+		return getActiveAndCompletedIdsFromStateMap(latestState);
+	}
+
+	/**
+	 * Gets all existing IDs for a given entity type.
+	 * Used internally by generateNextId to determine the next available ID.
+	 *
+	 * Note: Archived tasks are intentionally excluded - archived IDs can be reused.
+	 * This makes archive act as a soft delete for ID purposes.
+	 */
+	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
+		switch (type) {
+			case EntityType.Task: {
+				// Get active + completed task IDs from all branches (respects config)
+				// Archived IDs are excluded - they can be reused (soft delete behavior)
+				return this.getActiveAndCompletedTaskIds();
+			}
+			case EntityType.Draft: {
+				const drafts = await this.fs.listDrafts();
+				return drafts.map((d) => d.id);
+			}
+			case EntityType.Document: {
+				const documents = await this.fs.listDocuments();
+				return documents.map((d) => d.id);
+			}
+			case EntityType.Decision: {
+				const decisions = await this.fs.listDecisions();
+				return decisions.map((d) => d.id);
+			}
+			default:
+				return [];
+		}
 	}
 
 	// High-level operations that combine filesystem and git
@@ -490,7 +597,10 @@ export class Core {
 		},
 		autoCommit?: boolean,
 	): Promise<Task> {
-		const id = await this.generateNextId(taskData.parentTaskId);
+		// Determine entity type before generating ID - drafts get DRAFT-X, tasks get TASK-X
+		const isDraft = taskData.status?.toLowerCase() === "draft";
+		const entityType = isDraft ? EntityType.Draft : EntityType.Task;
+		const id = await this.generateNextId(entityType, isDraft ? undefined : taskData.parentTaskId);
 
 		const task: Task = {
 			id,
@@ -516,8 +626,8 @@ export class Core {
 			...(typeof taskData.implementationNotes === "string" && { implementationNotes: taskData.implementationNotes }),
 		};
 
-		// Check if this should be a draft based on status
-		if (task.status && task.status.toLowerCase() === "draft") {
+		// Save as draft or task based on status
+		if (isDraft) {
 			await this.createDraft(task, autoCommit);
 		} else {
 			await this.createTask(task, autoCommit);
@@ -531,7 +641,13 @@ export class Core {
 			throw new Error("Title is required to create a task.");
 		}
 
-		const id = await this.generateNextId(input.parentTaskId);
+		// Determine if this is a draft BEFORE generating the ID
+		const requestedStatus = input.status?.trim();
+		const isDraft = requestedStatus?.toLowerCase() === "draft";
+
+		// Generate ID with appropriate entity type - drafts get DRAFT-X, tasks get TASK-X
+		const entityType = isDraft ? EntityType.Draft : EntityType.Task;
+		const id = await this.generateNextId(entityType, isDraft ? undefined : input.parentTaskId);
 
 		const normalizedLabels = normalizeStringList(input.labels) ?? [];
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
@@ -547,10 +663,9 @@ export class Core {
 			);
 		}
 
-		const requestedStatus = input.status?.trim();
 		let status = "";
 		if (requestedStatus) {
-			if (requestedStatus.toLowerCase() === "draft") {
+			if (isDraft) {
 				status = "Draft";
 			} else {
 				status = await this.requireCanonicalStatus(requestedStatus);
@@ -591,10 +706,10 @@ export class Core {
 			...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
 		};
 
-		const isDraft = (status || "").toLowerCase() === "draft";
 		const filePath = isDraft ? await this.createDraft(task, autoCommit) : await this.createTask(task, autoCommit);
 
-		const savedTask = await this.fs.loadTask(id);
+		// Load the saved task/draft to return updated data
+		const savedTask = isDraft ? await this.fs.loadDraft(id) : await this.fs.loadTask(id);
 		return { task: savedTask ?? task, filePath };
 	}
 
@@ -1043,9 +1158,9 @@ export class Core {
 		autoCommit?: boolean;
 		defaultStep?: number;
 	}): Promise<{ updatedTask: Task; changedTasks: Task[] }> {
-		const taskId = String(params.taskId || "").trim();
+		const taskId = normalizeTaskId(String(params.taskId || "").trim());
 		const targetStatus = String(params.targetStatus || "").trim();
-		const orderedTaskIds = params.orderedTaskIds.map((id) => String(id || "").trim()).filter(Boolean);
+		const orderedTaskIds = params.orderedTaskIds.map((id) => normalizeTaskId(String(id || "").trim())).filter(Boolean);
 		const defaultStep = params.defaultStep ?? DEFAULT_ORDINAL_STEP;
 
 		if (!taskId) throw new Error("taskId is required");
@@ -1214,7 +1329,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			// Stage the file move for proper Git tracking
 			await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Archive task ${taskId}`);
+			await this.git.commitChanges(`backlog: Archive task ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;
@@ -1236,7 +1351,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			// Stage the file move for proper Git tracking
 			await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Complete task ${taskId}`);
+			await this.git.commitChanges(`backlog: Complete task ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;
@@ -1259,25 +1374,25 @@ export class Core {
 		});
 	}
 
-	async archiveDraft(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.archiveDraft(taskId);
+	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		const success = await this.fs.archiveDraft(draftId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Archive draft ${taskId}`);
+			await this.git.commitChanges(`backlog: Archive draft ${normalizeId(draftId, "draft")}`);
 		}
 
 		return success;
 	}
 
-	async promoteDraft(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.promoteDraft(taskId);
+	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		const success = await this.fs.promoteDraft(draftId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${taskId}`);
+			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draftId, "draft")}`);
 		}
 
 		return success;
@@ -1289,7 +1404,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Demote task ${taskId}`);
+			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(taskId)}`);
 		}
 
 		return success;
@@ -1530,6 +1645,9 @@ export class Core {
 			dateFormat: "yyyy-mm-dd",
 			maxColumnWidth: 20, // Default for terminal display
 			autoCommit: false, // Default to false for user control
+			prefixes: {
+				task: "task",
+			},
 		};
 
 		await this.fs.saveConfig(config);

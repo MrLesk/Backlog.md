@@ -7,6 +7,10 @@ import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import type { GitOperations as GitOps } from "../git/operations.ts";
 import type { Task } from "../types/index.ts";
+import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
+
+/** Default prefix for tasks */
+const DEFAULT_TASK_PREFIX = "task";
 
 export type TaskDirectoryType = "task" | "draft" | "archived" | "completed";
 
@@ -27,8 +31,10 @@ export async function getLatestTaskStatesForIds(
 	_filesystem: FileSystem,
 	taskIds: string[],
 	onProgress?: (message: string) => void,
-	options?: { recentBranchesOnly?: boolean; daysAgo?: number },
+	options?: { recentBranchesOnly?: boolean; daysAgo?: number; prefix?: string },
 ): Promise<Map<string, TaskDirectoryInfo>> {
+	const prefix = options?.prefix ?? DEFAULT_TASK_PREFIX;
+	const idRegex = buildPathIdRegex(prefix);
 	const taskDirectories = new Map<string, TaskDirectoryInfo>();
 
 	if (taskIds.length === 0) {
@@ -112,15 +118,18 @@ export async function getLatestTaskStatesForIds(
 					const fileToId = new Map<string, string>();
 					for (const f of files) {
 						const filename = f.substring(f.lastIndexOf("/") + 1);
-						const match = filename.match(/^(task-\d+(?:\.\d+)?)/);
+						const match = filename.match(idRegex);
 						if (match?.[1]) {
-							fileToId.set(match[1], f);
+							// Normalize the ID to canonical form for lookup
+							const normalizedFileId = normalizeId(match[1], prefix);
+							fileToId.set(normalizedFileId, f);
 						}
 					}
 
-					// Check each task ID
+					// Check each task ID (normalize for lookup)
 					for (const taskId of taskIds) {
-						const taskFile = fileToId.get(taskId);
+						const normalizedTaskId = normalizeId(taskId, prefix);
+						const taskFile = fileToId.get(normalizedTaskId);
 
 						if (taskFile) {
 							const lastModified = modTimes.get(taskFile);
@@ -179,17 +188,20 @@ export async function getLatestTaskStatesForIds(
 							const fileToId = new Map<string, string>();
 							for (const f of files) {
 								const filename = f.substring(f.lastIndexOf("/") + 1);
-								const match = filename.match(/^(task-\d+(?:\.\d+)?)/);
+								const match = filename.match(idRegex);
 								if (match?.[1]) {
-									fileToId.set(match[1], f);
+									// Normalize the ID to canonical form for lookup
+									const normalizedFileId = normalizeId(match[1], prefix);
+									fileToId.set(normalizedFileId, f);
 								}
 							}
 
 							for (const taskId of remainingTaskIds) {
 								// Skip if we already found this task
-								if (taskDirectories.has(taskId)) continue;
+								const normalizedTaskId = normalizeId(taskId, prefix);
+								if (taskDirectories.has(normalizedTaskId)) continue;
 
-								const taskFile = fileToId.get(taskId);
+								const taskFile = fileToId.get(normalizedTaskId);
 
 								if (taskFile) {
 									const lastModified = modTimes.get(taskFile);

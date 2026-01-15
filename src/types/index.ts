@@ -1,5 +1,16 @@
 export type TaskStatus = string;
 
+/**
+ * Entity types in the backlog system.
+ * Used for ID generation and prefix resolution.
+ */
+export enum EntityType {
+	Task = "task",
+	Draft = "draft",
+	Document = "document",
+	Decision = "decision",
+}
+
 // Structured Acceptance Criterion (domain-level)
 export interface AcceptanceCriterion {
 	index: number; // 1-based
@@ -205,6 +216,16 @@ export interface Sequence {
 	tasks: Task[];
 }
 
+/**
+ * Configuration for ID prefixes used in task files.
+ * Allows customization of task prefix (e.g., "JIRA-", "issue-", "bug-").
+ * Note: Draft prefix is always "draft" and not configurable.
+ */
+export interface PrefixConfig {
+	/** Prefix for task IDs (default: "task") - produces IDs like TASK-1, TASK-2 */
+	task: string;
+}
+
 export interface BacklogConfig {
 	projectName: string;
 	defaultAssignee?: string;
@@ -229,6 +250,8 @@ export interface BacklogConfig {
 	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */
 	onStatusChange?: string;
+	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
+	prefixes?: PrefixConfig;
 	mcp?: {
 		http?: {
 			host?: string;

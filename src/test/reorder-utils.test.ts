@@ -122,10 +122,10 @@ describe("Core.reorderTask", () => {
 			orderedTaskIds: ["task-1", "task-3", "task-2"],
 		});
 
-		expect(result.updatedTask.id).toBe("task-3");
+		expect(result.updatedTask.id).toBe("TASK-3");
 		expect(result.updatedTask.ordinal).toBeGreaterThan(1000);
 		expect(result.updatedTask.ordinal).toBeLessThan(2000);
-		expect(result.changedTasks.map((task) => task.id)).toEqual(["task-3"]);
+		expect(result.changedTasks.map((task) => task.id)).toEqual(["TASK-3"]);
 
 		const task2 = await core.filesystem.loadTask("task-2");
 		expect(task2?.ordinal).toBe(2000);
@@ -144,7 +144,7 @@ describe("Core.reorderTask", () => {
 			orderedTaskIds: ["task-1", "task-3", "task-2"],
 		});
 
-		expect(result.changedTasks.map((task) => task.id).sort()).toEqual(["task-2", "task-3"]);
+		expect(result.changedTasks.map((task) => task.id).sort()).toEqual(["TASK-2", "TASK-3"]);
 
 		const task1 = await core.filesystem.loadTask("task-1");
 		const task2 = await core.filesystem.loadTask("task-2");
@@ -169,7 +169,7 @@ describe("Core.reorderTask", () => {
 
 		expect(result.updatedTask.status).toBe("In Progress");
 		expect(result.updatedTask.ordinal).toBeGreaterThan(0);
-		expect(result.changedTasks.map((task) => task.id)).toContain("task-1");
+		expect(result.changedTasks.map((task) => task.id)).toContain("TASK-1");
 
 		const task2 = await core.filesystem.loadTask("task-2");
 		const task3 = await core.filesystem.loadTask("task-3");

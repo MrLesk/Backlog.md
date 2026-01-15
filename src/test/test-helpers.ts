@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
+import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { normalizeDependencies } from "../utils/task-builders.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -60,7 +61,7 @@ async function createTaskViaCore(
 		assignee: options.assignee ? [options.assignee] : undefined,
 		dependencies: options.dependencies ? normalizeDependencies(options.dependencies) : undefined,
 		parentTaskId: options.parent
-			? options.parent.startsWith("task-")
+			? hasAnyPrefix(options.parent)
 				? options.parent
 				: `task-${options.parent}`
 			: undefined,
@@ -172,7 +173,7 @@ async function editTaskViaCore(
 		const core = new Core(testDir);
 
 		// Load existing task
-		const taskId = options.taskId.startsWith("task-") ? options.taskId : `task-${options.taskId}`;
+		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
 		const existingTask = await core.filesystem.loadTask(taskId);
 		if (!existingTask) {
 			return {
@@ -264,7 +265,7 @@ async function viewTaskViaCore(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
 		const core = new Core(testDir);
-		const taskId = options.taskId.startsWith("task-") ? options.taskId : `task-${options.taskId}`;
+		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
 
 		const task = await core.filesystem.loadTask(taskId);
 		if (!task) {

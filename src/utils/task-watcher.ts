@@ -2,6 +2,7 @@ import { type FSWatcher, watch } from "node:fs";
 import { join } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { hasAnyPrefix } from "./prefix-config.ts";
 
 export interface TaskWatcherCallbacks {
 	/** Called when a new task file is created */
@@ -27,13 +28,11 @@ export function watchTasks(core: Core, callbacks: TaskWatcherCallbacks): { stop:
 		} else if (filename != null) {
 			fileName = String(filename);
 		}
-		if (!fileName || !fileName.startsWith("task-") || !fileName.endsWith(".md")) {
+		// Accept any prefix pattern (task-, draft-, JIRA-, etc.) for task files
+		const [taskId] = fileName?.split(" ") ?? [];
+		if (!fileName || !taskId || !hasAnyPrefix(taskId) || !fileName.endsWith(".md")) {
 			return;
 		}
-
-		const [firstPart] = fileName.split(" ");
-		if (!firstPart) return; // defensive, satisfies noUncheckedIndexedAccess
-		const taskId: string = firstPart;
 
 		if (eventType === "change") {
 			const task = await core.filesystem.loadTask(taskId);

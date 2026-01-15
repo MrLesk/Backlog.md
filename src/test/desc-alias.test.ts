@@ -99,7 +99,7 @@ describe("--desc alias functionality", () => {
 
 		// Verify the draft was created with correct description
 		const core = new Core(TEST_DIR);
-		const draft = await core.filesystem.loadDraft("task-1");
+		const draft = await core.filesystem.loadDraft("draft-1");
 
 		expect(draft).not.toBeNull();
 		expect(draft?.description).toContain("Draft via --desc");

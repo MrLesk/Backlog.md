@@ -183,6 +183,7 @@ describe("CLI Dependency Support", () => {
 
 	test("should handle dependencies on draft tasks", async () => {
 		// Create draft task first using platform-aware helper
+		// Drafts now get DRAFT-X ids
 		const result1 = await createTaskPlatformAware(
 			{
 				title: "Draft Task",
@@ -191,22 +192,24 @@ describe("CLI Dependency Support", () => {
 			TEST_DIR,
 		);
 		expect(result1.exitCode).toBe(0);
-		expect(result1.stdout).toContain("Created draft task-1");
+		expect(result1.stdout).toContain("Created draft DRAFT-1");
 
 		// Create task that depends on draft
+		// Note: Tasks and drafts have separate ID sequences now
 		const result2 = await createTaskPlatformAware(
 			{
 				title: "Task depending on draft",
-				dependencies: "task-1",
+				dependencies: "DRAFT-1",
 			},
 			TEST_DIR,
 		);
 		expect(result2.exitCode).toBe(0);
 
 		// Verify dependency on draft was set
-		const task = await core.filesystem.loadTask("task-2");
+		// First non-draft task will be TASK-1
+		const task = await core.filesystem.loadTask("task-1");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1"]);
+		expect(task?.dependencies).toEqual(["DRAFT-1"]);
 	});
 
 	test("should display dependencies in plain text view", async () => {

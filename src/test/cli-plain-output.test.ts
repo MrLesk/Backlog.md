@@ -43,10 +43,10 @@ describe("CLI plain output for AI agents", () => {
 			false,
 		);
 
-		// Create a test draft
+		// Create a test draft with proper DRAFT-X id format
 		await core.createDraft(
 			{
-				id: "task-2",
+				id: "draft-1",
 				title: "Test draft for plain output",
 				status: "Draft",
 				assignee: [],
@@ -121,7 +121,7 @@ describe("CLI plain output for AI agents", () => {
 	});
 
 	it("should output plain text with draft view --plain", async () => {
-		const result = await $`bun ${cliPath} draft view 2 --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} draft view 1 --plain`.cwd(TEST_DIR).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -131,9 +131,9 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.exitCode).toBe(0);
 		// Should contain the file path as first line
 		expect(result.stdout.toString()).toContain("File: ");
-		expect(result.stdout.toString()).toContain("task-2 - Test-draft-for-plain-output.md");
+		expect(result.stdout.toString()).toContain("draft-1 - Test-draft-for-plain-output.md");
 		// Should contain the formatted draft output
-		expect(result.stdout.toString()).toContain("Task task-2 - Test draft for plain output");
+		expect(result.stdout.toString()).toContain("Task DRAFT-1 - Test draft for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ Draft");
 		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
 		expect(result.stdout.toString()).toContain("Description:");
@@ -146,11 +146,11 @@ describe("CLI plain output for AI agents", () => {
 	it("should output plain text with draft <id> --plain shortcut", async () => {
 		// Verify draft exists before running CLI command
 		const core = new Core(TEST_DIR);
-		const draft = await core.filesystem.loadDraft("task-2");
+		const draft = await core.filesystem.loadDraft("draft-1");
 		expect(draft).not.toBeNull();
-		expect(draft?.id).toBe("task-2");
+		expect(draft?.id).toBe("DRAFT-1");
 
-		const result = await $`bun ${cliPath} draft 2 --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} draft 1 --plain`.cwd(TEST_DIR).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -160,9 +160,9 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.exitCode).toBe(0);
 		// Should contain the file path as first line
 		expect(result.stdout.toString()).toContain("File: ");
-		expect(result.stdout.toString()).toContain("task-2 - Test-draft-for-plain-output.md");
+		expect(result.stdout.toString()).toContain("draft-1 - Test-draft-for-plain-output.md");
 		// Should contain the formatted draft output
-		expect(result.stdout.toString()).toContain("Task task-2 - Test draft for plain output");
+		expect(result.stdout.toString()).toContain("Task DRAFT-1 - Test draft for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ Draft");
 		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
 		expect(result.stdout.toString()).toContain("Description:");

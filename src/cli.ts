@@ -32,6 +32,7 @@ import {
 	type DecisionSearchResult,
 	type Document as DocType,
 	type DocumentSearchResult,
+	EntityType,
 	isLocalEditableTask,
 	type SearchPriorityFilter,
 	type SearchResult,
@@ -47,6 +48,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { promptText, scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { parsePositiveIndexList, processAcceptanceCriteriaOptions, toStringArray } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
@@ -300,6 +302,7 @@ program
 	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
 	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
+	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--defaults", "use default values for all prompts")
 	.action(
 		async (
@@ -316,6 +319,7 @@ program
 				autoOpenBrowser?: string;
 				installClaudeAgent?: string;
 				integrationMode?: string;
+				taskPrefix?: string;
 				defaults?: boolean;
 			},
 		) => {
@@ -377,7 +381,8 @@ program
 					options.webPort ||
 					options.autoOpenBrowser ||
 					options.installClaudeAgent ||
-					options.integrationMode
+					options.integrationMode ||
+					options.taskPrefix
 				);
 
 				// Get project name
@@ -394,6 +399,17 @@ program
 						console.log("Aborting initialization.");
 						process.exit(1);
 					}
+				}
+
+				// Get task prefix (first-time init only, preserved on re-init)
+				let taskPrefix = options.taskPrefix;
+				if (!taskPrefix && !isNonInteractive && !isReInitialization) {
+					taskPrefix = await promptText("Task prefix (default: task):");
+				}
+				// Validate task prefix if provided
+				if (taskPrefix && !/^[a-zA-Z]+$/.test(taskPrefix)) {
+					console.error("Task prefix must contain only letters (a-z, A-Z).");
+					process.exit(1);
 				}
 
 				const defaultAdvancedConfig = getDefaultAdvancedConfig(existingConfig);
@@ -845,6 +861,7 @@ program
 						defaultEditor: advancedConfig.defaultEditor,
 						defaultPort: advancedConfig.defaultPort,
 						autoOpenBrowser: advancedConfig.autoOpenBrowser,
+						taskPrefix: taskPrefix || undefined,
 					},
 					existingConfig,
 				});
@@ -1228,7 +1245,7 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await core.generateNextId(options.parent);
+		const id = await core.generateNextId(EntityType.Task, options.parent);
 		const task = buildTaskFromOptions(id, title, options);
 
 		// Normalize and validate status if provided (case-insensitive)
@@ -1374,7 +1391,7 @@ program
 		const searchResultTasks = taskResults.map((result) => result.task);
 
 		const allTasks = (await core.queryTasks()).filter(
-			(task) => task.id && task.id.trim() !== "" && task.id.startsWith("task-"),
+			(task) => task.id && task.id.trim() !== "" && hasAnyPrefix(task.id),
 		);
 
 		// If no tasks exist at all, show plain text results
@@ -2129,7 +2146,7 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await core.generateNextId();
+		const id = await core.generateNextId(EntityType.Draft);
 		const task = buildTaskFromOptions(id, title, options);
 		const filepath = await core.createDraft(task);
 		console.log(`Created draft ${id}`);
@@ -2843,6 +2860,14 @@ configCmd
 					console.error("Array values should be edited in the config file directly.");
 					process.exit(1);
 					break;
+				case "taskPrefix":
+				case "prefixes":
+					console.error("Task prefix cannot be changed after initialization.");
+					console.error(
+						"The prefix is set during 'backlog init' and is permanent to avoid breaking existing task IDs.",
+					);
+					process.exit(1);
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
@@ -2888,6 +2913,7 @@ configCmd
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
 			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
 			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
+			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
 		} catch (err) {
