@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
 import {
-	MCP_TASK_COMPLETION_GUIDE,
 	MCP_TASK_CREATION_GUIDE,
 	MCP_TASK_EXECUTION_GUIDE,
+	MCP_TASK_FINALIZATION_GUIDE,
 	MCP_WORKFLOW_OVERVIEW,
 	MCP_WORKFLOW_OVERVIEW_TOOLS,
 } from "../guidelines/mcp/index.ts";
@@ -57,7 +57,7 @@ describe("McpServer bootstrap", () => {
 			"get_workflow_overview",
 			"get_task_creation_guide",
 			"get_task_execution_guide",
-			"get_task_completion_guide",
+			"get_task_finalization_guide",
 		]);
 
 		const resources = await server.testInterface.listResources();
@@ -65,7 +65,7 @@ describe("McpServer bootstrap", () => {
 			"backlog://workflow/overview",
 			"backlog://workflow/task-creation",
 			"backlog://workflow/task-execution",
-			"backlog://workflow/task-completion",
+			"backlog://workflow/task-finalization",
 		]);
 
 		const prompts = await server.testInterface.listPrompts();
@@ -117,15 +117,15 @@ describe("McpServer bootstrap", () => {
 		await server.stop();
 	});
 
-	it("task completion guide resource returns correct content", async () => {
+	it("task finalization guide resource returns correct content", async () => {
 		const server = await bootstrapServer();
 
 		const result = await server.testInterface.readResource({
-			params: { uri: "backlog://workflow/task-completion" },
+			params: { uri: "backlog://workflow/task-finalization" },
 		});
 
 		expect(result.contents).toHaveLength(1);
-		expect(getContentsText(result.contents)).toBe(MCP_TASK_COMPLETION_GUIDE);
+		expect(getContentsText(result.contents)).toBe(MCP_TASK_FINALIZATION_GUIDE);
 
 		await server.stop();
 	});
@@ -158,9 +158,9 @@ describe("McpServer bootstrap", () => {
 		const tools = await server.testInterface.listTools();
 		const toolNames = tools.tools.map((tool) => tool.name).sort();
 		expect(toolNames).toEqual([
-			"get_task_completion_guide",
 			"get_task_creation_guide",
 			"get_task_execution_guide",
+			"get_task_finalization_guide",
 			"get_workflow_overview",
 			"task_archive",
 			"task_complete",
@@ -176,7 +176,7 @@ describe("McpServer bootstrap", () => {
 			"backlog://workflow/overview",
 			"backlog://workflow/task-creation",
 			"backlog://workflow/task-execution",
-			"backlog://workflow/task-completion",
+			"backlog://workflow/task-finalization",
 		]);
 		expect(MCP_WORKFLOW_OVERVIEW).toContain("## Backlog.md Overview (MCP)");
 
@@ -204,7 +204,7 @@ describe("McpServer bootstrap", () => {
 			"get_workflow_overview",
 			"get_task_creation_guide",
 			"get_task_execution_guide",
-			"get_task_completion_guide",
+			"get_task_finalization_guide",
 			"task_create",
 			"task_list",
 			"task_search",
@@ -228,7 +228,7 @@ describe("McpServer bootstrap", () => {
 			"backlog://workflow/overview",
 			"backlog://workflow/task-creation",
 			"backlog://workflow/task-execution",
-			"backlog://workflow/task-completion",
+			"backlog://workflow/task-finalization",
 		]);
 		expect(MCP_WORKFLOW_OVERVIEW).toContain("## Backlog.md Overview (MCP)");
 

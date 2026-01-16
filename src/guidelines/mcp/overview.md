@@ -40,7 +40,7 @@ Read these resources to get essential instructions when:
 
 - **Creating tasks** → `backlog://workflow/task-creation` - Scope assessment, acceptance criteria, parent/subtasks structure
 - **Planning & executing work** → `backlog://workflow/task-execution` - Planning workflow, implementation discipline, scope changes
-- **Completing & reviewing tasks** → `backlog://workflow/task-completion` - Definition of Done, completion checklist, next steps
+- **Finalizing tasks** → `backlog://workflow/task-finalization` - Definition of Done, finalization checklist, next steps
 
 These guides contain critical workflows you need to follow for proper task management.
 
