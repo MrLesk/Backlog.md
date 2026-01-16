@@ -170,6 +170,7 @@ export function parseTask(content: string): Task {
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
+		references: Array.isArray(frontmatter.references) ? frontmatter.references.map(String) : [],
 		rawContent,
 		acceptanceCriteriaItems: structuredCriteria,
 		description: descriptionSection,

@@ -659,6 +659,7 @@ export class BacklogServer {
 				labels: payload.labels,
 				assignee: payload.assignee,
 				dependencies: payload.dependencies,
+				references: payload.references,
 				parentTaskId: payload.parentTaskId,
 				implementationPlan: payload.implementationPlan,
 				implementationNotes: payload.implementationNotes,
@@ -726,6 +727,10 @@ export class BacklogServer {
 
 		if ("dependencies" in updates && Array.isArray(updates.dependencies)) {
 			updateInput.dependencies = updates.dependencies;
+		}
+
+		if ("references" in updates && Array.isArray(updates.references)) {
+			updateInput.references = updates.references;
 		}
 
 		if ("implementationPlan" in updates && typeof updates.implementationPlan === "string") {

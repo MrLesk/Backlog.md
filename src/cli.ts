@@ -50,7 +50,12 @@ import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelectio
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
-import { parsePositiveIndexList, processAcceptanceCriteriaOptions, toStringArray } from "./utils/task-builders.ts";
+import {
+	normalizeStringList,
+	parsePositiveIndexList,
+	processAcceptanceCriteriaOptions,
+	toStringArray,
+} from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -1179,6 +1184,21 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 	// Handle dependencies - they will be validated separately
 	const dependencies = normalizeDependencies(options.dependsOn || options.dep);
 
+	// Handle references (URLs or file paths)
+	const references = normalizeStringList(
+		Array.isArray(options.ref)
+			? options.ref.flatMap((r: string) =>
+					String(r)
+						.split(",")
+						.map((s: string) => s.trim()),
+				)
+			: options.ref
+				? String(options.ref)
+						.split(",")
+						.map((s: string) => s.trim())
+				: [],
+	);
+
 	// Validate priority option
 	const priority = options.priority ? String(options.priority).toLowerCase() : undefined;
 	const validPriorities = ["high", "medium", "low"];
@@ -1198,6 +1218,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 					.filter(Boolean)
 			: [],
 		dependencies,
+		references,
 		rawContent: "",
 		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
 		...(normalizedParent && { parentTaskId: normalizedParent }),
@@ -1238,6 +1259,10 @@ taskCmd
 		},
 	)
 	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)", (value, previous) => {
+		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+		return [...soFar, value];
+	})
+	.option("--ref <reference>", "add reference URL or file path (can be used multiple times)", (value, previous) => {
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
@@ -1810,6 +1835,10 @@ taskCmd
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
+	.option("--ref <reference>", "set references (can be used multiple times)", (value, previous) => {
+		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+		return [...soFar, value];
+	})
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
@@ -1898,6 +1927,18 @@ taskCmd
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
 
+		const referenceValues = toStringArray(options.ref);
+		const normalizedReferences =
+			referenceValues.length > 0
+				? normalizeStringList(
+						referenceValues.flatMap((r: string) =>
+							String(r)
+								.split(",")
+								.map((s: string) => s.trim()),
+						),
+					)
+				: undefined;
+
 		const notesAppendValues = toStringArray(options.appendNotes);
 
 		const editArgs: TaskEditArgs = {};
@@ -1931,6 +1972,9 @@ taskCmd
 		}
 		if (dependencyValues && dependencyValues.length > 0) {
 			editArgs.dependencies = dependencyValues;
+		}
+		if (normalizedReferences && normalizedReferences.length > 0) {
+			editArgs.references = normalizedReferences;
 		}
 		if (typeof options.plan === "string") {
 			editArgs.planSet = String(options.plan);
