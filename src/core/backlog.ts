@@ -1271,7 +1271,7 @@ export class Core {
 		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
 
 		// Verify the moved task itself exists
-		const movedTask = validTasks.find((t) => t.id === taskId);
+		const movedTask = validTasks.find((t) => taskIdsEqual(t.id, taskId));
 		if (!movedTask) {
 			throw new Error(`Task ${taskId} not found while reordering`);
 		}
@@ -1292,7 +1292,7 @@ export class Core {
 					: undefined;
 
 		// Calculate target index within the valid tasks list
-		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => t.id === id));
+		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => taskIdsEqual(t.id, id)));
 		const targetIndex = validOrderedIds.indexOf(taskId);
 
 		if (targetIndex === -1) {
