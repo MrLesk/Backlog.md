@@ -76,6 +76,7 @@ interface SearchableTask {
 	bodyText: string;
 	id: string;
 	idVariants: string[];
+	dependencyIds: string[];
 	statusLower: string;
 	priorityLower?: string;
 	labelsLower: string[];
@@ -84,6 +85,12 @@ interface SearchableTask {
 function buildSearchableTask(task: Task): SearchableTask {
 	const bodyParts: string[] = [];
 	if (task.description) bodyParts.push(task.description);
+	if (Array.isArray(task.acceptanceCriteriaItems) && task.acceptanceCriteriaItems.length > 0) {
+		const lines = [...task.acceptanceCriteriaItems]
+			.sort((a, b) => a.index - b.index)
+			.map((criterion) => `- [${criterion.checked ? "x" : " "}] ${criterion.text}`);
+		bodyParts.push(lines.join("\n"));
+	}
 	if (task.implementationPlan) bodyParts.push(task.implementationPlan);
 	if (task.implementationNotes) bodyParts.push(task.implementationNotes);
 	if (task.labels?.length) bodyParts.push(task.labels.join(" "));
@@ -95,6 +102,7 @@ function buildSearchableTask(task: Task): SearchableTask {
 		bodyText: bodyParts.join(" "),
 		id: task.id,
 		idVariants: createTaskIdVariants(task.id),
+		dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
 		statusLower: (task.status || "").toLowerCase(),
 		priorityLower: task.priority?.toLowerCase(),
 		labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
@@ -117,6 +125,7 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 			{ name: "bodyText", weight: 0.3 },
 			{ name: "id", weight: 0.2 },
 			{ name: "idVariants", weight: 0.1 },
+			{ name: "dependencyIds", weight: 0.05 },
 		],
 	});
 
