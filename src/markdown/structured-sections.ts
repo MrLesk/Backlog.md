@@ -383,7 +383,8 @@ export class AcceptanceCriteriaManager {
 		const queue = [...sorted];
 		const lines: string[] = [];
 		let nextNumber = 1;
-		const sourceLines = existingBody ? existingBody.replace(/\r\n/g, "\n").split("\n") : [];
+		// trimEnd() removes trailing newlines from regex capture that would create empty sourceLines entries
+		const sourceLines = existingBody ? existingBody.replace(/\r\n/g, "\n").trimEnd().split("\n") : [];
 
 		if (sourceLines.length > 0) {
 			for (const line of sourceLines) {
