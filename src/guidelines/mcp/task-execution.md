@@ -6,11 +6,12 @@
 
 1. **Mark task as In Progress** via `task_edit` with status "In Progress"
 2. **Assign to yourself** via `task_edit` with assignee field
-3. **Draft the implementation plan** - Think through the approach, review code, identify key files
-4. **Present plan to user** - Show your proposed implementation approach
-5. **Wait for explicit approval** - Do not start coding until user confirms or asks you to skip review
-6. **Record approved plan** - Use `task_edit` with planSet or planAppend to capture the agreed approach in the task
-7. **Document the agreed breakdown** - In the parent task's plan, capture the final list of subtasks, owners, and sequencing so a replacement agent can resume with the approved structure
+3. **Review task references and documentation** - Check any `references` (related code, issues) and `documentation` (design docs, API specs) attached to the task before planning
+4. **Draft the implementation plan** - Think through the approach, review code, identify key files
+5. **Present plan to user** - Show your proposed implementation approach
+6. **Wait for explicit approval** - Do not start coding until user confirms or asks you to skip review
+7. **Record approved plan** - Use `task_edit` with planSet or planAppend to capture the agreed approach in the task
+8. **Document the agreed breakdown** - In the parent task's plan, capture the final list of subtasks, owners, and sequencing so a replacement agent can resume with the approved structure
 
 **IMPORTANT:** Use tasks as permanent storage for everything related to the work. You may be interrupted or replaced at any point, so the task record must contain everything needed for a clean handoff.
 

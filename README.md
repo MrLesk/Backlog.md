@@ -197,8 +197,9 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Create with notes | `backlog task create "Feature" --notes "Started initial research"` |
 | Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
 | Create with refs | `backlog task create "Feature" --ref https://docs.example.com --ref src/api.ts` |
+| Create with docs | `backlog task create "Feature" --doc https://design-docs.example.com --doc docs/spec.md` |
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`|
-| Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref docs/spec.md -p 14` |
+| Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref src/api.ts --doc docs/spec.md -p 14` |
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>]` |
 | List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
 | View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |

@@ -259,12 +259,20 @@ The very first things you must do when you take over a task are:
 backlog task edit 42 -s "In Progress" -a @{myself}
 ```
 
-### 5.2. Create an Implementation Plan (The "how")
+### 5.2. Review Task References and Documentation
+
+Before planning, check if the task has any attached `references` or `documentation`:
+- **References**: Related code files, GitHub issues, or URLs relevant to the implementation
+- **Documentation**: Design docs, API specs, or other materials for understanding context
+
+These are visible in the task view output. Review them to understand the full context before drafting your plan.
+
+### 5.3. Create an Implementation Plan (The "how")
 
 Previously created tasks contain the why and the what. Once you are familiar with that part you should think about a
 plan on **HOW** to tackle the task and all its acceptance criteria. This is your **Implementation Plan**.
 First do a quick check to see if all the tools that you are planning to use are available in the environment you are
-working in.   
+working in.
 When you are ready, write it down in the task so that you can refer to it later.
 
 ```bash
@@ -272,13 +280,13 @@ When you are ready, write it down in the task so that you can refer to it later.
 backlog task edit 42 --plan "1. Research codebase for references\n2Research on internet for similar cases\n3. Implement\n4. Test"
 ```
 
-## 5.3. Implementation
+## 5.4. Implementation
 
 Once you have a plan, you can start implementing the task. This is where you write code, run tests, and make sure
 everything works as expected. Follow the acceptance criteria one by one and MARK THEM AS COMPLETE as soon as you
 finish them.
 
-### 5.4 Implementation Notes (PR description)
+### 5.5 Implementation Notes (PR description)
 
 When you are done implementing a tasks you need to prepare a PR description for it.
 Because you cannot create PRs directly, write the PR as a clean description in the task notes.
@@ -427,7 +435,9 @@ backlog search "bug" --priority high --plain
 | Create task      | `backlog task create "Title"`                                                       |
 | With description | `backlog task create "Title" -d "Description"`                                      |
 | With AC          | `backlog task create "Title" --ac "Criterion 1" --ac "Criterion 2"`                 |
-| With all options | `backlog task create "Title" -d "Desc" -a @sara -s "To Do" -l auth --priority high` |
+| With references  | `backlog task create "Title" --ref src/api.ts --ref https://github.com/issue/123`   |
+| With documentation | `backlog task create "Title" --doc https://design-docs.example.com`               |
+| With all options | `backlog task create "Title" -d "Desc" -a @sara -s "To Do" -l auth --priority high --ref src/api.ts --doc docs/spec.md` |
 | Create draft     | `backlog task create "Title" --draft`                                               |
 | Create subtask   | `backlog task create "Title" -p 42`                                                 |
 
@@ -461,6 +471,8 @@ backlog search "bug" --priority high --plain
 | Add plan         | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
 | Add notes        | `backlog task edit 42 --notes "Implementation details"`  |
 | Add dependencies | `backlog task edit 42 --dep task-1 --dep task-2`         |
+| Add references   | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
+| Add documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
 
 ### Multi‑line Input (Description/Plan/Notes)
 

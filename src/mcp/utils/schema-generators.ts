@@ -77,6 +77,14 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				},
 				description: "Reference URLs or file paths related to this task",
 			},
+			documentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Documentation URLs or file paths for understanding this task",
+			},
 			acceptanceCriteria: {
 				type: "array",
 				items: {
@@ -169,6 +177,30 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 500,
 				},
 				description: "Remove reference URLs or file paths",
+			},
+			documentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Set documentation URLs or file paths (replaces existing)",
+			},
+			addDocumentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Add documentation URLs or file paths",
+			},
+			removeDocumentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Remove documentation URLs or file paths",
 			},
 			implementationNotes: {
 				type: "string",

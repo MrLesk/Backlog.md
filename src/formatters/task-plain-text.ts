@@ -101,6 +101,10 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push(`References: ${task.references.join(", ")}`);
 	}
 
+	if (task.documentation?.length) {
+		lines.push(`Documentation: ${task.documentation.join(", ")}`);
+	}
+
 	lines.push("");
 	lines.push("Description:");
 	lines.push("-".repeat(50));
