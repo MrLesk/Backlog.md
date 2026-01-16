@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-15 20:22'
-updated_date: '2026-01-16 17:50'
+updated_date: '2026-01-16 18:25'
 labels:
   - mcp
   - enhancement
@@ -28,6 +28,9 @@ Completed tasks should only appear in MCP search results - they should remain fi
 - [x] #3 MCP task_list does NOT include completed tasks (current behavior preserved)
 - [x] #4 TUI and web UI task lists do NOT include completed tasks (current behavior preserved)
 - [x] #5 Search index includes both active and completed tasks for MCP context
+
+- [x] #6 Cross-branch and remote loading contribute completed tasks for MCP search (archived excluded).
+- [x] #7 Tasks completed on other branches appear in MCP task_search and are marked completed.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -60,4 +63,13 @@ Follow-up:
 
 Follow-up update:
 - MCP task_search now merges core.loadTasks() with filesystem.listCompletedTasks() (completed overrides) instead of using the statistics loader.
+
+Scope expanded per user to include cross-branch/remote completed-task loading for MCP search.
+
+Scope update implementation:
+- Extended core.loadTasks with includeCompleted option and reused existing loadRemoteTasks/loadLocalBranchTasks to hydrate completed tasks from branches/remotes.
+- Search path now uses loadTasks(includeCompleted: true) and marks latest completed states across branches.
+
+Tests:
+- bun test src/test/mcp-tasks.test.ts src/test/mcp-tasks-local-filter.test.ts src/test/task-search-label-filter.test.ts (pass)
 <!-- SECTION:NOTES:END -->

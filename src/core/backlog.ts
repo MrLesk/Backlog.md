@@ -1828,10 +1828,15 @@ export class Core {
 	 * Load all tasks with cross-branch support
 	 * This is the single entry point for loading tasks across all interfaces
 	 */
-	async loadTasks(progressCallback?: (msg: string) => void, abortSignal?: AbortSignal): Promise<Task[]> {
+	async loadTasks(
+		progressCallback?: (msg: string) => void,
+		abortSignal?: AbortSignal,
+		options?: { includeCompleted?: boolean },
+	): Promise<Task[]> {
 		const config = await this.fs.loadConfig();
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
+		const includeCompleted = options?.includeCompleted ?? false;
 
 		// Check for cancellation
 		if (abortSignal?.aborted) {
@@ -1839,7 +1844,10 @@ export class Core {
 		}
 
 		// Load local filesystem tasks first (needed for optimization)
-		const localTasks = await this.listTasksWithMetadata();
+		const [localTasks, completedTasks] = await Promise.all([
+			this.listTasksWithMetadata(),
+			includeCompleted ? this.fs.listCompletedTasks() : Promise.resolve([]),
+		]);
 
 		// Check for cancellation
 		if (abortSignal?.aborted) {
@@ -1852,8 +1860,8 @@ export class Core {
 		const branchStateEntries: BranchTaskStateEntry[] | undefined =
 			config?.checkActiveBranches === false ? undefined : [];
 		const [remoteTasks, localBranchTasks] = await Promise.all([
-			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
-			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
+			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, includeCompleted),
+			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, includeCompleted),
 		]);
 
 		// Check for cancellation after loading
@@ -1863,6 +1871,13 @@ export class Core {
 
 		// Create map with local tasks (current branch filesystem)
 		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
+
+		// Add local completed tasks when requested
+		if (includeCompleted) {
+			for (const completedTask of completedTasks) {
+				tasksById.set(completedTask.id, { ...completedTask, source: "completed" });
+			}
+		}
 
 		// Merge tasks from other local branches
 		for (const branchTask of localBranchTasks) {
@@ -1913,7 +1928,43 @@ export class Core {
 			filteredTasks = tasks;
 		} else {
 			progressCallback?.("Applying latest task states from branch scans...");
-			filteredTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
+			if (!includeCompleted) {
+				filteredTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
+			} else {
+				const stateEntries = branchStateEntries || [];
+				for (const completedTask of completedTasks) {
+					if (!completedTask.id) continue;
+					const lastModified = completedTask.updatedDate ? new Date(completedTask.updatedDate) : new Date(0);
+					stateEntries.push({
+						id: completedTask.id,
+						type: "completed",
+						branch: "local",
+						path: "",
+						lastModified,
+					});
+				}
+
+				const latestState = buildLatestStateMap(stateEntries, localTasks);
+				const completedIds = new Set<string>();
+				for (const [id, entry] of latestState) {
+					if (entry.type === "completed") {
+						completedIds.add(id);
+					}
+				}
+
+				filteredTasks = tasks
+					.filter((task) => {
+						const latest = latestState.get(task.id);
+						if (!latest) return true;
+						return latest.type === "task" || latest.type === "completed";
+					})
+					.map((task) => {
+						if (!completedIds.has(task.id)) {
+							return task;
+						}
+						return { ...task, source: "completed" };
+					});
+			}
 		}
 
 		return filteredTasks;

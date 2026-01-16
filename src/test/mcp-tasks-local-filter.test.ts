@@ -49,7 +49,6 @@ describe("MCP task tools local filtering", () => {
 		const handlers = new TaskHandlers({
 			loadTasks: async () => [localTask, remoteTask],
 			filesystem: {
-				listCompletedTasks: async () => [],
 				loadConfig: async () => mockConfig,
 			},
 		} as unknown as McpServer);

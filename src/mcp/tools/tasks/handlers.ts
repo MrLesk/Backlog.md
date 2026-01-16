@@ -186,15 +186,7 @@ export class TaskHandlers {
 			throw new McpError("Search query cannot be empty", "VALIDATION_ERROR");
 		}
 
-		const [activeTasks, completedTasks] = await Promise.all([
-			this.core.loadTasks(),
-			this.core.filesystem.listCompletedTasks(),
-		]);
-		const tasksById = new Map<string, Task>(activeTasks.map((task) => [task.id, task]));
-		for (const completedTask of completedTasks) {
-			tasksById.set(completedTask.id, { ...completedTask, source: "completed" });
-		}
-		const tasks = Array.from(tasksById.values());
+		const tasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
 		const searchIndex = createTaskSearchIndex(tasks);
 		let taskMatches = searchIndex.search({
 			query,

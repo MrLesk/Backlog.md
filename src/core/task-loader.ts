@@ -98,6 +98,7 @@ export async function buildRemoteTaskIndex(
 	sinceDays?: number,
 	stateCollector?: BranchTaskStateEntry[],
 	prefix = DEFAULT_TASK_PREFIX,
+	includeCompleted = false,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -152,8 +153,8 @@ export async function buildRemoteTaskIndex(
 						});
 					}
 
-					// Only index active tasks for hydration selection
-					if (type === "task") {
+					// Only index active tasks for hydration selection (optionally include completed)
+					if (type === "task" || (includeCompleted && type === "completed")) {
 						const arr = out.get(id);
 						if (arr) {
 							arr.push(entry);
@@ -225,6 +226,7 @@ export async function buildLocalBranchTaskIndex(
 	sinceDays?: number,
 	stateCollector?: BranchTaskStateEntry[],
 	prefix = DEFAULT_TASK_PREFIX,
+	includeCompleted = false,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -281,8 +283,8 @@ export async function buildLocalBranchTaskIndex(
 						});
 					}
 
-					// Only index active tasks for hydration selection
-					if (type === "task") {
+					// Only index active tasks for hydration selection (optionally include completed)
+					if (type === "task" || (includeCompleted && type === "completed")) {
 						const arr = out.get(id);
 						if (arr) {
 							arr.push(entry);
@@ -482,6 +484,7 @@ export async function loadRemoteTasks(
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
 	stateCollector?: BranchTaskStateEntry[],
+	includeCompleted = false,
 ): Promise<Task[]> {
 	try {
 		// Skip remote operations if disabled
@@ -508,7 +511,15 @@ export async function loadRemoteTasks(
 		// Build a cheap index without fetching content
 		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
-		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir, days, stateCollector, taskPrefix);
+		const remoteIndex = await buildRemoteTaskIndex(
+			gitOps,
+			branches,
+			backlogDir,
+			days,
+			stateCollector,
+			taskPrefix,
+			includeCompleted,
+		);
 
 		if (remoteIndex.size === 0) {
 			onProgress?.("No remote tasks found");
@@ -604,6 +615,7 @@ export async function loadLocalBranchTasks(
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
 	stateCollector?: BranchTaskStateEntry[],
+	includeCompleted = false,
 ): Promise<Task[]> {
 	try {
 		const currentBranch = await gitOps.getCurrentBranch();
@@ -639,6 +651,7 @@ export async function loadLocalBranchTasks(
 			days,
 			stateCollector,
 			taskPrefix,
+			includeCompleted,
 		);
 
 		if (localBranchIndex.size === 0) {
