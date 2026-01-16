@@ -34,7 +34,8 @@ If the work requires multiple tasks, proceed to choose the appropriate task stru
 - Write tasks as work orders for strangers: include all required context inside the task
 - Never reference "what we discussed" without restating the essential decisions and constraints
 - Dependencies must explicitly state what the other task provides (e.g., output, schema, artifact)
-- Use the `references` field to link relevant code files, external URLs, or documentation (e.g., `--ref src/api.ts --ref https://docs.example.com`)
+- Use the `references` field to link relevant code files or related issues
+- Use the `documentation` field to link design docs, API specs, or other reference materials that help understand the task context
 
 ### Step 3: Choose task structure
 

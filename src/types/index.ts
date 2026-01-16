@@ -35,6 +35,7 @@ export interface Task {
 	milestone?: string;
 	dependencies: string[];
 	references?: string[];
+	documentation?: string[];
 	readonly rawContent?: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
 	description?: string;
 	implementationPlan?: string;
@@ -88,6 +89,7 @@ export interface TaskCreateInput {
 	assignee?: string[];
 	dependencies?: string[];
 	references?: string[];
+	documentation?: string[];
 	parentTaskId?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
@@ -112,6 +114,9 @@ export interface TaskUpdateInput {
 	references?: string[];
 	addReferences?: string[];
 	removeReferences?: string[];
+	documentation?: string[];
+	addDocumentation?: string[];
+	removeDocumentation?: string[];
 	implementationPlan?: string;
 	appendImplementationPlan?: string[];
 	clearImplementationPlan?: boolean;

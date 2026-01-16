@@ -656,6 +656,7 @@ export class Core {
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
 		const normalizedDependencies = normalizeDependencies(input.dependencies);
 		const normalizedReferences = normalizeStringList(input.references) ?? [];
+		const normalizedDocumentation = normalizeStringList(input.documentation) ?? [];
 
 		const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
 			normalizedDependencies,
@@ -697,6 +698,7 @@ export class Core {
 			labels: normalizedLabels,
 			dependencies: validDependencies,
 			references: normalizedReferences,
+			documentation: normalizedDocumentation,
 			rawContent: input.rawContent ?? "",
 			createdDate,
 			...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
@@ -984,6 +986,43 @@ export class Core {
 		};
 
 		resolveReferences();
+
+		const resolveDocumentation = (): void => {
+			let currentDocumentation = [...(task.documentation ?? [])];
+			if (input.documentation !== undefined) {
+				const sanitizedDocumentation = normalizeStringList(input.documentation) ?? [];
+				if (!stringArraysEqual(sanitizedDocumentation, currentDocumentation)) {
+					task.documentation = sanitizedDocumentation;
+					mutated = true;
+				}
+				currentDocumentation = sanitizedDocumentation;
+			}
+
+			const documentationToAdd = normalizeStringList(input.addDocumentation) ?? [];
+			if (documentationToAdd.length > 0) {
+				const docSet = new Set(currentDocumentation);
+				for (const doc of documentationToAdd) {
+					if (!docSet.has(doc)) {
+						currentDocumentation.push(doc);
+						docSet.add(doc);
+						mutated = true;
+					}
+				}
+				task.documentation = currentDocumentation;
+			}
+
+			const documentationToRemove = normalizeStringList(input.removeDocumentation) ?? [];
+			if (documentationToRemove.length > 0) {
+				const removalSet = new Set(documentationToRemove);
+				const filtered = currentDocumentation.filter((doc) => !removalSet.has(doc));
+				if (!stringArraysEqual(filtered, currentDocumentation)) {
+					task.documentation = filtered;
+					mutated = true;
+				}
+			}
+		};
+
+		resolveDocumentation();
 
 		const sanitizeAppendInput = (values: string[] | undefined): string[] => {
 			if (!values) return [];

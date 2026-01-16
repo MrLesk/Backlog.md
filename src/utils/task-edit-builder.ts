@@ -95,6 +95,21 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.removeReferences = removeReferences;
 	}
 
+	const documentation = sanitizeStringArray(args.documentation);
+	if (documentation) {
+		updateInput.documentation = documentation;
+	}
+
+	const addDocumentation = sanitizeStringArray(args.addDocumentation);
+	if (addDocumentation) {
+		updateInput.addDocumentation = addDocumentation;
+	}
+
+	const removeDocumentation = sanitizeStringArray(args.removeDocumentation);
+	if (removeDocumentation) {
+		updateInput.removeDocumentation = removeDocumentation;
+	}
+
 	const planSet = args.planSet ?? args.implementationPlan;
 	if (typeof planSet === "string") {
 		updateInput.implementationPlan = planSet;

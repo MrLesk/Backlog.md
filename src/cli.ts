@@ -1199,6 +1199,21 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 				: [],
 	);
 
+	// Handle documentation (URLs or file paths)
+	const documentation = normalizeStringList(
+		Array.isArray(options.doc)
+			? options.doc.flatMap((d: string) =>
+					String(d)
+						.split(",")
+						.map((s: string) => s.trim()),
+				)
+			: options.doc
+				? String(options.doc)
+						.split(",")
+						.map((s: string) => s.trim())
+				: [],
+	);
+
 	// Validate priority option
 	const priority = options.priority ? String(options.priority).toLowerCase() : undefined;
 	const validPriorities = ["high", "medium", "low"];
@@ -1219,6 +1234,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 			: [],
 		dependencies,
 		references,
+		documentation,
 		rawContent: "",
 		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
 		...(normalizedParent && { parentTaskId: normalizedParent }),
@@ -1266,6 +1282,14 @@ taskCmd
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
+	.option(
+		"--doc <documentation>",
+		"add documentation URL or file path (can be used multiple times)",
+		(value, previous) => {
+			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			return [...soFar, value];
+		},
+	)
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
@@ -1839,6 +1863,10 @@ taskCmd
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
+	.option("--doc <documentation>", "set documentation (can be used multiple times)", (value, previous) => {
+		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+		return [...soFar, value];
+	})
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
@@ -1939,6 +1967,18 @@ taskCmd
 					)
 				: undefined;
 
+		const documentationValues = toStringArray(options.doc);
+		const normalizedDocumentation =
+			documentationValues.length > 0
+				? normalizeStringList(
+						documentationValues.flatMap((d: string) =>
+							String(d)
+								.split(",")
+								.map((s: string) => s.trim()),
+						),
+					)
+				: undefined;
+
 		const notesAppendValues = toStringArray(options.appendNotes);
 
 		const editArgs: TaskEditArgs = {};
@@ -1975,6 +2015,9 @@ taskCmd
 		}
 		if (normalizedReferences && normalizedReferences.length > 0) {
 			editArgs.references = normalizedReferences;
+		}
+		if (normalizedDocumentation && normalizedDocumentation.length > 0) {
+			editArgs.documentation = normalizedDocumentation;
 		}
 		if (typeof options.plan === "string") {
 			editArgs.planSet = String(options.plan);

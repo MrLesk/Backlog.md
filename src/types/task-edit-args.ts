@@ -13,6 +13,9 @@ export interface TaskEditArgs {
 	references?: string[];
 	addReferences?: string[];
 	removeReferences?: string[];
+	documentation?: string[];
+	addDocumentation?: string[];
+	removeDocumentation?: string[];
 	implementationPlan?: string;
 	planSet?: string;
 	planAppend?: string[];
