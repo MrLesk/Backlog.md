@@ -1,6 +1,6 @@
-## Task Completion Guide
+## Task Finalization Guide
 
-### Completion Workflow
+### Finalization Workflow
 
 1. **Verify all acceptance criteria** - Confirm every criterion is satisfied (use `task_view` to see current status)
 2. **Run the Definition of Done checklist** (see below)
@@ -22,7 +22,7 @@
 - Implementation notes capture what changed and why via `task_edit` (notesAppend field)
 - Status transitions to "Done" via `task_edit`
 
-### After Completion
+### After Finalization
 
 **Never autonomously create or start new tasks.** Instead:
 
@@ -35,7 +35,7 @@
 
 ### Working with Subtasks
 
-- When completing a subtask, check all its acceptance criteria individually
+- When finalizing a subtask, check all its acceptance criteria individually
 - Update subtask status to "Done" via `task_edit`
 - Document subtask-specific outcomes in the subtask's notes
 - Only update parent task status when ALL subtasks are complete (or when explicitly instructed)

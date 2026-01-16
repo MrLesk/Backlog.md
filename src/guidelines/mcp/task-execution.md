@@ -66,3 +66,6 @@ If new work appears during implementation that wasn't in the original acceptance
 - When completing a single subtask (without explicit instruction to continue), present progress and ask: "Subtask X is complete. Should I proceed with subtask Y, or would you like to review first?"
 - Each subtask should be fully completed (all acceptance criteria met, tests passing) before moving to the next
 
+### Finalizing the Task
+
+When implementation is finished, follow the **Task Finalization Guide** (`backlog://workflow/task-finalization`) to finalize your work. This ensures acceptance criteria are verified, implementation is documented, and the task is properly closed.
