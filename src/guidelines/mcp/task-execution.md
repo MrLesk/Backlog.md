@@ -10,9 +10,9 @@
 4. **Present plan to user** - Show your proposed implementation approach
 5. **Wait for explicit approval** - Do not start coding until user confirms or asks you to skip review
 6. **Record approved plan** - Use `task_edit` with planSet or planAppend to capture the agreed approach in the task
-7. **Document the agreed breakdown** - In the parent task's plan, capture the final list of subtasks, owners, and sequencing so future agents see the structure the user approved
+7. **Document the agreed breakdown** - In the parent task's plan, capture the final list of subtasks, owners, and sequencing so a replacement agent can resume with the approved structure
 
-**IMPORTANT:** Use tasks as a permanent storage for everything related to the work. Implementation plan and notes are essential to resume work in case of interruptions or handoffs.
+**IMPORTANT:** Use tasks as permanent storage for everything related to the work. You may be interrupted or replaced at any point, so the task record must contain everything needed for a clean handoff.
 
 ### Planning Guidelines
 
