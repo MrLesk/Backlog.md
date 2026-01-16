@@ -48,6 +48,8 @@ These guides contain critical workflows you need to follow for proper task manag
 
 Backlog tracks **commitments** (what will be built). Use your judgment to distinguish between "help me understand X" (no tracking) vs "add feature Y" (track in Backlog).
 
+**Execution Model:** Tasks are executed by independent AI agents in separate sessions. Each agent only sees its assigned task, not prior conversation history, so tasks must include enough context for a developer with no prior knowledge to start immediately.
+
 ### MCP Tools Quick Reference
 
 **Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.

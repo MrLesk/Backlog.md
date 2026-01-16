@@ -27,6 +27,15 @@ Use `task_view` to read full context of related tasks.
 
 If the work requires multiple tasks, proceed to choose the appropriate task structure (subtasks vs separate tasks).
 
+### Agent Lifecycle Reality
+
+**Assume the agent who creates tasks will NOT execute them.** Each task is handled by an independent agent session with no memory of prior conversations or other tasks.
+
+- Write tasks as work orders for strangers: include all required context inside the task
+- Never reference "what we discussed" without restating the essential decisions and constraints
+- Dependencies must explicitly state what the other task provides (e.g., output, schema, artifact)
+- Include links to relevant code, docs, or references directly in the task description
+
 ### Step 3: Choose task structure
 
 **When to use subtasks vs separate tasks:**
@@ -62,6 +71,7 @@ Create all tasks in the same session to maintain consistency and context.
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
 - Include negative or edge scenarios when relevant
 - Capture testing expectations explicitly
+- Include documentation expectations in the same task (no deferring to follow-up tasks)
 
 **Never embed implementation details** in title, description, or acceptance criteria
 
@@ -78,12 +88,15 @@ After creation, show the user each new task's ID, title, description, and accept
 - Creating a single task called "Build desktop application" with 10+ acceptance criteria
 - Adding implementation steps to acceptance criteria
 - Creating a task before understanding if it needs to be split
+- Deferring tests or documentation to "later tasks" (e.g., "Add tests/docs in a follow-up")
 
 ### Correct Pattern
 
 "This request spans electron setup, IPC bridge, UI adaptation, and packaging. I'll create 4 separate tasks to break this down properly."
 
 Then create the tasks and report what was created.
+
+**Standalone task example (includes tests/docs):** "Add API endpoint for bulk updates" with acceptance criteria that include required tests and documentation updates in the same task.
 
 ### Additional Context Gathering
 

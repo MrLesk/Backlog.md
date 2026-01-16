@@ -1,10 +1,11 @@
 ---
 id: BACK-351
 title: Strengthen MCP task creation guidance for standalone tasks
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2025-12-25 20:04'
-updated_date: '2025-12-26 17:40'
+updated_date: '2026-01-16 18:44'
 labels: []
 dependencies: []
 ---
@@ -44,11 +45,30 @@ This prevents agents from creating tightly-coupled task batches that only make s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 task-creation.md includes 'Agent Lifecycle Reality' section explaining agents won't work on all tasks they create
-- [ ] #2 task-creation.md guidance requires tasks be written as work orders for strangers with full context
-- [ ] #3 overview.md includes 'Execution Model' statement about independent agent sessions
+- [x] #1 task-creation.md includes 'Agent Lifecycle Reality' section explaining agents won't work on all tasks they create
+- [x] #2 task-creation.md guidance requires tasks be written as work orders for strangers with full context
+- [x] #3 overview.md includes 'Execution Model' statement about independent agent sessions
 
-- [ ] #4 task-execution.md strengthens language about agent replacement/interruption and handoff
-- [ ] #5 Task-creation guidance requires tests and documentation expectations per task (no deferring to later tasks)
-- [ ] #6 Guide includes anti-pattern example (deferred tests/docs) vs correct example (standalone tasks)
+- [x] #4 task-execution.md strengthens language about agent replacement/interruption and handoff
+- [x] #5 Task-creation guidance requires tests and documentation expectations per task (no deferring to later tasks)
+- [x] #6 Guide includes anti-pattern example (deferred tests/docs) vs correct example (standalone tasks)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Update src/guidelines/mcp/task-creation.md with an "Agent Lifecycle Reality" section after scope assessment, covering independent agent sessions, writing tasks as work orders for strangers, explicit dependency outputs, and linking relevant code/docs.
+2. Strengthen task-creation guidance to require per-task testing/documentation expectations and add an anti-pattern vs correct example for deferred tests/docs.
+3. Add an "Execution Model" statement in src/guidelines/mcp/overview.md under Core Principle to emphasize independent agent sessions and standalone task context.
+4. Tighten handoff/replacement language in src/guidelines/mcp/task-execution.md to stress tasks as the permanent record when agents are replaced or interrupted.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Summary: added Agent Lifecycle Reality guidance to task-creation workflow, including explicit dependency/context rules and standalone tests/docs expectations with anti-pattern vs correct examples.
+
+Summary: added Execution Model statement in overview and strengthened task-execution handoff language to stress agent replacement.
+
+Tests: not run (documentation-only changes).
+<!-- SECTION:NOTES:END -->
