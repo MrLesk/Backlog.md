@@ -85,6 +85,63 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("includes completed tasks in task_search results and excludes archived tasks", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Active task",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Completed task",
+					status: "Done",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_complete",
+				arguments: {
+					id: "task-2",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Archived task",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_archive",
+				arguments: {
+					id: "task-3",
+				},
+			},
+		});
+
+		const searchResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_search", arguments: { query: "task" } },
+		});
+
+		const searchText = getText(searchResult.content);
+		expect(searchText).toContain("TASK-2 - Completed task");
+		expect(searchText).toContain("(Done)");
+		expect(searchText).not.toContain("TASK-3 - Archived task");
+	});
+
 	it("exposes status enums and defaults from configuration", async () => {
 		const config = await loadConfig(mcpServer);
 		const expectedStatuses =

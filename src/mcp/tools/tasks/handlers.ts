@@ -4,10 +4,10 @@ import {
 	type SearchPriorityFilter,
 	type Task,
 	type TaskListFilter,
-	type TaskSearchResult,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
+import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortTasks } from "../../../utils/task-sorting.ts";
 import { McpError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
@@ -52,7 +52,8 @@ export class TaskHandlers {
 
 	private formatTaskSummaryLine(task: Task, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
-		const statusText = options.includeStatus && task.status ? ` (${task.status})` : "";
+		const status = task.status || (task.source === "completed" ? "Done" : "");
+		const statusText = options.includeStatus && status ? ` (${status})` : "";
 		return `  ${priorityIndicator}${task.id} - ${task.title}${statusText}`;
 	}
 
@@ -185,25 +186,18 @@ export class TaskHandlers {
 			throw new McpError("Search query cannot be empty", "VALIDATION_ERROR");
 		}
 
-		const searchService = await this.core.getSearchService();
-		const filters: { status?: string; priority?: SearchPriorityFilter } = {};
-		if (args.status) {
-			filters.status = args.status;
-		}
-		if (args.priority) {
-			filters.priority = args.priority;
-		}
-
-		const results = searchService.search({
+		const tasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+		const searchIndex = createTaskSearchIndex(tasks);
+		let taskMatches = searchIndex.search({
 			query,
-			limit: args.limit,
-			types: ["task"],
-			filters: Object.keys(filters).length > 0 ? filters : undefined,
+			status: args.status,
+			priority: args.priority,
 		});
+		if (typeof args.limit === "number" && args.limit >= 0) {
+			taskMatches = taskMatches.slice(0, args.limit);
+		}
 
-		const taskResults = results
-			.filter((result): result is TaskSearchResult => result.type === "task")
-			.filter((result) => isLocalEditableTask(result.task));
+		const taskResults = taskMatches.filter((task) => isLocalEditableTask(task));
 		if (taskResults.length === 0) {
 			return {
 				content: [
@@ -216,7 +210,7 @@ export class TaskHandlers {
 		}
 
 		const lines: string[] = ["Tasks:"];
-		for (const { task } of taskResults) {
+		for (const task of taskResults) {
 			lines.push(this.formatTaskSummaryLine(task, { includeStatus: true }));
 		}
 

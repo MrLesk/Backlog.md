@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { McpServer } from "../mcp/server.ts";
 import { TaskHandlers } from "../mcp/tools/tasks/handlers.ts";
-import type { Task, TaskSearchResult } from "../types/index.ts";
+import type { Task } from "../types/index.ts";
 
 const localTask: Task = {
 	id: "task-1",
@@ -46,15 +46,8 @@ describe("MCP task tools local filtering", () => {
 	});
 
 	it("filters cross-branch tasks out of task_search", async () => {
-		const searchResults: TaskSearchResult[] = [
-			{ type: "task", task: localTask, score: 0.1 },
-			{ type: "task", task: remoteTask, score: 0.2 },
-		];
-
 		const handlers = new TaskHandlers({
-			getSearchService: async () => ({
-				search: () => searchResults,
-			}),
+			loadTasks: async () => [localTask, remoteTask],
 			filesystem: {
 				loadConfig: async () => mockConfig,
 			},
