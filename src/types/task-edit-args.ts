@@ -10,6 +10,9 @@ export interface TaskEditArgs {
 	assignee?: string[];
 	ordinal?: number;
 	dependencies?: string[];
+	references?: string[];
+	addReferences?: string[];
+	removeReferences?: string[];
 	implementationPlan?: string;
 	planSet?: string;
 	planAppend?: string[];

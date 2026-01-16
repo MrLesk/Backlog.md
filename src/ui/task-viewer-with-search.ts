@@ -1008,6 +1008,19 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 	bodyContent.push(descriptionContent);
 	bodyContent.push("");
 
+	if (task.references?.length) {
+		bodyContent.push(formatHeading("References", 2));
+		const formattedRefs = task.references.map((ref) => {
+			// Color URLs differently from file paths
+			if (ref.startsWith("http://") || ref.startsWith("https://")) {
+				return `  {cyan-fg}${ref}{/}`;
+			}
+			return `  {yellow-fg}${ref}{/}`;
+		});
+		bodyContent.push(formattedRefs.join("\n"));
+		bodyContent.push("");
+	}
+
 	bodyContent.push(formatHeading("Acceptance Criteria", 2));
 	const checklistItems = buildAcceptanceCriteriaItems(task);
 	if (checklistItems.length > 0) {

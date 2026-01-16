@@ -67,6 +67,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
+  const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
 
@@ -129,6 +130,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setLabels(task?.labels || []);
     setPriority(task?.priority || "");
     setDependencies(task?.dependencies || []);
+    setReferences(task?.references || []);
     setMilestone(task?.milestone || "");
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
@@ -235,6 +237,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (updates.labels !== undefined) setLabels(updates.labels as string[]);
     if (updates.priority !== undefined) setPriority(String(updates.priority));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
+    if (updates.references !== undefined) setReferences(updates.references as string[]);
     if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
 
     // Only update server if editing existing task
@@ -394,6 +397,80 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 />
               </div>
             )}
+          </div>
+
+          {/* References */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <SectionHeader title="References" />
+            <div className="space-y-3">
+              {references.length > 0 ? (
+                <ul className="space-y-2">
+                  {references.map((ref, idx) => (
+                    <li key={idx} className="flex items-center gap-3 group">
+                      <span className="flex-1 min-w-0">
+                        {ref.startsWith("http://") || ref.startsWith("https://") ? (
+                          <a
+                            href={ref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline break-all"
+                          >
+                            {ref}
+                          </a>
+                        ) : (
+                          <code className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all">
+                            {ref}
+                          </code>
+                        )}
+                      </span>
+                      {!isFromOtherBranch && (
+                        <button
+                          onClick={() => {
+                            const newRefs = references.filter((_, i) => i !== idx);
+                            handleInlineMetaUpdate({ references: newRefs });
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
+                          title="Remove reference"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">No references</p>
+              )}
+              {!isFromOtherBranch && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = e.currentTarget.elements.namedItem("newRef") as HTMLInputElement;
+                    const value = input.value.trim();
+                    if (value && !references.includes(value)) {
+                      handleInlineMetaUpdate({ references: [...references, value] });
+                      input.value = "";
+                    }
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    name="newRef"
+                    type="text"
+                    placeholder="URL or file path..."
+                    className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  >
+                    Add
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
 
           {/* Acceptance Criteria */}

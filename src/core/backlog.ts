@@ -655,6 +655,7 @@ export class Core {
 		const normalizedLabels = normalizeStringList(input.labels) ?? [];
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
 		const normalizedDependencies = normalizeDependencies(input.dependencies);
+		const normalizedReferences = normalizeStringList(input.references) ?? [];
 
 		const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
 			normalizedDependencies,
@@ -695,6 +696,7 @@ export class Core {
 			assignee: normalizedAssignees,
 			labels: normalizedLabels,
 			dependencies: validDependencies,
+			references: normalizedReferences,
 			rawContent: input.rawContent ?? "",
 			createdDate,
 			...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
@@ -945,6 +947,43 @@ export class Core {
 		};
 
 		await resolveDependencies();
+
+		const resolveReferences = (): void => {
+			let currentReferences = [...(task.references ?? [])];
+			if (input.references !== undefined) {
+				const sanitizedReferences = normalizeStringList(input.references) ?? [];
+				if (!stringArraysEqual(sanitizedReferences, currentReferences)) {
+					task.references = sanitizedReferences;
+					mutated = true;
+				}
+				currentReferences = sanitizedReferences;
+			}
+
+			const referencesToAdd = normalizeStringList(input.addReferences) ?? [];
+			if (referencesToAdd.length > 0) {
+				const refSet = new Set(currentReferences);
+				for (const ref of referencesToAdd) {
+					if (!refSet.has(ref)) {
+						currentReferences.push(ref);
+						refSet.add(ref);
+						mutated = true;
+					}
+				}
+				task.references = currentReferences;
+			}
+
+			const referencesToRemove = normalizeStringList(input.removeReferences) ?? [];
+			if (referencesToRemove.length > 0) {
+				const removalSet = new Set(referencesToRemove);
+				const filtered = currentReferences.filter((ref) => !removalSet.has(ref));
+				if (!stringArraysEqual(filtered, currentReferences)) {
+					task.references = filtered;
+					mutated = true;
+				}
+			}
+		};
+
+		resolveReferences();
 
 		const sanitizeAppendInput = (values: string[] | undefined): string[] => {
 			if (!values) return [];
