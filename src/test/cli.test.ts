@@ -74,6 +74,8 @@ describe("CLI Integration", () => {
 				"backlog/archive",
 				"backlog/archive/tasks",
 				"backlog/archive/drafts",
+				"backlog/archive/milestones",
+				"backlog/milestones",
 				"backlog/docs",
 				"backlog/decisions",
 			];

@@ -9,6 +9,7 @@ import {
 	type Document,
 	EntityType,
 	isLocalEditableTask,
+	type Milestone,
 	type SearchFilters,
 	type Sequence,
 	type Task,
@@ -1414,6 +1415,21 @@ export class Core {
 		}
 
 		return success;
+	}
+
+	async archiveMilestone(
+		identifier: string,
+		autoCommit?: boolean,
+	): Promise<{ success: boolean; milestone?: Milestone }> {
+		const result = await this.fs.archiveMilestone(identifier);
+
+		if (result.success && result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
+			await this.git.stageFileMove(result.sourcePath, result.targetPath);
+			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
+			await this.git.commitChanges(`backlog: Archive milestone${label}`);
+		}
+
+		return { success: result.success, milestone: result.milestone };
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {

@@ -216,6 +216,7 @@ describe("McpServer bootstrap", () => {
 			"milestone_add",
 			"milestone_rename",
 			"milestone_remove",
+			"milestone_archive",
 			"document_list",
 			"document_view",
 			"document_create",

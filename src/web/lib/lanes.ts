@@ -23,6 +23,7 @@ export function buildLanes(
 	tasks: Task[],
 	configMilestones: string[],
 	milestoneEntities: Milestone[] = [],
+	options?: { archivedMilestoneIds?: string[] },
 ): LaneDefinition[] {
 	if (mode !== "milestone") {
 		return [
@@ -34,12 +35,14 @@ export function buildLanes(
 		];
 	}
 
+	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
 	const milestonesByKey = new Map<string, string>();
 	const addMilestone = (value: string) => {
 		const normalized = normalizeMilestoneName(value);
 		if (!normalized) return;
 		const key = milestoneKey(normalized);
 		if (!key) return;
+		if (archivedKeys.has(key)) return;
 		if (milestonesByKey.has(key)) return;
 		milestonesByKey.set(key, normalized);
 	};
@@ -195,8 +198,20 @@ export function groupTasksByLaneAndStatus(
 	lanes: LaneDefinition[],
 	statuses: string[],
 	tasks: Task[],
+	options?: { archivedMilestoneIds?: string[] },
 ): Map<string, Map<string, Task[]>> {
 	const result = new Map<string, Map<string, Task[]>>();
+	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
+	const normalizedTasks =
+		archivedKeys.size > 0
+			? tasks.map((task) => {
+					const key = milestoneKey(task.milestone);
+					if (!key || !archivedKeys.has(key)) {
+						return task;
+					}
+					return { ...task, milestone: undefined };
+				})
+			: tasks;
 
 	const ensureStatusMap = (laneKey: string): Map<string, Task[]> => {
 		const existing = result.get(laneKey);
@@ -213,7 +228,7 @@ export function groupTasksByLaneAndStatus(
 		ensureStatusMap(lane.key);
 	}
 
-	for (const task of tasks) {
+	for (const task of normalizedTasks) {
 		const statusKey = task.status ?? "";
 		const laneKey = mode === "milestone" ? laneKeyFromMilestone(task.milestone) : DEFAULT_LANE_KEY;
 		const statusMap = ensureStatusMap(laneKey);

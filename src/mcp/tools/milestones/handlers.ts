@@ -20,6 +20,10 @@ export type MilestoneRemoveArgs = {
 	reassignTo?: string;
 };
 
+export type MilestoneArchiveArgs = {
+	name: string;
+};
+
 function normalizeMilestoneName(name: string): string {
 	return name.trim();
 }
@@ -53,10 +57,25 @@ export class MilestoneHandlers {
 		return await this.core.filesystem.listMilestones();
 	}
 
+	private async listArchivedMilestones(): Promise<Milestone[]> {
+		return await this.core.filesystem.listArchivedMilestones();
+	}
+
 	async listMilestones(): Promise<CallToolResult> {
 		// Get file-based milestones
 		const fileMilestones = await this.listFileMilestones();
-		const fileMilestoneKeys = new Set(fileMilestones.map((m) => milestoneKey(m.title)));
+		const fileMilestoneKeys = new Set<string>();
+		for (const milestone of fileMilestones) {
+			fileMilestoneKeys.add(milestoneKey(milestone.id));
+			fileMilestoneKeys.add(milestoneKey(milestone.title));
+		}
+
+		const archivedMilestones = await this.listArchivedMilestones();
+		const archivedKeys = new Set<string>();
+		for (const milestone of archivedMilestones) {
+			archivedKeys.add(milestoneKey(milestone.id));
+			archivedKeys.add(milestoneKey(milestone.title));
+		}
 
 		// Get milestones discovered from tasks
 		const tasks = await this.listLocalTasks();
@@ -65,6 +84,7 @@ export class MilestoneHandlers {
 			const normalized = normalizeMilestoneName(task.milestone ?? "");
 			if (!normalized) continue;
 			const key = milestoneKey(normalized);
+			if (archivedKeys.has(key)) continue;
 			if (!discoveredByKey.has(key)) {
 				discoveredByKey.set(key, normalized);
 			}
@@ -79,7 +99,9 @@ export class MilestoneHandlers {
 		const milestoneLines = fileMilestones.map((m) => `${m.id}: ${m.title}`);
 		blocks.push(formatListBlock(`Milestones (${fileMilestones.length}):`, milestoneLines));
 		blocks.push(formatListBlock(`Milestones found on tasks without files (${unconfigured.length}):`, unconfigured));
-		blocks.push("Hint: use milestone_add to create milestone files, milestone_rename / milestone_remove to manage.");
+		blocks.push(
+			"Hint: use milestone_add to create milestone files, milestone_rename / milestone_remove to manage, milestone_archive to archive.",
+		);
 
 		return {
 			content: [
@@ -210,6 +232,30 @@ export class MilestoneHandlers {
 				{
 					type: "text",
 					text: summaryLines.join("\n"),
+				},
+			],
+		};
+	}
+
+	async archiveMilestone(args: MilestoneArchiveArgs): Promise<CallToolResult> {
+		const name = normalizeMilestoneName(args.name);
+		if (!name) {
+			throw new McpError("Milestone name cannot be empty.", "VALIDATION_ERROR");
+		}
+
+		const result = await this.core.archiveMilestone(name);
+		if (!result.success) {
+			throw new McpError(`Milestone not found: "${name}"`, "NOT_FOUND");
+		}
+
+		const label = result.milestone?.title ?? name;
+		const id = result.milestone?.id;
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Archived milestone "${label}"${id ? ` (${id})` : ""}.`,
 				},
 			],
 		};

@@ -12,10 +12,21 @@ interface BoardPageProps {
 	statuses: string[];
 	milestones: string[];
 	milestoneEntities: Milestone[];
+	archivedMilestones: Milestone[];
 	isLoading: boolean;
 }
 
-export default function BoardPage({ onEditTask, onNewTask, tasks, onRefreshData, statuses, milestones, milestoneEntities, isLoading }: BoardPageProps) {
+export default function BoardPage({
+	onEditTask,
+	onNewTask,
+	tasks,
+	onRefreshData,
+	statuses,
+	milestones,
+	milestoneEntities,
+	archivedMilestones,
+	isLoading,
+}: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 	const [laneMode, setLaneMode] = useState<LaneMode>('none');
@@ -85,6 +96,7 @@ export default function BoardPage({ onEditTask, onNewTask, tasks, onRefreshData,
 				statuses={statuses}
 				milestones={milestones}
 				milestoneEntities={milestoneEntities}
+				archivedMilestones={archivedMilestones}
 				isLoading={isLoading}
 				laneMode={laneMode}
 				onLaneChange={handleLaneChange}

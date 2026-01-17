@@ -75,3 +75,17 @@ export const milestoneRemoveSchema: JsonSchema = {
 	required: ["name"],
 	additionalProperties: false,
 };
+
+export const milestoneArchiveSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		name: {
+			type: "string",
+			minLength: 1,
+			maxLength: 100,
+			description: "Milestone name or ID to archive (case-insensitive match)",
+		},
+	},
+	required: ["name"],
+	additionalProperties: false,
+};

@@ -35,6 +35,12 @@ describe("buildLanes", () => {
 		expect(lanes).toHaveLength(1);
 		expect(lanes[0]?.key).toBe(DEFAULT_LANE_KEY);
 	});
+
+	it("excludes archived milestones from lane definitions", () => {
+		const tasks = [makeTask({ id: "task-1", milestone: "M1" })];
+		const lanes = buildLanes("milestone", tasks, ["M1"], [], { archivedMilestoneIds: ["M1"] });
+		expect(lanes.map((lane) => lane.label)).toEqual(["No milestone"]);
+	});
 });
 
 describe("groupTasksByLaneAndStatus", () => {
@@ -60,6 +66,17 @@ describe("groupTasksByLaneAndStatus", () => {
 
 		expect(defaultLaneTasks?.get("To Do")?.map((t) => t.id)).toEqual(["task-3", "task-1"]);
 		expect(defaultLaneTasks?.get("In Progress")?.map((t) => t.id)).toEqual(["task-2"]);
+	});
+
+	it("normalizes archived milestone tasks to no milestone", () => {
+		const lanes = buildLanes("milestone", tasks, ["M1"], [], { archivedMilestoneIds: ["M1"] });
+		const grouped = groupTasksByLaneAndStatus("milestone", lanes, ["To Do", "In Progress"], tasks, {
+			archivedMilestoneIds: ["M1"],
+		});
+		expect((grouped.get(laneKeyFromMilestone(null))?.get("To Do") ?? []).map((t) => t.id)).toEqual([
+			"task-3",
+			"task-1",
+		]);
 	});
 });
 

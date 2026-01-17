@@ -410,6 +410,14 @@ export class ApiClient {
 		return response.json();
 	}
 
+	async fetchArchivedMilestones(): Promise<Milestone[]> {
+		const response = await fetch(`${API_BASE}/milestones/archived`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch archived milestones");
+		}
+		return response.json();
+	}
+
 	async fetchMilestone(id: string): Promise<Milestone> {
 		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`);
 		if (!response.ok) {
@@ -429,6 +437,17 @@ export class ApiClient {
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));
 			throw new Error(data.error || "Failed to create milestone");
+		}
+		return response.json();
+	}
+
+	async archiveMilestone(id: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
+		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
+			method: "POST",
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to archive milestone");
 		}
 		return response.json();
 	}

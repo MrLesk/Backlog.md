@@ -136,6 +136,7 @@ function createBucket(
 
 	const doneCount = bucketTasks.filter((t) => isDoneStatus(t.status)).length;
 	const progress = bucketTasks.length > 0 ? Math.round((doneCount / bucketTasks.length) * 100) : 0;
+	const isCompleted = bucketTasks.length > 0 && doneCount === bucketTasks.length;
 
 	const key = bucketMilestoneKey ? bucketMilestoneKey : NO_MILESTONE_KEY;
 	const label = getMilestoneLabel(milestoneId, milestoneEntities);
@@ -145,6 +146,7 @@ function createBucket(
 		label,
 		milestone: milestoneId,
 		isNoMilestone,
+		isCompleted,
 		tasks: bucketTasks,
 		statusCounts: counts,
 		total: bucketTasks.length,
@@ -160,12 +162,29 @@ export function buildMilestoneBuckets(
 	tasks: Task[],
 	milestoneEntities: Milestone[],
 	statuses: string[],
+	options?: { archivedMilestoneIds?: string[] },
 ): MilestoneBucket[] {
-	const allMilestoneIds = collectMilestoneIds(tasks, milestoneEntities);
+	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
+	const normalizedTasks =
+		archivedKeys.size > 0
+			? tasks.map((task) => {
+					const key = milestoneKey(task.milestone);
+					if (!key || !archivedKeys.has(key)) {
+						return task;
+					}
+					return { ...task, milestone: undefined };
+				})
+			: tasks;
+	const filteredMilestones =
+		archivedKeys.size > 0
+			? milestoneEntities.filter((milestone) => !archivedKeys.has(milestoneKey(milestone.id)))
+			: milestoneEntities;
+
+	const allMilestoneIds = collectMilestoneIds(normalizedTasks, filteredMilestones);
 
 	const buckets: MilestoneBucket[] = [
-		createBucket(undefined, tasks, statuses, milestoneEntities, true),
-		...allMilestoneIds.map((m) => createBucket(m, tasks, statuses, milestoneEntities, false)),
+		createBucket(undefined, normalizedTasks, statuses, filteredMilestones, true),
+		...allMilestoneIds.map((m) => createBucket(m, normalizedTasks, statuses, filteredMilestones, false)),
 	];
 
 	return buckets;
@@ -198,9 +217,25 @@ export function buildMilestoneSummary(
 	tasks: Task[],
 	milestoneEntities: Milestone[],
 	statuses: string[],
+	options?: { archivedMilestoneIds?: string[] },
 ): MilestoneSummary {
-	const milestones = collectMilestoneIds(tasks, milestoneEntities);
-	const buckets = buildMilestoneBuckets(tasks, milestoneEntities, statuses);
+	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
+	const normalizedTasks =
+		archivedKeys.size > 0
+			? tasks.map((task) => {
+					const key = milestoneKey(task.milestone);
+					if (!key || !archivedKeys.has(key)) {
+						return task;
+					}
+					return { ...task, milestone: undefined };
+				})
+			: tasks;
+	const filteredMilestones =
+		archivedKeys.size > 0
+			? milestoneEntities.filter((milestone) => !archivedKeys.has(milestoneKey(milestone.id)))
+			: milestoneEntities;
+	const milestones = collectMilestoneIds(normalizedTasks, filteredMilestones);
+	const buckets = buildMilestoneBuckets(normalizedTasks, filteredMilestones, statuses, options);
 
 	return {
 		milestones,

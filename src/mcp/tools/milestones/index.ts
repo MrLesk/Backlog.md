@@ -1,9 +1,15 @@
 import type { McpServer } from "../../server.ts";
 import type { McpToolHandler } from "../../types.ts";
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
-import type { MilestoneAddArgs, MilestoneRemoveArgs, MilestoneRenameArgs } from "./handlers.ts";
+import type { MilestoneAddArgs, MilestoneArchiveArgs, MilestoneRemoveArgs, MilestoneRenameArgs } from "./handlers.ts";
 import { MilestoneHandlers } from "./handlers.ts";
-import { milestoneAddSchema, milestoneListSchema, milestoneRemoveSchema, milestoneRenameSchema } from "./schemas.ts";
+import {
+	milestoneAddSchema,
+	milestoneArchiveSchema,
+	milestoneListSchema,
+	milestoneRemoveSchema,
+	milestoneRenameSchema,
+} from "./schemas.ts";
 
 export function registerMilestoneTools(server: McpServer): void {
 	const handlers = new MilestoneHandlers(server);
@@ -48,8 +54,19 @@ export function registerMilestoneTools(server: McpServer): void {
 		async (input) => handlers.removeMilestone(input as MilestoneRemoveArgs),
 	);
 
+	const archiveTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "milestone_archive",
+			description: "Archive a milestone by moving it to backlog/archive/milestones",
+			inputSchema: milestoneArchiveSchema,
+		},
+		milestoneArchiveSchema,
+		async (input) => handlers.archiveMilestone(input as MilestoneArchiveArgs),
+	);
+
 	server.addTool(listTool);
 	server.addTool(addTool);
 	server.addTool(renameTool);
 	server.addTool(removeTool);
+	server.addTool(archiveTool);
 }
