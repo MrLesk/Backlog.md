@@ -45,7 +45,7 @@ describe("CLI --plain for task create/edit", () => {
 		expect(result.exitCode).toBe(0);
 		// Begins with File: line and contains key sections
 		expect(out).toContain("File: ");
-		expect(out).toContain("Task task-1 - Example");
+		expect(out).toContain("Task TASK-1 - Example");
 		expect(out).toContain("Status:");
 		expect(out).toContain("Created:");
 		expect(out).toContain("Description:");
@@ -71,7 +71,7 @@ describe("CLI --plain for task create/edit", () => {
 		expect(result.exitCode).toBe(0);
 		// Begins with File: line and contains updated details
 		expect(out).toContain("File: ");
-		expect(out).toContain("Task task-1 - Edit Me");
+		expect(out).toContain("Task TASK-1 - Edit Me");
 		expect(out).toContain("Status: ◒ In Progress");
 		expect(out).toContain("Created:");
 		expect(out).toContain("Updated:");
