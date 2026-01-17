@@ -2069,11 +2069,16 @@ taskCmd
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const task = await core.loadTaskById(taskId);
+		const localTasks = await core.fs.listTasks();
+		const task = await core.getTaskWithSubtasks(taskId, localTasks);
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			return;
 		}
+
+		const allTasks = localTasks.some((candidate) => taskIdsEqual(task.id, candidate.id))
+			? localTasks
+			: [...localTasks, task];
 
 		// Plain text output for AI agents
 		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
@@ -2082,7 +2087,7 @@ taskCmd
 		}
 
 		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(task, { startWithDetailFocus: true, core });
+		await viewTaskEnhanced(task, { startWithDetailFocus: true, core, tasks: allTasks });
 	});
 
 taskCmd
@@ -2134,11 +2139,16 @@ taskCmd
 			return;
 		}
 
-		const task = await core.loadTaskById(taskId);
+		const localTasks = await core.fs.listTasks();
+		const task = await core.getTaskWithSubtasks(taskId, localTasks);
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			return;
 		}
+
+		const allTasks = localTasks.some((candidate) => taskIdsEqual(task.id, candidate.id))
+			? localTasks
+			: [...localTasks, task];
 
 		// Plain text output for AI agents
 		if (options && (options.plain || process.argv.includes("--plain"))) {
@@ -2147,7 +2157,6 @@ taskCmd
 		}
 
 		// Use unified view with detail focus and Tab switching support
-		const allTasks = await core.queryTasks();
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
 		await runUnifiedView({
 			core,

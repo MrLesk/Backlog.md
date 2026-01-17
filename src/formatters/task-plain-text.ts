@@ -2,6 +2,7 @@ import type { Task } from "../types/index.ts";
 import type { ChecklistItem } from "../ui/checklist.ts";
 import { transformCodePathsPlain } from "../ui/code-path.ts";
 import { formatStatusWithIcon } from "../ui/status-icon.ts";
+import { sortByTaskId } from "../utils/task-sorting.ts";
 
 export type TaskPlainTextOptions = {
 	filePathOverride?: string;
@@ -41,6 +42,12 @@ function formatPriority(priority?: "high" | "medium" | "low"): string | null {
 function formatAssignees(assignee?: string[]): string | null {
 	if (!assignee || assignee.length === 0) return null;
 	return assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
+}
+
+function formatSubtaskLines(subtasks: Array<{ id: string; title: string }>): string[] {
+	if (subtasks.length === 0) return [];
+	const sorted = sortByTaskId(subtasks);
+	return sorted.map((subtask) => `- ${subtask.id} - ${subtask.title}`);
 }
 
 export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = {}): string {
@@ -86,11 +93,20 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	}
 
 	if (task.parentTaskId) {
-		lines.push(`Parent: ${task.parentTaskId}`);
+		const parentLabel = task.parentTaskTitle ? `${task.parentTaskId} - ${task.parentTaskTitle}` : task.parentTaskId;
+		lines.push(`Parent: ${parentLabel}`);
 	}
 
-	if (task.subtasks?.length) {
-		lines.push(`Subtasks: ${task.subtasks.length}`);
+	const subtaskSummaries = task.subtaskSummaries ?? [];
+	const subtaskCount = subtaskSummaries.length > 0 ? subtaskSummaries.length : (task.subtasks?.length ?? 0);
+	if (subtaskCount > 0) {
+		const subtaskLines = formatSubtaskLines(subtaskSummaries);
+		if (subtaskLines.length > 0) {
+			lines.push(`Subtasks (${subtaskCount}):`);
+			lines.push(...subtaskLines);
+		} else {
+			lines.push(`Subtasks: ${subtaskCount}`);
+		}
 	}
 
 	if (task.dependencies?.length) {

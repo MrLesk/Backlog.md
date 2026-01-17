@@ -32,6 +32,7 @@ import {
 	validateDependencies,
 } from "../utils/task-builders.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
@@ -293,6 +294,16 @@ export class Core {
 
 		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
 		return await this.fs.loadTask(taskId);
+	}
+
+	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
+		const task = await this.loadTaskById(taskId);
+		if (!task) {
+			return null;
+		}
+
+		const tasks = localTasks ?? (await this.fs.listTasks());
+		return attachSubtaskSummaries(task, tasks);
 	}
 
 	async loadTaskById(taskId: string): Promise<Task | null> {
