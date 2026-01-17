@@ -87,6 +87,7 @@ CLAUDECODE=1 bun test --timeout 180000 # Full test suite (failures-only output)
 - **Task Management**: Uses markdown files in `backlog/` directory structure
 - **Git Workflow**: Task IDs referenced in commits and PRs (`TASK-123 - Title`)
   - **Branching**: Use feature branches when working on tasks (e.g. `tasks/task-123-feature-name`)
+  - **PR titles**: Use `{taskId} - {taskTitle}` (e.g. `BACK-123 - Title of the task`)
 
 ## Code Standards
 - **Runtime**: Bun with TypeScript 5
