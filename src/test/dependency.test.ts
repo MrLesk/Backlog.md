@@ -122,7 +122,7 @@ describe("Task Dependencies", () => {
 		// Verify the dependencies were updated
 		const savedTask = await core.filesystem.loadTask("task-3");
 		expect(savedTask).not.toBeNull();
-		expect(savedTask?.dependencies).toEqual(["task-1", "task-2"]);
+		expect(savedTask?.dependencies).toEqual(["TASK-1", "TASK-2"]);
 	});
 
 	test("should handle tasks with dependencies in drafts", async () => {
@@ -192,7 +192,7 @@ describe("Task Dependencies", () => {
 		// Load the task back and verify all fields
 		const loadedTask = await core.filesystem.loadTask("task-1");
 		expect(loadedTask).not.toBeNull();
-		expect(loadedTask?.id).toBe("task-1");
+		expect(loadedTask?.id).toBe("TASK-1");
 		expect(loadedTask?.title).toBe("Task with multiple dependencies");
 		expect(loadedTask?.status).toBe("In Progress");
 		expect(loadedTask?.assignee).toEqual(["@developer"]);

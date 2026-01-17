@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "../core/reorder.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -175,5 +177,24 @@ describe("Core.reorderTask", () => {
 		const task3 = await core.filesystem.loadTask("task-3");
 		expect(task2?.ordinal).toBe(1000);
 		expect(task3?.ordinal).toBe(2000);
+	});
+
+	it("reorders tasks with legacy lowercase IDs", async () => {
+		await createTasks([
+			["task-1", "To Do", 1000],
+			["task-2", "To Do", 2000],
+		]);
+
+		const legacyTask = buildTask("task-3", "To Do", 3000);
+		const legacyPath = join(core.filesystem.tasksDir, "task-3 - Legacy Task.md");
+		await Bun.write(legacyPath, serializeTask(legacyTask));
+
+		const result = await core.reorderTask({
+			taskId: "task-3",
+			targetStatus: "To Do",
+			orderedTaskIds: ["task-1", "task-3", "task-2"],
+		});
+
+		expect(result.updatedTask.id).toBe("TASK-3");
 	});
 });

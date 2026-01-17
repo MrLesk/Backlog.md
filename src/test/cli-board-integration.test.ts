@@ -74,14 +74,14 @@ Test task for board CLI integration.`,
 
 		// Verify basic functionality
 		expect(localTasks.length).toBe(1);
-		expect(localTasks[0]?.id).toBe("task-1");
+		expect(localTasks[0]?.id).toBe("TASK-1");
 		expect(localTasks[0]?.status).toBe("To Do");
 		expect(statuses).toContain("To Do");
 
 		// Test that we can create the task map
 		const tasksById = new Map(localTasks.map((t) => [t.id, { ...t, source: "local" as const }]));
 		expect(tasksById.size).toBe(1);
-		expect(tasksById.get("task-1")?.title).toBe("Board Test Task");
+		expect(tasksById.get("TASK-1")?.title).toBe("Board Test Task");
 	});
 
 	it("should properly handle cross-branch task resolution", async () => {

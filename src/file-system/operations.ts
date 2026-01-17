@@ -13,7 +13,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
-import { getTaskFilename, getTaskPath } from "../utils/task-path.ts";
+import { getTaskFilename, getTaskPath, normalizeTaskIdentity } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 // Interface for task path resolution context
@@ -223,7 +223,7 @@ export class FileSystem {
 			if (!filepath) return null;
 
 			const content = await Bun.file(filepath).text();
-			const task = parseTask(content);
+			const task = normalizeTaskIdentity(parseTask(content));
 			return { ...task, filePath: filepath };
 		} catch (_error) {
 			return null;
@@ -255,7 +255,7 @@ export class FileSystem {
 			const filepath = join(tasksDir, file);
 			try {
 				const content = await Bun.file(filepath).text();
-				const task = parseTask(content);
+				const task = normalizeTaskIdentity(parseTask(content));
 				tasks.push({ ...task, filePath: filepath });
 			} catch (error) {
 				if (process.env.DEBUG) {
@@ -538,7 +538,7 @@ export class FileSystem {
 
 			const filepath = join(draftsDir, draftFile);
 			const content = await Bun.file(filepath).text();
-			const task = parseTask(content);
+			const task = normalizeTaskIdentity(parseTask(content));
 			return { ...task, filePath: filepath };
 		} catch {
 			return null;
@@ -554,7 +554,7 @@ export class FileSystem {
 			for (const file of taskFiles) {
 				const filepath = join(draftsDir, file);
 				const content = await Bun.file(filepath).text();
-				const task = parseTask(content);
+				const task = normalizeTaskIdentity(parseTask(content));
 				tasks.push({ ...task, filePath: filepath });
 			}
 

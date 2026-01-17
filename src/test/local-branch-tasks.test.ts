@@ -95,15 +95,15 @@ describe("Local branch task discovery", () => {
 
 			const index = await buildLocalBranchTaskIndex(mockGit, branches, "main", "backlog");
 
-			// Should find task-3 from feature-a (not in main)
-			expect(index.has("task-3")).toBe(true);
-			const task3Entries = index.get("task-3");
+			// Should find TASK-3 from feature-a (not in main)
+			expect(index.has("TASK-3")).toBe(true);
+			const task3Entries = index.get("TASK-3");
 			expect(task3Entries?.length).toBe(1);
 			expect(task3Entries?.[0]?.branch).toBe("feature-a");
 
 			// Should find task-1 and task-2 from other branches
-			expect(index.has("task-1")).toBe(true);
-			expect(index.has("task-2")).toBe(true);
+			expect(index.has("TASK-1")).toBe(true);
+			expect(index.has("TASK-2")).toBe(true);
 		});
 
 		it("should exclude origin/ branches", async () => {
@@ -113,7 +113,7 @@ describe("Local branch task discovery", () => {
 			const index = await buildLocalBranchTaskIndex(mockGit, branches, "main", "backlog");
 
 			// Should only have entries from feature-a (local), not origin/feature-a
-			const task1Entries = index.get("task-1");
+			const task1Entries = index.get("TASK-1");
 			expect(task1Entries?.every((e) => e.branch === "feature-a")).toBe(true);
 		});
 
@@ -124,7 +124,7 @@ describe("Local branch task discovery", () => {
 			const index = await buildLocalBranchTaskIndex(mockGit, branches, "main", "backlog");
 
 			// task-1 should only be from feature-a, not main
-			const task1Entries = index.get("task-1");
+			const task1Entries = index.get("TASK-1");
 			expect(task1Entries?.every((e) => e.branch !== "main")).toBe(true);
 		});
 	});
@@ -138,8 +138,8 @@ describe("Local branch task discovery", () => {
 				progressMessages.push(msg);
 			});
 
-			// Should find task-3 which only exists in feature-a
-			const task3 = localBranchTasks.find((t) => t.id === "task-3");
+			// Should find TASK-3 which only exists in feature-a
+			const task3 = localBranchTasks.find((t) => t.id === "TASK-3");
 			expect(task3).toBeDefined();
 			expect(task3?.title).toBe("New Task");
 			expect(task3?.source).toBe("local-branch");
@@ -168,8 +168,8 @@ describe("Local branch task discovery", () => {
 
 			const localBranchTasks = await loadLocalBranchTasks(mockGit, null, undefined, localTasks);
 
-			// task-3 should be found (not in local tasks)
-			expect(localBranchTasks.some((t) => t.id === "task-3")).toBe(true);
+			// TASK-3 should be found (not in local tasks)
+			expect(localBranchTasks.some((t) => t.id === "TASK-3")).toBe(true);
 
 			// task-1 should not be hydrated since it exists locally
 			// (unless the remote version is newer, which in this mock it's not)
@@ -195,7 +195,7 @@ describe("Local branch task discovery", () => {
 			expect(tasks).toEqual([]);
 		});
 
-		it("should match local tasks with uppercase IDs to lowercase index keys (custom prefix)", async () => {
+		it("should match local tasks with uppercase IDs to index keys (custom prefix)", async () => {
 			// Mock git operations for custom prefix (JIRA)
 			const mockGit = {
 				getCurrentBranch: async () => "main",
@@ -252,7 +252,7 @@ Task from feature branch`,
 			const localBranchTasks = await loadLocalBranchTasks(mockGit, config, undefined, localTasks);
 
 			// JIRA-123 exists locally with more progress, so it should NOT be hydrated from other branch
-			// This tests that uppercase "JIRA-123" in localById matches lowercase "jira-123" in index
+			// This tests that uppercase "JIRA-123" in localById matches normalized index IDs
 			expect(localBranchTasks.find((t) => t.id === "JIRA-123")).toBeUndefined();
 		});
 

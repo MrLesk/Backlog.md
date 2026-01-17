@@ -12,7 +12,8 @@ import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { buildPathIdRegex } from "../utils/prefix-config.ts";
+import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
+import { normalizeTaskId, normalizeTaskIdentity } from "../utils/task-path.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
 
 /** Default prefix for tasks */
@@ -133,8 +134,7 @@ export async function buildRemoteTaskIndex(
 					const m = f.match(idRegex);
 					if (!m?.[1]) continue;
 
-					// Construct ID in same format as filename (lowercase prefix)
-					const id = `${prefix.toLowerCase()}-${m[1]}`;
+					const id = normalizeId(m[1], prefix);
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
@@ -196,7 +196,7 @@ async function hydrateTasks(
 
 			try {
 				const content = await git.showFile(w.ref, w.path);
-				const task = parseTask(content);
+				const task = normalizeTaskIdentity(parseTask(content));
 				if (task) {
 					// Mark as remote source and branch
 					task.source = "remote";
@@ -263,8 +263,7 @@ export async function buildLocalBranchTaskIndex(
 					const m = f.match(idRegex);
 					if (!m?.[1]) continue;
 
-					// Construct ID in same format as filename (lowercase prefix)
-					const id = `${prefix.toLowerCase()}-${m[1]}`;
+					const id = normalizeId(m[1], prefix);
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
@@ -383,10 +382,7 @@ export async function findTaskInRemoteBranches(
 		// Build task index for remote branches
 		const remoteIndex = await buildRemoteTaskIndex(git, branches, backlogDir, sinceDays, undefined, prefix);
 
-		// Normalize the task ID for lookup (match index format: lowercase prefix-number)
-		const normalizedId = taskId.toLowerCase().startsWith(`${prefix.toLowerCase()}-`)
-			? taskId.toLowerCase()
-			: `${prefix.toLowerCase()}-${taskId}`;
+		const normalizedId = normalizeId(taskId, prefix);
 
 		// Check if the task exists in the index
 		const entries = remoteIndex.get(normalizedId);
@@ -398,7 +394,7 @@ export async function findTaskInRemoteBranches(
 		// Hydrate the task
 		const ref = `origin/${best.branch}`;
 		const content = await git.showFile(ref, best.path);
-		const task = parseTask(content);
+		const task = normalizeTaskIdentity(parseTask(content));
 		if (task) {
 			task.source = "remote";
 			task.branch = best.branch;
@@ -446,10 +442,7 @@ export async function findTaskInLocalBranches(
 			prefix,
 		);
 
-		// Normalize the task ID for lookup (match index format: lowercase prefix-number)
-		const normalizedId = taskId.toLowerCase().startsWith(`${prefix.toLowerCase()}-`)
-			? taskId.toLowerCase()
-			: `${prefix.toLowerCase()}-${taskId}`;
+		const normalizedId = normalizeId(taskId, prefix);
 
 		// Check if the task exists in the index
 		const entries = localIndex.get(normalizedId);
@@ -460,7 +453,7 @@ export async function findTaskInLocalBranches(
 
 		// Hydrate the task
 		const content = await git.showFile(best.branch, best.path);
-		const task = parseTask(content);
+		const task = normalizeTaskIdentity(parseTask(content));
 		if (task) {
 			task.source = "local-branch";
 			task.branch = best.branch;
@@ -532,8 +525,7 @@ export async function loadRemoteTasks(
 		let winners: Array<{ id: string; ref: string; path: string }>;
 
 		if (localTasks && localTasks.length > 0) {
-			// Build local task map for comparison (use lowercase keys to match index format)
-			const localById = new Map(localTasks.map((t) => [t.id.toLowerCase(), t]));
+			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
 			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
 
 			// Only hydrate remote tasks that are newer or missing locally
@@ -664,8 +656,7 @@ export async function loadLocalBranchTasks(
 		let winners: Array<{ id: string; ref: string; path: string }>;
 
 		if (localTasks && localTasks.length > 0) {
-			// Build local task map for comparison (use lowercase keys to match index format)
-			const localById = new Map(localTasks.map((t) => [t.id.toLowerCase(), t]));
+			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
 			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
 
 			// Only hydrate tasks that are missing locally or potentially newer

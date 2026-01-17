@@ -4,7 +4,7 @@ import { basename, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
-import { taskIdsEqual } from "../utils/task-path.ts";
+import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 interface ContentSnapshot {
@@ -321,12 +321,13 @@ export class ContentStore {
 			this.enqueue(async () => {
 				const [taskId] = file.split(" ");
 				if (!taskId) return;
+				const normalizedTaskId = normalizeTaskId(taskId);
 
 				const fullPath = join(tasksDir, file);
 				const exists = await Bun.file(fullPath).exists();
 
 				if (!exists && eventType === "rename") {
-					if (this.tasks.delete(taskId)) {
+					if (this.tasks.delete(normalizedTaskId)) {
 						this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 						this.notify("tasks");
 					}
@@ -338,7 +339,7 @@ export class ContentStore {
 					return;
 				}
 
-				const previous = this.tasks.get(taskId);
+				const previous = this.tasks.get(normalizedTaskId);
 				const task = await this.retryRead(
 					async () => {
 						const stillExists = await Bun.file(fullPath).exists();
@@ -346,13 +347,13 @@ export class ContentStore {
 							return null;
 						}
 						const content = await Bun.file(fullPath).text();
-						return parseTask(content);
+						return normalizeTaskIdentity(parseTask(content));
 					},
 					(result) => {
 						if (!result) {
 							return false;
 						}
-						if (result.id !== taskId) {
+						if (!taskIdsEqual(result.id, normalizedTaskId)) {
 							return false;
 						}
 						if (!previous) {
@@ -362,7 +363,7 @@ export class ContentStore {
 					},
 				);
 				if (!task) {
-					await this.refreshTasksFromDisk(taskId, previous);
+					await this.refreshTasksFromDisk(normalizedTaskId, previous);
 					return;
 				}
 
@@ -666,7 +667,7 @@ export class ContentStore {
 				if (!expectedId) {
 					return true;
 				}
-				const match = expected.find((task) => task.id === expectedId);
+				const match = expected.find((task) => taskIdsEqual(task.id, expectedId));
 				if (!match) {
 					return false;
 				}
@@ -739,7 +740,8 @@ export class ContentStore {
 	}
 
 	private async updateTaskFromDisk(taskId: string): Promise<void> {
-		const previous = this.tasks.get(taskId);
+		const normalizedTaskId = normalizeTaskId(taskId);
+		const previous = this.tasks.get(normalizedTaskId);
 		const task = await this.retryRead(
 			async () => this.filesystem.loadTask(taskId),
 			(result) => result !== null && (!previous || this.hasTaskChanged(previous, result)),

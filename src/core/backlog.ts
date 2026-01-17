@@ -35,7 +35,6 @@ import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
-import { migrateIdCasing, needsIdCaseMigration } from "./id-case-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
@@ -420,11 +419,6 @@ export class Core {
 		// This renames task-*.md files in drafts/ to draft-*.md
 		if (needsDraftPrefixMigration(config)) {
 			await migrateDraftPrefixes(this.fs);
-		}
-
-		// Run ID casing migration if needed (normalizes lowercase task IDs to uppercase)
-		if (await needsIdCaseMigration(this.fs)) {
-			await migrateIdCasing(this.fs);
 		}
 	}
 

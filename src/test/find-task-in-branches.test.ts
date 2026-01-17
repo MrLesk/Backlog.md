@@ -59,7 +59,7 @@ Test description
 
 		const result = await findTaskInRemoteBranches(mockGit as GitOperations, "task-123");
 		expect(result).not.toBeNull();
-		expect(result?.id).toBe("task-123");
+		expect(result?.id).toBe("TASK-123");
 		expect(result?.source).toBe("remote");
 		expect(result?.branch).toBe("feature");
 	});
@@ -109,7 +109,7 @@ From local branch
 
 		const result = await findTaskInLocalBranches(mockGit as GitOperations, "task-456");
 		expect(result).not.toBeNull();
-		expect(result?.id).toBe("task-456");
+		expect(result?.id).toBe("TASK-456");
 		expect(result?.source).toBe("local-branch");
 		expect(result?.branch).toBe("feature-branch");
 	});
