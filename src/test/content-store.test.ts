@@ -68,7 +68,7 @@ describe("ContentStore", () => {
 		expect(snapshot.tasks).toHaveLength(1);
 		expect(snapshot.documents).toHaveLength(1);
 		expect(snapshot.decisions).toHaveLength(1);
-		expect(snapshot.tasks.map((task) => task.id)).toContain("task-1");
+		expect(snapshot.tasks.map((task) => task.id)).toContain("TASK-1");
 	});
 
 	it("emits task updates when underlying files change", async () => {

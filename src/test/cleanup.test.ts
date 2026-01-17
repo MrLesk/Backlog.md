@@ -63,7 +63,7 @@ describe("Cleanup functionality", () => {
 			// Verify task exists in active tasks
 			const activeTasks = await core.filesystem.listTasks();
 			expect(activeTasks).toHaveLength(1);
-			expect(activeTasks[0]?.id).toBe("task-1");
+			expect(activeTasks[0]?.id).toBe("TASK-1");
 
 			// Move to completed
 			const success = await core.completeTask("task-1", false);
@@ -76,7 +76,7 @@ describe("Cleanup functionality", () => {
 			// Verify task is in completed tasks
 			const completedTasks = await core.filesystem.listCompletedTasks();
 			expect(completedTasks).toHaveLength(1);
-			expect(completedTasks[0]?.id).toBe("task-1");
+			expect(completedTasks[0]?.id).toBe("TASK-1");
 			expect(completedTasks[0]?.title).toBe("Test Task");
 		});
 	});
@@ -122,7 +122,7 @@ describe("Cleanup functionality", () => {
 			// Get tasks older than 3 days
 			const oldTasks = await core.getDoneTasksByAge(3);
 			expect(oldTasks).toHaveLength(1);
-			expect(oldTasks[0]?.id).toBe("task-1");
+			expect(oldTasks[0]?.id).toBe("TASK-1");
 
 			// Get tasks older than 0 days (should include recent task too)
 			const allDoneTasks = await core.getDoneTasksByAge(0);
