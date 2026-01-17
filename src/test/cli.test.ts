@@ -1162,7 +1162,7 @@ describe("CLI Integration", () => {
 			// Promote back to task - use the draft's new ID
 			expect(asDraft).toBeDefined();
 			if (!asDraft) {
-				throw new Error("Expected draft to be created");
+				throw new Error("Expected demoted draft to exist");
 			}
 			await core.promoteDraft(asDraft.id, false);
 

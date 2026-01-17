@@ -104,12 +104,12 @@ describe("Parallel remote task loading", () => {
 		// Verify results - we should have tasks from all remote branches
 		expect(remoteTasks.length).toBe(3);
 		const taskIds = remoteTasks.map((t) => t.id);
-		expect(taskIds).toContain("task-1");
-		expect(taskIds).toContain("task-2");
-		expect(taskIds).toContain("task-3");
+		expect(taskIds).toContain("TASK-1");
+		expect(taskIds).toContain("TASK-2");
+		expect(taskIds).toContain("TASK-3");
 
 		// Verify each task has correct metadata
-		const task1 = remoteTasks.find((t) => t.id === "task-1");
+		const task1 = remoteTasks.find((t) => t.id === "TASK-1");
 		expect(task1?.source).toBe("remote");
 		expect(task1?.branch).toBe("main");
 		expect(task1?.status).toBe("To Do");

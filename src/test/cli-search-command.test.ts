@@ -82,7 +82,7 @@ describe("CLI search command", () => {
 		expect(result.exitCode).toBe(0);
 		const stdout = result.stdout.toString();
 		expect(stdout).toContain("Tasks:");
-		expect(stdout).toContain("task-1 - Central search integration");
+		expect(stdout).toContain("TASK-1 - Central search integration");
 		expect(stdout).toContain("Documents:");
 		expect(stdout).toContain("doc-1 - Search Architecture Notes");
 		expect(stdout).toContain("Decisions:");
@@ -95,22 +95,22 @@ describe("CLI search command", () => {
 			.quiet();
 		expect(statusResult.exitCode).toBe(0);
 		const statusStdout = statusResult.stdout.toString();
-		expect(statusStdout).toContain("task-2 - High priority follow-up");
-		expect(statusStdout).not.toContain("task-1 - Central search integration");
+		expect(statusStdout).toContain("TASK-2 - High priority follow-up");
+		expect(statusStdout).not.toContain("TASK-1 - Central search integration");
 
 		const priorityResult = await $`bun ${cliPath} search follow-up --type task --priority high --plain`
 			.cwd(TEST_DIR)
 			.quiet();
 		expect(priorityResult.exitCode).toBe(0);
 		const priorityStdout = priorityResult.stdout.toString();
-		expect(priorityStdout).toContain("task-2 - High priority follow-up");
+		expect(priorityStdout).toContain("TASK-2 - High priority follow-up");
 	});
 
 	it("applies result limit", async () => {
 		const result = await $`bun ${cliPath} search search --plain --limit 1`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 		const stdout = result.stdout.toString();
-		const taskMatches = stdout.match(/task-\d+ -/g) || [];
+		const taskMatches = stdout.match(/TASK-\d+ -/g) || [];
 		expect(taskMatches.length).toBeLessThanOrEqual(1);
 	});
 });

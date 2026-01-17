@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import type { Task } from "../types/index.ts";
 import {
 	buildFilenameIdRegex,
 	buildGlobPattern,
@@ -37,6 +38,21 @@ export function normalizeTaskId(taskId: string, prefix: string = DEFAULT_TASK_PR
 	const inferredPrefix = extractAnyPrefix(taskId);
 	const effectivePrefix = inferredPrefix && prefix === DEFAULT_TASK_PREFIX ? inferredPrefix : prefix;
 	return normalizeId(taskId, effectivePrefix);
+}
+
+export function normalizeTaskIdentity(task: Task): Task {
+	const normalizedId = normalizeTaskId(task.id);
+	const normalizedParent = task.parentTaskId ? normalizeTaskId(task.parentTaskId) : undefined;
+
+	if (normalizedId === task.id && normalizedParent === task.parentTaskId) {
+		return task;
+	}
+
+	return {
+		...task,
+		id: normalizedId,
+		parentTaskId: normalizedParent,
+	};
 }
 
 /**
