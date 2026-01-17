@@ -278,6 +278,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const isDoneStatus = (status || "").toLowerCase().includes("done");
 
   const displayId = task?.id ?? "";
+  const documentation = task?.documentation ?? [];
 
   return (
     <Modal
@@ -472,6 +473,37 @@ export const TaskDetailsModal: React.FC<Props> = ({
               )}
             </div>
           </div>
+
+          {/* Documentation */}
+          {documentation.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+              <SectionHeader title="Documentation" />
+              <div className="space-y-2">
+                <ul className="space-y-2">
+                  {documentation.map((doc, idx) => (
+                    <li key={idx} className="flex items-center gap-3">
+                      <span className="flex-1 min-w-0">
+                        {doc.startsWith("http://") || doc.startsWith("https://") ? (
+                          <a
+                            href={doc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline break-all"
+                          >
+                            {doc}
+                          </a>
+                        ) : (
+                          <code className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all">
+                            {doc}
+                          </code>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
           {/* Acceptance Criteria */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">

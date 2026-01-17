@@ -1161,7 +1161,10 @@ describe("CLI Integration", () => {
 
 			// Promote back to task - use the draft's new ID
 			expect(asDraft).toBeDefined();
-			await core.promoteDraft(asDraft!.id, false);
+			if (!asDraft) {
+				throw new Error("Expected draft to be created");
+			}
+			await core.promoteDraft(asDraft.id, false);
 
 			// Find the promoted task (it will have a new task- ID)
 			const tasks = await core.filesystem.listTasks();

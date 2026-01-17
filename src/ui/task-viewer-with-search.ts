@@ -13,6 +13,7 @@ import type { Task, TaskSearchResult } from "../types/index.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { createTaskSearchIndex } from "../utils/task-search.ts";
+import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
@@ -136,8 +137,13 @@ export async function viewTaskEnhanced(
 	const filtersActive = Boolean(searchQuery || statusFilter || priorityFilter || labelFilter.length > 0);
 	let requireInitialFilterSelection = filtersActive;
 
+	const enrichTask = (candidate: Task | null): Task | null => {
+		if (!candidate) return null;
+		return attachSubtaskSummaries(candidate, allTasks);
+	};
+
 	// Find the initial selected task
-	let currentSelectedTask = task;
+	let currentSelectedTask = enrichTask(task) ?? task;
 	let selectionRequestId = 0;
 	let noResultsMessage: string | null = null;
 
@@ -556,12 +562,13 @@ export async function viewTaskEnhanced(
 		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id) {
 			return;
 		}
-		currentSelectedTask = selectedTask;
-		options.onTaskChange?.(selectedTask);
+		const enriched = enrichTask(selectedTask);
+		currentSelectedTask = enriched ?? selectedTask;
+		options.onTaskChange?.(currentSelectedTask);
 		const requestId = ++selectionRequestId;
 		refreshDetailPane();
 		screen.render();
-		const refreshed = await core.getTask(selectedTask.id);
+		const refreshed = await core.getTaskWithSubtasks(selectedTask.id, allTasks);
 		if (requestId !== selectionRequestId) {
 			return;
 		}
@@ -1018,6 +1025,18 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 			return `  {yellow-fg}${ref}{/}`;
 		});
 		bodyContent.push(formattedRefs.join("\n"));
+		bodyContent.push("");
+	}
+
+	if (task.documentation?.length) {
+		bodyContent.push(formatHeading("Documentation", 2));
+		const formattedDocs = task.documentation.map((doc) => {
+			if (doc.startsWith("http://") || doc.startsWith("https://")) {
+				return `  {cyan-fg}${doc}{/}`;
+			}
+			return `  {yellow-fg}${doc}{/}`;
+		});
+		bodyContent.push(formattedDocs.join("\n"));
 		bodyContent.push("");
 	}
 

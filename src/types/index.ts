@@ -44,6 +44,7 @@ export interface Task {
 	acceptanceCriteriaItems?: AcceptanceCriterion[];
 	parentTaskId?: string;
 	subtasks?: string[];
+	subtaskSummaries?: Array<{ id: string; title: string }>;
 	priority?: "high" | "medium" | "low";
 	branch?: string;
 	ordinal?: number;

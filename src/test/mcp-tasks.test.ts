@@ -268,4 +268,80 @@ describe("MCP task tools (MVP)", () => {
 		expect(criteriaText).toContain("- [x] #1 Plan documented");
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
 	});
+
+	it("includes subtask list in task_view output and hides it when empty", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Parent task",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Child task A",
+					parentTaskId: "TASK-1",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Child task B",
+					parentTaskId: "TASK-1",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Standalone task",
+				},
+			},
+		});
+
+		const parentView = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-1" } },
+		});
+
+		const parentText = getText(parentView.content);
+		expect(parentText).toContain("Subtasks: 2");
+		expect(parentText).toContain("Subtasks List:");
+		expect(parentText).toContain("- TASK-1.1 - Child task A");
+		expect(parentText).toContain("- TASK-1.2 - Child task B");
+		expect(parentText.indexOf("TASK-1.1")).toBeLessThan(parentText.indexOf("TASK-1.2"));
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1.1",
+					title: "Child task A updated",
+				},
+			},
+		});
+
+		const parentAfterEdit = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-1" } },
+		});
+
+		const parentAfterEditText = getText(parentAfterEdit.content);
+		expect(parentAfterEditText).toContain("- TASK-1.1 - Child task A updated");
+
+		const standaloneView = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-2" } },
+		});
+
+		const standaloneText = getText(standaloneView.content);
+		expect(standaloneText).not.toContain("Subtasks List:");
+		expect(standaloneText).not.toContain("Subtasks:");
+	});
 });

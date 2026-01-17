@@ -6,6 +6,7 @@ import { Core } from "../index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let SUBTASKS: Array<{ id: string; title: string }> = [];
 
 describe("CLI plain output for AI agents", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -39,6 +40,40 @@ describe("CLI plain output for AI agents", () => {
 				labels: [],
 				dependencies: [],
 				description: "Test description",
+			},
+			false,
+		);
+
+		const { task: subtask1 } = await core.createTaskFromInput(
+			{
+				title: "Child task A",
+				parentTaskId: "task-1",
+			},
+			false,
+		);
+
+		const { task: subtask2 } = await core.createTaskFromInput(
+			{
+				title: "Child task B",
+				parentTaskId: "task-1",
+			},
+			false,
+		);
+
+		// Preserve order for assertions
+		SUBTASKS = [subtask1, subtask2];
+
+		// Create a second task without subtasks
+		await core.createTask(
+			{
+				id: "task-2",
+				title: "Standalone task for plain output",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-19",
+				labels: [],
+				dependencies: [],
+				description: "Standalone description",
 			},
 			false,
 		);
@@ -80,9 +115,18 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.stdout.toString()).toContain("File: ");
 		expect(result.stdout.toString()).toContain("task-1 - Test-task-for-plain-output.md");
 		// Should contain the formatted task output
-		expect(result.stdout.toString()).toContain("Task task-1 - Test task for plain output");
+		expect(result.stdout.toString()).toContain("Task TASK-1 - Test task for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ To Do");
 		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
+		expect(result.stdout.toString()).toContain("Subtasks: 2");
+		expect(result.stdout.toString()).toContain("Subtasks List:");
+		const [subtask1, subtask2] = SUBTASKS;
+		if (subtask1 && subtask2) {
+			const output = result.stdout.toString();
+			expect(output).toContain(`- ${subtask1.id} - ${subtask1.title}`);
+			expect(output).toContain(`- ${subtask2.id} - ${subtask2.title}`);
+			expect(output.indexOf(subtask1.id)).toBeLessThan(output.indexOf(subtask2.id));
+		}
 		expect(result.stdout.toString()).toContain("Description:");
 		expect(result.stdout.toString()).toContain("Test description");
 		expect(result.stdout.toString()).toContain("Acceptance Criteria:");
@@ -96,7 +140,7 @@ describe("CLI plain output for AI agents", () => {
 		const core = new Core(TEST_DIR);
 		const task = await core.filesystem.loadTask("task-1");
 		expect(task).not.toBeNull();
-		expect(task?.id).toBe("task-1");
+		expect(task?.id).toBe("TASK-1");
 
 		const result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).quiet();
 
@@ -110,7 +154,7 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.stdout.toString()).toContain("File: ");
 		expect(result.stdout.toString()).toContain("task-1 - Test-task-for-plain-output.md");
 		// Should contain the formatted task output
-		expect(result.stdout.toString()).toContain("Task task-1 - Test task for plain output");
+		expect(result.stdout.toString()).toContain("Task TASK-1 - Test task for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ To Do");
 		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
 		expect(result.stdout.toString()).toContain("Description:");
@@ -118,6 +162,20 @@ describe("CLI plain output for AI agents", () => {
 		// Should not contain TUI escape codes
 		expect(result.stdout.toString()).not.toContain("[?1049h");
 		expect(result.stdout.toString()).not.toContain("\x1b");
+	});
+
+	it("should not include a subtask list when none exist", async () => {
+		const result = await $`bun ${cliPath} task view 2 --plain`.cwd(TEST_DIR).quiet();
+
+		if (result.exitCode !== 0) {
+			console.error("STDOUT:", result.stdout.toString());
+			console.error("STDERR:", result.stderr.toString());
+		}
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout.toString()).toContain("Task TASK-2 - Standalone task for plain output");
+		expect(result.stdout.toString()).not.toContain("Subtasks List:");
+		expect(result.stdout.toString()).not.toContain("Subtasks:");
 	});
 
 	it("should output plain text with draft view --plain", async () => {

@@ -229,7 +229,10 @@ export class TaskHandlers {
 	}
 
 	async viewTask(args: { id: string }): Promise<CallToolResult> {
-		const task = await this.loadTaskOrThrow(args.id);
+		const task = await this.core.getTaskWithSubtasks(args.id);
+		if (!task) {
+			throw new McpError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+		}
 		return await formatTaskCallResult(task);
 	}
 

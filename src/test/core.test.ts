@@ -146,8 +146,11 @@ describe("Core", () => {
 		it("should resolve numeric-only IDs with custom prefix (BACK-364)", async () => {
 			// Configure custom prefix
 			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
 			await core.filesystem.saveConfig({
-				...config!,
+				...config,
 				prefixes: { task: "back" },
 			});
 
@@ -178,8 +181,11 @@ describe("Core", () => {
 		it("should NOT match numeric ID with typos when using custom prefix (BACK-364)", async () => {
 			// Configure custom prefix
 			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
 			await core.filesystem.saveConfig({
-				...config!,
+				...config,
 				prefixes: { task: "back" },
 			});
 
