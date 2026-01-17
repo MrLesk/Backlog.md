@@ -313,8 +313,7 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const parentText = getText(parentView.content);
-		expect(parentText).toContain("Subtasks: 2");
-		expect(parentText).toContain("Subtasks List:");
+		expect(parentText).toContain("Subtasks (2):");
 		expect(parentText).toContain("- TASK-1.1 - Child task A");
 		expect(parentText).toContain("- TASK-1.2 - Child task B");
 		expect(parentText.indexOf("TASK-1.1")).toBeLessThan(parentText.indexOf("TASK-1.2"));
@@ -341,7 +340,7 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const standaloneText = getText(standaloneView.content);
-		expect(standaloneText).not.toContain("Subtasks List:");
+		expect(standaloneText).not.toContain("Subtasks (");
 		expect(standaloneText).not.toContain("Subtasks:");
 	});
 });

@@ -99,11 +99,12 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	const subtaskSummaries = task.subtaskSummaries ?? [];
 	const subtaskCount = subtaskSummaries.length > 0 ? subtaskSummaries.length : (task.subtasks?.length ?? 0);
 	if (subtaskCount > 0) {
-		lines.push(`Subtasks: ${subtaskCount}`);
 		const subtaskLines = formatSubtaskLines(subtaskSummaries);
 		if (subtaskLines.length > 0) {
-			lines.push("Subtasks List:");
+			lines.push(`Subtasks (${subtaskCount}):`);
 			lines.push(...subtaskLines);
+		} else {
+			lines.push(`Subtasks: ${subtaskCount}`);
 		}
 	}
 

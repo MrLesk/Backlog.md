@@ -118,8 +118,7 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.stdout.toString()).toContain("Task TASK-1 - Test task for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ To Do");
 		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
-		expect(result.stdout.toString()).toContain("Subtasks: 2");
-		expect(result.stdout.toString()).toContain("Subtasks List:");
+		expect(result.stdout.toString()).toContain("Subtasks (2):");
 		const [subtask1, subtask2] = SUBTASKS;
 		if (subtask1 && subtask2) {
 			const output = result.stdout.toString();
@@ -174,7 +173,7 @@ describe("CLI plain output for AI agents", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Task TASK-2 - Standalone task for plain output");
-		expect(result.stdout.toString()).not.toContain("Subtasks List:");
+		expect(result.stdout.toString()).not.toContain("Subtasks (");
 		expect(result.stdout.toString()).not.toContain("Subtasks:");
 	});
 
