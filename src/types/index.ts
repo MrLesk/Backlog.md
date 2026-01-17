@@ -43,6 +43,7 @@ export interface Task {
 	/** Structured acceptance criteria parsed from body (checked state + text + index) */
 	acceptanceCriteriaItems?: AcceptanceCriterion[];
 	parentTaskId?: string;
+	parentTaskTitle?: string;
 	subtasks?: string[];
 	subtaskSummaries?: Array<{ id: string; title: string }>;
 	priority?: "high" | "medium" | "low";

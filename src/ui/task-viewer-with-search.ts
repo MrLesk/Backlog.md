@@ -995,7 +995,8 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 		metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${task.milestone}{/}`);
 	}
 	if (task.parentTaskId) {
-		metadata.push(`{bold}Parent:{/bold} {blue-fg}${task.parentTaskId}{/}`);
+		const parentLabel = task.parentTaskTitle ? `${task.parentTaskId} - ${task.parentTaskTitle}` : task.parentTaskId;
+		metadata.push(`{bold}Parent:{/bold} {blue-fg}${parentLabel}{/}`);
 	}
 	if (task.subtasks?.length) {
 		metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);

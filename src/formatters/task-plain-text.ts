@@ -93,7 +93,8 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	}
 
 	if (task.parentTaskId) {
-		lines.push(`Parent: ${task.parentTaskId}`);
+		const parentLabel = task.parentTaskTitle ? `${task.parentTaskId} - ${task.parentTaskTitle}` : task.parentTaskId;
+		lines.push(`Parent: ${parentLabel}`);
 	}
 
 	const subtaskSummaries = task.subtaskSummaries ?? [];
