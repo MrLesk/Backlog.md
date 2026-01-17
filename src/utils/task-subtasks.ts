@@ -11,14 +11,7 @@ export function attachSubtaskSummaries(task: Task, tasks: Task[]): Task {
 	}
 
 	if (summaries.length === 0) {
-		if (!task.subtasks && !task.subtaskSummaries) {
-			return task;
-		}
-		return {
-			...task,
-			subtasks: undefined,
-			subtaskSummaries: undefined,
-		};
+		return task;
 	}
 
 	const sortedSummaries = sortByTaskId(summaries);
