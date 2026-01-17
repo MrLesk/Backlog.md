@@ -27,7 +27,7 @@ import {
 import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
-import { collectMilestoneIds, milestoneKey } from './utils/milestones';
+import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 
 function App() {
   const [showModal, setShowModal] = useState(false);
@@ -121,9 +121,7 @@ function App() {
         apiClient.fetchArchivedMilestones(),
       ]);
 
-      const archivedKeys = new Set(
-        archivedMilestonesData.flatMap((milestone) => [milestone.id, milestone.title]).map((value) => milestoneKey(value)),
-      );
+      const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
       const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys);
 
       setStatuses(statusesData);
@@ -160,9 +158,7 @@ function App() {
             apiClient.fetchMilestones(),
             apiClient.fetchArchivedMilestones(),
           ]);
-          const archivedKeys = new Set(
-            archivedMilestonesData.flatMap((milestone) => [milestone.id, milestone.title]).map((value) => milestoneKey(value)),
-          );
+          const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
           const { tasks: tasksList } = applySearchResults(results, archivedKeys);
           setMilestoneEntities(milestonesData);
           setArchivedMilestones(archivedMilestonesData);

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-12-17 19:28'
-updated_date: '2026-01-17 20:54'
+updated_date: '2026-01-17 21:07'
 labels:
   - milestones
   - enhancement
@@ -51,6 +51,8 @@ Add a way to mark milestones as completed or archive them:
 9. Run `bunx tsc --noEmit` and `bun run check .` to validate types/lint/format after changes.
 
 10. Fix archived milestone filtering to exclude only by archived IDs (not titles), add regression test for reusing archived titles, and run bun test for the updated milestone tests.
+
+11. Adjust archived milestone key construction to avoid title collisions (use archived IDs plus titles only when no active milestone shares the title) across web/CLI/MCP, and update any affected tests/checks.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -77,4 +79,6 @@ Checks:
 Fixed archived milestone filtering to exclude by ID only so reused titles remain visible; added regression test for reused title in buildMilestoneBuckets; ran `bun test src/web/utils/milestones.test.ts`.
 
 Ran `bunx tsc --noEmit` and `bun run check .` after formatting fix in milestones.test.ts.
+
+Adjusted archived milestone key construction to avoid title collisions (use archived IDs plus titles only when not reused), updated web/CLI/MCP to use it, and ran `bun run check .`.
 <!-- SECTION:NOTES:END -->

@@ -12,7 +12,7 @@ import { configureAdvancedSettings } from "./commands/configure-advanced-setting
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
-import { buildMilestoneBuckets, milestoneKey } from "./core/milestones.ts";
+import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { computeSequences } from "./core/sequences.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
@@ -2355,7 +2355,7 @@ milestoneCmd
 		]);
 
 		const statuses = config?.statuses ?? ["To Do", "In Progress", "Done"];
-		const archivedMilestoneIds = archivedMilestones.flatMap((milestone) => [milestone.id, milestone.title]);
+		const archivedMilestoneIds = collectArchivedMilestoneKeys(archivedMilestones, milestones);
 		const buckets = buildMilestoneBuckets(tasks, milestones, statuses, { archivedMilestoneIds });
 		const active = buckets.filter((bucket) => !bucket.isNoMilestone && !bucket.isCompleted);
 		const completed = buckets.filter((bucket) => !bucket.isNoMilestone && bucket.isCompleted);
@@ -2433,15 +2433,14 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean; m
 		milestoneMode: options.milestones,
 		milestones,
 		tasksLoader: async (updateProgress) => {
-			const [tasks, archivedMilestones] = await Promise.all([
+			const [tasks, milestoneEntities, archivedMilestones] = await Promise.all([
 				core.loadTasks((msg) => {
 					updateProgress(msg);
 				}),
+				core.filesystem.listMilestones(),
 				core.filesystem.listArchivedMilestones(),
 			]);
-			const archivedKeys = new Set(
-				archivedMilestones.flatMap((milestone) => [milestone.id, milestone.title]).map((value) => milestoneKey(value)),
-			);
+			const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities));
 			const normalizedTasks =
 				archivedKeys.size > 0
 					? tasks.map((task) => {

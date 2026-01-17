@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../lib/api";
-import { buildMilestoneBuckets } from "../utils/milestones";
+import { buildMilestoneBuckets, collectArchivedMilestoneKeys } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import Modal from "./Modal";
 
@@ -35,8 +35,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [archivingMilestoneKey, setArchivingMilestoneKey] = useState<string | null>(null);
 
 	const archivedMilestoneIds = useMemo(
-		() => archivedMilestones.flatMap((milestone) => [milestone.id, milestone.title]),
-		[archivedMilestones],
+		() => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
+		[archivedMilestones, milestoneEntities],
 	);
 	const buckets = useMemo(
 		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds }),

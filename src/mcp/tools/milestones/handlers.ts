@@ -32,6 +32,24 @@ function milestoneKey(name: string): string {
 	return normalizeMilestoneName(name).toLowerCase();
 }
 
+function collectArchivedMilestoneKeys(archivedMilestones: Milestone[], activeMilestones: Milestone[]): string[] {
+	const keys = new Set<string>();
+	const activeTitleKeys = new Set(activeMilestones.map((milestone) => milestoneKey(milestone.title)).filter(Boolean));
+
+	for (const milestone of archivedMilestones) {
+		const idKey = milestoneKey(milestone.id);
+		if (idKey) {
+			keys.add(idKey);
+		}
+		const titleKey = milestoneKey(milestone.title);
+		if (titleKey && !activeTitleKeys.has(titleKey)) {
+			keys.add(titleKey);
+		}
+	}
+
+	return Array.from(keys);
+}
+
 function formatListBlock(title: string, items: string[]): string {
 	if (items.length === 0) {
 		return `${title}\n  (none)`;
@@ -71,11 +89,7 @@ export class MilestoneHandlers {
 		}
 
 		const archivedMilestones = await this.listArchivedMilestones();
-		const archivedKeys = new Set<string>();
-		for (const milestone of archivedMilestones) {
-			archivedKeys.add(milestoneKey(milestone.id));
-			archivedKeys.add(milestoneKey(milestone.title));
-		}
+		const archivedKeys = new Set<string>(collectArchivedMilestoneKeys(archivedMilestones, fileMilestones));
 
 		// Get milestones discovered from tasks
 		const tasks = await this.listLocalTasks();

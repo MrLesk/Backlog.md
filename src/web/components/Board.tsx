@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
-import { milestoneKey } from '../utils/milestones';
+import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
 import { SuccessToast } from './SuccessToast';
@@ -45,8 +45,8 @@ const Board: React.FC<BoardProps> = ({
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
   const archivedMilestoneIds = useMemo(
-    () => archivedMilestones.flatMap((milestone) => [milestone.id, milestone.title]),
-    [archivedMilestones]
+    () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
+    [archivedMilestones, milestoneEntities]
   );
 
   // Filter tasks by milestone when milestoneFilter is set

@@ -6,6 +6,7 @@ export {
 	buildMilestoneBuckets,
 	buildMilestoneBucketsFromConfig,
 	buildMilestoneSummary,
+	collectArchivedMilestoneKeys,
 	collectMilestoneIds,
 	collectMilestones,
 	getMilestoneLabel,
