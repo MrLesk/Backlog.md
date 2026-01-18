@@ -355,6 +355,8 @@ Options:
   -l, --labels <labels>           add labels (comma-separated)
   --priority <priority>           set task priority (high, medium, low)
   --ac <criteria>                 acceptance criteria (comma-separated)
+  --dod <item>                    add Definition of Done item (can be used multiple times)
+  --no-dod-defaults               disable Definition of Done defaults
   --plan <plan>                   implementation plan
   --draft                         create as draft
   -p, --parent <taskId>           specify parent task ID

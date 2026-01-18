@@ -74,6 +74,10 @@ Create all tasks in the same session to maintain consistency and context.
 - Capture testing expectations explicitly
 - Include documentation expectations in the same task (no deferring to follow-up tasks)
 
+**Definition of Done defaults (optional):**
+- Use `definitionOfDoneAdd` to append task-specific DoD items during creation
+- Use `disableDefinitionOfDoneDefaults` to skip project defaults when needed
+
 **Never embed implementation details** in title, description, or acceptance criteria
 
 **Record dependencies** using `task_edit` for task ordering

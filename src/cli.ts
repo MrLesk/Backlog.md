@@ -52,6 +52,7 @@ import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
+	buildDefinitionOfDoneItems,
 	normalizeStringList,
 	parsePositiveIndexList,
 	processAcceptanceCriteriaOptions,
@@ -1263,6 +1264,8 @@ taskCmd
 		"add acceptance criteria (can be used multiple times)",
 		createMultiValueAccumulator(),
 	)
+	.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
+	.option("--no-dod-defaults", "disable Definition of Done defaults")
 	.option("--plan <text>", "add implementation plan")
 	.option("--notes <text>", "add implementation notes")
 	.option("--draft")
@@ -1329,6 +1332,16 @@ taskCmd
 		if (criteria.length > 0) {
 			let idx = 1;
 			task.acceptanceCriteriaItems = criteria.map((text) => ({ index: idx++, text, checked: false }));
+		}
+
+		const config = await core.filesystem.loadConfig();
+		const dodItems = buildDefinitionOfDoneItems({
+			defaults: config?.definitionOfDone,
+			add: toStringArray(options.dod),
+			disableDefaults: options.dodDefaults === false,
+		});
+		if (dodItems) {
+			task.definitionOfDoneItems = dodItems;
 		}
 
 		// Handle implementation plan
@@ -1825,9 +1838,15 @@ taskCmd
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
+	.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
 	.option(
 		"--remove-ac <index>",
 		"remove acceptance criterion by index (1-based, can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--remove-dod <index>",
+		"remove Definition of Done item by index (1-based, can be used multiple times)",
 		createMultiValueAccumulator(),
 	)
 	.option(
@@ -1836,8 +1855,18 @@ taskCmd
 		createMultiValueAccumulator(),
 	)
 	.option(
+		"--check-dod <index>",
+		"check Definition of Done item by index (1-based, can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option(
 		"--uncheck-ac <index>",
 		"uncheck acceptance criterion by index (1-based, can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--uncheck-dod <index>",
+		"uncheck Definition of Done item by index (1-based, can be used multiple times)",
 		createMultiValueAccumulator(),
 	)
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
@@ -1927,6 +1956,9 @@ taskCmd
 		let removeCriteria: number[] | undefined;
 		let checkCriteria: number[] | undefined;
 		let uncheckCriteria: number[] | undefined;
+		let removeDod: number[] | undefined;
+		let checkDod: number[] | undefined;
+		let uncheckDod: number[] | undefined;
 
 		try {
 			const removes = parsePositiveIndexList(options.removeAc);
@@ -1941,6 +1973,18 @@ taskCmd
 			if (unchecks.length > 0) {
 				uncheckCriteria = unchecks;
 			}
+			const dodRemoves = parsePositiveIndexList(options.removeDod);
+			if (dodRemoves.length > 0) {
+				removeDod = dodRemoves;
+			}
+			const dodChecks = parsePositiveIndexList(options.checkDod);
+			if (dodChecks.length > 0) {
+				checkDod = dodChecks;
+			}
+			const dodUnchecks = parsePositiveIndexList(options.uncheckDod);
+			if (dodUnchecks.length > 0) {
+				uncheckDod = dodUnchecks;
+			}
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
@@ -1952,6 +1996,9 @@ taskCmd
 		const removeLabelValues = parseCommaSeparated(options.removeLabel);
 		const assigneeValues = parseCommaSeparated(options.assignee);
 		const acceptanceAdditions = processAcceptanceCriteriaOptions(options);
+		const definitionOfDoneAdditions = toStringArray(options.dod)
+			.map((value) => String(value).trim())
+			.filter((value) => value.length > 0);
 
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
@@ -2040,6 +2087,18 @@ taskCmd
 		}
 		if (uncheckCriteria) {
 			editArgs.acceptanceCriteriaUncheck = uncheckCriteria;
+		}
+		if (definitionOfDoneAdditions.length > 0) {
+			editArgs.definitionOfDoneAdd = definitionOfDoneAdditions;
+		}
+		if (removeDod) {
+			editArgs.definitionOfDoneRemove = removeDod;
+		}
+		if (checkDod) {
+			editArgs.definitionOfDoneCheck = checkDod;
+		}
+		if (uncheckDod) {
+			editArgs.definitionOfDoneUncheck = uncheckDod;
 		}
 
 		let updatedTask: Task;
@@ -2859,6 +2918,9 @@ configCmd
 				case "milestones":
 					console.log(config.milestones.join(", "));
 					break;
+				case "definitionOfDone":
+					console.log(config.definitionOfDone?.join(", ") || "");
+					break;
 				case "dateFormat":
 					console.log(config.dateFormat);
 					break;
@@ -2892,7 +2954,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -3039,6 +3101,7 @@ configCmd
 				case "statuses":
 				case "labels":
 				case "milestones":
+				case "definitionOfDone":
 					console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
 					console.error("Array values should be edited in the config file directly.");
 					process.exit(1);
@@ -3088,6 +3151,7 @@ configCmd
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
 			console.log(`  milestones: [${config.milestones.join(", ")}]`);
+			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);
 			console.log(`  dateFormat: ${config.dateFormat}`);
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);

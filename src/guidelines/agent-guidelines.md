@@ -12,6 +12,7 @@ remains fully synchronized and up-to-date.
 - ✅ **Task Management**: Create, edit, assign, prioritize, and track tasks with full metadata
 - ✅ **Search**: Fuzzy search across tasks, documents, and decisions with `backlog search`
 - ✅ **Acceptance Criteria**: Granular control with add/remove/check/uncheck by index
+- ✅ **Definition of Done checklists**: Per-task DoD items with add/remove/check/uncheck
 - ✅ **Board Visualization**: Terminal-based Kanban board (`backlog board`) and web UI (`backlog browser`)
 - ✅ **Git Integration**: Automatic tracking of task states across branches
 - ✅ **Dependencies**: Task relationships and subtask hierarchies
@@ -122,6 +123,15 @@ Brief explanation of the task purpose.
 
 <!-- AC:END -->
 
+## Definition of Done
+
+<!-- DOD:BEGIN -->
+
+- [ ] #1 Tests pass
+- [ ] #2 Docs updated
+
+<!-- DOD:END -->
+
 ## Implementation Plan
 
 1. Research approach
@@ -142,9 +152,13 @@ Summary of what was done.
 | Labels                  | `backlog task edit 42 -l backend,api`                    |
 | Description             | `backlog task edit 42 -d "New description"`              |
 | Add AC                  | `backlog task edit 42 --ac "New criterion"`              |
+| Add DoD                 | `backlog task edit 42 --dod "Ship notes"`                |
 | Check AC #1             | `backlog task edit 42 --check-ac 1`                      |
+| Check DoD #1            | `backlog task edit 42 --check-dod 1`                     |
 | Uncheck AC #2           | `backlog task edit 42 --uncheck-ac 2`                    |
+| Uncheck DoD #2          | `backlog task edit 42 --uncheck-dod 2`                   |
 | Remove AC #3            | `backlog task edit 42 --remove-ac 3`                     |
+| Remove DoD #3           | `backlog task edit 42 --remove-dod 3`                    |
 | Add Plan                | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
 | Add Notes (replace)     | `backlog task edit 42 --notes "What I did"`              |
 | Append Notes            | `backlog task edit 42 --append-notes "Another note"` |
@@ -208,6 +222,27 @@ backlog task edit 42 --check-ac 1 --uncheck-ac 2 --remove-ac 3
 # Multiple operations of same type
 backlog task edit 42 --uncheck-ac 1 --uncheck-ac 2  # Uncheck multiple ACs
 backlog task edit 42 --remove-ac 2 --remove-ac 4    # Remove multiple ACs (processed high-to-low)
+```
+
+### Definition of Done checklist (per-task)
+
+Definition of Done items are a second checklist in each task. Defaults come from `definition_of_done` in `backlog/config.yml` (or Web UI Settings) and can be disabled per task.
+
+**Managing Definition of Done via CLI:**
+
+```bash
+# Add DoD items (MULTIPLE values allowed)
+backlog task edit 42 --dod "Run tests" --dod "Update docs"
+
+# Check/uncheck DoD items by index (MULTIPLE values supported)
+backlog task edit 42 --check-dod 1 --check-dod 2
+backlog task edit 42 --uncheck-dod 1
+
+# Remove DoD items by index
+backlog task edit 42 --remove-dod 2
+
+# Create without defaults
+backlog task create "Feature" --no-dod-defaults
 ```
 
 **Key Principles for Good ACs:**
@@ -366,15 +401,16 @@ A task is **Done** only when **ALL** of the following are complete:
 ### ✅ Via CLI Commands:
 
 1. **All acceptance criteria checked**: Use `backlog task edit <id> --check-ac <index>` for each
-2. **Implementation notes added**: Use `backlog task edit <id> --notes "..."`
-3. **Status set to Done**: Use `backlog task edit <id> -s Done`
+2. **All Definition of Done items checked**: Use `backlog task edit <id> --check-dod <index>` for each
+3. **Implementation notes added**: Use `backlog task edit <id> --notes "..."`
+4. **Status set to Done**: Use `backlog task edit <id> -s Done`
 
 ### ✅ Via Code/Testing:
 
-4. **Tests pass**: Run test suite and linting
-5. **Documentation updated**: Update relevant docs if needed
-6. **Code reviewed**: Self-review your changes
-7. **No regressions**: Performance, security checks pass
+5. **Tests pass**: Run test suite and linting
+6. **Documentation updated**: Update relevant docs if needed
+7. **Code reviewed**: Self-review your changes
+8. **No regressions**: Performance, security checks pass
 
 ⚠️ **NEVER mark a task as Done without completing ALL items above**
 

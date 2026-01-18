@@ -51,4 +51,9 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_complete`, `task_archive`
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`
 
+**Definition of Done support**
+- `task_create` accepts `definitionOfDoneAdd` and `disableDefinitionOfDoneDefaults`
+- `task_edit` accepts `definitionOfDoneAdd`, `definitionOfDoneRemove`, `definitionOfDoneCheck`, `definitionOfDoneUncheck`
+- `task_view` output includes the Definition of Done checklist with checked state
+
 **Always operate through the MCP tools above. Never edit markdown files directly; use the tools so relationships, metadata, and history stay consistent.**

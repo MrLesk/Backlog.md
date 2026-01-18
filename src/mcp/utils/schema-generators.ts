@@ -92,6 +92,16 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 500,
 				},
 			},
+			definitionOfDoneAdd: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+			},
+			disableDefinitionOfDoneDefaults: {
+				type: "boolean",
+			},
 			parentTaskId: {
 				type: "string",
 				maxLength: 50,
@@ -269,6 +279,38 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxItems: 50,
 			},
 			acceptanceCriteriaUncheck: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+			},
+			definitionOfDoneAdd: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				maxItems: 50,
+			},
+			definitionOfDoneRemove: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+			},
+			definitionOfDoneCheck: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+			},
+			definitionOfDoneUncheck: {
 				type: "array",
 				items: {
 					type: "number",

@@ -3,6 +3,7 @@ default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones: []
+definition_of_done: ["bunx tsc --noEmit passes when TypeScript touched", "bun run check . passes when formatting/linting touched", "bun test (or scoped test) passes"]
 date_format: yyyy-mm-dd hh:mm
 max_column_width: 20
 default_editor: "rider"
@@ -10,7 +11,7 @@ auto_open_browser: true
 default_port: 6420
 remote_operations: true
 auto_commit: false
-zero_padded_ids: 3
+zero_padded_ids: 0
 bypass_git_hooks: false
 check_active_branches: true
 active_branch_days: 10

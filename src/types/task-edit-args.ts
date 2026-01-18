@@ -29,6 +29,10 @@ export interface TaskEditArgs {
 	acceptanceCriteriaRemove?: number[];
 	acceptanceCriteriaCheck?: number[];
 	acceptanceCriteriaUncheck?: number[];
+	definitionOfDoneAdd?: string[];
+	definitionOfDoneRemove?: number[];
+	definitionOfDoneCheck?: number[];
+	definitionOfDoneUncheck?: number[];
 }
 
 export type TaskEditRequest = TaskEditArgs & { id: string };

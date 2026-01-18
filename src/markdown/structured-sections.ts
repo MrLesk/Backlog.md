@@ -24,11 +24,38 @@ const SECTION_INSERTION_ORDER: StructuredSectionKey[] = ["description", "impleme
 
 const ACCEPTANCE_CRITERIA_SECTION_HEADER = "## Acceptance Criteria";
 const ACCEPTANCE_CRITERIA_TITLE = ACCEPTANCE_CRITERIA_SECTION_HEADER.replace(/^##\s*/, "");
+const DEFINITION_OF_DONE_SECTION_HEADER = "## Definition of Done";
+const DEFINITION_OF_DONE_TITLE = DEFINITION_OF_DONE_SECTION_HEADER.replace(/^##\s*/, "");
+const ACCEPTANCE_CRITERIA_BEGIN_MARKER = "<!-- AC:BEGIN -->";
+const ACCEPTANCE_CRITERIA_END_MARKER = "<!-- AC:END -->";
+const DEFINITION_OF_DONE_BEGIN_MARKER = "<!-- DOD:BEGIN -->";
+const DEFINITION_OF_DONE_END_MARKER = "<!-- DOD:END -->";
 const KNOWN_SECTION_TITLES = new Set<string>([
 	...getStructuredSectionTitles(),
 	ACCEPTANCE_CRITERIA_TITLE,
 	"Acceptance Criteria (Optional)",
 ]);
+
+interface ChecklistSectionDefinition {
+	sectionHeader: string;
+	title: string;
+	beginMarker: string;
+	endMarker: string;
+}
+
+const ACCEPTANCE_CRITERIA_DEFINITION: ChecklistSectionDefinition = {
+	sectionHeader: ACCEPTANCE_CRITERIA_SECTION_HEADER,
+	title: ACCEPTANCE_CRITERIA_TITLE,
+	beginMarker: ACCEPTANCE_CRITERIA_BEGIN_MARKER,
+	endMarker: ACCEPTANCE_CRITERIA_END_MARKER,
+};
+
+const DEFINITION_OF_DONE_DEFINITION: ChecklistSectionDefinition = {
+	sectionHeader: DEFINITION_OF_DONE_SECTION_HEADER,
+	title: DEFINITION_OF_DONE_TITLE,
+	beginMarker: DEFINITION_OF_DONE_BEGIN_MARKER,
+	endMarker: DEFINITION_OF_DONE_END_MARKER,
+};
 
 function normalizeToLF(content: string): { text: string; useCRLF: boolean } {
 	const useCRLF = /\r\n/.test(content);
@@ -78,11 +105,22 @@ function sectionHeaderRegex(key: StructuredSectionKey): RegExp {
 	return new RegExp(`## ${escapeForRegex(title)}\\s*\\n([\\s\\S]*?)${structuredSectionLookahead(title)}`, "i");
 }
 
-function acceptanceCriteriaSentinelRegex(flags = "i"): RegExp {
-	const header = escapeForRegex(ACCEPTANCE_CRITERIA_SECTION_HEADER);
-	const begin = escapeForRegex(AcceptanceCriteriaManager.BEGIN_MARKER);
-	const end = escapeForRegex(AcceptanceCriteriaManager.END_MARKER);
+function checklistSentinelRegex(definition: ChecklistSectionDefinition, flags = "i"): RegExp {
+	const header = escapeForRegex(definition.sectionHeader);
+	const begin = escapeForRegex(definition.beginMarker);
+	const end = escapeForRegex(definition.endMarker);
 	return new RegExp(`(\\n|^)${header}\\s*\\n${begin}\\s*\\n([\\s\\S]*?)${end}`, flags);
+}
+
+function checklistLegacyRegex(definition: ChecklistSectionDefinition, flags: string): RegExp {
+	return new RegExp(
+		`(\\n|^)${escapeForRegex(definition.sectionHeader)}\\s*\\n([\\s\\S]*?)${structuredSectionLookahead(definition.title)}`,
+		flags,
+	);
+}
+
+function acceptanceCriteriaSentinelRegex(flags = "i"): RegExp {
+	return checklistSentinelRegex(ACCEPTANCE_CRITERIA_DEFINITION, flags);
 }
 
 function legacySectionRegex(title: string, flags: string): RegExp {
@@ -246,233 +284,246 @@ export function getStructuredSections(content: string): StructuredSectionValues 
 	};
 }
 
-function acceptanceCriteriaLegacyRegex(flags: string): RegExp {
-	return new RegExp(
-		`(\\n|^)${escapeForRegex(ACCEPTANCE_CRITERIA_SECTION_HEADER)}\\s*\\n([\\s\\S]*?)${structuredSectionLookahead(ACCEPTANCE_CRITERIA_TITLE)}`,
-		flags,
-	);
-}
-
-function extractExistingAcceptanceCriteriaBody(content: string): { body: string; hasMarkers: boolean } | undefined {
+function extractExistingChecklistBody(
+	content: string,
+	definition: ChecklistSectionDefinition,
+): { body: string; hasMarkers: boolean } | undefined {
 	const src = content.replace(/\r\n/g, "\n");
-	const sentinelMatch = acceptanceCriteriaSentinelRegex("i").exec(src);
+	const sentinelMatch = checklistSentinelRegex(definition, "i").exec(src);
 	if (sentinelMatch?.[2] !== undefined) {
 		return { body: sentinelMatch[2], hasMarkers: true };
 	}
-	const legacyMatch = acceptanceCriteriaLegacyRegex("i").exec(src);
+	const legacyMatch = checklistLegacyRegex(definition, "i").exec(src);
 	if (legacyMatch?.[2] !== undefined) {
 		return { body: legacyMatch[2], hasMarkers: false };
 	}
 	return undefined;
 }
 
-/* biome-ignore lint/complexity/noStaticOnlyClass: Utility methods grouped for clarity */
-export class AcceptanceCriteriaManager {
-	static readonly BEGIN_MARKER = "<!-- AC:BEGIN -->";
-	static readonly END_MARKER = "<!-- AC:END -->";
-	static readonly SECTION_HEADER = ACCEPTANCE_CRITERIA_SECTION_HEADER;
-
-	private static parseOldFormat(content: string): AcceptanceCriterion[] {
-		const src = content.replace(/\r\n/g, "\n");
-		const criteriaRegex = /## Acceptance Criteria\s*\n([\s\S]*?)(?=\n## |$)/i;
-		const match = src.match(criteriaRegex);
-		if (!match || !match[1]) {
-			return [];
+function parseOldChecklistFormat(content: string, definition: ChecklistSectionDefinition): AcceptanceCriterion[] {
+	const src = content.replace(/\r\n/g, "\n");
+	const criteriaRegex = new RegExp(`${escapeForRegex(definition.sectionHeader)}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
+	const match = src.match(criteriaRegex);
+	if (!match || !match[1]) {
+		return [];
+	}
+	const lines = match[1].split("\n").filter((line) => line.trim());
+	const criteria: AcceptanceCriterion[] = [];
+	let index = 1;
+	for (const line of lines) {
+		const checkboxMatch = line.match(/^- \[([ x])\] (.+)$/);
+		if (checkboxMatch?.[1] && checkboxMatch?.[2]) {
+			criteria.push({
+				checked: checkboxMatch[1] === "x",
+				text: checkboxMatch[2],
+				index: index++,
+			});
 		}
-		const lines = match[1].split("\n").filter((line) => line.trim());
-		const criteria: AcceptanceCriterion[] = [];
-		let index = 1;
-		for (const line of lines) {
-			const checkboxMatch = line.match(/^- \[([ x])\] (.+)$/);
-			if (checkboxMatch?.[1] && checkboxMatch?.[2]) {
-				criteria.push({
-					checked: checkboxMatch[1] === "x",
-					text: checkboxMatch[2],
-					index: index++,
-				});
+	}
+	return criteria;
+}
+
+function parseChecklist(content: string, definition: ChecklistSectionDefinition): AcceptanceCriterion[] {
+	const src = content.replace(/\r\n/g, "\n");
+	const beginIndex = src.indexOf(definition.beginMarker);
+	const endIndex = src.indexOf(definition.endMarker);
+	if (beginIndex === -1 || endIndex === -1) {
+		return parseOldChecklistFormat(src, definition);
+	}
+	const checklistContent = src.substring(beginIndex + definition.beginMarker.length, endIndex);
+	const lines = checklistContent.split("\n").filter((line) => line.trim());
+	const criteria: AcceptanceCriterion[] = [];
+	for (const line of lines) {
+		const match = line.match(/^- \[([ x])\] #(\d+) (.+)$/);
+		if (match?.[1] && match?.[2] && match?.[3]) {
+			criteria.push({
+				checked: match[1] === "x",
+				text: match[3],
+				index: Number.parseInt(match[2], 10),
+			});
+		}
+	}
+	return criteria;
+}
+
+function composeChecklistBody(criteria: AcceptanceCriterion[], existingBody?: string): string {
+	const sorted = [...criteria].sort((a, b) => a.index - b.index);
+	if (sorted.length === 0) {
+		return "";
+	}
+	const queue = [...sorted];
+	const lines: string[] = [];
+	let nextNumber = 1;
+	// trimEnd() removes trailing newlines from regex capture that would create empty sourceLines entries
+	const sourceLines = existingBody ? existingBody.replace(/\r\n/g, "\n").trimEnd().split("\n") : [];
+
+	if (sourceLines.length > 0) {
+		for (const line of sourceLines) {
+			const trimmed = line.trim();
+			const checkboxMatch = trimmed.match(/^- \[([ x])\] (?:#\d+ )?(.*)$/);
+			if (checkboxMatch) {
+				const criterion = queue.shift();
+				if (!criterion) {
+					// Skip stale checklist entries when there are fewer criteria now
+					continue;
+				}
+				const newLine = `- [${criterion.checked ? "x" : " "}] #${nextNumber++} ${criterion.text}`;
+				lines.push(newLine);
+			} else {
+				lines.push(line);
 			}
 		}
-		return criteria;
 	}
 
-	static parseAcceptanceCriteria(content: string): AcceptanceCriterion[] {
-		const src = content.replace(/\r\n/g, "\n");
-		const beginIndex = src.indexOf(AcceptanceCriteriaManager.BEGIN_MARKER);
-		const endIndex = src.indexOf(AcceptanceCriteriaManager.END_MARKER);
-		if (beginIndex === -1 || endIndex === -1) {
-			return AcceptanceCriteriaManager.parseOldFormat(src);
+	while (queue.length > 0) {
+		const criterion = queue.shift();
+		if (!criterion) continue;
+		const lastLine = lines.length > 0 ? lines[lines.length - 1] : undefined;
+		if (lastLine && lastLine.trim() !== "" && !lastLine.trim().startsWith("- [")) {
+			lines.push("");
 		}
-		const acContent = src.substring(beginIndex + AcceptanceCriteriaManager.BEGIN_MARKER.length, endIndex);
-		const lines = acContent.split("\n").filter((line) => line.trim());
-		const criteria: AcceptanceCriterion[] = [];
-		for (const line of lines) {
-			const match = line.match(/^- \[([ x])\] #(\d+) (.+)$/);
-			if (match?.[1] && match?.[2] && match?.[3]) {
-				criteria.push({
-					checked: match[1] === "x",
-					text: match[3],
-					index: Number.parseInt(match[2], 10),
-				});
+		lines.push(`- [${criterion.checked ? "x" : " "}] #${nextNumber++} ${criterion.text}`);
+	}
+
+	while (lines.length > 0) {
+		const tail = lines[lines.length - 1];
+		if (!tail || tail.trim() === "") {
+			lines.pop();
+		} else {
+			break;
+		}
+	}
+
+	return lines.join("\n");
+}
+
+function formatChecklistSection(
+	criteria: AcceptanceCriterion[],
+	definition: ChecklistSectionDefinition,
+	existingBody?: string,
+): string {
+	if (criteria.length === 0) {
+		return "";
+	}
+	const body = composeChecklistBody(criteria, existingBody);
+	const lines = [definition.sectionHeader, definition.beginMarker];
+	if (body.trim() !== "") {
+		lines.push(...body.split("\n"));
+	}
+	lines.push(definition.endMarker);
+	return lines.join("\n");
+}
+
+function updateChecklistContent(
+	content: string,
+	criteria: AcceptanceCriterion[],
+	definition: ChecklistSectionDefinition,
+): string {
+	// Normalize to LF while computing, preserve original EOL at return
+	const useCRLF = /\r\n/.test(content);
+	const src = content.replace(/\r\n/g, "\n");
+	const existingBodyInfo = extractExistingChecklistBody(src, definition);
+	const newSection = formatChecklistSection(criteria, definition, existingBodyInfo?.body);
+
+	// Remove ALL existing checklist sections (legacy header blocks)
+	const legacyBlockRegex = checklistLegacyRegex(definition, "gi");
+	const matches = Array.from(src.matchAll(legacyBlockRegex));
+	let insertionIndex: number | null = null;
+	const firstMatch = matches[0];
+	if (firstMatch && firstMatch.index !== undefined) {
+		insertionIndex = firstMatch.index;
+	}
+
+	let stripped = src.replace(legacyBlockRegex, "").trimEnd();
+	// Also remove any stray marker-only blocks (defensive)
+	const markerBlockRegex = new RegExp(
+		`${escapeForRegex(definition.beginMarker)}[\\s\\S]*?${escapeForRegex(definition.endMarker)}`,
+		"gi",
+	);
+	stripped = stripped.replace(markerBlockRegex, "").trimEnd();
+
+	if (!newSection) {
+		// If criteria is empty, return stripped content (all checklist sections removed)
+		return stripped;
+	}
+
+	// Insert the single consolidated section
+	if (insertionIndex !== null) {
+		const before = stripped.slice(0, insertionIndex).trimEnd();
+		const after = stripped.slice(insertionIndex);
+		const out = `${before}${before ? "\n\n" : ""}${newSection}${after ? `\n\n${after}` : ""}`;
+		return useCRLF ? out.replace(/\n/g, "\r\n") : out;
+	}
+
+	// No existing section found: append at end
+	{
+		const out = `${stripped}${stripped ? "\n\n" : ""}${newSection}`;
+		return useCRLF ? out.replace(/\n/g, "\r\n") : out;
+	}
+}
+
+function parseAllChecklistItems(content: string, definition: ChecklistSectionDefinition): AcceptanceCriterion[] {
+	const marked: AcceptanceCriterion[] = [];
+	const legacy: AcceptanceCriterion[] = [];
+	// Normalize to LF to make matching platform-agnostic
+	const src = content.replace(/\r\n/g, "\n");
+	// Find all checklist blocks (legacy header blocks)
+	const blockRegex = checklistLegacyRegex(definition, "gi");
+	let m: RegExpExecArray | null = blockRegex.exec(src);
+	while (m !== null) {
+		const block = m[2] || "";
+		if (block.includes(definition.beginMarker) && block.includes(definition.endMarker)) {
+			// Capture lines within each marked pair
+			const markedBlockRegex = new RegExp(
+				`${escapeForRegex(definition.beginMarker)}([\\s\\S]*?)${escapeForRegex(definition.endMarker)}`,
+				"gi",
+			);
+			let mm: RegExpExecArray | null = markedBlockRegex.exec(block);
+			while (mm !== null) {
+				const inside = mm[1] || "";
+				const lineRegex = /^- \[([ x])\] (?:#\d+ )?(.+)$/gm;
+				let lm: RegExpExecArray | null = lineRegex.exec(inside);
+				while (lm !== null) {
+					marked.push({ checked: lm[1] === "x", text: String(lm?.[2] ?? ""), index: marked.length + 1 });
+					lm = lineRegex.exec(inside);
+				}
+				mm = markedBlockRegex.exec(block);
+			}
+		} else {
+			// Legacy: parse checkbox lines without markers
+			const lineRegex = /^- \[([ x])\] (.+)$/gm;
+			let lm: RegExpExecArray | null = lineRegex.exec(block);
+			while (lm !== null) {
+				legacy.push({ checked: lm[1] === "x", text: String(lm?.[2] ?? ""), index: legacy.length + 1 });
+				lm = lineRegex.exec(block);
 			}
 		}
-		return criteria;
+		m = blockRegex.exec(src);
+	}
+	// Prefer marked content when present; otherwise fall back to legacy
+	return marked.length > 0 ? marked : legacy;
+}
+
+/* biome-ignore lint/complexity/noStaticOnlyClass: Utility methods grouped for clarity */
+export class AcceptanceCriteriaManager {
+	static readonly BEGIN_MARKER = ACCEPTANCE_CRITERIA_BEGIN_MARKER;
+	static readonly END_MARKER = ACCEPTANCE_CRITERIA_END_MARKER;
+	static readonly SECTION_HEADER = ACCEPTANCE_CRITERIA_SECTION_HEADER;
+
+	static parseAcceptanceCriteria(content: string): AcceptanceCriterion[] {
+		return parseChecklist(content, ACCEPTANCE_CRITERIA_DEFINITION);
 	}
 
 	static formatAcceptanceCriteria(criteria: AcceptanceCriterion[], existingBody?: string): string {
-		if (criteria.length === 0) {
-			return "";
-		}
-		const body = AcceptanceCriteriaManager.composeAcceptanceCriteriaBody(criteria, existingBody);
-		const lines = [AcceptanceCriteriaManager.SECTION_HEADER, AcceptanceCriteriaManager.BEGIN_MARKER];
-		if (body.trim() !== "") {
-			lines.push(...body.split("\n"));
-		}
-		lines.push(AcceptanceCriteriaManager.END_MARKER);
-		return lines.join("\n");
+		return formatChecklistSection(criteria, ACCEPTANCE_CRITERIA_DEFINITION, existingBody);
 	}
 
 	static updateContent(content: string, criteria: AcceptanceCriterion[]): string {
-		// Normalize to LF while computing, preserve original EOL at return
-		const useCRLF = /\r\n/.test(content);
-		const src = content.replace(/\r\n/g, "\n");
-		const existingBodyInfo = extractExistingAcceptanceCriteriaBody(src);
-		const newSection = AcceptanceCriteriaManager.formatAcceptanceCriteria(criteria, existingBodyInfo?.body);
-
-		// Remove ALL existing Acceptance Criteria sections (legacy header blocks)
-		const legacyBlockRegex = acceptanceCriteriaLegacyRegex("gi");
-		const matches = Array.from(src.matchAll(legacyBlockRegex));
-		let insertionIndex: number | null = null;
-		const firstMatch = matches[0];
-		if (firstMatch && firstMatch.index !== undefined) {
-			insertionIndex = firstMatch.index;
-		}
-
-		let stripped = src.replace(legacyBlockRegex, "").trimEnd();
-		// Also remove any stray marker-only blocks (defensive)
-		const markerBlockRegex = new RegExp(
-			`${AcceptanceCriteriaManager.BEGIN_MARKER.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}[\\s\\S]*?${AcceptanceCriteriaManager.END_MARKER.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`,
-			"gi",
-		);
-		stripped = stripped.replace(markerBlockRegex, "").trimEnd();
-
-		if (!newSection) {
-			// If criteria is empty, return stripped content (all AC sections removed)
-			return stripped;
-		}
-
-		// Insert the single consolidated section
-		if (insertionIndex !== null) {
-			const before = stripped.slice(0, insertionIndex).trimEnd();
-			const after = stripped.slice(insertionIndex);
-			const out = `${before}${before ? "\n\n" : ""}${newSection}${after ? `\n\n${after}` : ""}`;
-			return useCRLF ? out.replace(/\n/g, "\r\n") : out;
-		}
-
-		// No existing section found: append at end
-		{
-			const out = `${stripped}${stripped ? "\n\n" : ""}${newSection}`;
-			return useCRLF ? out.replace(/\n/g, "\r\n") : out;
-		}
-	}
-
-	private static composeAcceptanceCriteriaBody(criteria: AcceptanceCriterion[], existingBody?: string): string {
-		const sorted = [...criteria].sort((a, b) => a.index - b.index);
-		if (sorted.length === 0) {
-			return "";
-		}
-		const queue = [...sorted];
-		const lines: string[] = [];
-		let nextNumber = 1;
-		// trimEnd() removes trailing newlines from regex capture that would create empty sourceLines entries
-		const sourceLines = existingBody ? existingBody.replace(/\r\n/g, "\n").trimEnd().split("\n") : [];
-
-		if (sourceLines.length > 0) {
-			for (const line of sourceLines) {
-				const trimmed = line.trim();
-				const checkboxMatch = trimmed.match(/^- \[([ x])\] (?:#\d+ )?(.*)$/);
-				if (checkboxMatch) {
-					const criterion = queue.shift();
-					if (!criterion) {
-						// Skip stale checklist entries when there are fewer criteria now
-						continue;
-					}
-					const newLine = `- [${criterion.checked ? "x" : " "}] #${nextNumber++} ${criterion.text}`;
-					lines.push(newLine);
-				} else {
-					lines.push(line);
-				}
-			}
-		}
-
-		while (queue.length > 0) {
-			const criterion = queue.shift();
-			if (!criterion) continue;
-			const lastLine = lines.length > 0 ? lines[lines.length - 1] : undefined;
-			if (lastLine && lastLine.trim() !== "" && !lastLine.trim().startsWith("- [")) {
-				lines.push("");
-			}
-			lines.push(`- [${criterion.checked ? "x" : " "}] #${nextNumber++} ${criterion.text}`);
-		}
-
-		while (lines.length > 0) {
-			const tail = lines[lines.length - 1];
-			if (!tail || tail.trim() === "") {
-				lines.pop();
-			} else {
-				break;
-			}
-		}
-
-		return lines.join("\n");
-	}
-
-	private static parseAllBlocks(content: string): AcceptanceCriterion[] {
-		const marked: AcceptanceCriterion[] = [];
-		const legacy: AcceptanceCriterion[] = [];
-		// Normalize to LF to make matching platform-agnostic
-		const src = content.replace(/\r\n/g, "\n");
-		// Find all Acceptance Criteria blocks (legacy header blocks)
-		const blockRegex = acceptanceCriteriaLegacyRegex("gi");
-		let m: RegExpExecArray | null = blockRegex.exec(src);
-		while (m !== null) {
-			const block = m[2] || "";
-			if (
-				block.includes(AcceptanceCriteriaManager.BEGIN_MARKER) &&
-				block.includes(AcceptanceCriteriaManager.END_MARKER)
-			) {
-				// Capture lines within each marked pair
-				const markedBlockRegex = new RegExp(
-					`${AcceptanceCriteriaManager.BEGIN_MARKER.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}([\\s\\S]*?)${AcceptanceCriteriaManager.END_MARKER.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`,
-					"gi",
-				);
-				let mm: RegExpExecArray | null = markedBlockRegex.exec(block);
-				while (mm !== null) {
-					const inside = mm[1] || "";
-					const lineRegex = /^- \[([ x])\] (?:#\d+ )?(.+)$/gm;
-					let lm: RegExpExecArray | null = lineRegex.exec(inside);
-					while (lm !== null) {
-						marked.push({ checked: lm[1] === "x", text: String(lm?.[2] ?? ""), index: marked.length + 1 });
-						lm = lineRegex.exec(inside);
-					}
-					mm = markedBlockRegex.exec(block);
-				}
-			} else {
-				// Legacy: parse checkbox lines without markers
-				const lineRegex = /^- \[([ x])\] (.+)$/gm;
-				let lm: RegExpExecArray | null = lineRegex.exec(block);
-				while (lm !== null) {
-					legacy.push({ checked: lm[1] === "x", text: String(lm?.[2] ?? ""), index: legacy.length + 1 });
-					lm = lineRegex.exec(block);
-				}
-			}
-			m = blockRegex.exec(src);
-		}
-		// Prefer marked content when present; otherwise fall back to legacy
-		return marked.length > 0 ? marked : legacy;
+		return updateChecklistContent(content, criteria, ACCEPTANCE_CRITERIA_DEFINITION);
 	}
 
 	static parseAllCriteria(content: string): AcceptanceCriterion[] {
-		const list = AcceptanceCriteriaManager.parseAllBlocks(content);
+		const list = parseAllChecklistItems(content, ACCEPTANCE_CRITERIA_DEFINITION);
 		return list.map((c, i) => ({ ...c, index: i + 1 }));
 	}
 
@@ -517,5 +568,72 @@ export class AcceptanceCriteriaManager {
 			return content;
 		}
 		return AcceptanceCriteriaManager.updateContent(content, criteria);
+	}
+}
+
+/* biome-ignore lint/complexity/noStaticOnlyClass: Utility methods grouped for clarity */
+export class DefinitionOfDoneManager {
+	static readonly BEGIN_MARKER = DEFINITION_OF_DONE_BEGIN_MARKER;
+	static readonly END_MARKER = DEFINITION_OF_DONE_END_MARKER;
+	static readonly SECTION_HEADER = DEFINITION_OF_DONE_SECTION_HEADER;
+
+	static parseDefinitionOfDone(content: string): AcceptanceCriterion[] {
+		return parseChecklist(content, DEFINITION_OF_DONE_DEFINITION);
+	}
+
+	static formatDefinitionOfDone(criteria: AcceptanceCriterion[], existingBody?: string): string {
+		return formatChecklistSection(criteria, DEFINITION_OF_DONE_DEFINITION, existingBody);
+	}
+
+	static updateContent(content: string, criteria: AcceptanceCriterion[]): string {
+		return updateChecklistContent(content, criteria, DEFINITION_OF_DONE_DEFINITION);
+	}
+
+	static parseAllCriteria(content: string): AcceptanceCriterion[] {
+		const list = parseAllChecklistItems(content, DEFINITION_OF_DONE_DEFINITION);
+		return list.map((c, i) => ({ ...c, index: i + 1 }));
+	}
+
+	static addCriteria(content: string, newCriteria: string[]): string {
+		const existing = DefinitionOfDoneManager.parseAllCriteria(content);
+		let nextIndex = existing.length > 0 ? Math.max(...existing.map((c) => c.index)) + 1 : 1;
+		for (const text of newCriteria) {
+			existing.push({ checked: false, text: text.trim(), index: nextIndex++ });
+		}
+		return DefinitionOfDoneManager.updateContent(content, existing);
+	}
+
+	static removeCriterionByIndex(content: string, index: number): string {
+		const criteria = DefinitionOfDoneManager.parseAllCriteria(content);
+		const filtered = criteria.filter((c) => c.index !== index);
+		if (filtered.length === criteria.length) {
+			throw new Error(`Definition of Done item #${index} not found`);
+		}
+		const renumbered = filtered.map((c, i) => ({ ...c, index: i + 1 }));
+		return DefinitionOfDoneManager.updateContent(content, renumbered);
+	}
+
+	static checkCriterionByIndex(content: string, index: number, checked: boolean): string {
+		const criteria = DefinitionOfDoneManager.parseAllCriteria(content);
+		const criterion = criteria.find((c) => c.index === index);
+		if (!criterion) {
+			throw new Error(`Definition of Done item #${index} not found`);
+		}
+		criterion.checked = checked;
+		return DefinitionOfDoneManager.updateContent(content, criteria);
+	}
+
+	static migrateToStableFormat(content: string): string {
+		const criteria = DefinitionOfDoneManager.parseAllCriteria(content);
+		if (criteria.length === 0) {
+			return content;
+		}
+		if (
+			content.includes(DefinitionOfDoneManager.BEGIN_MARKER) &&
+			content.includes(DefinitionOfDoneManager.END_MARKER)
+		) {
+			return content;
+		}
+		return DefinitionOfDoneManager.updateContent(content, criteria);
 	}
 }

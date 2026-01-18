@@ -1,6 +1,7 @@
 const BASE_SECTION_TITLES = [
 	"Description",
 	"Acceptance Criteria",
+	"Definition of Done",
 	"Implementation Plan",
 	"Implementation Notes",
 ] as const;

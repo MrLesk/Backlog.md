@@ -655,6 +655,12 @@ export class BacklogServer {
 					}))
 					.filter((item: { text: string }) => item.text.length > 0)
 			: [];
+		const definitionOfDoneAdd = Array.isArray(payload.definitionOfDoneAdd)
+			? payload.definitionOfDoneAdd
+					.map((item: unknown) => String(item ?? "").trim())
+					.filter((item: string) => item.length > 0)
+			: [];
+		const disableDefinitionOfDoneDefaults = Boolean(payload.disableDefinitionOfDoneDefaults);
 
 		try {
 			const { task: createdTask } = await this.core.createTaskFromInput({
@@ -670,6 +676,8 @@ export class BacklogServer {
 				implementationPlan: payload.implementationPlan,
 				implementationNotes: payload.implementationNotes,
 				acceptanceCriteria,
+				definitionOfDoneAdd,
+				disableDefinitionOfDoneDefaults,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -754,6 +762,30 @@ export class BacklogServer {
 					checked: Boolean(item?.checked),
 				}))
 				.filter((item: { text: string }) => item.text.length > 0);
+		}
+
+		if ("definitionOfDoneAdd" in updates && Array.isArray(updates.definitionOfDoneAdd)) {
+			updateInput.addDefinitionOfDone = updates.definitionOfDoneAdd
+				.map((item: unknown) => ({ text: String(item ?? "").trim(), checked: false }))
+				.filter((item: { text: string }) => item.text.length > 0);
+		}
+
+		if ("definitionOfDoneRemove" in updates && Array.isArray(updates.definitionOfDoneRemove)) {
+			updateInput.removeDefinitionOfDone = updates.definitionOfDoneRemove.filter(
+				(value: unknown) => typeof value === "number" && Number.isFinite(value),
+			);
+		}
+
+		if ("definitionOfDoneCheck" in updates && Array.isArray(updates.definitionOfDoneCheck)) {
+			updateInput.checkDefinitionOfDone = updates.definitionOfDoneCheck.filter(
+				(value: unknown) => typeof value === "number" && Number.isFinite(value),
+			);
+		}
+
+		if ("definitionOfDoneUncheck" in updates && Array.isArray(updates.definitionOfDoneUncheck)) {
+			updateInput.uncheckDefinitionOfDone = updates.definitionOfDoneUncheck.filter(
+				(value: unknown) => typeof value === "number" && Number.isFinite(value),
+			);
 		}
 
 		try {

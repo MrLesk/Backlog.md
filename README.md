@@ -26,6 +26,7 @@
 * 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
 
 * 📋 **Rich query commands** -- view, list, filter, or archive tasks with ease
+* ✅ **Definition of Done defaults** -- add a reusable checklist to every new task
 
 * 📤 **Board export** -- `backlog board export` creates shareable markdown reports
 
@@ -194,6 +195,8 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Create with priority | `backlog task create "Feature" --priority high`     |
 | Create with plan | `backlog task create "Feature" --plan "1. Research\n2. Implement"`     |
 | Create with AC | `backlog task create "Feature" --ac "Must work,Must be tested"` |
+| Add DoD items on create | `backlog task create "Feature" --dod "Run tests"` |
+| Create without DoD defaults | `backlog task create "Feature" --no-dod-defaults` |
 | Create with notes | `backlog task create "Feature" --notes "Started initial research"` |
 | Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
 | Create with refs | `backlog task create "Feature" --ref https://docs.example.com --ref src/api.ts` |
@@ -207,12 +210,16 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
 | Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
+| Add DoD     | `backlog task edit 7 --dod "Ship notes"` |
 | Remove AC   | `backlog task edit 7 --remove-ac 2` (removes AC #2)      |
 | Remove multiple ACs | `backlog task edit 7 --remove-ac 2 --remove-ac 4` (removes AC #2 and #4) |
 | Check AC    | `backlog task edit 7 --check-ac 1` (marks AC #1 as done) |
+| Check DoD   | `backlog task edit 7 --check-dod 1` (marks DoD #1 as done) |
 | Check multiple ACs | `backlog task edit 7 --check-ac 1 --check-ac 3` (marks AC #1 and #3 as done) |
 | Uncheck AC  | `backlog task edit 7 --uncheck-ac 3` (marks AC #3 as not done) |
+| Uncheck DoD | `backlog task edit 7 --uncheck-dod 3` (marks DoD #3 as not done) |
 | Mixed AC operations | `backlog task edit 7 --check-ac 1 --uncheck-ac 2 --remove-ac 4` |
+| Mixed DoD operations | `backlog task edit 7 --check-dod 1 --uncheck-dod 2 --remove-dod 4` |
 | Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` (replaces existing) |
 | Append notes | `backlog task edit 7 --append-notes "New findings"` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
@@ -376,6 +383,7 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 |-------------------|--------------------|-------------------------------|
 | `defaultAssignee` | Pre‑fill assignee  | `[]`                          |
 | `defaultStatus`   | First column       | `To Do`                       |
+| `definition_of_done` | Default DoD checklist items for new tasks | `(not set)` |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
 | `dateFormat`      | Date/time format   | `yyyy-mm-dd hh:mm`            |
 | `timezonePreference` | Timezone for dates | `UTC`                     |
@@ -404,6 +412,19 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 > **Status Change Callbacks**: Set `onStatusChange` to run a shell command whenever a task's status changes. Available variables: `$TASK_ID`, `$OLD_STATUS`, `$NEW_STATUS`, `$TASK_TITLE`. Per-task override via `onStatusChange` in task frontmatter. Example: `'if [ "$NEW_STATUS" = "In Progress" ]; then claude "Task $TASK_ID ($TASK_TITLE) has been assigned to you. Please implement it." & fi'`
 
 > **Date/Time Support**: Backlog.md now supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility. Use the migration script `bun src/scripts/migrate-dates.ts` to optionally add time to existing items.
+
+### Definition of Done defaults
+
+Set project-wide DoD items in the Web UI (Settings → Definition of Done Defaults) or edit `backlog/config.yml` directly:
+
+```yaml
+definition_of_done:
+  - Tests pass
+  - Documentation updated
+  - No regressions introduced
+```
+
+These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`. Array values like `definition_of_done` must be edited in the config file or via the Web UI.
 
 ---
 

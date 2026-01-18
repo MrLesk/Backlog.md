@@ -1,4 +1,5 @@
 import type { Core } from "../core/backlog.ts";
+import type { AcceptanceCriterion } from "../types/index.ts";
 import { normalizeTaskId, taskIdsEqual } from "./task-path.ts";
 
 /**
@@ -124,4 +125,18 @@ export function parsePositiveIndexList(value: unknown): number[] {
 export function stringArraysEqual(a: string[], b: string[]): boolean {
 	if (a.length !== b.length) return false;
 	return a.every((value, index) => value === b[index]);
+}
+
+export function buildDefinitionOfDoneItems(options: {
+	defaults?: string[];
+	add?: string[];
+	disableDefaults?: boolean;
+}): AcceptanceCriterion[] | undefined {
+	const defaults = options.disableDefaults ? [] : (options.defaults ?? []);
+	const additions = options.add ?? [];
+	const combined = [...defaults, ...additions].map((value) => String(value).trim()).filter((value) => value.length > 0);
+	if (combined.length === 0) {
+		return undefined;
+	}
+	return combined.map((text, index) => ({ index: index + 1, text, checked: false }));
 }

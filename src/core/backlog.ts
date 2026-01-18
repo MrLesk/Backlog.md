@@ -27,6 +27,7 @@ import {
 } from "../utils/status.ts";
 import { executeStatusCallback } from "../utils/status-callback.ts";
 import {
+	buildDefinitionOfDoneItems,
 	normalizeDependencies,
 	normalizeStringList,
 	stringArraysEqual,
@@ -701,6 +702,12 @@ export class Core {
 					}))
 					.filter((criterion) => criterion.text.length > 0)
 			: [];
+		const config = await this.fs.loadConfig();
+		const definitionOfDoneItems = buildDefinitionOfDoneItems({
+			defaults: config?.definitionOfDone,
+			add: input.definitionOfDoneAdd,
+			disableDefaults: input.disableDefinitionOfDoneDefaults,
+		});
 
 		const task: Task = {
 			id,
@@ -723,6 +730,7 @@ export class Core {
 			...(typeof input.implementationPlan === "string" && { implementationPlan: input.implementationPlan }),
 			...(typeof input.implementationNotes === "string" && { implementationNotes: input.implementationNotes }),
 			...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
+			...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 		};
 
 		const filePath = isDraft ? await this.createDraft(task, autoCommit) : await this.createTask(task, autoCommit);
@@ -1177,6 +1185,69 @@ export class Core {
 		toggleCriteria(input.uncheckAcceptanceCriteria, false);
 
 		task.acceptanceCriteriaItems = acceptanceCriteria;
+
+		let definitionOfDone = Array.isArray(task.definitionOfDoneItems)
+			? task.definitionOfDoneItems.map((criterion) => ({ ...criterion }))
+			: [];
+
+		const rebuildDefinitionIndices = () => {
+			definitionOfDone = definitionOfDone.map((criterion, index) => ({
+				...criterion,
+				index: index + 1,
+			}));
+		};
+
+		if (input.addDefinitionOfDone && input.addDefinitionOfDone.length > 0) {
+			const additions = input.addDefinitionOfDone
+				.map((criterion) => (typeof criterion === "string" ? criterion.trim() : String(criterion.text ?? "").trim()))
+				.filter((text) => text.length > 0);
+			let index =
+				definitionOfDone.length > 0 ? Math.max(...definitionOfDone.map((criterion) => criterion.index)) + 1 : 1;
+			for (const text of additions) {
+				definitionOfDone.push({ index: index++, text, checked: false });
+				mutated = true;
+			}
+		}
+
+		const toggleDefinitionItems = (indices: number[] | undefined, checked: boolean) => {
+			if (!indices || indices.length === 0) return;
+			const missing: number[] = [];
+			for (const index of indices) {
+				const criterion = definitionOfDone.find((item) => item.index === index);
+				if (!criterion) {
+					missing.push(index);
+					continue;
+				}
+				if (criterion.checked !== checked) {
+					criterion.checked = checked;
+					mutated = true;
+				}
+			}
+			if (missing.length > 0) {
+				const label = missing.map((index) => `#${index}`).join(", ");
+				throw new Error(`Definition of Done item ${label} not found`);
+			}
+		};
+
+		toggleDefinitionItems(input.checkDefinitionOfDone, true);
+		toggleDefinitionItems(input.uncheckDefinitionOfDone, false);
+
+		if (input.removeDefinitionOfDone && input.removeDefinitionOfDone.length > 0) {
+			const removalSet = new Set(input.removeDefinitionOfDone);
+			const beforeLength = definitionOfDone.length;
+			definitionOfDone = definitionOfDone.filter((criterion) => !removalSet.has(criterion.index));
+			if (definitionOfDone.length === beforeLength) {
+				throw new Error(
+					`Definition of Done item ${Array.from(removalSet)
+						.map((index) => `#${index}`)
+						.join(", ")} not found`,
+				);
+			}
+			mutated = true;
+			rebuildDefinitionIndices();
+		}
+
+		task.definitionOfDoneItems = definitionOfDone;
 
 		if (!mutated) {
 			return task;
