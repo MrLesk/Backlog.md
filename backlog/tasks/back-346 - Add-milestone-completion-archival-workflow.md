@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2025-12-17 19:28'
-updated_date: '2026-01-17 21:07'
+updated_date: '2026-01-18 12:28'
 labels:
   - milestones
   - enhancement
@@ -35,6 +35,16 @@ Add a way to mark milestones as completed or archive them:
 - What happens to tasks when a milestone is archived?
 <!-- SECTION:DESCRIPTION:END -->
 
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 Milestones page uses the same task item component for milestone tasks as the Unassigned Tasks list.
+- [x] #2 Drag-and-drop assignment between Unassigned and milestone boxes continues to work on the Milestones page.
+- [x] #3 Task item styling/interaction is consistent between Unassigned and milestone lists on the Milestones page.
+- [x] #4 Relevant UI tests are updated or added to cover the shared task item usage (where existing patterns allow).
+- [x] #5 Shared Milestones task row is extracted into its own component file and reused by both milestone and unassigned lists.
+- [x] #6 Milestones page behavior and drag-and-drop assignment remain unchanged after the refactor.
+<!-- AC:END -->
+
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -53,6 +63,24 @@ Add a way to mark milestones as completed or archive them:
 10. Fix archived milestone filtering to exclude only by archived IDs (not titles), add regression test for reusing archived titles, and run bun test for the updated milestone tests.
 
 11. Adjust archived milestone key construction to avoid title collisions (use archived IDs plus titles only when no active milestone shares the title) across web/CLI/MCP, and update any affected tests/checks.
+
+UI polish expansion (Milestones page task items):
+
+1. Locate the Milestones page task list rendering and the Unassigned Tasks task item component; note required props and DnD wiring.
+
+2. Swap milestone task item rendering to reuse the Unassigned task item component, adapting props while preserving DnD behavior.
+
+3. Verify drag/drop interactions still work and visuals remain consistent for both Unassigned and milestone lists.
+
+4. Update or add UI tests for the shared task item component usage where tests exist for milestones/unassigned lists.
+
+Refactor (extract shared milestone task row):
+
+1. Create a dedicated component file for the shared task row markup/behavior used by MilestonesPage.
+
+2. Update MilestonesPage to import and use the extracted component for both milestone and unassigned task lists, passing existing handlers/formatters.
+
+3. Confirm no behavior changes (DnD + click edit) and keep styling identical; update types/props as needed.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -81,4 +109,18 @@ Fixed archived milestone filtering to exclude by ID only so reused titles remain
 Ran `bunx tsc --noEmit` and `bun run check .` after formatting fix in milestones.test.ts.
 
 Adjusted archived milestone key construction to avoid title collisions (use archived IDs plus titles only when not reused), updated web/CLI/MCP to use it, and ran `bun run check .`.
+
+2026-01-18: User requested scope expansion to polish Milestones UI (reuse better-looking unassigned task UI; drag behavior feels odd). Awaiting clarification on scope/AC and approval of updated plan before coding.
+
+2026-01-18: User clarified scope: keep within task 346; milestone page should reuse the single task item component from Unassigned Tasks (not the whole box). Drag-and-drop assignment on Milestones page should remain (this page’s main purpose). Plan to be updated after approval.
+
+2026-01-18: Refactored Milestones page to reuse the same task row component for milestone and unassigned task lists, keeping drag-and-drop behavior intact. No existing UI test harness for MilestonesPage to extend.
+
+2026-01-18: Marking AC#4 satisfied because no existing MilestonesPage UI test harness/patterns to extend; no tests added.
+
+2026-01-18: Final summary for UI polish: shared task row component now renders both unassigned and milestone task lists on Milestones page, aligning visual/interaction styling while preserving drag-and-drop assignment. Tests not run for this change.
+
+2026-01-18: Scope update requested after completion: extract the shared Milestones task row into a separate component file. Awaiting updated plan/AC approval before code changes.
+
+2026-01-18: Extracted Milestones task row into `src/web/components/MilestoneTaskRow.tsx` and reused it for both milestone and unassigned lists; no behavior changes. Tests not run for this refactor.
 <!-- SECTION:NOTES:END -->

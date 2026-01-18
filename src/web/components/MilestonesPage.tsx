@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
+import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
 
 interface MilestonesPageProps {
@@ -255,18 +256,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	const safeIdSegment = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
 
-	// Drag handle icon component
-	const DragHandle = () => (
-		<svg className="w-4 h-4 text-gray-400 cursor-grab active:cursor-grabbing" viewBox="0 0 24 24" fill="currentColor">
-			<circle cx="9" cy="6" r="1.5" />
-			<circle cx="15" cy="6" r="1.5" />
-			<circle cx="9" cy="12" r="1.5" />
-			<circle cx="15" cy="12" r="1.5" />
-			<circle cx="9" cy="18" r="1.5" />
-			<circle cx="15" cy="18" r="1.5" />
-		</svg>
-	);
-
 	// Render a milestone card (drop target)
 	const renderMilestoneCard = (bucket: MilestoneBucket, isEmpty: boolean) => {
 		const progress = bucket.total > 0 ? Math.round((bucket.doneCount / bucket.total) * 100) : 0;
@@ -389,30 +378,17 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						<div id={listId} className="mt-4 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
 							<div className="divide-y divide-gray-200 dark:divide-gray-700">
 								{sortedTasks.slice(0, 10).map((task) => {
-									const done = isDoneStatus(task.status);
 									return (
-										<div
+										<MilestoneTaskRow
 											key={task.id}
-											draggable
-											onDragStart={(e) => handleDragStart(e, task)}
+											task={task}
+											isDone={isDoneStatus(task.status)}
+											statusBadgeClass={getStatusBadgeClass(task.status)}
+											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
+											onEditTask={onEditTask}
+											onDragStart={handleDragStart}
 											onDragEnd={handleDragEnd}
-											onClick={() => onEditTask(task)}
-											className="group flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
-										>
-											<div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-												<DragHandle />
-											</div>
-											<span className={`flex-1 flex items-center gap-2 min-w-0 ${done ? "text-gray-400" : ""}`}>
-												<span className={`text-sm truncate ${done ? "" : "text-gray-900 dark:text-gray-100"}`}>{task.title}</span>
-												<span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{task.id}</span>
-											</span>
-											{task.priority && (
-												<span className={`text-[10px] px-1.5 py-0.5 rounded ${getPriorityBadgeClass(task.priority)}`}>{task.priority}</span>
-											)}
-											<svg className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-											</svg>
-										</div>
+										/>
 									);
 								})}
 							</div>
@@ -482,54 +458,18 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 								{/* Table rows */}
 								<div className="divide-y divide-gray-200 dark:divide-gray-700">
-									{displayTasks.map((task) => {
-										const done = isDoneStatus(task.status);
-										return (
-											<div
-												key={task.id}
-												draggable
-												onDragStart={(e) => handleDragStart(e, task)}
-												onDragEnd={handleDragEnd}
-												onClick={() => onEditTask(task)}
-												className="group grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 items-center px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
-											>
-												{/* Drag handle */}
-												<div className="w-6 flex justify-center opacity-40 group-hover:opacity-100 transition-opacity">
-													<DragHandle />
-												</div>
-
-												{/* Task ID */}
-												<div className={`w-24 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap ${done ? "opacity-60" : ""}`}>
-													{task.id}
-												</div>
-
-												{/* Task title */}
-												<div className={`min-w-0 overflow-hidden ${done ? "opacity-60" : ""}`}>
-													<span className={`text-sm truncate block whitespace-nowrap ${done ? "line-through text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>
-														{task.title}
-													</span>
-												</div>
-
-												{/* Status badge */}
-												<div className="w-24 flex justify-center">
-													<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${getStatusBadgeClass(task.status)}`}>
-														{task.status}
-													</span>
-												</div>
-
-												{/* Priority badge */}
-												<div className="w-20 flex justify-center">
-													{task.priority ? (
-														<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${getPriorityBadgeClass(task.priority)}`}>
-															{task.priority}
-														</span>
-													) : (
-														<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-													)}
-												</div>
-											</div>
-										);
-									})}
+									{displayTasks.map((task) => (
+										<MilestoneTaskRow
+											key={task.id}
+											task={task}
+											isDone={isDoneStatus(task.status)}
+											statusBadgeClass={getStatusBadgeClass(task.status)}
+											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
+											onEditTask={onEditTask}
+											onDragStart={handleDragStart}
+											onDragEnd={handleDragEnd}
+										/>
+									))}
 								</div>
 
 								{/* Footer with show more/less */}
