@@ -62,6 +62,7 @@ export interface MilestoneBucket {
 	label: string;
 	milestone?: string;
 	isNoMilestone: boolean;
+	isCompleted: boolean;
 	tasks: Task[];
 	statusCounts: Record<string, number>;
 	total: number;

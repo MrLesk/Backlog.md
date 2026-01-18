@@ -1,15 +1,16 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../lib/api";
-import { buildMilestoneBuckets } from "../utils/milestones";
+import { buildMilestoneBuckets, collectArchivedMilestoneKeys } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
+import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
 
 interface MilestonesPageProps {
 	tasks: Task[];
 	statuses: string[];
-	milestones: string[];
 	milestoneEntities: Milestone[];
+	archivedMilestones: Milestone[];
 	onEditTask: (task: Task) => void;
 	onRefreshData?: () => Promise<void>;
 }
@@ -17,8 +18,8 @@ interface MilestonesPageProps {
 const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	tasks,
 	statuses,
-	milestones,
 	milestoneEntities,
+	archivedMilestones,
 	onEditTask,
 	onRefreshData,
 }) => {
@@ -31,11 +32,20 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [draggedTask, setDraggedTask] = useState<Task | null>(null);
 	const [dropTargetKey, setDropTargetKey] = useState<string | null>(null);
 	const [showAllUnassigned, setShowAllUnassigned] = useState(false);
+	const [showCompleted, setShowCompleted] = useState(false);
+	const [archivingMilestoneKey, setArchivingMilestoneKey] = useState<string | null>(null);
 
-	const buckets = useMemo(() => buildMilestoneBuckets(tasks, milestoneEntities, statuses), [tasks, milestoneEntities, statuses]);
+	const archivedMilestoneIds = useMemo(
+		() => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
+		[archivedMilestones, milestoneEntities],
+	);
+	const buckets = useMemo(
+		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds }),
+		[tasks, milestoneEntities, statuses, archivedMilestoneIds],
+	);
 
 	// Separate buckets into categories and sort by ID descending
-	const { unassignedBucket, allMilestones } = useMemo(() => {
+	const { unassignedBucket, activeMilestones, completedMilestones } = useMemo(() => {
 		// Sort milestones by ID descending (newest first - IDs are sequential m-0, m-1, etc.)
 		const sortByIdDesc = (a: MilestoneBucket, b: MilestoneBucket) => {
 			const aMilestone = a.milestone ?? "";
@@ -48,16 +58,19 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		};
 
 		const unassigned = buckets.find((b) => b.isNoMilestone);
-		const active = buckets.filter((b) => !b.isNoMilestone && b.total > 0);
-		const empty = buckets.filter((b) => !b.isNoMilestone && b.total === 0);
+		const activeWithTasks = buckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total > 0);
+		const empty = buckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total === 0);
+		const completed = buckets.filter((b) => !b.isNoMilestone && b.isCompleted);
 
 		// Sort each group by ID descending, then combine (active with tasks first, then empty)
-		const sortedActive = [...active].sort(sortByIdDesc);
+		const sortedActive = [...activeWithTasks].sort(sortByIdDesc);
 		const sortedEmpty = [...empty].sort(sortByIdDesc);
+		const sortedCompleted = [...completed].sort(sortByIdDesc);
 
 		return {
 			unassignedBucket: unassigned,
-			allMilestones: [...sortedActive, ...sortedEmpty],
+			activeMilestones: [...sortedActive, ...sortedEmpty],
+			completedMilestones: sortedCompleted,
 		};
 	}, [buckets]);
 
@@ -155,6 +168,36 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		}
 	};
 
+	const handleArchiveMilestone = useCallback(
+		async (bucket: MilestoneBucket) => {
+			if (!bucket.milestone) return;
+
+			const label = bucket.label || bucket.milestone;
+			const confirmed = window.confirm(
+				`Archive milestone "${label}"? This moves it to backlog/archive/milestones and hides it from the milestones view.`,
+			);
+			if (!confirmed) return;
+
+			setArchivingMilestoneKey(bucket.key);
+			setError(null);
+			setSuccess(null);
+			try {
+				await apiClient.archiveMilestone(bucket.milestone);
+				setSuccess(`Archived milestone "${label}"`);
+				if (onRefreshData) {
+					await onRefreshData();
+				}
+				setTimeout(() => setSuccess(null), 3000);
+			} catch (err) {
+				console.error("Failed to archive milestone:", err);
+				setError(err instanceof Error ? err.message : "Failed to archive milestone.");
+			} finally {
+				setArchivingMilestoneKey(null);
+			}
+		},
+		[onRefreshData],
+	);
+
 	const isDoneStatus = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
 		return normalized.includes("done") || normalized.includes("complete");
@@ -213,18 +256,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	const safeIdSegment = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
 
-	// Drag handle icon component
-	const DragHandle = () => (
-		<svg className="w-4 h-4 text-gray-400 cursor-grab active:cursor-grabbing" viewBox="0 0 24 24" fill="currentColor">
-			<circle cx="9" cy="6" r="1.5" />
-			<circle cx="15" cy="6" r="1.5" />
-			<circle cx="9" cy="12" r="1.5" />
-			<circle cx="15" cy="12" r="1.5" />
-			<circle cx="9" cy="18" r="1.5" />
-			<circle cx="15" cy="18" r="1.5" />
-		</svg>
-	);
-
 	// Render a milestone card (drop target)
 	const renderMilestoneCard = (bucket: MilestoneBucket, isEmpty: boolean) => {
 		const progress = bucket.total > 0 ? Math.round((bucket.doneCount / bucket.total) * 100) : 0;
@@ -234,6 +265,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const sortedTasks = getSortedTasks(bucket.tasks);
 		const isDropTarget = dropTargetKey === bucket.key;
 		const isDragging = draggedTask !== null;
+		const isArchiving = archivingMilestoneKey === bucket.key;
 
 		return (
 			<div
@@ -294,73 +326,69 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						</div>
 					)}
 
-					{/* Actions - only for non-empty milestones */}
-					{!isEmpty && (
-						<div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
-							<div className="flex items-center gap-2">
-								<Link
-									to={`/?lane=milestone&milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
-									className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-								>
-									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-									</svg>
-									Board
-								</Link>
-								<Link
-									to={`/tasks?milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
-									className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-								>
-									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-									</svg>
-									List
-								</Link>
-							</div>
+					{/* Actions */}
+					<div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+						<div className="flex items-center gap-2">
+							<Link
+								to={`/?lane=milestone&milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
+								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+								</svg>
+								Board
+							</Link>
+							<Link
+								to={`/tasks?milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
+								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+								</svg>
+								List
+							</Link>
 							<button
 								type="button"
-								aria-expanded={isExpanded}
-								aria-controls={listId}
-								onClick={() => setExpandedBuckets((c) => ({ ...c, [bucket.key]: !isExpanded }))}
-								className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+								onClick={() => handleArchiveMilestone(bucket)}
+								disabled={isArchiving}
+								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-60"
 							>
-								{isExpanded ? "Hide" : "Show"} tasks
-								<svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 								</svg>
+								{isArchiving ? "Archiving..." : "Archive"}
 							</button>
 						</div>
-					)}
+						<button
+							type="button"
+							aria-expanded={isExpanded}
+							aria-controls={listId}
+							onClick={() => setExpandedBuckets((c) => ({ ...c, [bucket.key]: !isExpanded }))}
+							className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+						>
+							{isExpanded ? "Hide" : "Show"} tasks
+							<svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+							</svg>
+						</button>
+					</div>
 
 					{/* Task list */}
 					{isExpanded && !isEmpty && (
 						<div id={listId} className="mt-4 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
 							<div className="divide-y divide-gray-200 dark:divide-gray-700">
 								{sortedTasks.slice(0, 10).map((task) => {
-									const done = isDoneStatus(task.status);
 									return (
-										<div
+										<MilestoneTaskRow
 											key={task.id}
-											draggable
-											onDragStart={(e) => handleDragStart(e, task)}
+											task={task}
+											isDone={isDoneStatus(task.status)}
+											statusBadgeClass={getStatusBadgeClass(task.status)}
+											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
+											onEditTask={onEditTask}
+											onDragStart={handleDragStart}
 											onDragEnd={handleDragEnd}
-											onClick={() => onEditTask(task)}
-											className="group flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
-										>
-											<div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-												<DragHandle />
-											</div>
-											<span className={`flex-1 flex items-center gap-2 min-w-0 ${done ? "text-gray-400" : ""}`}>
-												<span className={`text-sm truncate ${done ? "" : "text-gray-900 dark:text-gray-100"}`}>{task.title}</span>
-												<span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{task.id}</span>
-											</span>
-											{task.priority && (
-												<span className={`text-[10px] px-1.5 py-0.5 rounded ${getPriorityBadgeClass(task.priority)}`}>{task.priority}</span>
-											)}
-											<svg className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-											</svg>
-										</div>
+										/>
 									);
 								})}
 							</div>
@@ -430,54 +458,18 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 								{/* Table rows */}
 								<div className="divide-y divide-gray-200 dark:divide-gray-700">
-									{displayTasks.map((task) => {
-										const done = isDoneStatus(task.status);
-										return (
-											<div
-												key={task.id}
-												draggable
-												onDragStart={(e) => handleDragStart(e, task)}
-												onDragEnd={handleDragEnd}
-												onClick={() => onEditTask(task)}
-												className="group grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 items-center px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
-											>
-												{/* Drag handle */}
-												<div className="w-6 flex justify-center opacity-40 group-hover:opacity-100 transition-opacity">
-													<DragHandle />
-												</div>
-
-												{/* Task ID */}
-												<div className={`w-24 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap ${done ? "opacity-60" : ""}`}>
-													{task.id}
-												</div>
-
-												{/* Task title */}
-												<div className={`min-w-0 overflow-hidden ${done ? "opacity-60" : ""}`}>
-													<span className={`text-sm truncate block whitespace-nowrap ${done ? "line-through text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>
-														{task.title}
-													</span>
-												</div>
-
-												{/* Status badge */}
-												<div className="w-24 flex justify-center">
-													<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${getStatusBadgeClass(task.status)}`}>
-														{task.status}
-													</span>
-												</div>
-
-												{/* Priority badge */}
-												<div className="w-20 flex justify-center">
-													{task.priority ? (
-														<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${getPriorityBadgeClass(task.priority)}`}>
-															{task.priority}
-														</span>
-													) : (
-														<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-													)}
-												</div>
-											</div>
-										);
-									})}
+									{displayTasks.map((task) => (
+										<MilestoneTaskRow
+											key={task.id}
+											task={task}
+											isDone={isDoneStatus(task.status)}
+											statusBadgeClass={getStatusBadgeClass(task.status)}
+											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
+											onEditTask={onEditTask}
+											onDragStart={handleDragStart}
+											onDragEnd={handleDragEnd}
+										/>
+									))}
 								</div>
 
 								{/* Footer with show more/less */}
@@ -507,7 +499,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		);
 	};
 
-	const noMilestones = allMilestones.length === 0;
+	const noMilestones = activeMilestones.length === 0 && completedMilestones.length === 0;
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
@@ -523,6 +515,14 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							{success}
 						</span>
 					)}
+					{error && (
+						<span className="inline-flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M5.07 19h13.86a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.33 16a2 2 0 001.74 3z" />
+							</svg>
+							{error}
+						</span>
+					)}
 					<button
 						type="button"
 						onClick={() => setShowAddModal(true)}
@@ -536,10 +536,37 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			{/* Unassigned tasks */}
 			{renderUnassignedSection()}
 
-			{/* Milestones */}
-			{allMilestones.length > 0 && (
+			{/* Active milestones */}
+			{activeMilestones.length > 0 && (
 				<div className="space-y-4">
-					{allMilestones.map((bucket) => renderMilestoneCard(bucket, bucket.total === 0))}
+					{activeMilestones.map((bucket) => renderMilestoneCard(bucket, bucket.total === 0))}
+				</div>
+			)}
+
+			{/* Completed milestones */}
+			{completedMilestones.length > 0 && (
+				<div className="mt-8">
+					<button
+						type="button"
+						onClick={() => setShowCompleted((value) => !value)}
+						className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+					>
+						<span>Completed milestones</span>
+						<span className="text-xs text-gray-400 dark:text-gray-500">({completedMilestones.length})</span>
+						<svg
+							className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-180" : ""}`}
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+					{showCompleted && (
+						<div className="mt-4 space-y-4">
+							{completedMilestones.map((bucket) => renderMilestoneCard(bucket, false))}
+						</div>
+					)}
 				</div>
 			)}
 

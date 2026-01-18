@@ -93,6 +93,9 @@ export class FileSystem {
 	get archiveTasksDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
+	get archiveMilestonesDir(): string {
+		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
+	}
 	get decisionsDir(): string {
 		return join(this.backlogDir, DEFAULT_DIRECTORIES.DECISIONS);
 	}
@@ -133,6 +136,11 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
 
+	private async getArchiveMilestonesDir(): Promise<string> {
+		const backlogDir = await this.getBacklogDir();
+		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
+	}
+
 	private async getArchiveDraftsDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
@@ -167,6 +175,8 @@ export class FileSystem {
 			join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS),
+			join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES),
+			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES),
 			join(backlogDir, DEFAULT_DIRECTORIES.DOCS),
 			join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS),
 		];
@@ -745,6 +755,25 @@ export class FileSystem {
 		}
 	}
 
+	async listArchivedMilestones(): Promise<Milestone[]> {
+		try {
+			const milestonesDir = await this.getArchiveMilestonesDir();
+			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const milestones: Milestone[] = [];
+			for (const file of milestoneFiles) {
+				if (file.toLowerCase() === "readme.md") {
+					continue;
+				}
+				const filepath = join(milestonesDir, file);
+				const content = await Bun.file(filepath).text();
+				milestones.push(parseMilestone(content));
+			}
+			return milestones.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+		} catch {
+			return [];
+		}
+	}
+
 	async loadMilestone(id: string): Promise<Milestone | null> {
 		try {
 			const milestonesDir = await this.getMilestonesDir();
@@ -812,6 +841,60 @@ ${description || `Milestone: ${title}`}
 			description: description || `Milestone: ${title}`,
 			rawContent: content,
 		};
+	}
+
+	async archiveMilestone(identifier: string): Promise<{
+		success: boolean;
+		sourcePath?: string;
+		targetPath?: string;
+		milestone?: Milestone;
+	}> {
+		const normalized = identifier.trim().toLowerCase();
+		if (!normalized) {
+			return { success: false };
+		}
+
+		try {
+			const milestonesDir = await this.getMilestonesDir();
+			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const candidateKeys = new Set<string>([normalized]);
+			if (normalized.startsWith("m-")) {
+				candidateKeys.add(normalized.slice(2));
+			} else if (/^\d+$/.test(normalized)) {
+				candidateKeys.add(`m-${normalized}`);
+			}
+
+			for (const file of milestoneFiles) {
+				if (file.toLowerCase() === "readme.md") {
+					continue;
+				}
+				const sourcePath = join(milestonesDir, file);
+				const content = await Bun.file(sourcePath).text();
+				const milestone = parseMilestone(content);
+				const idKey = milestone.id.trim().toLowerCase();
+				const titleKey = milestone.title.trim().toLowerCase();
+
+				if (!candidateKeys.has(idKey) && !candidateKeys.has(titleKey)) {
+					continue;
+				}
+
+				const archiveDir = await this.getArchiveMilestonesDir();
+				const targetPath = join(archiveDir, file);
+				await this.ensureDirectoryExists(dirname(targetPath));
+				await rename(sourcePath, targetPath);
+
+				return {
+					success: true,
+					sourcePath,
+					targetPath,
+					milestone,
+				};
+			}
+
+			return { success: false };
+		} catch (_error) {
+			return { success: false };
+		}
 	}
 
 	// Config operations

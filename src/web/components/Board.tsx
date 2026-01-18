@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
+import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
 import { SuccessToast } from './SuccessToast';
@@ -16,6 +17,7 @@ interface BoardProps {
   isLoading: boolean;
   milestones: string[];
   milestoneEntities: Milestone[];
+  archivedMilestones: Milestone[];
   laneMode: LaneMode;
   onLaneChange: (mode: LaneMode) => void;
   milestoneFilter?: string | null;
@@ -31,6 +33,7 @@ const Board: React.FC<BoardProps> = ({
   isLoading,
   milestones,
   milestoneEntities,
+  archivedMilestones,
   laneMode,
   onLaneChange,
   milestoneFilter,
@@ -41,6 +44,10 @@ const Board: React.FC<BoardProps> = ({
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
+  const archivedMilestoneIds = useMemo(
+    () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
+    [archivedMilestones, milestoneEntities]
+  );
 
   // Filter tasks by milestone when milestoneFilter is set
   const filteredTasks = useMemo(() => {
@@ -104,26 +111,32 @@ const Board: React.FC<BoardProps> = ({
 
   // Use all tasks for building lanes (so we can show/collapse other milestones)
   const lanes = useMemo(
-    () => buildLanes(laneMode, tasks, milestones, milestoneEntities),
-    [laneMode, tasks, milestones, milestoneEntities]
+    () => buildLanes(laneMode, tasks, milestones, milestoneEntities, { archivedMilestoneIds }),
+    [laneMode, tasks, milestones, milestoneEntities, archivedMilestoneIds]
   );
 
   // Check if any tasks actually have milestones assigned
-  const hasTasksWithMilestones = useMemo(
-    () => tasks.some(task => task.milestone && task.milestone.trim() !== ''),
-    [tasks]
-  );
+  const hasTasksWithMilestones = useMemo(() => {
+    if (archivedMilestoneIds.length === 0) {
+      return tasks.some(task => task.milestone && task.milestone.trim() !== '');
+    }
+    const archivedKeys = new Set(archivedMilestoneIds.map((value) => milestoneKey(value)));
+    return tasks.some(task => {
+      const key = milestoneKey(task.milestone);
+      return key.length > 0 && !archivedKeys.has(key);
+    });
+  }, [tasks, archivedMilestoneIds]);
 
   // Use all tasks for lane grouping (for counts and visibility)
   const tasksByLane = useMemo(
-    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, tasks),
-    [laneMode, lanes, statuses, tasks]
+    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, tasks, { archivedMilestoneIds }),
+    [laneMode, lanes, statuses, tasks, archivedMilestoneIds]
   );
 
   // Separate grouping for filtered display in columns
   const filteredTasksByLane = useMemo(
-    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, filteredTasks),
-    [laneMode, lanes, statuses, filteredTasks]
+    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, filteredTasks, { archivedMilestoneIds }),
+    [laneMode, lanes, statuses, filteredTasks, archivedMilestoneIds]
   );
 
   const getTasksForLane = (laneKey: string, status: string): Task[] => {

@@ -27,7 +27,7 @@ import {
 import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
-import { collectMilestoneIds } from './utils/milestones';
+import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 
 function App() {
   const [showModal, setShowModal] = useState(false);
@@ -39,6 +39,7 @@ function App() {
   const [config, setConfig] = useState<BacklogConfig | null>(null);
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
+  const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
   
@@ -83,40 +84,55 @@ function App() {
     setIsInitialized(true);
   }, []);
 
-  const applySearchResults = useCallback((results: SearchResult[]) => {
+  const applySearchResults = useCallback((results: SearchResult[], archivedMilestoneKeys?: Set<string>) => {
     const taskResults = results.filter((result): result is TaskSearchResult => result.type === 'task');
     const documentResults = results.filter((result): result is DocumentSearchResult => result.type === 'document');
     const decisionResults = results.filter((result): result is DecisionSearchResult => result.type === 'decision');
 
     const tasksList = taskResults.map((result) => result.task);
+    const normalizedTasks =
+      archivedMilestoneKeys && archivedMilestoneKeys.size > 0
+        ? tasksList.map((task) => {
+            const key = milestoneKey(task.milestone);
+            if (!key || !archivedMilestoneKeys.has(key)) {
+              return task;
+            }
+            return { ...task, milestone: undefined };
+          })
+        : tasksList;
     const docsList = documentResults.map((result) => result.document);
     const decisionsList = decisionResults.map((result) => result.decision);
 
-    setTasks(tasksList);
+    setTasks(normalizedTasks);
     setDocs(docsList);
     setDecisions(decisionsList);
 
-    return { tasks: tasksList, docs: docsList, decisions: decisionsList };
+    return { tasks: normalizedTasks, docs: docsList, decisions: decisionsList };
   }, []);
 
   const loadAllData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [statusesData, configData, searchResults, milestonesData] = await Promise.all([
+      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
         apiClient.search(),
         apiClient.fetchMilestones(),
+        apiClient.fetchArchivedMilestones(),
       ]);
 
-      const { tasks: tasksList } = applySearchResults(searchResults);
+      const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
+      const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys);
 
       setStatuses(statusesData);
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
       setConfig(configData);
       setMilestoneEntities(milestonesData);
-      setMilestones(collectMilestoneIds(tasksList, milestonesData));
+      setArchivedMilestones(archivedMilestonesData);
+      setMilestones(
+        collectMilestoneIds(tasksList, milestonesData).filter((milestone) => !archivedKeys.has(milestoneKey(milestone))),
+      );
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -137,13 +153,18 @@ function App() {
       // Connection restored, reload data
       const loadData = async () => {
         try {
-          const [results, milestonesData] = await Promise.all([
+          const [results, milestonesData, archivedMilestonesData] = await Promise.all([
             apiClient.search(),
             apiClient.fetchMilestones(),
+            apiClient.fetchArchivedMilestones(),
           ]);
-          const { tasks: tasksList } = applySearchResults(results);
+          const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
+          const { tasks: tasksList } = applySearchResults(results, archivedKeys);
           setMilestoneEntities(milestonesData);
-          setMilestones(collectMilestoneIds(tasksList, milestonesData));
+          setArchivedMilestones(archivedMilestonesData);
+          setMilestones(
+            collectMilestoneIds(tasksList, milestonesData).filter((milestone) => !archivedKeys.has(milestoneKey(milestone))),
+          );
         } catch (error) {
           console.error('Failed to reload data:', error);
         }
@@ -327,6 +348,7 @@ function App() {
                 statuses={statuses}
                 milestones={milestones}
                 milestoneEntities={milestoneEntities}
+                archivedMilestones={archivedMilestones}
                 isLoading={isLoading}
               />
             }
@@ -352,8 +374,8 @@ function App() {
               <MilestonesPage
                 tasks={tasks}
                 statuses={statuses}
-                milestones={milestones}
                 milestoneEntities={milestoneEntities}
+                archivedMilestones={archivedMilestones}
                 onEditTask={handleEditTask}
                 onRefreshData={refreshData}
               />

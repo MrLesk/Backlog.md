@@ -137,6 +137,36 @@ describe("MCP milestone tools", () => {
 		expect(text).toContain("- Unconfigured");
 	});
 
+	it("archives milestones and hides them from lists", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
+		});
+		await server.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: { title: "Archived milestone task", milestone: "Release 1.0" },
+			},
+		});
+
+		const archived = await server.testInterface.callTool({
+			params: { name: "milestone_archive", arguments: { name: "Release 1.0" } },
+		});
+		expect(getText(archived.content)).toContain('Archived milestone "Release 1.0"');
+
+		const active = await server.filesystem.listMilestones();
+		const archivedList = await server.filesystem.listArchivedMilestones();
+		expect(active.length).toBe(0);
+		expect(archivedList.length).toBe(1);
+
+		const list = await server.testInterface.callTool({
+			params: { name: "milestone_list", arguments: {} },
+		});
+		const text = getText(list.content);
+		expect(text).toContain("Milestones (0):");
+		expect(text).toContain("Milestones found on tasks without files (0):");
+		expect(text).not.toContain("Release 1.0");
+	});
+
 	it("renames milestones and updates local tasks by default", async () => {
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },

@@ -245,8 +245,14 @@ export class BacklogServer {
 						GET: async () => await this.handleListMilestones(),
 						POST: async (req: Request) => await this.handleCreateMilestone(req),
 					},
+					"/api/milestones/archived": {
+						GET: async () => await this.handleListArchivedMilestones(),
+					},
 					"/api/milestones/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
+					},
+					"/api/milestones/:id/archive": {
+						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
 					},
 					"/api/tasks/reorder": {
 						POST: async (req: Request) => await this.handleReorderTask(req),
@@ -1030,6 +1036,16 @@ export class BacklogServer {
 		}
 	}
 
+	private async handleListArchivedMilestones(): Promise<Response> {
+		try {
+			const milestones = await this.core.filesystem.listArchivedMilestones();
+			return Response.json(milestones);
+		} catch (error) {
+			console.error("Error listing archived milestones:", error);
+			return Response.json([]);
+		}
+	}
+
 	private async handleGetMilestone(milestoneId: string): Promise<Response> {
 		try {
 			const milestone = await this.core.filesystem.loadMilestone(milestoneId);
@@ -1065,6 +1081,21 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error creating milestone:", error);
 			return Response.json({ error: "Failed to create milestone" }, { status: 500 });
+		}
+	}
+
+	private async handleArchiveMilestone(milestoneId: string): Promise<Response> {
+		try {
+			const result = await this.core.archiveMilestone(milestoneId);
+			if (!result.success) {
+				return Response.json({ error: "Milestone not found" }, { status: 404 });
+			}
+			this.broadcastTasksUpdated();
+			return Response.json({ success: true, milestone: result.milestone ?? null });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to archive milestone";
+			console.error("Error archiving milestone:", error);
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 
