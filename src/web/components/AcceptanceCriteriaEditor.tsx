@@ -6,6 +6,7 @@ interface Props {
   onChange: (criteria: AcceptanceCriterion[]) => void;
   label?: string;
   preserveIndices?: boolean;
+  disableToggle?: boolean;
 }
 
 const AcceptanceCriteriaEditor: React.FC<Props> = ({
@@ -13,6 +14,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
   onChange,
   label = "Acceptance Criteria",
   preserveIndices = false,
+  disableToggle = false,
 }) => {
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(initial || []);
   const [newCriterion, setNewCriterion] = useState("");
@@ -43,6 +45,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
   }, [newCriterion]);
 
   const handleToggle = (index: number, checked: boolean) => {
+    if (disableToggle) return;
     const updated = criteria.map((c) => (c.index === index ? { ...c, checked } : c));
     setCriteria(updated);
     onChange(updated);
@@ -86,6 +89,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               checked={c.checked}
               onChange={(e) => handleToggle(c.index, e.target.checked)}
+              disabled={disableToggle}
             />
             <textarea
               ref={(el) => { itemRefs.current[c.index] = el; }}

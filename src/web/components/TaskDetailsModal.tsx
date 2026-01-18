@@ -701,6 +701,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 onChange={setDefinitionOfDone}
                 label="Definition of Done"
                 preserveIndices
+                disableToggle={isCreateMode}
               />
             )}
           </div>
