@@ -269,6 +269,81 @@ describe("MCP task tools (MVP)", () => {
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
 	});
 
+	it("creates and edits Definition of Done items", async () => {
+		const config = await loadConfig(mcpServer);
+		config.definitionOfDone = ["Run tests", "Update docs"];
+		await mcpServer.filesystem.saveConfig(config);
+
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "DoD MCP task",
+					definitionOfDoneAdd: ["Ship notes"],
+				},
+			},
+		});
+
+		const createText = getText(createResult.content);
+		expect(createText).toContain("Definition of Done:");
+		expect(createText).toContain("- [ ] #1 Run tests");
+		expect(createText).toContain("- [ ] #2 Update docs");
+		expect(createText).toContain("- [ ] #3 Ship notes");
+
+		const disableResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "DoD no defaults",
+					disableDefinitionOfDoneDefaults: true,
+				},
+			},
+		});
+
+		const disableText = getText(disableResult.content);
+		expect(disableText).toContain("Definition of Done:");
+		expect(disableText).toContain("No Definition of Done items defined");
+
+		const checkResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					definitionOfDoneCheck: [2],
+				},
+			},
+		});
+
+		const checkText = getText(checkResult.content);
+		expect(checkText).toContain("- [x] #2 Update docs");
+
+		const removeResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					definitionOfDoneRemove: [1],
+				},
+			},
+		});
+
+		const removeText = getText(removeResult.content);
+		expect(removeText).toContain("- [x] #1 Update docs");
+
+		const uncheckResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					definitionOfDoneUncheck: [1],
+				},
+			},
+		});
+
+		const uncheckText = getText(uncheckResult.content);
+		expect(uncheckText).toContain("- [ ] #1 Update docs");
+	});
+
 	it("includes subtask list in task_view output and hides it when empty", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

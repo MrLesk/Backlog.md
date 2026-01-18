@@ -14,15 +14,23 @@ export function formatDateForDisplay(dateStr: string): string {
 	return hasTime ? dateStr : dateStr;
 }
 
-export function buildAcceptanceCriteriaItems(task: Task): ChecklistItem[] {
-	const items = task.acceptanceCriteriaItems ?? [];
-	return items
+function buildChecklistItems(items: Task["acceptanceCriteriaItems"]): ChecklistItem[] {
+	const criteria = items ?? [];
+	return criteria
 		.slice()
 		.sort((a, b) => a.index - b.index)
 		.map((criterion, index) => ({
 			text: `#${index + 1} ${criterion.text}`,
 			checked: criterion.checked,
 		}));
+}
+
+export function buildAcceptanceCriteriaItems(task: Task): ChecklistItem[] {
+	return buildChecklistItems(task.acceptanceCriteriaItems);
+}
+
+export function buildDefinitionOfDoneItems(task: Task): ChecklistItem[] {
+	return buildChecklistItems(task.definitionOfDoneItems);
 }
 
 export function formatAcceptanceCriteriaLines(items: ChecklistItem[]): string[] {
@@ -135,6 +143,16 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push(...formatAcceptanceCriteriaLines(criteriaItems));
 	} else {
 		lines.push("No acceptance criteria defined");
+	}
+	lines.push("");
+
+	lines.push("Definition of Done:");
+	lines.push("-".repeat(50));
+	const definitionItems = buildDefinitionOfDoneItems(task);
+	if (definitionItems.length > 0) {
+		lines.push(...formatAcceptanceCriteriaLines(definitionItems));
+	} else {
+		lines.push("No Definition of Done items defined");
 	}
 	lines.push("");
 

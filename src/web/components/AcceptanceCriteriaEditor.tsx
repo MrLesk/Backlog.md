@@ -4,9 +4,16 @@ import { type AcceptanceCriterion } from "../../types";
 interface Props {
   criteria: AcceptanceCriterion[];
   onChange: (criteria: AcceptanceCriterion[]) => void;
+  label?: string;
+  preserveIndices?: boolean;
 }
 
-const AcceptanceCriteriaEditor: React.FC<Props> = ({ criteria: initial, onChange }) => {
+const AcceptanceCriteriaEditor: React.FC<Props> = ({
+  criteria: initial,
+  onChange,
+  label = "Acceptance Criteria",
+  preserveIndices = false,
+}) => {
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(initial || []);
   const [newCriterion, setNewCriterion] = useState("");
 
@@ -48,7 +55,8 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({ criteria: initial, onChange
   };
 
   const handleRemove = (index: number) => {
-    const updated = criteria.filter((c) => c.index !== index).map((c, i) => ({ ...c, index: i + 1 }));
+    const filtered = criteria.filter((c) => c.index !== index);
+    const updated = preserveIndices ? filtered : filtered.map((c, i) => ({ ...c, index: i + 1 }));
     setCriteria(updated);
     onChange(updated);
   };
@@ -56,7 +64,10 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({ criteria: initial, onChange
   const handleAdd = () => {
     const text = newCriterion.trim();
     if (!text) return;
-    const updated = [...criteria, { checked: false, text, index: criteria.length + 1 }];
+    const nextIndex = preserveIndices
+      ? Math.max(0, ...criteria.map((item) => item.index)) + 1
+      : criteria.length + 1;
+    const updated = [...criteria, { checked: false, text, index: nextIndex }];
     setCriteria(updated);
     setNewCriterion("");
     onChange(updated);
@@ -65,7 +76,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({ criteria: initial, onChange
   return (
     <div className="space-y-2">
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
-        Acceptance Criteria
+        {label}
       </label>
       <ul className="space-y-2">
         {criteria.map((c) => (

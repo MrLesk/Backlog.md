@@ -165,5 +165,27 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.uncheckAcceptanceCriteria = [...args.acceptanceCriteriaUncheck];
 	}
 
+	if (Array.isArray(args.definitionOfDoneAdd) && args.definitionOfDoneAdd.length > 0) {
+		const additions = args.definitionOfDoneAdd
+			.map((text) => String(text).trim())
+			.filter((text) => text.length > 0)
+			.map((text) => ({ text, checked: false }));
+		if (additions.length > 0) {
+			updateInput.addDefinitionOfDone = additions;
+		}
+	}
+
+	if (Array.isArray(args.definitionOfDoneRemove) && args.definitionOfDoneRemove.length > 0) {
+		updateInput.removeDefinitionOfDone = [...args.definitionOfDoneRemove];
+	}
+
+	if (Array.isArray(args.definitionOfDoneCheck) && args.definitionOfDoneCheck.length > 0) {
+		updateInput.checkDefinitionOfDone = [...args.definitionOfDoneCheck];
+	}
+
+	if (Array.isArray(args.definitionOfDoneUncheck) && args.definitionOfDoneUncheck.length > 0) {
+		updateInput.uncheckDefinitionOfDone = [...args.definitionOfDoneUncheck];
+	}
+
 	return updateInput;
 }

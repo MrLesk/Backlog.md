@@ -382,6 +382,7 @@ function App() {
           availableMilestones={milestones}
           milestoneEntities={milestoneEntities}
           isDraftMode={isDraftMode}
+          definitionOfDoneDefaults={config?.definitionOfDone ?? []}
         />
 
         {/* Task Creation Confirmation Toast */}

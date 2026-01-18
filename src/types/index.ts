@@ -42,6 +42,8 @@ export interface Task {
 	implementationNotes?: string;
 	/** Structured acceptance criteria parsed from body (checked state + text + index) */
 	acceptanceCriteriaItems?: AcceptanceCriterion[];
+	/** Structured Definition of Done checklist parsed from body (checked state + text + index) */
+	definitionOfDoneItems?: AcceptanceCriterion[];
 	parentTaskId?: string;
 	parentTaskTitle?: string;
 	subtasks?: string[];
@@ -96,6 +98,8 @@ export interface TaskCreateInput {
 	implementationPlan?: string;
 	implementationNotes?: string;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
+	definitionOfDoneAdd?: string[];
+	disableDefinitionOfDoneDefaults?: boolean;
 	rawContent?: string;
 }
 
@@ -130,6 +134,10 @@ export interface TaskUpdateInput {
 	removeAcceptanceCriteria?: number[];
 	checkAcceptanceCriteria?: number[];
 	uncheckAcceptanceCriteria?: number[];
+	addDefinitionOfDone?: Array<AcceptanceCriterionInput | string>;
+	removeDefinitionOfDone?: number[];
+	checkDefinitionOfDone?: number[];
+	uncheckDefinitionOfDone?: number[];
 	rawContent?: string;
 }
 
@@ -245,6 +253,7 @@ export interface BacklogConfig {
 	statuses: string[];
 	labels: string[];
 	milestones: string[];
+	definitionOfDone?: string[];
 	defaultStatus?: string;
 	dateFormat: string;
 	maxColumnWidth?: number;

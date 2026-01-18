@@ -20,9 +20,18 @@ interface Props {
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
   milestoneEntities?: Milestone[];
+  definitionOfDoneDefaults?: string[];
 }
 
 type Mode = "preview" | "edit" | "create";
+
+type TaskUpdatePayload = Partial<Task> & {
+  definitionOfDoneAdd?: string[];
+  definitionOfDoneRemove?: number[];
+  definitionOfDoneCheck?: number[];
+  definitionOfDoneUncheck?: number[];
+  disableDefinitionOfDoneDefaults?: boolean;
+};
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
   <div className="flex items-center justify-between mb-3">
@@ -44,6 +53,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   availableMilestones,
   milestoneEntities,
   isDraftMode,
+  definitionOfDoneDefaults,
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
@@ -60,6 +70,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [plan, setPlan] = useState(task?.implementationPlan || "");
   const [notes, setNotes] = useState(task?.implementationNotes || "");
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(task?.acceptanceCriteriaItems || []);
+  const defaultDefinitionOfDone = useMemo(
+    () => (definitionOfDoneDefaults ?? []).map((text, index) => ({ index: index + 1, text, checked: false })),
+    [definitionOfDoneDefaults],
+  );
+  const initialDefinitionOfDone = task?.definitionOfDoneItems ?? (isCreateMode ? defaultDefinitionOfDone : []);
+  const [definitionOfDone, setDefinitionOfDone] = useState<AcceptanceCriterion[]>(initialDefinitionOfDone);
 
   // Sidebar metadata (inline edit)
   const [status, setStatus] = useState(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
@@ -78,7 +94,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     plan: task?.implementationPlan || "",
     notes: task?.implementationNotes || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
-  }), [task]);
+    definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
+  }), [task, defaultDefinitionOfDone, isCreateMode]);
 
   const isDirty = useMemo(() => {
     return (
@@ -86,9 +103,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
       description !== baseline.description ||
       plan !== baseline.plan ||
       notes !== baseline.notes ||
-      JSON.stringify(criteria) !== baseline.criteria
+      JSON.stringify(criteria) !== baseline.criteria ||
+      JSON.stringify(definitionOfDone) !== baseline.definitionOfDone
     );
-  }, [title, description, plan, notes, criteria, baseline]);
+  }, [title, description, plan, notes, criteria, definitionOfDone, baseline]);
 
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
@@ -125,6 +143,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setPlan(task?.implementationPlan || "");
     setNotes(task?.implementationNotes || "");
     setCriteria(task?.acceptanceCriteriaItems || []);
+    setDefinitionOfDone(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : []));
     setStatus(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
     setAssignee(task?.assignee || []);
     setLabels(task?.labels || []);
@@ -136,7 +155,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setError(null);
     // Preload tasks for dependency picker
     apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
-  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses]);
+  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone]);
 
   const handleCancelEdit = () => {
     if (isDirty) {
@@ -152,8 +171,103 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setPlan(task?.implementationPlan || "");
       setNotes(task?.implementationNotes || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
+      setDefinitionOfDone(task?.definitionOfDoneItems || []);
       setMode("preview");
     }
+  };
+
+  const normalizeChecklistItems = (items: AcceptanceCriterion[]): AcceptanceCriterion[] => {
+    return items
+      .map((item) => ({ ...item, text: item.text.trim() }))
+      .filter((item) => item.text.length > 0);
+  };
+
+  const buildDefinitionOfDoneCreatePayload = (): TaskUpdatePayload => {
+    const cleanedCurrent = normalizeChecklistItems(definitionOfDone);
+    const defaults = (definitionOfDoneDefaults ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
+    const defaultItems = defaults.map((text, index) => ({ index: index + 1, text, checked: false }));
+    const defaultsMatch =
+      cleanedCurrent.length >= defaultItems.length &&
+      defaultItems.every(
+        (item, index) =>
+          cleanedCurrent[index]?.text === item.text && cleanedCurrent[index]?.checked === false,
+      );
+
+    const disableDefaults = !defaultsMatch;
+    const definitionOfDoneAdd = disableDefaults
+      ? cleanedCurrent.map((item) => item.text)
+      : cleanedCurrent.slice(defaultItems.length).map((item) => item.text);
+
+    const payload: TaskUpdatePayload = {};
+    if (definitionOfDoneAdd.length > 0) {
+      payload.definitionOfDoneAdd = definitionOfDoneAdd;
+    }
+    if (disableDefaults) {
+      payload.disableDefinitionOfDoneDefaults = true;
+    }
+    return payload;
+  };
+
+  const buildDefinitionOfDoneEditPayload = (): TaskUpdatePayload => {
+    const original = task?.definitionOfDoneItems ?? [];
+    const cleanedCurrent = normalizeChecklistItems(definitionOfDone);
+    const originalByIndex = new Map(original.map((item) => [item.index, item]));
+    const currentByIndex = new Map(cleanedCurrent.map((item) => [item.index, item]));
+    const removals = new Set<number>();
+    const additions: string[] = [];
+    const checks: number[] = [];
+    const unchecks: number[] = [];
+
+    let nextIndex = original.reduce((max, item) => Math.max(max, item.index), 0);
+
+    for (const item of cleanedCurrent) {
+      const originalItem = originalByIndex.get(item.index);
+      if (!originalItem) {
+        additions.push(item.text);
+        nextIndex += 1;
+        if (item.checked) {
+          checks.push(nextIndex);
+        }
+        continue;
+      }
+      if (originalItem.text !== item.text) {
+        removals.add(item.index);
+        additions.push(item.text);
+        nextIndex += 1;
+        if (item.checked) {
+          checks.push(nextIndex);
+        }
+        continue;
+      }
+      if (originalItem.checked !== item.checked) {
+        if (item.checked) {
+          checks.push(item.index);
+        } else {
+          unchecks.push(item.index);
+        }
+      }
+    }
+
+    for (const originalItem of original) {
+      if (!currentByIndex.has(originalItem.index)) {
+        removals.add(originalItem.index);
+      }
+    }
+
+    const payload: TaskUpdatePayload = {};
+    if (additions.length > 0) {
+      payload.definitionOfDoneAdd = additions;
+    }
+    if (removals.size > 0) {
+      payload.definitionOfDoneRemove = Array.from(removals);
+    }
+    if (checks.length > 0) {
+      payload.definitionOfDoneCheck = checks;
+    }
+    if (unchecks.length > 0) {
+      payload.definitionOfDoneUncheck = unchecks;
+    }
+    return payload;
   };
 
   const handleSave = async () => {
@@ -168,7 +282,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     }
 
     try {
-      const taskData: Partial<Task> = {
+      const taskData: TaskUpdatePayload = {
         title: title.trim(),
         description,
         implementationPlan: plan,
@@ -183,11 +297,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
       };
 
       if (isCreateMode && onSubmit) {
+        Object.assign(taskData, buildDefinitionOfDoneCreatePayload());
         // Create new task
         await onSubmit(taskData);
         // Only close if successful (no error thrown)
         onClose();
       } else if (task) {
+        Object.assign(taskData, buildDefinitionOfDoneEditPayload());
         // Update existing task
         await apiClient.updateTask(task.id, taskData);
         setMode("preview");
@@ -224,6 +340,23 @@ export const TaskDetailsModal: React.FC<Props> = ({
       // rollback
       setCriteria(criteria);
       console.error("Failed to update criterion", err);
+    }
+  };
+
+  const handleToggleDefinitionOfDone = async (index: number, checked: boolean) => {
+    if (!task) return; // Can't toggle in create mode
+    if (isFromOtherBranch) return; // Can't toggle for cross-branch tasks
+    const next = (definitionOfDone || []).map((c) => (c.index === index ? { ...c, checked } : c));
+    setDefinitionOfDone(next);
+    try {
+      const updates: TaskUpdatePayload = checked
+        ? { definitionOfDoneCheck: [index] }
+        : { definitionOfDoneUncheck: [index] };
+      await apiClient.updateTask(task.id, updates);
+      if (onSaved) await onSaved();
+    } catch (err) {
+      setDefinitionOfDone(definitionOfDone);
+      console.error("Failed to update Definition of Done item", err);
     }
   };
 
@@ -275,6 +408,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   const checkedCount = (criteria || []).filter((c) => c.checked).length;
   const totalCount = (criteria || []).length;
+  const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
+  const definitionTotalCount = (definitionOfDone || []).length;
   const isDoneStatus = (status || "").toLowerCase().includes("done");
 
   const displayId = task?.id ?? "";
@@ -532,6 +667,41 @@ export const TaskDetailsModal: React.FC<Props> = ({
               </ul>
             ) : (
               <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} />
+            )}
+          </div>
+
+          {/* Definition of Done */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <SectionHeader
+              title={`Definition of Done ${definitionTotalCount ? `(${definitionCheckedCount}/${definitionTotalCount})` : ""}`}
+              right={mode === "preview" ? (
+                <span>Toggle to update</span>
+              ) : null}
+            />
+            {mode === "preview" ? (
+              <ul className="space-y-2">
+                {(definitionOfDone || []).map((item) => (
+                  <li key={item.index} className="flex items-start gap-2 rounded-md px-2 py-1">
+                    <input
+                      type="checkbox"
+                      checked={item.checked}
+                      onChange={(e) => void handleToggleDefinitionOfDone(item.index, e.target.checked)}
+                      className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <div className="text-sm text-gray-800 dark:text-gray-100">{item.text}</div>
+                  </li>
+                ))}
+                {definitionTotalCount === 0 && (
+                  <li className="text-sm text-gray-500 dark:text-gray-400">No Definition of Done items</li>
+                )}
+              </ul>
+            ) : (
+              <AcceptanceCriteriaEditor
+                criteria={definitionOfDone}
+                onChange={setDefinitionOfDone}
+                label="Definition of Done"
+                preserveIndices
+              />
             )}
           </div>
 

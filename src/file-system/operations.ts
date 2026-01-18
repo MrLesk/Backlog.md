@@ -975,6 +975,15 @@ ${description || `Milestone: ${title}`}
 							.filter(Boolean);
 					}
 					break;
+				case "definition_of_done":
+					if (value.startsWith("[") && value.endsWith("]")) {
+						const arrayContent = value.slice(1, -1);
+						config.definitionOfDone = arrayContent
+							.split(",")
+							.map((item) => item.trim().replace(/['"]/g, ""))
+							.filter(Boolean);
+					}
+					break;
 				case "date_format":
 					config.dateFormat = value.replace(/['"]/g, "");
 					break;
@@ -1026,6 +1035,7 @@ ${description || `Milestone: ${title}`}
 			statuses: config.statuses || [...DEFAULT_STATUSES],
 			labels: config.labels || [],
 			milestones: config.milestones || [],
+			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
 			maxColumnWidth: config.maxColumnWidth,
@@ -1052,6 +1062,9 @@ ${description || `Milestone: ${title}`}
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			`milestones: [${config.milestones.map((m) => `"${m}"`).join(", ")}]`,
+			...(Array.isArray(config.definitionOfDone)
+				? [`definition_of_done: [${config.definitionOfDone.map((item) => `"${item}"`).join(", ")}]`]
+				: []),
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
 			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),

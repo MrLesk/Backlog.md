@@ -1,6 +1,11 @@
 import matter from "gray-matter";
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
-import { AcceptanceCriteriaManager, extractStructuredSection, STRUCTURED_SECTION_KEYS } from "./structured-sections.ts";
+import {
+	AcceptanceCriteriaManager,
+	DefinitionOfDoneManager,
+	extractStructuredSection,
+	STRUCTURED_SECTION_KEYS,
+} from "./structured-sections.ts";
 
 function normalizeFlowList(prefix: string, rawValue: string): string | null {
 	// Handle inline lists like assignee: [@user, "someone"]
@@ -149,6 +154,7 @@ export function parseTask(content: string): Task {
 
 	// Parse structured acceptance criteria (checked/text/index) from all sections
 	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(rawContent);
+	const structuredDefinitionOfDone: AcceptanceCriterion[] = DefinitionOfDoneManager.parseAllCriteria(rawContent);
 
 	// Parse other sections
 	const descriptionSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.description) || "";
@@ -174,6 +180,7 @@ export function parseTask(content: string): Task {
 		documentation: Array.isArray(frontmatter.documentation) ? frontmatter.documentation.map(String) : [],
 		rawContent,
 		acceptanceCriteriaItems: structuredCriteria,
+		definitionOfDoneItems: structuredDefinitionOfDone,
 		description: descriptionSection,
 		implementationPlan: planSection,
 		implementationNotes: notesSection,

@@ -24,6 +24,8 @@ export type TaskCreateArgs = {
 	milestone?: string;
 	parentTaskId?: string;
 	acceptanceCriteria?: string[];
+	definitionOfDoneAdd?: string[];
+	disableDefinitionOfDoneDefaults?: boolean;
 	dependencies?: string[];
 	references?: string[];
 	documentation?: string[];
@@ -88,6 +90,8 @@ export class TaskHandlers {
 				documentation: args.documentation,
 				parentTaskId: args.parentTaskId,
 				acceptanceCriteria,
+				definitionOfDoneAdd: args.definitionOfDoneAdd,
+				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
 			});
 
 			return await formatTaskCallResult(createdTask);

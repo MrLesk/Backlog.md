@@ -1,7 +1,12 @@
 import matter from "gray-matter";
 import type { Decision, Document, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { AcceptanceCriteriaManager, getStructuredSections, updateStructuredSections } from "./structured-sections.ts";
+import {
+	AcceptanceCriteriaManager,
+	DefinitionOfDoneManager,
+	getStructuredSections,
+	updateStructuredSections,
+} from "./structured-sections.ts";
 
 export function serializeTask(task: Task): string {
 	normalizeAssignee(task);
@@ -34,6 +39,13 @@ export function serializeTask(task: Task): string {
 		const hasExistingStructuredCriteria = existingCriteria.length > 0;
 		if (task.acceptanceCriteriaItems.length > 0 || hasExistingStructuredCriteria) {
 			contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
+		}
+	}
+	if (Array.isArray(task.definitionOfDoneItems)) {
+		const existingDefinitionOfDone = DefinitionOfDoneManager.parseAllCriteria(task.rawContent ?? "");
+		const hasExistingDefinitionOfDone = existingDefinitionOfDone.length > 0;
+		if (task.definitionOfDoneItems.length > 0 || hasExistingDefinitionOfDone) {
+			contentBody = DefinitionOfDoneManager.updateContent(contentBody, task.definitionOfDoneItems);
 		}
 	}
 	if (typeof task.implementationPlan === "string") {

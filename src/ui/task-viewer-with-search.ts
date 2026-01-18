@@ -6,6 +6,7 @@ import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import {
 	buildAcceptanceCriteriaItems,
+	buildDefinitionOfDoneItems,
 	formatDateForDisplay,
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
@@ -1060,6 +1061,28 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 		bodyContent.push(formattedCriteria.join("\n"));
 	} else {
 		bodyContent.push("{gray-fg}No acceptance criteria defined{/}");
+	}
+	bodyContent.push("");
+
+	bodyContent.push(formatHeading("Definition of Done", 2));
+	const definitionItems = buildDefinitionOfDoneItems(task);
+	if (definitionItems.length > 0) {
+		const formattedDefinition = definitionItems.map((item) =>
+			formatChecklistItem(
+				{
+					text: transformCodePaths(item.text),
+					checked: item.checked,
+				},
+				{
+					padding: " ",
+					checkedSymbol: "{green-fg}✓{/}",
+					uncheckedSymbol: "{gray-fg}○{/}",
+				},
+			),
+		);
+		bodyContent.push(formattedDefinition.join("\n"));
+	} else {
+		bodyContent.push("{gray-fg}No Definition of Done items defined{/}");
 	}
 	bodyContent.push("");
 
