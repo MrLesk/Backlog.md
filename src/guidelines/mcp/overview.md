@@ -56,9 +56,9 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 - `task_list` — list tasks with optional filtering by status, assignee, or labels
 - `task_search` — search tasks by title and description
-- `task_view` — read full task context (description, plan, notes, acceptance criteria, Definition of Done)
+- `task_view` — read full task context (description, plan, notes, final summary, acceptance criteria, Definition of Done)
 - `task_create` — create new tasks with description, acceptance criteria, and Definition of Done defaults (`definitionOfDoneAdd`, `disableDefinitionOfDoneDefaults`)
-- `task_edit` — update task metadata, status, plan, notes, acceptance criteria, Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`), and dependencies
+- `task_edit` — update task metadata, status, plan, notes, final summary, acceptance criteria, Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`), and dependencies
 - `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
 - `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Note: archived task IDs can be reused by new tasks (soft delete behavior).
 

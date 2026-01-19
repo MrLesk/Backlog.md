@@ -1,9 +1,11 @@
 ---
 id: BACK-367.01
 title: CLI and plain text formatter integration for Final Summary field
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2026-01-18 12:19'
+updated_date: '2026-01-19 19:16'
 labels:
   - cli
   - enhancement
@@ -53,11 +55,44 @@ Update `src/formatters/task-plain-text.ts` to display the Final Summary section:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CLI `task create` supports `--final-summary <text>` flag
-- [ ] #2 CLI `task edit` supports `--final-summary <text>` flag (set/replace)
-- [ ] #3 CLI `task edit` supports `--append-final-summary <text>` flag
-- [ ] #4 CLI `task edit` supports `--clear-final-summary` flag
-- [ ] #5 Plain text formatter displays Final Summary section after Implementation Notes when present
-- [ ] #6 Plain text formatter omits Final Summary section when field is empty
-- [ ] #7 CLI tests in `src/test/cli-final-summary.test.ts` cover all flag combinations
+- [x] #1 CLI `task create` supports `--final-summary <text>` flag
+- [x] #2 CLI `task edit` supports `--final-summary <text>` flag (set/replace)
+- [x] #3 CLI `task edit` supports `--append-final-summary <text>` flag
+- [x] #4 CLI `task edit` supports `--clear-final-summary` flag
+- [x] #5 Plain text formatter displays Final Summary section after Implementation Notes when present
+- [x] #6 Plain text formatter omits Final Summary section when field is empty
+- [x] #7 CLI tests in `src/test/cli-final-summary.test.ts` cover all flag combinations
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+- Review CLI flags for notes/plan in `src/cli.ts` and mirror patterns for `--final-summary`, `--append-final-summary`, `--clear-final-summary` in create/edit flows.
+- Wire new args through `src/types/task-edit-args.ts` and `src/utils/task-edit-builder.ts` to map to `finalSummary`, `appendFinalSummary`, `clearFinalSummary`.
+- Update `src/formatters/task-plain-text.ts` to render Final Summary after Implementation Notes only when present.
+- Add CLI-focused tests in `src/test/cli-final-summary.test.ts` and/or extend existing CLI plain output tests to cover set/append/clear and section ordering.
+- Run targeted tests: `bun test src/test/cli-final-summary.test.ts` (plus any updated test files).
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Summary: Added CLI flags for final summary on create/edit, wired task edit inputs, and surfaced Final Summary in plain text output. Added CLI tests for create/set/append/clear and plain output ordering.
+
+Tests: bun test src/test/cli-final-summary.test.ts
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+## Summary
+CLI now supports writing and viewing Final Summary in tasks.
+
+## Changes
+- Added `--final-summary`, `--append-final-summary`, and `--clear-final-summary` to task create/edit.
+- Rendered Final Summary in plain-text task output after Notes.
+- Added CLI coverage to verify flag behavior and output rendering.
+
+## Testing
+- Covered by the project test run in the parent task: `bun test`.
+<!-- SECTION:FINAL_SUMMARY:END -->

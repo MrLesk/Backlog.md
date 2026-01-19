@@ -609,6 +609,7 @@ export class Core {
 			acceptanceCriteriaItems?: import("../types/index.ts").AcceptanceCriterion[];
 			implementationPlan?: string;
 			implementationNotes?: string;
+			finalSummary?: string;
 			milestone?: string;
 		},
 		autoCommit?: boolean,
@@ -640,6 +641,7 @@ export class Core {
 				}),
 			...(typeof taskData.implementationPlan === "string" && { implementationPlan: taskData.implementationPlan }),
 			...(typeof taskData.implementationNotes === "string" && { implementationNotes: taskData.implementationNotes }),
+			...(typeof taskData.finalSummary === "string" && { finalSummary: taskData.finalSummary }),
 		};
 
 		// Save as draft or task based on status
@@ -729,6 +731,7 @@ export class Core {
 			...(typeof input.description === "string" && { description: input.description }),
 			...(typeof input.implementationPlan === "string" && { implementationPlan: input.implementationPlan }),
 			...(typeof input.implementationNotes === "string" && { implementationNotes: input.implementationNotes }),
+			...(typeof input.finalSummary === "string" && { finalSummary: input.finalSummary }),
 			...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
 			...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 		};
@@ -1103,6 +1106,26 @@ export class Core {
 			const { value, changed } = appendBlock(task.implementationNotes, notesAppends);
 			if (changed) {
 				task.implementationNotes = value;
+				mutated = true;
+			}
+		}
+
+		if (input.clearFinalSummary) {
+			if (task.finalSummary !== undefined) {
+				task.finalSummary = "";
+				mutated = true;
+			}
+		}
+
+		applyStringField(input.finalSummary, task.finalSummary, (next) => {
+			task.finalSummary = next;
+		});
+
+		const finalSummaryAppends = sanitizeAppendInput(input.appendFinalSummary);
+		if (finalSummaryAppends.length > 0) {
+			const { value, changed } = appendBlock(task.finalSummary, finalSummaryAppends);
+			if (changed) {
+				task.finalSummary = value;
 				mutated = true;
 			}
 		}

@@ -1,12 +1,13 @@
 import type { AcceptanceCriterion } from "../types/index.ts";
 import { getStructuredSectionTitles } from "./section-titles.ts";
 
-export type StructuredSectionKey = "description" | "implementationPlan" | "implementationNotes";
+export type StructuredSectionKey = "description" | "implementationPlan" | "implementationNotes" | "finalSummary";
 
 export const STRUCTURED_SECTION_KEYS: Record<StructuredSectionKey, StructuredSectionKey> = {
 	description: "description",
 	implementationPlan: "implementationPlan",
 	implementationNotes: "implementationNotes",
+	finalSummary: "finalSummary",
 };
 
 interface SectionConfig {
@@ -18,9 +19,15 @@ const SECTION_CONFIG: Record<StructuredSectionKey, SectionConfig> = {
 	description: { title: "Description", markerId: "DESCRIPTION" },
 	implementationPlan: { title: "Implementation Plan", markerId: "PLAN" },
 	implementationNotes: { title: "Implementation Notes", markerId: "NOTES" },
+	finalSummary: { title: "Final Summary", markerId: "FINAL_SUMMARY" },
 };
 
-const SECTION_INSERTION_ORDER: StructuredSectionKey[] = ["description", "implementationPlan", "implementationNotes"];
+const SECTION_INSERTION_ORDER: StructuredSectionKey[] = [
+	"description",
+	"implementationPlan",
+	"implementationNotes",
+	"finalSummary",
+];
 
 const ACCEPTANCE_CRITERIA_SECTION_HEADER = "## Acceptance Criteria";
 const ACCEPTANCE_CRITERIA_TITLE = ACCEPTANCE_CRITERIA_SECTION_HEADER.replace(/^##\s*/, "");
@@ -163,6 +170,51 @@ function sentinelBlockRegex(key: StructuredSectionKey): RegExp {
 	return new RegExp(`## ${escapeForRegex(title)}\\s*\\n${begin}\\s*\\n([\\s\\S]*?)${end}`, "i");
 }
 
+interface SectionRange {
+	key: StructuredSectionKey;
+	start: number;
+	end: number;
+	kind: "sentinel" | "legacy";
+}
+
+function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+	return aStart < bEnd && bStart < aEnd;
+}
+
+function isIndexWithinRanges(index: number, ranges: SectionRange[]): boolean {
+	return ranges.some((range) => index >= range.start && index < range.end);
+}
+
+function findMatchOutsideRanges(regex: RegExp, content: string, ranges: SectionRange[]): RegExpExecArray | undefined {
+	const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
+	const globalRegex = new RegExp(regex.source, flags);
+	for (const match of content.matchAll(globalRegex)) {
+		const index = match.index ?? 0;
+		if (!isIndexWithinRanges(index, ranges)) return match;
+	}
+	return undefined;
+}
+
+function getStructuredSectionRanges(content: string): SectionRange[] {
+	const ranges: SectionRange[] = [];
+	for (const key of SECTION_INSERTION_ORDER) {
+		const sentinelRegex = new RegExp(sentinelBlockRegex(key).source, "gi");
+		for (const match of content.matchAll(sentinelRegex)) {
+			const index = match.index ?? 0;
+			ranges.push({ key, start: index, end: index + match[0].length, kind: "sentinel" });
+		}
+
+		const legacyRegex = legacySectionRegex(getConfig(key).title, "gi");
+		for (const match of content.matchAll(legacyRegex)) {
+			const index = match.index ?? 0;
+			const end = index + match[0].length;
+			if (ranges.some((range) => rangesOverlap(range.start, range.end, index, end))) continue;
+			ranges.push({ key, start: index, end, kind: "legacy" });
+		}
+	}
+	return ranges;
+}
+
 function stripSectionInstances(content: string, key: StructuredSectionKey): string {
 	const beginEsc = escapeForRegex(getBeginMarker(key));
 	const endEsc = escapeForRegex(getEndMarker(key));
@@ -209,11 +261,12 @@ function appendBlock(content: string, block: string): string {
 
 export function extractStructuredSection(content: string, key: StructuredSectionKey): string | undefined {
 	const src = content.replace(/\r\n/g, "\n");
-	const sentinelMatch = sentinelBlockRegex(key).exec(src);
+	const otherRanges = getStructuredSectionRanges(src).filter((range) => range.key !== key);
+	const sentinelMatch = findMatchOutsideRanges(sentinelBlockRegex(key), src, otherRanges);
 	if (sentinelMatch?.[1]) {
 		return sentinelMatch[1].trim() || undefined;
 	}
-	const legacyMatch = sectionHeaderRegex(key).exec(src);
+	const legacyMatch = findMatchOutsideRanges(sectionHeaderRegex(key), src, otherRanges);
 	return legacyMatch?.[1]?.trim() || undefined;
 }
 
@@ -221,6 +274,7 @@ export interface StructuredSectionValues {
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
+	finalSummary?: string;
 }
 
 interface SectionValues extends StructuredSectionValues {}
@@ -237,6 +291,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	const description = sections.description?.trim() || "";
 	const plan = sections.implementationPlan?.trim() || "";
 	const notes = sections.implementationNotes?.trim() || "";
+	const finalSummary = sections.finalSummary?.trim() || "";
 
 	let tail = working;
 
@@ -266,6 +321,22 @@ export function updateStructuredSections(content: string, sections: SectionValue
 		}
 	}
 
+	if (finalSummary) {
+		const finalBlock = buildSectionBlock("finalSummary", finalSummary);
+		let res = insertAfterSection(tail, getConfig("implementationNotes").title, finalBlock);
+		if (!res.inserted) {
+			res = insertAfterSection(tail, getConfig("implementationPlan").title, finalBlock);
+		}
+		if (!res.inserted) {
+			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, finalBlock);
+		}
+		if (!res.inserted) {
+			tail = appendBlock(tail, finalBlock);
+		} else {
+			tail = res.content;
+		}
+	}
+
 	let output = tail;
 	if (description) {
 		const descriptionBlock = buildSectionBlock("description", description);
@@ -281,6 +352,7 @@ export function getStructuredSections(content: string): StructuredSectionValues 
 		description: extractStructuredSection(content, "description") || undefined,
 		implementationPlan: extractStructuredSection(content, "implementationPlan") || undefined,
 		implementationNotes: extractStructuredSection(content, "implementationNotes") || undefined,
+		finalSummary: extractStructuredSection(content, "finalSummary") || undefined,
 	};
 }
 

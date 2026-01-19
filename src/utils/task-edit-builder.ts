@@ -138,6 +138,19 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.clearImplementationNotes = true;
 	}
 
+	if (typeof args.finalSummary === "string") {
+		updateInput.finalSummary = args.finalSummary;
+	}
+
+	const finalSummaryAppends = sanitizeAppend(args.finalSummaryAppend);
+	if (finalSummaryAppends) {
+		updateInput.appendFinalSummary = finalSummaryAppends;
+	}
+
+	if (args.finalSummaryClear) {
+		updateInput.clearFinalSummary = true;
+	}
+
 	const criteriaSet = toAcceptanceCriteriaEntries(args.acceptanceCriteriaSet);
 	if (criteriaSet) {
 		updateInput.acceptanceCriteria = criteriaSet;

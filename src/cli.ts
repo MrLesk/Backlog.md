@@ -1268,6 +1268,7 @@ taskCmd
 	.option("--no-dod-defaults", "disable Definition of Done defaults")
 	.option("--plan <text>", "add implementation plan")
 	.option("--notes <text>", "add implementation notes")
+	.option("--final-summary <text>", "add final summary")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
@@ -1352,6 +1353,11 @@ taskCmd
 		// Handle implementation notes
 		if (options.notes) {
 			task.implementationNotes = String(options.notes);
+		}
+
+		// Handle final summary
+		if (options.finalSummary) {
+			task.finalSummary = String(options.finalSummary);
 		}
 
 		// Workaround for bun compile issue with commander options
@@ -1872,11 +1878,18 @@ taskCmd
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "set implementation plan")
 	.option("--notes <text>", "set implementation notes (replaces existing)")
+	.option("--final-summary <text>", "set final summary (replaces existing)")
 	.option(
 		"--append-notes <text>",
 		"append to implementation notes (can be used multiple times)",
 		createMultiValueAccumulator(),
 	)
+	.option(
+		"--append-final-summary <text>",
+		"append to final summary (can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option("--clear-final-summary", "remove final summary")
 	.option(
 		"--depends-on <taskIds>",
 		"set task dependencies (comma-separated or use multiple times)",
@@ -2028,6 +2041,7 @@ taskCmd
 				: undefined;
 
 		const notesAppendValues = toStringArray(options.appendNotes);
+		const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
 
 		const editArgs: TaskEditArgs = {};
 		if (options.title) {
@@ -2075,6 +2089,15 @@ taskCmd
 		}
 		if (notesAppendValues.length > 0) {
 			editArgs.notesAppend = notesAppendValues;
+		}
+		if (typeof options.finalSummary === "string") {
+			editArgs.finalSummary = String(options.finalSummary);
+		}
+		if (finalSummaryAppendValues.length > 0) {
+			editArgs.finalSummaryAppend = finalSummaryAppendValues;
+		}
+		if (options.clearFinalSummary) {
+			editArgs.finalSummaryClear = true;
 		}
 		if (acceptanceAdditions.length > 0) {
 			editArgs.acceptanceCriteriaAdd = acceptanceAdditions;

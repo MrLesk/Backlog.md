@@ -54,6 +54,9 @@ export function serializeTask(task: Task): string {
 	if (typeof task.implementationNotes === "string") {
 		contentBody = updateTaskImplementationNotes(contentBody, task.implementationNotes);
 	}
+	if (typeof task.finalSummary === "string") {
+		contentBody = updateTaskFinalSummary(contentBody, task.finalSummary);
+	}
 
 	const serialized = matter.stringify(contentBody, frontmatter);
 	// Ensure there's a blank line between frontmatter and content
@@ -120,6 +123,7 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 		description: sections.description ?? "",
 		implementationPlan: plan,
 		implementationNotes: sections.implementationNotes ?? "",
+		finalSummary: sections.finalSummary ?? "",
 	});
 }
 
@@ -129,6 +133,17 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 		description: sections.description ?? "",
 		implementationPlan: sections.implementationPlan ?? "",
 		implementationNotes: notes,
+		finalSummary: sections.finalSummary ?? "",
+	});
+}
+
+export function updateTaskFinalSummary(content: string, summary: string): string {
+	const sections = getStructuredSections(content);
+	return updateStructuredSections(content, {
+		description: sections.description ?? "",
+		implementationPlan: sections.implementationPlan ?? "",
+		implementationNotes: sections.implementationNotes ?? "",
+		finalSummary: summary,
 	});
 }
 
@@ -147,6 +162,7 @@ export function appendTaskImplementationNotes(content: string, notesChunks: stri
 		description: sections.description ?? "",
 		implementationPlan: sections.implementationPlan ?? "",
 		implementationNotes: combined,
+		finalSummary: sections.finalSummary ?? "",
 	});
 }
 
@@ -156,5 +172,6 @@ export function updateTaskDescription(content: string, description: string): str
 		description,
 		implementationPlan: sections.implementationPlan ?? "",
 		implementationNotes: sections.implementationNotes ?? "",
+		finalSummary: sections.finalSummary ?? "",
 	});
 }

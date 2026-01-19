@@ -160,6 +160,7 @@ export function parseTask(content: string): Task {
 	const descriptionSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.description) || "";
 	const planSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationPlan) || undefined;
 	const notesSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationNotes) || undefined;
+	const finalSummarySection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary) || undefined;
 
 	return {
 		id: String(frontmatter.id || ""),
@@ -184,6 +185,7 @@ export function parseTask(content: string): Task {
 		description: descriptionSection,
 		implementationPlan: planSection,
 		implementationNotes: notesSection,
+		finalSummary: finalSummarySection,
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
 		priority: validatedPriority,

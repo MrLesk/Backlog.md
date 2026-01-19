@@ -172,5 +172,13 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push("");
 	}
 
+	const finalSummary = task.finalSummary?.trim();
+	if (finalSummary) {
+		lines.push("Final Summary:");
+		lines.push("-".repeat(50));
+		lines.push(transformCodePathsPlain(finalSummary));
+		lines.push("");
+	}
+
 	return lines.join("\n");
 }

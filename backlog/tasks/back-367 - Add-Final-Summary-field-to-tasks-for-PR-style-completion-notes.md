@@ -1,10 +1,11 @@
 ---
 id: BACK-367
 title: Add Final Summary field to tasks for PR-style completion notes
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2026-01-18 12:16'
-updated_date: '2026-01-18 12:18'
+updated_date: '2026-01-19 19:16'
 labels:
   - enhancement
   - core
@@ -94,15 +95,15 @@ The field should follow the **markdown section pattern** used by Description, Im
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Task type has `finalSummary?: string` field in Task, TaskCreateInput, and TaskUpdateInput interfaces
-- [ ] #2 Task edit args include `finalSummary`, `appendFinalSummary`, and `clearFinalSummary` options in `src/types/task-edit-args.ts`
-- [ ] #3 Section config added to `src/markdown/section-titles.ts` with title "Final Summary" and `FINAL_SUMMARY` key
-- [ ] #4 Markdown section uses `## Final Summary` header with `<!-- SECTION:FINAL_SUMMARY:BEGIN/END -->` markers
-- [ ] #5 Final Summary section is ordered last (after Implementation Notes) in `src/markdown/structured-sections.ts`
-- [ ] #6 Parser extracts finalSummary from markdown sections in `src/markdown/parser.ts`
-- [ ] #7 Serializer writes finalSummary as a markdown section (not frontmatter) in `src/markdown/serializer.ts`
-- [ ] #8 Core class handles finalSummary in `createTaskFromInput` and `updateTaskFromInput` (set, append, clear operations)
-- [ ] #9 Unit tests in `src/test/final-summary.test.ts` cover: create, set/append/clear edit operations, markdown persistence with correct section format, section ordering
+- [x] #1 Task type has `finalSummary?: string` field in Task, TaskCreateInput, and TaskUpdateInput interfaces
+- [x] #2 Task edit args include `finalSummary`, `appendFinalSummary`, and `clearFinalSummary` options in `src/types/task-edit-args.ts`
+- [x] #3 Section config added to `src/markdown/section-titles.ts` with title "Final Summary" and `FINAL_SUMMARY` key
+- [x] #4 Markdown section uses `## Final Summary` header with `<!-- SECTION:FINAL_SUMMARY:BEGIN/END -->` markers
+- [x] #5 Final Summary section is ordered last (after Implementation Notes) in `src/markdown/structured-sections.ts`
+- [x] #6 Parser extracts finalSummary from markdown sections in `src/markdown/parser.ts`
+- [x] #7 Serializer writes finalSummary as a markdown section (not frontmatter) in `src/markdown/serializer.ts`
+- [x] #8 Core class handles finalSummary in `createTaskFromInput` and `updateTaskFromInput` (set, append, clear operations)
+- [x] #9 Unit tests in `src/test/final-summary.test.ts` cover: create, set/append/clear edit operations, markdown persistence with correct section format, section ordering
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -172,4 +173,45 @@ bunx tsc --noEmit
 bun run check .
 bun test src/test/final-summary.test.ts
 ```
+
+### Team Lead Approval (2026-01-19)
+
+- Approved plan above; proceed sequentially: BACK-367 (core) → BACK-367.01 (CLI/plain) → BACK-367.02 (MCP) → BACK-367.03 (Web UI) → BACK-367.04 (TUI)
+- Owner: @codex for all tasks
+- Notes: Follow existing `implementationNotes` patterns for append/clear semantics; omit empty Final Summary sections in serialization and views.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Summary: Added Final Summary field to task types, structured section parsing/serialization, and core update logic (set/append/clear) with ordering after Implementation Notes. Added core tests for create/edit/ordering and wired new section into serializer helpers.
+
+Tests: bun test src/test/final-summary.test.ts
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+## Summary
+Added a first-class Final Summary section to tasks and surfaced it across CLI, MCP, web UI, and TUI so agents can write PR-style completion notes.
+
+## Changes
+| Surface | What changed |
+| --- | --- |
+| Core | Added `finalSummary` to task types, parsing, and serialization with section ordering after Notes. |
+| CLI | Added create/edit flags and plain-text rendering for Final Summary. |
+| MCP | Extended task schemas and wired create handler support. |
+| Web | Added Final Summary edit/preview in Task Details modal and wired server create/update. |
+| TUI | Rendered Final Summary in the task viewer. |
+
+- Added targeted tests across core parsing/serialization, CLI, MCP, web UI, and TUI.
+- Updated README and agent/MCP guidelines to explain Final Summary usage and expectations.
+
+## Testing
+- `bunx tsc --noEmit`
+- `bun run check .`
+- `bun test`
+
+## Notes
+Final Summary is intended to be a PR-style description. Avoid one-line summaries; include key changes, rationale, and test results.
+<!-- SECTION:FINAL_SUMMARY:END -->
