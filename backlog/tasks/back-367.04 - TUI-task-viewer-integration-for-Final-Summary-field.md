@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-18 12:19'
-updated_date: '2026-01-19 18:27'
+updated_date: '2026-01-19 19:16'
 labels:
   - tui
   - enhancement
@@ -75,3 +75,17 @@ Summary: Added Final Summary rendering after Implementation Notes in the TUI tas
 
 Tests: bun test src/test/tui-final-summary.test.ts
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+## Summary
+TUI task viewer now renders Final Summary below Notes.
+
+## Changes
+- Added Final Summary rendering in the task viewer layout.
+- Ensured ordering matches CLI/web output.
+
+## Testing
+- Covered by the project test run in the parent task: `bun test`.
+<!-- SECTION:FINAL_SUMMARY:END -->

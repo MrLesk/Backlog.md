@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-18 12:16'
-updated_date: '2026-01-19 18:27'
+updated_date: '2026-01-19 19:16'
 labels:
   - enhancement
   - core
@@ -188,3 +188,30 @@ Summary: Added Final Summary field to task types, structured section parsing/ser
 
 Tests: bun test src/test/final-summary.test.ts
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+## Summary
+Added a first-class Final Summary section to tasks and surfaced it across CLI, MCP, web UI, and TUI so agents can write PR-style completion notes.
+
+## Changes
+| Surface | What changed |
+| --- | --- |
+| Core | Added `finalSummary` to task types, parsing, and serialization with section ordering after Notes. |
+| CLI | Added create/edit flags and plain-text rendering for Final Summary. |
+| MCP | Extended task schemas and wired create handler support. |
+| Web | Added Final Summary edit/preview in Task Details modal and wired server create/update. |
+| TUI | Rendered Final Summary in the task viewer. |
+
+- Added targeted tests across core parsing/serialization, CLI, MCP, web UI, and TUI.
+- Updated README and agent/MCP guidelines to explain Final Summary usage and expectations.
+
+## Testing
+- `bunx tsc --noEmit`
+- `bun run check .`
+- `bun test`
+
+## Notes
+Final Summary is intended to be a PR-style description. Avoid one-line summaries; include key changes, rationale, and test results.
+<!-- SECTION:FINAL_SUMMARY:END -->

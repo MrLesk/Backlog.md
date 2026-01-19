@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-18 12:19'
-updated_date: '2026-01-19 18:27'
+updated_date: '2026-01-19 19:16'
 labels:
   - mcp
   - enhancement
@@ -84,3 +84,18 @@ Summary: Added finalSummary fields to MCP task schemas and handlers, updated tas
 
 Tests: bun test src/test/mcp-final-summary.test.ts
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+## Summary
+MCP task schemas and handlers now carry Final Summary data.
+
+## Changes
+- Added `finalSummary` fields to MCP task create/edit schema generation.
+- Wired task create handler to persist Final Summary content.
+- Added MCP tests to verify schema and handler behavior.
+
+## Testing
+- Covered by the project test run in the parent task: `bun test`.
+<!-- SECTION:FINAL_SUMMARY:END -->

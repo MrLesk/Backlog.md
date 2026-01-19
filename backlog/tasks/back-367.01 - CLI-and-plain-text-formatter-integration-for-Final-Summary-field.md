@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-18 12:19'
-updated_date: '2026-01-19 18:27'
+updated_date: '2026-01-19 19:16'
 labels:
   - cli
   - enhancement
@@ -81,3 +81,18 @@ Summary: Added CLI flags for final summary on create/edit, wired task edit input
 
 Tests: bun test src/test/cli-final-summary.test.ts
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+## Summary
+CLI now supports writing and viewing Final Summary in tasks.
+
+## Changes
+- Added `--final-summary`, `--append-final-summary`, and `--clear-final-summary` to task create/edit.
+- Rendered Final Summary in plain-text task output after Notes.
+- Added CLI coverage to verify flag behavior and output rendering.
+
+## Testing
+- Covered by the project test run in the parent task: `bun test`.
+<!-- SECTION:FINAL_SUMMARY:END -->

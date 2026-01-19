@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-18 12:19'
-updated_date: '2026-01-19 18:27'
+updated_date: '2026-01-19 19:16'
 labels:
   - web
   - enhancement
@@ -83,3 +83,18 @@ Summary: Added Final Summary state and editor to TaskDetailsModal, hid section w
 
 Tests: bun test src/test/web-task-details-modal-final-summary.test.tsx
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+## Summary
+Web UI exposes Final Summary for viewing and editing in Task Details.
+
+## Changes
+- Added Final Summary editor + preview in the Task Details modal.
+- Wired server create/update to accept `finalSummary` and return it.
+- Added UI tests to verify editing flow and rendering.
+
+## Testing
+- Covered by the project test run in the parent task: `bun test`.
+<!-- SECTION:FINAL_SUMMARY:END -->
