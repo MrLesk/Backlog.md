@@ -548,7 +548,7 @@ Invalid content`,
 				rawContent: "Updated content",
 			});
 
-			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir }));
+			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir, followSymlinks: true }));
 			expect(docFiles).toHaveLength(1);
 			expect(docFiles[0]).toBe("doc-1 - API-Guide-Updated.md");
 		});
@@ -595,7 +595,7 @@ Invalid content`,
 				rawContent: "Content",
 			});
 
-			const canonicalFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir }));
+			const canonicalFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir, followSymlinks: true }));
 			expect(canonicalFiles.some((file) => file.startsWith("doc-0009"))).toBe(true);
 		});
 	});

@@ -255,7 +255,7 @@ export class FileSystem {
 
 		let taskFiles: string[];
 		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: tasksDir }));
+			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: tasksDir, followSymlinks: true }));
 		} catch (_error) {
 			return [];
 		}
@@ -302,7 +302,7 @@ export class FileSystem {
 
 		let taskFiles: string[];
 		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: completedDir }));
+			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: completedDir, followSymlinks: true }));
 		} catch (_error) {
 			return [];
 		}
@@ -339,7 +339,7 @@ export class FileSystem {
 
 		let taskFiles: string[];
 		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: archiveTasksDir }));
+			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: archiveTasksDir, followSymlinks: true }));
 		} catch (_error) {
 			return [];
 		}
@@ -415,7 +415,7 @@ export class FileSystem {
 			const archiveDraftsDir = await this.getArchiveDraftsDir();
 
 			// Find draft file with draft- prefix
-			const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir }));
+			const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
 			const normalizedId = normalizeId(draftId, "draft");
 			const filenameId = idForFilename(normalizedId);
 			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
@@ -520,7 +520,7 @@ export class FileSystem {
 		try {
 			// Find existing draft file with same ID but possibly different filename (e.g., title changed)
 			const filenameId = idForFilename(draftId);
-			const existingFiles = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir }));
+			const existingFiles = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
 			const existingFile = existingFiles.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
 			if (existingFile && existingFile !== filename) {
 				await unlink(join(draftsDir, existingFile));
@@ -538,7 +538,7 @@ export class FileSystem {
 		try {
 			const draftsDir = await this.getDraftsDir();
 			// Search for draft files with draft- prefix
-			const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir }));
+			const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
 			const normalizedId = normalizeId(draftId, "draft");
 			const filenameId = idForFilename(normalizedId);
 
@@ -558,7 +558,7 @@ export class FileSystem {
 	async listDrafts(): Promise<Task[]> {
 		try {
 			const draftsDir = await this.getDraftsDir();
-			const taskFiles = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir }));
+			const taskFiles = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
 
 			const tasks: Task[] = [];
 			for (const file of taskFiles) {
@@ -583,7 +583,7 @@ export class FileSystem {
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
 
-		const matches = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir }));
+		const matches = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
 		for (const match of matches) {
 			if (match === filename) continue;
 			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
@@ -601,7 +601,7 @@ export class FileSystem {
 	async loadDecision(decisionId: string): Promise<Decision | null> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
-			const files = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir }));
+			const files = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
 
 			// Normalize ID - remove "decision-" prefix if present
 			const normalizedId = decisionId.replace(/^decision-/, "");
@@ -634,7 +634,7 @@ export class FileSystem {
 		await this.ensureDirectoryExists(dirname(filepath));
 
 		const glob = new Bun.Glob("**/doc-*.md");
-		const existingMatches = await Array.fromAsync(glob.scan({ cwd: docsDir }));
+		const existingMatches = await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }));
 		const matchesForId = existingMatches.filter((relative) => {
 			const base = relative.split("/").pop() || relative;
 			const [candidateId] = base.split(" - ");
@@ -681,7 +681,7 @@ export class FileSystem {
 	async listDecisions(): Promise<Decision[]> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
-			const decisionFiles = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir }));
+			const decisionFiles = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
 			const decisions: Decision[] = [];
 			for (const file of decisionFiles) {
 				// Filter out README files as they're just instruction files
@@ -703,7 +703,7 @@ export class FileSystem {
 			const docsDir = await this.getDocsDir();
 			// Recursively include all markdown files under docs, excluding README.md variants
 			const glob = new Bun.Glob("**/*.md");
-			const docFiles = await Array.fromAsync(glob.scan({ cwd: docsDir }));
+			const docFiles = await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }));
 			const docs: Document[] = [];
 			for (const file of docFiles) {
 				const base = file.split("/").pop() || file;
@@ -737,7 +737,7 @@ export class FileSystem {
 	async listMilestones(): Promise<Milestone[]> {
 		try {
 			const milestonesDir = await this.getMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
 			const milestones: Milestone[] = [];
 			for (const file of milestoneFiles) {
 				// Filter out README files
@@ -758,7 +758,7 @@ export class FileSystem {
 	async listArchivedMilestones(): Promise<Milestone[]> {
 		try {
 			const milestonesDir = await this.getArchiveMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
 			const milestones: Milestone[] = [];
 			for (const file of milestoneFiles) {
 				if (file.toLowerCase() === "readme.md") {
@@ -777,7 +777,7 @@ export class FileSystem {
 	async loadMilestone(id: string): Promise<Milestone | null> {
 		try {
 			const milestonesDir = await this.getMilestonesDir();
-			const files = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const files = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
 
 			// Normalize ID - remove "m-" prefix if present
 			const normalizedId = id.replace(/^m-/, "");
@@ -802,7 +802,7 @@ export class FileSystem {
 		await mkdir(milestonesDir, { recursive: true });
 
 		// Find next available milestone ID
-		const existingFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+		const existingFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
 		const existingIds = existingFiles
 			.map((f) => {
 				const match = f.match(/^m-(\d+)/);
@@ -856,7 +856,7 @@ ${description || `Milestone: ${title}`}
 
 		try {
 			const milestonesDir = await this.getMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir }));
+			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
 			const candidateKeys = new Set<string>([normalized]);
 			if (normalized.startsWith("m-")) {
 				candidateKeys.add(normalized.slice(2));

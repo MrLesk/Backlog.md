@@ -35,7 +35,7 @@ export async function migrateDraftPrefixes(fs: FileSystem): Promise<void> {
 	// Find all task-*.md files in drafts folder
 	let taskFiles: string[];
 	try {
-		taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: draftsDir }));
+		taskFiles = await Array.fromAsync(new Bun.Glob("task-*.md").scan({ cwd: draftsDir, followSymlinks: true }));
 	} catch {
 		// Drafts directory doesn't exist or other error - nothing to migrate
 		taskFiles = [];

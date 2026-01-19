@@ -150,7 +150,7 @@ describe("ContentStore", () => {
 
 		const decisionsDir = filesystem.decisionsDir;
 		const decisionFiles: string[] = [];
-		for await (const file of new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir })) {
+		for await (const file of new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true })) {
 			decisionFiles.push(file);
 		}
 		const decisionFile = decisionFiles.find((file) => file.startsWith("decision-1"));
