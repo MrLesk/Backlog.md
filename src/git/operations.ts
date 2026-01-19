@@ -1,5 +1,12 @@
+import { realpath, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
+
+type GitPathContext = {
+	repoRoot: string;
+	relativePath: string;
+};
 
 export class GitOperations {
 	private projectRoot: string;
@@ -15,44 +22,49 @@ export class GitOperations {
 	}
 
 	async addFile(filePath: string): Promise<void> {
+		const context = await this.getPathContext(filePath);
+		if (context) {
+			await this.execGit(["add", context.relativePath], { cwd: context.repoRoot });
+			return;
+		}
+
 		// Convert absolute paths to relative paths from project root to avoid Windows encoding issues
-		const { relative } = await import("node:path");
 		const relativePath = relative(this.projectRoot, filePath).replace(/\\/g, "/");
 		await this.execGit(["add", relativePath]);
 	}
 
 	async addFiles(filePaths: string[]): Promise<void> {
 		// Convert absolute paths to relative paths from project root to avoid Windows encoding issues
-		const { relative } = await import("node:path");
 		const relativePaths = filePaths.map((filePath) => relative(this.projectRoot, filePath).replace(/\\/g, "/"));
 		await this.execGit(["add", ...relativePaths]);
 	}
 
-	async commitTaskChange(taskId: string, message: string): Promise<void> {
+	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
 		const args = ["commit", "-m", commitMessage];
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
-		await this.execGit(args);
+		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
+		await this.execGit(args, { cwd: repoRoot });
 	}
 
-	async commitChanges(message: string): Promise<void> {
+	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
 		const args = ["commit", "-m", message];
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
-		await this.execGit(args);
+		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
-	async resetIndex(): Promise<void> {
+	async resetIndex(repoRoot?: string | null): Promise<void> {
 		// Reset the staging area without affecting working directory
-		await this.execGit(["reset", "HEAD"]);
+		await this.execGit(["reset", "HEAD"], { cwd: repoRoot ?? undefined });
 	}
 
-	async commitStagedChanges(message: string): Promise<void> {
+	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
 		// Check if there are any staged changes before committing
-		const { stdout: status } = await this.execGit(["status", "--porcelain"]);
+		const { stdout: status } = await this.execGit(["status", "--porcelain"], { cwd: repoRoot ?? undefined });
 		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
 
 		if (!hasStagedChanges) {
@@ -63,7 +75,7 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
-		await this.execGit(args);
+		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
 	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
@@ -184,34 +196,52 @@ export class GitOperations {
 			archive: `Archive task ${taskId}`,
 		};
 
+		const context = await this.getPathContext(filePath);
+		const repoRoot = context?.repoRoot ?? this.projectRoot;
+		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
+
 		// Retry git operations to handle transient failures
 		await this.retryGitOperation(async () => {
 			// Reset index to ensure only the specific file is staged
-			await this.resetIndex();
+			await this.resetIndex(repoRoot);
 
 			// Stage only the specific task file
-			await this.addFile(filePath);
+			await this.execGit(["add", pathForAdd], { cwd: repoRoot });
 
 			// Commit only the staged file
-			await this.commitStagedChanges(actionMessages[action]);
+			await this.commitStagedChanges(actionMessages[action], repoRoot);
 		}, `commit task file ${filePath}`);
 	}
 
-	async stageBacklogDirectory(backlogDir = "backlog"): Promise<void> {
+	async stageBacklogDirectory(backlogDir = "backlog"): Promise<string | null> {
+		const context = await this.getPathContext(backlogDir);
+		if (context) {
+			const pathForAdd = context.relativePath === "." ? "." : context.relativePath;
+			await this.execGit(["add", pathForAdd], { cwd: context.repoRoot });
+			return context.repoRoot;
+		}
+
 		await this.execGit(["add", `${backlogDir}/`]);
+		return null;
 	}
-	async stageFileMove(fromPath: string, toPath: string): Promise<void> {
+	async stageFileMove(fromPath: string, toPath: string): Promise<string | null> {
+		const toContext = await this.getPathContext(toPath);
+		const repoRoot = toContext?.repoRoot;
+		const relativeFrom = repoRoot ? await this.getRelativePathForRepo(fromPath, repoRoot) : null;
+		const relativeTo = toContext?.relativePath ?? null;
+
 		// Stage the deletion of the old file and addition of the new file
 		// Git will automatically detect this as a rename if the content is similar enough
 		try {
 			// First try to stage the removal of the old file (if it still exists)
-			await this.execGit(["add", "--all", fromPath]);
+			await this.execGit(["add", "--all", relativeFrom ?? fromPath], { cwd: repoRoot ?? undefined });
 		} catch {
 			// If the old file doesn't exist, that's okay - it was already moved
 		}
 
 		// Always stage the new file location
-		await this.execGit(["add", toPath]);
+		await this.execGit(["add", relativeTo ?? toPath], { cwd: repoRoot ?? undefined });
+		return repoRoot ?? null;
 	}
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
@@ -471,7 +501,10 @@ export class GitOperations {
 		}
 	}
 
-	private async execGit(args: string[], options?: { readOnly?: boolean }): Promise<{ stdout: string; stderr: string }> {
+	private async execGit(
+		args: string[],
+		options?: { readOnly?: boolean; cwd?: string },
+	): Promise<{ stdout: string; stderr: string }> {
 		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
 		// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
 		const env = options?.readOnly
@@ -479,7 +512,7 @@ export class GitOperations {
 			: (process.env as Record<string, string>);
 
 		const subprocess = Bun.spawn(["git", ...args], {
-			cwd: this.projectRoot,
+			cwd: options?.cwd ?? this.projectRoot,
 			stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
 			stdout: "pipe",
 			stderr: "pipe",
@@ -495,6 +528,69 @@ export class GitOperations {
 		}
 
 		return { stdout, stderr };
+	}
+
+	private async getPathContext(targetPath: string): Promise<GitPathContext | null> {
+		const absolutePath = isAbsolute(targetPath) ? targetPath : join(this.projectRoot, targetPath);
+		const resolvedPath = await realpath(absolutePath).catch(() => null);
+		if (resolvedPath) {
+			return this.buildContext(resolvedPath);
+		}
+
+		const resolvedDir = await realpath(dirname(absolutePath)).catch(() => null);
+		if (!resolvedDir) return null;
+		const reconstructedPath = join(resolvedDir, basename(absolutePath));
+		return this.buildContext(reconstructedPath, resolvedDir);
+	}
+
+	private async getRelativePathForRepo(targetPath: string, repoRoot: string): Promise<string | null> {
+		const absolutePath = isAbsolute(targetPath) ? targetPath : join(this.projectRoot, targetPath);
+		const resolvedPath = await realpath(absolutePath).catch(() => null);
+		const pathForRelative = resolvedPath ?? (await this.resolveMissingPath(absolutePath));
+		if (!pathForRelative) return null;
+
+		const relativePath = this.normalizeGitPath(relative(repoRoot, pathForRelative));
+		if (!relativePath || relativePath.startsWith("..")) return null;
+		return relativePath === "" ? "." : relativePath;
+	}
+
+	private async resolveRepoRoot(startDir: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.execGit(["rev-parse", "--show-toplevel"], { readOnly: true, cwd: startDir });
+			const root = stdout.trim();
+			return root.length > 0 ? root : null;
+		} catch {
+			return null;
+		}
+	}
+
+	private async resolveMissingPath(absolutePath: string): Promise<string | null> {
+		const resolvedDir = await realpath(dirname(absolutePath)).catch(() => null);
+		if (!resolvedDir) return null;
+		return join(resolvedDir, basename(absolutePath));
+	}
+
+	private async buildContext(resolvedPath: string, resolvedDirHint?: string): Promise<GitPathContext | null> {
+		let cwd = resolvedDirHint;
+		if (!cwd) {
+			const stats = await stat(resolvedPath).catch(() => null);
+			if (!stats) {
+				cwd = dirname(resolvedPath);
+			} else {
+				cwd = stats.isDirectory() ? resolvedPath : dirname(resolvedPath);
+			}
+		}
+
+		const repoRoot = cwd ? await this.resolveRepoRoot(cwd) : null;
+		if (!repoRoot) return null;
+
+		const relativePath = this.normalizeGitPath(relative(repoRoot, resolvedPath));
+		if (!relativePath || relativePath.startsWith("..")) return null;
+		return { repoRoot, relativePath: relativePath === "" ? "." : relativePath };
+	}
+
+	private normalizeGitPath(pathValue: string): string {
+		return pathValue.replace(/\\/g, "/");
 	}
 }
 
