@@ -96,4 +96,31 @@ describe("Final Summary", () => {
 
 		expect(task.rawContent).not.toContain("## Final Summary");
 	});
+
+	it("ignores Final Summary examples nested inside Description", () => {
+		const content = [
+			"## Description",
+			"",
+			"<!-- SECTION:DESCRIPTION:BEGIN -->",
+			"Here is an example:",
+			"```markdown",
+			"## Final Summary",
+			"",
+			"<!-- SECTION:FINAL_SUMMARY:BEGIN -->",
+			"### Example",
+			"- Not the real summary",
+			"<!-- SECTION:FINAL_SUMMARY:END -->",
+			"```",
+			"<!-- SECTION:DESCRIPTION:END -->",
+			"",
+			"## Final Summary",
+			"",
+			"<!-- SECTION:FINAL_SUMMARY:BEGIN -->",
+			"Real summary content",
+			"<!-- SECTION:FINAL_SUMMARY:END -->",
+			"",
+		].join("\n");
+
+		expect(extractStructuredSection(content, "finalSummary")).toBe("Real summary content");
+	});
 });

@@ -170,6 +170,51 @@ function sentinelBlockRegex(key: StructuredSectionKey): RegExp {
 	return new RegExp(`## ${escapeForRegex(title)}\\s*\\n${begin}\\s*\\n([\\s\\S]*?)${end}`, "i");
 }
 
+interface SectionRange {
+	key: StructuredSectionKey;
+	start: number;
+	end: number;
+	kind: "sentinel" | "legacy";
+}
+
+function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+	return aStart < bEnd && bStart < aEnd;
+}
+
+function isIndexWithinRanges(index: number, ranges: SectionRange[]): boolean {
+	return ranges.some((range) => index >= range.start && index < range.end);
+}
+
+function findMatchOutsideRanges(regex: RegExp, content: string, ranges: SectionRange[]): RegExpExecArray | undefined {
+	const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
+	const globalRegex = new RegExp(regex.source, flags);
+	for (const match of content.matchAll(globalRegex)) {
+		const index = match.index ?? 0;
+		if (!isIndexWithinRanges(index, ranges)) return match;
+	}
+	return undefined;
+}
+
+function getStructuredSectionRanges(content: string): SectionRange[] {
+	const ranges: SectionRange[] = [];
+	for (const key of SECTION_INSERTION_ORDER) {
+		const sentinelRegex = new RegExp(sentinelBlockRegex(key).source, "gi");
+		for (const match of content.matchAll(sentinelRegex)) {
+			const index = match.index ?? 0;
+			ranges.push({ key, start: index, end: index + match[0].length, kind: "sentinel" });
+		}
+
+		const legacyRegex = legacySectionRegex(getConfig(key).title, "gi");
+		for (const match of content.matchAll(legacyRegex)) {
+			const index = match.index ?? 0;
+			const end = index + match[0].length;
+			if (ranges.some((range) => rangesOverlap(range.start, range.end, index, end))) continue;
+			ranges.push({ key, start: index, end, kind: "legacy" });
+		}
+	}
+	return ranges;
+}
+
 function stripSectionInstances(content: string, key: StructuredSectionKey): string {
 	const beginEsc = escapeForRegex(getBeginMarker(key));
 	const endEsc = escapeForRegex(getEndMarker(key));
@@ -216,11 +261,12 @@ function appendBlock(content: string, block: string): string {
 
 export function extractStructuredSection(content: string, key: StructuredSectionKey): string | undefined {
 	const src = content.replace(/\r\n/g, "\n");
-	const sentinelMatch = sentinelBlockRegex(key).exec(src);
+	const otherRanges = getStructuredSectionRanges(src).filter((range) => range.key !== key);
+	const sentinelMatch = findMatchOutsideRanges(sentinelBlockRegex(key), src, otherRanges);
 	if (sentinelMatch?.[1]) {
 		return sentinelMatch[1].trim() || undefined;
 	}
-	const legacyMatch = sectionHeaderRegex(key).exec(src);
+	const legacyMatch = findMatchOutsideRanges(sectionHeaderRegex(key), src, otherRanges);
 	return legacyMatch?.[1]?.trim() || undefined;
 }
 
