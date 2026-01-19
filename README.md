@@ -198,6 +198,7 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Add DoD items on create | `backlog task create "Feature" --dod "Run tests"` |
 | Create without DoD defaults | `backlog task create "Feature" --no-dod-defaults` |
 | Create with notes | `backlog task create "Feature" --notes "Started initial research"` |
+| Create with final summary | `backlog task create "Feature" --final-summary "PR-style summary"` |
 | Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
 | Create with refs | `backlog task create "Feature" --ref https://docs.example.com --ref src/api.ts` |
 | Create with docs | `backlog task create "Feature" --doc https://design-docs.example.com --doc docs/spec.md` |
@@ -222,10 +223,13 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Mixed DoD operations | `backlog task edit 7 --check-dod 1 --uncheck-dod 2 --remove-dod 4` |
 | Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` (replaces existing) |
 | Append notes | `backlog task edit 7 --append-notes "New findings"` |
+| Add final summary | `backlog task edit 7 --final-summary "PR-style summary"` |
+| Append final summary | `backlog task edit 7 --append-final-summary "More details"` |
+| Clear final summary | `backlog task edit 7 --clear-final-summary` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Archive     | `backlog task archive 7`                             |
 
-#### Multi‑line input (description/plan/notes)
+#### Multi‑line input (description/plan/notes/final summary)
 
 The CLI preserves input literally; `\n` sequences are not auto‑converted. Use one of the following to insert real newlines:
 
@@ -234,6 +238,8 @@ The CLI preserves input literally; `\n` sequences are not auto‑converted. Use 
   - Plan: `backlog task edit 7 --plan $'1. Research\n2. Implement'`
   - Notes: `backlog task edit 7 --notes $'Completed A\nWorking on B'`
   - Append notes: `backlog task edit 7 --append-notes $'Added X\nAdded Y'`
+  - Final summary: `backlog task edit 7 --final-summary $'Shipped A\nAdded B'`
+  - Append final summary: `backlog task edit 7 --append-final-summary $'Added X\nAdded Y'`
 - **POSIX sh (printf)**
   - `backlog task create "Feature" --desc "$(printf 'Line1\nLine2\n\nFinal paragraph')"`
 - **PowerShell (backtick)**

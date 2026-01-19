@@ -78,7 +78,7 @@ remains fully synchronized and up-to-date.
 
 1. Open backlog/tasks/task-7 - Feature.md in editor
 2. Change "- [ ]" to "- [x]" manually
-3. Add notes directly to the file
+3. Add notes or final summary directly to the file
 4. Save the file
 ```
 
@@ -88,6 +88,7 @@ remains fully synchronized and up-to-date.
 # DO THIS INSTEAD:
 backlog task edit 7 --check-ac 1  # Mark AC #1 as complete
 backlog task edit 7 --notes "Implementation complete"  # Add notes
+backlog task edit 7 --final-summary "PR-style summary"  # Add final summary
 backlog task edit 7 -s "In Progress" -a @agent-k  # Multiple commands: change status and assign the task when you start working on the task
 ```
 
@@ -139,7 +140,11 @@ Brief explanation of the task purpose.
 
 ## Implementation Notes
 
-Summary of what was done.
+Progress notes captured during implementation.
+
+## Final Summary
+
+PR-style summary of what was implemented.
 ```
 
 ### How to Modify Each Section
@@ -162,6 +167,9 @@ Summary of what was done.
 | Add Plan                | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
 | Add Notes (replace)     | `backlog task edit 42 --notes "What I did"`              |
 | Append Notes            | `backlog task edit 42 --append-notes "Another note"` |
+| Add Final Summary       | `backlog task edit 42 --final-summary "PR-style summary"` |
+| Append Final Summary    | `backlog task edit 42 --append-final-summary "Another detail"` |
+| Clear Final Summary     | `backlog task edit 42 --clear-final-summary` |
 
 ---
 
@@ -257,7 +265,7 @@ Good Examples:
 
 - "User can successfully log in with valid credentials"
 - "System processes 1000 requests per second without errors"
-- "CLI preserves literal newlines in description/plan/notes; `\\n` sequences are not auto‑converted"
+- "CLI preserves literal newlines in description/plan/notes/final summary; `\\n` sequences are not auto‑converted"
 
 Bad Example (Implementation Step):
 
@@ -321,19 +329,28 @@ Once you have a plan, you can start implementing the task. This is where you wri
 everything works as expected. Follow the acceptance criteria one by one and MARK THEM AS COMPLETE as soon as you
 finish them.
 
-### 5.5 Implementation Notes (PR description)
+### 5.5 Implementation Notes (Progress log)
 
-When you are done implementing a tasks you need to prepare a PR description for it.
-Because you cannot create PRs directly, write the PR as a clean description in the task notes.
+Use Implementation Notes to log progress, decisions, and blockers as you work.
 Append notes progressively during implementation using `--append-notes`:
 
 ```
-backlog task edit 42 --append-notes "Implemented X" --append-notes "Added tests"
+backlog task edit 42 --append-notes "Investigated root cause" --append-notes "Added tests for edge case"
 ```
 
 ```bash
 # Example
-backlog task edit 42 --notes "Implemented using pattern X because Reason Y, modified files Z and W"
+backlog task edit 42 --notes "Initial implementation done; pending integration tests"
+```
+
+### 5.6 Final Summary (PR description)
+
+When you are done implementing a task you need to prepare a PR description for it.
+Because you cannot create PRs directly, write the PR as a clean summary in the Final Summary field.
+
+```bash
+# Example
+backlog task edit 42 --final-summary "Implemented pattern X because Reason Y; updated files Z and W; added tests"
 ```
 
 **IMPORTANT**: Do NOT include an Implementation Plan when creating a task. The plan is added only after you start the
@@ -344,13 +361,14 @@ implementation.
   `backlog task edit <id> -s "In Progress" -a "..."`.
 - Think about how you would solve the task and add the plan: `backlog task edit <id> --plan "..."`.
 - After updating the plan, share it with the user and ask for confirmation. Do not begin coding until the user approves the plan or explicitly tells you to skip the review.
-- Add Implementation Notes only after completing the work: `backlog task edit <id> --notes "..."` (replace) or append progressively using `--append-notes`.
+- Append Implementation Notes during implementation using `--append-notes` as progress is made.
+- Add Final Summary only after completing the work: `backlog task edit <id> --final-summary "..."` (replace) or append using `--append-final-summary`.
 
 ## Phase discipline: What goes where
 
 - Creation: Title, Description, Acceptance Criteria, labels/priority/assignee.
 - Implementation: Implementation Plan (after moving to In Progress and assigning to yourself).
-- Wrap-up: Implementation Notes (Like a PR description), AC and Definition of Done checks.
+- Wrap-up: Final Summary (PR description), AC and Definition of Done checks.
 
 **IMPORTANT**: Only implement what's in the Acceptance Criteria. If you need to do more, either:
 
@@ -385,8 +403,8 @@ backlog task edit 42 --check-ac 1 --check-ac 2 --check-ac 3  # Check all at once
 # backlog task edit 42 --check-ac 2
 # backlog task edit 42 --check-ac 3
 
-# 8. Add implementation notes (PR Description)
-backlog task edit 42 --notes "Refactored using strategy pattern, updated tests"
+# 8. Add Final Summary (PR Description)
+backlog task edit 42 --final-summary "Refactored using strategy pattern, updated tests"
 
 # 9. Mark task as done
 backlog task edit 42 -s Done
@@ -402,7 +420,7 @@ A task is **Done** only when **ALL** of the following are complete:
 
 1. **All acceptance criteria checked**: Use `backlog task edit <id> --check-ac <index>` for each
 2. **All Definition of Done items checked**: Use `backlog task edit <id> --check-dod <index>` for each
-3. **Implementation notes added**: Use `backlog task edit <id> --notes "..."`
+3. **Final Summary added**: Use `backlog task edit <id> --final-summary "..."`
 4. **Status set to Done**: Use `backlog task edit <id> -s Done`
 
 ### ✅ Via Code/Testing:
@@ -457,6 +475,7 @@ backlog search "bug" --priority high --plain
 |---------------|--------------------------------------|-----------------------------------|
 | Check AC      | `backlog task edit 42 --check-ac 1`  | Change `- [ ]` to `- [x]` in file |
 | Add notes     | `backlog task edit 42 --notes "..."` | Type notes into .md file          |
+| Add final summary | `backlog task edit 42 --final-summary "..."` | Type summary into .md file |
 | Change status | `backlog task edit 42 -s Done`       | Edit status in frontmatter        |
 | Add AC        | `backlog task edit 42 --ac "New"`    | Add `- [ ] New` to file           |
 
@@ -471,6 +490,7 @@ backlog search "bug" --priority high --plain
 | Create task      | `backlog task create "Title"`                                                       |
 | With description | `backlog task create "Title" -d "Description"`                                      |
 | With AC          | `backlog task create "Title" --ac "Criterion 1" --ac "Criterion 2"`                 |
+| With final summary | `backlog task create "Title" --final-summary "PR-style summary"`                 |
 | With references  | `backlog task create "Title" --ref src/api.ts --ref https://github.com/issue/123`   |
 | With documentation | `backlog task create "Title" --doc https://design-docs.example.com`               |
 | With all options | `backlog task create "Title" -d "Desc" -a @sara -s "To Do" -l auth --priority high --ref src/api.ts --doc docs/spec.md` |
@@ -506,11 +526,14 @@ backlog search "bug" --priority high --plain
 |------------------|----------------------------------------------------------|
 | Add plan         | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
 | Add notes        | `backlog task edit 42 --notes "Implementation details"`  |
+| Add final summary | `backlog task edit 42 --final-summary "PR-style summary"` |
+| Append final summary | `backlog task edit 42 --append-final-summary "More details"` |
+| Clear final summary | `backlog task edit 42 --clear-final-summary` |
 | Add dependencies | `backlog task edit 42 --dep task-1 --dep task-2`         |
 | Add references   | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
 | Add documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
 
-### Multi‑line Input (Description/Plan/Notes)
+### Multi‑line Input (Description/Plan/Notes/Final Summary)
 
 The CLI preserves input literally. Shells do not convert `\n` inside normal quotes. Use one of the following to insert real newlines:
 
@@ -519,6 +542,8 @@ The CLI preserves input literally. Shells do not convert `\n` inside normal quot
   - Plan: `backlog task edit 42 --plan $'1. A\n2. B'`
   - Notes: `backlog task edit 42 --notes $'Done A\nDoing B'`
   - Append notes: `backlog task edit 42 --append-notes $'Progress update line 1\nLine 2'`
+  - Final summary: `backlog task edit 42 --final-summary $'Shipped A\nAdded B'`
+  - Append final summary: `backlog task edit 42 --append-final-summary $'Added X\nAdded Y'`
 - POSIX portable (printf):
   - `backlog task edit 42 --notes "$(printf 'Line1\nLine2')"`
 - PowerShell (backtick n):
@@ -530,18 +555,21 @@ Descriptions support literal newlines; shell examples may show escaped `\\n`, bu
 
 ### Implementation Notes Formatting
 
-- Keep implementation notes human-friendly and PR-ready: use short paragraphs or
-  bullet lists instead of a single long line.
-- Lead with the outcome, then add supporting details (e.g., testing, follow-up
-  actions) on separate lines or bullets.
-- Prefer Markdown bullets (`-` for unordered, `1.` for ordered) so Maintainers
-  can paste notes straight into GitHub without additional formatting.
+- Keep implementation notes concise and time-ordered; focus on progress, decisions, and blockers.
+- Use short paragraphs or bullet lists instead of a single long line.
+- Use Markdown bullets (`-` for unordered, `1.` for ordered) for readability.
 - When using CLI flags like `--append-notes`, remember to include explicit
   newlines. Example:
 
   ```bash
   backlog task edit 42 --append-notes $'- Added new API endpoint\n- Updated tests\n- TODO: monitor staging deploy'
   ```
+
+### Final Summary Formatting
+
+- Treat the Final Summary as a PR description: lead with the outcome, then add key changes and tests.
+- Keep it clean and structured so it can be pasted directly into GitHub.
+- Prefer short paragraphs or bullet lists and avoid raw progress logs.
 
 ### Task Operations
 
