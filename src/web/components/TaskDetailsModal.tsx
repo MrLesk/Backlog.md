@@ -69,6 +69,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [description, setDescription] = useState(task?.description || "");
   const [plan, setPlan] = useState(task?.implementationPlan || "");
   const [notes, setNotes] = useState(task?.implementationNotes || "");
+  const [finalSummary, setFinalSummary] = useState(task?.finalSummary || "");
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(task?.acceptanceCriteriaItems || []);
   const defaultDefinitionOfDone = useMemo(
     () => (definitionOfDoneDefaults ?? []).map((text, index) => ({ index: index + 1, text, checked: false })),
@@ -93,6 +94,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     description: task?.description || "",
     plan: task?.implementationPlan || "",
     notes: task?.implementationNotes || "",
+    finalSummary: task?.finalSummary || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
     definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
   }), [task, defaultDefinitionOfDone, isCreateMode]);
@@ -103,10 +105,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
       description !== baseline.description ||
       plan !== baseline.plan ||
       notes !== baseline.notes ||
+      finalSummary !== baseline.finalSummary ||
       JSON.stringify(criteria) !== baseline.criteria ||
       JSON.stringify(definitionOfDone) !== baseline.definitionOfDone
     );
-  }, [title, description, plan, notes, criteria, definitionOfDone, baseline]);
+  }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, baseline]);
 
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
@@ -134,7 +137,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, description, plan, notes, criteria]);
+  }, [mode, description, plan, notes, finalSummary, criteria]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -142,6 +145,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setDescription(task?.description || "");
     setPlan(task?.implementationPlan || "");
     setNotes(task?.implementationNotes || "");
+    setFinalSummary(task?.finalSummary || "");
     setCriteria(task?.acceptanceCriteriaItems || []);
     setDefinitionOfDone(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : []));
     setStatus(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
@@ -170,6 +174,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setDescription(task?.description || "");
       setPlan(task?.implementationPlan || "");
       setNotes(task?.implementationNotes || "");
+      setFinalSummary(task?.finalSummary || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
       setDefinitionOfDone(task?.definitionOfDoneItems || []);
       setMode("preview");
@@ -287,6 +292,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         description,
         implementationPlan: plan,
         implementationNotes: notes,
+        finalSummary,
         acceptanceCriteriaItems: criteria,
         status,
         assignee,
@@ -753,6 +759,31 @@ export const TaskDetailsModal: React.FC<Props> = ({
               </div>
             )}
           </div>
+
+          {/* Final Summary */}
+          {(mode !== "preview" || finalSummary.trim().length > 0) && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+              <SectionHeader title="Final Summary" right="Completion summary" />
+              {mode === "preview" ? (
+                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
+                  <MermaidMarkdown source={finalSummary} />
+                </div>
+              ) : (
+                <div className="border border-gray-200 dark:border-gray-700 rounded-md">
+                  <MDEditor
+                    value={finalSummary}
+                    onChange={(val) => setFinalSummary(val || "")}
+                    preview="edit"
+                    height={220}
+                    data-color-mode={theme}
+                    textareaProps={{
+                      placeholder: "PR-style summary of what was implemented (write when task is complete)",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}

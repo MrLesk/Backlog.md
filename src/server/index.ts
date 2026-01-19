@@ -675,6 +675,7 @@ export class BacklogServer {
 				parentTaskId: payload.parentTaskId,
 				implementationPlan: payload.implementationPlan,
 				implementationNotes: payload.implementationNotes,
+				finalSummary: payload.finalSummary,
 				acceptanceCriteria,
 				definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults,
@@ -753,6 +754,10 @@ export class BacklogServer {
 
 		if ("implementationNotes" in updates && typeof updates.implementationNotes === "string") {
 			updateInput.implementationNotes = updates.implementationNotes;
+		}
+
+		if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
+			updateInput.finalSummary = updates.finalSummary;
 		}
 
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {

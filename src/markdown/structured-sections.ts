@@ -1,12 +1,13 @@
 import type { AcceptanceCriterion } from "../types/index.ts";
 import { getStructuredSectionTitles } from "./section-titles.ts";
 
-export type StructuredSectionKey = "description" | "implementationPlan" | "implementationNotes";
+export type StructuredSectionKey = "description" | "implementationPlan" | "implementationNotes" | "finalSummary";
 
 export const STRUCTURED_SECTION_KEYS: Record<StructuredSectionKey, StructuredSectionKey> = {
 	description: "description",
 	implementationPlan: "implementationPlan",
 	implementationNotes: "implementationNotes",
+	finalSummary: "finalSummary",
 };
 
 interface SectionConfig {
@@ -18,9 +19,15 @@ const SECTION_CONFIG: Record<StructuredSectionKey, SectionConfig> = {
 	description: { title: "Description", markerId: "DESCRIPTION" },
 	implementationPlan: { title: "Implementation Plan", markerId: "PLAN" },
 	implementationNotes: { title: "Implementation Notes", markerId: "NOTES" },
+	finalSummary: { title: "Final Summary", markerId: "FINAL_SUMMARY" },
 };
 
-const SECTION_INSERTION_ORDER: StructuredSectionKey[] = ["description", "implementationPlan", "implementationNotes"];
+const SECTION_INSERTION_ORDER: StructuredSectionKey[] = [
+	"description",
+	"implementationPlan",
+	"implementationNotes",
+	"finalSummary",
+];
 
 const ACCEPTANCE_CRITERIA_SECTION_HEADER = "## Acceptance Criteria";
 const ACCEPTANCE_CRITERIA_TITLE = ACCEPTANCE_CRITERIA_SECTION_HEADER.replace(/^##\s*/, "");
@@ -221,6 +228,7 @@ export interface StructuredSectionValues {
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
+	finalSummary?: string;
 }
 
 interface SectionValues extends StructuredSectionValues {}
@@ -237,6 +245,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	const description = sections.description?.trim() || "";
 	const plan = sections.implementationPlan?.trim() || "";
 	const notes = sections.implementationNotes?.trim() || "";
+	const finalSummary = sections.finalSummary?.trim() || "";
 
 	let tail = working;
 
@@ -266,6 +275,22 @@ export function updateStructuredSections(content: string, sections: SectionValue
 		}
 	}
 
+	if (finalSummary) {
+		const finalBlock = buildSectionBlock("finalSummary", finalSummary);
+		let res = insertAfterSection(tail, getConfig("implementationNotes").title, finalBlock);
+		if (!res.inserted) {
+			res = insertAfterSection(tail, getConfig("implementationPlan").title, finalBlock);
+		}
+		if (!res.inserted) {
+			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, finalBlock);
+		}
+		if (!res.inserted) {
+			tail = appendBlock(tail, finalBlock);
+		} else {
+			tail = res.content;
+		}
+	}
+
 	let output = tail;
 	if (description) {
 		const descriptionBlock = buildSectionBlock("description", description);
@@ -281,6 +306,7 @@ export function getStructuredSections(content: string): StructuredSectionValues 
 		description: extractStructuredSection(content, "description") || undefined,
 		implementationPlan: extractStructuredSection(content, "implementationPlan") || undefined,
 		implementationNotes: extractStructuredSection(content, "implementationNotes") || undefined,
+		finalSummary: extractStructuredSection(content, "finalSummary") || undefined,
 	};
 }
 

@@ -85,6 +85,11 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				},
 				description: "Documentation URLs or file paths for understanding this task",
 			},
+			finalSummary: {
+				type: "string",
+				maxLength: 20000,
+				description: "Final summary for PR-style completion notes. Write this only when the task is complete.",
+			},
 			acceptanceCriteria: {
 				type: "array",
 				items: {
@@ -215,6 +220,22 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			implementationNotes: {
 				type: "string",
 				maxLength: 10000,
+			},
+			finalSummary: {
+				type: "string",
+				maxLength: 20000,
+				description: "Final summary for PR-style completion notes. Write this only when the task is complete.",
+			},
+			finalSummaryAppend: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 5000,
+				},
+				maxItems: 20,
+			},
+			finalSummaryClear: {
+				type: "boolean",
 			},
 			notesSet: {
 				type: "string",

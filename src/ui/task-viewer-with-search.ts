@@ -1100,6 +1100,13 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 		bodyContent.push("");
 	}
 
+	const finalSummary = task.finalSummary?.trim();
+	if (finalSummary) {
+		bodyContent.push(formatHeading("Final Summary", 2));
+		bodyContent.push(transformCodePaths(finalSummary));
+		bodyContent.push("");
+	}
+
 	return { headerContent, bodyContent };
 }
 

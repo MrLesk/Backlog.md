@@ -29,6 +29,7 @@ export type TaskCreateArgs = {
 	dependencies?: string[];
 	references?: string[];
 	documentation?: string[];
+	finalSummary?: string;
 };
 
 export type TaskListArgs = {
@@ -89,6 +90,7 @@ export class TaskHandlers {
 				references: args.references,
 				documentation: args.documentation,
 				parentTaskId: args.parentTaskId,
+				finalSummary: args.finalSummary,
 				acceptanceCriteria,
 				definitionOfDoneAdd: args.definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,

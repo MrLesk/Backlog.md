@@ -1,9 +1,11 @@
 ---
 id: BACK-367.03
 title: Web UI integration for Final Summary field
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2026-01-18 12:19'
+updated_date: '2026-01-19 18:27'
 labels:
   - web
   - enhancement
@@ -56,10 +58,28 @@ The Web UI uses the existing task API endpoints. Ensure:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 TaskDetailsModal displays Final Summary section after Implementation Notes
-- [ ] #2 Final Summary uses markdown editor for editing (consistent with other sections)
-- [ ] #3 Final Summary renders as markdown in read/view mode
-- [ ] #4 Changes to Final Summary are saved via task update API
-- [ ] #5 Empty Final Summary section is handled gracefully (hidden in read mode, shown in edit mode)
-- [ ] #6 Web UI tests cover Final Summary display and editing where test patterns exist
+- [x] #1 TaskDetailsModal displays Final Summary section after Implementation Notes
+- [x] #2 Final Summary uses markdown editor for editing (consistent with other sections)
+- [x] #3 Final Summary renders as markdown in read/view mode
+- [x] #4 Changes to Final Summary are saved via task update API
+- [x] #5 Empty Final Summary section is handled gracefully (hidden in read mode, shown in edit mode)
+- [x] #6 Web UI tests cover Final Summary display and editing where test patterns exist
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+- Review `src/web/components/TaskDetailsModal.tsx` for Description/Plan/Notes sections and mirror the pattern to add Final Summary after Implementation Notes.
+- Ensure task fetch/update payloads include `finalSummary` (check web API types/utilities) and wire state into the save flow.
+- Render Final Summary in read mode only when present; always show in edit mode with placeholder text.
+- Add/adjust web tests following existing TaskDetailsModal patterns for section rendering and editing.
+- Run targeted tests if present (web test files).
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Summary: Added Final Summary state and editor to TaskDetailsModal, hid section when empty in preview, and wired finalSummary through save payloads and server update/create handlers. Added web UI tests for preview/create rendering.
+
+Tests: bun test src/test/web-task-details-modal-final-summary.test.tsx
+<!-- SECTION:NOTES:END -->

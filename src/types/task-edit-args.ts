@@ -24,6 +24,9 @@ export interface TaskEditArgs {
 	notesSet?: string;
 	notesAppend?: string[];
 	notesClear?: boolean;
+	finalSummary?: string;
+	finalSummaryAppend?: string[];
+	finalSummaryClear?: boolean;
 	acceptanceCriteriaSet?: string[];
 	acceptanceCriteriaAdd?: string[];
 	acceptanceCriteriaRemove?: number[];

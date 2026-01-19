@@ -40,6 +40,7 @@ export interface Task {
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
+	finalSummary?: string;
 	/** Structured acceptance criteria parsed from body (checked state + text + index) */
 	acceptanceCriteriaItems?: AcceptanceCriterion[];
 	/** Structured Definition of Done checklist parsed from body (checked state + text + index) */
@@ -98,6 +99,7 @@ export interface TaskCreateInput {
 	parentTaskId?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
+	finalSummary?: string;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
 	definitionOfDoneAdd?: string[];
 	disableDefinitionOfDoneDefaults?: boolean;
@@ -130,6 +132,9 @@ export interface TaskUpdateInput {
 	implementationNotes?: string;
 	appendImplementationNotes?: string[];
 	clearImplementationNotes?: boolean;
+	finalSummary?: string;
+	appendFinalSummary?: string[];
+	clearFinalSummary?: boolean;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
 	addAcceptanceCriteria?: Array<AcceptanceCriterionInput | string>;
 	removeAcceptanceCriteria?: number[];

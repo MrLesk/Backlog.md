@@ -1,9 +1,11 @@
 ---
 id: BACK-367.02
 title: MCP tools and schemas integration for Final Summary field
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2026-01-18 12:19'
+updated_date: '2026-01-19 18:27'
 labels:
   - mcp
   - enhancement
@@ -56,10 +58,29 @@ Update `src/guidelines/mcp/task-finalization.md`:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MCP `task_create` schema includes `finalSummary` string parameter with clear description
-- [ ] #2 MCP `task_edit` schema includes `finalSummary` (set), `finalSummaryAppend` (append), `finalSummaryClear` (clear) parameters
-- [ ] #3 MCP `task_view` response includes finalSummary field when present
-- [ ] #4 Workflow guide `task-finalization.md` updated to distinguish implementationNotes (progress log) from finalSummary (PR description)
-- [ ] #5 Workflow guide includes finalSummary in the finalization checklist
-- [ ] #6 MCP tests in `src/test/mcp-final-summary.test.ts` cover create, edit operations, and view response
+- [x] #1 MCP `task_create` schema includes `finalSummary` string parameter with clear description
+- [x] #2 MCP `task_edit` schema includes `finalSummary` (set), `finalSummaryAppend` (append), `finalSummaryClear` (clear) parameters
+- [x] #3 MCP `task_view` response includes finalSummary field when present
+- [x] #4 Workflow guide `task-finalization.md` updated to distinguish implementationNotes (progress log) from finalSummary (PR description)
+- [x] #5 Workflow guide includes finalSummary in the finalization checklist
+- [x] #6 MCP tests in `src/test/mcp-final-summary.test.ts` cover create, edit operations, and view response
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+- Update MCP task schemas in `src/mcp/utils/schema-generators.ts` to include `finalSummary`, `finalSummaryAppend`, `finalSummaryClear` for create/edit.
+- Wire handler inputs in `src/mcp/tools/tasks/handlers.ts` (and any task-edit builder) to pass final summary fields through.
+- Ensure task view responses include `finalSummary` when present.
+- Update MCP workflow guidance in `src/guidelines/mcp/task-finalization.md` (and any execution guide references) to distinguish notes vs final summary.
+- Add MCP tests in `src/test/mcp-final-summary.test.ts` for create/edit/view flows.
+- Run targeted tests: `bun test src/test/mcp-final-summary.test.ts`.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Summary: Added finalSummary fields to MCP task schemas and handlers, updated task finalization guidance, and ensured task_view output includes Final Summary.
+
+Tests: bun test src/test/mcp-final-summary.test.ts
+<!-- SECTION:NOTES:END -->
