@@ -348,6 +348,9 @@ backlog task edit 42 --notes "Initial implementation done; pending integration t
 When you are done implementing a task you need to prepare a PR description for it.
 Because you cannot create PRs directly, write the PR as a clean summary in the Final Summary field.
 
+**Quality bar:** Write it like a reviewer will see it. A one‑liner is rarely enough unless the change is truly trivial.
+Include the key scope so someone can understand the impact without reading the whole diff.
+
 ```bash
 # Example
 backlog task edit 42 --final-summary "Implemented pattern X because Reason Y; updated files Z and W; added tests"
@@ -570,6 +573,21 @@ Descriptions support literal newlines; shell examples may show escaped `\\n`, bu
 - Treat the Final Summary as a PR description: lead with the outcome, then add key changes and tests.
 - Keep it clean and structured so it can be pasted directly into GitHub.
 - Prefer short paragraphs or bullet lists and avoid raw progress logs.
+- Aim to cover: **what changed**, **why**, **user impact**, **tests run**, and **risks/follow‑ups** when relevant.
+- Avoid single‑line summaries unless the change is truly tiny.
+
+**Example (good, not rigid):**
+```
+Added Final Summary support across CLI/MCP/Web/TUI to separate PR summaries from progress notes.
+
+Changes:
+- Added `finalSummary` to task types and markdown section parsing/serialization (ordered after notes).
+- CLI/MCP/Web/TUI now render and edit Final Summary; plain output includes it.
+
+Tests:
+- bun test src/test/final-summary.test.ts
+- bun test src/test/cli-final-summary.test.ts
+```
 
 ### Task Operations
 

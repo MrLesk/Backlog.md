@@ -4,7 +4,7 @@
 
 1. **Verify all acceptance criteria and Definition of Done items** - Confirm every checklist item is satisfied (use `task_view` to see current status; use `definitionOfDoneCheck/Uncheck` as needed)
 2. **Run the Definition of Done checklist** (see below)
-3. **Write the Final Summary** - Use `task_edit` (`finalSummary` field) to capture a PR-style summary of what changed and why
+3. **Write the Final Summary** - Use `task_edit` (`finalSummary` field) to capture a PR-style summary of what changed and why. Avoid one-line summaries unless the change is trivial; include tests and key scope for reviewers.
 4. **Confirm the implementation plan is captured and current** - Update the plan in Backlog if the executed approach deviated
 5. **Update task status** - Set status to "Done" via `task_edit`
 6. **Propose next steps** - Never autonomously create or start new tasks
@@ -21,7 +21,7 @@
 - Automated and relevant manual tests pass; no new warnings or regressions introduced
 - Documentation or configuration updates completed when required
 - Implementation notes capture progress during work via `task_edit` (notesAppend field)
-- Final Summary captures the PR-style completion summary via `task_edit` (`finalSummary` field)
+- Final Summary captures the PR-style completion summary via `task_edit` (`finalSummary` field). Include what changed, why, tests run, and any risks/follow-ups when relevant.
 - Status transitions to "Done" via `task_edit`
 
 ### After Finalization
