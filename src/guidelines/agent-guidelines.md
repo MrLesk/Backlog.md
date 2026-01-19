@@ -367,8 +367,8 @@ implementation.
 ## Phase discipline: What goes where
 
 - Creation: Title, Description, Acceptance Criteria, labels/priority/assignee.
-- Implementation: Implementation Plan (after moving to In Progress and assigning to yourself).
-- Wrap-up: Final Summary (PR description), AC and Definition of Done checks.
+- Implementation: Implementation Plan (after moving to In Progress and assigning to yourself) + Implementation Notes (progress log, appended as you work).
+- Wrap-up: Final Summary (PR description), verify AC and Definition of Done checks.
 
 **IMPORTANT**: Only implement what's in the Acceptance Criteria. If you need to do more, either:
 
