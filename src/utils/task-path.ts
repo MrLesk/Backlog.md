@@ -155,7 +155,7 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 	if (detectedPrefix) {
 		const globPattern = buildGlobPattern(detectedPrefix);
 		try {
-			const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
+			const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }));
 			const taskFile = findMatchingFile(files, taskId, detectedPrefix);
 			if (taskFile) {
 				return join(coreInstance.filesystem.tasksDir, taskFile);
@@ -168,7 +168,7 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 
 	// For numeric-only IDs, scan all .md files and find one matching the number
 	try {
-		const allFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
+		const allFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }));
 
 		// Look for a file matching this numeric ID with any prefix
 		// Pattern: <prefix>-<number> - <title>.md (e.g., "back-358 - Title.md")
@@ -304,7 +304,7 @@ function extractDraftBody(value: string): string | null {
 export async function getDraftPath(draftId: string, core: Core): Promise<string | null> {
 	try {
 		const draftsDir = await core.filesystem.getDraftsDir();
-		const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir }));
+		const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
 		const normalizedId = normalizeDraftId(draftId);
 		// Use lowercase ID for filename matching (filenames use lowercase prefix)
 		const filenameId = idForFilename(normalizedId);
@@ -339,7 +339,7 @@ export async function getTaskFilename(taskId: string, core?: Core | TaskPathCont
 	if (detectedPrefix) {
 		const globPattern = buildGlobPattern(detectedPrefix);
 		try {
-			const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir }));
+			const files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }));
 			return findMatchingFile(files, taskId, detectedPrefix) ?? null;
 		} catch {
 			return null;
@@ -348,7 +348,7 @@ export async function getTaskFilename(taskId: string, core?: Core | TaskPathCont
 
 	// For numeric-only IDs, scan all .md files and find one matching the number
 	try {
-		const allFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir }));
+		const allFiles = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }));
 
 		const numericPart = taskId.trim();
 		for (const file of allFiles) {

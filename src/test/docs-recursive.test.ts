@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../index.ts";
+import { isWindows } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
 describe("Docs recursive listing and ID generation", () => {
+	const itIfSymlinks = isWindows() ? it.skip : it;
+
 	beforeEach(async () => {
 		TEST_DIR = join(process.cwd(), `.tmp-test-docs-${Math.random().toString(36).slice(2)}`);
 		await rm(TEST_DIR, { recursive: true, force: true });
@@ -72,5 +75,31 @@ describe("Docs recursive listing and ID generation", () => {
 		const hasDoc4 = allDocs.some((d) => d.id === "doc-4");
 		expect(hasDoc4).toBe(true);
 		expect(allDocs.length).toBe(4);
+	});
+
+	itIfSymlinks("includes documents from symlinked subdirectories", async () => {
+		const core = new Core(TEST_DIR);
+		const docsDir = core.filesystem.docsDir;
+		const externalDocsDir = join(TEST_DIR, "external-docs");
+		const linkedDir = join(docsDir, "external");
+
+		await mkdir(externalDocsDir, { recursive: true });
+		await writeFile(
+			join(externalDocsDir, "doc-99 - External.md"),
+			`---
+id: doc-99
+title: External Doc
+type: other
+created_date: 2020-01-01
+---
+
+External content
+`,
+		);
+
+		await symlink(externalDocsDir, linkedDir);
+
+		const docs = await core.filesystem.listDocuments();
+		expect(docs.some((doc) => doc.id === "doc-99")).toBe(true);
 	});
 });

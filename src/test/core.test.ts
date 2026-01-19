@@ -357,7 +357,7 @@ describe("Core", () => {
 		it("updates a document title without leaving the previous file behind", async () => {
 			await core.createDocument(baseDocument, false);
 
-			const [initialFile] = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			const [initialFile] = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }));
 			expect(initialFile).toBe("doc-1 - Operations-Guide.md");
 
 			const documents = await core.filesystem.listDocuments();
@@ -369,7 +369,7 @@ describe("Core", () => {
 
 			await core.updateDocument({ ...existingDoc, title: "Operations Guide Updated" }, "# Updated content", false);
 
-			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }));
 			expect(docFiles).toHaveLength(1);
 			expect(docFiles[0]).toBe("doc-1 - Operations-Guide-Updated.md");
 

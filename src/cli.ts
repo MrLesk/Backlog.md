@@ -2642,7 +2642,7 @@ docCmd
 		const selected = await genericSelectList("Select a document", docs);
 		if (selected) {
 			// Show document details (recursive search)
-			const files = await Array.fromAsync(new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.docsDir }));
+			const files = await Array.fromAsync(new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }));
 			const docFile = files.find(
 				(f) => f.startsWith(`${selected.id} -`) || f.endsWith(`/${selected.id}.md`) || f === `${selected.id}.md`,
 			);

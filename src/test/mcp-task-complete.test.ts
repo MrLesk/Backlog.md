@@ -78,7 +78,7 @@ describe("MCP task_complete", () => {
 		expect(activeTask).toBeNull();
 
 		const completedFiles = await Array.fromAsync(
-			new Bun.Glob("task-1*.md").scan({ cwd: server.filesystem.completedDir }),
+			new Bun.Glob("task-1*.md").scan({ cwd: server.filesystem.completedDir, followSymlinks: true }),
 		);
 		expect(completedFiles.length).toBe(1);
 	});
