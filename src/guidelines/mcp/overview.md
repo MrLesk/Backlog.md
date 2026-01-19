@@ -32,8 +32,6 @@ When the user requests non-trivial work:
 3. **If not found:** Create task(s) based on scope (single task or present breakdown for approval). Check task-creation workflow for details
 4. **Execute:** Follow task-execution guidelines
 
-**Follow-up work:** If additional work is discovered for an existing task, create it as a **subtask** of that parent task (not a new top-level task).
-
 Searching first avoids duplicate tasks and helps you understand existing context.
 
 ### Detailed Guidance (Required)

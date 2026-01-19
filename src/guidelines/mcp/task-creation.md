@@ -62,6 +62,8 @@ When scope requires multiple tasks:
 2. **Explain what you created** to the user after creation, including the reasoning for the structure
 3. **Document relationships**: Record dependencies using `task_edit` so scheduling and merge-risk tooling stay accurate
 
+**Follow-up work on an existing task:** Create it as a **subtask** of that parent task (not a new top-level task).
+
 Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
