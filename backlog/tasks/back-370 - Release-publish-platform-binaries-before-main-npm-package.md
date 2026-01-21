@@ -5,12 +5,13 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-21 21:05'
-updated_date: '2026-01-21 21:17'
+updated_date: '2026-01-21 21:18'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/489'
   - 'https://github.com/MrLesk/Backlog.md/actions/runs/21222914029'
+  - 'https://github.com/MrLesk/Backlog.md/pull/494'
 ---
 
 ## Description
@@ -42,6 +43,8 @@ Mitigate optional dependency race by publishing platform-specific binary package
 Updated release workflow ordering so `publish-binaries` runs before `npm-publish`, keeping `install-sanity` gated on both. No steps removed.
 
 Tests not run (workflow-only change).
+
+PR: https://github.com/MrLesk/Backlog.md/pull/494
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
