@@ -87,7 +87,7 @@ jobs:
           VER="$(jq -r .version package.json)"
           OUT="backlog-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
           bun build src/cli.ts \
-            --compile --minify --sourcemap \
+            --compile --minify \
             --target=${{ matrix.target }} \
             --define __EMBEDDED_VERSION__="\"${VER}\"" \
             --outfile="$OUT"
