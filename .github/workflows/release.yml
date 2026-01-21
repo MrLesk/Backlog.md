@@ -81,7 +81,7 @@ jobs:
           path: ${{ env.BIN }}
 
   npm-publish:
-    needs: build
+    needs: [build, publish-binaries]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -130,7 +130,7 @@ jobs:
           npm publish --access public
 
   publish-binaries:
-    needs: [build, npm-publish]
+    needs: build
     strategy:
       matrix:
         include:
