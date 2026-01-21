@@ -5,11 +5,12 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-21 18:57'
-updated_date: '2026-01-21 18:58'
+updated_date: '2026-01-21 18:59'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/492'
+  - 'https://github.com/MrLesk/Backlog.md/pull/493'
 ---
 
 ## Description
@@ -47,6 +48,8 @@ Summary:
 - Sync ContentStore on core task updates so UI/search refreshes use up-to-date acceptance criteria state.
 - Sync ContentStore on task creation for immediate UI/search visibility.
 - Removed server-layer ContentStore refresh logic now handled in core.
+
+PR: https://github.com/MrLesk/Backlog.md/pull/493
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
