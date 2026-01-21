@@ -753,7 +753,12 @@ export class Core {
 
 		const filepath = await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
-		this.contentStore?.upsertTask(task);
+		if (this.contentStore) {
+			const savedTask = await this.fs.loadTask(task.id);
+			if (savedTask) {
+				this.contentStore.upsertTask(savedTask);
+			}
+		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.git.addAndCommitTaskFile(task.id, filepath, "create");
@@ -791,7 +796,12 @@ export class Core {
 
 		await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
-		this.contentStore?.upsertTask(task);
+		if (this.contentStore) {
+			const savedTask = await this.fs.loadTask(task.id);
+			if (savedTask) {
+				this.contentStore.upsertTask(savedTask);
+			}
+		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const filePath = await getTaskPath(task.id, this);

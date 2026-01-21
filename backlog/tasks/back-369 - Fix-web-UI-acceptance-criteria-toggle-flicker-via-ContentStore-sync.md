@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-21 18:57'
-updated_date: '2026-01-21 18:59'
+updated_date: '2026-01-21 19:14'
 labels: []
 dependencies: []
 references:
@@ -50,6 +50,8 @@ Summary:
 - Removed server-layer ContentStore refresh logic now handled in core.
 
 PR: https://github.com/MrLesk/Backlog.md/pull/493
+
+Follow-up: adjusted ContentStore sync to upsert the normalized task loaded from disk after save (avoids overwriting canonical fields like filePath/parentTaskId).
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
