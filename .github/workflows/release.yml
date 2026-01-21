@@ -244,8 +244,19 @@ jobs:
           mkdir sanity | Out-Null
           Set-Location sanity
           npm init -y | Out-Null
-          npm i "backlog.md@$Version"
-          npx backlog -v
+          $MaxAttempts = 3
+          for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+            npm i "backlog.md@$Version"
+            npx backlog -v
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+            if ($attempt -eq $MaxAttempts) {
+              throw "backlog -v failed after $MaxAttempts attempts"
+            }
+            Write-Host "backlog -v failed (attempt $attempt/$MaxAttempts). Retrying after delay..."
+            Start-Sleep -Seconds 20
+          }
 
   github-release:
     needs: build
