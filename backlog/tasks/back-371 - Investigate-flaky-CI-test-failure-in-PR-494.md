@@ -5,12 +5,13 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-21 21:22'
-updated_date: '2026-01-21 21:24'
+updated_date: '2026-01-21 21:27'
 labels: []
 dependencies: []
 references:
   - >-
     https://github.com/MrLesk/Backlog.md/actions/runs/21226066767/job/61073229991?pr=494
+  - 'https://github.com/MrLesk/Backlog.md/pull/496'
 ---
 
 ## Description
@@ -43,6 +44,8 @@ Findings: CI job 61073229991 failed in `compile-and-smoke-test` during `bun buil
 Hypotheses: flaky/invalid source map in a dependency or corrupted Bun cache artifact causing Bun’s module graph serialization to fail under `--sourcemap`.
 
 Proposed minimal fix: drop `--sourcemap` in CI smoke-test builds (keeps release build unchanged), or add a single retry/clear bun cache before the build step. If you want, I can implement as a follow-up task.
+
+Follow-up PR for mitigation: https://github.com/MrLesk/Backlog.md/pull/496
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

@@ -5,12 +5,13 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-21 21:26'
-updated_date: '2026-01-21 21:26'
+updated_date: '2026-01-21 21:27'
 labels: []
 dependencies: []
 references:
   - >-
     https://github.com/MrLesk/Backlog.md/actions/runs/21226066767/job/61073229991?pr=494
+  - 'https://github.com/MrLesk/Backlog.md/pull/496'
 ---
 
 ## Description
@@ -39,6 +40,8 @@ CI compile-and-smoke-test intermittently fails on Ubuntu with `InvalidSourceMap`
 
 <!-- SECTION:NOTES:BEGIN -->
 Removed `--sourcemap` from CI compile-and-smoke-test build step to avoid Bun InvalidSourceMap flake. Release workflow unchanged. Tests not run (workflow-only change).
+
+PR: https://github.com/MrLesk/Backlog.md/pull/496
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
