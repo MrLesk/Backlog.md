@@ -5,12 +5,13 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-21 21:46'
-updated_date: '2026-01-21 21:46'
+updated_date: '2026-01-21 21:47'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/actions/runs/21226648942'
   - 'https://github.com/MrLesk/Backlog.md/actions/runs/21226648942#logs'
+  - 'https://github.com/MrLesk/Backlog.md/pull/497'
 ---
 
 ## Description
@@ -39,6 +40,8 @@ Install-sanity on Windows intermittently fails with "Binary package not installe
 
 <!-- SECTION:NOTES:BEGIN -->
 Added retry loop with backoff to Windows install-sanity step to handle optional dependency propagation. Unix steps unchanged. Tests not run (workflow-only change).
+
+PR: https://github.com/MrLesk/Backlog.md/pull/497
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
