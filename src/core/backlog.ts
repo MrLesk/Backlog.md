@@ -752,6 +752,13 @@ export class Core {
 		normalizeAssignee(task);
 
 		const filepath = await this.fs.saveTask(task);
+		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
+		if (this.contentStore) {
+			const savedTask = await this.fs.loadTask(task.id);
+			if (savedTask) {
+				this.contentStore.upsertTask(savedTask);
+			}
+		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.git.addAndCommitTaskFile(task.id, filepath, "create");
@@ -788,6 +795,13 @@ export class Core {
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
 		await this.fs.saveTask(task);
+		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
+		if (this.contentStore) {
+			const savedTask = await this.fs.loadTask(task.id);
+			if (savedTask) {
+				this.contentStore.upsertTask(savedTask);
+			}
+		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const filePath = await getTaskPath(task.id, this);
