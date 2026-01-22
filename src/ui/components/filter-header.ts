@@ -5,6 +5,7 @@
 
 import type { BoxInterface, ListInterface, ScreenInterface, TextboxInterface } from "neo-neo-bblessed";
 import { box, list, textbox } from "neo-neo-bblessed";
+import { formatLabelSummary } from "../../utils/label-filter.ts";
 
 export interface FilterState {
 	search: string;
@@ -589,8 +590,7 @@ export class FilterHeader {
 	}
 
 	private buildLabelsButton(x: number, y: number, width: number): void {
-		const labelCount = this.state.labels.length;
-		const content = labelCount === 0 ? "All ▼" : `(${labelCount}) ▼`;
+		const content = this.getLabelsButtonContent();
 
 		this.labelsButton = box({
 			parent: this.container,
@@ -674,9 +674,12 @@ export class FilterHeader {
 
 	private updateLabelsButton(): void {
 		if (!this.labelsButton) return;
-		const labelCount = this.state.labels.length;
-		const content = labelCount === 0 ? "All ▼" : `(${labelCount}) ▼`;
-		this.labelsButton.setContent(content);
+		this.labelsButton.setContent(this.getLabelsButtonContent());
+	}
+
+	private getLabelsButtonContent(): string {
+		const summary = formatLabelSummary(this.state.labels).replace(/^Labels:\s*/, "");
+		return `${summary} ▼`;
 	}
 
 	private repositionElements(): void {

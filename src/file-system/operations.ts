@@ -415,7 +415,9 @@ export class FileSystem {
 			const archiveDraftsDir = await this.getArchiveDraftsDir();
 
 			// Find draft file with draft- prefix
-			const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
+			const files = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+			);
 			const normalizedId = normalizeId(draftId, "draft");
 			const filenameId = idForFilename(normalizedId);
 			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
@@ -520,7 +522,9 @@ export class FileSystem {
 		try {
 			// Find existing draft file with same ID but possibly different filename (e.g., title changed)
 			const filenameId = idForFilename(draftId);
-			const existingFiles = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
+			const existingFiles = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+			);
 			const existingFile = existingFiles.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
 			if (existingFile && existingFile !== filename) {
 				await unlink(join(draftsDir, existingFile));
@@ -538,7 +542,9 @@ export class FileSystem {
 		try {
 			const draftsDir = await this.getDraftsDir();
 			// Search for draft files with draft- prefix
-			const files = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
+			const files = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+			);
 			const normalizedId = normalizeId(draftId, "draft");
 			const filenameId = idForFilename(normalizedId);
 
@@ -558,7 +564,9 @@ export class FileSystem {
 	async listDrafts(): Promise<Task[]> {
 		try {
 			const draftsDir = await this.getDraftsDir();
-			const taskFiles = await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }));
+			const taskFiles = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+			);
 
 			const tasks: Task[] = [];
 			for (const file of taskFiles) {
@@ -583,7 +591,9 @@ export class FileSystem {
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
 
-		const matches = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
+		const matches = await Array.fromAsync(
+			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
+		);
 		for (const match of matches) {
 			if (match === filename) continue;
 			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
@@ -601,7 +611,9 @@ export class FileSystem {
 	async loadDecision(decisionId: string): Promise<Decision | null> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
-			const files = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
+			const files = await Array.fromAsync(
+				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
+			);
 
 			// Normalize ID - remove "decision-" prefix if present
 			const normalizedId = decisionId.replace(/^decision-/, "");
@@ -681,7 +693,9 @@ export class FileSystem {
 	async listDecisions(): Promise<Decision[]> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
-			const decisionFiles = await Array.fromAsync(new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
+			const decisionFiles = await Array.fromAsync(
+				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
+			);
 			const decisions: Decision[] = [];
 			for (const file of decisionFiles) {
 				// Filter out README files as they're just instruction files
@@ -737,7 +751,9 @@ export class FileSystem {
 	async listMilestones(): Promise<Milestone[]> {
 		try {
 			const milestonesDir = await this.getMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
+			const milestoneFiles = await Array.fromAsync(
+				new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
+			);
 			const milestones: Milestone[] = [];
 			for (const file of milestoneFiles) {
 				// Filter out README files
@@ -758,7 +774,9 @@ export class FileSystem {
 	async listArchivedMilestones(): Promise<Milestone[]> {
 		try {
 			const milestonesDir = await this.getArchiveMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
+			const milestoneFiles = await Array.fromAsync(
+				new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
+			);
 			const milestones: Milestone[] = [];
 			for (const file of milestoneFiles) {
 				if (file.toLowerCase() === "readme.md") {
@@ -802,7 +820,9 @@ export class FileSystem {
 		await mkdir(milestonesDir, { recursive: true });
 
 		// Find next available milestone ID
-		const existingFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
+		const existingFiles = await Array.fromAsync(
+			new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
+		);
 		const existingIds = existingFiles
 			.map((f) => {
 				const match = f.match(/^m-(\d+)/);
@@ -856,7 +876,9 @@ ${description || `Milestone: ${title}`}
 
 		try {
 			const milestonesDir = await this.getMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
+			const milestoneFiles = await Array.fromAsync(
+				new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
+			);
 			const candidateKeys = new Set<string>([normalized]);
 			if (normalized.startsWith("m-")) {
 				candidateKeys.add(normalized.slice(2));
