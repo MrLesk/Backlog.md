@@ -8,16 +8,19 @@ import type { JsonSchema } from "../validation/validators.ts";
 export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
 	const configuredStatuses =
 		config.statuses && config.statuses.length > 0 ? [...config.statuses] : [...DEFAULT_STATUSES];
-	const defaultStatus = configuredStatuses[0] ?? DEFAULT_STATUSES[0];
+	const normalizedStatuses = configuredStatuses.map((status) => status.trim());
+	const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
+	const enumStatuses = hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
+	const defaultStatus = normalizedStatuses[0] ?? DEFAULT_STATUSES[0];
 
 	return {
 		type: "string",
 		maxLength: 100,
-		enum: configuredStatuses,
+		enum: enumStatuses,
 		enumCaseInsensitive: true,
 		enumNormalizeWhitespace: true,
 		default: defaultStatus,
-		description: `Status value (case-insensitive). Valid values: ${configuredStatuses.join(", ")}`,
+		description: `Status value (case-insensitive). Valid values: ${enumStatuses.join(", ")}`,
 	};
 }
 

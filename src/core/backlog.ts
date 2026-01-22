@@ -1,3 +1,4 @@
+import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
@@ -816,12 +817,11 @@ export class Core {
 		}
 	}
 
-	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const task = await this.fs.loadTask(taskId);
-		if (!task) {
-			throw new Error(`Task not found: ${taskId}`);
-		}
-
+	private async applyTaskUpdateInput(
+		task: Task,
+		input: TaskUpdateInput,
+		statusResolver: (status: string) => Promise<string>,
+	): Promise<{ task: Task; mutated: boolean }> {
 		let mutated = false;
 
 		const applyStringField = (
@@ -854,8 +854,7 @@ export class Core {
 		});
 
 		if (input.status !== undefined) {
-			const canonicalStatus =
-				input.status.trim().toLowerCase() === "draft" ? "Draft" : await this.requireCanonicalStatus(input.status);
+			const canonicalStatus = await statusResolver(input.status);
 			if ((task.status ?? "") !== canonicalStatus) {
 				task.status = canonicalStatus;
 				mutated = true;
@@ -1286,6 +1285,24 @@ export class Core {
 
 		task.definitionOfDoneItems = definitionOfDone;
 
+		return { task, mutated };
+	}
+
+	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) {
+			throw new Error(`Task not found: ${taskId}`);
+		}
+
+		const requestedStatus = input.status?.trim().toLowerCase();
+		if (requestedStatus === "draft") {
+			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+		}
+
+		const { mutated } = await this.applyTaskUpdateInput(task, input, async (status) =>
+			this.requireCanonicalStatus(status),
+		);
+
 		if (!mutated) {
 			return task;
 		}
@@ -1293,6 +1310,154 @@ export class Core {
 		await this.updateTask(task, autoCommit);
 		const refreshed = await this.fs.loadTask(taskId);
 		return refreshed ?? task;
+	}
+
+	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
+		// Drafts always keep status Draft
+		task.status = "Draft";
+		normalizeAssignee(task);
+		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+
+		const filepath = await this.fs.saveDraft(task);
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			await this.git.addFile(filepath);
+			await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath);
+		}
+	}
+
+	async updateDraftFromInput(draftId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		const draft = await this.fs.loadDraft(draftId);
+		if (!draft) {
+			throw new Error(`Draft not found: ${draftId}`);
+		}
+
+		const { mutated } = await this.applyTaskUpdateInput(draft, input, async (status) => {
+			if (status.trim().toLowerCase() !== "draft") {
+				throw new Error("Drafts must use status Draft.");
+			}
+			return "Draft";
+		});
+
+		if (!mutated) {
+			return draft;
+		}
+
+		await this.updateDraft(draft, autoCommit);
+		const refreshed = await this.fs.loadDraft(draftId);
+		return refreshed ?? draft;
+	}
+
+	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		const draft = await this.fs.loadDraft(taskId);
+		if (draft) {
+			const requestedStatus = input.status?.trim();
+			const wantsDraft = requestedStatus?.toLowerCase() === "draft";
+			if (requestedStatus && !wantsDraft) {
+				return await this.promoteDraftWithUpdates(draft, input, autoCommit);
+			}
+			return await this.updateDraftFromInput(draft.id, input, autoCommit);
+		}
+
+		const task = await this.fs.loadTask(taskId);
+		if (!task) {
+			throw new Error(`Task not found: ${taskId}`);
+		}
+
+		const requestedStatus = input.status?.trim();
+		const wantsDraft = requestedStatus?.toLowerCase() === "draft";
+		if (wantsDraft) {
+			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+		}
+
+		return await this.updateTaskFromInput(task.id, input, autoCommit);
+	}
+
+	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		const targetStatus = input.status?.trim();
+		if (!targetStatus || targetStatus.toLowerCase() === "draft") {
+			throw new Error("Promoting a draft requires a non-draft status.");
+		}
+
+		const { mutated } = await this.applyTaskUpdateInput(draft, { ...input, status: undefined }, async (status) => {
+			if (status.trim().toLowerCase() !== "draft") {
+				throw new Error("Drafts must use status Draft.");
+			}
+			return "Draft";
+		});
+
+		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
+		const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+		const draftPath = draft.filePath;
+
+		const promotedTask: Task = {
+			...draft,
+			id: newTaskId,
+			status: canonicalStatus,
+			filePath: undefined,
+			...(mutated || draft.status !== canonicalStatus
+				? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+				: {}),
+		};
+
+		normalizeAssignee(promotedTask);
+		const savedPath = await this.fs.saveTask(promotedTask);
+
+		if (draftPath) {
+			await unlink(draftPath);
+		}
+
+		if (this.contentStore) {
+			const savedTask = await this.fs.loadTask(promotedTask.id);
+			if (savedTask) {
+				this.contentStore.upsertTask(savedTask);
+			}
+		}
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			const backlogDir = await this.getBacklogDirectoryName();
+			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draft.id, "draft")}`, repoRoot);
+		}
+
+		return (await this.fs.loadTask(promotedTask.id)) ?? { ...promotedTask, filePath: savedPath };
+	}
+
+	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		const { mutated } = await this.applyTaskUpdateInput(task, { ...input, status: undefined }, async (status) => {
+			if (status.trim().toLowerCase() === "draft") {
+				return "Draft";
+			}
+			return this.requireCanonicalStatus(status);
+		});
+
+		const newDraftId = await this.generateNextId(EntityType.Draft);
+		const taskPath = task.filePath;
+
+		const demotedDraft: Task = {
+			...task,
+			id: newDraftId,
+			status: "Draft",
+			filePath: undefined,
+			...(mutated || task.status !== "Draft"
+				? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+				: {}),
+		};
+
+		normalizeAssignee(demotedDraft);
+		const savedPath = await this.fs.saveDraft(demotedDraft);
+
+		if (taskPath) {
+			await unlink(taskPath);
+		}
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			const backlogDir = await this.getBacklogDirectoryName();
+			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
+			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(task.id)}`, repoRoot);
+		}
+
+		return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
 	}
 
 	/**
