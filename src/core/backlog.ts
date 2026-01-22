@@ -1294,8 +1294,13 @@ export class Core {
 			throw new Error(`Task not found: ${taskId}`);
 		}
 
+		const requestedStatus = input.status?.trim().toLowerCase();
+		if (requestedStatus === "draft") {
+			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+		}
+
 		const { mutated } = await this.applyTaskUpdateInput(task, input, async (status) =>
-			status.trim().toLowerCase() === "draft" ? "Draft" : this.requireCanonicalStatus(status),
+			this.requireCanonicalStatus(status),
 		);
 
 		if (!mutated) {
