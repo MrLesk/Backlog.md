@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-22 20:32'
-updated_date: '2026-01-22 21:25'
+updated_date: '2026-01-22 21:38'
 labels:
   - mcp
   - drafts
@@ -58,7 +58,7 @@ Ran `bunx biome check . --write` to fix formatting in unrelated files; `bun run 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented draft-aware MCP task handling so Draft status is accepted in schemas, task tools can create/edit/promote/demote drafts, and task_view/task_archive/list/search behave correctly when Draft is requested. Added core draft update/transition helpers and MCP draft tests, plus updated MCP workflow docs to explain Draft usage in the task-creation guide.
+Implemented draft-aware MCP task handling so Draft status is accepted in schemas, task tools can create/edit/promote/demote drafts, and task_view/task_archive/list/search behave correctly when Draft is requested. Added core draft update/transition helpers and MCP draft tests, plus updated MCP workflow docs to explain Draft usage in the task-creation guide. Updated core task edits so setting status Draft on a task routes through demotion logic instead of leaving a Draft in the tasks folder.
 
 Tests: bunx tsc --noEmit; bun run check .; bun test src/test/mcp-*.test.ts
 <!-- SECTION:FINAL_SUMMARY:END -->
