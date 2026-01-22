@@ -86,6 +86,8 @@ Create all tasks in the same session to maintain consistency and context.
 
 **Ask for clarification** if requirements are ambiguous
 
+**Drafts (exceptional):** Default to creating regular tasks (e.g., To Do) for any work you are committing to track. Only create a Draft when the user explicitly requests a draft, or when there is clear uncertainty that makes a commitment inappropriate (e.g., missing requirements and the user wants a placeholder). Use `task_create` with status `Draft` to create a draft, `task_edit` to promote/demote by changing status, and pass status `Draft` to `task_list`/`task_search` to include drafts. Drafts are excluded unless explicitly filtered.
+
 ### Step 6: Report created tasks
 
 After creation, show the user each new task's ID, title, description, and acceptance criteria (e.g., "Created task-290 – API endpoint: …"). This provides visibility into what was created and allows the user to request corrections if needed.

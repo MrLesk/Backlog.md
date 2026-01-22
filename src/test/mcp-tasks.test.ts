@@ -144,8 +144,11 @@ describe("MCP task tools (MVP)", () => {
 
 	it("exposes status enums and defaults from configuration", async () => {
 		const config = await loadConfig(mcpServer);
-		const expectedStatuses =
+		const configuredStatuses =
 			config.statuses && config.statuses.length > 0 ? [...config.statuses] : Array.from(DEFAULT_STATUSES);
+		const normalizedStatuses = configuredStatuses.map((status) => status.trim());
+		const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
+		const expectedStatuses = hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
 		const tools = await mcpServer.testInterface.listTools();
 		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
 
@@ -156,12 +159,12 @@ describe("MCP task tools (MVP)", () => {
 		const editStatusSchema = editSchema?.properties?.status;
 
 		expect(createStatusSchema?.enum).toEqual(expectedStatuses);
-		expect(createStatusSchema?.default).toBe(expectedStatuses[0] ?? DEFAULT_STATUSES[0]);
+		expect(createStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
 		expect(createStatusSchema?.enumCaseInsensitive).toBe(true);
 		expect(createStatusSchema?.enumNormalizeWhitespace).toBe(true);
 
 		expect(editStatusSchema?.enum).toEqual(expectedStatuses);
-		expect(editStatusSchema?.default).toBe(expectedStatuses[0] ?? DEFAULT_STATUSES[0]);
+		expect(editStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
 		expect(editStatusSchema?.enumCaseInsensitive).toBe(true);
 		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
 	});

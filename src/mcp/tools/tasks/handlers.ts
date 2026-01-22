@@ -55,6 +55,10 @@ export class TaskHandlers {
 		return normalized.includes("done") || normalized.includes("complete");
 	}
 
+	private isDraftStatus(status?: string | null): boolean {
+		return (status ?? "").trim().toLowerCase() === "draft";
+	}
+
 	private formatTaskSummaryLine(task: Task, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 		const status = task.status || (task.source === "completed" ? "Done" : "");
@@ -106,6 +110,55 @@ export class TaskHandlers {
 	}
 
 	async listTasks(args: TaskListArgs = {}): Promise<CallToolResult> {
+		if (this.isDraftStatus(args.status)) {
+			let drafts = await this.core.filesystem.listDrafts();
+			if (args.search) {
+				const draftSearch = createTaskSearchIndex(drafts);
+				drafts = draftSearch.search({ query: args.search, status: "Draft" });
+			}
+
+			if (args.assignee) {
+				drafts = drafts.filter((draft) => (draft.assignee ?? []).includes(args.assignee ?? ""));
+			}
+
+			const labelFilters = args.labels ?? [];
+			if (labelFilters.length > 0) {
+				drafts = drafts.filter((draft) => {
+					const draftLabels = draft.labels ?? [];
+					return labelFilters.every((label) => draftLabels.includes(label));
+				});
+			}
+
+			if (drafts.length === 0) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "No tasks found.",
+						},
+					],
+				};
+			}
+
+			let sortedDrafts = sortTasks(drafts, "priority");
+			if (typeof args.limit === "number" && args.limit >= 0) {
+				sortedDrafts = sortedDrafts.slice(0, args.limit);
+			}
+			const lines = ["Draft:"];
+			for (const draft of sortedDrafts) {
+				lines.push(this.formatTaskSummaryLine(draft));
+			}
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: lines.join("\n"),
+					},
+				],
+			};
+		}
+
 		const filters: TaskListFilter = {};
 		if (args.status) {
 			filters.status = args.status;
@@ -196,6 +249,44 @@ export class TaskHandlers {
 			throw new McpError("Search query cannot be empty", "VALIDATION_ERROR");
 		}
 
+		if (this.isDraftStatus(args.status)) {
+			const drafts = await this.core.filesystem.listDrafts();
+			const searchIndex = createTaskSearchIndex(drafts);
+			let draftMatches = searchIndex.search({
+				query,
+				status: "Draft",
+				priority: args.priority,
+			});
+			if (typeof args.limit === "number" && args.limit >= 0) {
+				draftMatches = draftMatches.slice(0, args.limit);
+			}
+
+			if (draftMatches.length === 0) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `No tasks found for "${query}".`,
+						},
+					],
+				};
+			}
+
+			const lines: string[] = ["Tasks:"];
+			for (const draft of draftMatches) {
+				lines.push(this.formatTaskSummaryLine(draft, { includeStatus: true }));
+			}
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: lines.join("\n"),
+					},
+				],
+			};
+		}
+
 		const tasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
 		const searchIndex = createTaskSearchIndex(tasks);
 		let taskMatches = searchIndex.search({
@@ -235,6 +326,11 @@ export class TaskHandlers {
 	}
 
 	async viewTask(args: { id: string }): Promise<CallToolResult> {
+		const draft = await this.core.filesystem.loadDraft(args.id);
+		if (draft) {
+			return await formatTaskCallResult(draft);
+		}
+
 		const task = await this.core.getTaskWithSubtasks(args.id);
 		if (!task) {
 			throw new McpError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
@@ -243,6 +339,16 @@ export class TaskHandlers {
 	}
 
 	async archiveTask(args: { id: string }): Promise<CallToolResult> {
+		const draft = await this.core.filesystem.loadDraft(args.id);
+		if (draft) {
+			const success = await this.core.archiveDraft(draft.id);
+			if (!success) {
+				throw new McpError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
+			}
+
+			return await formatTaskCallResult(draft, [`Archived draft ${draft.id}.`]);
+		}
+
 		const task = await this.loadTaskOrThrow(args.id);
 
 		if (!isLocalEditableTask(task)) {
@@ -306,7 +412,7 @@ export class TaskHandlers {
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
 		try {
 			const updateInput = buildTaskUpdateInput(args);
-			const updatedTask = await this.core.editTask(args.id, updateInput);
+			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
 			return await formatTaskCallResult(updatedTask);
 		} catch (error) {
 			if (error instanceof Error) {
