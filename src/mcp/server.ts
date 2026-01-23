@@ -52,6 +52,7 @@ type ServerInitOptions = {
 export class McpServer extends Core {
 	private readonly server: Server;
 	private transport?: StdioServerTransport;
+	private stopping = false;
 
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
@@ -136,8 +137,17 @@ export class McpServer extends Core {
 	 * Stop the server and release transport resources.
 	 */
 	public async stop(): Promise<void> {
-		await this.server.close();
-		this.transport = undefined;
+		if (this.stopping) {
+			return;
+		}
+		this.stopping = true;
+		try {
+			await this.server.close();
+		} finally {
+			this.transport = undefined;
+			this.disposeSearchService();
+			this.disposeContentStore();
+		}
 	}
 
 	public getServer(): Server {

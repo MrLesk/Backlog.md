@@ -41,7 +41,12 @@ function registerStartCommand(mcpCmd: Command): void {
 					console.error("Backlog.md MCP server started (stdio transport)");
 				}
 
+				let shutdownTriggered = false;
 				const shutdown = async (signal: string) => {
+					if (shutdownTriggered) {
+						return;
+					}
+					shutdownTriggered = true;
 					if (options.debug) {
 						console.error(`Received ${signal}, shutting down MCP server...`);
 					}
@@ -55,8 +60,26 @@ function registerStartCommand(mcpCmd: Command): void {
 					}
 				};
 
+				const handleStdioClose = () => shutdown("stdio");
+				process.stdin.once("end", handleStdioClose);
+				process.stdin.once("close", handleStdioClose);
+
+				const handlePipeError = (error: unknown) => {
+					const code =
+						error && typeof error === "object" && "code" in error
+							? String((error as { code?: string }).code ?? "")
+							: "";
+					if (code === "EPIPE") {
+						void shutdown("EPIPE");
+					}
+				};
+				process.stdout.once("error", handlePipeError);
+				process.stderr.once("error", handlePipeError);
+
 				process.once("SIGINT", () => shutdown("SIGINT"));
 				process.once("SIGTERM", () => shutdown("SIGTERM"));
+				process.once("SIGHUP", () => shutdown("SIGHUP"));
+				process.once("SIGPIPE", () => shutdown("SIGPIPE"));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				console.error(`Failed to start MCP server: ${message}`);
