@@ -1,11 +1,11 @@
 ---
 id: BACK-374
 title: Ensure MCP server exits when stdio closes and disposes watchers
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-23 04:01'
-updated_date: '2026-01-23 04:14'
+updated_date: '2026-01-23 04:22'
 labels: []
 dependencies: []
 references:
@@ -47,6 +47,23 @@ Ran: `bun run check .`, `bunx tsc --noEmit`, `bun test src/test/mcp-stdio-exit.t
 
 Noted: initial `bun run check .` failed due to missing biome; `bunx tsc --noEmit` needed escalated tempdir access.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Summary:
+- Added MCP stdio shutdown handling (stdin end/close, EPIPE, SIGHUP/SIGPIPE) with idempotent shutdown.
+- Made `McpServer.stop()` dispose search/content stores to release filesystem watchers.
+- Added integration test that spawns `backlog mcp start --debug`, closes stdin, and asserts clean exit (skips Windows).
+
+Tests:
+- bun run check .
+- bunx tsc --noEmit
+- bun test src/test/mcp-stdio-exit.test.ts
+
+Notes:
+- PR: https://github.com/MrLesk/Backlog.md/pull/500
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
