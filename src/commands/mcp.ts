@@ -78,8 +78,10 @@ function registerStartCommand(mcpCmd: Command): void {
 
 				process.once("SIGINT", () => shutdown("SIGINT"));
 				process.once("SIGTERM", () => shutdown("SIGTERM"));
-				process.once("SIGHUP", () => shutdown("SIGHUP"));
-				process.once("SIGPIPE", () => shutdown("SIGPIPE"));
+				if (process.platform !== "win32") {
+					process.once("SIGHUP", () => shutdown("SIGHUP"));
+					process.once("SIGPIPE", () => shutdown("SIGPIPE"));
+				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				console.error(`Failed to start MCP server: ${message}`);
