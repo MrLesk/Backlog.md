@@ -668,6 +668,7 @@ export class BacklogServer {
 				description: payload.description,
 				status: payload.status,
 				priority: payload.priority,
+				milestone: typeof payload.milestone === "string" ? payload.milestone : undefined,
 				labels: payload.labels,
 				assignee: payload.assignee,
 				dependencies: payload.dependencies,
