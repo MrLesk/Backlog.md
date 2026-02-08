@@ -1299,7 +1299,11 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await core.generateNextId(EntityType.Task, options.parent);
+		const createAsDraft = Boolean(options.draft);
+		const id = await core.generateNextId(
+			createAsDraft ? EntityType.Draft : EntityType.Task,
+			createAsDraft ? undefined : options.parent,
+		);
 		const task = buildTaskFromOptions(id, title, options);
 
 		// Normalize and validate status if provided (case-insensitive)
@@ -1363,13 +1367,13 @@ taskCmd
 		// Workaround for bun compile issue with commander options
 		const isPlainFlag = options.plain || process.argv.includes("--plain");
 
-		if (options.draft) {
+		if (createAsDraft) {
 			const filepath = await core.createDraft(task);
 			if (isPlainFlag) {
 				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
 				return;
 			}
-			console.log(`Created draft ${id}`);
+			console.log(`Created draft ${task.id}`);
 			console.log(`File: ${filepath}`);
 		} else {
 			const filepath = await core.createTask(task);
@@ -1377,7 +1381,7 @@ taskCmd
 				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
 				return;
 			}
-			console.log(`Created task ${id}`);
+			console.log(`Created task ${task.id}`);
 			console.log(`File: ${filepath}`);
 		}
 	});
