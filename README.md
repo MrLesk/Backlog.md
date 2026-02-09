@@ -392,7 +392,6 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 | `definition_of_done` | Default DoD checklist items for new tasks | `(not set)` |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
 | `dateFormat`      | Date/time format   | `yyyy-mm-dd hh:mm`            |
-| `timezonePreference` | Timezone for dates | `UTC`                     |
 | `includeDatetimeInDates` | Add time to new dates | `true`              |
 | `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
 | `defaultPort`     | Web UI port        | `6420`                        |
