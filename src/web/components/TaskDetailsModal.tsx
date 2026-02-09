@@ -8,6 +8,7 @@ import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
+import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -789,14 +790,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
         {/* Sidebar */}
         <div className="md:col-span-1 space-y-4">
           {/* Dates */}
-          {task && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
-              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{task.createdDate}</span></div>
-              {task.updatedDate && (
-                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{task.updatedDate}</span></div>
-              )}
-            </div>
-          )}
+	          {task && (
+	            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
+	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.createdDate)}</span></div>
+	              {task.updatedDate && (
+	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.updatedDate)}</span></div>
+	              )}
+	            </div>
+	          )}
           {/* Title (editable for existing tasks) */}
           {task && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
