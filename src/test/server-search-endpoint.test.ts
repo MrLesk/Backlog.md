@@ -180,6 +180,25 @@ describe("BacklogServer search endpoint", () => {
 		expect(fetched.title).toBe("Immediate fetch");
 	});
 
+	it("persists milestone when creating tasks via POST", async () => {
+		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Milestone create",
+				status: "To Do",
+				milestone: "m-2",
+			}),
+		});
+		expect(createResponse.ok).toBe(true);
+		const created = (await createResponse.json()) as Task;
+		expect(created.milestone).toBe("m-2");
+
+		const shortId = created.id.replace(/^task-/i, "");
+		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
+		expect(fetched.milestone).toBe("m-2");
+	});
+
 	it("rebuilds the Fuse index when markdown content changes", async () => {
 		await filesystem.saveDocument({
 			...baseDoc,
