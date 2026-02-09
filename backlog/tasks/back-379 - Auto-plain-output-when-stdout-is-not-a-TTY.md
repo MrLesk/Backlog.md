@@ -1,8 +1,8 @@
 ---
-id: BACK-375
+id: BACK-379
 title: Auto-plain output when stdout is not a TTY
 status: Done
-assignee: []
+assignee: ["@codex"]
 created_date: '2026-01-26 14:01'
 updated_date: '2026-01-26 14:01'
 labels: []
