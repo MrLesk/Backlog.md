@@ -195,6 +195,16 @@ if (process.platform === "win32") {
 	}
 }
 
+// Auto-plain fallback for commands that otherwise launch interactive UIs.
+// Require both stdin and stdout to be TTY before attempting an interactive experience.
+const hasInteractiveTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);
+const shouldAutoPlain = !hasInteractiveTTY;
+const plainFlagInArgv = process.argv.includes("--plain");
+
+function isPlainRequested(options?: { plain?: boolean }): boolean {
+	return Boolean(options?.plain || plainFlagInArgv);
+}
+
 // Temporarily isolate BUN_OPTIONS during CLI parsing to prevent conflicts
 // Save the original value so it's available for subsequent commands
 const originalBunOptions = process.env.BUN_OPTIONS;
@@ -1364,12 +1374,11 @@ taskCmd
 			task.finalSummary = String(options.finalSummary);
 		}
 
-		// Workaround for bun compile issue with commander options
-		const isPlainFlag = options.plain || process.argv.includes("--plain");
+		const usePlainOutput = isPlainRequested(options);
 
 		if (createAsDraft) {
 			const filepath = await core.createDraft(task);
-			if (isPlainFlag) {
+			if (usePlainOutput) {
 				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
 				return;
 			}
@@ -1377,7 +1386,7 @@ taskCmd
 			console.log(`File: ${filepath}`);
 		} else {
 			const filepath = await core.createTask(task);
-			if (isPlainFlag) {
+			if (usePlainOutput) {
 				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
 				return;
 			}
@@ -1453,8 +1462,8 @@ program
 			filters,
 		});
 
-		const isPlainFlag = options.plain || process.argv.includes("--plain") || !process.stdout.isTTY;
-		if (isPlainFlag) {
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			printSearchResults(searchResults);
 			cleanup();
 			return;
@@ -1653,8 +1662,8 @@ taskCmd
 			}
 		}
 
-		const isPlainFlag = options.plain || process.argv.includes("--plain");
-		if (isPlainFlag) {
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			const tasks = await core.queryTasks({ filters: baseFilters, includeCrossBranch: false });
 			const config = await core.filesystem.loadConfig();
 
@@ -2138,8 +2147,8 @@ taskCmd
 			return;
 		}
 
-		const isPlainFlag = options.plain || process.argv.includes("--plain");
-		if (isPlainFlag) {
+		const usePlainOutput = isPlainRequested(options);
+		if (usePlainOutput) {
 			console.log(formatTaskPlainText(updatedTask));
 			return;
 		}
@@ -2167,8 +2176,9 @@ taskCmd
 			? localTasks
 			: [...localTasks, task];
 
-		// Plain text output for AI agents
-		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
+		// Plain text output for non-interactive environments
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			console.log(formatTaskPlainText(task));
 			return;
 		}
@@ -2237,8 +2247,9 @@ taskCmd
 			? localTasks
 			: [...localTasks, task];
 
-		// Plain text output for AI agents
-		if (options && (options.plain || process.argv.includes("--plain"))) {
+		// Plain text output for non-interactive environments
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			console.log(formatTaskPlainText(task));
 			return;
 		}
@@ -2289,8 +2300,9 @@ draftCmd
 			sortedDrafts = sortTasks(drafts, "priority");
 		}
 
-		if (options.plain || process.argv.includes("--plain")) {
-			// Plain text output for AI agents
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
+			// Plain text output for non-interactive environments
 			console.log("Drafts:");
 			for (const draft of sortedDrafts) {
 				const priorityIndicator = draft.priority ? `[${draft.priority.toUpperCase()}] ` : "";
@@ -2385,8 +2397,9 @@ draftCmd
 			return;
 		}
 
-		// Plain text output for AI agents
-		if (options && (("plain" in options && options.plain) || process.argv.includes("--plain"))) {
+		// Plain text output for non-interactive environments
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			console.log(formatTaskPlainText(draft));
 			return;
 		}
@@ -2420,8 +2433,9 @@ draftCmd
 			return;
 		}
 
-		// Plain text output for AI agents
-		if (options && (options.plain || process.argv.includes("--plain"))) {
+		// Plain text output for non-interactive environments
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			console.log(formatTaskPlainText(draft, { filePathOverride: filePath }));
 			return;
 		}
@@ -2656,9 +2670,9 @@ docCmd
 			return;
 		}
 
-		// Plain text output
-		const isPlainFlag = options.plain || process.argv.includes("--plain");
-		if (isPlainFlag) {
+		// Plain text output for non-interactive environments
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			for (const d of docs) {
 				console.log(`${d.id} - ${d.title}`);
 			}
@@ -2883,9 +2897,8 @@ sequenceCmd
 		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
 		const { unsequenced, sequences } = computeSequences(activeTasks);
 
-		// Workaround for bun compile issue with commander options
-		const isPlainFlag = options.plain || process.argv.includes("--plain");
-		if (isPlainFlag) {
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
 			if (unsequenced.length > 0) {
 				console.log("Unsequenced:");
 				for (const t of unsequenced) {
