@@ -21,4 +21,12 @@ describe("MermaidMarkdown", () => {
 		expect(html).toContain("Heading");
 		expect(html).toContain("<strong>markdown</strong>");
 	});
+
+	it("preserves non-http autolinks and email autolinks", () => {
+		const source = "Links: <ftp://example.com/file> and <foo@example.com>";
+		const html = renderToString(<MermaidMarkdown source={source} />);
+
+		expect(html).toContain('href="ftp://example.com/file"');
+		expect(html).toContain('href="mailto:foo@example.com"');
+	});
 });

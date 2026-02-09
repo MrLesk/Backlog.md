@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-09 03:55'
-updated_date: '2026-02-09 03:57'
+updated_date: '2026-02-09 04:02'
 labels:
   - bug
   - web
@@ -32,12 +32,18 @@ Fix blank page in browser task details when markdown contains angle-bracket type
 
 <!-- SECTION:NOTES:BEGIN -->
 Reproduced crash in markdown preview rendering path with `Result<List<MenuItem>>` and confirmed React throws due tag interpretation (`menuitems cannot have children nor dangerouslySetInnerHTML`). Added markdown sanitization in `MermaidMarkdown` to escape tag-like `<...` starts (while preserving angle-bracket autolinks), preventing React from interpreting type notation as HTML tags. Added regression tests for problematic angle-bracket content and normal markdown rendering.
+
+Addressing PR review feedback: preserve non-HTTP autolinks (e.g., `<ftp://...>`, `<foo@example.com>`) while still escaping unsafe tag-like angle-bracket sequences.
+
+Addressed PR feedback by preserving additional CommonMark autolink forms during sanitization: URI schemes beyond HTTP(S) (e.g., ftp) and plain email autolinks.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Fixed web preview blank-page crash for angle-bracket type strings by sanitizing tag-like `<...` sequences before rendering markdown in `MermaidMarkdown`. Added regression test `src/test/mermaid-markdown.test.tsx` to ensure problematic strings no longer throw and normal markdown behavior remains functional.
+
+Follow-up refinement: sanitizer now preserves generic URI/email autolinks while still escaping unsafe tag-like angle-bracket sequences that caused the crash.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
