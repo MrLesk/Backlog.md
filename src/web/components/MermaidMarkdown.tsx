@@ -6,8 +6,13 @@ interface Props {
 	source: string;
 }
 
+function sanitizeMarkdownSource(source: string): string {
+	return source.replace(/<(?=[A-Za-z])(?!https?:\/\/)(?!mailto:)/gi, "&lt;");
+}
+
 export default function MermaidMarkdown({ source }: Props) {
 	const ref = useRef<HTMLDivElement | null>(null);
+	const safeSource = sanitizeMarkdownSource(source);
 
 	useEffect(() => {
 		if (!ref.current) return;
@@ -21,11 +26,11 @@ export default function MermaidMarkdown({ source }: Props) {
 		});
 
 		return () => cancelAnimationFrame(frameId);
-	}, [source]);
+	}, [safeSource]);
 
 	return (
 		<div ref={ref} className="wmde-markdown">
-			<MDEditor.Markdown source={source} />
+			<MDEditor.Markdown source={safeSource} />
 		</div>
 	);
 }
