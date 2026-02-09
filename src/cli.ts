@@ -199,6 +199,11 @@ if (process.platform === "win32") {
 // Require both stdin and stdout to be TTY before attempting an interactive experience.
 const hasInteractiveTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);
 const shouldAutoPlain = !hasInteractiveTTY;
+const plainFlagInArgv = process.argv.includes("--plain");
+
+function isPlainRequested(options?: { plain?: boolean }): boolean {
+	return Boolean(options?.plain || plainFlagInArgv);
+}
 
 // Temporarily isolate BUN_OPTIONS during CLI parsing to prevent conflicts
 // Save the original value so it's available for subsequent commands
@@ -1365,7 +1370,7 @@ taskCmd
 			task.finalSummary = String(options.finalSummary);
 		}
 
-		const usePlainOutput = options.plain;
+		const usePlainOutput = isPlainRequested(options);
 
 		if (options.draft) {
 			const filepath = await core.createDraft(task);
@@ -1453,7 +1458,7 @@ program
 			filters,
 		});
 
-		const usePlainOutput = options.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			printSearchResults(searchResults);
 			cleanup();
@@ -1653,7 +1658,7 @@ taskCmd
 			}
 		}
 
-		const usePlainOutput = options.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			const tasks = await core.queryTasks({ filters: baseFilters, includeCrossBranch: false });
 			const config = await core.filesystem.loadConfig();
@@ -2138,7 +2143,7 @@ taskCmd
 			return;
 		}
 
-		const usePlainOutput = options.plain;
+		const usePlainOutput = isPlainRequested(options);
 		if (usePlainOutput) {
 			console.log(formatTaskPlainText(updatedTask));
 			return;
@@ -2168,7 +2173,7 @@ taskCmd
 			: [...localTasks, task];
 
 		// Plain text output for non-interactive environments
-		const usePlainOutput = options?.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			console.log(formatTaskPlainText(task));
 			return;
@@ -2239,7 +2244,7 @@ taskCmd
 			: [...localTasks, task];
 
 		// Plain text output for non-interactive environments
-		const usePlainOutput = options?.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			console.log(formatTaskPlainText(task));
 			return;
@@ -2291,7 +2296,7 @@ draftCmd
 			sortedDrafts = sortTasks(drafts, "priority");
 		}
 
-		const usePlainOutput = options.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			// Plain text output for non-interactive environments
 			console.log("Drafts:");
@@ -2389,7 +2394,7 @@ draftCmd
 		}
 
 		// Plain text output for non-interactive environments
-		const usePlainOutput = options?.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			console.log(formatTaskPlainText(draft));
 			return;
@@ -2425,7 +2430,7 @@ draftCmd
 		}
 
 		// Plain text output for non-interactive environments
-		const usePlainOutput = options?.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			console.log(formatTaskPlainText(draft, { filePathOverride: filePath }));
 			return;
@@ -2662,7 +2667,7 @@ docCmd
 		}
 
 		// Plain text output for non-interactive environments
-		const usePlainOutput = options.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			for (const d of docs) {
 				console.log(`${d.id} - ${d.title}`);
@@ -2888,7 +2893,7 @@ sequenceCmd
 		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
 		const { unsequenced, sequences } = computeSequences(activeTasks);
 
-		const usePlainOutput = options.plain || shouldAutoPlain;
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
 			if (unsequenced.length > 0) {
 				console.log("Unsequenced:");
