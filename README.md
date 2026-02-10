@@ -285,6 +285,12 @@ For the full configuration reference (all options, commands, and detailed notes)
 
 ---
 
+## 🌐 Community Tools
+
+- **[vscode-backlog-md](https://marketplace.visualstudio.com/items?itemName=ysamlan.vscode-backlog-md)** - VS Code extension with issues panel, kanban view, and editing. ([ysamlan/vscode-backlog-md](https://github.com/ysamlan/vscode-backlog-md))
+
+---
+
 ### License
 
 Backlog.md is released under the **MIT License** – do anything, just give credit. See [LICENSE](LICENSE).
