@@ -108,6 +108,7 @@ const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
 	claude: "CLAUDE.md",
 	codex: "AGENTS.md",
 	gemini: "GEMINI.md",
+	kiro: "AGENTS.md",
 	guide: "AGENTS.md",
 };
 
@@ -504,7 +505,7 @@ program
 								initial: 0,
 								choices: [
 									{
-										title: "via MCP connector (recommended for Claude Code, Codex, Gemini, Cursor, etc.)",
+										title: "via MCP connector (recommended for Claude Code, Codex, Gemini CLI, Kiro, Cursor, etc.)",
 										description: "Agents learn the Backlog.md workflow through MCP tools, resources, and prompts.",
 										value: "mcp",
 									},
@@ -684,6 +685,7 @@ program
 										{ title: "Claude Code", value: "claude" },
 										{ title: "OpenAI Codex", value: "codex" },
 										{ title: "Gemini CLI", value: "gemini" },
+										{ title: "Kiro", value: "kiro" },
 										{ title: "Other (open setup guide)", value: "guide" },
 									],
 									onRender: function () {
@@ -773,6 +775,23 @@ program
 										"backlog",
 										"mcp",
 										"start",
+									]);
+									results.push(result);
+									await recordGuidelinesForClient(client);
+									continue;
+								}
+								if (client === "kiro") {
+									const result = await runMcpClientCommand("Kiro", "kiro-cli", [
+										"mcp",
+										"add",
+										"--scope",
+										"global",
+										"--name",
+										mcpServerName,
+										"--command",
+										"backlog",
+										"--args",
+										"mcp,start",
 									]);
 									results.push(result);
 									await recordGuidelinesForClient(client);

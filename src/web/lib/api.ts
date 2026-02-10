@@ -470,7 +470,7 @@ export class ApiClient {
 	async initializeProject(options: {
 		projectName: string;
 		integrationMode: "mcp" | "cli" | "none";
-		mcpClients?: ("claude" | "codex" | "gemini" | "guide")[];
+		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "guide")[];
 		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];
 		installClaudeAgent?: boolean;
 		advancedConfig?: {

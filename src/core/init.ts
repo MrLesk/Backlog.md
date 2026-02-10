@@ -13,7 +13,7 @@ export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
 export type IntegrationMode = "mcp" | "cli" | "none";
-export type McpClient = "claude" | "codex" | "gemini" | "guide";
+export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 
 export interface InitializeProjectOptions {
 	projectName: string;
@@ -168,6 +168,21 @@ export async function initializeProject(
 					]);
 					mcpResults.gemini = result;
 					await ensureMcpGuidelines(projectRoot, "GEMINI.md");
+				} else if (client === "kiro") {
+					const result = await runMcpClientCommand("Kiro", "kiro-cli", [
+						"mcp",
+						"add",
+						"--scope",
+						"global",
+						"--name",
+						MCP_SERVER_NAME,
+						"--command",
+						"backlog",
+						"--args",
+						"mcp,start",
+					]);
+					mcpResults.kiro = result;
+					await ensureMcpGuidelines(projectRoot, "AGENTS.md");
 				} else if (client === "guide") {
 					mcpResults.guide = `Setup guide: ${MCP_GUIDE_URL}`;
 				}
