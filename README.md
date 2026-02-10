@@ -17,7 +17,7 @@
 
 * 📝 **Markdown-native tasks** -- manage every issue as a plain `.md` file
 
-* 🤖 **AI-Ready** -- Works with Claude Code, Gemini CLI, Codex & any other MCP or CLI compatible AI assistants
+* 🤖 **AI-Ready** -- Works with Claude Code, Gemini CLI, Codex, Kiro & any other MCP or CLI compatible AI assistants
 
 * 📊 **Instant terminal Kanban** -- `backlog board` paints a live board in your shell
 
@@ -54,7 +54,7 @@ backlog init "My Awesome Project"
 # 3. Create tasks manually  
 backlog task create "Render markdown as kanban"
 
-# 4. Or ask AI to create them: Claude Code, Gemini CLI, or Codex (Agents automatically use Backlog.md via MCP or CLI)
+# 4. Or ask AI to create them: Claude Code, Gemini CLI, Codex, or Kiro (Agents automatically use Backlog.md via MCP or CLI)
 Claude I would like to build a search functionality in the web view that searches for:
 * tasks
 * docs
@@ -104,7 +104,7 @@ backlog browser --no-open
 
 ## 🔧 MCP Integration (Model Context Protocol)
 
-The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, and Gemini CLI is via the MCP protocol.
+The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, Gemini CLI, and Kiro is via the MCP protocol.
 You can run `backlog init` (even if you already initialized Backlog.md) to set up MCP integration automatically, or follow the manual steps below.
 
 ### Client guides
@@ -141,6 +141,15 @@ You can run `backlog init` (even if you already initialized Backlog.md) to set u
 
 </details>
 
+<details>
+  <summary><strong>Kiro</strong></summary>
+
+  ```bash
+  kiro-cli mcp add --scope global --name backlog --command backlog --args mcp,start
+  ```
+
+</details>
+
 Use the shared `backlog` server name everywhere – the MCP server auto-detects whether the current directory is initialized and falls back to `backlog://init-required` when needed.
 
 ### Manual config
@@ -157,7 +166,7 @@ Use the shared `backlog` server name everywhere – the MCP server auto-detects 
 ```
 
 Once connected, agents can read the Backlog.md workflow instructions via the resource `backlog://docs/task-workflow`.
-Use `/mcp` command in your AI tool (Claude Code, Codex) to verify if the connection is working.
+Use `/mcp` command in your AI tool (Claude Code, Codex, Kiro) to verify if the connection is working.
 
 ---
 
