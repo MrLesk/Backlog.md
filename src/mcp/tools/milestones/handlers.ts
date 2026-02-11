@@ -2,6 +2,13 @@ import type { Milestone, Task } from "../../../types/index.ts";
 import { McpError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
+import {
+	buildMilestoneMatchKeys,
+	keySetsIntersect,
+	milestoneKey,
+	normalizeMilestoneName,
+	resolveMilestoneStorageValue,
+} from "../../utils/milestone-resolution.ts";
 
 export type MilestoneAddArgs = {
 	name: string;
@@ -23,14 +30,6 @@ export type MilestoneRemoveArgs = {
 export type MilestoneArchiveArgs = {
 	name: string;
 };
-
-function normalizeMilestoneName(name: string): string {
-	return name.trim();
-}
-
-function milestoneKey(name: string): string {
-	return normalizeMilestoneName(name).toLowerCase();
-}
 
 function collectArchivedMilestoneKeys(archivedMilestones: Milestone[], activeMilestones: Milestone[]): string[] {
 	const keys = new Set<string>();
@@ -77,6 +76,14 @@ export class MilestoneHandlers {
 
 	private async listArchivedMilestones(): Promise<Milestone[]> {
 		return await this.core.filesystem.listArchivedMilestones();
+	}
+
+	private async listKnownMilestones(): Promise<Milestone[]> {
+		const [fileMilestones, archivedMilestones] = await Promise.all([
+			this.listFileMilestones(),
+			this.listArchivedMilestones(),
+		]);
+		return [...fileMilestones, ...archivedMilestones];
 	}
 
 	async listMilestones(): Promise<CallToolResult> {
@@ -161,7 +168,9 @@ export class MilestoneHandlers {
 			throw new McpError("Both 'from' and 'to' milestone names are required.", "VALIDATION_ERROR");
 		}
 
-		const fromKey = milestoneKey(fromName);
+		const knownMilestones = await this.listKnownMilestones();
+		const fromKeys = buildMilestoneMatchKeys(fromName, knownMilestones);
+		const targetMilestone = resolveMilestoneStorageValue(toName, knownMilestones);
 
 		// For now, renaming just updates tasks - milestone files would need separate rename logic
 		// This maintains the core task reassignment functionality
@@ -170,15 +179,16 @@ export class MilestoneHandlers {
 
 		if (shouldUpdateTasks) {
 			const tasks = await this.listLocalTasks();
-			const matches = tasks.filter((task) => milestoneKey(task.milestone ?? "") === fromKey);
+			const matches = tasks.filter((task) => fromKeys.has(milestoneKey(task.milestone ?? "")));
 			for (const task of matches) {
-				await this.core.editTask(task.id, { milestone: toName });
+				await this.core.editTask(task.id, { milestone: targetMilestone });
 				updatedTaskIds.push(task.id);
 			}
 			updatedTaskIds = updatedTaskIds.sort((a, b) => a.localeCompare(b));
 		}
 
-		const summaryLines: string[] = [`Renamed milestone "${fromName}" → "${toName}".`];
+		const targetSummary = targetMilestone === toName ? `"${toName}"` : `"${toName}" (stored as "${targetMilestone}")`;
+		const summaryLines: string[] = [`Renamed milestone "${fromName}" → ${targetSummary}.`];
 		if (shouldUpdateTasks) {
 			summaryLines.push(
 				`Updated ${updatedTaskIds.length} local task${updatedTaskIds.length === 1 ? "" : "s"}: ${formatTaskIdList(updatedTaskIds)}`,
@@ -203,16 +213,19 @@ export class MilestoneHandlers {
 			throw new McpError("Milestone name cannot be empty.", "VALIDATION_ERROR");
 		}
 
-		const removeKey = milestoneKey(name);
+		const knownMilestones = await this.listKnownMilestones();
+		const removeKeys = buildMilestoneMatchKeys(name, knownMilestones);
 		const taskHandling = args.taskHandling ?? "clear";
 		const reassignTo = normalizeMilestoneName(args.reassignTo ?? "");
+		const reassignedMilestone =
+			taskHandling === "reassign" ? resolveMilestoneStorageValue(reassignTo, knownMilestones) : "";
 
 		if (taskHandling === "reassign") {
 			if (!reassignTo) {
 				throw new McpError("reassignTo is required when taskHandling is reassign.", "VALIDATION_ERROR");
 			}
-			const reassignKey = milestoneKey(reassignTo);
-			if (reassignKey === removeKey) {
+			const reassignKeys = buildMilestoneMatchKeys(reassignTo, knownMilestones);
+			if (keySetsIntersect(reassignKeys, removeKeys)) {
 				throw new McpError("reassignTo must be different from the removed milestone.", "VALIDATION_ERROR");
 			}
 		}
@@ -220,9 +233,9 @@ export class MilestoneHandlers {
 		let updatedTaskIds: string[] = [];
 		if (taskHandling !== "keep") {
 			const tasks = await this.listLocalTasks();
-			const matches = tasks.filter((task) => milestoneKey(task.milestone ?? "") === removeKey);
+			const matches = tasks.filter((task) => removeKeys.has(milestoneKey(task.milestone ?? "")));
 			for (const task of matches) {
-				await this.core.editTask(task.id, { milestone: taskHandling === "reassign" ? reassignTo : null });
+				await this.core.editTask(task.id, { milestone: taskHandling === "reassign" ? reassignedMilestone : null });
 				updatedTaskIds.push(task.id);
 			}
 			updatedTaskIds = updatedTaskIds.sort((a, b) => a.localeCompare(b));
@@ -232,8 +245,10 @@ export class MilestoneHandlers {
 		if (taskHandling === "keep") {
 			summaryLines.push("Kept task milestone values unchanged (taskHandling=keep).");
 		} else if (taskHandling === "reassign") {
+			const targetSummary =
+				reassignedMilestone === reassignTo ? `"${reassignTo}"` : `"${reassignTo}" (stored as "${reassignedMilestone}")`;
 			summaryLines.push(
-				`Reassigned ${updatedTaskIds.length} local task${updatedTaskIds.length === 1 ? "" : "s"} to "${reassignTo}": ${formatTaskIdList(updatedTaskIds)}`,
+				`Reassigned ${updatedTaskIds.length} local task${updatedTaskIds.length === 1 ? "" : "s"} to ${targetSummary}: ${formatTaskIdList(updatedTaskIds)}`,
 			);
 		} else {
 			summaryLines.push(
