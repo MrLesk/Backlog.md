@@ -218,4 +218,70 @@ describe("Task Dependencies", () => {
 		expect(loadedTask).not.toBeNull();
 		expect(loadedTask?.dependencies).toEqual([]);
 	});
+
+	test("should sanitize archived task dependencies on active tasks only", async () => {
+		const archivedTarget: Task = {
+			id: "task-1",
+			title: "Archive target",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: [],
+			description: "Task that will be archived",
+		};
+
+		const activeDependent: Task = {
+			id: "task-2",
+			title: "Active dependent task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["TASK-1", "task-1"],
+			description: "Depends on archive target",
+		};
+
+		const completedDependent: Task = {
+			id: "task-3",
+			title: "Completed dependent task",
+			status: "Done",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-1"],
+			description: "Completed task should stay unchanged",
+		};
+
+		const childTask: Task = {
+			id: "task-4",
+			title: "Child task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-1"],
+			parentTaskId: "task-1",
+			description: "Parent relationship is out of scope for archive sanitization",
+		};
+
+		await core.createTask(archivedTarget, false);
+		await core.createTask(activeDependent, false);
+		await core.createTask(completedDependent, false);
+		await core.createTask(childTask, false);
+		await core.completeTask("task-3", false);
+
+		const archived = await core.archiveTask("task-1", false);
+		expect(archived).toBe(true);
+
+		const updatedActive = await core.filesystem.loadTask("task-2");
+		const updatedChild = await core.filesystem.loadTask("task-4");
+		const completedTasks = await core.filesystem.listCompletedTasks();
+		const completed = completedTasks.find((task) => task.id === "TASK-3");
+
+		expect(updatedActive?.dependencies).toEqual([]);
+		expect(updatedChild?.dependencies).toEqual([]);
+		expect(updatedChild?.parentTaskId).toBe("TASK-1");
+		expect(completed?.dependencies).toEqual(["task-1"]);
+	});
 });

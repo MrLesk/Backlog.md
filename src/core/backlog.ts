@@ -230,6 +230,42 @@ export class Core {
 		return normalized as "high" | "medium" | "low";
 	}
 
+	private isExactTaskReference(reference: string, taskId: string): boolean {
+		const trimmed = reference.trim();
+		if (!trimmed) {
+			return false;
+		}
+		return taskIdsEqual(trimmed, taskId);
+	}
+
+	private sanitizeArchivedTaskLinks(tasks: Task[], archivedTaskId: string): Task[] {
+		const changedTasks: Task[] = [];
+
+		for (const task of tasks) {
+			const dependencies = task.dependencies ?? [];
+			const references = task.references ?? [];
+
+			const sanitizedDependencies = dependencies.filter((dependency) => !taskIdsEqual(dependency, archivedTaskId));
+			const sanitizedReferences = references.filter(
+				(reference) => !this.isExactTaskReference(reference, archivedTaskId),
+			);
+
+			const dependenciesChanged = !stringArraysEqual(dependencies, sanitizedDependencies);
+			const referencesChanged = !stringArraysEqual(references, sanitizedReferences);
+			if (!dependenciesChanged && !referencesChanged) {
+				continue;
+			}
+
+			changedTasks.push({
+				...task,
+				dependencies: sanitizedDependencies,
+				references: sanitizedReferences,
+			});
+		}
+
+		return changedTasks;
+	}
+
 	async queryTasks(options: TaskQueryOptions = {}): Promise<Task[]> {
 		const { filters, query, limit } = options;
 		const trimmedQuery = query?.trim();
@@ -1681,6 +1717,8 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const normalizedTaskId = normalizeTaskId(taskId);
+
 		// Get paths before moving the file
 		const taskPath = await getTaskPath(taskId, this);
 		const taskFilename = await getTaskFilename(taskId, this);
@@ -1691,14 +1729,28 @@ export class Core {
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
 		const success = await this.fs.archiveTask(taskId);
-
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Archive task ${normalizeTaskId(taskId)}`, repoRoot);
+		if (!success) {
+			return false;
 		}
 
-		return success;
+		const activeTasks = await this.fs.listTasks();
+		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
+		if (sanitizedTasks.length > 0) {
+			await this.updateTasksBulk(sanitizedTasks, undefined, false);
+		}
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			// Stage the file move for proper Git tracking
+			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+			for (const sanitizedTask of sanitizedTasks) {
+				if (sanitizedTask.filePath) {
+					await this.git.addFile(sanitizedTask.filePath);
+				}
+			}
+			await this.git.commitChanges(`backlog: Archive task ${normalizedTaskId}`, repoRoot);
+		}
+
+		return true;
 	}
 
 	async archiveMilestone(

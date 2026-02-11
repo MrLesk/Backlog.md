@@ -211,6 +211,43 @@ describe("Auto-commit configuration", () => {
 			const isClean = await git.isClean();
 			expect(isClean).toBe(false);
 		});
+
+		it("should auto-commit archive cleanup updates when archiving a task", async () => {
+			const archiveTarget: Task = {
+				id: "task-7",
+				title: "Archive target",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-07-07",
+				labels: [],
+				dependencies: [],
+				description: "Task to archive",
+			};
+
+			const dependentTask: Task = {
+				id: "task-8",
+				title: "Dependent task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-07-07",
+				labels: [],
+				dependencies: ["task-7"],
+				references: ["TASK-7", "https://example.com/tasks/task-7"],
+				description: "Task that references archive target",
+			};
+
+			await core.createTask(archiveTarget);
+			await core.createTask(dependentTask);
+			await core.archiveTask("task-7");
+
+			const updatedTask = await core.filesystem.loadTask("task-8");
+			expect(updatedTask?.dependencies).toEqual([]);
+			expect(updatedTask?.references).toEqual(["https://example.com/tasks/task-7"]);
+
+			const git = await core.getGitOps();
+			const isClean = await git.isClean();
+			expect(isClean).toBe(true);
+		});
 	});
 
 	describe("Draft operations", () => {
