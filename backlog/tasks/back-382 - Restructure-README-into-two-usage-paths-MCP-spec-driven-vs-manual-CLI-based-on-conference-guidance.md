@@ -3,11 +3,11 @@ id: BACK-382
 title: >-
   Restructure README into two usage paths (MCP spec-driven vs manual CLI) based
   on conference guidance
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 20:26'
-updated_date: '2026-02-11 21:48'
+updated_date: '2026-02-11 21:49'
 labels: []
 dependencies: []
 references:
@@ -50,7 +50,15 @@ Replaced the previous 'Five-minute tour' section with a clearer 'Two ways to use
 Validation run: `bun run check README.md`.
 
 Workflow correction: moving delivery to a dedicated git branch per user request before final task completion.
+
+Finalized on dedicated branch `back-382-readme-two-usage-paths` per workflow requirement.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Restructured `README.md` onboarding after the core features into two explicit use-case paths: (1) Spec-driven development with AI agents via MCP, and (2) Manual CLI mode. The MCP section now follows the conference guidance flow: idea -> task decomposition -> plan right before implementation -> human review checkpoints -> code review and restart loop by resetting plan/notes/final summary and refining description/AC/instructions when needed. The CLI section now presents a concise command-first workflow (`task create`, `task edit`, `task list`, `search`, `board`) with clear framing.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
