@@ -1,7 +1,7 @@
 ---
 id: BACK-382
 title: Sanitize dependencies and references when archiving tasks
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 21:02'
@@ -53,6 +53,12 @@ Added auto-commit regression test in `src/test/auto-commit.test.ts` to verify ar
 
 Validation passed: `bun test src/test/dependency.test.ts src/test/references.test.ts src/test/auto-commit.test.ts`, `bun run check .`, `bunx tsc --noEmit`.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented archive-time sanitization for active local tasks so archiving task X removes X from `dependencies` and exact-ID `references` (case-insensitive canonical ID match), while leaving `parentTaskId` unchanged and leaving completed/archive tasks untouched. Added regression coverage in dependency/reference suites for cleanup behavior and non-removal of partial URL/path references, plus an auto-commit regression to verify archive + cleanup changes commit together when autoCommit is enabled. Commit: 8ecc741.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
