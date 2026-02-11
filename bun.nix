@@ -197,9 +197,9 @@
   };
   "@hono/node-server" = {
     out_path = "@hono/node-server";
-    name = "@hono/node-server@1.19.7";
-    url = "https://registry.npmjs.org/@hono/node-server/-/node-server-1.19.7.tgz";
-    hash = "sha512-vUcD0uauS7EU2caukW8z5lJKtoGMokxNbJtBiwHgpqxEXokaHCBkQUmCHhjFB1VUTWdqj25QoMkMKzgjq+uhrw==";
+    name = "@hono/node-server@1.19.9";
+    url = "https://registry.npmjs.org/@hono/node-server/-/node-server-1.19.9.tgz";
+    hash = "sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==";
   };
   "@iconify/types" = {
     out_path = "@iconify/types";
@@ -419,9 +419,9 @@
   };
   "@modelcontextprotocol/sdk" = {
     out_path = "@modelcontextprotocol/sdk";
-    name = "@modelcontextprotocol/sdk@1.25.2";
-    url = "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.25.2.tgz";
-    hash = "sha512-LZFeo4F9M5qOhC/Uc1aQSrBHxMrvxett+9KLHt7OhcExtoiRN9DKgbZffMP/nxjutWDQpfMDfP3nkHI4X9ijww==";
+    name = "@modelcontextprotocol/sdk@1.26.0";
+    url = "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.26.0.tgz";
+    hash = "sha512-Y5RmPncpiDtTXDbLKswIJzTqu2hyBKxTNsgKqKclDbhIgg1wgtf1fRuvxgTnRfcnxtvvgbIEcqUOzZrJ6iSReg==";
   };
   "@parcel/watcher" = {
     out_path = "@parcel/watcher";
@@ -1139,15 +1139,15 @@
   };
   "body-parser" = {
     out_path = "body-parser";
-    name = "body-parser@2.2.0";
-    url = "https://registry.npmjs.org/body-parser/-/body-parser-2.2.0.tgz";
-    hash = "sha512-02qvAaxv8tp7fBa/mw1ga98OGm+eCbqzJOKoRt70sLmfEEi+jyBYVTDGfCL/k06/4EMk/z01gCe7HoCH/f2LTg==";
+    name = "body-parser@2.2.2";
+    url = "https://registry.npmjs.org/body-parser/-/body-parser-2.2.2.tgz";
+    hash = "sha512-oP5VkATKlNwcgvxi0vM0p/D3n2C3EReYVX+DNYs5TjZFn/oQt2j+4sVJtSMr18pdRr8wjTcBl6LoV+FUwzPmNA==";
   };
-  "body-parser/iconv-lite" = {
-    out_path = "body-parser/node_modules/iconv-lite";
-    name = "iconv-lite@0.6.3";
-    url = "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.6.3.tgz";
-    hash = "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==";
+  "body-parser/qs" = {
+    out_path = "body-parser/node_modules/qs";
+    name = "qs@6.14.1";
+    url = "https://registry.npmjs.org/qs/-/qs-6.14.1.tgz";
+    hash = "sha512-4EK3+xJl8Ts67nLYNwqw/dsFVnCf+qR7RgXSK9jEEm9unao3njwMDdmsdvoKBKHzxd7tCYz5e5M+SnMjdtXGQQ==";
   };
   "boolbase" = {
     out_path = "boolbase";
@@ -1841,15 +1841,15 @@
   };
   "express" = {
     out_path = "express";
-    name = "express@5.1.0";
-    url = "https://registry.npmjs.org/express/-/express-5.1.0.tgz";
-    hash = "sha512-DT9ck5YIRU+8GYzzU5kT3eHGA5iL+1Zd0EutOmTE9Dtk+Tvuzd23VBU+ec7HPNSTxXYO55gPV/hq4pSBJDjFpA==";
+    name = "express@5.2.1";
+    url = "https://registry.npmjs.org/express/-/express-5.2.1.tgz";
+    hash = "sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw==";
   };
   "express-rate-limit" = {
     out_path = "express-rate-limit";
-    name = "express-rate-limit@7.5.1";
-    url = "https://registry.npmjs.org/express-rate-limit/-/express-rate-limit-7.5.1.tgz";
-    hash = "sha512-7iN8iPMDzOMHPUYllBEsQdWVB6fPDMPqwjBaFrgr4Jgr/+okjvzAy+UHlYYL/Vs0OsOrMkwS6PJDkFlJwoxUnw==";
+    name = "express-rate-limit@8.2.1";
+    url = "https://registry.npmjs.org/express-rate-limit/-/express-rate-limit-8.2.1.tgz";
+    hash = "sha512-PCZEIEIxqwhzw4KF0n7QF4QqruVTcF73O5kFKUnGOyjbCCgizBBiFaYpd/fnBLUMPw/BWw9OsiN7GgrNYr7j6g==";
   };
   "exsolve" = {
     out_path = "exsolve";
@@ -2129,9 +2129,9 @@
   };
   "hono" = {
     out_path = "hono";
-    name = "hono@4.11.3";
-    url = "https://registry.npmjs.org/hono/-/hono-4.11.3.tgz";
-    hash = "sha512-PmQi306+M/ct/m5s66Hrg+adPnkD5jiO6IjA7WhWw0gSBSo1EcRegwuI1deZ+wd5pzCGynCcn2DprnE4/yEV4w==";
+    name = "hono@4.11.9";
+    url = "https://registry.npmjs.org/hono/-/hono-4.11.9.tgz";
+    hash = "sha512-Eaw2YTGM6WOxA6CXbckaEvslr2Ne4NFsKrvc0v97JD5awbmeBLO5w9Ho9L9kmKonrwF9RJlW6BxT1PVv/agBHQ==";
   };
   "html-encoding-sniffer" = {
     out_path = "html-encoding-sniffer";
@@ -2225,6 +2225,12 @@
     name = "internmap@2.0.3";
     url = "https://registry.npmjs.org/internmap/-/internmap-2.0.3.tgz";
     hash = "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==";
+  };
+  "ip-address" = {
+    out_path = "ip-address";
+    name = "ip-address@10.0.1";
+    url = "https://registry.npmjs.org/ip-address/-/ip-address-10.0.1.tgz";
+    hash = "sha512-NWv9YLW4PoW2B7xtzaS3NCot75m6nK7Icdv0o3lfMceJVRfSoQwqD4wEH5rLwoKJwUiZ/rfpiVBhnaF0FK4HoA==";
   };
   "ipaddr.js" = {
     out_path = "ipaddr.js";
@@ -3974,9 +3980,9 @@
   };
   "zod-to-json-schema" = {
     out_path = "zod-to-json-schema";
-    name = "zod-to-json-schema@3.25.0";
-    url = "https://registry.npmjs.org/zod-to-json-schema/-/zod-to-json-schema-3.25.0.tgz";
-    hash = "sha512-HvWtU2UG41LALjajJrML6uQejQhNJx+JBO9IflpSja4R03iNWfKXrj6W2h7ljuLyc1nKS+9yDyL/9tD1U/yBnQ==";
+    name = "zod-to-json-schema@3.25.1";
+    url = "https://registry.npmjs.org/zod-to-json-schema/-/zod-to-json-schema-3.25.1.tgz";
+    hash = "sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA==";
   };
   "zwitch" = {
     out_path = "zwitch";
