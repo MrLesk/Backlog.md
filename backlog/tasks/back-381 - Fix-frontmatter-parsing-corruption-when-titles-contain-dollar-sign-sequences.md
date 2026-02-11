@@ -1,11 +1,11 @@
 ---
 id: BACK-381
 title: Fix frontmatter parsing corruption when titles contain dollar-sign sequences
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 20:04'
-updated_date: '2026-02-11 20:05'
+updated_date: '2026-02-11 20:08'
 labels:
   - bug
 dependencies: []
@@ -50,7 +50,15 @@ Reproduced bug locally with new regression test: `bun test src/test/markdown.tes
 Applied minimal fix in `src/markdown/parser.ts` by switching frontmatter replacement to callback form to avoid `$` replacement token expansion.
 
 Validation after fix: `bun test src/test/markdown.test.ts`, `bunx tsc --noEmit`, and `bun run check src/markdown/parser.ts src/test/markdown.test.ts` all pass.
+
+Two independent sub-agent review passes were run; both reported no findings on the final changes.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed frontmatter parsing corruption when YAML titles contain `$` followed by digits (issue #516). Added a regression test in `src/test/markdown.test.ts` and changed `parseMarkdown` replacement in `src/markdown/parser.ts` to callback-form `replace`, which prevents `$` replacement-token expansion. Validation: `bun test src/test/markdown.test.ts`, `bunx tsc --noEmit`, `bun run check src/markdown/parser.ts src/test/markdown.test.ts`. PR: https://github.com/MrLesk/Backlog.md/pull/517
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
