@@ -153,4 +153,49 @@ describe("Task References", () => {
 			expect(content).not.toContain("references:");
 		});
 	});
+
+	describe("Archive cleanup", () => {
+		it("removes only exact-ID references from active tasks when archiving", async () => {
+			const { task: archiveTarget } = await core.createTaskFromInput({
+				title: "Archive target",
+			});
+
+			const { task: activeTask } = await core.createTaskFromInput({
+				title: "Active referencing task",
+				references: [
+					"task-1",
+					"TASK-1",
+					"https://example.com/tasks/task-1",
+					"docs/task-1.md",
+					"prefix-task-1-suffix",
+					"1",
+					"JIRA-1",
+					"task-12",
+				],
+			});
+
+			const { task: completedTask } = await core.createTaskFromInput({
+				title: "Completed referencing task",
+				references: ["task-1", "https://example.com/tasks/task-1"],
+			});
+			await core.completeTask(completedTask.id, false);
+
+			const archived = await core.archiveTask(archiveTarget.id, false);
+			expect(archived).toBe(true);
+
+			const updatedActive = await core.loadTaskById(activeTask.id);
+			const completedTasks = await core.filesystem.listCompletedTasks();
+			const updatedCompleted = completedTasks.find((task) => task.id === completedTask.id);
+
+			expect(updatedActive?.references).toEqual([
+				"https://example.com/tasks/task-1",
+				"docs/task-1.md",
+				"prefix-task-1-suffix",
+				"1",
+				"JIRA-1",
+				"task-12",
+			]);
+			expect(updatedCompleted?.references).toEqual(["task-1", "https://example.com/tasks/task-1"]);
+		});
+	});
 });

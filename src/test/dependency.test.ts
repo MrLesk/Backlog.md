@@ -218,4 +218,125 @@ describe("Task Dependencies", () => {
 		expect(loadedTask).not.toBeNull();
 		expect(loadedTask?.dependencies).toEqual([]);
 	});
+
+	test("should sanitize archived task dependencies on active tasks only", async () => {
+		const archivedTarget: Task = {
+			id: "task-1",
+			title: "Archive target",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: [],
+			description: "Task that will be archived",
+		};
+
+		const activeDependent: Task = {
+			id: "task-2",
+			title: "Active dependent task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["TASK-1", "task-1"],
+			description: "Depends on archive target",
+		};
+
+		const completedDependent: Task = {
+			id: "task-3",
+			title: "Completed dependent task",
+			status: "Done",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-1"],
+			description: "Completed task should stay unchanged",
+		};
+
+		const childTask: Task = {
+			id: "task-4",
+			title: "Child task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-1"],
+			parentTaskId: "task-1",
+			description: "Parent relationship is out of scope for archive sanitization",
+		};
+
+		await core.createTask(archivedTarget, false);
+		await core.createTask(activeDependent, false);
+		await core.createTask(completedDependent, false);
+		await core.createTask(childTask, false);
+		await core.completeTask("task-3", false);
+
+		const archived = await core.archiveTask("task-1", false);
+		expect(archived).toBe(true);
+
+		const updatedActive = await core.filesystem.loadTask("task-2");
+		const updatedChild = await core.filesystem.loadTask("task-4");
+		const completedTasks = await core.filesystem.listCompletedTasks();
+		const completed = completedTasks.find((task) => task.id === "TASK-3");
+
+		expect(updatedActive?.dependencies).toEqual([]);
+		expect(updatedChild?.dependencies).toEqual([]);
+		expect(updatedChild?.parentTaskId).toBe("TASK-1");
+		expect(completed?.dependencies).toEqual(["task-1"]);
+	});
+
+	test("should sanitize archive links when archiving by numeric id with custom task prefix", async () => {
+		const config = await core.filesystem.loadConfig();
+		expect(config).not.toBeNull();
+		if (!config) {
+			return;
+		}
+		config.prefixes = { task: "back" };
+		await core.filesystem.saveConfig(config);
+
+		const { task: archiveTarget } = await core.createTaskFromInput({
+			title: "Custom prefix target",
+		});
+		const { task: dependentTask } = await core.createTaskFromInput({
+			title: "Custom prefix dependent",
+			dependencies: [archiveTarget.id],
+		});
+
+		const archived = await core.archiveTask("1", false);
+		expect(archived).toBe(true);
+
+		const updatedDependent = await core.filesystem.loadTask(dependentTask.id);
+		expect(updatedDependent?.dependencies).toEqual([]);
+	});
+
+	test("should not sanitize draft dependencies when archiving", async () => {
+		const archiveTarget: Task = {
+			id: "task-1",
+			title: "Archive target",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: [],
+			description: "Task that will be archived",
+		};
+
+		const draftTask: Task = {
+			id: "draft-1",
+			title: "Draft dependent task",
+			status: "Draft",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-1"],
+			description: "Draft should not be sanitized by archive cleanup",
+		};
+
+		await core.createTask(archiveTarget, false);
+		await core.createDraft(draftTask, false);
+		await core.archiveTask("task-1", false);
+
+		const draft = await core.filesystem.loadDraft("draft-1");
+		expect(draft?.dependencies).toEqual(["task-1"]);
+	});
 });
