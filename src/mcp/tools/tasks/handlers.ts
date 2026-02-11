@@ -12,6 +12,7 @@ import { sortTasks } from "../../../utils/task-sorting.ts";
 import { McpError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
+import { resolveMilestoneStorageValue } from "../../utils/milestone-resolution.ts";
 import { formatTaskCallResult } from "../../utils/task-response.ts";
 
 export type TaskCreateArgs = {
@@ -50,6 +51,14 @@ export type TaskSearchArgs = {
 export class TaskHandlers {
 	constructor(private readonly core: McpServer) {}
 
+	private async resolveMilestoneInput(milestone: string): Promise<string> {
+		const [activeMilestones, archivedMilestones] = await Promise.all([
+			this.core.filesystem.listMilestones(),
+			this.core.filesystem.listArchivedMilestones(),
+		]);
+		return resolveMilestoneStorageValue(milestone, [...activeMilestones, ...archivedMilestones]);
+	}
+
 	private isDoneStatus(status?: string | null): boolean {
 		const normalized = (status ?? "").trim().toLowerCase();
 		return normalized.includes("done") || normalized.includes("complete");
@@ -82,12 +91,15 @@ export class TaskHandlers {
 					.filter((text) => text.length > 0)
 					.map((text) => ({ text, checked: false })) ?? undefined;
 
+			const milestone =
+				typeof args.milestone === "string" ? await this.resolveMilestoneInput(args.milestone) : undefined;
+
 			const { task: createdTask } = await this.core.createTaskFromInput({
 				title: args.title,
 				description: args.description,
 				status: args.status,
 				priority: args.priority,
-				milestone: args.milestone,
+				milestone,
 				labels: args.labels,
 				assignee: args.assignee,
 				dependencies: args.dependencies,
@@ -412,6 +424,9 @@ export class TaskHandlers {
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
 		try {
 			const updateInput = buildTaskUpdateInput(args);
+			if (typeof updateInput.milestone === "string") {
+				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);
+			}
 			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
 			return await formatTaskCallResult(updatedTask);
 		} catch (error) {
