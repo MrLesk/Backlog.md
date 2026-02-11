@@ -39,38 +39,72 @@
 
 ---
 
-## <img src="./.github/5-minute-tour-256.png" alt="5-minute tour" width="28" height="28" align="center"> Five‑minute tour
+## <img src="./.github/5-minute-tour-256.png" alt="5-minute tour" width="28" height="28" align="center"> Two ways to use Backlog.md
+
+Backlog.md supports two workflows:
+
+1. **Spec-driven development with AI agents via MCP**
+2. **Manual CLI mode**
+
+All data is saved under the `backlog` folder as human-readable Markdown files (for example `task-10 - Add core search functionality.md`).
+
+### 1) Spec-driven development with AI agents (MCP)
+
+This is the recommended flow when working with Claude Code, Codex, Gemini CLI, or similar tools.
+
 ```bash
-# 1. Make sure you have Backlog.md installed (global installation recommended) 
-bun i -g backlog.md 
-or 
-npm i -g backlog.md 
-or 
-brew install backlog-md
+# Install Backlog.md
+bun i -g backlog.md
+# or: npm i -g backlog.md
+# or: brew install backlog-md
 
-# 2. Bootstrap a repo + backlog and choose the AI Agent integration mode (MCP, CLI, or skip)
+# Initialize Backlog.md and choose MCP setup
 backlog init "My Awesome Project"
-
-# 3. Create tasks manually  
-backlog task create "Render markdown as kanban"
-
-# 4. Or ask AI to create them: Claude Code, Gemini CLI, or Codex (Agents automatically use Backlog.md via MCP or CLI)
-Claude I would like to build a search functionality in the web view that searches for:
-* tasks
-* docs
-* decisions
-  Please create relevant tasks to tackle this request.
-
-# 5. See where you stand
-backlog board view or backlog browser
-
-# 6. Assign tasks to AI (Backlog.md instructions tell agents how to work with tasks)
-Claude please implement all tasks related to the web search functionality (task-10, task-11, task-12)
-* before starting to write code use 'ultrathink mode' to prepare and add an implementation plan to the task
-* use multiple sub-agents when possible and dependencies allow
 ```
 
-All data is saved under `backlog` folder as human‑readable Markdown with the following format `task-<task-id> - <task-title>.md` (e.g. `task-10 - Add core search functionality.md`).
+Then work in this loop:
+
+1. Tell the agent your idea and ask it to split the work into small tasks.
+2. Execute tasks one by one (one task per context window, one PR).
+3. Ask the agent to research and add an implementation plan right before starting implementation.
+4. Review and approve the plan, then let the agent implement.
+5. Review the code and verify results (tests, linting, behavior, UX where applicable).
+6. If output is not good enough: clear plan/notes/final summary, refine description + acceptance criteria, improve agent instructions, and run again.
+7. If output matches expectations: open the PR.
+
+Prompt examples:
+
+```text
+Please decompose this feature into small Backlog.md tasks following the Backlog workflow.
+```
+
+```text
+Work on task BACK-123 only.
+Before coding, research and write an implementation plan in the task.
+Wait for my approval, then implement and run checks.
+```
+
+### 2) Manual CLI mode
+
+Use this when you want to drive everything directly from the terminal.
+
+```bash
+# Initialize
+backlog init "My Awesome Project"
+
+# Create and refine tasks
+backlog task create "Render markdown as kanban"
+backlog task edit BACK-1 -d "Detailed context" --ac "Clear acceptance criteria"
+
+# Track work
+backlog task list -s "To Do"
+backlog search "kanban"
+backlog board
+```
+
+Core commands: `task create`, `task edit`, `task list`, `search`.
+
+You can switch between CLI and AI-assisted execution at any time because both operate on the same Markdown task files.
 
 ---
 
