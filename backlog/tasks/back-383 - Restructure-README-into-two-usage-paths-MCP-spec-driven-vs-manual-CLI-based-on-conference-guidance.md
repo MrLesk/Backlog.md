@@ -2,12 +2,12 @@
 id: BACK-383
 title: >-
   Restructure README into two usage paths (MCP spec-driven vs manual CLI) based
-  on conference guidance (BACK-383)
+  on conference guidance
 status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 20:26'
-updated_date: '2026-02-11 21:49'
+updated_date: '2026-02-11 21:53'
 labels: []
 dependencies: []
 references:
@@ -52,6 +52,8 @@ Validation run: `bun run check README.md`.
 Workflow correction: moving delivery to a dedicated git branch per user request before final task completion.
 
 Finalized on dedicated branch `back-383-readme-two-usage-paths` per workflow requirement.
+
+PR adjusted for manual ID reassignment exception: https://github.com/MrLesk/Backlog.md/pull/520
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
