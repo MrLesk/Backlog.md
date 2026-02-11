@@ -81,7 +81,7 @@ jobs:
           path: ${{ env.BIN }}
 
   npm-publish:
-    needs: [build, publish-binaries]
+    needs: [build, verify-platform-packages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -213,10 +213,151 @@ jobs:
           cd pkg
           npm publish --access public
 
+  verify-platform-packages:
+    name: verify-platform-packages-${{ matrix.os }}
+    needs: publish-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Wait for platform package installability (Unix)
+        if: ${{ matrix.os != 'windows-latest' }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          VERSION="${GITHUB_REF##refs/tags/v}"
+          MAX_ATTEMPTS=40
+          SLEEP_SECONDS=15
+          PACKAGE_NAME="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`backlog.md-${platform}-${arch}`);')"
+          BINARY_PATH="node_modules/${PACKAGE_NAME}/backlog"
+
+          echo "Waiting for ${PACKAGE_NAME}@${VERSION} to become installable..."
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            rm -rf sanity
+            mkdir sanity
+            cd sanity
+            npm init -y >/dev/null 2>&1
+
+            if npm i "${PACKAGE_NAME}@${VERSION}" --prefer-online --no-audit --no-fund; then
+              if [[ -f "$BINARY_PATH" ]]; then
+                if "./$BINARY_PATH" -v; then
+                  echo "Resolved ${PACKAGE_NAME}@${VERSION} on attempt ${attempt}/${MAX_ATTEMPTS}."
+                  exit 0
+                fi
+              fi
+            fi
+
+            echo "Attempt ${attempt}/${MAX_ATTEMPTS} failed for ${PACKAGE_NAME}@${VERSION}."
+            npm ls --depth=1 || true
+            ls -la node_modules || true
+            cd ..
+
+            if [[ "$attempt" -lt "$MAX_ATTEMPTS" ]]; then
+              sleep "$SLEEP_SECONDS"
+            fi
+          done
+
+          echo "Timed out waiting for ${PACKAGE_NAME}@${VERSION}."
+          exit 1
+      - name: Wait for all platform package metadata (Linux only)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          VERSION="${GITHUB_REF##refs/tags/v}"
+          MAX_ATTEMPTS=40
+          SLEEP_SECONDS=15
+          PACKAGES=(
+            "backlog.md-linux-x64"
+            "backlog.md-linux-arm64"
+            "backlog.md-darwin-x64"
+            "backlog.md-darwin-arm64"
+            "backlog.md-windows-x64"
+          )
+
+          for pkg in "${PACKAGES[@]}"; do
+            resolved=0
+            for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+              version="$(npm view "${pkg}@${VERSION}" version 2>/dev/null || true)"
+              if [[ "$version" == "$VERSION" ]]; then
+                echo "Metadata visible: ${pkg}@${VERSION} (attempt ${attempt}/${MAX_ATTEMPTS})."
+                resolved=1
+                break
+              fi
+
+              echo "Attempt ${attempt}/${MAX_ATTEMPTS} metadata miss for ${pkg}@${VERSION}."
+              if [[ "$attempt" -lt "$MAX_ATTEMPTS" ]]; then
+                sleep "$SLEEP_SECONDS"
+              fi
+            done
+
+            if [[ "$resolved" -ne 1 ]]; then
+              echo "Timed out waiting for metadata: ${pkg}@${VERSION}."
+              exit 1
+            fi
+          done
+      - name: Wait for platform package installability (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $Version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $MaxAttempts = 40
+          $SleepSeconds = 15
+          $Arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+          if ($Arch -ne "x64" -and $Arch -ne "arm64") {
+            throw "Unsupported runner arch: $Arch"
+          }
+
+          $PackageName = "backlog.md-windows-$Arch"
+          $BinaryPath = Join-Path -Path "node_modules/$PackageName" -ChildPath "backlog.exe"
+
+          Write-Host "Waiting for $PackageName@$Version to become installable..."
+          for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+            if (Test-Path "sanity") {
+              Remove-Item -Recurse -Force "sanity"
+            }
+            New-Item -ItemType Directory -Path "sanity" | Out-Null
+            Push-Location "sanity"
+
+            try {
+              npm init -y | Out-Null
+              npm i "$PackageName@$Version" --prefer-online --no-audit --no-fund
+              if ($LASTEXITCODE -eq 0 -and (Test-Path $BinaryPath)) {
+                & $BinaryPath -v
+                if ($LASTEXITCODE -eq 0) {
+                  Write-Host "Resolved $PackageName@$Version on attempt $attempt/$MaxAttempts."
+                  exit 0
+                }
+              }
+
+              Write-Host "Attempt $attempt/$MaxAttempts failed for $PackageName@$Version."
+              npm ls --depth=1 | Out-Host
+              if (Test-Path node_modules) {
+                Get-ChildItem node_modules | Out-Host
+              }
+            } finally {
+              Pop-Location
+            }
+
+            if ($attempt -lt $MaxAttempts) {
+              Start-Sleep -Seconds $SleepSeconds
+            }
+          }
+
+          throw "Timed out waiting for $PackageName@$Version."
+
   install-sanity:
     name: install-sanity-${{ matrix.os }}
     needs: [publish-binaries, npm-publish]
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -229,23 +370,95 @@ jobs:
         if: ${{ matrix.os != 'windows-latest' }}
         shell: bash
         run: |
-          set -euxo pipefail
+          set -uo pipefail
           VERSION="${GITHUB_REF##refs/tags/v}"
-          mkdir sanity && cd sanity
-          npm init -y >/dev/null 2>&1
-          npm i "backlog.md@${VERSION}"
-          npx backlog -v
+          MAX_ATTEMPTS=40
+          SLEEP_SECONDS=15
+          EXPECTED_PACKAGE="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`backlog.md-${platform}-${arch}`);')"
+          echo "Waiting for backlog.md@${VERSION} install + ${EXPECTED_PACKAGE} optional dependency..."
+
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            rm -rf sanity
+            mkdir sanity
+            cd sanity
+            npm init -y >/dev/null 2>&1
+
+            if npm i "backlog.md@${VERSION}" --prefer-online --no-audit --no-fund; then
+              if npx backlog -v; then
+                echo "Install sanity succeeded on attempt ${attempt}/${MAX_ATTEMPTS}."
+                exit 0
+              fi
+            fi
+
+            echo "Attempt ${attempt}/${MAX_ATTEMPTS} failed."
+            echo "Expected optional package: ${EXPECTED_PACKAGE}"
+            npm ls --depth=1 || true
+            if [[ -d "node_modules/${EXPECTED_PACKAGE}" ]]; then
+              echo "Optional package directory exists: node_modules/${EXPECTED_PACKAGE}"
+            else
+              echo "Optional package directory missing: node_modules/${EXPECTED_PACKAGE}"
+            fi
+            cd ..
+
+            if [[ "$attempt" -lt "$MAX_ATTEMPTS" ]]; then
+              sleep "$SLEEP_SECONDS"
+            fi
+          done
+
+          echo "Install sanity timed out for backlog.md@${VERSION}."
+          exit 1
       - name: Install and run backlog -v (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $Version = $env:GITHUB_REF_NAME.TrimStart('v')
-          mkdir sanity | Out-Null
-          Set-Location sanity
-          npm init -y | Out-Null
-          npm i "backlog.md@$Version"
-          npx backlog -v
+          $ErrorActionPreference = "Stop"
+          $Version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $MaxAttempts = 40
+          $SleepSeconds = 15
+          $Arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+          if ($Arch -ne "x64" -and $Arch -ne "arm64") {
+            throw "Unsupported runner arch: $Arch"
+          }
+
+          $ExpectedPackage = "backlog.md-windows-$Arch"
+          Write-Host "Waiting for backlog.md@$Version install + $ExpectedPackage optional dependency..."
+
+          for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+            if (Test-Path "sanity") {
+              Remove-Item -Recurse -Force "sanity"
+            }
+            New-Item -ItemType Directory -Path "sanity" | Out-Null
+            Push-Location "sanity"
+
+            try {
+              npm init -y | Out-Null
+              npm i "backlog.md@$Version" --prefer-online --no-audit --no-fund
+              if ($LASTEXITCODE -eq 0) {
+                npx backlog -v
+                if ($LASTEXITCODE -eq 0) {
+                  Write-Host "Install sanity succeeded on attempt $attempt/$MaxAttempts."
+                  exit 0
+                }
+              }
+
+              Write-Host "Attempt $attempt/$MaxAttempts failed."
+              Write-Host "Expected optional package: $ExpectedPackage"
+              npm ls --depth=1 | Out-Host
+              if (Test-Path "node_modules/$ExpectedPackage") {
+                Write-Host "Optional package directory exists: node_modules/$ExpectedPackage"
+              } else {
+                Write-Host "Optional package directory missing: node_modules/$ExpectedPackage"
+              }
+            } finally {
+              Pop-Location
+            }
+
+            if ($attempt -lt $MaxAttempts) {
+              Start-Sleep -Seconds $SleepSeconds
+            }
+          }
+
+          throw "Install sanity timed out for backlog.md@$Version."
 
   github-release:
     needs: build
