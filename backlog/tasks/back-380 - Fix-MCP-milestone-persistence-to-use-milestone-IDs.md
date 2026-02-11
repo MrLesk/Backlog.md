@@ -1,7 +1,7 @@
 ---
 id: BACK-380
 title: Fix MCP milestone persistence to use milestone IDs
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 20:01'
@@ -49,6 +49,12 @@ Validation: `bun test src/test/mcp-milestones.test.ts src/test/mcp-tasks.test.ts
 
 Ran required two-subagent review cycles and fixed all reported issues; final gate reviews from both agents returned no findings.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed issue #514 by normalizing MCP milestone inputs to canonical milestone IDs in `task_create`/`task_edit`, with shared ID-first resolution and archived-aware alias handling. Updated milestone rename/remove matching to stay consistent with the same normalization rules and avoid collision-driven cross-updates. Added comprehensive MCP milestone regressions (title->ID, ID inputs, archived title resolution, collision cases, reused titles, passthrough for unknown milestones). PR: https://github.com/MrLesk/Backlog.md/pull/518
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
