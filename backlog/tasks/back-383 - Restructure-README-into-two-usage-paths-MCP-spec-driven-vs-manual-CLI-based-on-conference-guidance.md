@@ -1,8 +1,8 @@
 ---
-id: BACK-382
+id: BACK-383
 title: >-
   Restructure README into two usage paths (MCP spec-driven vs manual CLI) based
-  on conference guidance
+  on conference guidance (BACK-383)
 status: Done
 assignee:
   - '@codex'
@@ -37,7 +37,7 @@ Use the Voxxed backlog presentation slide content to simplify README guidance af
 2. Inspect current `README.md` structure and identify the insertion point after core intro/features.
 3. Rewrite the workflow portion into two explicit tracks: (a) Spec-driven development via MCP agents and (b) Manual CLI mode.
 4. Keep examples concise and action-oriented, emphasizing plan timing guidance and restart loop when output does not match expectations.
-5. Run formatting/lint checks scoped to README as applicable and update BACK-382 completion state.
+5. Run formatting/lint checks scoped to README as applicable and update BACK-383 completion state.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -51,7 +51,7 @@ Validation run: `bun run check README.md`.
 
 Workflow correction: moving delivery to a dedicated git branch per user request before final task completion.
 
-Finalized on dedicated branch `back-382-readme-two-usage-paths` per workflow requirement.
+Finalized on dedicated branch `back-383-readme-two-usage-paths` per workflow requirement.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
