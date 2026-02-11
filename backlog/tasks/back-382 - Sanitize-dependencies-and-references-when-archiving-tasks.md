@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 21:02'
-updated_date: '2026-02-11 21:06'
+updated_date: '2026-02-11 21:21'
 labels: []
 dependencies: []
 priority: medium
@@ -52,12 +52,20 @@ Added regression tests in `src/test/references.test.ts` for exact-ID-only refere
 Added auto-commit regression test in `src/test/auto-commit.test.ts` to verify archive cleanup changes are committed when autoCommit=true.
 
 Validation passed: `bun test src/test/dependency.test.ts src/test/references.test.ts src/test/auto-commit.test.ts`, `bun run check .`, `bunx tsc --noEmit`.
+
+Post-review adjustment: exact-ID reference cleanup now requires matching task-prefix IDs (e.g., `TASK-1`/`BACK-1`) and intentionally does not remove numeric-only reference strings like `1` to avoid false-positive deletions.
+
+Post-review adjustment: archive cleanup now derives canonical archived ID from the loaded task record before move, fixing numeric archive input behavior for custom task prefixes.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Implemented archive-time sanitization for active local tasks so archiving task X removes X from `dependencies` and exact-ID `references` (case-insensitive canonical ID match), while leaving `parentTaskId` unchanged and leaving completed/archive tasks untouched. Added regression coverage in dependency/reference suites for cleanup behavior and non-removal of partial URL/path references, plus an auto-commit regression to verify archive + cleanup changes commit together when autoCommit is enabled. Commit: 8ecc741.
+
+Post-review hardening in commit `ad32f25`: strict prefixed exact-ID reference matching (avoids numeric-only and foreign-prefix false positives), and canonical archived ID resolution from loaded task record to support numeric archive input with custom task prefixes.
+
+Ran required two-subagent review cycle before PR creation; after fixes, final agent passes reported no findings.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
