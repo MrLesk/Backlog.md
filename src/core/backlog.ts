@@ -21,7 +21,7 @@ import {
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
-import { buildIdRegex, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
+import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -235,7 +235,15 @@ export class Core {
 		if (!trimmed) {
 			return false;
 		}
-		return taskIdsEqual(trimmed, taskId);
+		const taskPrefix = extractAnyPrefix(taskId);
+		const referencePrefix = extractAnyPrefix(trimmed);
+		if (!taskPrefix || !referencePrefix) {
+			return false;
+		}
+		if (taskPrefix.toLowerCase() !== referencePrefix.toLowerCase()) {
+			return false;
+		}
+		return normalizeTaskId(trimmed, taskPrefix).toLowerCase() === normalizeTaskId(taskId, taskPrefix).toLowerCase();
 	}
 
 	private sanitizeArchivedTaskLinks(tasks: Task[], archivedTaskId: string): Task[] {
@@ -1717,18 +1725,22 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const normalizedTaskId = normalizeTaskId(taskId);
+		const taskToArchive = await this.fs.loadTask(taskId);
+		if (!taskToArchive) {
+			return false;
+		}
+		const normalizedTaskId = taskToArchive.id;
 
 		// Get paths before moving the file
-		const taskPath = await getTaskPath(taskId, this);
-		const taskFilename = await getTaskFilename(taskId, this);
+		const taskPath = taskToArchive.filePath ?? (await getTaskPath(normalizedTaskId, this));
+		const taskFilename = await getTaskFilename(normalizedTaskId, this);
 
 		if (!taskPath || !taskFilename) return false;
 
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		const success = await this.fs.archiveTask(taskId);
+		const success = await this.fs.archiveTask(normalizedTaskId);
 		if (!success) {
 			return false;
 		}

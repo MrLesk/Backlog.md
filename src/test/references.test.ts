@@ -168,6 +168,8 @@ describe("Task References", () => {
 					"https://example.com/tasks/task-1",
 					"docs/task-1.md",
 					"prefix-task-1-suffix",
+					"1",
+					"JIRA-1",
 					"task-12",
 				],
 			});
@@ -189,6 +191,8 @@ describe("Task References", () => {
 				"https://example.com/tasks/task-1",
 				"docs/task-1.md",
 				"prefix-task-1-suffix",
+				"1",
+				"JIRA-1",
 				"task-12",
 			]);
 			expect(updatedCompleted?.references).toEqual(["task-1", "https://example.com/tasks/task-1"]);
