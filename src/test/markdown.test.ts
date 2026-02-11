@@ -154,6 +154,31 @@ created_date: 08-06-25
 			expect(task.createdDate).toBe("2025-06-08");
 		});
 
+		it("should preserve frontmatter when title contains dollar-sign digit sequences", () => {
+			const content = `---
+id: task-112.11
+title: 'Build ~$15,000 System (Magnepan 1.7x)'
+status: To Do
+assignee: []
+created_date: "2026-02-10 18:24"
+labels:
+  - TLR
+dependencies: []
+priority: high
+---
+
+Task body.`;
+
+			const task = parseTask(content);
+
+			expect(task.id).toBe("task-112.11");
+			expect(task.title).toBe("Build ~$15,000 System (Magnepan 1.7x)");
+			expect(task.status).toBe("To Do");
+			expect(task.createdDate).toBe("2026-02-10 18:24");
+			expect(task.labels).toEqual(["TLR"]);
+			expect(task.priority).toBe("high");
+		});
+
 		it("should extract acceptance criteria with checked items", () => {
 			const content = `---
 id: task-4

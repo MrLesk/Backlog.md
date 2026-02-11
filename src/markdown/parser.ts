@@ -133,7 +133,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 	if (match) {
 		const processed = preprocessFrontmatter(match[1] || "");
 		// Replace with consistent line endings
-		toParse = content.replace(fmRegex, `---\n${processed}\n---`);
+		toParse = content.replace(fmRegex, () => `---\n${processed}\n---`);
 	}
 
 	const parsed = matter(toParse);
