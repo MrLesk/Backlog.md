@@ -1,11 +1,11 @@
 ---
 id: BACK-384
 title: Fix milestone rename to use milestone files as single source of truth
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 22:40'
-updated_date: '2026-02-11 22:43'
+updated_date: '2026-02-12 03:14'
 labels: []
 dependencies: []
 references:
@@ -20,10 +20,10 @@ Issue #521 reports mixed milestone behavior: task milestone values are updated b
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Renaming a milestone updates milestone metadata in the milestone file(s) and no stale milestone title remains in files after rename
-- [ ] #2 Milestone-related MCP operations consistently derive milestone state from milestone files rather than a separate config milestone list
-- [ ] #3 Regression coverage demonstrates milestone rename/update flow and guards against mixed config/file behavior
-- [ ] #4 Relevant tests pass for milestone operations and existing behavior remains compatible
+- [x] #1 Renaming a milestone updates milestone metadata in the milestone file(s) and no stale milestone title remains in files after rename
+- [x] #2 Milestone-related MCP operations consistently derive milestone state from milestone files rather than a separate config milestone list
+- [x] #3 Regression coverage demonstrates milestone rename/update flow and guards against mixed config/file behavior
+- [x] #4 Relevant tests pass for milestone operations and existing behavior remains compatible
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -42,9 +42,27 @@ Issue #521 reports mixed milestone behavior: task milestone values are updated b
 Reproduced issue #521 locally with MCP test harness: after `milestone_add(Infosec)` and `milestone_rename(from=Infosec,to=IT,updateTasks=true)`, `listMilestones()` still returns title `Infosec` while task milestone changed to raw `IT`. This confirms milestone file metadata is not updated and task value diverges from canonical milestone ID.
 <!-- SECTION:NOTES:END -->
 
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Aligned milestone behavior to use milestone files as the single source of truth across MCP, core, server, CLI, TUI, and web flows.
+
+Key outcomes:
+- `milestone_rename` and related operations now resolve by milestone IDs first (including zero-padded/canonical aliases) and avoid ambiguous title collisions.
+- Milestone mutation flows use file-backed state consistently, with stronger alias collision checks and deterministic canonical ID selection.
+- Auto-commit logic was hardened to commit only operation-related paths and to rollback/reset staged paths on commit failures.
+- Added broad regression coverage for issue #521 scenarios (rename/remove/update with ID/title aliases, archived collisions, zero-padded IDs, and commit isolation).
+
+Validation run:
+- `bun test` (full suite)
+- `bun test src/test/mcp-milestones.test.ts --test-name-pattern "renames milestones and updates local tasks by default"`
+- `bunx tsc --noEmit`
+- `bun run check .`
+<!-- SECTION:FINAL_SUMMARY:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
