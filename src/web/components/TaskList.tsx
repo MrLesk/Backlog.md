@@ -50,7 +50,10 @@ const TaskList: React.FC<TaskListProps> = ({
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [searchValue, setSearchValue] = useState(() => searchParams.get("query") ?? "");
-	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
+	const [statusFilter, setStatusFilter] = useState<string[]>(() => {
+		const raw = searchParams.get("status") ?? "";
+		return raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+	});
 	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
 		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
 	);
@@ -66,6 +69,9 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [error, setError] = useState<string | null>(null);
 	const [showCleanupModal, setShowCleanupModal] = useState(false);
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
+	const [showStatusMenu, setShowStatusMenu] = useState(false);
+	const statusButtonRef = useRef<HTMLButtonElement | null>(null);
+	const statusMenuRef = useRef<HTMLDivElement | null>(null);
 	const [showLabelsMenu, setShowLabelsMenu] = useState(false);
 	const labelsButtonRef = useRef<HTMLButtonElement | null>(null);
 	const labelsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -81,13 +87,14 @@ const TaskList: React.FC<TaskListProps> = ({
 	}, [availableMilestones]);
 	const normalizedSearch = searchValue.trim();
 	const hasActiveFilters = Boolean(
-		normalizedSearch || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		normalizedSearch || statusFilter.length > 0 || priorityFilter || labelFilter.length > 0 || milestoneFilter,
 	);
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
 		const paramQuery = searchParams.get("query") ?? "";
-		const paramStatus = searchParams.get("status") ?? "";
+		const paramStatusRaw = searchParams.get("status") ?? "";
+		const paramStatus = paramStatusRaw ? paramStatusRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
 		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
 		const paramMilestone = searchParams.get("milestone") ?? "";
 		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
@@ -100,7 +107,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (paramQuery !== searchValue) {
 			setSearchValue(paramQuery);
 		}
-		if (paramStatus !== statusFilter) {
+		if (paramStatus.join("|") !== statusFilter.join("|")) {
 			setStatusFilter(paramStatus);
 		}
 		if (paramPriority !== priorityFilter) {
@@ -131,7 +138,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 
 		const shouldUseApi =
-			Boolean(normalizedSearch) || Boolean(statusFilter) || Boolean(priorityFilter) || labelFilter.length > 0;
+			Boolean(normalizedSearch) || statusFilter.length > 0 || Boolean(priorityFilter) || labelFilter.length > 0;
 
 		if (!hasActiveFilters) {
 			return;
@@ -150,7 +157,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				const results = await apiClient.search({
 					query: normalizedSearch || undefined,
 					types: ["task"],
-					status: statusFilter || undefined,
+					status: statusFilter.length > 0 ? statusFilter.join(",") : undefined,
 					priority: (priorityFilter || undefined) as SearchPriorityFilter | undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				});
@@ -178,7 +185,7 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const syncUrl = (
 		nextQuery: string,
-		nextStatus: string,
+		nextStatus: string[],
 		nextPriority: "" | SearchPriorityFilter,
 		nextLabels: string[],
 		nextMilestone: string,
@@ -188,8 +195,8 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (trimmedQuery) {
 			params.set("query", trimmedQuery);
 		}
-		if (nextStatus) {
-			params.set("status", nextStatus);
+		if (nextStatus.length > 0) {
+			params.set("status", nextStatus.join(","));
 		}
 		if (nextPriority) {
 			params.set("priority", nextPriority);
@@ -210,9 +217,9 @@ const TaskList: React.FC<TaskListProps> = ({
 		syncUrl(value, statusFilter, priorityFilter, labelFilter, milestoneFilter);
 	};
 
-	const handleStatusChange = (value: string) => {
-		setStatusFilter(value);
-		syncUrl(searchValue, value, priorityFilter, labelFilter, milestoneFilter);
+	const handleStatusChange = (next: string[]) => {
+		setStatusFilter(next);
+		syncUrl(searchValue, next, priorityFilter, labelFilter, milestoneFilter);
 	};
 
 	const handlePriorityChange = (value: "" | SearchPriorityFilter) => {
@@ -233,14 +240,31 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const handleClearFilters = () => {
 		setSearchValue("");
-		setStatusFilter("");
+		setStatusFilter([]);
 		setPriorityFilter("");
 		setLabelFilter([]);
 		setMilestoneFilter("");
-		syncUrl("", "", "", [], "");
+		syncUrl("", [], "", [], "");
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
+
+	useEffect(() => {
+		if (!showStatusMenu) return;
+		const handleClickOutside = (event: MouseEvent) => {
+			const target = event.target as Node;
+			if (
+				statusButtonRef.current &&
+				statusMenuRef.current &&
+				!statusButtonRef.current.contains(target) &&
+				!statusMenuRef.current.contains(target)
+			) {
+				setShowStatusMenu(false);
+			}
+		};
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [showStatusMenu]);
 
 	useEffect(() => {
 		if (!showLabelsMenu) return;
@@ -343,18 +367,70 @@ const TaskList: React.FC<TaskListProps> = ({
 						)}
 						</div>
 
-					<select
-						value={statusFilter}
-						onChange={(event) => handleStatusChange(event.target.value)}
-						className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-					>
-						<option value="">All statuses</option>
-						{availableStatuses.map((status) => (
-							<option key={status} value={status}>
-								{status}
-							</option>
-						))}
-					</select>
+					<div className="relative">
+						<button
+							type="button"
+							ref={statusButtonRef}
+							onClick={() => setShowStatusMenu((open) => !open)}
+							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200 text-left"
+						>
+							<div className="flex items-center justify-between gap-2">
+								<span>Status</span>
+								<span className="text-xs text-gray-500 dark:text-gray-400">
+									{statusFilter.length === 0
+										? "All"
+										: statusFilter.length === 1
+											? statusFilter[0]
+											: `${statusFilter.length} selected`}
+								</span>
+							</div>
+						</button>
+						{showStatusMenu && (
+							<div
+								ref={statusMenuRef}
+								className="absolute z-10 mt-2 w-[200px] max-h-56 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
+							>
+								{availableStatuses.length === 0 ? (
+									<div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No statuses</div>
+								) : (
+									availableStatuses.map((status) => {
+										const isSelected = statusFilter.includes(status);
+										return (
+											<label
+												key={status}
+												className="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+											>
+												<input
+													type="checkbox"
+													checked={isSelected}
+													onChange={() => {
+														const next = isSelected
+															? statusFilter.filter((item) => item !== status)
+															: [...statusFilter, status];
+														handleStatusChange(next);
+													}}
+													className="h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
+												/>
+												<span className="truncate">{status}</span>
+											</label>
+										);
+									})
+								)}
+								{statusFilter.length > 0 && (
+									<button
+										type="button"
+										className="w-full text-left px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 border-t border-gray-200 dark:border-gray-700"
+										onClick={() => {
+											handleStatusChange([]);
+											setShowStatusMenu(false);
+										}}
+									>
+										Clear status filter
+									</button>
+								)}
+							</div>
+						)}
+					</div>
 
 					<select
 						value={priorityFilter}
@@ -450,7 +526,7 @@ const TaskList: React.FC<TaskListProps> = ({
 					</div>
 
 					<div className="flex items-center gap-3 flex-shrink-0">
-						{statusFilter.toLowerCase() === 'done' && displayTasks.length > 0 && (
+						{statusFilter.length === 1 && statusFilter[0].toLowerCase() === 'done' && displayTasks.length > 0 && (
 								<button
 									type="button"
 									onClick={() => setShowCleanupModal(true)}
