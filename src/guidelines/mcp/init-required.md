@@ -18,7 +18,7 @@ Backlog.md is a task management system that uses markdown files to track feature
 
 1. Run `backlog init` in your project directory
 2. Follow the interactive setup prompts
-3. Choose your preferred AI agent integration (Claude Code, Codex, or Gemini)
+3. Choose your preferred AI agent integration (Claude Code, Codex, Gemini CLI, or Kiro)
 4. Start creating and managing tasks!
 
 For more information, visit: https://backlog.md
