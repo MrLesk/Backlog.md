@@ -172,11 +172,23 @@ export class MilestoneHandlers {
 		const fromKeys = buildMilestoneMatchKeys(fromName, knownMilestones);
 		const targetMilestone = resolveMilestoneStorageValue(toName, knownMilestones);
 
-		// For now, renaming just updates tasks - milestone files would need separate rename logic
-		// This maintains the core task reassignment functionality
 		const shouldUpdateTasks = args.updateTasks ?? true;
 		let updatedTaskIds: string[] = [];
 
+		// 1. Rename the milestone file
+		const renameResult = await this.core.filesystem.renameMilestoneFile(fromName, toName);
+
+		// 2. Update config.yml milestones array
+		const config = await this.core.filesystem.loadConfig();
+		if (config && Array.isArray(config.milestones)) {
+			const fromIdx = config.milestones.findIndex((m: string) => milestoneKey(m) === milestoneKey(fromName));
+			if (fromIdx >= 0) {
+				config.milestones[fromIdx] = toName;
+				await this.core.filesystem.saveConfig(config);
+			}
+		}
+
+		// 3. Update tasks
 		if (shouldUpdateTasks) {
 			const tasks = await this.listLocalTasks();
 			const matches = tasks.filter((task) => fromKeys.has(milestoneKey(task.milestone ?? "")));
@@ -189,6 +201,10 @@ export class MilestoneHandlers {
 
 		const targetSummary = targetMilestone === toName ? `"${toName}"` : `"${toName}" (stored as "${targetMilestone}")`;
 		const summaryLines: string[] = [`Renamed milestone "${fromName}" → ${targetSummary}.`];
+		if (renameResult.renamed) {
+			summaryLines.push(`Renamed milestone file (${renameResult.milestoneId}).`);
+		}
+		summaryLines.push("Updated config.yml.");
 		if (shouldUpdateTasks) {
 			summaryLines.push(
 				`Updated ${updatedTaskIds.length} local task${updatedTaskIds.length === 1 ? "" : "s"}: ${formatTaskIdList(updatedTaskIds)}`,

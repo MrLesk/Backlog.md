@@ -949,6 +949,69 @@ ${description || `Milestone: ${title}`}
 		}
 	}
 
+	async renameMilestoneFile(
+		fromTitle: string,
+		toTitle: string,
+	): Promise<{
+		renamed: boolean;
+		oldPath?: string;
+		newPath?: string;
+		milestoneId?: string;
+	}> {
+		const fromKey = fromTitle.trim().toLowerCase();
+		if (!fromKey || !toTitle.trim()) {
+			return { renamed: false };
+		}
+
+		const milestonesDir = await this.getMilestonesDir();
+		const milestoneFiles = await Array.fromAsync(
+			new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
+		);
+
+		for (const file of milestoneFiles) {
+			const sourcePath = join(milestonesDir, file);
+			const content = await Bun.file(sourcePath).text();
+			const milestone = parseMilestone(content);
+			const titleKey = milestone.title.trim().toLowerCase();
+
+			if (titleKey !== fromKey) {
+				continue;
+			}
+
+			// Update title in frontmatter
+			const updatedContent = content.replace(
+				/^(title:\s*)".*?"$/m,
+				`$1"${toTitle.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+			);
+
+			// Build new filename
+			const safeTitle = toTitle
+				.replace(/[<>:"/\\|?*]/g, "")
+				.replace(/\s+/g, "-")
+				.toLowerCase()
+				.slice(0, 50);
+			const newFilename = `${milestone.id} - ${safeTitle}.md`;
+			const newPath = join(milestonesDir, newFilename);
+
+			// Write updated content to new path
+			await Bun.write(newPath, updatedContent);
+
+			// Remove old file if path changed
+			if (sourcePath !== newPath) {
+				await unlink(sourcePath);
+			}
+
+			return {
+				renamed: true,
+				oldPath: sourcePath,
+				newPath,
+				milestoneId: milestone.id,
+			};
+		}
+
+		return { renamed: false };
+	}
+
 	async saveConfig(config: BacklogConfig): Promise<void> {
 		const backlogDir = await this.getBacklogDir();
 		const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
