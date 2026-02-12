@@ -87,6 +87,128 @@ export class BacklogServer {
 		this.core = new Core(projectPath, { enableWatchers: true });
 	}
 
+	private async resolveMilestoneInput(milestone: string): Promise<string> {
+		const normalized = milestone.trim();
+		if (!normalized) {
+			return normalized;
+		}
+
+		const key = normalized.toLowerCase();
+		const aliasKeys = new Set<string>([key]);
+		const looksLikeMilestoneId = /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized);
+		const canonicalInputId =
+			/^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized)
+				? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
+				: null;
+		if (/^\d+$/.test(normalized)) {
+			const numeric = String(Number.parseInt(normalized, 10));
+			aliasKeys.add(numeric);
+			aliasKeys.add(`m-${numeric}`);
+		} else {
+			const match = normalized.match(/^m-(\d+)$/i);
+			if (match?.[1]) {
+				const numeric = String(Number.parseInt(match[1], 10));
+				aliasKeys.add(numeric);
+				aliasKeys.add(`m-${numeric}`);
+			}
+		}
+		const [activeMilestones, archivedMilestones] = await Promise.all([
+			this.core.filesystem.listMilestones(),
+			this.core.filesystem.listArchivedMilestones(),
+		]);
+		const idMatchesAlias = (milestoneId: string): boolean => {
+			const idKey = milestoneId.trim().toLowerCase();
+			if (aliasKeys.has(idKey)) {
+				return true;
+			}
+			if (/^\d+$/.test(milestoneId.trim())) {
+				const numeric = String(Number.parseInt(milestoneId.trim(), 10));
+				return aliasKeys.has(numeric) || aliasKeys.has(`m-${numeric}`);
+			}
+			const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
+			if (!idMatch?.[1]) {
+				return false;
+			}
+			const numeric = String(Number.parseInt(idMatch[1], 10));
+			return aliasKeys.has(numeric) || aliasKeys.has(`m-${numeric}`);
+		};
+		const findIdMatch = (
+			milestones: Array<{ id: string; title: string }>,
+		): { id: string; title: string } | undefined => {
+			const rawExactMatch = milestones.find((item) => item.id.trim().toLowerCase() === key);
+			if (rawExactMatch) {
+				return rawExactMatch;
+			}
+			if (canonicalInputId) {
+				const canonicalRawMatch = milestones.find((item) => item.id.trim().toLowerCase() === canonicalInputId);
+				if (canonicalRawMatch) {
+					return canonicalRawMatch;
+				}
+			}
+			return milestones.find((item) => idMatchesAlias(item.id));
+		};
+		const findUniqueTitleMatch = (
+			milestones: Array<{ id: string; title: string }>,
+		): { id: string; title: string } | null => {
+			const titleMatches = milestones.filter((item) => item.title.trim().toLowerCase() === key);
+			if (titleMatches.length === 1) {
+				return titleMatches[0] ?? null;
+			}
+			return null;
+		};
+
+		const matchByAlias = (milestones: Array<{ id: string; title: string }>): string | null => {
+			const idMatch = findIdMatch(milestones);
+			const titleMatch = findUniqueTitleMatch(milestones);
+			if (looksLikeMilestoneId) {
+				return idMatch?.id ?? null;
+			}
+			if (titleMatch) {
+				return titleMatch.id;
+			}
+			if (idMatch) {
+				return idMatch.id;
+			}
+			return null;
+		};
+
+		const activeTitleMatches = activeMilestones.filter((item) => item.title.trim().toLowerCase() === key);
+		const hasAmbiguousActiveTitle = activeTitleMatches.length > 1;
+		if (looksLikeMilestoneId) {
+			const activeIdMatch = findIdMatch(activeMilestones);
+			if (activeIdMatch) {
+				return activeIdMatch.id;
+			}
+			const archivedIdMatch = findIdMatch(archivedMilestones);
+			if (archivedIdMatch) {
+				return archivedIdMatch.id;
+			}
+			if (activeTitleMatches.length === 1) {
+				return activeTitleMatches[0]?.id ?? normalized;
+			}
+			if (hasAmbiguousActiveTitle) {
+				return normalized;
+			}
+			const archivedTitleMatch = findUniqueTitleMatch(archivedMilestones);
+			return archivedTitleMatch?.id ?? normalized;
+		}
+
+		const activeMatch = matchByAlias(activeMilestones);
+		if (activeMatch) {
+			return activeMatch;
+		}
+		if (hasAmbiguousActiveTitle) {
+			return normalized;
+		}
+
+		const archivedMatch = matchByAlias(archivedMilestones);
+		if (archivedMatch) {
+			return archivedMatch;
+		}
+
+		return normalized;
+	}
+
 	private async ensureServicesReady(): Promise<void> {
 		const store = await this.core.getContentStore();
 		this.contentStore = store;
@@ -663,12 +785,15 @@ export class BacklogServer {
 		const disableDefinitionOfDoneDefaults = Boolean(payload.disableDefinitionOfDoneDefaults);
 
 		try {
+			const milestone =
+				typeof payload.milestone === "string" ? await this.resolveMilestoneInput(payload.milestone) : undefined;
+
 			const { task: createdTask } = await this.core.createTaskFromInput({
 				title: payload.title,
 				description: payload.description,
 				status: payload.status,
 				priority: payload.priority,
-				milestone: typeof payload.milestone === "string" ? payload.milestone : undefined,
+				milestone,
 				labels: payload.labels,
 				assignee: payload.assignee,
 				dependencies: payload.dependencies,
@@ -730,7 +855,11 @@ export class BacklogServer {
 		}
 
 		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {
-			updateInput.milestone = updates.milestone;
+			if (typeof updates.milestone === "string") {
+				updateInput.milestone = await this.resolveMilestoneInput(updates.milestone);
+			} else {
+				updateInput.milestone = updates.milestone;
+			}
 		}
 
 		if ("labels" in updates && Array.isArray(updates.labels)) {
@@ -1108,10 +1237,39 @@ export class BacklogServer {
 
 			// Check for duplicates
 			const existingMilestones = await this.core.filesystem.listMilestones();
-			const titleLower = title.toLowerCase();
-			const duplicate = existingMilestones.find((m) => m.title.toLowerCase() === titleLower);
+			const buildAliasKeys = (value: string): Set<string> => {
+				const normalized = value.trim().toLowerCase();
+				const keys = new Set<string>();
+				if (!normalized) {
+					return keys;
+				}
+				keys.add(normalized);
+				if (/^\d+$/.test(normalized)) {
+					const numeric = String(Number.parseInt(normalized, 10));
+					keys.add(numeric);
+					keys.add(`m-${numeric}`);
+					return keys;
+				}
+				const match = normalized.match(/^m-(\d+)$/);
+				if (match?.[1]) {
+					const numeric = String(Number.parseInt(match[1], 10));
+					keys.add(numeric);
+					keys.add(`m-${numeric}`);
+				}
+				return keys;
+			};
+			const requestedKeys = buildAliasKeys(title);
+			const duplicate = existingMilestones.find((milestone) => {
+				const milestoneKeys = new Set<string>([...buildAliasKeys(milestone.id), ...buildAliasKeys(milestone.title)]);
+				for (const key of requestedKeys) {
+					if (milestoneKeys.has(key)) {
+						return true;
+					}
+				}
+				return false;
+			});
 			if (duplicate) {
-				return Response.json({ error: "A milestone with this title already exists" }, { status: 400 });
+				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
 			}
 
 			const milestone = await this.core.filesystem.createMilestone(title, body.description);

@@ -57,9 +57,67 @@ export class GitOperations {
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
+	async commitFiles(message: string, filePaths: string[], repoRoot?: string | null): Promise<void> {
+		const uniqueFilePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
+		if (uniqueFilePaths.length === 0) {
+			return;
+		}
+
+		const resolvedRepoRoot =
+			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+		const relativePaths: string[] = [];
+		for (const filePath of uniqueFilePaths) {
+			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
+			relativePaths.push(relativePath ?? filePath);
+		}
+		const uniqueRelativePaths = Array.from(new Set(relativePaths.filter((path) => path.length > 0)));
+		if (uniqueRelativePaths.length === 0) {
+			return;
+		}
+
+		const { stdout: stagedForPaths } = await this.execGit(
+			["diff", "--name-only", "--cached", "--", ...uniqueRelativePaths],
+			{
+				cwd: resolvedRepoRoot,
+				readOnly: true,
+			},
+		);
+		if (!stagedForPaths.trim()) {
+			return;
+		}
+
+		const args = ["commit", "-m", message];
+		if (this.config?.bypassGitHooks) {
+			args.push("--no-verify");
+		}
+		args.push("--", ...uniqueRelativePaths);
+		await this.execGit(args, { cwd: resolvedRepoRoot });
+	}
+
 	async resetIndex(repoRoot?: string | null): Promise<void> {
 		// Reset the staging area without affecting working directory
 		await this.execGit(["reset", "HEAD"], { cwd: repoRoot ?? undefined });
+	}
+
+	async resetPaths(filePaths: string[], repoRoot?: string | null): Promise<void> {
+		const uniqueFilePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
+		if (uniqueFilePaths.length === 0) {
+			return;
+		}
+
+		const resolvedRepoRoot =
+			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+		const relativePaths: string[] = [];
+		for (const filePath of uniqueFilePaths) {
+			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
+			relativePaths.push(relativePath ?? filePath);
+		}
+		const uniqueRelativePaths = Array.from(new Set(relativePaths.filter((path) => path.length > 0)));
+		if (uniqueRelativePaths.length === 0) {
+			return;
+		}
+
+		await this.execGit(["reset", "HEAD", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
 	}
 
 	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {

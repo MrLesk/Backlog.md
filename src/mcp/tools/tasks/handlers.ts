@@ -1,6 +1,7 @@
 import { basename, join } from "node:path";
 import {
 	isLocalEditableTask,
+	type Milestone,
 	type SearchPriorityFilter,
 	type Task,
 	type TaskListFilter,
@@ -12,7 +13,7 @@ import { sortTasks } from "../../../utils/task-sorting.ts";
 import { McpError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
-import { resolveMilestoneStorageValue } from "../../utils/milestone-resolution.ts";
+import { milestoneKey } from "../../utils/milestone-resolution.ts";
 import { formatTaskCallResult } from "../../utils/task-response.ts";
 
 export type TaskCreateArgs = {
@@ -56,7 +57,106 @@ export class TaskHandlers {
 			this.core.filesystem.listMilestones(),
 			this.core.filesystem.listArchivedMilestones(),
 		]);
-		return resolveMilestoneStorageValue(milestone, [...activeMilestones, ...archivedMilestones]);
+		const normalized = milestone.trim();
+		const inputKey = milestoneKey(normalized);
+		const aliasKeys = new Set<string>([inputKey]);
+		const looksLikeMilestoneId = /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized);
+		const canonicalInputId =
+			/^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized)
+				? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
+				: null;
+		if (/^\d+$/.test(normalized)) {
+			const numericAlias = String(Number.parseInt(normalized, 10));
+			aliasKeys.add(numericAlias);
+			aliasKeys.add(`m-${numericAlias}`);
+		} else {
+			const idMatch = normalized.match(/^m-(\d+)$/i);
+			if (idMatch?.[1]) {
+				const numericAlias = String(Number.parseInt(idMatch[1], 10));
+				aliasKeys.add(numericAlias);
+				aliasKeys.add(`m-${numericAlias}`);
+			}
+		}
+		const idMatchesAlias = (milestoneId: string): boolean => {
+			const idKey = milestoneKey(milestoneId);
+			if (aliasKeys.has(idKey)) {
+				return true;
+			}
+			if (/^\d+$/.test(milestoneId.trim())) {
+				const numericAlias = String(Number.parseInt(milestoneId.trim(), 10));
+				return aliasKeys.has(numericAlias) || aliasKeys.has(`m-${numericAlias}`);
+			}
+			const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
+			if (!idMatch?.[1]) {
+				return false;
+			}
+			const numericAlias = String(Number.parseInt(idMatch[1], 10));
+			return aliasKeys.has(numericAlias) || aliasKeys.has(`m-${numericAlias}`);
+		};
+		const findIdMatch = (milestones: Milestone[]): Milestone | undefined => {
+			const rawExactMatch = milestones.find((item) => milestoneKey(item.id) === inputKey);
+			if (rawExactMatch) {
+				return rawExactMatch;
+			}
+			if (canonicalInputId) {
+				const canonicalRawMatch = milestones.find((item) => milestoneKey(item.id) === canonicalInputId);
+				if (canonicalRawMatch) {
+					return canonicalRawMatch;
+				}
+			}
+			return milestones.find((item) => idMatchesAlias(item.id));
+		};
+		const findUniqueTitleMatch = (milestones: Milestone[]): Milestone | null => {
+			const titleMatches = milestones.filter((item) => milestoneKey(item.title) === inputKey);
+			if (titleMatches.length === 1) {
+				return titleMatches[0] ?? null;
+			}
+			return null;
+		};
+		const resolveByAlias = (milestones: Milestone[]): string | null => {
+			const idMatch = findIdMatch(milestones);
+			const titleMatch = findUniqueTitleMatch(milestones);
+			if (looksLikeMilestoneId) {
+				return idMatch?.id ?? null;
+			}
+			if (titleMatch) {
+				return titleMatch.id;
+			}
+			if (idMatch) {
+				return idMatch.id;
+			}
+			return null;
+		};
+
+		const activeTitleMatches = activeMilestones.filter((item) => milestoneKey(item.title) === inputKey);
+		const hasAmbiguousActiveTitle = activeTitleMatches.length > 1;
+		if (looksLikeMilestoneId) {
+			const activeIdMatch = findIdMatch(activeMilestones);
+			if (activeIdMatch) {
+				return activeIdMatch.id;
+			}
+			const archivedIdMatch = findIdMatch(archivedMilestones);
+			if (archivedIdMatch) {
+				return archivedIdMatch.id;
+			}
+			if (activeTitleMatches.length === 1) {
+				return activeTitleMatches[0]?.id ?? normalized;
+			}
+			if (hasAmbiguousActiveTitle) {
+				return normalized;
+			}
+			const archivedTitleMatch = findUniqueTitleMatch(archivedMilestones);
+			return archivedTitleMatch?.id ?? normalized;
+		}
+
+		const activeMatch = resolveByAlias(activeMilestones);
+		if (activeMatch) {
+			return activeMatch;
+		}
+		if (hasAmbiguousActiveTitle) {
+			return normalized;
+		}
+		return resolveByAlias(archivedMilestones) ?? normalized;
 	}
 
 	private isDoneStatus(status?: string | null): boolean {

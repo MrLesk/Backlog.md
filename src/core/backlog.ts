@@ -1,4 +1,4 @@
-import { unlink } from "node:fs/promises";
+import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
@@ -1768,16 +1768,65 @@ export class Core {
 	async archiveMilestone(
 		identifier: string,
 		autoCommit?: boolean,
-	): Promise<{ success: boolean; milestone?: Milestone }> {
+	): Promise<{ success: boolean; sourcePath?: string; targetPath?: string; milestone?: Milestone }> {
 		const result = await this.fs.archiveMilestone(identifier);
 
 		if (result.success && result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
 			const repoRoot = await this.git.stageFileMove(result.sourcePath, result.targetPath);
 			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
-			await this.git.commitChanges(`backlog: Archive milestone${label}`, repoRoot);
+			const commitPaths = [result.sourcePath, result.targetPath];
+			try {
+				await this.git.commitFiles(`backlog: Archive milestone${label}`, commitPaths, repoRoot);
+			} catch (error) {
+				await this.git.resetPaths(commitPaths, repoRoot);
+				try {
+					await moveFile(result.targetPath, result.sourcePath);
+				} catch {
+					// Ignore rollback failure and propagate original commit error.
+				}
+				throw error;
+			}
 		}
 
-		return { success: result.success, milestone: result.milestone };
+		return {
+			success: result.success,
+			sourcePath: result.sourcePath,
+			targetPath: result.targetPath,
+			milestone: result.milestone,
+		};
+	}
+
+	async renameMilestone(
+		identifier: string,
+		title: string,
+		autoCommit?: boolean,
+	): Promise<{
+		success: boolean;
+		sourcePath?: string;
+		targetPath?: string;
+		milestone?: Milestone;
+		previousTitle?: string;
+	}> {
+		const result = await this.fs.renameMilestone(identifier, title);
+		if (!result.success) {
+			return result;
+		}
+
+		if (result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
+			const repoRoot = await this.git.stageFileMove(result.sourcePath, result.targetPath);
+			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
+			const commitPaths = [result.sourcePath, result.targetPath];
+			try {
+				await this.git.commitFiles(`backlog: Rename milestone${label}`, commitPaths, repoRoot);
+			} catch (error) {
+				await this.git.resetPaths(commitPaths, repoRoot);
+				const rollbackTitle = result.previousTitle ?? title;
+				await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
+				throw error;
+			}
+		}
+
+		return result;
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {

@@ -41,6 +41,70 @@ describe("buildLanes", () => {
 		const lanes = buildLanes("milestone", tasks, ["M1"], [], { archivedMilestoneIds: ["M1"] });
 		expect(lanes.map((lane) => lane.label)).toEqual(["No milestone"]);
 	});
+
+	it("canonicalizes numeric milestone aliases to configured milestone IDs", () => {
+		const tasks = [makeTask({ id: "task-1", milestone: "1" })];
+		const lanes = buildLanes(
+			"milestone",
+			tasks,
+			[],
+			[{ id: "m-1", title: "Release 1", description: "", rawContent: "" }],
+		);
+		expect(lanes.map((lane) => lane.milestone)).toContain("m-1");
+		expect(lanes.map((lane) => lane.milestone)).not.toContain("1");
+	});
+
+	it("canonicalizes zero-padded milestone ID aliases to configured milestone IDs", () => {
+		const tasks = [makeTask({ id: "task-1", milestone: "m-01" })];
+		const lanes = buildLanes(
+			"milestone",
+			tasks,
+			[],
+			[{ id: "m-1", title: "Release 1", description: "", rawContent: "" }],
+		);
+		expect(lanes.map((lane) => lane.milestone)).toContain("m-1");
+		expect(lanes.map((lane) => lane.milestone)).not.toContain("m-01");
+	});
+
+	it("filters archived numeric milestone aliases from lane definitions", () => {
+		const tasks = [makeTask({ id: "task-1", milestone: "1" })];
+		const lanes = buildLanes("milestone", tasks, [], [], {
+			archivedMilestoneIds: ["m-1"],
+			archivedMilestones: [{ id: "m-1", title: "Archived", description: "", rawContent: "" }],
+		});
+		expect(lanes.map((lane) => lane.label)).toEqual(["No milestone"]);
+	});
+
+	it("prefers active title aliases when archived milestones reuse the same title", () => {
+		const tasks = [makeTask({ id: "task-1", milestone: "Shared" })];
+		const lanes = buildLanes(
+			"milestone",
+			tasks,
+			[],
+			[{ id: "m-2", title: "Shared", description: "", rawContent: "" }],
+			{
+				archivedMilestoneIds: ["m-0"],
+				archivedMilestones: [{ id: "m-0", title: "Shared", description: "", rawContent: "" }],
+			},
+		);
+		expect(lanes.map((lane) => lane.milestone)).toContain("m-2");
+		expect(lanes.map((lane) => lane.milestone)).not.toContain("Shared");
+	});
+
+	it("prefers real milestone IDs over numeric title aliases in lane definitions", () => {
+		const tasks = [makeTask({ id: "task-1", milestone: "1" })];
+		const lanes = buildLanes(
+			"milestone",
+			tasks,
+			[],
+			[
+				{ id: "m-1", title: "Release 1", description: "", rawContent: "" },
+				{ id: "m-2", title: "1", description: "", rawContent: "" },
+			],
+		);
+		expect(lanes.map((lane) => lane.milestone)).toContain("m-1");
+		expect(lanes.map((lane) => lane.milestone)).not.toContain("m-2");
+	});
 });
 
 describe("groupTasksByLaneAndStatus", () => {
@@ -73,10 +137,32 @@ describe("groupTasksByLaneAndStatus", () => {
 		const grouped = groupTasksByLaneAndStatus("milestone", lanes, ["To Do", "In Progress"], tasks, {
 			archivedMilestoneIds: ["M1"],
 		});
-		expect((grouped.get(laneKeyFromMilestone(null))?.get("To Do") ?? []).map((t) => t.id)).toEqual([
-			"task-3",
-			"task-1",
-		]);
+		expect((grouped.get(laneKeyFromMilestone(null))?.get("To Do") ?? []).map((t) => t.id)).toEqual(["task-1"]);
+	});
+
+	it("normalizes numeric aliases for archived milestones to no milestone", () => {
+		const archivedMilestones = [{ id: "m-1", title: "Archived", description: "", rawContent: "" }];
+		const archivedAliasTasks = [makeTask({ id: "task-1", status: "To Do", milestone: "1" })];
+		const lanes = buildLanes("milestone", archivedAliasTasks, [], []);
+		const grouped = groupTasksByLaneAndStatus("milestone", lanes, ["To Do"], archivedAliasTasks, {
+			archivedMilestoneIds: ["m-1"],
+			archivedMilestones,
+		});
+		expect((grouped.get(laneKeyFromMilestone(null))?.get("To Do") ?? []).map((t) => t.id)).toEqual(["task-1"]);
+	});
+
+	it("prefers real milestone IDs over numeric title aliases when grouping tasks", () => {
+		const tasksWithNumericTitleCollision = [makeTask({ id: "task-1", status: "To Do", milestone: "1" })];
+		const milestones = [
+			{ id: "m-1", title: "Release 1", description: "", rawContent: "" },
+			{ id: "m-2", title: "1", description: "", rawContent: "" },
+		];
+		const lanes = buildLanes("milestone", tasksWithNumericTitleCollision, [], milestones);
+		const grouped = groupTasksByLaneAndStatus("milestone", lanes, ["To Do"], tasksWithNumericTitleCollision, {
+			milestoneEntities: milestones,
+		});
+		expect((grouped.get(laneKeyFromMilestone("m-1"))?.get("To Do") ?? []).map((task) => task.id)).toEqual(["task-1"]);
+		expect((grouped.get(laneKeyFromMilestone("m-2"))?.get("To Do") ?? []).map((task) => task.id) ?? []).toHaveLength(0);
 	});
 });
 

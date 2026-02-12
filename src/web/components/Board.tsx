@@ -31,7 +31,6 @@ const Board: React.FC<BoardProps> = ({
   onRefreshData,
   statuses,
   isLoading,
-  milestones,
   milestoneEntities,
   archivedMilestones,
   laneMode,
@@ -48,12 +47,143 @@ const Board: React.FC<BoardProps> = ({
     () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
     [archivedMilestones, milestoneEntities]
   );
+  const milestoneAliasToCanonical = useMemo(() => {
+    const aliasMap = new Map<string, string>();
+    const activeTitleCounts = new Map<string, number>();
+    const collectIdAliasKeys = (value: string): string[] => {
+      const normalized = value.trim();
+      const normalizedKey = normalized.toLowerCase();
+      if (!normalizedKey) return [];
+      const keys = new Set<string>([normalizedKey]);
+      if (/^\d+$/.test(normalized)) {
+        const numericAlias = String(Number.parseInt(normalized, 10));
+        keys.add(numericAlias);
+        keys.add(`m-${numericAlias}`);
+        return Array.from(keys);
+      }
+      const idMatch = normalized.match(/^m-(\d+)$/i);
+      if (idMatch?.[1]) {
+        const numericAlias = String(Number.parseInt(idMatch[1], 10));
+        keys.add(`m-${numericAlias}`);
+        keys.add(numericAlias);
+      }
+      return Array.from(keys);
+    };
+    const reservedIdKeys = new Set<string>();
+    for (const milestone of [...milestoneEntities, ...archivedMilestones]) {
+      for (const key of collectIdAliasKeys(milestone.id)) {
+        reservedIdKeys.add(key);
+      }
+    }
+    const setAlias = (aliasKey: string, id: string, allowOverwrite: boolean) => {
+      const existing = aliasMap.get(aliasKey);
+      if (!existing) {
+        aliasMap.set(aliasKey, id);
+        return;
+      }
+      if (!allowOverwrite) {
+        return;
+      }
+      const existingKey = existing.toLowerCase();
+      const nextKey = id.toLowerCase();
+      const preferredRawId = /^\d+$/.test(aliasKey) ? `m-${aliasKey}` : /^m-\d+$/.test(aliasKey) ? aliasKey : null;
+      if (preferredRawId) {
+        const existingIsPreferred = existingKey === preferredRawId;
+        const nextIsPreferred = nextKey === preferredRawId;
+        if (existingIsPreferred && !nextIsPreferred) {
+          return;
+        }
+        if (nextIsPreferred && !existingIsPreferred) {
+          aliasMap.set(aliasKey, id);
+        }
+        return;
+      }
+      aliasMap.set(aliasKey, id);
+    };
+    const addIdAliases = (id: string, options?: { allowOverwrite?: boolean }) => {
+      const allowOverwrite = options?.allowOverwrite ?? true;
+      const idKey = id.toLowerCase();
+      setAlias(idKey, id, allowOverwrite);
+      const idMatch = id.match(/^m-(\d+)$/i);
+      if (!idMatch?.[1]) return;
+      const numericAlias = String(Number.parseInt(idMatch[1], 10));
+      const canonicalId = `m-${numericAlias}`;
+      setAlias(canonicalId, id, allowOverwrite);
+      setAlias(numericAlias, id, allowOverwrite);
+    };
+    for (const milestone of milestoneEntities) {
+      const title = milestone.title.trim();
+      if (!title) continue;
+      const titleKey = title.toLowerCase();
+      activeTitleCounts.set(titleKey, (activeTitleCounts.get(titleKey) ?? 0) + 1);
+    }
+    const activeTitleKeys = new Set(activeTitleCounts.keys());
+    for (const milestone of milestoneEntities) {
+      const id = milestone.id.trim();
+      const title = milestone.title.trim();
+      if (!id) continue;
+      addIdAliases(id);
+      if (title) {
+        const titleKey = title.toLowerCase();
+        if (!reservedIdKeys.has(titleKey) && activeTitleCounts.get(titleKey) === 1) {
+          if (!aliasMap.has(titleKey)) {
+            aliasMap.set(titleKey, id);
+          }
+        }
+      }
+    }
+    const archivedTitleCounts = new Map<string, number>();
+    for (const milestone of archivedMilestones) {
+      const title = milestone.title.trim();
+      if (!title) continue;
+      const titleKey = title.toLowerCase();
+      if (activeTitleKeys.has(titleKey)) {
+        continue;
+      }
+      archivedTitleCounts.set(titleKey, (archivedTitleCounts.get(titleKey) ?? 0) + 1);
+    }
+    for (const milestone of archivedMilestones) {
+      const id = milestone.id.trim();
+      const title = milestone.title.trim();
+      if (!id) continue;
+      addIdAliases(id, { allowOverwrite: false });
+      if (title) {
+        const titleKey = title.toLowerCase();
+        if (!activeTitleKeys.has(titleKey) && !reservedIdKeys.has(titleKey) && archivedTitleCounts.get(titleKey) === 1) {
+          if (!aliasMap.has(titleKey)) {
+            aliasMap.set(titleKey, id);
+          }
+        }
+      }
+    }
+    return aliasMap;
+  }, [milestoneEntities, archivedMilestones]);
+  const canonicalizeMilestone = (value?: string | null): string => {
+    const normalized = (value ?? "").trim();
+    if (!normalized) return "";
+    const key = normalized.toLowerCase();
+    const direct = milestoneAliasToCanonical.get(key);
+    if (direct) {
+      return direct;
+    }
+    const idMatch = normalized.match(/^m-(\d+)$/i);
+    if (idMatch?.[1]) {
+      const numericAlias = String(Number.parseInt(idMatch[1], 10));
+      return milestoneAliasToCanonical.get(`m-${numericAlias}`) ?? milestoneAliasToCanonical.get(numericAlias) ?? normalized;
+    }
+    if (/^\d+$/.test(normalized)) {
+      const numericAlias = String(Number.parseInt(normalized, 10));
+      return milestoneAliasToCanonical.get(`m-${numericAlias}`) ?? milestoneAliasToCanonical.get(numericAlias) ?? normalized;
+    }
+    return normalized;
+  };
+  const canonicalMilestoneFilter = canonicalizeMilestone(milestoneFilter);
 
   // Filter tasks by milestone when milestoneFilter is set
   const filteredTasks = useMemo(() => {
     if (!milestoneFilter) return tasks;
-    return tasks.filter(task => task.milestone?.trim() === milestoneFilter.trim());
-  }, [tasks, milestoneFilter]);
+    return tasks.filter(task => canonicalizeMilestone(task.milestone) === canonicalMilestoneFilter);
+  }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical]);
 
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
@@ -111,8 +241,11 @@ const Board: React.FC<BoardProps> = ({
 
   // Use all tasks for building lanes (so we can show/collapse other milestones)
   const lanes = useMemo(
-    () => buildLanes(laneMode, tasks, milestones, milestoneEntities, { archivedMilestoneIds }),
-    [laneMode, tasks, milestones, milestoneEntities, archivedMilestoneIds]
+    () => buildLanes(laneMode, tasks, milestoneEntities.map((milestone) => milestone.id), milestoneEntities, {
+      archivedMilestoneIds,
+      archivedMilestones,
+    }),
+    [laneMode, tasks, milestoneEntities, archivedMilestoneIds, archivedMilestones]
   );
 
   // Check if any tasks actually have milestones assigned
@@ -122,21 +255,30 @@ const Board: React.FC<BoardProps> = ({
     }
     const archivedKeys = new Set(archivedMilestoneIds.map((value) => milestoneKey(value)));
     return tasks.some(task => {
-      const key = milestoneKey(task.milestone);
+      const key = milestoneKey(canonicalizeMilestone(task.milestone));
       return key.length > 0 && !archivedKeys.has(key);
     });
-  }, [tasks, archivedMilestoneIds]);
+  }, [tasks, archivedMilestoneIds, milestoneAliasToCanonical]);
 
   // Use all tasks for lane grouping (for counts and visibility)
   const tasksByLane = useMemo(
-    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, tasks, { archivedMilestoneIds }),
-    [laneMode, lanes, statuses, tasks, archivedMilestoneIds]
+    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, tasks, {
+      archivedMilestoneIds,
+      milestoneEntities,
+      archivedMilestones,
+    }),
+    [laneMode, lanes, statuses, tasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
   );
 
   // Separate grouping for filtered display in columns
   const filteredTasksByLane = useMemo(
-    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, filteredTasks, { archivedMilestoneIds }),
-    [laneMode, lanes, statuses, filteredTasks, archivedMilestoneIds]
+    () =>
+      groupTasksByLaneAndStatus(laneMode, lanes, statuses, filteredTasks, {
+        archivedMilestoneIds,
+        milestoneEntities,
+        archivedMilestones,
+      }),
+    [laneMode, lanes, statuses, filteredTasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
   );
 
   const getTasksForLane = (laneKey: string, status: string): Task[] => {
@@ -197,7 +339,7 @@ const Board: React.FC<BoardProps> = ({
       return collapsedLanes[laneKey];
     }
     // When filtering by milestone, collapse all other lanes by default
-    if (milestoneFilter && laneMilestone !== milestoneFilter) {
+    if (milestoneFilter && canonicalizeMilestone(laneMilestone) !== canonicalMilestoneFilter) {
       return true;
     }
     return false;

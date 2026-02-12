@@ -17,7 +17,7 @@ export function registerMilestoneTools(server: McpServer): void {
 	const listTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "milestone_list",
-			description: "List milestones from config and milestones found on local tasks",
+			description: "List milestones from milestone files and task-only milestone values found on local tasks",
 			inputSchema: milestoneListSchema,
 		},
 		milestoneListSchema,
@@ -27,7 +27,7 @@ export function registerMilestoneTools(server: McpServer): void {
 	const addTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "milestone_add",
-			description: "Add a milestone to backlog config",
+			description: "Add a milestone by creating a milestone file",
 			inputSchema: milestoneAddSchema,
 		},
 		milestoneAddSchema,
@@ -37,7 +37,7 @@ export function registerMilestoneTools(server: McpServer): void {
 	const renameTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "milestone_rename",
-			description: "Rename a milestone in config and optionally update local tasks",
+			description: "Rename a milestone file and optionally update local tasks",
 			inputSchema: milestoneRenameSchema,
 		},
 		milestoneRenameSchema,
@@ -47,7 +47,7 @@ export function registerMilestoneTools(server: McpServer): void {
 	const removeTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "milestone_remove",
-			description: "Remove a milestone from config and optionally clear/reassign tasks",
+			description: "Remove an active milestone file and optionally clear/reassign tasks",
 			inputSchema: milestoneRemoveSchema,
 		},
 		milestoneRemoveSchema,

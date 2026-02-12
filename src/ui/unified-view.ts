@@ -3,7 +3,7 @@
  */
 
 import type { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
+import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
@@ -36,7 +36,7 @@ export interface UnifiedViewOptions {
 		statuses: string[];
 	};
 	milestoneMode?: boolean;
-	milestones?: string[];
+	milestoneEntities?: Milestone[];
 }
 
 type LoadingScreen = {
@@ -283,6 +283,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			const config = await options.core.filesystem.loadConfig();
 			const layout = "horizontal" as const;
 			const maxColumnWidth = config?.maxColumnWidth || 20;
+			const milestoneEntities = await options.core.filesystem.listMilestones();
 
 			// Show kanban board with view switching support
 			return new Promise<ViewResult>((resolve) => {
@@ -302,7 +303,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						emitBoardUpdate();
 					},
 					milestoneMode: options.milestoneMode,
-					milestones: options.milestones,
+					milestoneEntities,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
