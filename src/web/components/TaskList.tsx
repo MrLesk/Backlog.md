@@ -50,7 +50,10 @@ const TaskList: React.FC<TaskListProps> = ({
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [searchValue, setSearchValue] = useState(() => searchParams.get("query") ?? "");
-	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
+	const [statusFilter, setStatusFilter] = useState<string[]>(() => {
+		const raw = searchParams.get("status") ?? "";
+		return raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+	});
 	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
 		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
 	);
@@ -66,6 +69,9 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [error, setError] = useState<string | null>(null);
 	const [showCleanupModal, setShowCleanupModal] = useState(false);
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
+	const [showStatusMenu, setShowStatusMenu] = useState(false);
+	const statusButtonRef = useRef<HTMLButtonElement | null>(null);
+	const statusMenuRef = useRef<HTMLDivElement | null>(null);
 	const [showLabelsMenu, setShowLabelsMenu] = useState(false);
 	const labelsButtonRef = useRef<HTMLButtonElement | null>(null);
 	const labelsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -81,13 +87,14 @@ const TaskList: React.FC<TaskListProps> = ({
 	}, [availableMilestones]);
 	const normalizedSearch = searchValue.trim();
 	const hasActiveFilters = Boolean(
-		normalizedSearch || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		normalizedSearch || statusFilter.length > 0 || priorityFilter || labelFilter.length > 0 || milestoneFilter,
 	);
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
 		const paramQuery = searchParams.get("query") ?? "";
-		const paramStatus = searchParams.get("status") ?? "";
+		const paramStatusRaw = searchParams.get("status") ?? "";
+		const paramStatus = paramStatusRaw ? paramStatusRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
 		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
 		const paramMilestone = searchParams.get("milestone") ?? "";
 		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
@@ -100,7 +107,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (paramQuery !== searchValue) {
 			setSearchValue(paramQuery);
 		}
-		if (paramStatus !== statusFilter) {
+		if (paramStatus.join("|") !== statusFilter.join("|")) {
 			setStatusFilter(paramStatus);
 		}
 		if (paramPriority !== priorityFilter) {
@@ -131,7 +138,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 
 		const shouldUseApi =
-			Boolean(normalizedSearch) || Boolean(statusFilter) || Boolean(priorityFilter) || labelFilter.length > 0;
+			Boolean(normalizedSearch) || statusFilter.length > 0 || Boolean(priorityFilter) || labelFilter.length > 0;
 
 		if (!hasActiveFilters) {
 			return;

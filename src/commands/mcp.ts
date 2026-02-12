@@ -10,6 +10,7 @@ import { createMcpServer } from "../mcp/server.ts";
 
 type StartOptions = {
 	debug?: boolean;
+	dir?: string;
 };
 
 /**
@@ -30,9 +31,11 @@ function registerStartCommand(mcpCmd: Command): void {
 		.command("start")
 		.description("Start the MCP server using stdio transport")
 		.option("-d, --debug", "Enable debug logging", false)
+		.option("--dir <path>", "Path to the backlog project directory")
 		.action(async (options: StartOptions) => {
 			try {
-				const server = await createMcpServer(process.cwd(), { debug: options.debug });
+				const projectDir = options.dir ?? process.env.BACKLOG_DIR ?? process.cwd();
+				const server = await createMcpServer(projectDir, { debug: options.debug });
 
 				await server.connect();
 				await server.start();

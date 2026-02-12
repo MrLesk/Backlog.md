@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { $ } from "bun";
 
 /**
@@ -37,7 +37,16 @@ async function fileExists(path: string): Promise<boolean> {
  * @param startDir - The directory to start searching from (typically process.cwd())
  * @returns The project root path, or null if no Backlog.md project found
  */
-export async function findBacklogRoot(startDir: string): Promise<string | null> {
+export async function findBacklogRoot(startDir: string, explicitDir?: string): Promise<string | null> {
+	// Priority: explicitDir (--dir flag) > BACKLOG_DIR env > directory walking
+	const envDir = explicitDir || process.env.BACKLOG_DIR;
+	if (envDir) {
+		const resolved = resolve(envDir);
+		if (await isDirectory(resolved)) {
+			return resolved;
+		}
+	}
+
 	let current = startDir;
 
 	// Walk up the directory tree looking for backlog/ or backlog.json
