@@ -1,6 +1,26 @@
+import { existsSync } from "node:fs";
 import { mkdir, rename, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
+/**
+ * Returns the global user config directory following XDG Base Directory Specification.
+ * Priority: $XDG_CONFIG_HOME/backlog > ~/.config/backlog > ~/backlog (legacy fallback)
+ */
+function globalConfigDir(): string {
+	const xdgHome = process.env.XDG_CONFIG_HOME;
+	if (xdgHome) {
+		return join(xdgHome, "backlog");
+	}
+	const xdgDefault = join(homedir(), ".config", "backlog");
+	const legacyDir = join(homedir(), "backlog");
+	// Prefer legacy path if it already exists (backward compatibility)
+	if (existsSync(legacyDir) && !existsSync(xdgDefault)) {
+		return legacyDir;
+	}
+	return xdgDefault;
+}
+
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
@@ -970,7 +990,7 @@ ${description || `Milestone: ${title}`}
 
 	private async loadUserSettings(global = false): Promise<Record<string, string> | null> {
 		const primaryPath = global
-			? join(homedir(), "backlog", DEFAULT_FILES.USER)
+			? join(globalConfigDir(), DEFAULT_FILES.USER)
 			: join(this.projectRoot, DEFAULT_FILES.USER);
 		const fallbackPath = global ? join(this.projectRoot, "backlog", DEFAULT_FILES.USER) : undefined;
 		const tryPaths = fallbackPath ? [primaryPath, fallbackPath] : [primaryPath];
@@ -999,7 +1019,7 @@ ${description || `Milestone: ${title}`}
 
 	private async saveUserSettings(settings: Record<string, string>, global = false): Promise<void> {
 		const primaryPath = global
-			? join(homedir(), "backlog", DEFAULT_FILES.USER)
+			? join(globalConfigDir(), DEFAULT_FILES.USER)
 			: join(this.projectRoot, DEFAULT_FILES.USER);
 		const fallbackPath = global ? join(this.projectRoot, "backlog", DEFAULT_FILES.USER) : undefined;
 
