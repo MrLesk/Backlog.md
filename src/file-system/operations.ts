@@ -747,6 +747,146 @@ export class FileSystem {
 		return document;
 	}
 
+	private buildMilestoneIdentifierKeys(identifier: string): Set<string> {
+		const normalized = identifier.trim().toLowerCase();
+		const keys = new Set<string>();
+		if (!normalized) {
+			return keys;
+		}
+
+		keys.add(normalized);
+
+		if (/^\d+$/.test(normalized)) {
+			const numeric = String(Number.parseInt(normalized, 10));
+			keys.add(numeric);
+			keys.add(`m-${numeric}`);
+			return keys;
+		}
+
+		const milestoneIdMatch = normalized.match(/^m-(\d+)$/);
+		if (milestoneIdMatch?.[1]) {
+			const numeric = String(Number.parseInt(milestoneIdMatch[1], 10));
+			keys.add(numeric);
+			keys.add(`m-${numeric}`);
+		}
+
+		return keys;
+	}
+
+	private buildMilestoneFilename(id: string, title: string): string {
+		const safeTitle = title
+			.replace(/[<>:"/\\|?*]/g, "")
+			.replace(/\s+/g, "-")
+			.toLowerCase()
+			.slice(0, 50);
+		return `${id} - ${safeTitle}.md`;
+	}
+
+	private serializeMilestoneContent(id: string, title: string, rawContent: string): string {
+		return `---
+id: ${id}
+title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
+---
+
+${rawContent.trim()}
+`;
+	}
+
+	private async findMilestoneFile(
+		identifier: string,
+		scope: "active" | "archived" = "active",
+	): Promise<{
+		file: string;
+		filepath: string;
+		content: string;
+		milestone: Milestone;
+	} | null> {
+		const normalizedInput = identifier.trim().toLowerCase();
+		const candidateKeys = this.buildMilestoneIdentifierKeys(identifier);
+		if (candidateKeys.size === 0) {
+			return null;
+		}
+		const variantKeys = new Set<string>(candidateKeys);
+		variantKeys.delete(normalizedInput);
+		const canonicalInputId =
+			/^\d+$/.test(normalizedInput) || /^m-\d+$/.test(normalizedInput)
+				? `m-${String(Number.parseInt(normalizedInput.replace(/^m-/, ""), 10))}`
+				: null;
+
+		const milestonesDir = scope === "archived" ? await this.getArchiveMilestonesDir() : await this.getMilestonesDir();
+		const milestoneFiles = await Array.fromAsync(
+			new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
+		);
+
+		const rawExactIdMatches: Array<{ file: string; filepath: string; content: string; milestone: Milestone }> = [];
+		const canonicalRawIdMatches: Array<{ file: string; filepath: string; content: string; milestone: Milestone }> = [];
+		const exactAliasIdMatches: Array<{ file: string; filepath: string; content: string; milestone: Milestone }> = [];
+		const exactTitleMatches: Array<{ file: string; filepath: string; content: string; milestone: Milestone }> = [];
+		const variantIdMatches: Array<{ file: string; filepath: string; content: string; milestone: Milestone }> = [];
+		const variantTitleMatches: Array<{ file: string; filepath: string; content: string; milestone: Milestone }> = [];
+
+		for (const file of milestoneFiles) {
+			if (file.toLowerCase() === "readme.md") {
+				continue;
+			}
+			const filepath = join(milestonesDir, file);
+			const content = await Bun.file(filepath).text();
+			let milestone: Milestone;
+			try {
+				milestone = parseMilestone(content);
+			} catch {
+				continue;
+			}
+			const idKey = milestone.id.trim().toLowerCase();
+			const idKeys = this.buildMilestoneIdentifierKeys(milestone.id);
+			const titleKey = milestone.title.trim().toLowerCase();
+
+			if (idKey === normalizedInput) {
+				rawExactIdMatches.push({ file, filepath, content, milestone });
+				continue;
+			}
+			if (canonicalInputId && idKey === canonicalInputId) {
+				canonicalRawIdMatches.push({ file, filepath, content, milestone });
+				continue;
+			}
+			if (idKeys.has(normalizedInput)) {
+				exactAliasIdMatches.push({ file, filepath, content, milestone });
+				continue;
+			}
+			if (titleKey === normalizedInput) {
+				exactTitleMatches.push({ file, filepath, content, milestone });
+				continue;
+			}
+			if (Array.from(idKeys).some((key) => variantKeys.has(key))) {
+				variantIdMatches.push({ file, filepath, content, milestone });
+				continue;
+			}
+			if (variantKeys.has(titleKey)) {
+				variantTitleMatches.push({ file, filepath, content, milestone });
+			}
+		}
+
+		const preferIdMatches = /^\d+$/.test(normalizedInput) || /^m-\d+$/.test(normalizedInput);
+		const exactTitleMatch = exactTitleMatches.length === 1 ? exactTitleMatches[0] : null;
+		const variantTitleMatch = variantTitleMatches.length === 1 ? variantTitleMatches[0] : null;
+		const exactAliasIdMatch = exactAliasIdMatches.length === 1 ? exactAliasIdMatches[0] : null;
+		const variantIdMatch = variantIdMatches.length === 1 ? variantIdMatches[0] : null;
+		if (preferIdMatches) {
+			return (
+				rawExactIdMatches[0] ??
+				canonicalRawIdMatches[0] ??
+				exactAliasIdMatch ??
+				variantIdMatch ??
+				exactTitleMatch ??
+				variantTitleMatch ??
+				null
+			);
+		}
+		return (
+			rawExactIdMatches[0] ?? exactTitleMatch ?? canonicalRawIdMatches[0] ?? variantIdMatch ?? variantTitleMatch ?? null
+		);
+	}
+
 	// Milestone operations
 	async listMilestones(): Promise<Milestone[]> {
 		try {
@@ -794,20 +934,8 @@ export class FileSystem {
 
 	async loadMilestone(id: string): Promise<Milestone | null> {
 		try {
-			const milestonesDir = await this.getMilestonesDir();
-			const files = await Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }));
-
-			// Normalize ID - remove "m-" prefix if present
-			const normalizedId = id.replace(/^m-/, "");
-			const milestoneFile = files.find(
-				(file) => file.startsWith(`m-${normalizedId} -`) || file === `m-${normalizedId}.md`,
-			);
-
-			if (!milestoneFile) return null;
-
-			const filepath = join(milestonesDir, milestoneFile);
-			const content = await Bun.file(filepath).text();
-			return parseMilestone(content);
+			const milestoneMatch = await this.findMilestoneFile(id, "active");
+			return milestoneMatch?.milestone ?? null;
 		} catch (_error) {
 			return null;
 		}
@@ -820,37 +948,51 @@ export class FileSystem {
 		await mkdir(milestonesDir, { recursive: true });
 
 		// Find next available milestone ID
-		const existingFiles = await Array.fromAsync(
-			new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
-		);
-		const existingIds = existingFiles
-			.map((f) => {
-				const match = f.match(/^m-(\d+)/);
-				return match?.[1] ? Number.parseInt(match[1], 10) : -1;
-			})
-			.filter((id) => id >= 0);
+		const archiveMilestonesDir = await this.getArchiveMilestonesDir();
+		await mkdir(archiveMilestonesDir, { recursive: true });
+		const [existingFiles, archivedFiles] = await Promise.all([
+			Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true })),
+			Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: archiveMilestonesDir, followSymlinks: true })),
+		]);
+		const parseMilestoneId = async (dir: string, file: string): Promise<number | null> => {
+			if (file.toLowerCase() === "readme.md") {
+				return null;
+			}
+			const filepath = join(dir, file);
+			try {
+				const content = await Bun.file(filepath).text();
+				const parsed = parseMilestone(content);
+				const parsedIdMatch = parsed.id.match(/^m-(\d+)$/i);
+				if (parsedIdMatch?.[1]) {
+					return Number.parseInt(parsedIdMatch[1], 10);
+				}
+			} catch {
+				// Fall through to filename-based fallback.
+			}
+			const filenameIdMatch = file.match(/^m-(\d+)/i);
+			if (filenameIdMatch?.[1]) {
+				return Number.parseInt(filenameIdMatch[1], 10);
+			}
+			return null;
+		};
+		const existingIds = (
+			await Promise.all([
+				...existingFiles.map((file) => parseMilestoneId(milestonesDir, file)),
+				...archivedFiles.map((file) => parseMilestoneId(archiveMilestonesDir, file)),
+			])
+		).filter((id): id is number => typeof id === "number" && id >= 0);
 
 		const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 0;
 		const id = `m-${nextId}`;
 
-		// Create safe filename from title
-		const safeTitle = title
-			.replace(/[<>:"/\\|?*]/g, "")
-			.replace(/\s+/g, "-")
-			.toLowerCase()
-			.slice(0, 50);
-		const filename = `${id} - ${safeTitle}.md`;
+		const filename = this.buildMilestoneFilename(id, title);
+		const content = this.serializeMilestoneContent(
+			id,
+			title,
+			`## Description
 
-		// Build milestone content
-		const content = `---
-id: ${id}
-title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
----
-
-## Description
-
-${description || `Milestone: ${title}`}
-`;
+${description || `Milestone: ${title}`}`,
+		);
 
 		const filepath = join(milestonesDir, filename);
 		await Bun.write(filepath, content);
@@ -859,8 +1001,87 @@ ${description || `Milestone: ${title}`}
 			id,
 			title,
 			description: description || `Milestone: ${title}`,
-			rawContent: content,
+			rawContent: parseMilestone(content).rawContent,
 		};
+	}
+
+	async renameMilestone(
+		identifier: string,
+		title: string,
+	): Promise<{
+		success: boolean;
+		sourcePath?: string;
+		targetPath?: string;
+		milestone?: Milestone;
+		previousTitle?: string;
+	}> {
+		const normalizedTitle = title.trim();
+		if (!normalizedTitle) {
+			return { success: false };
+		}
+
+		let sourcePath: string | undefined;
+		let targetPath: string | undefined;
+		let movedFile = false;
+		let originalContent: string | undefined;
+
+		try {
+			const milestoneMatch = await this.findMilestoneFile(identifier, "active");
+			if (!milestoneMatch) {
+				return { success: false };
+			}
+
+			const { milestone } = milestoneMatch;
+			const milestonesDir = await this.getMilestonesDir();
+			const targetFilename = this.buildMilestoneFilename(milestone.id, normalizedTitle);
+			targetPath = join(milestonesDir, targetFilename);
+			sourcePath = milestoneMatch.filepath;
+			originalContent = milestoneMatch.content;
+			let nextRawContent = milestone.rawContent;
+			const defaultDescription = `Milestone: ${milestone.title}`;
+			if (milestone.description.trim() === defaultDescription) {
+				const escapedDefaultDescription = defaultDescription.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+				nextRawContent = nextRawContent.replace(
+					new RegExp(escapedDefaultDescription, "g"),
+					`Milestone: ${normalizedTitle}`,
+				);
+			}
+			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent);
+
+			if (sourcePath !== targetPath) {
+				if (await Bun.file(targetPath).exists()) {
+					return { success: false };
+				}
+				await rename(sourcePath, targetPath);
+				movedFile = true;
+			}
+			await Bun.write(targetPath, updatedContent);
+
+			return {
+				success: true,
+				sourcePath,
+				targetPath,
+				milestone: parseMilestone(updatedContent),
+				previousTitle: milestone.title,
+			};
+		} catch {
+			try {
+				if (movedFile && sourcePath && targetPath && sourcePath !== targetPath) {
+					await rename(targetPath, sourcePath);
+					if (originalContent) {
+						await Bun.write(sourcePath, originalContent);
+					}
+				} else if (originalContent) {
+					const restorePath = sourcePath ?? targetPath;
+					if (restorePath) {
+						await Bun.write(restorePath, originalContent);
+					}
+				}
+			} catch {
+				// Ignore rollback failures and surface operation failure to caller.
+			}
+			return { success: false };
+		}
 	}
 
 	async archiveMilestone(identifier: string): Promise<{
@@ -869,51 +1090,28 @@ ${description || `Milestone: ${title}`}
 		targetPath?: string;
 		milestone?: Milestone;
 	}> {
-		const normalized = identifier.trim().toLowerCase();
+		const normalized = identifier.trim();
 		if (!normalized) {
 			return { success: false };
 		}
 
 		try {
-			const milestonesDir = await this.getMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(
-				new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
-			);
-			const candidateKeys = new Set<string>([normalized]);
-			if (normalized.startsWith("m-")) {
-				candidateKeys.add(normalized.slice(2));
-			} else if (/^\d+$/.test(normalized)) {
-				candidateKeys.add(`m-${normalized}`);
+			const milestoneMatch = await this.findMilestoneFile(normalized, "active");
+			if (!milestoneMatch) {
+				return { success: false };
 			}
 
-			for (const file of milestoneFiles) {
-				if (file.toLowerCase() === "readme.md") {
-					continue;
-				}
-				const sourcePath = join(milestonesDir, file);
-				const content = await Bun.file(sourcePath).text();
-				const milestone = parseMilestone(content);
-				const idKey = milestone.id.trim().toLowerCase();
-				const titleKey = milestone.title.trim().toLowerCase();
+			const archiveDir = await this.getArchiveMilestonesDir();
+			const targetPath = join(archiveDir, milestoneMatch.file);
+			await this.ensureDirectoryExists(dirname(targetPath));
+			await rename(milestoneMatch.filepath, targetPath);
 
-				if (!candidateKeys.has(idKey) && !candidateKeys.has(titleKey)) {
-					continue;
-				}
-
-				const archiveDir = await this.getArchiveMilestonesDir();
-				const targetPath = join(archiveDir, file);
-				await this.ensureDirectoryExists(dirname(targetPath));
-				await rename(sourcePath, targetPath);
-
-				return {
-					success: true,
-					sourcePath,
-					targetPath,
-					milestone,
-				};
-			}
-
-			return { success: false };
+			return {
+				success: true,
+				sourcePath: milestoneMatch.filepath,
+				targetPath,
+				milestone: milestoneMatch.milestone,
+			};
 		} catch (_error) {
 			return { success: false };
 		}

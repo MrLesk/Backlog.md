@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { AcceptanceCriterion, Milestone, Task } from "../../types";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
@@ -21,6 +21,7 @@ interface Props {
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
   milestoneEntities?: Milestone[];
+  archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
 }
 
@@ -32,6 +33,10 @@ type TaskUpdatePayload = Partial<Task> & {
   definitionOfDoneCheck?: number[];
   definitionOfDoneUncheck?: number[];
   disableDefinitionOfDoneDefaults?: boolean;
+};
+
+type InlineMetaUpdatePayload = Omit<Partial<Task>, "milestone"> & {
+  milestone?: string | null;
 };
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
@@ -53,6 +58,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   availableStatuses,
   availableMilestones,
   milestoneEntities,
+  archivedMilestoneEntities,
   isDraftMode,
   definitionOfDoneDefaults,
 }) => {
@@ -78,6 +84,139 @@ export const TaskDetailsModal: React.FC<Props> = ({
   );
   const initialDefinitionOfDone = task?.definitionOfDoneItems ?? (isCreateMode ? defaultDefinitionOfDone : []);
   const [definitionOfDone, setDefinitionOfDone] = useState<AcceptanceCriterion[]>(initialDefinitionOfDone);
+  const resolveMilestoneToId = useCallback((value?: string | null): string => {
+    const normalized = (value ?? "").trim();
+    if (!normalized) return "";
+    const key = normalized.toLowerCase();
+    const aliasKeys = new Set<string>([key]);
+    const looksLikeMilestoneId = /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized);
+    const canonicalInputId = looksLikeMilestoneId
+      ? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
+      : null;
+    if (/^\d+$/.test(normalized)) {
+      const numericAlias = String(Number.parseInt(normalized, 10));
+      aliasKeys.add(numericAlias);
+      aliasKeys.add(`m-${numericAlias}`);
+    } else {
+      const idMatch = normalized.match(/^m-(\d+)$/i);
+      if (idMatch?.[1]) {
+        const numericAlias = String(Number.parseInt(idMatch[1], 10));
+        aliasKeys.add(numericAlias);
+        aliasKeys.add(`m-${numericAlias}`);
+      }
+    }
+    const idMatchesAlias = (milestoneId: string): boolean => {
+      const milestoneKey = milestoneId.trim().toLowerCase();
+      if (aliasKeys.has(milestoneKey)) {
+        return true;
+      }
+      const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
+      if (!idMatch?.[1]) {
+        return false;
+      }
+      const numericAlias = String(Number.parseInt(idMatch[1], 10));
+      return aliasKeys.has(numericAlias) || aliasKeys.has(`m-${numericAlias}`);
+    };
+    const findIdMatch = (milestones: Milestone[]): Milestone | undefined => {
+      const rawExactMatch = milestones.find((milestone) => milestone.id.trim().toLowerCase() === key);
+      if (rawExactMatch) {
+        return rawExactMatch;
+      }
+      if (canonicalInputId) {
+        const canonicalRawMatch = milestones.find(
+          (milestone) => milestone.id.trim().toLowerCase() === canonicalInputId,
+        );
+        if (canonicalRawMatch) {
+          return canonicalRawMatch;
+        }
+      }
+      return milestones.find((milestone) => idMatchesAlias(milestone.id));
+    };
+    const activeMilestones = milestoneEntities ?? [];
+    const archivedMilestones = archivedMilestoneEntities ?? [];
+    const activeIdMatch = findIdMatch(activeMilestones);
+    if (activeIdMatch) {
+      return activeIdMatch.id;
+    }
+    if (looksLikeMilestoneId) {
+      const archivedIdMatch = findIdMatch(archivedMilestones);
+      if (archivedIdMatch) {
+        return archivedIdMatch.id;
+      }
+    }
+    const activeTitleMatches = activeMilestones.filter((milestone) => milestone.title.trim().toLowerCase() === key);
+    if (activeTitleMatches.length === 1) {
+      return activeTitleMatches[0]?.id ?? normalized;
+    }
+    if (activeTitleMatches.length > 1) {
+      return normalized;
+    }
+    const archivedIdMatch = findIdMatch(archivedMilestones);
+    if (archivedIdMatch) {
+      return archivedIdMatch.id;
+    }
+    const archivedTitleMatches = archivedMilestones.filter((milestone) => milestone.title.trim().toLowerCase() === key);
+    if (archivedTitleMatches.length === 1) {
+      return archivedTitleMatches[0]?.id ?? normalized;
+    }
+    return normalized;
+  }, [milestoneEntities, archivedMilestoneEntities]);
+  const resolveMilestoneLabel = useCallback((value?: string | null): string => {
+    const normalized = (value ?? "").trim();
+    if (!normalized) return "";
+    const key = normalized.toLowerCase();
+    const aliasKeys = new Set<string>([key]);
+    const canonicalInputId =
+      /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized)
+        ? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
+        : null;
+    if (/^\d+$/.test(normalized)) {
+      const numericAlias = String(Number.parseInt(normalized, 10));
+      aliasKeys.add(numericAlias);
+      aliasKeys.add(`m-${numericAlias}`);
+    } else {
+      const idMatch = normalized.match(/^m-(\d+)$/i);
+      if (idMatch?.[1]) {
+        const numericAlias = String(Number.parseInt(idMatch[1], 10));
+        aliasKeys.add(numericAlias);
+        aliasKeys.add(`m-${numericAlias}`);
+      }
+    }
+    const idMatchesAlias = (milestoneId: string): boolean => {
+      const milestoneKey = milestoneId.trim().toLowerCase();
+      if (aliasKeys.has(milestoneKey)) {
+        return true;
+      }
+      const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
+      if (!idMatch?.[1]) {
+        return false;
+      }
+      const numericAlias = String(Number.parseInt(idMatch[1], 10));
+      return aliasKeys.has(numericAlias) || aliasKeys.has(`m-${numericAlias}`);
+    };
+    const findIdMatch = (milestones: Milestone[]): Milestone | undefined => {
+      const rawExactMatch = milestones.find((milestone) => milestone.id.trim().toLowerCase() === key);
+      if (rawExactMatch) {
+        return rawExactMatch;
+      }
+      if (canonicalInputId) {
+        const canonicalRawMatch = milestones.find(
+          (milestone) => milestone.id.trim().toLowerCase() === canonicalInputId,
+        );
+        if (canonicalRawMatch) {
+          return canonicalRawMatch;
+        }
+      }
+      return milestones.find((milestone) => idMatchesAlias(milestone.id));
+    };
+    const allMilestones = [...(milestoneEntities ?? []), ...(archivedMilestoneEntities ?? [])];
+    const idMatch = findIdMatch(allMilestones);
+    if (idMatch) {
+      return idMatch.title;
+    }
+    const titleMatches = allMilestones.filter((milestone) => milestone.title.trim().toLowerCase() === key);
+    return titleMatches.length === 1 ? (titleMatches[0]?.title ?? normalized) : normalized;
+  }, [milestoneEntities, archivedMilestoneEntities]);
 
   // Sidebar metadata (inline edit)
   const [status, setStatus] = useState(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
@@ -88,6 +227,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const milestoneSelectionValue = resolveMilestoneToId(milestone);
+  const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({
@@ -138,7 +279,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, description, plan, notes, finalSummary, criteria]);
+  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -367,7 +508,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     }
   };
 
-  const handleInlineMetaUpdate = async (updates: Partial<Task>) => {
+  const handleInlineMetaUpdate = async (updates: InlineMetaUpdatePayload) => {
     // Don't allow updates for cross-branch tasks
     if (isFromOtherBranch) return;
 
@@ -877,15 +1018,18 @@ export const TaskDetailsModal: React.FC<Props> = ({
             <SectionHeader title="Milestone" />
             <select
               className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
-              value={milestone}
-              onChange={(e) => {
-                const value = e.target.value;
-                setMilestone(value);
-                handleInlineMetaUpdate({ milestone: value.trim().length > 0 ? value : undefined });
-              }}
+              value={milestoneSelectionValue}
+				onChange={(e) => {
+					const value = e.target.value;
+					setMilestone(value);
+					handleInlineMetaUpdate({ milestone: value.trim().length > 0 ? value : null });
+				}}
               disabled={isFromOtherBranch}
             >
               <option value="">No milestone</option>
+              {!hasMilestoneSelection && milestoneSelectionValue ? (
+                <option value={milestoneSelectionValue}>{resolveMilestoneLabel(milestoneSelectionValue)}</option>
+              ) : null}
               {(milestoneEntities ?? []).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.title}

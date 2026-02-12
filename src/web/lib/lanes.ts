@@ -18,12 +18,143 @@ export const laneKeyFromMilestone = (milestone?: string | null): string => {
 	return key.length > 0 ? `lane:milestone:${key}` : "lane:milestone:__none";
 };
 
+function buildMilestoneAliasMap(
+	milestoneEntities: Milestone[],
+	archivedMilestones: Milestone[] = [],
+): Map<string, string> {
+	const aliasMap = new Map<string, string>();
+	const collectIdAliasKeys = (value: string): string[] => {
+		const normalized = normalizeMilestoneName(value);
+		const idKey = milestoneKey(normalized);
+		if (!idKey) return [];
+		const keys = new Set<string>([idKey]);
+		if (/^\d+$/.test(normalized)) {
+			const numericAlias = String(Number.parseInt(normalized, 10));
+			keys.add(numericAlias);
+			keys.add(`m-${numericAlias}`);
+			return Array.from(keys);
+		}
+		const idMatch = normalized.match(/^m-(\d+)$/i);
+		if (idMatch?.[1]) {
+			const numericAlias = String(Number.parseInt(idMatch[1], 10));
+			keys.add(`m-${numericAlias}`);
+			keys.add(numericAlias);
+		}
+		return Array.from(keys);
+	};
+	const reservedIdKeys = new Set<string>();
+	for (const milestone of [...milestoneEntities, ...archivedMilestones]) {
+		for (const key of collectIdAliasKeys(milestone.id)) {
+			reservedIdKeys.add(key);
+		}
+	}
+	const setAlias = (aliasKey: string, normalizedId: string, allowOverwrite: boolean): void => {
+		const existing = aliasMap.get(aliasKey);
+		if (!existing) {
+			aliasMap.set(aliasKey, normalizedId);
+			return;
+		}
+		if (!allowOverwrite) {
+			return;
+		}
+		const existingKey = existing.toLowerCase();
+		const nextKey = normalizedId.toLowerCase();
+		const preferredRawId = /^\d+$/.test(aliasKey) ? `m-${aliasKey}` : /^m-\d+$/.test(aliasKey) ? aliasKey : null;
+		if (preferredRawId) {
+			const existingIsPreferred = existingKey === preferredRawId;
+			const nextIsPreferred = nextKey === preferredRawId;
+			if (existingIsPreferred && !nextIsPreferred) {
+				return;
+			}
+			if (nextIsPreferred && !existingIsPreferred) {
+				aliasMap.set(aliasKey, normalizedId);
+			}
+			return;
+		}
+		aliasMap.set(aliasKey, normalizedId);
+	};
+	const addIdAliases = (normalizedId: string, allowOverwrite = true) => {
+		const idKey = milestoneKey(normalizedId);
+		if (idKey) {
+			setAlias(idKey, normalizedId, allowOverwrite);
+		}
+		const idMatch = normalizedId.match(/^m-(\d+)$/i);
+		if (!idMatch?.[1]) {
+			return;
+		}
+		const numericAlias = String(Number.parseInt(idMatch[1], 10));
+		const canonicalId = `m-${numericAlias}`;
+		setAlias(canonicalId, normalizedId, allowOverwrite);
+		setAlias(numericAlias, normalizedId, allowOverwrite);
+	};
+	const titleCounts = new Map<string, number>();
+	for (const milestone of milestoneEntities) {
+		const titleKey = milestoneKey(milestone.title);
+		if (!titleKey) continue;
+		titleCounts.set(titleKey, (titleCounts.get(titleKey) ?? 0) + 1);
+	}
+	const activeTitleKeys = new Set(titleCounts.keys());
+	for (const milestone of milestoneEntities) {
+		const normalizedId = normalizeMilestoneName(milestone.id);
+		const normalizedTitle = normalizeMilestoneName(milestone.title);
+		if (!normalizedId) continue;
+		addIdAliases(normalizedId);
+		const titleKey = milestoneKey(normalizedTitle);
+		if (titleKey && !reservedIdKeys.has(titleKey) && titleCounts.get(titleKey) === 1) {
+			if (!aliasMap.has(titleKey)) {
+				aliasMap.set(titleKey, normalizedId);
+			}
+		}
+	}
+
+	const archivedTitleCounts = new Map<string, number>();
+	for (const milestone of archivedMilestones) {
+		const titleKey = milestoneKey(milestone.title);
+		if (!titleKey || activeTitleKeys.has(titleKey)) continue;
+		archivedTitleCounts.set(titleKey, (archivedTitleCounts.get(titleKey) ?? 0) + 1);
+	}
+	for (const milestone of archivedMilestones) {
+		const normalizedId = normalizeMilestoneName(milestone.id);
+		const normalizedTitle = normalizeMilestoneName(milestone.title);
+		if (!normalizedId) continue;
+		addIdAliases(normalizedId, false);
+		const titleKey = milestoneKey(normalizedTitle);
+		if (!titleKey || activeTitleKeys.has(titleKey) || reservedIdKeys.has(titleKey)) continue;
+		if (archivedTitleCounts.get(titleKey) === 1) {
+			if (!aliasMap.has(titleKey)) {
+				aliasMap.set(titleKey, normalizedId);
+			}
+		}
+	}
+	return aliasMap;
+}
+
+function canonicalizeMilestone(value: string | null | undefined, aliasMap: Map<string, string>): string {
+	const normalized = normalizeMilestoneName(value ?? "");
+	if (!normalized) return "";
+	const normalizedKey = milestoneKey(normalized);
+	const direct = aliasMap.get(normalizedKey);
+	if (direct) {
+		return direct;
+	}
+	const idMatch = normalized.match(/^m-(\d+)$/i);
+	if (idMatch?.[1]) {
+		const numericAlias = String(Number.parseInt(idMatch[1], 10));
+		return aliasMap.get(`m-${numericAlias}`) ?? aliasMap.get(numericAlias) ?? normalized;
+	}
+	if (/^\d+$/.test(normalized)) {
+		const numericAlias = String(Number.parseInt(normalized, 10));
+		return aliasMap.get(`m-${numericAlias}`) ?? aliasMap.get(numericAlias) ?? normalized;
+	}
+	return normalized;
+}
+
 export function buildLanes(
 	mode: LaneMode,
 	tasks: Task[],
 	configMilestones: string[],
 	milestoneEntities: Milestone[] = [],
-	options?: { archivedMilestoneIds?: string[] },
+	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[] },
 ): LaneDefinition[] {
 	if (mode !== "milestone") {
 		return [
@@ -36,9 +167,10 @@ export function buildLanes(
 	}
 
 	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
+	const aliasMap = buildMilestoneAliasMap(milestoneEntities, options?.archivedMilestones ?? []);
 	const milestonesByKey = new Map<string, string>();
 	const addMilestone = (value: string) => {
-		const normalized = normalizeMilestoneName(value);
+		const normalized = canonicalizeMilestone(value, aliasMap);
 		if (!normalized) return;
 		const key = milestoneKey(normalized);
 		if (!key) return;
@@ -198,20 +330,25 @@ export function groupTasksByLaneAndStatus(
 	lanes: LaneDefinition[],
 	statuses: string[],
 	tasks: Task[],
-	options?: { archivedMilestoneIds?: string[] },
+	options?: { archivedMilestoneIds?: string[]; milestoneEntities?: Milestone[]; archivedMilestones?: Milestone[] },
 ): Map<string, Map<string, Task[]>> {
 	const result = new Map<string, Map<string, Task[]>>();
 	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
-	const normalizedTasks =
-		archivedKeys.size > 0
-			? tasks.map((task) => {
-					const key = milestoneKey(task.milestone);
-					if (!key || !archivedKeys.has(key)) {
-						return task;
-					}
-					return { ...task, milestone: undefined };
-				})
-			: tasks;
+	const aliasMap = buildMilestoneAliasMap(options?.milestoneEntities ?? [], options?.archivedMilestones ?? []);
+	const normalizedTasks = tasks.map((task) => {
+		const canonicalMilestone = canonicalizeMilestone(task.milestone, aliasMap);
+		const key = milestoneKey(canonicalMilestone);
+		if (!key || (archivedKeys.size > 0 && archivedKeys.has(key))) {
+			if (task.milestone === undefined) {
+				return task;
+			}
+			return { ...task, milestone: undefined };
+		}
+		if (task.milestone === canonicalMilestone) {
+			return task;
+		}
+		return { ...task, milestone: canonicalMilestone };
+	});
 
 	const ensureStatusMap = (laneKey: string): Map<string, Task[]> => {
 		const existing = result.get(laneKey);

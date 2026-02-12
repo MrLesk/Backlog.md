@@ -7,7 +7,7 @@ import {
 	generateMilestoneGroupedBoard,
 } from "../board.ts";
 import { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
+import type { Milestone, Task } from "../types/index.ts";
 import { getTaskPath } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getStatusIcon } from "./status-icon.ts";
@@ -163,12 +163,12 @@ export async function renderBoardTui(
 		onTabPress?: () => Promise<void>;
 		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[]) => void) => void;
 		milestoneMode?: boolean;
-		milestones?: string[];
+		milestoneEntities?: Milestone[];
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
 		if (options?.milestoneMode) {
-			console.log(generateMilestoneGroupedBoard(initialTasks, statuses, options.milestones ?? [], "Project"));
+			console.log(generateMilestoneGroupedBoard(initialTasks, statuses, options.milestoneEntities ?? [], "Project"));
 		} else {
 			console.log(generateKanbanBoardWithMetadata(initialTasks, statuses, "Project"));
 		}
@@ -195,6 +195,25 @@ export async function renderBoardTui(
 		let currentStatuses = currentColumnsData.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
+		const milestoneLabelByKey = new Map<string, string>();
+		for (const milestone of options?.milestoneEntities ?? []) {
+			const normalizedId = milestone.id.trim();
+			const normalizedTitle = milestone.title.trim();
+			if (!normalizedId || !normalizedTitle) continue;
+			milestoneLabelByKey.set(normalizedId.toLowerCase(), normalizedTitle);
+			const idMatch = normalizedId.match(/^m-(\d+)$/i);
+			if (idMatch?.[1]) {
+				const numericAlias = String(Number.parseInt(idMatch[1], 10));
+				milestoneLabelByKey.set(`m-${numericAlias}`, normalizedTitle);
+				milestoneLabelByKey.set(numericAlias, normalizedTitle);
+			}
+			milestoneLabelByKey.set(normalizedTitle.toLowerCase(), normalizedTitle);
+		}
+		const resolveMilestoneLabel = (milestone: string) => {
+			const normalized = milestone.trim();
+			if (!normalized) return milestone;
+			return milestoneLabelByKey.get(normalized.toLowerCase()) ?? milestone;
+		};
 
 		// Move mode state
 		type MoveOperation = {
@@ -547,7 +566,7 @@ export async function renderBoardTui(
 			if (!task) return;
 			popupOpen = true;
 
-			const popup = await createTaskPopup(screen, task);
+			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel);
 			if (!popup) {
 				popupOpen = false;
 				return;

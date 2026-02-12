@@ -40,8 +40,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		[archivedMilestones, milestoneEntities],
 	);
 	const buckets = useMemo(
-		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds }),
-		[tasks, milestoneEntities, statuses, archivedMilestoneIds],
+		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds, archivedMilestones }),
+		[tasks, milestoneEntities, statuses, archivedMilestoneIds, archivedMilestones],
 	);
 
 	// Separate buckets into categories and sort by ID descending
