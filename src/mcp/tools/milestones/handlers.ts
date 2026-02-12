@@ -187,6 +187,24 @@ export class MilestoneHandlers {
 			updatedTaskIds = updatedTaskIds.sort((a, b) => a.localeCompare(b));
 		}
 
+		// Update config.yml milestones array
+		const config = await this.core.filesystem.loadConfig();
+		if (config?.milestones) {
+			const idx = config.milestones.indexOf(fromName);
+			if (idx >= 0) {
+				config.milestones[idx] = toName;
+				await this.core.filesystem.saveConfig(config);
+			}
+		}
+
+		// Update milestone file's title frontmatter
+		const milestoneMatch = (await this.listFileMilestones()).find(
+			(m) => milestoneKey(m.title) === milestoneKey(fromName),
+		);
+		if (milestoneMatch) {
+			await this.core.filesystem.updateMilestoneTitle(milestoneMatch.id, toName);
+		}
+
 		const targetSummary = targetMilestone === toName ? `"${toName}"` : `"${toName}" (stored as "${targetMilestone}")`;
 		const summaryLines: string[] = [`Renamed milestone "${fromName}" → ${targetSummary}.`];
 		if (shouldUpdateTasks) {
