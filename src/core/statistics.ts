@@ -48,6 +48,13 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 	let totalAge = 0;
 	let taskCount = 0;
 
+	const taskStatusById = new Map<string, string>();
+	for (const task of tasks) {
+		if (task.id) {
+			taskStatusById.set(task.id, task.status ?? "");
+		}
+	}
+
 	// Process each task
 	for (const task of tasks) {
 		// Skip tasks with empty or undefined status
@@ -112,8 +119,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		if (task.dependencies && task.dependencies.length > 0 && task.status !== "Done") {
 			// Check if any dependency is not done
 			const hasBlockingDependency = task.dependencies.some((depId) => {
-				const dep = tasks.find((t) => t.id === depId);
-				return dep && dep.status !== "Done";
+				const depStatus = taskStatusById.get(depId);
+				return depStatus !== undefined && depStatus !== "Done";
 			});
 
 			if (hasBlockingDependency) {
