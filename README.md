@@ -66,28 +66,28 @@ All data is saved under the `backlog` folder as human-readable Markdown files (e
 This is the recommended flow for Claude Code, Codex, Gemini CLI, and similar tools — following the **spec‑driven AI development** approach.
 After running `backlog init` and choosing the MCP or CLI integration, work in this loop:
 
-1. **Describe your idea** — tell the agent what you want to build and ask it to split the work into small tasks with clear descriptions and acceptance criteria.
+**Step 1 — Describe your idea.** Tell the agent what you want to build and ask it to split the work into small tasks with clear descriptions and acceptance criteria.
 
-   > [!NOTE]
-   > I want to add a search feature to the web view that searches tasks, docs, and decisions. Please decompose this into small Backlog.md tasks.
+> [!NOTE]
+> I want to add a search feature to the web view that searches tasks, docs, and decisions. Please decompose this into small Backlog.md tasks.
 
-   > [!IMPORTANT]
-   > **Review checkpoint #1** — read the task descriptions and acceptance criteria. Make sure each task is small enough to complete in a single session.
+> [!IMPORTANT]
+> **Review checkpoint #1** — read the task descriptions and acceptance criteria. Make sure each task is small enough to complete in a single session.
 
-2. **One task at a time** — work on a single task per agent session, one PR per task. Good task splitting means each session can work independently without conflicts.
+**Step 2 — One task at a time.** Work on a single task per agent session, one PR per task. Good task splitting means each session can work independently without conflicts.
 
-3. **Plan before coding** — ask the agent to research and write an implementation plan in the task. Do this right before implementation so the plan reflects the current state of the codebase.
+**Step 3 — Plan before coding.** Ask the agent to research and write an implementation plan in the task. Do this right before implementation so the plan reflects the current state of the codebase.
 
-   > [!NOTE]
-   > Work on BACK-10 only. Research the codebase and write an implementation plan in the task. Wait for my approval before coding.
+> [!NOTE]
+> Work on BACK-10 only. Research the codebase and write an implementation plan in the task. Wait for my approval before coding.
 
-   > [!IMPORTANT]
-   > **Review checkpoint #2** — read the plan. Does the approach make sense? Approve it or ask the agent to revise.
+> [!IMPORTANT]
+> **Review checkpoint #2** — read the plan. Does the approach make sense? Approve it or ask the agent to revise.
 
-4. **Implement and verify** — let the agent implement the task.
+**Step 4 — Implement and verify.** Let the agent implement the task.
 
-   > [!IMPORTANT]
-   > **Review checkpoint #3** — review the code, run tests, check linting, and verify the results match your expectations.
+> [!IMPORTANT]
+> **Review checkpoint #3** — review the code, run tests, check linting, and verify the results match your expectations.
 
 If the output is not good enough: clear the plan/notes/final summary, refine the task description and acceptance criteria, and run the task again in a fresh session.
 
@@ -112,6 +112,8 @@ backlog browser
 ```
 
 You can switch between AI-assisted and manual workflows at any time — both operate on the same Markdown task files. It is recommended to modify tasks via Backlog.md commands (CLI/MCP/Web) rather than editing task files manually, so field types and metadata stay consistent.
+
+**Learn more:** [CLI reference](CLI-INSTRUCTIONS.md) | [Advanced configuration](ADVANCED-CONFIG.md)
 
 ---
 
