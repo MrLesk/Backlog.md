@@ -113,7 +113,7 @@ jobs:
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
       - name: Configure npm for trusted publishing
         shell: bash
         run: |
@@ -197,7 +197,7 @@ jobs:
           chmod +x pkg/backlog
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
       - name: Configure npm for trusted publishing
         shell: bash
         run: |
@@ -224,7 +224,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Wait for platform package installability (Unix)
         if: ${{ matrix.os != 'windows-latest' }}
@@ -364,7 +364,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Install and run backlog -v (Unix)
         if: ${{ matrix.os != 'windows-latest' }}
