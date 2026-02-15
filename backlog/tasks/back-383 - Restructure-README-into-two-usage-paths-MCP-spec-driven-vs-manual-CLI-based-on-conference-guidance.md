@@ -3,11 +3,11 @@ id: BACK-383
 title: >-
   Restructure README into two usage paths (MCP spec-driven vs manual CLI) based
   on conference guidance
-status: Done
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-02-11 20:26'
-updated_date: '2026-02-11 21:53'
+updated_date: '2026-02-15 16:44'
 labels: []
 dependencies: []
 references:
@@ -54,13 +54,13 @@ Workflow correction: moving delivery to a dedicated git branch per user request 
 Finalized on dedicated branch `back-383-readme-two-usage-paths` per workflow requirement.
 
 PR adjusted for manual ID reassignment exception: https://github.com/MrLesk/Backlog.md/pull/520
+
+Follow-up copy pass requested by user: reword onboarding flow with 3 explicit review checkpoints, MCP init note, and manual CLI/Web quickstart.
+
+Applied wording update pass in `README.md` for onboarding section: switched to 'Two examples', added 3 explicit review checkpoints in MCP flow, inserted MCP init NOTE callout, updated manual mode heading to CLI/Web, and moved Markdown storage note below both flows with warning to avoid manual task file edits.
+
+Validation run: `bun run check README.md`.
 <!-- SECTION:NOTES:END -->
-
-## Final Summary
-
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Restructured `README.md` onboarding after the core features into two explicit use-case paths: (1) Spec-driven development with AI agents via MCP, and (2) Manual CLI mode. The MCP section now follows the conference guidance flow: idea -> task decomposition -> plan right before implementation -> human review checkpoints -> code review and restart loop by resetting plan/notes/final summary and refining description/AC/instructions when needed. The CLI section now presents a concise command-first workflow (`task create`, `task edit`, `task list`, `search`, `board`) with clear framing.
-<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->

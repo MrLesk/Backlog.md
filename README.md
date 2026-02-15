@@ -10,8 +10,9 @@
 
 ---
 
-> **Backlog.md** turns any folder with a Git repo into a **self‑contained project board**  
+> **Backlog.md** turns any folder with a Git repo into a **self‑contained project board**
 > powered by plain Markdown files and a zero‑config CLI.
+> Built for **spec‑driven AI development** — structure your tasks so AI agents deliver predictable results.
 
 ## Features
 
@@ -39,59 +40,64 @@
 
 ---
 
-## <img src="./.github/5-minute-tour-256.png" alt="5-minute tour" width="28" height="28" align="center"> Two ways to use Backlog.md
-
-Backlog.md supports two workflows:
-
-1. **Spec-driven development with AI agents via MCP**
-2. **Manual CLI mode**
-
-All data is saved under the `backlog` folder as human-readable Markdown files (for example `task-10 - Add core search functionality.md`).
-
-### 1) Spec-driven development with AI agents (MCP)
-
-This is the recommended flow when working with Claude Code, Codex, Gemini CLI, or similar tools.
+## <img src="./.github/5-minute-tour-256.png" alt="Getting started" width="28" height="28" align="center"> Getting started
 
 ```bash
-# Install Backlog.md
+# Install
 bun i -g backlog.md
 # or: npm i -g backlog.md
 # or: brew install backlog-md
 
-# Initialize Backlog.md and choose MCP setup
+# Initialize in any git repo
 backlog init "My Awesome Project"
 ```
 
-Then work in this loop:
+The init wizard will ask how you want to connect AI tools:
+- **MCP connector** (recommended) — auto-configures Claude Code, Codex, Gemini CLI, or Cursor and adds workflow instructions for your agents.
+- **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.
+- **Skip** — no AI setup; use Backlog.md purely as a task manager.
 
-1. Tell the agent your idea and ask it to split the work into small tasks.
-2. Execute tasks one by one (one task per context window, one PR).
-3. Ask the agent to research and add an implementation plan right before starting implementation.
-4. Review and approve the plan, then let the agent implement.
-5. Review the code and verify results (tests, linting, behavior, UX where applicable).
-6. If output is not good enough: clear plan/notes/final summary, refine description + acceptance criteria, improve agent instructions, and run again.
-7. If output matches expectations: open the PR.
+All data is saved under the `backlog` folder as human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`).
 
-Prompt examples:
+---
 
-```text
-Please decompose this feature into small Backlog.md tasks following the Backlog workflow.
-```
+### Working with AI agents
 
-```text
-Work on task BACK-123 only.
-Before coding, research and write an implementation plan in the task.
-Wait for my approval, then implement and run checks.
-```
+This is the recommended flow for Claude Code, Codex, Gemini CLI, and similar tools — following the **spec‑driven AI development** approach.
+After running `backlog init` and choosing the MCP or CLI integration, work in this loop:
 
-### 2) Manual CLI mode
+1. **Describe your idea** — tell the agent what you want to build and ask it to split the work into small tasks with clear descriptions and acceptance criteria.
 
-Use this when you want to drive everything directly from the terminal.
+   > [!NOTE]
+   > I want to add a search feature to the web view that searches tasks, docs, and decisions. Please decompose this into small Backlog.md tasks.
+
+   > [!IMPORTANT]
+   > **Review checkpoint #1** — read the task descriptions and acceptance criteria. Make sure each task is small enough to complete in a single session.
+
+2. **One task at a time** — work on a single task per agent session, one PR per task. Good task splitting means each session can work independently without conflicts.
+
+3. **Plan before coding** — ask the agent to research and write an implementation plan in the task. Do this right before implementation so the plan reflects the current state of the codebase.
+
+   > [!NOTE]
+   > Work on BACK-10 only. Research the codebase and write an implementation plan in the task. Wait for my approval before coding.
+
+   > [!IMPORTANT]
+   > **Review checkpoint #2** — read the plan. Does the approach make sense? Approve it or ask the agent to revise.
+
+4. **Implement and verify** — let the agent implement the task.
+
+   > [!IMPORTANT]
+   > **Review checkpoint #3** — review the code, run tests, check linting, and verify the results match your expectations.
+
+If the output is not good enough: clear the plan/notes/final summary, refine the task description and acceptance criteria, and run the task again in a fresh session.
+
+---
+
+### Working without AI agents
+
+Use Backlog.md as a standalone task manager from the terminal or browser.
 
 ```bash
-# Initialize
-backlog init "My Awesome Project"
-
 # Create and refine tasks
 backlog task create "Render markdown as kanban"
 backlog task edit BACK-1 -d "Detailed context" --ac "Clear acceptance criteria"
@@ -100,11 +106,12 @@ backlog task edit BACK-1 -d "Detailed context" --ac "Clear acceptance criteria"
 backlog task list -s "To Do"
 backlog search "kanban"
 backlog board
+
+# Work visually in the browser
+backlog browser
 ```
 
-Core commands: `task create`, `task edit`, `task list`, `search`.
-
-You can switch between CLI and AI-assisted execution at any time because both operate on the same Markdown task files.
+You can switch between AI-assisted and manual workflows at any time — both operate on the same Markdown task files. It is recommended to modify tasks via Backlog.md commands (CLI/MCP/Web) rather than editing task files manually, so field types and metadata stay consistent.
 
 ---
 
@@ -144,7 +151,7 @@ You can run `backlog init` (even if you already initialized Backlog.md) to set u
 ### Client guides
 
 > [!IMPORTANT]
-> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md. 
+> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md.
 > This step is not required when using `backlog init` as it adds these instructions automatically.
 > Backlog.md's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
 
@@ -197,182 +204,9 @@ Use `/mcp` command in your AI tool (Claude Code, Codex) to verify if the connect
 
 ## <img src="./.github/cli-reference-256.png" alt="CLI Reference" width="28" height="28" align="center"> CLI reference
 
-### Project Setup
+Full command reference — task management, search, board, docs, decisions, and more: **[CLI-INSTRUCTIONS.md](CLI-INSTRUCTIONS.md)**
 
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Initialize project | `backlog init [project-name]` (creates backlog structure with a minimal interactive flow) |
-| Re-initialize | `backlog init` (preserves existing config, allows updates) |
-| Advanced settings wizard | `backlog config` (no args) — launches the full interactive configuration flow |
-
-`backlog init` keeps first-run setup focused on the essentials:
-- **Project name** – identifier for your backlog (defaults to the current directory on re-run).
-- **Integration choice** – decide whether your AI tools connect through the **MCP connector** (recommended) or stick with **CLI commands (legacy)**.
-- **Instruction files (CLI path only)** – when you choose the legacy CLI flow, pick which instruction files to create (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot, or skip).
-- **Advanced settings prompt** – default answer “No” finishes init immediately; choosing “Yes” jumps straight into the advanced wizard documented in [Configuration](#configuration).
-
-You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`, or `--install-claude-agent true`) continue to provide fully non-interactive setups, so existing scripts keep working without change.
-
-### Documentation
-
-- Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree. Example: `backlog doc create -p guides "New Guide"`.
-
-### Task Management
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Create task | `backlog task create "Add OAuth System"`                    |
-| Create with description | `backlog task create "Feature" -d "Add authentication system"` |
-| Create with assignee | `backlog task create "Feature" -a @sara`           |
-| Create with status | `backlog task create "Feature" -s "In Progress"`    |
-| Create with labels | `backlog task create "Feature" -l auth,backend`     |
-| Create with priority | `backlog task create "Feature" --priority high`     |
-| Create with plan | `backlog task create "Feature" --plan "1. Research\n2. Implement"`     |
-| Create with AC | `backlog task create "Feature" --ac "Must work,Must be tested"` |
-| Add DoD items on create | `backlog task create "Feature" --dod "Run tests"` |
-| Create without DoD defaults | `backlog task create "Feature" --no-dod-defaults` |
-| Create with notes | `backlog task create "Feature" --notes "Started initial research"` |
-| Create with final summary | `backlog task create "Feature" --final-summary "PR-style summary"` |
-| Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
-| Create with refs | `backlog task create "Feature" --ref https://docs.example.com --ref src/api.ts` |
-| Create with docs | `backlog task create "Feature" --doc https://design-docs.example.com --doc docs/spec.md` |
-| Create sub task | `backlog task create -p 14 "Add Login with Google"`|
-| Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref src/api.ts --doc docs/spec.md -p 14` |
-| List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>]` |
-| List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
-| View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |
-| View (AI mode) | `backlog task 7 --plain`                           |
-| Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
-| Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
-| Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
-| Add DoD     | `backlog task edit 7 --dod "Ship notes"` |
-| Remove AC   | `backlog task edit 7 --remove-ac 2` (removes AC #2)      |
-| Remove multiple ACs | `backlog task edit 7 --remove-ac 2 --remove-ac 4` (removes AC #2 and #4) |
-| Check AC    | `backlog task edit 7 --check-ac 1` (marks AC #1 as done) |
-| Check DoD   | `backlog task edit 7 --check-dod 1` (marks DoD #1 as done) |
-| Check multiple ACs | `backlog task edit 7 --check-ac 1 --check-ac 3` (marks AC #1 and #3 as done) |
-| Uncheck AC  | `backlog task edit 7 --uncheck-ac 3` (marks AC #3 as not done) |
-| Uncheck DoD | `backlog task edit 7 --uncheck-dod 3` (marks DoD #3 as not done) |
-| Mixed AC operations | `backlog task edit 7 --check-ac 1 --uncheck-ac 2 --remove-ac 4` |
-| Mixed DoD operations | `backlog task edit 7 --check-dod 1 --uncheck-dod 2 --remove-dod 4` |
-| Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` (replaces existing) |
-| Append notes | `backlog task edit 7 --append-notes "New findings"` |
-| Add final summary | `backlog task edit 7 --final-summary "PR-style summary"` |
-| Append final summary | `backlog task edit 7 --append-final-summary "More details"` |
-| Clear final summary | `backlog task edit 7 --clear-final-summary` |
-| Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
-| Archive     | `backlog task archive 7`                             |
-
-#### Multi‑line input (description/plan/notes/final summary)
-
-The CLI preserves input literally; `\n` sequences are not auto‑converted. Use one of the following to insert real newlines:
-
-- **Bash/Zsh (ANSI‑C quoting)**
-  - Description: `backlog task create "Feature" --desc $'Line1\nLine2\n\nFinal paragraph'`
-  - Plan: `backlog task edit 7 --plan $'1. Research\n2. Implement'`
-  - Notes: `backlog task edit 7 --notes $'Completed A\nWorking on B'`
-  - Append notes: `backlog task edit 7 --append-notes $'Added X\nAdded Y'`
-  - Final summary: `backlog task edit 7 --final-summary $'Shipped A\nAdded B'`
-  - Append final summary: `backlog task edit 7 --append-final-summary $'Added X\nAdded Y'`
-- **POSIX sh (printf)**
-  - `backlog task create "Feature" --desc "$(printf 'Line1\nLine2\n\nFinal paragraph')"`
-- **PowerShell (backtick)**
-  - `backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"`
-
-Tip: Help text shows Bash examples with escaped `\\n` for readability; when typing, `$'\n'` expands to a newline.
-
-### Search
-
-Find tasks, documents, and decisions across your entire backlog with fuzzy search:
-
-| Action             | Example                                              |
-|--------------------|------------------------------------------------------|
-| Search tasks       | `backlog search "auth"`                        |
-| Filter by status   | `backlog search "api" --status "In Progress"`   |
-| Filter by priority | `backlog search "bug" --priority high`        |
-| Combine filters    | `backlog search "web" --status "To Do" --priority medium` |
-| Plain text output  | `backlog search "feature" --plain` (for scripts/AI) |
-
-**Search features:**
-- **Fuzzy matching** -- finds "authentication" when searching for "auth"
-- **Interactive filters** -- refine your search in real-time with the TUI
-- **Live filtering** -- see results update as you type (no Enter needed)
-
-### Draft Workflow
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Create draft | `backlog task create "Feature" --draft`             |
-| Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
-| Demote to draft| `backlog task demote <id>` |
-
-### Dependency Management
-
-Manage task dependencies to create execution sequences and prevent circular relationships:
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Add dependencies | `backlog task edit 7 --dep task-1 --dep task-2`     |
-| Add multiple deps | `backlog task edit 7 --dep task-1,task-5,task-9`    |
-| Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
-| View dependencies | `backlog task 7` (shows dependencies in task view)  |
-| Validate dependencies | Use task commands to automatically validate dependencies |
-
-**Dependency Features:**
-- **Automatic validation**: Prevents circular dependencies and validates task existence
-- **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
-- **Visual sequences**: Dependencies create visual execution sequences in board view
-- **Completion tracking**: See which dependencies are blocking task progress
-
-### Board Operations
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Kanban board      | `backlog board` (interactive UI, press 'E' to edit in editor) |
-| Export board | `backlog board export [file]` (exports Kanban board to markdown) |
-| Export with version | `backlog board export --export-version "v1.0.0"` (includes version in export) |
-
-### Statistics & Overview
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Project overview | `backlog overview` (interactive TUI showing project statistics) |
-
-### Web Interface
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Web interface | `backlog browser` (launches web UI on port 6420) |
-| Web custom port | `backlog browser --port 8080 --no-open` |
-
-### Documentation
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Create doc | `backlog doc create "API Guidelines"` |
-| Create with path | `backlog doc create "Setup Guide" -p guides/setup` |
-| Create with type | `backlog doc create "Architecture" -t technical` |
-| List docs | `backlog doc list` |
-| View doc | `backlog doc view doc-1` |
-
-### Decisions
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
-| Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
-
-### Agent Instructions
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Update agent files | `backlog agents --update-instructions` (updates CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
-
-### Maintenance
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder) |
+Quick examples: `backlog task create`, `backlog task list`, `backlog task edit`, `backlog search`, `backlog board`, `backlog browser`.
 
 Full help: `backlog --help`
 
@@ -380,24 +214,12 @@ Full help: `backlog --help`
 
 ## <img src="./.github/configuration-256.png" alt="Configuration" width="28" height="28" align="center"> Configuration
 
-Backlog.md merges the following layers (highest → lowest):
+Backlog.md merges the following layers (highest → lowest):
 
 1. CLI flags
 2. `backlog/config.yml` (per‑project)
 3. `~/backlog/user` (per‑user)
 4. Built‑ins
-
-### Configuration Commands
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| View all configs | `backlog config list` |
-| Get specific config | `backlog config get defaultEditor` |
-| Set config value | `backlog config set defaultEditor "code --wait"` |
-| Enable auto-commit | `backlog config set autoCommit true` |
-| Bypass git hooks | `backlog config set bypassGitHooks true` |
-| Enable cross-branch check | `backlog config set checkActiveBranches true` |
-| Set active branch days | `backlog config set activeBranchDays 30` |
 
 ### Interactive wizard (`backlog config`)
 
@@ -408,7 +230,7 @@ Run `backlog config` with no arguments to launch the full interactive wizard. Th
 - Editor integration: pick a `defaultEditor` with availability checks.
 - Web UI defaults: choose `defaultPort` and whether `autoOpenBrowser` should run.
 
-Skipping the wizard (answering “No” during init) applies the safe defaults that ship with Backlog.md:
+Skipping the wizard (answering "No" during init) applies the safe defaults that ship with Backlog.md:
 - `checkActiveBranches=true`, `remoteOperations=true`, `activeBranchDays=30`.
 - `autoCommit=false`, `bypassGitHooks=false`.
 - `zeroPaddedIds` disabled.
@@ -416,41 +238,6 @@ Skipping the wizard (answering “No” during init) applies the safe defaults t
 - `defaultPort=6420`, `autoOpenBrowser=true`.
 
 Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
-
-### Available Configuration Options
-
-| Key               | Purpose            | Default                       |
-|-------------------|--------------------|-------------------------------|
-| `defaultAssignee` | Pre‑fill assignee  | `[]`                          |
-| `defaultStatus`   | First column       | `To Do`                       |
-| `definition_of_done` | Default DoD checklist items for new tasks | `(not set)` |
-| `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
-| `dateFormat`      | Date/time format   | `yyyy-mm-dd hh:mm`            |
-| `includeDatetimeInDates` | Add time to new dates | `true`              |
-| `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
-| `defaultPort`     | Web UI port        | `6420`                        |
-| `autoOpenBrowser` | Open browser automatically | `true`            |
-| `remoteOperations`| Enable remote git operations | `true`           |
-| `autoCommit`      | Automatically commit task changes | `false`       |
-| `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
-| `zeroPaddedIds`   | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
-| `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
-| `activeBranchDays` | How many days a branch is considered active | `30` |
-| `onStatusChange`  | Shell command to run on status change | `(disabled)` |
-
-> Editor setup guide: See [Configuring VIM and Neovim as Default Editor](backlog/docs/doc-002%20-%20Configuring-VIM-and-Neovim-as-Default-Editor.md) for configuration tips and troubleshooting interactive editors.
-
-> **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
-
-> **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
-
-> **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
-
-> **Performance**: Cross-branch checking ensures accurate task tracking across all active branches but may impact performance on large repositories. You can disable it by setting `checkActiveBranches: false` for maximum speed, or adjust `activeBranchDays` to control how far back to look for branch activity (lower values = better performance).
-
-> **Status Change Callbacks**: Set `onStatusChange` to run a shell command whenever a task's status changes. Available variables: `$TASK_ID`, `$OLD_STATUS`, `$NEW_STATUS`, `$TASK_TITLE`. Per-task override via `onStatusChange` in task frontmatter. Example: `'if [ "$NEW_STATUS" = "In Progress" ]; then claude "Task $TASK_ID ($TASK_TITLE) has been assigned to you. Please implement it." & fi'`
-
-> **Date/Time Support**: Backlog.md now supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility. Use the migration script `bun src/scripts/migrate-dates.ts` to optionally add time to existing items.
 
 ### Definition of Done defaults
 
@@ -465,109 +252,9 @@ definition_of_done:
 
 These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`. Array values like `definition_of_done` must be edited in the config file or via the Web UI.
 
----
-
-## 💡 Shell Tab Completion
-
-Backlog.md includes built-in intelligent tab completion for bash, zsh, and fish shells. Completion scripts are embedded in the binary—no external files needed.
-
-**Quick Installation:**
-```bash
-# Auto-detect and install for your current shell
-backlog completion install
-
-# Or specify shell explicitly
-backlog completion install --shell bash
-backlog completion install --shell zsh
-backlog completion install --shell fish
-```
-
-**What you get:**
-- Command completion: `backlog <TAB>` → shows all commands
-- Dynamic task IDs: `backlog task edit <TAB>` → shows actual task IDs from your backlog
-- Smart flags: `--status <TAB>` → shows configured status values
-- Context-aware suggestions for priorities, labels, and assignees
-
-📖 **Full documentation**: See [completions/README.md](completions/README.md) for detailed installation instructions, troubleshooting, and examples.
+For the full configuration reference (all options, commands, and detailed notes), see **[ADVANCED-CONFIG.md](ADVANCED-CONFIG.md)**.
 
 ---
-
-## <img src="./.github/sharing-export-256.png" alt="Sharing & Export" width="28" height="28" align="center"> Sharing & Export
-
-### Board Export
-
-Export your Kanban board to a clean, shareable markdown file:
-
-```bash
-# Export to default Backlog.md file
-backlog board export
-
-# Export to custom file
-backlog board export project-status.md
-
-# Force overwrite existing file
-backlog board export --force
-
-# Export to README.md with board markers
-backlog board export --readme
-
-# Include a custom version string in the export
-backlog board export --export-version "v1.2.3"
-backlog board export --readme --export-version "Release 2024.12.1-beta"
-```
-
-Perfect for sharing project status, creating reports, or storing snapshots in version control.
-
----
-
-<!-- BOARD_START -->
-
-## 📊 Backlog.md Project Status (v1.35.6)
-
-This board was automatically generated by [Backlog.md](https://backlog.md)
-
-Generated on: 2026-02-09 20:02:38
-
-| To Do | In Progress | Done |
-| --- | --- | --- |
-| **BACK-368** - TUI: Add section-aware navigation for task popup and detail pane [@codex]<br>*#tui #ux #enhancement* |  | **BACK-378** - Fix timezone configuration docs and local date display in task modal [@codex]<br>*#bug #web #docs* |
-| **BACK-366** - Evaluate and replace prompts library with clack in CLI wizards [@codex] |  | **BACK-377** - Prevent web preview crash on angle-bracket type strings [@codex]<br>*#bug #web* |
-| └─ **BACK-366.03** - Refactor remaining CLI prompt flows and tests to clack [@codex] |  | **BACK-376** - Fix web task creation dropping selected milestone [@codex]<br>*#bug #web #api* |
-| └─ **BACK-366.01** - Refactor init wizard prompts to clack [@codex] |  | **BACK-375** - Fix inconsistent draft IDs for `task create --draft` [@codex]<br>*#bug #cli* |
-| └─ **BACK-366.02** - Refactor advanced config wizard prompts to clack [@codex] |  | **BACK-379** - Auto-plain output when stdout is not a TTY [@codex] |
-| **BACK-361** - Add label-based filtering to TUI and web UI task list views<br>*#tui #web #enhancement* |  | **BACK-374** - Ensure MCP server exits when stdio closes and disposes watchers [@codex] |
-| **BACK-355** - Add task type field (bug, feature, enhancement, etc.)<br>*#enhancement #core #cli #mcp #web* |  | **BACK-373** - Support Drafts via MCP task tools (no new tools) [@codex]<br>*#mcp #drafts* |
-| └─ **BACK-355.06** - Web UI: Display and edit task type<br>*#web* |  | **BACK-371** - Investigate flaky CI test failure in PR 494 [@codex] |
-| └─ **BACK-355.01** - Core: Add type field to task domain model and persistence<br>*#core* |  | **BACK-372** - CI: drop sourcemap in compile-and-smoke-test to avoid InvalidSourceMap flake [@codex] |
-| └─ **BACK-355.02** - CLI: Add --type flag to task create and edit commands<br>*#cli* |  | **BACK-370** - Release: publish platform binaries before main npm package [@codex] |
-| └─ **BACK-355.03** - MCP: Add type parameter to task_create and task_edit tools<br>*#mcp* |  | **BACK-369** - Fix web UI acceptance criteria toggle flicker via ContentStore sync [@codex] |
-| └─ **BACK-355.04** - Filtering: Add type-based filtering to task list and search<br>*#core #cli #mcp* |  | **BACK-367** - Add Final Summary field to tasks for PR-style completion notes [@codex]<br>*#enhancement #core #cli #mcp #workflow* |
-| └─ **BACK-355.05** - TUI: Display task type in board and detail views<br>*#tui* |  | └─ **BACK-367.5** - Ignore nested section markers when parsing structured sections [@codex]<br>*#bug #markdown #parser #tui* |
-| **BACK-349** - Publish Backlog.md as an Agent Skill with bundled guidance (no MCP resources required for instructions) [@codex]<br>*#agent-skills #mcp #docs #distribution* |  | └─ **BACK-367.01** - CLI and plain text formatter integration for Final Summary field [@codex]<br>*#cli #enhancement* |
-| └─ **BACK-24.02** - CLI TUI: Add milestone swimlanes to interactive board view<br>*#cli #tui #enhancement* |  | └─ **BACK-367.02** - MCP tools and schemas integration for Final Summary field [@codex]<br>*#mcp #enhancement* |
-| **BACK-239** - Feature: Auto-link tasks to documents/decisions + backlinks [@codex]<br>*#web #enhancement #docs* |  | └─ **BACK-367.03** - Web UI integration for Final Summary field [@codex]<br>*#web #enhancement* |
-| **BACK-347** - Add milestone editing in Web UI<br>*#milestones #web-ui #enhancement* |  | └─ **BACK-367.04** - TUI task viewer integration for Final Summary field [@codex]<br>*#tui #enhancement* |
-| **BACK-348** - Redesign All Tasks page with table layout<br>*#web-ui #design #enhancement #ux* |  | **BACK-354** - Project Definition of Done defaults [@codex] |
-| **BACK-310** - Strengthen Backlog workflow overview emphasis on reading detailed guides [@codex] |  | └─ **BACK-354.01** - Core: Definition of Done defaults and persistence [@codex] |
-| **BACK-270** - Prevent command substitution in task creation inputs [@codex] |  | └─ **BACK-354.02** - CLI + MCP: DoD create options and outputs [@codex] |
-| **BACK-267** - Add agent instruction version metadata [@codex] |  | └─ **BACK-354.03** - Web UI: DoD in task modal and create flow [@codex] |
-| **BACK-268** - Show agent instruction version status [@codex] |  | └─ **BACK-354.04** - TUI: DoD in task detail and kanban popup [@codex] |
-| **BACK-260** - Web UI: Add filtering to All Tasks view [@codex]<br>*#web-ui #filters #ui* |  | └─ **BACK-354.05** - Web UI: edit Definition of Done defaults in Settings [@codex] |
-| **BACK-259** - Add task list filters for Status and Priority<br>*#tui #filters #ui* |  | **BACK-346** - Add milestone completion/archival workflow [@codex]<br>*#milestones #enhancement #ux* |
-| **BACK-257** - Deep link URLs for tasks in board and list views |  | **BACK-352** - Include subtask list in plain task output (CLI + MCP) [@codex] |
-| **BACK-200** - Add Claude Code integration with workflow commands during init<br>*#enhancement #developer-experience* |  | **BACK-353** - Add documentation field to task domain object [@codex] |
-| **BACK-218** - Update documentation and tests for sequences<br>*#sequences #documentation #testing* |  | **BACK-356** - Add references field to task domain object [@codex] |
-| **BACK-217** - Create web UI for sequences with drag-and-drop<br>*#sequences #web-ui #frontend* |  | **BACK-351** - Strengthen MCP task creation guidance for standalone tasks [@codex] |
-| └─ **BACK-217.03** - Sequences web UI: move tasks and update dependencies<br>*#sequences* |  | **BACK-362** - Include completed tasks in MCP task_search results [@codex]<br>*#mcp #enhancement* |
-| └─ **BACK-217.04** - Sequences web UI: tests<br>*#sequences* |  | **BACK-358** - Rename Task Completion Guide to Task Finalization Guide [@codex]<br>*#documentation #workflow* |
-| └─ **BACK-217.02** - Sequences web UI: list sequences<br>*#sequences* |  | **BACK-365** - Fix acceptance criteria insertion adding blank lines [@codex] |
-| **BACK-240** - Improve binary resolution on Apple Silicon (Rosetta/arch mismatch) [@codex]<br>*#packaging #bug #macos* |  | **BACK-364** - Fix getTask() to use configured prefix for numeric ID lookups [@codex]<br>*#bug #mcp* |
-| **BACK-222** - Improve task and subtask visualization in web UI |  | **BACK-363** - Fix localById case mismatch in cross-branch task loading [@codex]<br>*#core #bug* |
-| **BACK-208** - Add paste-as-markdown support in Web UI<br>*#web-ui #enhancement #markdown* |  | **BACK-360** - Fix cross-branch index case mismatch for custom prefixes [@codex]<br>*#bug #cross-branch #prefix-config* |
-|  |  | **BACK-359** - Pass configured task prefix to cross-branch loading functions [@codex]<br>*#bug #cross-branch #prefix-config* |
-|  |  | └─ **BACK-345.10** - Fix ID generation bugs and cleanup prefix-config leftovers [@codex]<br>*#bug #refactor #tdd* |
-
-<!-- BOARD_END -->
 
 ### License
 
