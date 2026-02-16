@@ -49,6 +49,13 @@ describe("MCP milestone tools", () => {
 
 	it("supports setting and clearing milestone via task_create/task_edit", async () => {
 		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release 2.0" } },
+		});
+
+		await server.testInterface.callTool({
 			params: {
 				name: "task_create",
 				arguments: {
@@ -59,7 +66,7 @@ describe("MCP milestone tools", () => {
 		});
 
 		const created = await server.getTask("task-1");
-		expect(created?.milestone).toBe("Release 1.0");
+		expect(created?.milestone).toBe("m-0");
 
 		await server.testInterface.callTool({
 			params: {
@@ -72,7 +79,20 @@ describe("MCP milestone tools", () => {
 		});
 
 		const updated = await server.getTask("task-1");
-		expect(updated?.milestone).toBe("Release 2.0");
+		expect(updated?.milestone).toBe("m-1");
+
+		await server.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					milestone: "m-0",
+				},
+			},
+		});
+
+		const updatedById = await server.getTask("task-1");
+		expect(updatedById?.milestone).toBe("m-0");
 
 		await server.testInterface.callTool({
 			params: {
@@ -86,6 +106,30 @@ describe("MCP milestone tools", () => {
 
 		const cleared = await server.getTask("task-1");
 		expect(cleared?.milestone).toBeUndefined();
+
+		await server.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Milestone task by id",
+					milestone: "m-1",
+				},
+			},
+		});
+		const createdById = await server.getTask("task-2");
+		expect(createdById?.milestone).toBe("m-1");
+
+		await server.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Unconfigured milestone task",
+					milestone: "Planned Later",
+				},
+			},
+		});
+		const createdWithUnconfiguredMilestone = await server.getTask("task-3");
+		expect(createdWithUnconfiguredMilestone?.milestone).toBe("Planned Later");
 	});
 
 	it("adds milestones as files with validation", async () => {
@@ -153,6 +197,12 @@ describe("MCP milestone tools", () => {
 		});
 		expect(getText(archived.content)).toContain('Archived milestone "Release 1.0"');
 
+		await server.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "task-1", milestone: "Release 1.0" } },
+		});
+		const archivedTitleResolved = await server.getTask("task-1");
+		expect(archivedTitleResolved?.milestone).toBe("m-0");
+
 		const active = await server.filesystem.listMilestones();
 		const archivedList = await server.filesystem.listArchivedMilestones();
 		expect(active.length).toBe(0);
@@ -193,6 +243,123 @@ describe("MCP milestone tools", () => {
 		expect(task2?.milestone).toBe("Release 2.0");
 	});
 
+	it("prefers milestone ID matches over title collisions", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "m-1" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release B" } },
+		});
+
+		await server.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Collision task",
+					milestone: "m-1",
+				},
+			},
+		});
+
+		const task = await server.getTask("task-1");
+		expect(task?.milestone).toBe("m-1");
+	});
+
+	it("supports milestone ID inputs for rename/remove", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release A" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release B" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Task A", milestone: "Release A" } },
+		});
+
+		const renamed = await server.testInterface.callTool({
+			params: { name: "milestone_rename", arguments: { from: "m-0", to: "m-1" } },
+		});
+		expect(getText(renamed.content)).toContain('Renamed milestone "m-0"');
+		expect(getText(renamed.content)).toContain("Updated 1 local task");
+
+		const afterRename = await server.getTask("task-1");
+		expect(afterRename?.milestone).toBe("m-1");
+
+		const removed = await server.testInterface.callTool({
+			params: { name: "milestone_remove", arguments: { name: "m-1" } },
+		});
+		expect(getText(removed.content)).toContain('Removed milestone "m-1".');
+		expect(getText(removed.content)).toContain("Cleared milestone for 1 local task");
+
+		const afterRemove = await server.getTask("task-1");
+		expect(afterRemove?.milestone).toBeUndefined();
+	});
+
+	it("does not cross-match reused titles when removing by milestone ID", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Shared" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Keep ID occupied" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Old task", milestone: "Shared" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_archive", arguments: { name: "Shared" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Shared" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "New task", milestone: "Shared" } },
+		});
+
+		const removeById = await server.testInterface.callTool({
+			params: { name: "milestone_remove", arguments: { name: "m-0" } },
+		});
+		expect(getText(removeById.content)).toContain('Removed milestone "m-0".');
+		expect(getText(removeById.content)).toContain("Cleared milestone for 1 local task");
+
+		const oldTask = await server.getTask("task-1");
+		const newTask = await server.getTask("task-2");
+		expect(oldTask?.milestone).toBeUndefined();
+		expect(newTask?.milestone).toBe("m-2");
+	});
+
+	it("treats reused title input as the active milestone", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Shared" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Keep ID occupied" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Archived task", milestone: "Shared" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_archive", arguments: { name: "Shared" } },
+		});
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Shared" } },
+		});
+
+		await server.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Active task", milestone: "Shared" } },
+		});
+		const activeTaskBeforeRemove = await server.getTask("task-2");
+		expect(activeTaskBeforeRemove?.milestone).toBe("m-2");
+
+		await server.testInterface.callTool({
+			params: { name: "milestone_remove", arguments: { name: "Shared" } },
+		});
+
+		const archivedTask = await server.getTask("task-1");
+		const activeTask = await server.getTask("task-2");
+		expect(archivedTask?.milestone).toBe("m-0");
+		expect(activeTask?.milestone).toBeUndefined();
+	});
+
 	it("removes milestones and clears or reassigns local tasks", async () => {
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release A" } },
@@ -214,7 +381,7 @@ describe("MCP milestone tools", () => {
 		expect(getText(reassign.content)).toContain("Reassigned 1 local task");
 
 		const task1 = await server.getTask("task-1");
-		expect(task1?.milestone).toBe("Release B");
+		expect(task1?.milestone).toBe("m-1");
 
 		// Now test clear behavior
 		await server.testInterface.callTool({

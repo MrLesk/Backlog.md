@@ -21,7 +21,7 @@ import {
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
-import { buildIdRegex, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
+import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -228,6 +228,50 @@ export class Core {
 			throw new Error(`Invalid priority: ${value}. Valid values are: high, medium, low`);
 		}
 		return normalized as "high" | "medium" | "low";
+	}
+
+	private isExactTaskReference(reference: string, taskId: string): boolean {
+		const trimmed = reference.trim();
+		if (!trimmed) {
+			return false;
+		}
+		const taskPrefix = extractAnyPrefix(taskId);
+		const referencePrefix = extractAnyPrefix(trimmed);
+		if (!taskPrefix || !referencePrefix) {
+			return false;
+		}
+		if (taskPrefix.toLowerCase() !== referencePrefix.toLowerCase()) {
+			return false;
+		}
+		return normalizeTaskId(trimmed, taskPrefix).toLowerCase() === normalizeTaskId(taskId, taskPrefix).toLowerCase();
+	}
+
+	private sanitizeArchivedTaskLinks(tasks: Task[], archivedTaskId: string): Task[] {
+		const changedTasks: Task[] = [];
+
+		for (const task of tasks) {
+			const dependencies = task.dependencies ?? [];
+			const references = task.references ?? [];
+
+			const sanitizedDependencies = dependencies.filter((dependency) => !taskIdsEqual(dependency, archivedTaskId));
+			const sanitizedReferences = references.filter(
+				(reference) => !this.isExactTaskReference(reference, archivedTaskId),
+			);
+
+			const dependenciesChanged = !stringArraysEqual(dependencies, sanitizedDependencies);
+			const referencesChanged = !stringArraysEqual(references, sanitizedReferences);
+			if (!dependenciesChanged && !referencesChanged) {
+				continue;
+			}
+
+			changedTasks.push({
+				...task,
+				dependencies: sanitizedDependencies,
+				references: sanitizedReferences,
+			});
+		}
+
+		return changedTasks;
 	}
 
 	async queryTasks(options: TaskQueryOptions = {}): Promise<Task[]> {
@@ -1681,24 +1725,44 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const taskToArchive = await this.fs.loadTask(taskId);
+		if (!taskToArchive) {
+			return false;
+		}
+		const normalizedTaskId = taskToArchive.id;
+
 		// Get paths before moving the file
-		const taskPath = await getTaskPath(taskId, this);
-		const taskFilename = await getTaskFilename(taskId, this);
+		const taskPath = taskToArchive.filePath ?? (await getTaskPath(normalizedTaskId, this));
+		const taskFilename = await getTaskFilename(normalizedTaskId, this);
 
 		if (!taskPath || !taskFilename) return false;
 
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		const success = await this.fs.archiveTask(taskId);
-
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Archive task ${normalizeTaskId(taskId)}`, repoRoot);
+		const success = await this.fs.archiveTask(normalizedTaskId);
+		if (!success) {
+			return false;
 		}
 
-		return success;
+		const activeTasks = await this.fs.listTasks();
+		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
+		if (sanitizedTasks.length > 0) {
+			await this.updateTasksBulk(sanitizedTasks, undefined, false);
+		}
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			// Stage the file move for proper Git tracking
+			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+			for (const sanitizedTask of sanitizedTasks) {
+				if (sanitizedTask.filePath) {
+					await this.git.addFile(sanitizedTask.filePath);
+				}
+			}
+			await this.git.commitChanges(`backlog: Archive task ${normalizedTaskId}`, repoRoot);
+		}
+
+		return true;
 	}
 
 	async archiveMilestone(
