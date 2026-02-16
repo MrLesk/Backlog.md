@@ -486,6 +486,12 @@ Perfect for sharing project status, creating reports, or storing snapshots in ve
 
 ---
 
+## 🌐 Community Tools
+
+- **[vscode-backlog-md](https://marketplace.visualstudio.com/items?itemName=ysamlan.vscode-backlog-md)** - VS Code extension with issues panel, kanban view, and editing. ([ysamlan/vscode-backlog-md](https://github.com/ysamlan/vscode-backlog-md))
+
+---
+
 <!-- BOARD_START -->
 
 ## 📊 Backlog.md Project Status (v1.35.7)
