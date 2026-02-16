@@ -16,7 +16,7 @@ Full command reference for Backlog.md. For getting started, see [README.md](READ
 - **Instruction files (CLI path only)** – when you choose the legacy CLI flow, pick which instruction files to create (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot, or skip).
 - **Advanced settings prompt** – default answer "No" finishes init immediately; choosing "Yes" jumps straight into the advanced wizard documented in [ADVANCED-CONFIG.md](ADVANCED-CONFIG.md).
 
-You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`, or `--install-claude-agent true`) continue to provide fully non-interactive setups, so existing scripts keep working without change.
+You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`) continue to provide fully non-interactive setups, so existing scripts keep working without change.
 
 ## Documentation
 
@@ -169,15 +169,15 @@ Manage task dependencies to create execution sequences and prevent circular rela
 
 ## Agent Instructions
 
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Update agent files | `backlog agents --update-instructions` (updates CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
+| Action                                          | Example                                              |
+|-------------------------------------------------|------------------------------------------------------|
+| Update agent legacy CLI agent instruction files | `backlog agents --update-instructions` (updates CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
 
 ## Maintenance
 
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder) |
+| Action      | Example                                                                                      |
+|-------------|----------------------------------------------------------------------------------------------|
+| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder to cleanup the kanban board) |
 
 Full help: `backlog --help`
 

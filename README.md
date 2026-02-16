@@ -68,16 +68,18 @@ After running `backlog init` and choosing the MCP or CLI integration, work in th
 
 **Step 1 — Describe your idea.** Tell the agent what you want to build and ask it to split the work into small tasks with clear descriptions and acceptance criteria.
 
-> **🤖 Ask your AI Agent:** I want to add a search feature to the web view that searches tasks, docs, and decisions. Please decompose this into small Backlog.md tasks.
+**🤖 Ask your AI Agent:**
+> I want to add a search feature to the web view that searches tasks, docs, and decisions. Please decompose this into small Backlog.md tasks.
 
 > [!NOTE]
-> **Review checkpoint #1** — read the task descriptions and acceptance criteria. Make sure each task is small enough to complete in a single session.
+> **Review checkpoint #1** — read the task descriptions and acceptance criteria.
 
-**Step 2 — One task at a time.** Work on a single task per agent session, one PR per task. Good task splitting means each session can work independently without conflicts.
+**Step 2 — One task at a time.** Work on a single task per agent session, one PR per task. Good task splitting means each session can work independently without conflicts. Make sure each task is small enough to complete in a single conversation. You want to avoid running out of context window.
 
 **Step 3 — Plan before coding.** Ask the agent to research and write an implementation plan in the task. Do this right before implementation so the plan reflects the current state of the codebase.
 
-> **🤖 Ask your AI Agent:** Work on BACK-10 only. Research the codebase and write an implementation plan in the task. Wait for my approval before coding.
+**🤖 Ask your AI Agent:**
+> Work on BACK-10 only. Research the codebase and write an implementation plan in the task. Wait for my approval before coding.
 
 > [!NOTE]
 > **Review checkpoint #2** — read the plan. Does the approach make sense? Approve it or ask the agent to revise.
