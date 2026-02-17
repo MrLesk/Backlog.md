@@ -246,32 +246,6 @@ export function collectMilestoneIds(
 }
 
 /**
- * Legacy function for backward compatibility - collects from config milestones
- */
-export function collectMilestones(tasks: Task[], configMilestones: string[]): string[] {
-	const merged: string[] = [];
-	const seen = new Set<string>();
-
-	const addMilestone = (value: string) => {
-		const normalized = normalizeMilestoneName(value);
-		if (!normalized) return;
-		const key = milestoneKey(normalized);
-		if (seen.has(key)) return;
-		seen.add(key);
-		merged.push(normalized);
-	};
-
-	for (const m of configMilestones) {
-		addMilestone(m);
-	}
-	for (const task of tasks) {
-		addMilestone(task.milestone ?? "");
-	}
-
-	return merged;
-}
-
-/**
  * Get the display label for a milestone
  * Uses the milestone entity title if available, otherwise returns the ID
  */
@@ -371,26 +345,6 @@ export function buildMilestoneBuckets(
 	];
 
 	return buckets;
-}
-
-/**
- * Legacy version: Build milestone buckets using config milestone strings
- * @deprecated Use buildMilestoneBuckets with Milestone entities instead
- */
-export function buildMilestoneBucketsFromConfig(
-	tasks: Task[],
-	configMilestones: string[],
-	statuses: string[],
-): MilestoneBucket[] {
-	// Convert config milestone strings to minimal Milestone entities
-	const milestoneEntities: Milestone[] = configMilestones.map((id) => ({
-		id,
-		title: id,
-		description: "",
-		rawContent: "",
-	}));
-
-	return buildMilestoneBuckets(tasks, milestoneEntities, statuses);
 }
 
 /**

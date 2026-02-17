@@ -93,7 +93,6 @@ export async function initializeProject(
 		projectName,
 		statuses: existingConfig?.statuses || ["To Do", "In Progress", "Done"],
 		labels: existingConfig?.labels || [],
-		milestones: existingConfig?.milestones || [],
 		defaultStatus: existingConfig?.defaultStatus || "To Do",
 		dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
 		maxColumnWidth: existingConfig?.maxColumnWidth || 20,

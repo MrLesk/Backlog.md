@@ -10,7 +10,6 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		defaultStatus: "",
 		statuses: ["To Do", "In Progress", "Done"],
 		labels: [],
-		milestones: [],
 		dateFormat: "YYYY-MM-DD",
 		maxColumnWidth: 80,
 		autoOpenBrowser: true,
@@ -34,7 +33,6 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 	// Ensure arrays are not undefined
 	migratedConfig.statuses = config.statuses || defaultConfig.statuses;
 	migratedConfig.labels = config.labels || defaultConfig.labels;
-	migratedConfig.milestones = config.milestones || defaultConfig.milestones;
 
 	return migratedConfig;
 }

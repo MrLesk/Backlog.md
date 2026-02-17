@@ -1,11 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Milestone, Task } from "../../types";
-import {
-	buildMilestoneBuckets,
-	buildMilestoneBucketsFromConfig,
-	collectMilestones,
-	validateMilestoneName,
-} from "./milestones";
+import { buildMilestoneBuckets, collectMilestoneIds, validateMilestoneName } from "./milestones";
 
 const makeTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -18,24 +13,25 @@ const makeTask = (overrides: Partial<Task>): Task => ({
 	...overrides,
 });
 
-describe("buildMilestoneBucketsFromConfig", () => {
+describe("buildMilestoneBuckets", () => {
 	const tasks = [
 		makeTask({ id: "task-1", milestone: "M1", status: "To Do" }),
 		makeTask({ id: "task-2", milestone: "M2", status: "In Progress" }),
 		makeTask({ id: "task-3", status: "Done" }),
 	];
 
-	it("returns buckets for configured milestones, discovered milestones, and no-milestone", () => {
-		const buckets = buildMilestoneBucketsFromConfig(tasks, ["M1"], ["To Do", "In Progress", "Done"]);
+	it("returns buckets for file milestones, discovered milestones, and no-milestone", () => {
+		const milestones: Milestone[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
+		const buckets = buildMilestoneBuckets(tasks, milestones, ["To Do", "In Progress", "Done"]);
 		const labels = buckets.map((b) => b.label);
 		expect(labels).toEqual(["Tasks without milestone", "M1", "M2"]);
 	});
 
 	it("calculates status counts per bucket", () => {
-		const buckets = buildMilestoneBucketsFromConfig(tasks, ["M1"], ["To Do", "In Progress", "Done"]);
+		const milestones: Milestone[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
+		const buckets = buildMilestoneBuckets(tasks, milestones, ["To Do", "In Progress", "Done"]);
 		const m1 = buckets.find((b) => b.label === "M1");
 		const none = buckets.find((b) => b.isNoMilestone);
-
 		expect(m1?.statusCounts["To Do"]).toBe(1);
 		expect(none?.statusCounts.Done).toBe(1);
 	});
@@ -45,13 +41,12 @@ describe("buildMilestoneBucketsFromConfig", () => {
 			makeTask({ id: "task-1", milestone: "M1", status: "Done" }),
 			makeTask({ id: "task-2", milestone: "M1", status: "Done" }),
 		];
-		const buckets = buildMilestoneBucketsFromConfig(completedTasks, ["M1"], ["To Do", "In Progress", "Done"]);
+		const milestones: Milestone[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
+		const buckets = buildMilestoneBuckets(completedTasks, milestones, ["To Do", "In Progress", "Done"]);
 		const m1 = buckets.find((b) => b.label === "M1");
 		expect(m1?.isCompleted).toBe(true);
 	});
-});
 
-describe("buildMilestoneBuckets", () => {
 	it("keeps active milestones when archived titles are reused", () => {
 		const tasks = [makeTask({ id: "task-1", milestone: "m-2", status: "To Do" })];
 		const milestones: Milestone[] = [
@@ -125,20 +120,25 @@ describe("buildMilestoneBuckets", () => {
 	});
 });
 
-describe("collectMilestones", () => {
+describe("collectMilestoneIds", () => {
 	const tasks = [
 		makeTask({ id: "task-1", milestone: "M1" }),
 		makeTask({ id: "task-2", milestone: "New" }),
 		makeTask({ id: "task-3" }),
 	];
+	const milestones: Milestone[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
 
-	it("merges configured and discovered milestones without duplicates", () => {
-		expect(collectMilestones(tasks, ["M1", "M2"])).toEqual(["M1", "M2", "New"]);
+	it("merges file milestones and discovered task milestones without duplicates", () => {
+		expect(collectMilestoneIds(tasks, milestones)).toEqual(["M1", "New"]);
 	});
 
 	it("normalizes whitespace and casing", () => {
-		const result = collectMilestones(tasks, ["  m1  "]);
-		expect(result).toEqual(["m1", "New"]);
+		const variantTasks = [
+			makeTask({ id: "task-1", milestone: "  m1  " }),
+			makeTask({ id: "task-2", milestone: "New" }),
+		];
+		const result = collectMilestoneIds(variantTasks, milestones);
+		expect(result).toEqual(["M1", "New"]);
 	});
 });
 

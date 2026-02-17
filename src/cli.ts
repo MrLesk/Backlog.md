@@ -3038,9 +3038,11 @@ configCmd
 				case "labels":
 					console.log(config.labels.join(", "));
 					break;
-				case "milestones":
-					console.log(config.milestones.join(", "));
+				case "milestones": {
+					const milestones = await core.filesystem.listMilestones();
+					console.log(milestones.map((milestone) => milestone.id).join(", "));
 					break;
+				}
 				case "definitionOfDone":
 					console.log(config.definitionOfDone?.join(", ") || "");
 					break;
@@ -3225,8 +3227,15 @@ configCmd
 				case "labels":
 				case "milestones":
 				case "definitionOfDone":
-					console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
-					console.error("Array values should be edited in the config file directly.");
+					if (key === "milestones") {
+						console.error("milestones cannot be set directly.");
+						console.error(
+							"Use milestone files via milestone commands (e.g. `backlog milestone list`, `backlog milestone add`).",
+						);
+					} else {
+						console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
+						console.error("Array values should be edited in the config file directly.");
+					}
 					process.exit(1);
 					break;
 				case "taskPrefix":
@@ -3273,7 +3282,8 @@ configCmd
 			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
-			console.log(`  milestones: [${config.milestones.join(", ")}]`);
+			const milestones = await core.filesystem.listMilestones();
+			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);
 			console.log(`  dateFormat: ${config.dateFormat}`);
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);

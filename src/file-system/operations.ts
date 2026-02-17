@@ -792,6 +792,19 @@ ${rawContent.trim()}
 `;
 	}
 
+	private rewriteDefaultMilestoneDescription(rawContent: string, previousTitle: string, nextTitle: string): string {
+		const defaultDescription = `Milestone: ${previousTitle}`;
+		const descriptionSectionPattern = /(##\s+Description\s*(?:\r?\n)+)([\s\S]*?)(?=(?:\r?\n)##\s+|$)/i;
+
+		return rawContent.replace(descriptionSectionPattern, (fullSection, heading: string, body: string) => {
+			if (body.trim() !== defaultDescription) {
+				return fullSection;
+			}
+			const trailingWhitespace = body.match(/\s*$/)?.[0] ?? "";
+			return `${heading}Milestone: ${nextTitle}${trailingWhitespace}`;
+		});
+	}
+
 	private async findMilestoneFile(
 		identifier: string,
 		scope: "active" | "archived" = "active",
@@ -1037,15 +1050,11 @@ ${description || `Milestone: ${title}`}`,
 			targetPath = join(milestonesDir, targetFilename);
 			sourcePath = milestoneMatch.filepath;
 			originalContent = milestoneMatch.content;
-			let nextRawContent = milestone.rawContent;
-			const defaultDescription = `Milestone: ${milestone.title}`;
-			if (milestone.description.trim() === defaultDescription) {
-				const escapedDefaultDescription = defaultDescription.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-				nextRawContent = nextRawContent.replace(
-					new RegExp(escapedDefaultDescription, "g"),
-					`Milestone: ${normalizedTitle}`,
-				);
-			}
+			const nextRawContent = this.rewriteDefaultMilestoneDescription(
+				milestone.rawContent,
+				milestone.title,
+				normalizedTitle,
+			);
 			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent);
 
 			if (sourcePath !== targetPath) {
@@ -1269,7 +1278,6 @@ ${description || `Milestone: ${title}`}`,
 					break;
 				case "statuses":
 				case "labels":
-				case "milestones":
 					if (value.startsWith("[") && value.endsWith("]")) {
 						const arrayContent = value.slice(1, -1);
 						config[key] = arrayContent
@@ -1337,7 +1345,6 @@ ${description || `Milestone: ${title}`}`,
 			defaultReporter: config.defaultReporter,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
 			labels: config.labels || [],
-			milestones: config.milestones || [],
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
@@ -1364,7 +1371,6 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
-			`milestones: [${config.milestones.map((m) => `"${m}"`).join(", ")}]`,
 			...(Array.isArray(config.definitionOfDone)
 				? [`definition_of_done: [${config.definitionOfDone.map((item) => `"${item}"`).join(", ")}]`]
 				: []),

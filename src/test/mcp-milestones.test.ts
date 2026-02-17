@@ -412,6 +412,35 @@ describe("MCP milestone tools", () => {
 		expect(lastCommit).toContain("backlog: Rename milestone m-0");
 	});
 
+	it("only rewrites the default description section when renaming milestones", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
+		});
+
+		const milestoneFilesBefore = await Array.fromAsync(
+			new Bun.Glob("m-*.md").scan({ cwd: server.filesystem.milestonesDir, followSymlinks: true }),
+		);
+		expect(milestoneFilesBefore).toHaveLength(1);
+		const sourcePath = join(server.filesystem.milestonesDir, milestoneFilesBefore[0] as string);
+		const originalContent = await Bun.file(sourcePath).text();
+		const notesLine = "Keep reference Milestone: Release 1.0 in notes";
+		await Bun.write(sourcePath, `${originalContent.trimEnd()}\n\n## Notes\n\n${notesLine}\n`);
+
+		const rename = await server.testInterface.callTool({
+			params: {
+				name: "milestone_rename",
+				arguments: { from: "Release 1.0", to: "Release 2.0", updateTasks: false },
+			},
+		});
+		expect(getText(rename.content)).toContain('Renamed milestone "Release 1.0" (m-0) → "Release 2.0" (m-0).');
+
+		const renamedPath = join(server.filesystem.milestonesDir, "m-0 - release-2.0.md");
+		const updatedContent = await Bun.file(renamedPath).text();
+		expect(updatedContent).toContain("## Description\n\nMilestone: Release 2.0");
+		expect(updatedContent).toContain(`## Notes\n\n${notesLine}`);
+		expect(updatedContent).not.toContain("## Notes\n\nKeep reference Milestone: Release 2.0 in notes");
+	});
+
 	it("treats no-op milestone renames as successful without creating commits", async () => {
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
