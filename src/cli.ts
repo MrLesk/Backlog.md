@@ -35,6 +35,7 @@ import {
 	type DocumentSearchResult,
 	EntityType,
 	isLocalEditableTask,
+	type Milestone,
 	type SearchPriorityFilter,
 	type SearchResult,
 	type SearchResultType,
@@ -2465,7 +2466,7 @@ milestoneCmd
 
 		const statuses = config?.statuses ?? ["To Do", "In Progress", "Done"];
 		const archivedMilestoneIds = collectArchivedMilestoneKeys(archivedMilestones, milestones);
-		const buckets = buildMilestoneBuckets(tasks, milestones, statuses, { archivedMilestoneIds });
+		const buckets = buildMilestoneBuckets(tasks, milestones, statuses, { archivedMilestoneIds, archivedMilestones });
 		const active = buckets.filter((bucket) => !bucket.isNoMilestone && !bucket.isCompleted);
 		const completed = buckets.filter((bucket) => !bucket.isNoMilestone && bucket.isCompleted);
 
@@ -2532,7 +2533,6 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean; m
 	const _layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
 	const _maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
 	const statuses = config?.statuses || [];
-	const milestones = config?.milestones || [];
 
 	// Use unified view for Tab switching support
 	const { runUnifiedView } = await import("./ui/unified-view.ts");
@@ -2540,7 +2540,6 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean; m
 		core,
 		initialView: "kanban",
 		milestoneMode: options.milestones,
-		milestones,
 		tasksLoader: async (updateProgress) => {
 			const [tasks, milestoneEntities, archivedMilestones] = await Promise.all([
 				core.loadTasks((msg) => {
@@ -2549,11 +2548,93 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean; m
 				core.filesystem.listMilestones(),
 				core.filesystem.listArchivedMilestones(),
 			]);
+			const resolveMilestoneAlias = (value?: string): string => {
+				const normalized = (value ?? "").trim();
+				if (!normalized) {
+					return "";
+				}
+				const key = normalized.toLowerCase();
+				const looksLikeMilestoneId = /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized);
+				const canonicalInputId = looksLikeMilestoneId
+					? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
+					: null;
+				const aliasKeys = new Set<string>([key]);
+				if (/^\d+$/.test(normalized)) {
+					const numericAlias = String(Number.parseInt(normalized, 10));
+					aliasKeys.add(numericAlias);
+					aliasKeys.add(`m-${numericAlias}`);
+				} else {
+					const idMatch = normalized.match(/^m-(\d+)$/i);
+					if (idMatch?.[1]) {
+						const numericAlias = String(Number.parseInt(idMatch[1], 10));
+						aliasKeys.add(numericAlias);
+						aliasKeys.add(`m-${numericAlias}`);
+					}
+				}
+				const idMatchesAlias = (milestoneId: string): boolean => {
+					const idKey = milestoneId.trim().toLowerCase();
+					if (aliasKeys.has(idKey)) {
+						return true;
+					}
+					const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
+					if (!idMatch?.[1]) {
+						return false;
+					}
+					const numericAlias = String(Number.parseInt(idMatch[1], 10));
+					return aliasKeys.has(numericAlias) || aliasKeys.has(`m-${numericAlias}`);
+				};
+				const findIdMatch = (milestones: Milestone[]): Milestone | undefined => {
+					const rawExactMatch = milestones.find((milestone) => milestone.id.trim().toLowerCase() === key);
+					if (rawExactMatch) {
+						return rawExactMatch;
+					}
+					if (canonicalInputId) {
+						const canonicalRawMatch = milestones.find(
+							(milestone) => milestone.id.trim().toLowerCase() === canonicalInputId,
+						);
+						if (canonicalRawMatch) {
+							return canonicalRawMatch;
+						}
+					}
+					return milestones.find((milestone) => idMatchesAlias(milestone.id));
+				};
+
+				const activeIdMatch = findIdMatch(milestoneEntities);
+				if (activeIdMatch) {
+					return activeIdMatch.id;
+				}
+				if (looksLikeMilestoneId) {
+					const archivedIdMatch = findIdMatch(archivedMilestones);
+					if (archivedIdMatch) {
+						return archivedIdMatch.id;
+					}
+				}
+				const activeTitleMatches = milestoneEntities.filter(
+					(milestone) => milestone.title.trim().toLowerCase() === key,
+				);
+				if (activeTitleMatches.length === 1) {
+					return activeTitleMatches[0]?.id ?? normalized;
+				}
+				if (activeTitleMatches.length > 1) {
+					return normalized;
+				}
+				const archivedIdMatch = findIdMatch(archivedMilestones);
+				if (archivedIdMatch) {
+					return archivedIdMatch.id;
+				}
+				const archivedTitleMatches = archivedMilestones.filter(
+					(milestone) => milestone.title.trim().toLowerCase() === key,
+				);
+				if (archivedTitleMatches.length === 1) {
+					return archivedTitleMatches[0]?.id ?? normalized;
+				}
+				return normalized;
+			};
 			const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities));
 			const normalizedTasks =
 				archivedKeys.size > 0
 					? tasks.map((task) => {
-							const key = milestoneKey(task.milestone);
+							const key = milestoneKey(resolveMilestoneAlias(task.milestone));
 							if (!key || !archivedKeys.has(key)) {
 								return task;
 							}
@@ -2957,9 +3038,11 @@ configCmd
 				case "labels":
 					console.log(config.labels.join(", "));
 					break;
-				case "milestones":
-					console.log(config.milestones.join(", "));
+				case "milestones": {
+					const milestones = await core.filesystem.listMilestones();
+					console.log(milestones.map((milestone) => milestone.id).join(", "));
 					break;
+				}
 				case "definitionOfDone":
 					console.log(config.definitionOfDone?.join(", ") || "");
 					break;
@@ -3144,8 +3227,15 @@ configCmd
 				case "labels":
 				case "milestones":
 				case "definitionOfDone":
-					console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
-					console.error("Array values should be edited in the config file directly.");
+					if (key === "milestones") {
+						console.error("milestones cannot be set directly.");
+						console.error(
+							"Use milestone files via milestone commands (e.g. `backlog milestone list`, `backlog milestone add`).",
+						);
+					} else {
+						console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
+						console.error("Array values should be edited in the config file directly.");
+					}
 					process.exit(1);
 					break;
 				case "taskPrefix":
@@ -3192,7 +3282,8 @@ configCmd
 			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
-			console.log(`  milestones: [${config.milestones.join(", ")}]`);
+			const milestones = await core.filesystem.listMilestones();
+			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);
 			console.log(`  dateFormat: ${config.dateFormat}`);
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);

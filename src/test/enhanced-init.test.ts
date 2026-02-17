@@ -147,7 +147,6 @@ describe("Enhanced init command", () => {
 		expect(existingConfig).toBeTruthy();
 		expect(existingConfig?.statuses).toEqual(["Backlog", "In Progress", "Review", "Done"]);
 		expect(existingConfig?.labels).toEqual(["bug", "feature", "enhancement"]);
-		expect(existingConfig?.milestones).toEqual(["v1.0", "v2.0"]);
 		expect(existingConfig?.dateFormat).toBe("dd/mm/yyyy");
 		expect(existingConfig?.maxColumnWidth).toBe(30);
 	});

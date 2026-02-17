@@ -120,6 +120,16 @@ describe("Config commands", () => {
 		expect(portOutput.trim()).toBe("7001");
 	});
 
+	it("surfaces milestones in config get/list from milestone files", async () => {
+		await core.filesystem.createMilestone("Release 1");
+
+		const milestonesOutput = await $`bun ${CLI_PATH} config get milestones`.cwd(TEST_DIR).text();
+		expect(milestonesOutput.trim()).toBe("m-0");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("milestones: [m-0]");
+	});
+
 	afterEach(async () => {
 		try {
 			await safeCleanup(TEST_DIR);

@@ -210,7 +210,10 @@ export class ApiClient {
 		});
 	}
 
-	async updateTask(id: string, updates: Partial<Task>): Promise<Task> {
+	async updateTask(
+		id: string,
+		updates: Omit<Partial<Task>, "milestone"> & { milestone?: string | null },
+	): Promise<Task> {
 		return this.fetchJson<Task>(`${API_BASE}/tasks/${id}`, {
 			method: "PUT",
 			body: JSON.stringify(updates),

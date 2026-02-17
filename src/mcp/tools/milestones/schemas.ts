@@ -69,7 +69,7 @@ export const milestoneRemoveSchema: JsonSchema = {
 		reassignTo: {
 			type: "string",
 			maxLength: 100,
-			description: "Target milestone name when taskHandling is reassign (must exist in config)",
+			description: "Target milestone name when taskHandling is reassign (must exist as an active milestone file)",
 		},
 	},
 	required: ["name"],

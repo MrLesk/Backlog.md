@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
@@ -197,6 +198,212 @@ describe("BacklogServer search endpoint", () => {
 		const shortId = created.id.replace(/^task-/i, "");
 		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
 		expect(fetched.milestone).toBe("m-2");
+
+		const milestoneCreate = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Numeric Alias Milestone",
+			}),
+		});
+		expect(milestoneCreate.status).toBe(201);
+		const createdMilestone = (await milestoneCreate.json()) as { id: string };
+		const numericAlias = createdMilestone.id.replace(/^m-/i, "");
+
+		const numericAliasTaskCreate = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Numeric alias task",
+				status: "To Do",
+				milestone: numericAlias,
+			}),
+		});
+		expect(numericAliasTaskCreate.status).toBe(201);
+		const numericAliasTask = (await numericAliasTaskCreate.json()) as Task;
+		expect(numericAliasTask.milestone).toBe(createdMilestone.id);
+
+		const titleAliasMilestoneCreate = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "1",
+			}),
+		});
+		expect(titleAliasMilestoneCreate.status).toBe(201);
+
+		const idPriorityMilestoneCreate = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "ID priority milestone",
+			}),
+		});
+		expect(idPriorityMilestoneCreate.status).toBe(201);
+
+		const idPriorityTaskCreate = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "ID priority task",
+				status: "To Do",
+				milestone: "1",
+			}),
+		});
+		expect(idPriorityTaskCreate.status).toBe(201);
+		const idPriorityTask = (await idPriorityTaskCreate.json()) as Task;
+		expect(idPriorityTask.milestone).toBe("m-1");
+	});
+
+	it("resolves numeric milestone aliases to zero-padded legacy milestone IDs", async () => {
+		await Bun.write(
+			join(filesystem.milestonesDir, "m-01 - legacy-release.md"),
+			`---
+id: m-01
+title: "Legacy Release"
+---
+
+## Description
+
+Milestone: Legacy Release
+`,
+		);
+
+		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Legacy alias task",
+				status: "To Do",
+				milestone: "1",
+			}),
+		});
+		expect(createResponse.status).toBe(201);
+		const created = (await createResponse.json()) as Task;
+		expect(created.milestone).toBe("m-01");
+
+		const updateResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				milestone: "m-1",
+			}),
+		});
+		expect(updateResponse.status).toBe(200);
+		const updated = (await updateResponse.json()) as Task;
+		expect(updated.milestone).toBe("m-01");
+	});
+
+	it("prefers canonical IDs when zero-padded and canonical milestone IDs both exist", async () => {
+		await Bun.write(
+			join(filesystem.milestonesDir, "m-1 - canonical-release.md"),
+			`---
+id: m-1
+title: "Canonical Release"
+---
+
+## Description
+
+Milestone: Canonical Release
+`,
+		);
+		await Bun.write(
+			join(filesystem.milestonesDir, "m-01 - zero-padded-release.md"),
+			`---
+id: m-01
+title: "Zero-padded Release"
+---
+
+## Description
+
+Milestone: Zero-padded Release
+`,
+		);
+
+		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Canonical tie-break task",
+				status: "To Do",
+				milestone: "1",
+			}),
+		});
+		expect(createResponse.status).toBe(201);
+		const created = (await createResponse.json()) as Task;
+		expect(created.milestone).toBe("m-1");
+	});
+
+	it("prefers archived milestone IDs over active title matches for ID-shaped task inputs", async () => {
+		await Bun.write(
+			join(filesystem.archiveMilestonesDir, "m-0 - archived-id.md"),
+			`---
+id: m-0
+title: "Archived source"
+---
+
+## Description
+
+Milestone: Archived source
+`,
+		);
+		await Bun.write(
+			join(filesystem.milestonesDir, "m-2 - active-id-shaped-title.md"),
+			`---
+id: m-2
+title: "m-0"
+---
+
+## Description
+
+Milestone: m-0
+`,
+		);
+
+		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Archived ID priority task",
+				status: "To Do",
+				milestone: "m-0",
+			}),
+		});
+		expect(createResponse.status).toBe(201);
+		const created = (await createResponse.json()) as Task;
+		expect(created.milestone).toBe("m-0");
+	});
+
+	it("rejects milestone titles that collide with existing milestone IDs", async () => {
+		const firstCreate = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Release Alias",
+			}),
+		});
+		expect(firstCreate.status).toBe(201);
+		const created = (await firstCreate.json()) as { id: string };
+
+		const conflictCreate = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: created.id.toUpperCase(),
+			}),
+		});
+		expect(conflictCreate.status).toBe(400);
+		const conflictPayload = (await conflictCreate.json()) as { error?: string };
+		expect(conflictPayload.error).toContain("already exists");
+
+		const numericAliasConflict = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: created.id.replace(/^m-/i, ""),
+			}),
+		});
+		expect(numericAliasConflict.status).toBe(400);
 	});
 
 	it("rebuilds the Fuse index when markdown content changes", async () => {

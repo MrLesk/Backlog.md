@@ -1,4 +1,4 @@
-import { unlink } from "node:fs/promises";
+import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
@@ -464,12 +464,195 @@ export class Core {
 	}
 
 	// Config migration
+	private parseLegacyInlineArray(value: string): string[] {
+		const items: string[] = [];
+		let current = "";
+		let quote: '"' | "'" | null = null;
+
+		const pushCurrent = () => {
+			const normalized = current.trim().replace(/\\(['"])/g, "$1");
+			if (normalized) {
+				items.push(normalized);
+			}
+			current = "";
+		};
+
+		for (let i = 0; i < value.length; i += 1) {
+			const ch = value[i];
+			const prev = i > 0 ? value[i - 1] : "";
+			if (quote) {
+				if (ch === quote && prev !== "\\") {
+					quote = null;
+					continue;
+				}
+				current += ch;
+				continue;
+			}
+			if (ch === '"' || ch === "'") {
+				quote = ch;
+				continue;
+			}
+			if (ch === ",") {
+				pushCurrent();
+				continue;
+			}
+			current += ch;
+		}
+		pushCurrent();
+		return items;
+	}
+
+	private stripYamlComment(value: string): string {
+		let quote: '"' | "'" | null = null;
+		for (let i = 0; i < value.length; i += 1) {
+			const ch = value[i];
+			const prev = i > 0 ? value[i - 1] : "";
+			if (quote) {
+				if (ch === quote && prev !== "\\") {
+					quote = null;
+				}
+				continue;
+			}
+			if (ch === '"' || ch === "'") {
+				quote = ch;
+				continue;
+			}
+			if (ch === "#") {
+				return value.slice(0, i).trimEnd();
+			}
+		}
+		return value;
+	}
+
+	private parseLegacyYamlValue(value: string): string {
+		const trimmed = this.stripYamlComment(value).trim();
+		const singleQuoted = trimmed.match(/^'(.*)'$/);
+		if (singleQuoted?.[1] !== undefined) {
+			return singleQuoted[1].replace(/''/g, "'");
+		}
+		const doubleQuoted = trimmed.match(/^"(.*)"$/);
+		if (doubleQuoted?.[1] !== undefined) {
+			return doubleQuoted[1].replace(/\\"/g, '"').replace(/\\'/g, "'");
+		}
+		return trimmed;
+	}
+
+	private async extractLegacyConfigMilestones(): Promise<string[]> {
+		try {
+			const configPath = join(this.fs.rootDir, DEFAULT_DIRECTORIES.BACKLOG, "config.yml");
+			const content = await Bun.file(configPath).text();
+			const lines = content.split("\n");
+			for (let i = 0; i < lines.length; i += 1) {
+				const line = lines[i] ?? "";
+				const match = line.match(/^(\s*)milestones\s*:\s*(.*)$/);
+				if (!match) {
+					continue;
+				}
+
+				const milestoneIndent = (match[1] ?? "").length;
+				const trailing = this.stripYamlComment(match[2] ?? "").trim();
+				if (trailing.startsWith("[")) {
+					let combined = trailing;
+					let closed = trailing.endsWith("]");
+					let j = i + 1;
+					while (!closed && j < lines.length) {
+						const segment = this.stripYamlComment(lines[j] ?? "").trim();
+						combined += segment;
+						if (segment.includes("]")) {
+							closed = true;
+							break;
+						}
+						j += 1;
+					}
+					if (closed) {
+						const openIndex = combined.indexOf("[");
+						const closeIndex = combined.lastIndexOf("]");
+						if (openIndex !== -1 && closeIndex > openIndex) {
+							const parsed = this.parseLegacyInlineArray(combined.slice(openIndex + 1, closeIndex));
+							return parsed.map((item) => this.parseLegacyYamlValue(item)).filter(Boolean);
+						}
+					}
+				}
+				if (trailing.length > 0) {
+					const single = this.parseLegacyYamlValue(trailing);
+					return single ? [single] : [];
+				}
+
+				const values: string[] = [];
+				for (let j = i + 1; j < lines.length; j += 1) {
+					const nextLine = lines[j] ?? "";
+					if (!nextLine.trim()) {
+						continue;
+					}
+					const nextIndent = nextLine.match(/^\s*/)?.[0].length ?? 0;
+					if (nextIndent <= milestoneIndent) {
+						break;
+					}
+					const trimmed = nextLine.trim();
+					if (!trimmed.startsWith("-")) {
+						continue;
+					}
+					const itemValue = this.parseLegacyYamlValue(trimmed.slice(1));
+					if (itemValue) {
+						values.push(itemValue);
+					}
+				}
+				return values;
+			}
+			return [];
+		} catch {
+			return [];
+		}
+	}
+
+	private async migrateLegacyConfigMilestonesToFiles(legacyMilestones: string[]): Promise<void> {
+		if (legacyMilestones.length === 0) {
+			return;
+		}
+		const existingMilestones = await this.fs.listMilestones();
+		const existingKeys = new Set<string>();
+		for (const milestone of existingMilestones) {
+			const idKey = milestone.id.trim().toLowerCase();
+			const titleKey = milestone.title.trim().toLowerCase();
+			if (idKey) {
+				existingKeys.add(idKey);
+			}
+			if (titleKey) {
+				existingKeys.add(titleKey);
+			}
+		}
+		for (const name of legacyMilestones) {
+			const normalized = name.trim();
+			const key = normalized.toLowerCase();
+			if (!normalized || existingKeys.has(key)) {
+				continue;
+			}
+			const created = await this.fs.createMilestone(normalized);
+			const createdIdKey = created.id.trim().toLowerCase();
+			const createdTitleKey = created.title.trim().toLowerCase();
+			if (createdIdKey) {
+				existingKeys.add(createdIdKey);
+			}
+			if (createdTitleKey) {
+				existingKeys.add(createdTitleKey);
+			}
+		}
+	}
+
 	async ensureConfigMigrated(): Promise<void> {
 		await this.ensureConfigLoaded();
+		const legacyMilestones = await this.extractLegacyConfigMilestones();
 		let config = await this.fs.loadConfig();
+		const needsSchemaMigration = !config || needsMigration(config);
 
-		if (!config || needsMigration(config)) {
+		if (needsSchemaMigration) {
 			config = migrateConfig(config || {});
+		}
+		if (legacyMilestones.length > 0) {
+			await this.migrateLegacyConfigMilestonesToFiles(legacyMilestones);
+		}
+		if (config && (needsSchemaMigration || legacyMilestones.length > 0)) {
+			// Rewrite config to apply schema defaults and strip legacy milestones key after successful migration.
 			await this.fs.saveConfig(config);
 		}
 
@@ -1768,16 +1951,65 @@ export class Core {
 	async archiveMilestone(
 		identifier: string,
 		autoCommit?: boolean,
-	): Promise<{ success: boolean; milestone?: Milestone }> {
+	): Promise<{ success: boolean; sourcePath?: string; targetPath?: string; milestone?: Milestone }> {
 		const result = await this.fs.archiveMilestone(identifier);
 
 		if (result.success && result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
 			const repoRoot = await this.git.stageFileMove(result.sourcePath, result.targetPath);
 			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
-			await this.git.commitChanges(`backlog: Archive milestone${label}`, repoRoot);
+			const commitPaths = [result.sourcePath, result.targetPath];
+			try {
+				await this.git.commitFiles(`backlog: Archive milestone${label}`, commitPaths, repoRoot);
+			} catch (error) {
+				await this.git.resetPaths(commitPaths, repoRoot);
+				try {
+					await moveFile(result.targetPath, result.sourcePath);
+				} catch {
+					// Ignore rollback failure and propagate original commit error.
+				}
+				throw error;
+			}
 		}
 
-		return { success: result.success, milestone: result.milestone };
+		return {
+			success: result.success,
+			sourcePath: result.sourcePath,
+			targetPath: result.targetPath,
+			milestone: result.milestone,
+		};
+	}
+
+	async renameMilestone(
+		identifier: string,
+		title: string,
+		autoCommit?: boolean,
+	): Promise<{
+		success: boolean;
+		sourcePath?: string;
+		targetPath?: string;
+		milestone?: Milestone;
+		previousTitle?: string;
+	}> {
+		const result = await this.fs.renameMilestone(identifier, title);
+		if (!result.success) {
+			return result;
+		}
+
+		if (result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
+			const repoRoot = await this.git.stageFileMove(result.sourcePath, result.targetPath);
+			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
+			const commitPaths = [result.sourcePath, result.targetPath];
+			try {
+				await this.git.commitFiles(`backlog: Rename milestone${label}`, commitPaths, repoRoot);
+			} catch (error) {
+				await this.git.resetPaths(commitPaths, repoRoot);
+				const rollbackTitle = result.previousTitle ?? title;
+				await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
+				throw error;
+			}
+		}
+
+		return result;
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
@@ -2085,7 +2317,6 @@ export class Core {
 			projectName: projectName,
 			statuses: [...DEFAULT_STATUSES],
 			labels: [],
-			milestones: [],
 			defaultStatus: DEFAULT_STATUSES[0], // Use first status as default
 			dateFormat: "yyyy-mm-dd",
 			maxColumnWidth: 20, // Default for terminal display
