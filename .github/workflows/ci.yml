@@ -42,6 +42,16 @@ jobs:
             bun test --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
           fi
         shell: bash
+      - name: Run interactive TUI regression tests
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/run-tui-interactive-tests.sh
+      - name: Upload interactive TUI transcripts on failure
+        if: failure() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tui-interactive-transcripts-${{ matrix.os }}
+          path: tmp/tui-interactive-transcripts/*.log
+          if-no-files-found: ignore
 
   build-test:
     name: compile-and-smoke-test
