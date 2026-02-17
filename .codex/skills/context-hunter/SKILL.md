@@ -1,6 +1,6 @@
 ---
 name: context-hunter
-description: Perform complexity-aware discovery before coding. Assess request completeness, find local conventions, and align implementation with existing code patterns.
+description: MUST run before any code implementation task. Classifies complexity, discovers local conventions, finds reusable patterns, and prevents blind coding. Invoke this skill before writing or modifying code.
 ---
 
 # Context Hunter
