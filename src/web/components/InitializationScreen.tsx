@@ -240,7 +240,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 							MCP Connector (Recommended)
 						</div>
 						<div className="text-sm text-gray-500 dark:text-gray-400">
-							For Claude Code, Codex, Gemini CLI, Cursor, etc. Agents learn the Backlog.md workflow through
+							For Claude Code, Codex, Gemini CLI, Kiro, Cursor, etc. Agents learn the Backlog.md workflow through
 							MCP tools, resources, and prompts.
 						</div>
 					</div>

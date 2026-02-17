@@ -18,7 +18,7 @@
 
 * 📝 **Markdown-native tasks** -- manage every issue as a plain `.md` file
 
-* 🤖 **AI-Ready** -- Works with Claude Code, Gemini CLI, Codex & any other MCP or CLI compatible AI assistants
+* 🤖 **AI-Ready** -- Works with Claude Code, Gemini CLI, Codex, Kiro & any other MCP or CLI compatible AI assistants
 
 * 📊 **Instant terminal Kanban** -- `backlog board` paints a live board in your shell
 
@@ -53,7 +53,7 @@ backlog init "My Awesome Project"
 ```
 
 The init wizard will ask how you want to connect AI tools:
-- **MCP connector** (recommended) — auto-configures Claude Code, Codex, Gemini CLI, or Cursor and adds workflow instructions for your agents.
+- **MCP connector** (recommended) — auto-configures Claude Code, Codex, Gemini CLI, Kiro or Cursor and adds workflow instructions for your agents.
 - **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.
 - **Skip** — no AI setup; use Backlog.md purely as a task manager.
 
@@ -63,7 +63,7 @@ All data is saved under the `backlog` folder as human-readable Markdown files (e
 
 ### Working with AI agents
 
-This is the recommended flow for Claude Code, Codex, Gemini CLI, and similar tools — following the **spec‑driven AI development** approach.
+This is the recommended flow for Claude Code, Codex, Gemini CLI, Kiro and similar tools — following the **spec‑driven AI development** approach.
 After running `backlog init` and choosing the MCP or CLI integration, work in this loop:
 
 **Step 1 — Describe your idea.** Tell the agent what you want to build and ask it to split the work into small tasks with clear descriptions and acceptance criteria.
@@ -147,15 +147,10 @@ backlog browser --no-open
 
 ## 🔧 MCP Integration (Model Context Protocol)
 
-The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, and Gemini CLI is via the MCP protocol.
+The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, Gemini CLI and Kiro is via the MCP protocol.
 You can run `backlog init` (even if you already initialized Backlog.md) to set up MCP integration automatically, or follow the manual steps below.
 
 ### Client guides
-
-> [!IMPORTANT]
-> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md.
-> This step is not required when using `backlog init` as it adds these instructions automatically.
-> Backlog.md's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
 
 <details>
   <summary><strong>Claude Code</strong></summary>
@@ -184,6 +179,15 @@ You can run `backlog init` (even if you already initialized Backlog.md) to set u
 
 </details>
 
+<details>
+  <summary><strong>Kiro</strong></summary>
+
+  ```bash
+  kiro-cli mcp add --scope global --name backlog --command backlog --args mcp,start
+  ```
+
+</details>
+
 Use the shared `backlog` server name everywhere – the MCP server auto-detects whether the current directory is initialized and falls back to `backlog://init-required` when needed.
 
 ### Manual config
@@ -199,8 +203,14 @@ Use the shared `backlog` server name everywhere – the MCP server auto-detects 
 }
 ```
 
+> [!IMPORTANT]
+> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md.
+> This step is not required when using `backlog init` as it adds these instructions automatically.
+> Backlog.md's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
+
+
 Once connected, agents can read the Backlog.md workflow instructions via the resource `backlog://docs/task-workflow`.
-Use `/mcp` command in your AI tool (Claude Code, Codex) to verify if the connection is working.
+Use `/mcp` command in your AI tool (Claude Code, Codex, Kiro) to verify if the connection is working.
 
 ---
 
