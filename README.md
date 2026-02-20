@@ -197,11 +197,17 @@ Use the shared `backlog` server name everywhere – the MCP server auto-detects 
   "mcpServers": {
     "backlog": {
       "command": "backlog",
-      "args": ["mcp", "start"]
+      "args": ["mcp", "start"],
+      "env": {
+        "BACKLOG_CWD": "/absolute/path/to/your/project"
+      }
     }
   }
 }
 ```
+
+If your IDE can't set the process working directory for MCP servers, set `BACKLOG_CWD` as shown above.
+If your IDE supports custom args but not env vars, you can also use `["mcp", "start", "--cwd", "/absolute/path/to/your/project"]`.
 
 > [!IMPORTANT]
 > When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md.
