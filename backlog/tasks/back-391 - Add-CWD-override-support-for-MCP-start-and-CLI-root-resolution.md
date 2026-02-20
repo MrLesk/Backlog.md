@@ -1,11 +1,11 @@
 ---
 id: BACK-391
 title: Add CWD override support for MCP start and CLI root resolution
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-20 23:07'
-updated_date: '2026-02-20 23:09'
+updated_date: '2026-02-20 23:11'
 labels: []
 dependencies: []
 priority: high
@@ -37,6 +37,12 @@ CLI root resolution now respects `BACKLOG_CWD` via `requireProjectRoot()` and ea
 
 README MCP manual configuration now documents `BACKLOG_CWD` and `--cwd` workaround patterns for IDEs that do not pass workspace cwd.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented runtime CWD override support for IDEs that launch MCP with an incorrect process directory. Added shared resolver (`BACKLOG_CWD`) for CLI root detection, `--cwd` support for `backlog mcp start` (precedence over env), preserved MCP fallback mode for non-initialized paths, documented manual MCP config overrides in README, and added focused unit tests for precedence/path validation behavior. PR: https://github.com/MrLesk/Backlog.md/pull/536
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
