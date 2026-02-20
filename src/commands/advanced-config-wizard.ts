@@ -78,9 +78,6 @@ async function runSinglePrompt(question: PromptQuestion, options?: PromptOptions
 			return {};
 		}
 		const normalized = String(result ?? "").trim();
-		if (!normalized && initialText !== undefined) {
-			return { [question.name]: initialText };
-		}
 		return { [question.name]: normalized };
 	}
 
