@@ -51,6 +51,7 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
 	buildDefinitionOfDoneItems,
@@ -181,7 +182,16 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
  * Exits with error message if no Backlog.md project is found.
  */
 async function requireProjectRoot(): Promise<string> {
-	const root = await findBacklogRoot(process.cwd());
+	let runtimeCwd: RuntimeCwdResolution;
+	try {
+		runtimeCwd = await resolveRuntimeCwd();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(message);
+		process.exit(1);
+	}
+
+	const root = await findBacklogRoot(runtimeCwd.cwd);
 	if (!root) {
 		console.error("No Backlog.md project found. Run `backlog init` to initialize.");
 		process.exit(1);
@@ -244,7 +254,8 @@ try {
 
 		let initialized = false;
 		try {
-			const projectRoot = await findBacklogRoot(process.cwd());
+			const runtimeCwd = await resolveRuntimeCwd();
+			const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 			if (projectRoot) {
 				const core = new Core(projectRoot);
 				const cfg = await core.filesystem.loadConfig();
@@ -271,6 +282,28 @@ try {
 	// Fall through to normal CLI parsing on any splash error
 }
 
+function getMcpStartCwdOverrideFromArgv(argv = process.argv): string | undefined {
+	const args = argv.slice(2);
+	const mcpIndex = args.indexOf("mcp");
+	if (mcpIndex < 0 || args[mcpIndex + 1] !== "start") {
+		return undefined;
+	}
+
+	for (let i = mcpIndex + 2; i < args.length; i++) {
+		const arg = args[i];
+		if (arg === "--cwd") {
+			const next = args[i + 1]?.trim();
+			return next || undefined;
+		}
+		if (arg.startsWith("--cwd=")) {
+			const value = arg.slice("--cwd=".length).trim();
+			return value || undefined;
+		}
+	}
+
+	return undefined;
+}
+
 // Global config migration - run before any command processing
 // Only run if we're in a backlog project (skip for init, help, version)
 const shouldRunMigration =
@@ -283,7 +316,8 @@ const shouldRunMigration =
 
 if (shouldRunMigration) {
 	try {
-		const projectRoot = await findBacklogRoot(process.cwd());
+		const runtimeCwd = await resolveRuntimeCwd({ cwd: getMcpStartCwdOverrideFromArgv() });
+		const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 		if (projectRoot) {
 			const core = new Core(projectRoot);
 
