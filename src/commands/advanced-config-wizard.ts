@@ -1,8 +1,33 @@
-import prompts from "prompts";
+import * as clack from "@clack/prompts";
 import type { BacklogConfig } from "../types/index.ts";
-import { isEditorAvailable } from "../utils/editor.ts";
+import { isEditorAvailable, resolveEditor } from "../utils/editor.ts";
 
-export type PromptRunner = (...args: Parameters<typeof prompts>) => ReturnType<typeof prompts>;
+interface PromptChoice {
+	title: string;
+	value: string | number | boolean;
+	description?: string;
+	disabled?: boolean;
+}
+
+interface PromptQuestion {
+	type: "confirm" | "number" | "text" | "select" | "multiselect";
+	name: string;
+	message: string;
+	hint?: string;
+	initial?: string | number | boolean;
+	min?: number;
+	max?: number;
+	choices?: PromptChoice[];
+}
+
+interface PromptOptions {
+	onCancel?: () => void;
+}
+
+export type PromptRunner = (
+	question: PromptQuestion | PromptQuestion[],
+	options?: PromptOptions,
+) => Promise<Record<string, unknown>>;
 
 interface WizardOptions {
 	existingConfig?: BacklogConfig | null;
@@ -18,15 +43,148 @@ export interface AdvancedConfigWizardResult {
 }
 
 function handlePromptCancel(message: string) {
-	console.log(message);
+	clack.cancel(message);
 	process.exit(1);
 }
+
+function withHint(message: string, hint?: string): string {
+	return hint ? `${message} (${hint})` : message;
+}
+
+async function runSinglePrompt(question: PromptQuestion, options?: PromptOptions): Promise<Record<string, unknown>> {
+	const onCancel = options?.onCancel;
+	const message = withHint(question.message, question.hint);
+
+	if (question.type === "confirm") {
+		const result = await clack.confirm({
+			message,
+			initialValue: Boolean(question.initial ?? false),
+		});
+		if (clack.isCancel(result)) {
+			onCancel?.();
+			return {};
+		}
+		return { [question.name]: result };
+	}
+
+	if (question.type === "text") {
+		const initialText = typeof question.initial === "string" ? question.initial : undefined;
+		const result = await clack.text({
+			message,
+			initialValue: initialText,
+		});
+		if (clack.isCancel(result)) {
+			onCancel?.();
+			return {};
+		}
+		const normalized = String(result ?? "").trim();
+		return { [question.name]: normalized };
+	}
+
+	if (question.type === "number") {
+		const initialNumber = typeof question.initial === "number" ? question.initial : undefined;
+		const result = await clack.text({
+			message,
+			initialValue: initialNumber !== undefined ? String(initialNumber) : undefined,
+			validate: (value) => {
+				const normalized = String(value ?? "").trim();
+				if (!normalized) {
+					// Allow Enter to keep the existing configured value when an initial value exists.
+					if (initialNumber !== undefined) {
+						return undefined;
+					}
+					return "Value is required.";
+				}
+				const parsed = Number(normalized);
+				if (!Number.isFinite(parsed)) {
+					return "Please enter a valid number.";
+				}
+				if (question.min !== undefined && parsed < question.min) {
+					return `Value must be at least ${question.min}.`;
+				}
+				if (question.max !== undefined && parsed > question.max) {
+					return `Value must be at most ${question.max}.`;
+				}
+				return undefined;
+			},
+		});
+		if (clack.isCancel(result)) {
+			onCancel?.();
+			return {};
+		}
+		const normalized = String(result ?? "").trim();
+		if (!normalized && initialNumber !== undefined) {
+			return { [question.name]: initialNumber };
+		}
+		const parsed = Number(normalized);
+		return { [question.name]: Number.isFinite(parsed) ? parsed : undefined };
+	}
+
+	if (question.type === "select") {
+		const result = await clack.select({
+			message,
+			initialValue: question.initial,
+			options: (question.choices ?? []).map((choice) => ({
+				label: choice.title,
+				value: choice.value,
+				hint: choice.description,
+				disabled: choice.disabled,
+			})),
+		});
+		if (clack.isCancel(result)) {
+			onCancel?.();
+			return {};
+		}
+		return { [question.name]: result };
+	}
+
+	if (question.type === "multiselect") {
+		const result = await clack.multiselect({
+			message,
+			required: false,
+			options: (question.choices ?? []).map((choice) => ({
+				label: choice.title,
+				value: choice.value,
+				hint: choice.description,
+				disabled: choice.disabled,
+			})),
+		});
+		if (clack.isCancel(result)) {
+			onCancel?.();
+			return {};
+		}
+		return { [question.name]: Array.isArray(result) ? result : [] };
+	}
+
+	return {};
+}
+
+const clackPromptRunner: PromptRunner = async (question, options) => {
+	if (Array.isArray(question)) {
+		const merged: Record<string, unknown> = {};
+		let cancelled = false;
+		for (const single of question) {
+			const singleResult = await runSinglePrompt(single, {
+				onCancel: () => {
+					cancelled = true;
+					options?.onCancel?.();
+				},
+			});
+			Object.assign(merged, singleResult);
+			if (cancelled) {
+				break;
+			}
+		}
+		return merged;
+	}
+	return runSinglePrompt(question, options);
+};
 
 export async function runAdvancedConfigWizard({
 	existingConfig,
 	cancelMessage,
 	includeClaudePrompt = false,
-	promptImpl = prompts,
+	promptImpl = clackPromptRunner,
 }: WizardOptions): Promise<AdvancedConfigWizardResult> {
 	const onCancel = () => handlePromptCancel(cancelMessage);
 	const config = existingConfig ?? null;
@@ -37,7 +195,8 @@ export async function runAdvancedConfigWizard({
 	let bypassGitHooks = config?.bypassGitHooks ?? false;
 	let autoCommit = config?.autoCommit ?? false;
 	let zeroPaddedIds = config?.zeroPaddedIds;
-	let defaultEditor = config?.defaultEditor;
+	let defaultEditor: string | undefined =
+		config?.defaultEditor ?? process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null);
 	let defaultPort = config?.defaultPort ?? 6420;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let installClaudeAgent = false;
@@ -65,7 +224,7 @@ export async function runAdvancedConfigWizard({
 		},
 		{ onCancel },
 	);
-	checkActiveBranches = crossBranchPrompt.checkActiveBranches ?? true;
+	checkActiveBranches = Boolean(crossBranchPrompt.checkActiveBranches ?? true);
 
 	if (checkActiveBranches) {
 		const remotePrompt = await promptImpl(
@@ -78,7 +237,7 @@ export async function runAdvancedConfigWizard({
 			},
 			{ onCancel },
 		);
-		remoteOperations = remotePrompt.remoteOperations ?? remoteOperations;
+		remoteOperations = Boolean(remotePrompt.remoteOperations ?? remoteOperations);
 
 		const daysPrompt = await promptImpl(
 			{
@@ -109,7 +268,7 @@ export async function runAdvancedConfigWizard({
 		},
 		{ onCancel },
 	);
-	bypassGitHooks = gitHooksPrompt.bypassGitHooks ?? bypassGitHooks;
+	bypassGitHooks = Boolean(gitHooksPrompt.bypassGitHooks ?? bypassGitHooks);
 
 	const autoCommitPrompt = await promptImpl(
 		{
@@ -121,20 +280,27 @@ export async function runAdvancedConfigWizard({
 		},
 		{ onCancel },
 	);
-	autoCommit = autoCommitPrompt.autoCommit ?? autoCommit;
+	autoCommit = Boolean(autoCommitPrompt.autoCommit ?? autoCommit);
 
-	const zeroPaddingPrompt = await promptImpl(
-		{
-			type: "confirm",
-			name: "enableZeroPadding",
-			message: "Enable zero-padded IDs for consistent formatting?",
-			hint: "Example: task-001, doc-001 instead of task-1, doc-1",
-			initial: (zeroPaddedIds ?? 0) > 0,
-		},
-		{ onCancel },
-	);
+	while (true) {
+		const zeroPaddingPrompt = await promptImpl(
+			{
+				type: "confirm",
+				name: "enableZeroPadding",
+				message: "Enable zero-padded IDs for consistent formatting?",
+				hint: "Example: task-001, doc-001 instead of task-1, doc-1",
+				initial: (zeroPaddedIds ?? 0) > 0,
+			},
+			{ onCancel },
+		);
 
-	if (zeroPaddingPrompt.enableZeroPadding) {
+		const enableZeroPadding = Boolean(zeroPaddingPrompt.enableZeroPadding);
+		if (!enableZeroPadding) {
+			zeroPaddedIds = undefined;
+			break;
+		}
+
+		let goBackToZeroPaddingPrompt = false;
 		const paddingPrompt = await promptImpl(
 			{
 				type: "number",
@@ -145,13 +311,21 @@ export async function runAdvancedConfigWizard({
 				min: 1,
 				max: 10,
 			},
-			{ onCancel },
+			{
+				onCancel: () => {
+					goBackToZeroPaddingPrompt = true;
+				},
+			},
 		);
+
+		if (goBackToZeroPaddingPrompt) {
+			continue;
+		}
+
 		if (typeof paddingPrompt?.paddingWidth === "number" && !Number.isNaN(paddingPrompt.paddingWidth)) {
 			zeroPaddedIds = paddingPrompt.paddingWidth;
+			break;
 		}
-	} else {
-		zeroPaddedIds = undefined;
 	}
 
 	const editorPrompt = await promptImpl(
@@ -186,18 +360,23 @@ export async function runAdvancedConfigWizard({
 	}
 	defaultEditor = editorResult.length > 0 ? editorResult : undefined;
 
-	const webUIPrompt = await promptImpl(
-		{
-			type: "confirm",
-			name: "configureWebUI",
-			message: "Configure web UI settings now?",
-			hint: "Port and browser auto-open",
-			initial: false,
-		},
-		{ onCancel },
-	);
+	while (true) {
+		const webUIPrompt = await promptImpl(
+			{
+				type: "confirm",
+				name: "configureWebUI",
+				message: "Configure web UI settings now?",
+				hint: "Port and browser auto-open",
+				initial: false,
+			},
+			{ onCancel },
+		);
 
-	if (webUIPrompt.configureWebUI) {
+		if (!webUIPrompt.configureWebUI) {
+			break;
+		}
+
+		let goBackToWebUIPrompt = false;
 		const webUIValues = await promptImpl(
 			[
 				{
@@ -217,12 +396,22 @@ export async function runAdvancedConfigWizard({
 					initial: autoOpenBrowser,
 				},
 			],
-			{ onCancel },
+			{
+				onCancel: () => {
+					goBackToWebUIPrompt = true;
+				},
+			},
 		);
+
+		if (goBackToWebUIPrompt) {
+			continue;
+		}
+
 		if (typeof webUIValues?.defaultPort === "number" && !Number.isNaN(webUIValues.defaultPort)) {
 			defaultPort = webUIValues.defaultPort;
 		}
 		autoOpenBrowser = Boolean(webUIValues?.autoOpenBrowser ?? autoOpenBrowser);
+		break;
 	}
 
 	if (includeClaudePrompt) {

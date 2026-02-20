@@ -86,16 +86,19 @@ export async function initializeProject(
 
 	const isReInitialization = !!existingConfig;
 	const projectRoot = core.filesystem.rootDir;
+	const hasDefaultEditorOverride = Object.hasOwn(advancedConfig, "defaultEditor");
+	const hasZeroPaddedIdsOverride = Object.hasOwn(advancedConfig, "zeroPaddedIds");
 
-	// Build config, preserving existing values for re-initialization
+	// Build config, preserving existing values for re-initialization.
+	// Re-init should be idempotent for fields that init does not explicitly manage.
 	const d = DEFAULT_INIT_CONFIG;
-	const config: BacklogConfig = {
+	const baseConfig: BacklogConfig = {
 		projectName,
-		statuses: existingConfig?.statuses || ["To Do", "In Progress", "Done"],
-		labels: existingConfig?.labels || [],
-		defaultStatus: existingConfig?.defaultStatus || "To Do",
-		dateFormat: existingConfig?.dateFormat || "yyyy-mm-dd",
-		maxColumnWidth: existingConfig?.maxColumnWidth || 20,
+		statuses: ["To Do", "In Progress", "Done"],
+		labels: [],
+		defaultStatus: "To Do",
+		dateFormat: "yyyy-mm-dd",
+		maxColumnWidth: 20,
 		autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
 		remoteOperations: advancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: advancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -109,11 +112,39 @@ export async function initializeProject(
 		prefixes: existingConfig?.prefixes || {
 			task: advancedConfig.taskPrefix || "task",
 		},
-		...(advancedConfig.defaultEditor ? { defaultEditor: advancedConfig.defaultEditor } : {}),
-		...(typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0
+	};
+	const config: BacklogConfig = {
+		...baseConfig,
+		...(existingConfig ?? {}),
+		projectName,
+		autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
+		remoteOperations: advancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
+		bypassGitHooks: advancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
+		checkActiveBranches:
+			advancedConfig.checkActiveBranches ?? existingConfig?.checkActiveBranches ?? d.checkActiveBranches,
+		activeBranchDays: advancedConfig.activeBranchDays ?? existingConfig?.activeBranchDays ?? d.activeBranchDays,
+		defaultPort: advancedConfig.defaultPort ?? existingConfig?.defaultPort ?? d.defaultPort,
+		autoOpenBrowser: advancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? d.autoOpenBrowser,
+		prefixes: existingConfig?.prefixes || {
+			task: advancedConfig.taskPrefix || "task",
+		},
+		...(hasDefaultEditorOverride && advancedConfig.defaultEditor
+			? { defaultEditor: advancedConfig.defaultEditor }
+			: {}),
+		...(hasZeroPaddedIdsOverride && typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0
 			? { zeroPaddedIds: advancedConfig.zeroPaddedIds }
 			: {}),
 	};
+	// Preserve all non-init-managed fields, but allow init-managed optional fields to be explicitly cleared.
+	if (hasDefaultEditorOverride && !advancedConfig.defaultEditor) {
+		delete config.defaultEditor;
+	}
+	if (
+		hasZeroPaddedIdsOverride &&
+		!(typeof advancedConfig.zeroPaddedIds === "number" && advancedConfig.zeroPaddedIds > 0)
+	) {
+		delete config.zeroPaddedIds;
+	}
 
 	// Create structure and save config
 	if (isReInitialization) {
