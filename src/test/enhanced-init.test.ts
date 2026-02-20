@@ -151,6 +151,52 @@ describe("Enhanced init command", () => {
 		expect(existingConfig?.maxColumnWidth).toBe(30);
 	});
 
+	test("should preserve non-init-managed config fields during re-initialization", async () => {
+		const core = new Core(tmpDir);
+
+		const initialConfig: BacklogConfig = {
+			projectName: "Preserve Fields Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: ["bug"],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			definitionOfDone: ["Run tests", "Update docs"],
+			defaultAssignee: "@alex",
+			defaultReporter: "@bot",
+			includeDateTimeInDates: true,
+			onStatusChange: "echo changed",
+			mcp: {
+				http: {
+					host: "127.0.0.1",
+					port: 7777,
+					auth: { type: "none" },
+				},
+			},
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(initialConfig);
+
+		const existingConfig = await core.filesystem.loadConfig();
+		if (!existingConfig) throw new Error("Expected existing config");
+
+		await initializeProject(core, {
+			projectName: "Preserve Fields Project Updated",
+			integrationMode: "none",
+			existingConfig,
+		});
+
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.projectName).toBe("Preserve Fields Project Updated");
+		expect(reloaded?.definitionOfDone).toEqual(["Run tests", "Update docs"]);
+		expect(reloaded?.defaultAssignee).toBe("@alex");
+		expect(reloaded?.defaultReporter).toBe("@bot");
+		expect(reloaded?.includeDateTimeInDates).toBe(true);
+		expect(reloaded?.onStatusChange).toBe("echo changed");
+		expect(reloaded?.mcp?.http?.host).toBe("127.0.0.1");
+		expect(reloaded?.mcp?.http?.port).toBe(7777);
+	});
+
 	test("should handle zero-padding configuration in init flow", async () => {
 		const core = new Core(tmpDir);
 
