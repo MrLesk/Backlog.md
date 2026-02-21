@@ -103,7 +103,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			})),
 		);
 		if (searchableTasks.length === 0) {
-			return [];
+			return buckets.map((bucket) => rebuildFilteredBucket(bucket, [], statuses));
 		}
 		const normalizedQuery = searchQueryTrimmed.toLowerCase();
 		const exactIdMatches = searchableTasks.filter((task) => task.id.toLowerCase() === normalizedQuery);
@@ -124,19 +124,10 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						return new Set(matches.map((match) => match.item.id));
 					})();
 
-		if (matchedTaskIds.size === 0) {
-			return [];
-		}
-
-		return buckets
-			.map((bucket) => {
-				const filteredTasks = bucket.tasks.filter((task) => matchedTaskIds.has(task.id));
-				if (filteredTasks.length === 0) {
-					return null;
-				}
-				return rebuildFilteredBucket(bucket, filteredTasks, statuses);
-			})
-			.filter((bucket): bucket is MilestoneBucket => Boolean(bucket));
+		return buckets.map((bucket) => {
+			const filteredTasks = bucket.tasks.filter((task) => matchedTaskIds.has(task.id));
+			return rebuildFilteredBucket(bucket, filteredTasks, statuses);
+		});
 	}, [buckets, isSearchActive, searchQueryTrimmed, statuses]);
 
 	// Separate buckets into categories and sort by ID descending
@@ -498,7 +489,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	// Render unassigned tasks section with table layout
 	const renderUnassignedSection = () => {
-		if (!unassignedBucket || unassignedBucket.total === 0) return null;
+		if (!unassignedBucket || (!isSearchActive && unassignedBucket.total === 0)) return null;
 
 		const sortedTasks = getSortedTasks(unassignedBucket.tasks);
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
@@ -535,53 +526,61 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 					{isExpanded && (
 						<div className="mt-4">
-							{/* Table */}
-							<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
-								{/* Table header */}
-								<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-									<div className="w-6" /> {/* Drag handle column */}
-									<div className="w-24">ID</div>
-									<div>Title</div>
-									<div className="text-center w-24">Status</div>
-									<div className="text-center w-20">Priority</div>
-								</div>
+							{sortedTasks.length > 0 ? (
+								<>
+									{/* Table */}
+									<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+										{/* Table header */}
+										<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+											<div className="w-6" /> {/* Drag handle column */}
+											<div className="w-24">ID</div>
+											<div>Title</div>
+											<div className="text-center w-24">Status</div>
+											<div className="text-center w-20">Priority</div>
+										</div>
 
-								{/* Table rows */}
-								<div className="divide-y divide-gray-200 dark:divide-gray-700">
-									{displayTasks.map((task) => (
-										<MilestoneTaskRow
-											key={task.id}
-											task={task}
-											isDone={isDoneStatus(task.status)}
-											statusBadgeClass={getStatusBadgeClass(task.status)}
-											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
-											onEditTask={onEditTask}
-											onDragStart={handleDragStart}
-											onDragEnd={handleDragEnd}
-										/>
-									))}
-								</div>
+										{/* Table rows */}
+										<div className="divide-y divide-gray-200 dark:divide-gray-700">
+											{displayTasks.map((task) => (
+												<MilestoneTaskRow
+													key={task.id}
+													task={task}
+													isDone={isDoneStatus(task.status)}
+													statusBadgeClass={getStatusBadgeClass(task.status)}
+													priorityBadgeClass={getPriorityBadgeClass(task.priority)}
+													onEditTask={onEditTask}
+													onDragStart={handleDragStart}
+													onDragEnd={handleDragEnd}
+												/>
+											))}
+										</div>
 
-								{/* Footer with show more/less */}
-								{hasMore && (
-									<div className="px-3 py-2 text-xs border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
-										<button
-											type="button"
-											onClick={() => setShowAllUnassigned(!showAllUnassigned)}
-											className="text-blue-600 dark:text-blue-400 hover:underline"
-										>
-											{showAllUnassigned
-												? "Show less ↑"
-												: `Show all ${sortedTasks.length} tasks ↓`}
-										</button>
+										{/* Footer with show more/less */}
+										{hasMore && (
+											<div className="px-3 py-2 text-xs border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+												<button
+													type="button"
+													onClick={() => setShowAllUnassigned(!showAllUnassigned)}
+													className="text-blue-600 dark:text-blue-400 hover:underline"
+												>
+													{showAllUnassigned
+														? "Show less ↑"
+														: `Show all ${sortedTasks.length} tasks ↓`}
+												</button>
+											</div>
+										)}
 									</div>
-								)}
-							</div>
 
-							{/* Hint */}
-							<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-								Drag tasks to a milestone below to assign them
-							</p>
+									{/* Hint */}
+									<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+										Drag tasks to a milestone below to assign them
+									</p>
+								</>
+							) : (
+								<p className="rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-white/70 dark:bg-gray-800/50 px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+									No matching unassigned tasks.
+								</p>
+							)}
 						</div>
 					)}
 				</div>
@@ -589,8 +588,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		);
 	};
 
-	const hasVisibleResults = Boolean(unassignedBucket?.total) || activeMilestones.length > 0 || completedMilestones.length > 0;
-	const showSearchEmptyState = isSearchActive && !hasVisibleResults;
+	const hasSearchMatches = visibleBuckets.some((bucket) => bucket.total > 0);
+	const showSearchNoMatchHint = isSearchActive && !hasSearchMatches;
 	const noMilestones = !isSearchActive && activeMilestones.length === 0 && completedMilestones.length === 0;
 
 	return (
@@ -658,18 +657,34 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 				</div>
 			</div>
 
+			{/* Search no-match hint */}
+			{showSearchNoMatchHint && (
+				<div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+					<p className="text-sm text-amber-800 dark:text-amber-200">
+						No milestones or tasks match &quot;{searchQueryTrimmed}&quot;.
+					</p>
+					<button
+						type="button"
+						onClick={() => setSearchQuery("")}
+						className="rounded-md border border-amber-300 dark:border-amber-700 px-3 py-1.5 text-xs font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+					>
+						Clear search
+					</button>
+				</div>
+			)}
+
 			{/* Unassigned tasks */}
-			{!showSearchEmptyState && renderUnassignedSection()}
+			{renderUnassignedSection()}
 
 			{/* Active milestones */}
-			{!showSearchEmptyState && activeMilestones.length > 0 && (
+			{activeMilestones.length > 0 && (
 				<div className="space-y-4">
 					{activeMilestones.map((bucket) => renderMilestoneCard(bucket, bucket.total === 0))}
 				</div>
 			)}
 
 			{/* Completed milestones */}
-			{!showSearchEmptyState && completedMilestones.length > 0 && (
+			{completedMilestones.length > 0 && (
 				<div className="mt-8">
 					{isSearchActive ? (
 						<div className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -699,25 +714,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							{completedMilestones.map((bucket) => renderMilestoneCard(bucket, false))}
 						</div>
 					)}
-				</div>
-			)}
-
-			{/* Search empty state */}
-			{showSearchEmptyState && (
-				<div className="flex flex-col items-center justify-center py-16 text-center">
-					<svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35m1.85-5.65a7.5 7.5 0 11-15 0 7.5 7.5 0 0115 0z" />
-					</svg>
-					<p className="text-gray-500 dark:text-gray-400">
-						No milestones or tasks match &quot;{searchQueryTrimmed}&quot;.
-					</p>
-					<button
-						type="button"
-						onClick={() => setSearchQuery("")}
-						className="mt-4 px-4 py-2 rounded-md text-sm font-medium text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-					>
-						Clear search
-					</button>
 				</div>
 			)}
 

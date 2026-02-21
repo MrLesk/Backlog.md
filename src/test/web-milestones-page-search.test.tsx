@@ -25,11 +25,18 @@ const milestoneEntities: Milestone[] = [
 		description: "Milestone: Release 1",
 		rawContent: "## Description\n\nMilestone: Release 1",
 	},
+	{
+		id: "m-2",
+		title: "Release 2",
+		description: "Milestone: Release 2",
+		rawContent: "## Description\n\nMilestone: Release 2",
+	},
 ];
 
 const baseTasks: Task[] = [
 	createTask({ id: "task-101", title: "Setup authentication flow", status: "In Progress", milestone: "m-1" }),
 	createTask({ id: "task-202", title: "Deploy pipeline", status: "To Do", milestone: "m-1" }),
+	createTask({ id: "task-404", title: "Ship docs site", status: "To Do", milestone: "m-2" }),
 	createTask({ id: "task-303", title: "Draft release notes", status: "To Do" }),
 ];
 
@@ -110,14 +117,6 @@ const clickElement = (element: Element) => {
 	});
 };
 
-const findButtonByText = (container: HTMLElement, text: string): HTMLButtonElement => {
-	const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
-		(candidate.textContent ?? "").includes(text),
-	);
-	expect(button).toBeTruthy();
-	return button as HTMLButtonElement;
-};
-
 afterEach(() => {
 	if (activeRoot) {
 		act(() => {
@@ -139,23 +138,34 @@ describe("Web milestones page search", () => {
 		expect(document.activeElement).toBe(input);
 	});
 
-	it("filters milestone tasks by task ID and title, then restores the full view when cleared", () => {
+	it("searching one milestone still renders other milestone sections", () => {
 		const container = renderPage();
 		const initialText = container.textContent ?? "";
 		expect(initialText).toContain("Setup authentication flow");
 		expect(initialText).toContain("Deploy pipeline");
+		expect(initialText).toContain("Ship docs site");
 		expect(initialText).toContain("Draft release notes");
-
-		setSearchValue(container, "task-202");
-		const idFilteredText = container.textContent ?? "";
-		expect(idFilteredText).toContain("Deploy pipeline");
-		expect(idFilteredText).not.toContain("Setup authentication flow");
-		expect(idFilteredText).not.toContain("Draft release notes");
+		expect(initialText).toContain("Release 1");
+		expect(initialText).toContain("Release 2");
 
 		setSearchValue(container, "authentication");
-		const titleFilteredText = container.textContent ?? "";
-		expect(titleFilteredText).toContain("Setup authentication flow");
-		expect(titleFilteredText).not.toContain("Deploy pipeline");
+		const filteredText = container.textContent ?? "";
+		expect(filteredText).toContain("Release 1");
+		expect(filteredText).toContain("Release 2");
+		expect(filteredText).toContain("Setup authentication flow");
+		expect(filteredText).not.toContain("Deploy pipeline");
+		expect(filteredText).not.toContain("Ship docs site");
+		expect(filteredText).toContain("No tasks");
+	});
+
+	it("keeps unassigned section visible during search even when no unassigned tasks match", () => {
+		const container = renderPage();
+
+		setSearchValue(container, "task-404");
+		const filteredText = container.textContent ?? "";
+		expect(filteredText).toContain("Unassigned tasks");
+		expect(filteredText).toContain("No matching unassigned tasks.");
+		expect(filteredText).not.toContain("Draft release notes");
 
 		const clearSearchButton = container.querySelector("button[aria-label='Clear milestone search']");
 		expect(clearSearchButton).toBeTruthy();
@@ -167,24 +177,14 @@ describe("Web milestones page search", () => {
 		expect(restoredText).toContain("Draft release notes");
 	});
 
-	it("keeps collapse state while searching and shows a no-match state", () => {
+	it("no-match search keeps milestone and unassigned sections visible", () => {
 		const container = renderPage();
-
-		const hideTasksButton = findButtonByText(container, "Hide tasks");
-		clickElement(hideTasksButton);
-
-		const collapsedText = container.textContent ?? "";
-		expect(collapsedText).toContain("Show tasks");
-		expect(collapsedText).not.toContain("Setup authentication flow");
-
-		setSearchValue(container, "task-101");
-		const filteredCollapsedText = container.textContent ?? "";
-		expect(filteredCollapsedText).toContain("Show tasks");
-		expect(filteredCollapsedText).not.toContain("Setup authentication flow");
 
 		setSearchValue(container, "zzzz-no-match");
 		const noMatchText = container.textContent ?? "";
 		expect(noMatchText).toContain('No milestones or tasks match "zzzz-no-match".');
-		expect(noMatchText).toContain("Clear search");
+		expect(noMatchText).toContain("Release 1");
+		expect(noMatchText).toContain("Release 2");
+		expect(noMatchText).toContain("Unassigned tasks");
 	});
 });
