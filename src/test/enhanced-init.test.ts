@@ -204,7 +204,7 @@ describe("Enhanced init command", () => {
 			projectName: "Definition Defaults Init",
 			integrationMode: "none",
 			advancedConfig: {
-				definitionOfDone: ["  Run tests  ", "", "Update docs"],
+				definitionOfDone: ["  Run tests  ", "", "Update docs", 1, null] as unknown as string[],
 			},
 		});
 

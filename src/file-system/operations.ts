@@ -1161,9 +1161,7 @@ ${description || `Milestone: ${title}`}`,
 		const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
 		const normalizedConfig: BacklogConfig = {
 			...config,
-			definitionOfDone: Array.isArray(config.definitionOfDone)
-				? config.definitionOfDone.map((item) => item.trim()).filter((item) => item.length > 0)
-				: config.definitionOfDone,
+			definitionOfDone: this.normalizeDefinitionOfDone(config.definitionOfDone),
 		};
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
@@ -1370,6 +1368,7 @@ ${description || `Milestone: ${title}`}`,
 	}
 
 	private serializeConfig(config: BacklogConfig): string {
+		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
 		const lines = [
 			`project_name: "${config.projectName}"`,
 			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
@@ -1377,14 +1376,8 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
-			...(Array.isArray(config.definitionOfDone)
-				? [
-						`definition_of_done: [${config.definitionOfDone
-							.map((item) => item.trim())
-							.filter((item) => item.length > 0)
-							.map((item) => `"${item}"`)
-							.join(", ")}]`,
-					]
+			...(Array.isArray(normalizedDefinitionOfDone)
+				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => `"${item}"`).join(", ")}]`]
 				: []),
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
@@ -1404,5 +1397,16 @@ ${description || `Milestone: ${title}`}`,
 		];
 
 		return `${lines.join("\n")}\n`;
+	}
+
+	private normalizeDefinitionOfDone(definitionOfDone: unknown): string[] | undefined {
+		if (!Array.isArray(definitionOfDone)) {
+			return undefined;
+		}
+
+		return definitionOfDone
+			.filter((item): item is string => typeof item === "string")
+			.map((item) => item.trim())
+			.filter((item) => item.length > 0);
 	}
 }
