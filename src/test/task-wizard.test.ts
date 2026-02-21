@@ -198,13 +198,17 @@ describe("task wizard", () => {
 	});
 
 	it("uses select prompts for status and priority with create defaults", async () => {
-		const questions: Record<string, { type: string; message: string; initial?: string; optionsCount: number }> = {};
+		const questions: Record<
+			string,
+			{ type: string; message: string; initial?: string; optionsCount: number; optionValues: string[] }
+		> = {};
 		const prompt: TaskWizardPromptRunner = async (question) => {
 			questions[question.name] = {
 				type: question.type,
 				message: question.message,
 				initial: question.initial,
 				optionsCount: question.options?.length ?? 0,
+				optionValues: (question.options ?? []).map((option) => option.value),
 			};
 			return { [question.name]: question.initial ?? "" };
 		};
@@ -219,10 +223,32 @@ describe("task wizard", () => {
 		expect(input?.priority).toBeUndefined();
 		expect(questions.status?.type).toBe("select");
 		expect(questions.status?.initial).toBe("To Do");
+		expect(questions.status?.optionValues).toEqual(["Draft", "Backlog", "To Do", "In Progress", "Done"]);
 		expect((questions.status?.optionsCount ?? 0) > 0).toBe(true);
 		expect(questions.priority?.type).toBe("select");
 		expect(questions.priority?.initial).toBe("");
 		expect((questions.priority?.optionsCount ?? 0) > 0).toBe(true);
+	});
+
+	it("falls back to default statuses and keeps create default on To Do", async () => {
+		const promptQuestions: Record<string, { initial?: string; optionValues: string[] }> = {};
+		const prompt: TaskWizardPromptRunner = async (question) => {
+			promptQuestions[question.name] = {
+				initial: question.initial,
+				optionValues: (question.options ?? []).map((option) => option.value),
+			};
+			return { [question.name]: question.initial ?? "" };
+		};
+
+		const input = await runTaskCreateWizard({
+			statuses: [],
+			promptImpl: prompt,
+		});
+
+		expect(input).not.toBeNull();
+		expect(input?.status).toBe("To Do");
+		expect(promptQuestions.status?.initial).toBe("To Do");
+		expect(promptQuestions.status?.optionValues).toEqual(["Draft", "To Do", "In Progress", "Done"]);
 	});
 
 	it("labels task DoD and single-line text limitations clearly", async () => {

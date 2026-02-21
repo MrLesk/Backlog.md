@@ -1,4 +1,5 @@
 import * as clack from "@clack/prompts";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { AcceptanceCriterion, Task, TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
 import { normalizeDependencies, normalizeStringList } from "../utils/task-builders.ts";
 
@@ -117,15 +118,17 @@ function buildStatusPromptValues(params: { statuses: string[]; mode: "create" | 
 	options: PromptChoice[];
 	initial: string;
 } {
-	const normalizedStatuses = normalizeStringList(params.statuses.map((status) => status.trim())) ?? [];
-	const statuses = normalizedStatuses.length > 0 ? normalizedStatuses : ["To Do"];
-	const options: PromptChoice[] = statuses.map((status) => ({
+	const configuredStatuses = normalizeStringList(params.statuses.map((status) => status.trim())) ?? [];
+	const baseStatuses = configuredStatuses.length > 0 ? configuredStatuses : [...DEFAULT_STATUSES];
+	const hasDraftStatus = baseStatuses.some((status) => normalizeStatusKey(status) === normalizeStatusKey("Draft"));
+	const selectableStatuses = hasDraftStatus ? baseStatuses : ["Draft", ...baseStatuses];
+	const options: PromptChoice[] = selectableStatuses.map((status) => ({
 		label: status,
 		value: status,
 	}));
 
 	if (params.mode === "create") {
-		const createDefault = getDefaultCreateStatus(statuses);
+		const createDefault = getDefaultCreateStatus(baseStatuses);
 		return {
 			options,
 			initial: createDefault,
@@ -136,11 +139,11 @@ function buildStatusPromptValues(params: { statuses: string[]; mode: "create" | 
 	if (!initialStatus) {
 		return {
 			options,
-			initial: getDefaultCreateStatus(statuses),
+			initial: getDefaultCreateStatus(baseStatuses),
 		};
 	}
 
-	const canonicalInitial = findCanonicalStatus(initialStatus, statuses);
+	const canonicalInitial = findCanonicalStatus(initialStatus, selectableStatuses);
 	if (canonicalInitial) {
 		return {
 			options,
