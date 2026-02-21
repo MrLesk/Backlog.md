@@ -10,6 +10,7 @@ import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
+import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -157,6 +158,71 @@ function createMultiValueAccumulator() {
 	};
 }
 
+function printMissingRequiredArgument(argumentName: string): void {
+	console.error(`error: missing required argument '${argumentName}'`);
+	process.exitCode = 1;
+}
+
+function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
+	return Boolean(
+		options.description !== undefined ||
+			options.desc !== undefined ||
+			options.assignee !== undefined ||
+			options.status !== undefined ||
+			options.labels !== undefined ||
+			options.priority !== undefined ||
+			options.plain ||
+			options.ac !== undefined ||
+			options.acceptanceCriteria !== undefined ||
+			options.dod !== undefined ||
+			options.dodDefaults === false ||
+			options.plan !== undefined ||
+			options.notes !== undefined ||
+			options.finalSummary !== undefined ||
+			options.draft ||
+			options.parent !== undefined ||
+			options.dependsOn !== undefined ||
+			options.dep !== undefined ||
+			options.ref !== undefined ||
+			options.doc !== undefined,
+	);
+}
+
+function hasEditFieldFlags(options: Record<string, unknown>): boolean {
+	return Boolean(
+		options.title !== undefined ||
+			options.description !== undefined ||
+			options.desc !== undefined ||
+			options.assignee !== undefined ||
+			options.status !== undefined ||
+			options.label !== undefined ||
+			options.priority !== undefined ||
+			options.ordinal !== undefined ||
+			options.plain ||
+			options.addLabel !== undefined ||
+			options.removeLabel !== undefined ||
+			options.ac !== undefined ||
+			options.dod !== undefined ||
+			options.removeAc !== undefined ||
+			options.removeDod !== undefined ||
+			options.checkAc !== undefined ||
+			options.checkDod !== undefined ||
+			options.uncheckAc !== undefined ||
+			options.uncheckDod !== undefined ||
+			options.acceptanceCriteria !== undefined ||
+			options.plan !== undefined ||
+			options.notes !== undefined ||
+			options.finalSummary !== undefined ||
+			options.appendNotes !== undefined ||
+			options.appendFinalSummary !== undefined ||
+			options.clearFinalSummary ||
+			options.dependsOn !== undefined ||
+			options.dep !== undefined ||
+			options.ref !== undefined ||
+			options.doc !== undefined,
+	);
+}
+
 // Helper function to process multiple AC operations
 /**
  * Processes --ac and --acceptance-criteria options to extract acceptance criteria
@@ -291,6 +357,9 @@ function getMcpStartCwdOverrideFromArgv(argv = process.argv): string | undefined
 
 	for (let i = mcpIndex + 2; i < args.length; i++) {
 		const arg = args[i];
+		if (!arg) {
+			continue;
+		}
 		if (arg === "--cwd") {
 			const next = args[i + 1]?.trim();
 			return next || undefined;
@@ -1295,7 +1364,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
-	.command("create <title>")
+	.command("create [title]")
 	.option(
 		"-d, --description <text>",
 		"task description (multi-line: bash $'Line1\\nLine2', POSIX printf, PowerShell \"Line1`nLine2\")",
@@ -1343,16 +1412,43 @@ taskCmd
 			return [...soFar, value];
 		},
 	)
-	.action(async (title: string, options) => {
+	.action(async (title: string | undefined, options) => {
+		const shouldUseWizard = hasInteractiveTTY && title === undefined && !hasCreateFieldFlags(options);
+		if (!shouldUseWizard && (title === undefined || title.trim().length === 0)) {
+			printMissingRequiredArgument("title");
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
+
+		if (shouldUseWizard) {
+			const statuses = await getValidStatuses(core);
+			const wizardInput = await runTaskCreateWizard({ statuses });
+			if (!wizardInput) {
+				clack.cancel("Task create cancelled.");
+				return;
+			}
+			try {
+				const { task, filePath } = await core.createTaskFromInput(wizardInput);
+				console.log(`Created task ${task.id}`);
+				if (filePath) {
+					console.log(`File: ${filePath}`);
+				}
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exitCode = 1;
+			}
+			return;
+		}
+
 		const createAsDraft = Boolean(options.draft);
 		const id = await core.generateNextId(
 			createAsDraft ? EntityType.Draft : EntityType.Task,
 			createAsDraft ? undefined : options.parent,
 		);
-		const task = buildTaskFromOptions(id, title, options);
+		const task = buildTaskFromOptions(id, title ?? "", options);
 
 		// Normalize and validate status if provided (case-insensitive)
 		if (options.status) {
@@ -1878,7 +1974,7 @@ taskCmd
 	});
 
 taskCmd
-	.command("edit <taskId>")
+	.command("edit [taskId]")
 	.description("edit an existing task")
 	.option("-t, --title <title>")
 	.option(
@@ -1961,10 +2057,60 @@ taskCmd
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
-	.action(async (taskId: string, options) => {
+	.action(async (taskId: string | undefined, options) => {
+		const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
+		if (!shouldUseWizard && !taskId) {
+			printMissingRequiredArgument("taskId");
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const canonicalId = normalizeTaskId(taskId);
+
+		if (shouldUseWizard) {
+			let selectedTaskId = taskId ? normalizeTaskId(taskId) : undefined;
+			if (!selectedTaskId) {
+				const localTasks = await core.queryTasks({ includeCrossBranch: false });
+				const taskOptions = localTasks.map((candidate) => ({
+					id: candidate.id,
+					title: candidate.title,
+				}));
+				if (taskOptions.length === 0) {
+					console.log("No tasks found.");
+					return;
+				}
+				selectedTaskId = await pickTaskForEditWizard({ tasks: taskOptions });
+				if (!selectedTaskId) {
+					clack.cancel("Task edit cancelled.");
+					return;
+				}
+			}
+
+			const existingTaskForWizard = await core.loadTaskById(selectedTaskId);
+			if (!existingTaskForWizard) {
+				console.error(`Task ${selectedTaskId} not found.`);
+				process.exitCode = 1;
+				return;
+			}
+
+			const statuses = await getValidStatuses(core);
+			const wizardInput = await runTaskEditWizard({ task: existingTaskForWizard, statuses });
+			if (!wizardInput) {
+				clack.cancel("Task edit cancelled.");
+				return;
+			}
+
+			try {
+				const updatedTask = await core.editTask(existingTaskForWizard.id, wizardInput);
+				console.log(`Updated task ${updatedTask.id}`);
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exitCode = 1;
+			}
+			return;
+		}
+
+		const canonicalId = normalizeTaskId(taskId ?? "");
 		const existingTask = await core.loadTaskById(canonicalId);
 
 		if (!existingTask) {
