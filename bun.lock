@@ -6,6 +6,7 @@
       "name": "backlog.md",
       "devDependencies": {
         "@biomejs/biome": "2.3.11",
+        "@clack/core": "1.0.1",
         "@clack/prompts": "1.0.1",
         "@modelcontextprotocol/sdk": "1.26.0",
         "@tailwindcss/cli": "4.1.18",
@@ -25,6 +26,7 @@
         "lint-staged": "16.2.7",
         "mermaid": "11.12.2",
         "neo-neo-bblessed": "1.0.9",
+        "picocolors": "1.1.1",
         "react": "19.2.3",
         "react-dom": "19.2.3",
         "react-router-dom": "7.12.0",
