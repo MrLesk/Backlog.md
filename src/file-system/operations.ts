@@ -1159,9 +1159,15 @@ ${description || `Milestone: ${title}`}`,
 	async saveConfig(config: BacklogConfig): Promise<void> {
 		const backlogDir = await this.getBacklogDir();
 		const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
-		const content = this.serializeConfig(config);
+		const normalizedConfig: BacklogConfig = {
+			...config,
+			definitionOfDone: Array.isArray(config.definitionOfDone)
+				? config.definitionOfDone.map((item) => item.trim()).filter((item) => item.length > 0)
+				: config.definitionOfDone,
+		};
+		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
-		this.cachedConfig = config;
+		this.cachedConfig = normalizedConfig;
 	}
 
 	async getUserSetting(key: string, global = false): Promise<string | undefined> {
@@ -1372,7 +1378,13 @@ ${description || `Milestone: ${title}`}`,
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			...(Array.isArray(config.definitionOfDone)
-				? [`definition_of_done: [${config.definitionOfDone.map((item) => `"${item}"`).join(", ")}]`]
+				? [
+						`definition_of_done: [${config.definitionOfDone
+							.map((item) => item.trim())
+							.filter((item) => item.length > 0)
+							.map((item) => `"${item}"`)
+							.join(", ")}]`,
+					]
 				: []),
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),

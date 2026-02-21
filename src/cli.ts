@@ -171,6 +171,7 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
 		autoCommit: existingConfig?.autoCommit ?? false,
 		zeroPaddedIds: existingConfig?.zeroPaddedIds,
 		defaultEditor: existingConfig?.defaultEditor,
+		definitionOfDone: existingConfig?.definitionOfDone ? [...existingConfig.definitionOfDone] : undefined,
 		defaultPort: existingConfig?.defaultPort ?? 6420,
 		autoOpenBrowser: existingConfig?.autoOpenBrowser ?? true,
 	};
@@ -295,7 +296,7 @@ function getMcpStartCwdOverrideFromArgv(argv = process.argv): string | undefined
 			const next = args[i + 1]?.trim();
 			return next || undefined;
 		}
-		if (arg.startsWith("--cwd=")) {
+		if (arg?.startsWith("--cwd=")) {
 			const value = arg.slice("--cwd=".length).trim();
 			return value || undefined;
 		}
@@ -883,6 +884,7 @@ program
 						autoCommit: advancedConfig.autoCommit,
 						zeroPaddedIds: advancedConfig.zeroPaddedIds,
 						defaultEditor: advancedConfig.defaultEditor,
+						definitionOfDone: advancedConfig.definitionOfDone,
 						defaultPort: advancedConfig.defaultPort,
 						autoOpenBrowser: advancedConfig.autoOpenBrowser,
 						taskPrefix: taskPrefix || undefined,
@@ -970,6 +972,11 @@ program
 					if (config.defaultEditor) {
 						summaryLines.push(`  ${label("Default editor:")} ${config.defaultEditor}`);
 					}
+					summaryLines.push(
+						`  ${label("Definition of Done defaults:")} ${
+							(config.definitionOfDone ?? []).length > 0 ? config.definitionOfDone?.join(" | ") : muted("none")
+						}`,
+					);
 				} else {
 					summaryLines.push(`${label("Advanced settings:")} ${muted("unchanged (run `backlog config` to customize)")}`);
 				}
@@ -2961,6 +2968,7 @@ const configCmd = program
 			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
 			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
 			console.log(`  Auto commit: ${mergedConfig.autoCommit ?? false}`);
+			console.log(`  Definition of Done defaults: ${(mergedConfig.definitionOfDone ?? []).join(" | ") || "(none)"}`);
 			if (completionResult) {
 				console.log(`  Shell completions: installed to ${completionResult.installPath}`);
 			} else if (completionError) {
@@ -3271,6 +3279,11 @@ configCmd
 						console.error("milestones cannot be set directly.");
 						console.error(
 							"Use milestone files via milestone commands (e.g. `backlog milestone list`, `backlog milestone add`).",
+						);
+					} else if (key === "definitionOfDone") {
+						console.error("definitionOfDone cannot be set directly.");
+						console.error(
+							"Use `backlog config` for interactive editing, update `backlog/config.yml`, or use Web UI Settings.",
 						);
 					} else {
 						console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);

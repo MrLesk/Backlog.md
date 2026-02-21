@@ -197,6 +197,33 @@ describe("Enhanced init command", () => {
 		expect(reloaded?.mcp?.http?.port).toBe(7777);
 	});
 
+	test("initializeProject should persist advanced Definition of Done defaults and allow clearing them", async () => {
+		const core = new Core(tmpDir);
+
+		await initializeProject(core, {
+			projectName: "Definition Defaults Init",
+			integrationMode: "none",
+			advancedConfig: {
+				definitionOfDone: ["  Run tests  ", "", "Update docs"],
+			},
+		});
+
+		let loaded = await core.filesystem.loadConfig();
+		expect(loaded?.definitionOfDone).toEqual(["Run tests", "Update docs"]);
+
+		await initializeProject(core, {
+			projectName: "Definition Defaults Init",
+			integrationMode: "none",
+			existingConfig: loaded,
+			advancedConfig: {
+				definitionOfDone: [],
+			},
+		});
+
+		loaded = await core.filesystem.loadConfig();
+		expect(loaded?.definitionOfDone).toEqual([]);
+	});
+
 	test("should handle zero-padding configuration in init flow", async () => {
 		const core = new Core(tmpDir);
 
