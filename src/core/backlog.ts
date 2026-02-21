@@ -2376,20 +2376,23 @@ export class Core {
 	 * @param filePath - Path to the file to edit
 	 * @param screen - Optional blessed screen to suspend (for TUI contexts)
 	 */
-	async editTaskInTui(taskId: string, screen: BlessedScreen): Promise<TuiTaskEditResult> {
-		const localTask = await this.fs.loadTask(taskId);
-		let editableTask = localTask;
+	async editTaskInTui(taskId: string, screen: BlessedScreen, selectedTask?: Task): Promise<TuiTaskEditResult> {
+		const contextualTask = selectedTask && taskIdsEqual(selectedTask.id, taskId) ? selectedTask : undefined;
 
-		if (!editableTask) {
-			const resolvedTask = await this.getTask(taskId);
-			if (!resolvedTask) {
-				return { changed: false, reason: "not_found" };
-			}
-			if (!isLocalEditableTask(resolvedTask) || resolvedTask.branch) {
-				return { changed: false, task: resolvedTask, reason: "read_only" };
-			}
-			editableTask = resolvedTask;
+		if (contextualTask && (!isLocalEditableTask(contextualTask) || contextualTask.branch)) {
+			return { changed: false, task: contextualTask, reason: "read_only" };
 		}
+
+		const resolvedTask = contextualTask ?? (await this.getTask(taskId));
+		if (!resolvedTask) {
+			return { changed: false, reason: "not_found" };
+		}
+		if (!isLocalEditableTask(resolvedTask) || resolvedTask.branch) {
+			return { changed: false, task: resolvedTask, reason: "read_only" };
+		}
+
+		const localTask = await this.fs.loadTask(resolvedTask.id);
+		const editableTask = localTask ?? resolvedTask;
 
 		const filePath = await getTaskPath(editableTask.id, this);
 		if (!filePath) {

@@ -1,11 +1,13 @@
 ---
 id: BACK-389
-title: 'Add deterministic interactive TUI edit regression tests for issue #457'
+title: >-
+  Fix TUI editor handoff regression for issue #457 with deterministic
+  interactive tests
 status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 22:36'
-updated_date: '2026-02-11 22:53'
+updated_date: '2026-02-21 15:27'
 labels:
   - tui
   - testing

@@ -564,7 +564,7 @@ export async function renderBoardTui(
 		const openTaskEditor = async (task: Task) => {
 			try {
 				const core = new Core(process.cwd(), { enableWatchers: true });
-				const result = await core.editTaskInTui(task.id, screen);
+				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
 					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
 					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);

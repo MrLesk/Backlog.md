@@ -893,40 +893,46 @@ export async function viewTaskEnhanced(
 		if (labelPickerOpen || currentFocus === "filters" || noResultsMessage) {
 			return;
 		}
-		const result = await core.editTaskInTui(currentSelectedTask.id, screen);
-		if (result.reason === "read_only") {
-			const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
-			showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
-			return;
-		}
-		if (result.reason === "editor_failed") {
-			showTransientHelp(" {red-fg}Editor exited with an error; task was not modified.{/}");
-			return;
-		}
-		if (result.reason === "not_found") {
-			showTransientHelp(` {red-fg}Task ${currentSelectedTask.id} was not found on this branch.{/}`);
-			return;
-		}
+		const selectedTask = currentSelectedTask;
 
-		if (result.task) {
-			const index = allTasks.findIndex((taskItem) => taskItem.id === currentSelectedTask.id);
-			if (index >= 0) {
-				allTasks[index] = result.task;
+		try {
+			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
+			if (result.reason === "read_only") {
+				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
+				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
+				return;
 			}
-			const enhancedTask = enrichTask(result.task) ?? result.task;
-			currentSelectedTask = enhancedTask;
-			options.onTaskChange?.(enhancedTask);
-			if (taskSearchIndex) {
-				taskSearchIndex = createTaskSearchIndex(allTasks);
+			if (result.reason === "editor_failed") {
+				showTransientHelp(" {red-fg}Editor exited with an error; task was not modified.{/}");
+				return;
 			}
-		}
+			if (result.reason === "not_found") {
+				showTransientHelp(` {red-fg}Task ${selectedTask.id} was not found on this branch.{/}`);
+				return;
+			}
 
-		applyFilters();
-		if (result.changed) {
-			showTransientHelp(` {green-fg}Task ${result.task?.id ?? currentSelectedTask.id} marked modified.{/}`);
-			return;
+			if (result.task) {
+				const index = allTasks.findIndex((taskItem) => taskItem.id === selectedTask.id);
+				if (index >= 0) {
+					allTasks[index] = result.task;
+				}
+				const enhancedTask = enrichTask(result.task) ?? result.task;
+				currentSelectedTask = enhancedTask;
+				options.onTaskChange?.(enhancedTask);
+				if (taskSearchIndex) {
+					taskSearchIndex = createTaskSearchIndex(allTasks);
+				}
+			}
+
+			applyFilters();
+			if (result.changed) {
+				showTransientHelp(` {green-fg}Task ${result.task?.id ?? selectedTask.id} marked modified.{/}`);
+				return;
+			}
+			showTransientHelp(` {gray-fg}No changes detected for ${result.task?.id ?? selectedTask.id}.{/}`);
+		} catch (_error) {
+			showTransientHelp(" {red-fg}Failed to open editor.{/}");
 		}
-		showTransientHelp(` {gray-fg}No changes detected for ${result.task?.id ?? currentSelectedTask.id}.{/}`);
 	};
 
 	// Handle resize
