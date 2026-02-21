@@ -58,6 +58,8 @@ interface WizardOptions {
 	promptImpl?: TaskWizardPromptRunner;
 }
 
+const SINGLE_LINE_PROMPT_GUIDANCE = "single-line prompt; Shift+Enter not supported";
+
 function normalizeStatusKey(status: string): string {
 	return status.trim().toLowerCase().replace(/\s+/g, "");
 }
@@ -100,6 +102,79 @@ function parseChecklistInput(value: string): ChecklistEntry[] {
 		parsed.push({ text: entry, checked: false });
 	}
 	return parsed;
+}
+
+function getDefaultCreateStatus(statuses: string[]): string {
+	const canonicalTodo = findCanonicalStatus("To Do", statuses);
+	if (canonicalTodo) {
+		return canonicalTodo;
+	}
+	const firstStatus = statuses.find((status) => status.trim().length > 0);
+	return firstStatus ?? "To Do";
+}
+
+function buildStatusPromptValues(params: { statuses: string[]; mode: "create" | "edit"; initialStatus: string }): {
+	options: PromptChoice[];
+	initial: string;
+} {
+	const normalizedStatuses = normalizeStringList(params.statuses.map((status) => status.trim())) ?? [];
+	const statuses = normalizedStatuses.length > 0 ? normalizedStatuses : ["To Do"];
+	const options: PromptChoice[] = statuses.map((status) => ({
+		label: status,
+		value: status,
+	}));
+
+	if (params.mode === "create") {
+		const createDefault = getDefaultCreateStatus(statuses);
+		return {
+			options,
+			initial: createDefault,
+		};
+	}
+
+	const initialStatus = params.initialStatus.trim();
+	if (!initialStatus) {
+		return {
+			options,
+			initial: getDefaultCreateStatus(statuses),
+		};
+	}
+
+	const canonicalInitial = findCanonicalStatus(initialStatus, statuses);
+	if (canonicalInitial) {
+		return {
+			options,
+			initial: canonicalInitial,
+		};
+	}
+
+	return {
+		options: [{ label: `${params.initialStatus} (current)`, value: params.initialStatus }, ...options],
+		initial: params.initialStatus,
+	};
+}
+
+function buildPriorityPromptValues(initialPriority: string): {
+	options: PromptChoice[];
+	initial: string;
+} {
+	const normalizedInitial = initialPriority.trim().toLowerCase();
+	const options: PromptChoice[] = [
+		{ label: "None", value: "", hint: "No priority" },
+		{ label: "High", value: "high" },
+		{ label: "Medium", value: "medium" },
+		{ label: "Low", value: "low" },
+	];
+	if (!normalizedInitial) {
+		return { options, initial: "" };
+	}
+	if (normalizedInitial === "high" || normalizedInitial === "medium" || normalizedInitial === "low") {
+		return { options, initial: normalizedInitial };
+	}
+	return {
+		options: [{ label: `${initialPriority} (current)`, value: normalizedInitial }, ...options],
+		initial: normalizedInitial,
+	};
 }
 
 function formatListInput(values?: string[]): string {
@@ -180,6 +255,25 @@ async function promptText(
 	return String(response[options.name] ?? "");
 }
 
+async function promptSelect(
+	prompt: TaskWizardPromptRunner,
+	options: {
+		name: string;
+		message: string;
+		initial?: string;
+		choices: PromptChoice[];
+	},
+): Promise<string> {
+	const response = await prompt({
+		type: "select",
+		name: options.name,
+		message: options.message,
+		initial: options.initial,
+		options: options.choices,
+	});
+	return String(response[options.name] ?? "");
+}
+
 async function runTaskWizardValues(params: {
 	mode: "create" | "edit";
 	statuses: string[];
@@ -189,6 +283,12 @@ async function runTaskWizardValues(params: {
 	const prompt = params.promptImpl ?? clackPromptRunner;
 	const statuses = params.statuses;
 	const initial = params.initialValues;
+	const statusPrompt = buildStatusPromptValues({
+		statuses,
+		mode: params.mode,
+		initialStatus: initial.status,
+	});
+	const priorityPrompt = buildPriorityPromptValues(initial.priority);
 
 	try {
 		const title = await promptText(prompt, {
@@ -205,36 +305,20 @@ async function runTaskWizardValues(params: {
 		});
 		const description = await promptText(prompt, {
 			name: "description",
-			message: "Description",
+			message: `Description (${SINGLE_LINE_PROMPT_GUIDANCE})`,
 			initial: initial.description,
 		});
-		const status = await promptText(prompt, {
+		const status = await promptSelect(prompt, {
 			name: "status",
-			message: params.mode === "create" ? "Status (blank uses default)" : "Status (blank keeps current value)",
-			initial: initial.status,
-			validate: (value) => {
-				const trimmed = String(value ?? "").trim();
-				if (!trimmed) return undefined;
-				if (statuses.length === 0) return undefined;
-				const canonical = findCanonicalStatus(trimmed, statuses);
-				return canonical ? undefined : `Invalid status. Valid: ${statuses.join(", ")}`;
-			},
+			message: "Status",
+			initial: statusPrompt.initial,
+			choices: statusPrompt.options,
 		});
-		const priority = await promptText(prompt, {
+		const priority = await promptSelect(prompt, {
 			name: "priority",
-			message:
-				params.mode === "create"
-					? "Priority (high, medium, low; blank for none)"
-					: "Priority (high, medium, low; blank keeps current value)",
-			initial: initial.priority,
-			validate: (value) => {
-				const trimmed = String(value ?? "")
-					.trim()
-					.toLowerCase();
-				if (!trimmed) return undefined;
-				if (trimmed === "high" || trimmed === "medium" || trimmed === "low") return undefined;
-				return "Priority must be high, medium, or low.";
-			},
+			message: "Priority",
+			initial: priorityPrompt.initial,
+			choices: priorityPrompt.options,
 		});
 		const assignee = await promptText(prompt, {
 			name: "assignee",
@@ -257,17 +341,24 @@ async function runTaskWizardValues(params: {
 		});
 		const definitionOfDone = await promptText(prompt, {
 			name: "definitionOfDone",
-			message: "Definition of Done (comma/newline-separated; optional [x]/[ ] prefix per item)",
+			message:
+				"Task Definition of Done (per-task; project-level DoD configured elsewhere; comma/newline-separated; optional [x]/[ ] prefix per item)",
 			initial: initial.definitionOfDone,
 		});
 		const implementationPlan = await promptText(prompt, {
 			name: "implementationPlan",
-			message: params.mode === "create" ? "Implementation Plan" : "Implementation Plan (blank keeps current value)",
+			message:
+				params.mode === "create"
+					? `Implementation Plan (${SINGLE_LINE_PROMPT_GUIDANCE})`
+					: `Implementation Plan (${SINGLE_LINE_PROMPT_GUIDANCE}; blank keeps current value)`,
 			initial: initial.implementationPlan,
 		});
 		const implementationNotes = await promptText(prompt, {
 			name: "implementationNotes",
-			message: params.mode === "create" ? "Implementation Notes" : "Implementation Notes (blank keeps current value)",
+			message:
+				params.mode === "create"
+					? `Implementation Notes (${SINGLE_LINE_PROMPT_GUIDANCE})`
+					: `Implementation Notes (${SINGLE_LINE_PROMPT_GUIDANCE}; blank keeps current value)`,
 			initial: initial.implementationNotes,
 		});
 		const references = await promptText(prompt, {

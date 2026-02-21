@@ -38,8 +38,8 @@ describe("task wizard", () => {
 		const prompt = createPromptRunner({
 			title: "Create from wizard",
 			description: "Wizard description",
-			status: "inprogress",
-			priority: "MEDIUM",
+			status: "In Progress",
+			priority: "medium",
 			assignee: "alice, @bob",
 			labels: "cli, wizard",
 			acceptanceCriteria: "[x] First criterion, Second criterion",
@@ -171,11 +171,10 @@ describe("task wizard", () => {
 		expect(createInput).toBeNull();
 	});
 
-	it("uses prompt-level validation for required and status fields", async () => {
+	it("uses prompt-level validation for required title and keeps default selected status", async () => {
 		const prompt = createPromptRunner({
 			title: ["   ", "Validated title"],
 			description: "",
-			status: ["not-a-real-status", "To Do"],
 			priority: "",
 			assignee: "",
 			labels: "",
@@ -196,5 +195,52 @@ describe("task wizard", () => {
 		expect(input).not.toBeNull();
 		expect(input?.title).toBe("Validated title");
 		expect(input?.status).toBe("To Do");
+	});
+
+	it("uses select prompts for status and priority with create defaults", async () => {
+		const questions: Record<string, { type: string; message: string; initial?: string; optionsCount: number }> = {};
+		const prompt: TaskWizardPromptRunner = async (question) => {
+			questions[question.name] = {
+				type: question.type,
+				message: question.message,
+				initial: question.initial,
+				optionsCount: question.options?.length ?? 0,
+			};
+			return { [question.name]: question.initial ?? "" };
+		};
+
+		const input = await runTaskCreateWizard({
+			statuses: ["Backlog", "To Do", "In Progress", "Done"],
+			promptImpl: prompt,
+		});
+
+		expect(input).not.toBeNull();
+		expect(input?.status).toBe("To Do");
+		expect(input?.priority).toBeUndefined();
+		expect(questions.status?.type).toBe("select");
+		expect(questions.status?.initial).toBe("To Do");
+		expect((questions.status?.optionsCount ?? 0) > 0).toBe(true);
+		expect(questions.priority?.type).toBe("select");
+		expect(questions.priority?.initial).toBe("");
+		expect((questions.priority?.optionsCount ?? 0) > 0).toBe(true);
+	});
+
+	it("labels task DoD and single-line text limitations clearly", async () => {
+		const messages = new Map<string, string>();
+		const prompt: TaskWizardPromptRunner = async (question) => {
+			messages.set(question.name, question.message);
+			return { [question.name]: question.initial ?? "" };
+		};
+
+		await runTaskCreateWizard({
+			statuses: ["To Do", "In Progress", "Done"],
+			promptImpl: prompt,
+		});
+
+		expect(messages.get("definitionOfDone")).toContain("per-task");
+		expect(messages.get("definitionOfDone")).toContain("project-level DoD configured elsewhere");
+		expect(messages.get("description")).toContain("Shift+Enter not supported");
+		expect(messages.get("implementationPlan")).toContain("Shift+Enter not supported");
+		expect(messages.get("implementationNotes")).toContain("Shift+Enter not supported");
 	});
 });
