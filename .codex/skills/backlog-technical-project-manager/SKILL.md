@@ -50,6 +50,9 @@ If intent is not explicit, ask for confirmation before activating.
    - When recurring verification gaps appear, propose DoD updates to the user
    - Suggest concrete new DoD checklist items when they would prevent repeat failures
    - Do not silently change task DoD scope; present recommendation and wait for user decision
+8. Keep task-record git state consistent:
+   - Sub-agents must update task records on their own task branch as part of their task delivery
+   - Do not perform standalone task-record sync commits on `main`
 
 ## Coordination Workflow
 
@@ -172,3 +175,7 @@ This section is a living checklist for future TPMs. Update it after each multi-t
 6. **Assuming CI is healthy after local pass**
    - Symptom: local verification passes but PR checks fail later.
    - TPM guardrail: inspect PR check status after each push and act on first failing job/log immediately.
+
+7. **Leaving task-record updates stranded on local `main`**
+   - Symptom: sub-agents updated task metadata, but corresponding `backlog/tasks/*.md` changes were never committed/pushed on the owning task branches.
+   - TPM guardrail: require each sub-agent to commit/push its task-record updates on its own task branch, and verify `main` has no leftover modified `backlog/tasks/*.md` files before handoff.
