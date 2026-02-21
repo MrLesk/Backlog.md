@@ -1,10 +1,48 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
+import Fuse from "fuse.js";
 import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
+
+interface MilestoneSearchEntry {
+	id: string;
+	title: string;
+}
+
+const isDoneStatus = (status?: string | null) => {
+	const normalized = (status ?? "").toLowerCase();
+	return normalized.includes("done") || normalized.includes("complete");
+};
+
+const rebuildFilteredBucket = (
+	bucket: MilestoneBucket,
+	filteredTasks: Task[],
+	statuses: string[],
+): MilestoneBucket => {
+	const counts: Record<string, number> = {};
+	for (const status of statuses) {
+		counts[status] = 0;
+	}
+	for (const task of filteredTasks) {
+		const status = task.status ?? "";
+		counts[status] = (counts[status] ?? 0) + 1;
+	}
+
+	const doneCount = filteredTasks.filter((task) => isDoneStatus(task.status)).length;
+	const progress = filteredTasks.length > 0 ? Math.round((doneCount / filteredTasks.length) * 100) : 0;
+
+	return {
+		...bucket,
+		tasks: filteredTasks,
+		statusCounts: counts,
+		total: filteredTasks.length,
+		doneCount,
+		progress,
+	};
+};
 
 interface MilestonesPageProps {
 	tasks: Task[];
@@ -34,6 +72,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [showAllUnassigned, setShowAllUnassigned] = useState(false);
 	const [showCompleted, setShowCompleted] = useState(false);
 	const [archivingMilestoneKey, setArchivingMilestoneKey] = useState<string | null>(null);
+	const [searchQuery, setSearchQuery] = useState("");
 
 	const archivedMilestoneIds = useMemo(
 		() => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
@@ -43,6 +82,53 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds, archivedMilestones }),
 		[tasks, milestoneEntities, statuses, archivedMilestoneIds, archivedMilestones],
 	);
+	const searchQueryTrimmed = searchQuery.trim();
+	const isSearchActive = searchQueryTrimmed.length > 0;
+	const defaultExpandedByBucketKey = useMemo(() => {
+		const map: Record<string, boolean> = {};
+		for (const bucket of buckets) {
+			map[bucket.key] = bucket.total > 0 && bucket.total <= 8;
+		}
+		return map;
+	}, [buckets]);
+	const visibleBuckets = useMemo(() => {
+		if (!isSearchActive) {
+			return buckets;
+		}
+
+		const searchableTasks: MilestoneSearchEntry[] = buckets.flatMap((bucket) =>
+			bucket.tasks.map((task) => ({
+				id: task.id,
+				title: task.title,
+			})),
+		);
+		if (searchableTasks.length === 0) {
+			return buckets.map((bucket) => rebuildFilteredBucket(bucket, [], statuses));
+		}
+		const normalizedQuery = searchQueryTrimmed.toLowerCase();
+		const exactIdMatches = searchableTasks.filter((task) => task.id.toLowerCase() === normalizedQuery);
+		const matchedTaskIds =
+			exactIdMatches.length > 0
+				? new Set(exactIdMatches.map((task) => task.id))
+				: (() => {
+						const fuse = new Fuse(searchableTasks, {
+							threshold: 0.35,
+							ignoreLocation: true,
+							minMatchCharLength: 2,
+							keys: [
+								{ name: "title", weight: 0.55 },
+								{ name: "id", weight: 0.45 },
+							],
+						});
+						const matches = fuse.search(searchQueryTrimmed);
+						return new Set(matches.map((match) => match.item.id));
+					})();
+
+		return buckets.map((bucket) => {
+			const filteredTasks = bucket.tasks.filter((task) => matchedTaskIds.has(task.id));
+			return rebuildFilteredBucket(bucket, filteredTasks, statuses);
+		});
+	}, [buckets, isSearchActive, searchQueryTrimmed, statuses]);
 
 	// Separate buckets into categories and sort by ID descending
 	const { unassignedBucket, activeMilestones, completedMilestones } = useMemo(() => {
@@ -57,10 +143,10 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			return bNum - aNum;
 		};
 
-		const unassigned = buckets.find((b) => b.isNoMilestone);
-		const activeWithTasks = buckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total > 0);
-		const empty = buckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total === 0);
-		const completed = buckets.filter((b) => !b.isNoMilestone && b.isCompleted);
+		const unassigned = visibleBuckets.find((b) => b.isNoMilestone);
+		const activeWithTasks = visibleBuckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total > 0);
+		const empty = visibleBuckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total === 0);
+		const completed = visibleBuckets.filter((b) => !b.isNoMilestone && b.isCompleted);
 
 		// Sort each group by ID descending, then combine (active with tasks first, then empty)
 		const sortedActive = [...activeWithTasks].sort(sortByIdDesc);
@@ -72,7 +158,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			activeMilestones: [...sortedActive, ...sortedEmpty],
 			completedMilestones: sortedCompleted,
 		};
-	}, [buckets]);
+	}, [visibleBuckets]);
 
 	// Drag and drop handlers
 	const handleDragStart = useCallback((e: React.DragEvent, task: Task) => {
@@ -198,11 +284,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		[onRefreshData],
 	);
 
-	const isDoneStatus = (status?: string | null) => {
-		const normalized = (status ?? "").toLowerCase();
-		return normalized.includes("done") || normalized.includes("complete");
-	};
-
 	const getStatusBadgeClass = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
 		if (normalized.includes("done") || normalized.includes("complete")) {
@@ -259,7 +340,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	// Render a milestone card (drop target)
 	const renderMilestoneCard = (bucket: MilestoneBucket, isEmpty: boolean) => {
 		const progress = bucket.total > 0 ? Math.round((bucket.doneCount / bucket.total) * 100) : 0;
-		const defaultExpanded = bucket.total > 0 && bucket.total <= 8;
+		const defaultExpanded = defaultExpandedByBucketKey[bucket.key] ?? (bucket.total > 0 && bucket.total <= 8);
 		const isExpanded = expandedBuckets[bucket.key] ?? defaultExpanded;
 		const listId = `milestone-${safeIdSegment(bucket.key)}`;
 		const sortedTasks = getSortedTasks(bucket.tasks);
@@ -408,7 +489,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	// Render unassigned tasks section with table layout
 	const renderUnassignedSection = () => {
-		if (!unassignedBucket || unassignedBucket.total === 0) return null;
+		if (!unassignedBucket || (!isSearchActive && unassignedBucket.total === 0)) return null;
 
 		const sortedTasks = getSortedTasks(unassignedBucket.tasks);
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
@@ -445,53 +526,61 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 					{isExpanded && (
 						<div className="mt-4">
-							{/* Table */}
-							<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
-								{/* Table header */}
-								<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-									<div className="w-6" /> {/* Drag handle column */}
-									<div className="w-24">ID</div>
-									<div>Title</div>
-									<div className="text-center w-24">Status</div>
-									<div className="text-center w-20">Priority</div>
-								</div>
+							{sortedTasks.length > 0 ? (
+								<>
+									{/* Table */}
+									<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+										{/* Table header */}
+										<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+											<div className="w-6" /> {/* Drag handle column */}
+											<div className="w-24">ID</div>
+											<div>Title</div>
+											<div className="text-center w-24">Status</div>
+											<div className="text-center w-20">Priority</div>
+										</div>
 
-								{/* Table rows */}
-								<div className="divide-y divide-gray-200 dark:divide-gray-700">
-									{displayTasks.map((task) => (
-										<MilestoneTaskRow
-											key={task.id}
-											task={task}
-											isDone={isDoneStatus(task.status)}
-											statusBadgeClass={getStatusBadgeClass(task.status)}
-											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
-											onEditTask={onEditTask}
-											onDragStart={handleDragStart}
-											onDragEnd={handleDragEnd}
-										/>
-									))}
-								</div>
+										{/* Table rows */}
+										<div className="divide-y divide-gray-200 dark:divide-gray-700">
+											{displayTasks.map((task) => (
+												<MilestoneTaskRow
+													key={task.id}
+													task={task}
+													isDone={isDoneStatus(task.status)}
+													statusBadgeClass={getStatusBadgeClass(task.status)}
+													priorityBadgeClass={getPriorityBadgeClass(task.priority)}
+													onEditTask={onEditTask}
+													onDragStart={handleDragStart}
+													onDragEnd={handleDragEnd}
+												/>
+											))}
+										</div>
 
-								{/* Footer with show more/less */}
-								{hasMore && (
-									<div className="px-3 py-2 text-xs border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
-										<button
-											type="button"
-											onClick={() => setShowAllUnassigned(!showAllUnassigned)}
-											className="text-blue-600 dark:text-blue-400 hover:underline"
-										>
-											{showAllUnassigned
-												? "Show less ↑"
-												: `Show all ${sortedTasks.length} tasks ↓`}
-										</button>
+										{/* Footer with show more/less */}
+										{hasMore && (
+											<div className="px-3 py-2 text-xs border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+												<button
+													type="button"
+													onClick={() => setShowAllUnassigned(!showAllUnassigned)}
+													className="text-blue-600 dark:text-blue-400 hover:underline"
+												>
+													{showAllUnassigned
+														? "Show less ↑"
+														: `Show all ${sortedTasks.length} tasks ↓`}
+												</button>
+											</div>
+										)}
 									</div>
-								)}
-							</div>
 
-							{/* Hint */}
-							<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-								Drag tasks to a milestone below to assign them
-							</p>
+									{/* Hint */}
+									<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+										Drag tasks to a milestone below to assign them
+									</p>
+								</>
+							) : (
+								<p className="rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-white/70 dark:bg-gray-800/50 px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+									No matching unassigned tasks.
+								</p>
+							)}
 						</div>
 					)}
 				</div>
@@ -499,13 +588,48 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		);
 	};
 
-	const noMilestones = activeMilestones.length === 0 && completedMilestones.length === 0;
+	const hasSearchMatches = visibleBuckets.some((bucket) => bucket.total > 0);
+	const showSearchNoMatchHint = isSearchActive && !hasSearchMatches;
+	const noMilestones = !isSearchActive && activeMilestones.length === 0 && completedMilestones.length === 0;
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
 			{/* Header */}
-			<div className="flex items-center justify-between gap-4 mb-6">
-				<h1 className="text-2xl font-bold text-gray-900 dark:text-white">Milestones</h1>
+			<div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+				<div className="flex flex-wrap items-center gap-4">
+					<h1 className="text-2xl font-bold text-gray-900 dark:text-white">Milestones</h1>
+					<div className="relative w-full min-w-[240px] max-w-[420px]">
+						<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
+							<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+							</svg>
+						</span>
+						<label htmlFor="milestones-search" className="sr-only">
+							Search milestones
+						</label>
+						<input
+							id="milestones-search"
+							type="text"
+							value={searchQuery}
+							onInput={(event) => setSearchQuery((event.target as HTMLInputElement).value)}
+							placeholder="Search by task ID or title"
+							aria-label="Search milestones"
+							className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
+						/>
+						{isSearchActive && (
+							<button
+								type="button"
+								onClick={() => setSearchQuery("")}
+								aria-label="Clear milestone search"
+								className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+							>
+								<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+						)}
+					</div>
+				</div>
 				<div className="flex items-center gap-3">
 					{success && (
 						<span className="inline-flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
@@ -533,6 +657,22 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 				</div>
 			</div>
 
+			{/* Search no-match hint */}
+			{showSearchNoMatchHint && (
+				<div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+					<p className="text-sm text-amber-800 dark:text-amber-200">
+						No milestones or tasks match &quot;{searchQueryTrimmed}&quot;.
+					</p>
+					<button
+						type="button"
+						onClick={() => setSearchQuery("")}
+						className="rounded-md border border-amber-300 dark:border-amber-700 px-3 py-1.5 text-xs font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+					>
+						Clear search
+					</button>
+				</div>
+			)}
+
 			{/* Unassigned tasks */}
 			{renderUnassignedSection()}
 
@@ -546,23 +686,30 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			{/* Completed milestones */}
 			{completedMilestones.length > 0 && (
 				<div className="mt-8">
-					<button
-						type="button"
-						onClick={() => setShowCompleted((value) => !value)}
-						className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-					>
-						<span>Completed milestones</span>
-						<span className="text-xs text-gray-400 dark:text-gray-500">({completedMilestones.length})</span>
-						<svg
-							className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-180" : ""}`}
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
+					{isSearchActive ? (
+						<div className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+							<span>Completed milestones</span>
+							<span className="text-xs text-gray-400 dark:text-gray-500">({completedMilestones.length})</span>
+						</div>
+					) : (
+						<button
+							type="button"
+							onClick={() => setShowCompleted((value) => !value)}
+							className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
 						>
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-						</svg>
-					</button>
-					{showCompleted && (
+							<span>Completed milestones</span>
+							<span className="text-xs text-gray-400 dark:text-gray-500">({completedMilestones.length})</span>
+							<svg
+								className={`w-4 h-4 transition-transform ${showCompleted ? "rotate-180" : ""}`}
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+							</svg>
+						</button>
+					)}
+					{(isSearchActive || showCompleted) && (
 						<div className="mt-4 space-y-4">
 							{completedMilestones.map((bucket) => renderMilestoneCard(bucket, false))}
 						</div>
