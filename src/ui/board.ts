@@ -8,7 +8,6 @@ import {
 } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Milestone, Task } from "../types/index.ts";
-import { getTaskPath } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createTaskPopup } from "./task-viewer-with-search.ts";
@@ -113,6 +112,9 @@ function formatTaskListItem(task: Task, isMoving = false): string {
 function formatColumnLabel(status: string, count: number): string {
 	return `\u00A0${getStatusIcon(status)} ${status || "No Status"} (${count})\u00A0`;
 }
+
+const DEFAULT_FOOTER_CONTENT =
+	" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit";
 
 function _arraysEqual(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
@@ -232,9 +234,15 @@ export async function renderBoardTui(
 			height: 1,
 			width: "100%",
 			tags: true,
-			content:
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit",
+			content: DEFAULT_FOOTER_CONTENT,
 		});
+		let transientFooterContent: string | null = null;
+		let footerRestoreTimer: ReturnType<typeof setTimeout> | null = null;
+		const clearFooterTimer = () => {
+			if (!footerRestoreTimer) return;
+			clearTimeout(footerRestoreTimer);
+			footerRestoreTimer = null;
+		};
 
 		const clearColumns = () => {
 			for (const column of columns) {
@@ -392,15 +400,30 @@ export async function renderBoardTui(
 		};
 
 		const updateFooter = () => {
+			if (transientFooterContent) {
+				footerBox.setContent(transientFooterContent);
+				return;
+			}
 			if (moveOp) {
 				footerBox.setContent(
 					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
 				);
 			} else {
-				footerBox.setContent(
-					" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit",
-				);
+				footerBox.setContent(DEFAULT_FOOTER_CONTENT);
 			}
+		};
+
+		const showTransientFooter = (message: string, durationMs = 3000) => {
+			transientFooterContent = message;
+			clearFooterTimer();
+			updateFooter();
+			screen.render();
+			footerRestoreTimer = setTimeout(() => {
+				transientFooterContent = null;
+				footerRestoreTimer = null;
+				updateFooter();
+				screen.render();
+			}, durationMs);
 		};
 
 		const renderView = () => {
@@ -541,11 +564,37 @@ export async function renderBoardTui(
 		const openTaskEditor = async (task: Task) => {
 			try {
 				const core = new Core(process.cwd(), { enableWatchers: true });
-				const filePath = await getTaskPath(task.id, core);
-				if (!filePath) return;
-				await core.openEditor(filePath, screen);
+				const result = await core.editTaskInTui(task.id, screen, task);
+				if (result.reason === "read_only") {
+					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
+					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
+					return;
+				}
+				if (result.reason === "editor_failed") {
+					showTransientFooter(" {red-fg}Editor exited with an error; task was not modified.{/}");
+					return;
+				}
+				if (result.reason === "not_found") {
+					showTransientFooter(` {red-fg}Task ${task.id} not found on this branch.{/}`);
+					return;
+				}
+
+				if (result.task) {
+					currentTasks = currentTasks.map((existingTask) =>
+						existingTask.id === task.id ? result.task || existingTask : existingTask,
+					);
+				}
+
+				if (result.changed) {
+					renderView();
+					showTransientFooter(` {green-fg}Task ${result.task?.id ?? task.id} marked modified.{/}`);
+					return;
+				}
+
+				renderView();
+				showTransientFooter(` {gray-fg}No changes detected for ${result.task?.id ?? task.id}.{/}`);
 			} catch (_error) {
-				// Silently handle errors
+				showTransientFooter(" {red-fg}Failed to open editor.{/}");
 			}
 		};
 
@@ -674,16 +723,7 @@ export async function renderBoardTui(
 
 				// Prevent move mode for cross-branch tasks
 				if (task.branch) {
-					footerBox.setContent(
-						` {red-fg}Cannot move task from branch "${task.branch}". Switch to that branch to modify it.{/}`,
-					);
-					screen.render();
-					setTimeout(() => {
-						footerBox.setContent(
-							" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit",
-						);
-						screen.render();
-					}, 3000);
+					showTransientFooter(` {red-fg}Cannot move task from branch "${task.branch}".{/}`);
 					return;
 				}
 
@@ -715,6 +755,7 @@ export async function renderBoardTui(
 			}
 
 			if (options?.onTabPress) {
+				clearFooterTimer();
 				screen.destroy();
 				await options.onTabPress();
 				resolve();
@@ -722,6 +763,7 @@ export async function renderBoardTui(
 			}
 
 			if (options?.viewSwitcher) {
+				clearFooterTimer();
 				screen.destroy();
 				await options.viewSwitcher.switchView();
 				resolve();
@@ -729,6 +771,7 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["q", "C-c"], () => {
+			clearFooterTimer();
 			screen.destroy();
 			resolve();
 		});
@@ -741,6 +784,7 @@ export async function renderBoardTui(
 			}
 
 			if (!popupOpen) {
+				clearFooterTimer();
 				screen.destroy();
 				resolve();
 			}

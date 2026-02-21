@@ -414,6 +414,22 @@ export async function viewTaskEnhanced(
 		tags: true,
 		content: "",
 	});
+	let transientHelpContent: string | null = null;
+	let helpRestoreTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showTransientHelp(message: string, durationMs = 3000) {
+		transientHelpContent = message;
+		if (helpRestoreTimer) {
+			clearTimeout(helpRestoreTimer);
+			helpRestoreTimer = null;
+		}
+		updateHelpBar();
+		helpRestoreTimer = setTimeout(() => {
+			transientHelpContent = null;
+			helpRestoreTimer = null;
+			updateHelpBar();
+		}, durationMs);
+	}
 
 	function setActivePane(active: "list" | "detail" | "none") {
 		const listBorder = taskListPane.style as { border?: { fg?: string } };
@@ -841,6 +857,12 @@ export async function viewTaskEnhanced(
 
 	// Dynamic help bar content
 	function updateHelpBar() {
+		if (transientHelpContent) {
+			helpBar.setContent(transientHelpContent);
+			screen.render();
+			return;
+		}
+
 		let content = "";
 
 		const filterFocus = filterHeader.getCurrentFocus();
@@ -855,16 +877,63 @@ export async function viewTaskEnhanced(
 					" {cyan-fg}[Tab]{/} Next Filter | {cyan-fg}[Shift+Tab]{/} Prev | {cyan-fg}[↑↓]{/} Select | {cyan-fg}[Esc]{/} Back | {gray-fg}(Live filter){/}";
 			}
 		} else if (currentFocus === "detail") {
-			content = " {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[q/Esc]{/} Quit";
+			content =
+				" {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		} else {
 			// Task list help
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		}
 
 		helpBar.setContent(content);
 		screen.render();
 	}
+
+	const openCurrentTaskInEditor = async () => {
+		if (labelPickerOpen || currentFocus === "filters" || noResultsMessage) {
+			return;
+		}
+		const selectedTask = currentSelectedTask;
+
+		try {
+			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
+			if (result.reason === "read_only") {
+				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
+				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
+				return;
+			}
+			if (result.reason === "editor_failed") {
+				showTransientHelp(" {red-fg}Editor exited with an error; task was not modified.{/}");
+				return;
+			}
+			if (result.reason === "not_found") {
+				showTransientHelp(` {red-fg}Task ${selectedTask.id} was not found on this branch.{/}`);
+				return;
+			}
+
+			if (result.task) {
+				const index = allTasks.findIndex((taskItem) => taskItem.id === selectedTask.id);
+				if (index >= 0) {
+					allTasks[index] = result.task;
+				}
+				const enhancedTask = enrichTask(result.task) ?? result.task;
+				currentSelectedTask = enhancedTask;
+				options.onTaskChange?.(enhancedTask);
+				if (taskSearchIndex) {
+					taskSearchIndex = createTaskSearchIndex(allTasks);
+				}
+			}
+
+			applyFilters();
+			if (result.changed) {
+				showTransientHelp(` {green-fg}Task ${result.task?.id ?? selectedTask.id} marked modified.{/}`);
+				return;
+			}
+			showTransientHelp(` {gray-fg}No changes detected for ${result.task?.id ?? selectedTask.id}.{/}`);
+		} catch (_error) {
+			showTransientHelp(" {red-fg}Failed to open editor.{/}");
+		}
+	};
 
 	// Handle resize
 	screen.on("resize", () => {
@@ -899,6 +968,10 @@ export async function viewTaskEnhanced(
 
 	screen.key(["l", "L"], () => {
 		openLabelPicker();
+	});
+
+	screen.key(["e", "E", "S-e"], () => {
+		void openCurrentTaskInEditor();
 	});
 
 	screen.key(["escape"], () => {
@@ -975,6 +1048,10 @@ export async function viewTaskEnhanced(
 	// Wait for screen to close
 	return new Promise<void>((resolve) => {
 		screen.on("destroy", () => {
+			if (helpRestoreTimer) {
+				clearTimeout(helpRestoreTimer);
+				helpRestoreTimer = null;
+			}
 			searchService?.dispose();
 			contentStore?.dispose();
 			resolve();
