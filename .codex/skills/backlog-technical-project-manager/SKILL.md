@@ -42,6 +42,17 @@ If intent is not explicit, ask for confirmation before activating.
    - TPM is authorized to install required tooling/dependencies for agents
    - TPM is authorized to troubleshoot the environment (including stopping stuck processes) so verification can run
    - TPM should not accept "done" without verifiable evidence
+6. Maintain the skill's operational memory:
+   - Keep the `## Common Agent Mistakes (Keep Updated)` section current
+   - At the end of each takeover, add newly observed repeatable failure patterns
+   - Remove or rewrite stale entries when process or tooling changes make them obsolete
+7. Improve quality gates with explicit user approval:
+   - When recurring verification gaps appear, propose DoD updates to the user
+   - Suggest concrete new DoD checklist items when they would prevent repeat failures
+   - Do not silently change task DoD scope; present recommendation and wait for user decision
+8. Keep task-record git state consistent:
+   - Sub-agents must update task records on their own task branch as part of their task delivery
+   - Do not perform standalone task-record sync commits on `main`
 
 ## Coordination Workflow
 
@@ -132,3 +143,39 @@ Before considering a task complete:
    - Completed tasks and PRs
    - Remaining blockers
    - Suggested next approvals/decisions (without creating new tasks autonomously)
+7. Include DoD recommendations when relevant:
+   - If execution exposed missing/weak DoD checks, propose specific DoD additions or edits
+   - Ask the user whether to apply those DoD changes now or defer them
+
+## Common Agent Mistakes (Keep Updated)
+
+This section is a living checklist for future TPMs. Update it after each multi-task takeover.
+
+1. **Setting task `Done` when DoD is externally blocked**
+   - Symptom: AC is complete, but DoD command(s) fail due to baseline or unrelated repo errors.
+   - TPM guardrail: keep task `In Progress`, explicitly uncheck blocked DoD items, and document dependency on the blocker.
+
+2. **Using local-path git remotes in dedicated clones**
+   - Symptom: `gh pr create` fails with "no git remotes ... known GitHub host".
+   - TPM guardrail: standardize clone remote before PR steps:
+     - `git remote set-url origin https://github.com/MrLesk/Backlog.md.git`
+
+3. **Mis-attributing regressions to the wrong task/PR**
+   - Symptom: bug report gets sent to wrong branch, causing rework and delay.
+   - TPM guardrail: run a quick ownership check (changed files + commit/PR history) before assigning fix work.
+
+4. **Corrupting PR notes with raw command output**
+   - Symptom: PR body contains terminal escape sequences or huge copied logs.
+   - TPM guardrail: keep PR notes concise (summary, verification commands, scoped notes) and never paste full terminal dumps.
+
+5. **Introducing undeclared transitive dependencies**
+   - Symptom: local tests pass, but CI/compile fails with "Cannot find module ...".
+   - TPM guardrail: when importing new packages (including transitive/internal modules), ensure explicit dependency declarations and lockfile updates, then run a compile smoke check.
+
+6. **Assuming CI is healthy after local pass**
+   - Symptom: local verification passes but PR checks fail later.
+   - TPM guardrail: inspect PR check status after each push and act on first failing job/log immediately.
+
+7. **Leaving task-record updates stranded on local `main`**
+   - Symptom: sub-agents updated task metadata, but corresponding `backlog/tasks/*.md` changes were never committed/pushed on the owning task branches.
+   - TPM guardrail: require each sub-agent to commit/push its task-record updates on its own task branch, and verify `main` has no leftover modified `backlog/tasks/*.md` files before handoff.
