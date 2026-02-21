@@ -12,11 +12,6 @@ interface MilestoneSearchEntry {
 	title: string;
 }
 
-const isDoneStatus = (status?: string | null) => {
-	const normalized = (status ?? "").toLowerCase();
-	return normalized.includes("done") || normalized.includes("complete");
-};
-
 const rebuildFilteredBucket = (
 	bucket: MilestoneBucket,
 	filteredTasks: Task[],

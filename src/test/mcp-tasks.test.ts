@@ -169,6 +169,20 @@ describe("MCP task tools (MVP)", () => {
 		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
 	});
 
+	it("describes Definition of Done fields as task-level in schemas", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
+
+		expect(createSchema?.properties?.definitionOfDoneAdd?.description).toContain("Task-specific");
+		expect(createSchema?.properties?.disableDefinitionOfDoneDefaults?.description).toContain(
+			"definition_of_done_defaults_upsert",
+		);
+		expect(editSchema?.properties?.definitionOfDoneAdd?.description).toContain("Task-specific");
+		expect(editSchema?.properties?.definitionOfDoneCheck?.description).toContain("this task");
+	});
+
 	it("allows case-insensitive and whitespace-normalized status values", async () => {
 		const createResult = await mcpServer.testInterface.callTool({
 			params: {

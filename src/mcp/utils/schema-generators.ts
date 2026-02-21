@@ -106,9 +106,13 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 					type: "string",
 					maxLength: 500,
 				},
+				description:
+					"Task-specific Definition of Done items to append for this task only. Do not copy project defaults here.",
 			},
 			disableDefinitionOfDoneDefaults: {
 				type: "boolean",
+				description:
+					"Disable project-level Definition of Done defaults for this task creation. Use definition_of_done_defaults_upsert to change project defaults.",
 			},
 			parentTaskId: {
 				type: "string",
@@ -317,6 +321,8 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 500,
 				},
 				maxItems: 50,
+				description:
+					"Task-specific Definition of Done items to add for this task only. Use definition_of_done_defaults_upsert to change project defaults.",
 			},
 			definitionOfDoneRemove: {
 				type: "array",
@@ -325,6 +331,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					minimum: 1,
 				},
 				maxItems: 50,
+				description: "Remove task-specific Definition of Done items by 1-based index on this task.",
 			},
 			definitionOfDoneCheck: {
 				type: "array",
@@ -333,6 +340,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					minimum: 1,
 				},
 				maxItems: 50,
+				description: "Mark task-specific Definition of Done items as complete by 1-based index on this task.",
 			},
 			definitionOfDoneUncheck: {
 				type: "array",
@@ -341,6 +349,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					minimum: 1,
 				},
 				maxItems: 50,
+				description: "Mark task-specific Definition of Done items as incomplete by 1-based index on this task.",
 			},
 		},
 		required: ["id"],

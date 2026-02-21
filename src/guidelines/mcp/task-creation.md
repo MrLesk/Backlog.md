@@ -77,8 +77,12 @@ Create all tasks in the same session to maintain consistency and context.
 - Include documentation expectations in the same task (no deferring to follow-up tasks)
 
 **Definition of Done defaults (optional):**
-- Use `definitionOfDoneAdd` to append task-specific DoD items during creation
-- Use `disableDefinitionOfDoneDefaults` to skip project defaults when needed
+- Project-level defaults are managed with `definition_of_done_defaults_get` / `definition_of_done_defaults_upsert`
+- DoD is not acceptance criteria: AC defines product scope/behavior, DoD defines completion hygiene
+- Per-task DoD customization should be exceptional; default to project-level DoD plus strong acceptance criteria
+- Use `definitionOfDoneAdd` only for task-specific DoD items that apply to this one task
+- Use `disableDefinitionOfDoneDefaults` to skip project defaults for this task when needed
+- Do **not** duplicate project defaults into `definitionOfDoneAdd` unless you are intentionally customizing this task
 
 **Never embed implementation details** in title, description, or acceptance criteria
 
