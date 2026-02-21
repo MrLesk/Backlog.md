@@ -9,6 +9,7 @@ import type {
 } from "../../types";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
+import { formatStoredUtcDateForCompactDisplay, parseStoredUtcDate } from "../utils/date-display";
 import CleanupModal from "./CleanupModal";
 import { SuccessToast } from "./SuccessToast";
 
@@ -31,12 +32,49 @@ const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter 
 	{ label: "Low", value: "low" },
 ];
 
+type TaskSortColumn = "id" | "title" | "status" | "priority" | "milestone" | "created";
+type SortDirection = "asc" | "desc";
+
+const PRIORITY_RANK: Record<string, number> = {
+	high: 3,
+	medium: 2,
+	low: 1,
+};
+
+function extractTaskNumericId(taskId: string): number | null {
+	const match = taskId.trim().match(/(\d+)$/);
+	if (!match?.[1]) return null;
+	return Number.parseInt(match[1], 10);
+}
+
+function compareTaskIdsAscending(a: Task, b: Task): number {
+	const idA = extractTaskNumericId(a.id);
+	const idB = extractTaskNumericId(b.id);
+
+	if (idA !== null && idB !== null) {
+		return idA - idB;
+	}
+	if (idA !== null) return -1;
+	if (idB !== null) return 1;
+	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+}
+
 function sortTasksByIdDescending(list: Task[]): Task[] {
-	return [...list].sort((a, b) => {
-		const idA = Number.parseInt(a.id.replace("task-", ""), 10);
-		const idB = Number.parseInt(b.id.replace("task-", ""), 10);
-		return idB - idA;
-	});
+	return [...list].sort((a, b) => compareTaskIdsAscending(b, a));
+}
+
+function getAssigneeInitials(value: string): string {
+	const cleaned = value.replace(/^@/, "").trim();
+	if (!cleaned) return "?";
+	const parts = cleaned
+		.split(/[\s._-]+/)
+		.map((part) => part.trim())
+		.filter(Boolean);
+	if (parts.length === 0) return cleaned.slice(0, 2).toUpperCase();
+	const first = parts[0] ?? "";
+	if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+	const second = parts[1] ?? "";
+	return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase();
 }
 
 const TaskList: React.FC<TaskListProps> = ({
@@ -69,6 +107,8 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [showCleanupModal, setShowCleanupModal] = useState(false);
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
 	const [showLabelsMenu, setShowLabelsMenu] = useState(false);
+	const [sortColumn, setSortColumn] = useState<TaskSortColumn>("id");
+	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 	const labelsButtonRef = useRef<HTMLButtonElement | null>(null);
 	const labelsMenuRef = useRef<HTMLDivElement | null>(null);
 	const milestoneAliasToCanonical = useMemo(() => {
@@ -451,7 +491,104 @@ const TaskList: React.FC<TaskListProps> = ({
 		}
 	};
 
-	const currentCount = displayTasks.length;
+	const handleSortChange = (column: TaskSortColumn) => {
+		if (sortColumn === column) {
+			setSortDirection((previous) => (previous === "asc" ? "desc" : "asc"));
+			return;
+		}
+
+		setSortColumn(column);
+		setSortDirection(column === "id" || column === "created" ? "desc" : "asc");
+	};
+
+	const getSortAriaValue = (column: TaskSortColumn): "none" | "ascending" | "descending" => {
+		if (sortColumn !== column) return "none";
+		return sortDirection === "asc" ? "ascending" : "descending";
+	};
+
+	const renderSortIcon = (column: TaskSortColumn) => {
+		const isActive = sortColumn === column;
+		if (!isActive) {
+			return (
+				<span className="text-[10px] text-gray-300 dark:text-gray-600 select-none" aria-hidden="true">
+					↕
+				</span>
+			);
+		}
+		return (
+			<span className="text-[10px] text-gray-600 dark:text-gray-300 select-none" aria-hidden="true">
+				{sortDirection === "asc" ? "▲" : "▼"}
+			</span>
+		);
+	};
+
+	const renderSortableHeader = (label: string, column: TaskSortColumn, widthClass: string) => (
+		<th className={`${widthClass} px-3 py-2`} aria-sort={getSortAriaValue(column)}>
+			<button
+				type="button"
+				onClick={() => handleSortChange(column)}
+				className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100"
+			>
+				{label}
+				{renderSortIcon(column)}
+			</button>
+		</th>
+	);
+
+	const sortedDisplayTasks = useMemo(() => {
+		const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+		const compareText = (a: string, b: string) => collator.compare(a, b);
+		const withDirection = (value: number) => (sortDirection === "asc" ? value : -value);
+
+		return [...displayTasks].sort((a, b) => {
+			let result = 0;
+			switch (sortColumn) {
+				case "id": {
+					result = withDirection(compareTaskIdsAscending(a, b));
+					break;
+				}
+				case "title": {
+					result = withDirection(compareText(a.title, b.title));
+					break;
+				}
+				case "status": {
+					result = withDirection(compareText(a.status, b.status));
+					break;
+				}
+				case "priority": {
+					const rankA = PRIORITY_RANK[(a.priority ?? "").toLowerCase()] ?? 0;
+					const rankB = PRIORITY_RANK[(b.priority ?? "").toLowerCase()] ?? 0;
+					result = withDirection(rankA - rankB);
+					break;
+				}
+				case "milestone": {
+					const milestoneA = getMilestoneLabel(a.milestone, milestoneEntities);
+					const milestoneB = getMilestoneLabel(b.milestone, milestoneEntities);
+					result = withDirection(compareText(milestoneA, milestoneB));
+					break;
+				}
+				case "created": {
+					const createdA = parseStoredUtcDate(a.createdDate)?.getTime();
+					const createdB = parseStoredUtcDate(b.createdDate)?.getTime();
+					if (createdA === undefined && createdB === undefined) {
+						result = 0;
+					} else if (createdA === undefined) {
+						result = 1;
+					} else if (createdB === undefined) {
+						result = -1;
+					} else {
+						result = withDirection(createdA - createdB);
+					}
+					break;
+				}
+			}
+
+			if (result !== 0) return result;
+			return compareTaskIdsAscending(b, a);
+		});
+	}, [displayTasks, milestoneEntities, sortColumn, sortDirection]);
+
+	const currentCount = sortedDisplayTasks.length;
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
@@ -601,7 +738,7 @@ const TaskList: React.FC<TaskListProps> = ({
 					</div>
 
 					<div className="flex items-center gap-3 flex-shrink-0">
-						{statusFilter.toLowerCase() === 'done' && displayTasks.length > 0 && (
+						{statusFilter.toLowerCase() === "done" && currentCount > 0 && (
 								<button
 									type="button"
 									onClick={() => setShowCleanupModal(true)}
@@ -640,7 +777,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				)}
 			</div>
 
-			{displayTasks.length === 0 ? (
+			{currentCount === 0 ? (
 				<div className="text-center py-12">
 					<svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -655,75 +792,132 @@ const TaskList: React.FC<TaskListProps> = ({
 					</p>
 				</div>
 			) : (
-				<div className="space-y-4">
-					{displayTasks.map((task) => {
-						const isFromOtherBranch = Boolean(task.branch);
-						return (
-						<div
-							key={task.id}
-							className={`bg-white dark:bg-gray-800 border rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer ${
-								isFromOtherBranch 
-									? 'border-amber-300 dark:border-amber-700 opacity-75' 
-									: 'border-gray-200 dark:border-gray-700'
-							}`}
-							onClick={() => onEditTask(task)}
-						>
-							{/* Cross-branch indicator banner */}
-							{isFromOtherBranch && (
-								<div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 -mx-1 -mt-1 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 rounded-t text-xs text-amber-700 dark:text-amber-300">
-									<svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-									</svg>
-									<span>
-										Read-only: From <span className="font-semibold">{task.branch}</span> branch
-									</span>
-								</div>
-							)}
-							<div className="flex items-start justify-between">
-								<div className="flex-1">
-									<div className="flex items-center space-x-3 mb-2">
-										<h3 className={`text-lg font-medium ${isFromOtherBranch ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>{task.title}</h3>
-										<span className={`px-2 py-1 text-xs font-medium rounded-circle ${getStatusColor(task.status)}`}>
-											{task.status}
-										</span>
-										{task.priority && (
-											<span className={`px-2 py-1 text-xs font-medium rounded-circle ${getPriorityColor(task.priority)}`}>
-												{task.priority}
-											</span>
-										)}
-									</div>
-									<div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
-										<span>{task.id}</span>
-										<span>Created: {new Date(task.createdDate).toLocaleDateString()}</span>
-										{task.updatedDate && (
-											<span>Updated: {new Date(task.updatedDate).toLocaleDateString()}</span>
-										)}
-									</div>
-									{task.assignee && task.assignee.length > 0 && (
-										<div className="flex items-center space-x-2 mb-2">
-											<span className="text-sm text-gray-500 dark:text-gray-400">Assigned to:</span>
-											<div className="flex flex-wrap gap-1">
-												{task.assignee.map((person) => (
-													<span key={person} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 rounded-circle">
-														{person}
-													</span>
-												))}
-											</div>
-										</div>
-									)}
-									{task.labels && task.labels.length > 0 && (
-										<div className="flex flex-wrap gap-1">
-											{task.labels.map((label) => (
-												<span key={label} className="px-2 py-1 text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-circle">
-													{label}
+				<div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+					<table className="w-full min-w-[1100px] table-fixed border-collapse">
+						<thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/90 supports-[backdrop-filter]:dark:bg-gray-700/85">
+							<tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
+								{renderSortableHeader("ID", "id", "w-32")}
+								{renderSortableHeader("Title", "title", "w-[28rem]")}
+								{renderSortableHeader("Status", "status", "w-32")}
+								{renderSortableHeader("Priority", "priority", "w-28")}
+								<th className="w-44 px-3 py-2">Labels</th>
+								<th className="w-44 px-3 py-2">Assignee</th>
+								{renderSortableHeader("Milestone", "milestone", "w-44")}
+								{renderSortableHeader("Created", "created", "w-28")}
+							</tr>
+						</thead>
+						<tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+							{sortedDisplayTasks.map((task) => {
+								const isFromOtherBranch = Boolean(task.branch);
+								const visibleLabels = task.labels.slice(0, 2);
+								const labelOverflow = Math.max(task.labels.length - visibleLabels.length, 0);
+								const visibleAssignees = task.assignee.slice(0, 2);
+								const assigneeOverflow = Math.max(task.assignee.length - visibleAssignees.length, 0);
+								const milestoneLabel = task.milestone ? getMilestoneLabel(task.milestone, milestoneEntities) : "—";
+								const createdLabel = formatStoredUtcDateForCompactDisplay(task.createdDate ?? "");
+
+								return (
+									<tr
+										key={task.id}
+										onClick={() => onEditTask(task)}
+										className={`cursor-pointer transition-colors ${
+											isFromOtherBranch
+												? "bg-amber-50/50 hover:bg-amber-100/70 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
+												: "bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700/50"
+										}`}
+									>
+										<td className="px-3 py-2.5 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
+											{task.id}
+										</td>
+										<td className="px-3 py-2.5">
+											<div className="flex items-center gap-2 min-w-0">
+												<span
+													className={`block truncate text-sm ${
+														isFromOtherBranch
+															? "text-gray-600 dark:text-gray-300"
+															: "text-gray-900 dark:text-gray-100"
+													}`}
+													title={task.title}
+												>
+													{task.title}
 												</span>
-											))}
-										</div>
-									)}
-								</div>
-							</div>
-						</div>
-					)})}
+												{isFromOtherBranch && task.branch && (
+													<span
+														className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+														title={`Read-only task from ${task.branch} branch`}
+													>
+														{task.branch}
+													</span>
+												)}
+											</div>
+										</td>
+										<td className="px-3 py-2.5">
+											<span className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getStatusColor(task.status)}`}>
+												{task.status}
+											</span>
+										</td>
+										<td className="px-3 py-2.5">
+											{task.priority ? (
+												<span
+													className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getPriorityColor(task.priority)}`}
+												>
+													{task.priority}
+												</span>
+											) : (
+												<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+											)}
+										</td>
+										<td className="px-3 py-2.5">
+											{visibleLabels.length > 0 ? (
+												<div className="flex items-center gap-1 min-w-0">
+													{visibleLabels.map((label) => (
+														<span
+															key={label}
+															className="inline-flex max-w-[7rem] truncate rounded-circle bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+															title={label}
+														>
+															{label}
+														</span>
+													))}
+													{labelOverflow > 0 && (
+														<span className="text-[11px] text-gray-500 dark:text-gray-400">+{labelOverflow}</span>
+													)}
+												</div>
+											) : (
+												<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+											)}
+										</td>
+										<td className="px-3 py-2.5">
+											{visibleAssignees.length > 0 ? (
+												<div className="flex items-center gap-1.5">
+													{visibleAssignees.map((assignee) => (
+														<span
+															key={assignee}
+															title={assignee}
+															className="inline-flex h-6 w-6 items-center justify-center rounded-circle bg-blue-100 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200"
+														>
+															{getAssigneeInitials(assignee)}
+														</span>
+													))}
+													{assigneeOverflow > 0 && (
+														<span className="text-[11px] text-gray-500 dark:text-gray-400">+{assigneeOverflow}</span>
+													)}
+												</div>
+											) : (
+												<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+											)}
+										</td>
+										<td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 truncate" title={milestoneLabel}>
+											{milestoneLabel}
+										</td>
+										<td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+											{createdLabel}
+										</td>
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
 				</div>
 			)}
 

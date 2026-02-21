@@ -71,3 +71,22 @@ export function formatStoredUtcDateForDisplay(dateStr: string): string {
 
 	return parsed.toLocaleDateString();
 }
+
+export function formatStoredUtcDateForCompactDisplay(dateStr: string, now: Date = new Date()): string {
+	const normalized = dateStr.trim();
+	if (!normalized) return "—";
+
+	const parsed = parseStoredUtcDate(normalized);
+	if (!parsed) return normalized;
+
+	const diffMs = now.getTime() - parsed.getTime();
+	const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+	if (diffDays >= 0) {
+		if (diffDays === 0) return "today";
+		if (diffDays === 1) return "yesterday";
+		if (diffDays < 7) return `${diffDays}d ago`;
+	}
+
+	return parsed.toLocaleDateString();
+}
