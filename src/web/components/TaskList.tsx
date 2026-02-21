@@ -111,6 +111,9 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 	const labelsButtonRef = useRef<HTMLButtonElement | null>(null);
 	const labelsMenuRef = useRef<HTMLDivElement | null>(null);
+	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
+	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
+	const isSyncingTableScrollRef = useRef(false);
 	const milestoneAliasToCanonical = useMemo(() => {
 		const aliasMap = new Map<string, string>();
 		const collectIdAliasKeys = (value: string): string[] => {
@@ -522,8 +525,8 @@ const TaskList: React.FC<TaskListProps> = ({
 		);
 	};
 
-	const renderSortableHeader = (label: string, column: TaskSortColumn, widthClass: string) => (
-		<th className={`${widthClass} px-3 py-2`} aria-sort={getSortAriaValue(column)}>
+	const renderSortableHeader = (label: string, column: TaskSortColumn) => (
+		<th className="px-3 py-2" aria-sort={getSortAriaValue(column)}>
 			<button
 				type="button"
 				onClick={() => handleSortChange(column)}
@@ -533,6 +536,19 @@ const TaskList: React.FC<TaskListProps> = ({
 				{renderSortIcon(column)}
 			</button>
 		</th>
+	);
+
+	const renderColumnGroup = () => (
+		<colgroup>
+			<col style={{ width: "8rem" }} />
+			<col style={{ width: "28rem" }} />
+			<col style={{ width: "8rem" }} />
+			<col style={{ width: "7rem" }} />
+			<col style={{ width: "11rem" }} />
+			<col style={{ width: "11rem" }} />
+			<col style={{ width: "11rem" }} />
+			<col style={{ width: "7rem" }} />
+		</colgroup>
 	);
 
 	const sortedDisplayTasks = useMemo(() => {
@@ -589,6 +605,31 @@ const TaskList: React.FC<TaskListProps> = ({
 	}, [displayTasks, milestoneEntities, sortColumn, sortDirection]);
 
 	const currentCount = sortedDisplayTasks.length;
+
+	useEffect(() => {
+		const headerEl = tableHeaderScrollRef.current;
+		const bodyEl = tableBodyScrollRef.current;
+		if (!headerEl || !bodyEl) return;
+
+		const syncScrollLeft = (source: HTMLDivElement, target: HTMLDivElement) => {
+			if (isSyncingTableScrollRef.current) return;
+			isSyncingTableScrollRef.current = true;
+			target.scrollLeft = source.scrollLeft;
+			isSyncingTableScrollRef.current = false;
+		};
+
+		const handleHeaderScroll = () => syncScrollLeft(headerEl, bodyEl);
+		const handleBodyScroll = () => syncScrollLeft(bodyEl, headerEl);
+
+		headerEl.addEventListener("scroll", handleHeaderScroll, { passive: true });
+		bodyEl.addEventListener("scroll", handleBodyScroll, { passive: true });
+		headerEl.scrollLeft = bodyEl.scrollLeft;
+
+		return () => {
+			headerEl.removeEventListener("scroll", handleHeaderScroll);
+			bodyEl.removeEventListener("scroll", handleBodyScroll);
+		};
+	}, [currentCount]);
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
@@ -792,132 +833,142 @@ const TaskList: React.FC<TaskListProps> = ({
 					</p>
 				</div>
 			) : (
-				<div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-					<table className="w-full min-w-[1100px] table-fixed border-collapse">
-						<thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/90 supports-[backdrop-filter]:dark:bg-gray-700/85">
-							<tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-								{renderSortableHeader("ID", "id", "w-32")}
-								{renderSortableHeader("Title", "title", "w-[28rem]")}
-								{renderSortableHeader("Status", "status", "w-32")}
-								{renderSortableHeader("Priority", "priority", "w-28")}
-								<th className="w-44 px-3 py-2">Labels</th>
-								<th className="w-44 px-3 py-2">Assignee</th>
-								{renderSortableHeader("Milestone", "milestone", "w-44")}
-								{renderSortableHeader("Created", "created", "w-28")}
-							</tr>
-						</thead>
-						<tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-							{sortedDisplayTasks.map((task) => {
-								const isFromOtherBranch = Boolean(task.branch);
-								const visibleLabels = task.labels.slice(0, 2);
-								const labelOverflow = Math.max(task.labels.length - visibleLabels.length, 0);
-								const visibleAssignees = task.assignee.slice(0, 2);
-								const assigneeOverflow = Math.max(task.assignee.length - visibleAssignees.length, 0);
-								const milestoneLabel = task.milestone ? getMilestoneLabel(task.milestone, milestoneEntities) : "—";
-								const createdLabel = formatStoredUtcDateForCompactDisplay(task.createdDate ?? "");
-
-								return (
-									<tr
-										key={task.id}
-										onClick={() => onEditTask(task)}
-										className={`cursor-pointer transition-colors ${
-											isFromOtherBranch
-												? "bg-amber-50/50 hover:bg-amber-100/70 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
-												: "bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700/50"
-										}`}
-									>
-										<td className="px-3 py-2.5 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
-											{task.id}
-										</td>
-										<td className="px-3 py-2.5">
-											<div className="flex items-center gap-2 min-w-0">
-												<span
-													className={`block truncate text-sm ${
-														isFromOtherBranch
-															? "text-gray-600 dark:text-gray-300"
-															: "text-gray-900 dark:text-gray-100"
-													}`}
-													title={task.title}
-												>
-													{task.title}
-												</span>
-												{isFromOtherBranch && task.branch && (
-													<span
-														className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-														title={`Read-only task from ${task.branch} branch`}
-													>
-														{task.branch}
-													</span>
-												)}
-											</div>
-										</td>
-										<td className="px-3 py-2.5">
-											<span className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getStatusColor(task.status)}`}>
-												{task.status}
-											</span>
-										</td>
-										<td className="px-3 py-2.5">
-											{task.priority ? (
-												<span
-													className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getPriorityColor(task.priority)}`}
-												>
-													{task.priority}
-												</span>
-											) : (
-												<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-											)}
-										</td>
-										<td className="px-3 py-2.5">
-											{visibleLabels.length > 0 ? (
-												<div className="flex items-center gap-1 min-w-0">
-													{visibleLabels.map((label) => (
-														<span
-															key={label}
-															className="inline-flex max-w-[7rem] truncate rounded-circle bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-															title={label}
-														>
-															{label}
-														</span>
-													))}
-													{labelOverflow > 0 && (
-														<span className="text-[11px] text-gray-500 dark:text-gray-400">+{labelOverflow}</span>
-													)}
-												</div>
-											) : (
-												<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-											)}
-										</td>
-										<td className="px-3 py-2.5">
-											{visibleAssignees.length > 0 ? (
-												<div className="flex items-center gap-1.5">
-													{visibleAssignees.map((assignee) => (
-														<span
-															key={assignee}
-															title={assignee}
-															className="inline-flex h-6 w-6 items-center justify-center rounded-circle bg-blue-100 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200"
-														>
-															{getAssigneeInitials(assignee)}
-														</span>
-													))}
-													{assigneeOverflow > 0 && (
-														<span className="text-[11px] text-gray-500 dark:text-gray-400">+{assigneeOverflow}</span>
-													)}
-												</div>
-											) : (
-												<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-											)}
-										</td>
-										<td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 truncate" title={milestoneLabel}>
-											{milestoneLabel}
-										</td>
-										<td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-											{createdLabel}
-										</td>
+				<div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+					<div className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/90 supports-[backdrop-filter]:dark:bg-gray-700/85">
+						<div ref={tableHeaderScrollRef} className="overflow-x-auto" style={{ overflowY: "hidden" }}>
+							<table className="w-full min-w-[1100px] table-fixed border-collapse">
+								{renderColumnGroup()}
+								<thead>
+									<tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300">
+										{renderSortableHeader("ID", "id")}
+										{renderSortableHeader("Title", "title")}
+										{renderSortableHeader("Status", "status")}
+										{renderSortableHeader("Priority", "priority")}
+										<th className="px-3 py-2">Labels</th>
+										<th className="px-3 py-2">Assignee</th>
+										{renderSortableHeader("Milestone", "milestone")}
+										{renderSortableHeader("Created", "created")}
 									</tr>
-								);
-							})}
-						</tbody>
-					</table>
+								</thead>
+							</table>
+						</div>
+					</div>
+					<div ref={tableBodyScrollRef} className="overflow-x-auto" style={{ overflowY: "hidden" }}>
+						<table className="w-full min-w-[1100px] table-fixed border-collapse">
+							{renderColumnGroup()}
+							<tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+								{sortedDisplayTasks.map((task) => {
+									const isFromOtherBranch = Boolean(task.branch);
+									const visibleLabels = task.labels.slice(0, 2);
+									const labelOverflow = Math.max(task.labels.length - visibleLabels.length, 0);
+									const visibleAssignees = task.assignee.slice(0, 2);
+									const assigneeOverflow = Math.max(task.assignee.length - visibleAssignees.length, 0);
+									const milestoneLabel = task.milestone ? getMilestoneLabel(task.milestone, milestoneEntities) : "—";
+									const createdLabel = formatStoredUtcDateForCompactDisplay(task.createdDate ?? "");
+
+									return (
+										<tr
+											key={task.id}
+											onClick={() => onEditTask(task)}
+											className={`cursor-pointer transition-colors ${
+												isFromOtherBranch
+													? "bg-amber-50/50 hover:bg-amber-100/70 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
+													: "bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700/50"
+											}`}
+										>
+											<td className="px-3 py-2.5 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
+												{task.id}
+											</td>
+											<td className="px-3 py-2.5">
+												<div className="flex items-center gap-2 min-w-0">
+													<span
+														className={`block truncate text-sm ${
+															isFromOtherBranch
+																? "text-gray-600 dark:text-gray-300"
+																: "text-gray-900 dark:text-gray-100"
+														}`}
+														title={task.title}
+													>
+														{task.title}
+													</span>
+													{isFromOtherBranch && task.branch && (
+														<span
+															className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+															title={`Read-only task from ${task.branch} branch`}
+														>
+															{task.branch}
+														</span>
+													)}
+												</div>
+											</td>
+											<td className="px-3 py-2.5">
+												<span className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getStatusColor(task.status)}`}>
+													{task.status}
+												</span>
+											</td>
+											<td className="px-3 py-2.5">
+												{task.priority ? (
+													<span
+														className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getPriorityColor(task.priority)}`}
+													>
+														{task.priority}
+													</span>
+												) : (
+													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+												)}
+											</td>
+											<td className="px-3 py-2.5">
+												{visibleLabels.length > 0 ? (
+													<div className="flex items-center gap-1 min-w-0">
+														{visibleLabels.map((label) => (
+															<span
+																key={label}
+																className="inline-flex max-w-[7rem] truncate rounded-circle bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+																title={label}
+															>
+																{label}
+															</span>
+														))}
+														{labelOverflow > 0 && (
+															<span className="text-[11px] text-gray-500 dark:text-gray-400">+{labelOverflow}</span>
+														)}
+													</div>
+												) : (
+													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+												)}
+											</td>
+											<td className="px-3 py-2.5">
+												{visibleAssignees.length > 0 ? (
+													<div className="flex items-center gap-1.5">
+														{visibleAssignees.map((assignee) => (
+															<span
+																key={assignee}
+																title={assignee}
+																className="inline-flex h-6 w-6 items-center justify-center rounded-circle bg-blue-100 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200"
+															>
+																{getAssigneeInitials(assignee)}
+															</span>
+														))}
+														{assigneeOverflow > 0 && (
+															<span className="text-[11px] text-gray-500 dark:text-gray-400">+{assigneeOverflow}</span>
+														)}
+													</div>
+												) : (
+													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+												)}
+											</td>
+											<td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 truncate" title={milestoneLabel}>
+												{milestoneLabel}
+											</td>
+											<td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+												{createdLabel}
+											</td>
+										</tr>
+									);
+								})}
+							</tbody>
+						</table>
+					</div>
 				</div>
 			)}
 
