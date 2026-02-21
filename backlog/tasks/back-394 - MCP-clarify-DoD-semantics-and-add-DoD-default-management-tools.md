@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-21 21:39'
-updated_date: '2026-02-21 21:57'
+updated_date: '2026-02-21 22:14'
 labels: []
 dependencies: []
 ---
@@ -44,6 +44,8 @@ Working branch: tasks/back-394-mcp-dod-workflow
 Follow-up clarification requested: make `task_create`/`task_edit` DoD bullets explicitly state DoD is not acceptance criteria and per-task DoD usage is exceptional.
 
 Updated MCP guidance wording so DoD is explicitly not AC and per-task DoD usage is marked exceptional-only in `overview-tools.md`, `overview.md`, and `task-creation.md`.
+
+Opened PR: https://github.com/MrLesk/Backlog.md/pull/542
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
