@@ -9,6 +9,7 @@ import {
 } from "../guidelines/mcp/index.ts";
 import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
+import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -154,10 +155,13 @@ describe("McpServer bootstrap", () => {
 		}
 
 		registerTaskTools(server, config);
+		registerDefinitionOfDoneTools(server);
 
 		const tools = await server.testInterface.listTools();
 		const toolNames = tools.tools.map((tool) => tool.name).sort();
 		expect(toolNames).toEqual([
+			"definition_of_done_defaults_get",
+			"definition_of_done_defaults_upsert",
 			"get_task_creation_guide",
 			"get_task_execution_guide",
 			"get_task_finalization_guide",
@@ -217,6 +221,8 @@ describe("McpServer bootstrap", () => {
 			"milestone_rename",
 			"milestone_remove",
 			"milestone_archive",
+			"definition_of_done_defaults_get",
+			"definition_of_done_defaults_upsert",
 			"document_list",
 			"document_view",
 			"document_create",

@@ -5,7 +5,7 @@ logic.
 
 ## What’s included
 
-- `server.ts` / `createMcpServer()` – bootstraps a stdio-only server that extends `Core` and registers task and document tools (`task_*`, `document_*`) for MCP clients.
+- `server.ts` / `createMcpServer()` – bootstraps a stdio-only server that extends `Core` and registers task, milestone, Definition of Done defaults, and document tools (`task_*`, `milestone_*`, `definition_of_done_defaults_*`, `document_*`) for MCP clients.
 - `tasks/` – consolidated task tooling that delegates to shared Core helpers (including plan/notes/AC editing).
 - `documents/` – document tooling layered on `Core`’s document helpers for list/view/create/update/search flows.
 - `tools/dependency-tools.ts` – dependency helpers reusing shared builders.
