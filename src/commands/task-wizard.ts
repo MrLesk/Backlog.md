@@ -1,4 +1,6 @@
+import { TextPrompt } from "@clack/core";
 import * as clack from "@clack/prompts";
+import picocolors from "picocolors";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { AcceptanceCriterion, Task, TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
 import { normalizeDependencies, normalizeStringList } from "../utils/task-builders.ts";
@@ -39,6 +41,11 @@ interface TaskWizardQuestion {
 	initial?: string;
 	options?: PromptChoice[];
 	validate?: (value: string | undefined) => string | undefined;
+	allowBackspaceNavigation?: boolean;
+}
+
+interface TaskWizardValueQuestion extends Omit<TaskWizardQuestion, "name"> {
+	name: keyof TaskWizardValues;
 }
 
 export type TaskWizardPromptRunner = (question: TaskWizardQuestion) => Promise<Record<string, unknown>>;
@@ -60,6 +67,9 @@ interface WizardOptions {
 }
 
 const SINGLE_LINE_PROMPT_GUIDANCE = "single-line prompt; Shift+Enter not supported";
+const WIZARD_NAVIGATION_KEY = "__wizardNavigation";
+const WIZARD_NAVIGATION_PREVIOUS = "previous";
+const WIZARD_BACKSPACE_NAVIGATION = Symbol("task-wizard-backspace-navigation");
 
 function normalizeStatusKey(status: string): string {
 	return status.trim().toLowerCase().replace(/\s+/g, "");
@@ -209,11 +219,61 @@ function areChecklistEntriesEqual(existing: ChecklistEntry[], next: ChecklistEnt
 
 const clackPromptRunner: TaskWizardPromptRunner = async (question) => {
 	if (question.type === "text") {
-		const result = await clack.text({
-			message: question.message,
+		const textPrompt = new TextPrompt({
 			initialValue: question.initial,
 			validate: question.validate,
+			render() {
+				const withGuide = clack.settings.withGuide;
+				const header = `${withGuide ? `${picocolors.gray(clack.S_BAR)}\n` : ""}${clack.symbol(this.state)}  ${question.message}\n`;
+				const placeholder = picocolors.inverse(picocolors.hidden("_"));
+				const inputValue = this.userInput.length > 0 ? this.userInputWithCursor : placeholder;
+				const submittedValue = String(this.value ?? "");
+
+				switch (this.state) {
+					case "error": {
+						const linePrefix = withGuide ? `${picocolors.yellow(clack.S_BAR)}  ` : "";
+						const footer = withGuide ? picocolors.yellow(clack.S_BAR_END) : "";
+						const errorMessage = this.error.length > 0 ? `  ${picocolors.yellow(this.error)}` : "";
+						return `${header.trimEnd()}\n${linePrefix}${inputValue}\n${footer}${errorMessage}\n`;
+					}
+					case "submit": {
+						const linePrefix = withGuide ? picocolors.gray(clack.S_BAR) : "";
+						const value = submittedValue.length > 0 ? `  ${picocolors.dim(submittedValue)}` : "";
+						return `${header}${linePrefix}${value}`;
+					}
+					case "cancel": {
+						const linePrefix = withGuide ? picocolors.gray(clack.S_BAR) : "";
+						const value =
+							submittedValue.length > 0 ? `  ${picocolors.strikethrough(picocolors.dim(submittedValue))}` : "";
+						return `${header}${linePrefix}${value}${submittedValue.trim().length > 0 ? `\n${linePrefix}` : ""}`;
+					}
+					default: {
+						const linePrefix = withGuide ? `${picocolors.cyan(clack.S_BAR)}  ` : "";
+						const footer = withGuide ? picocolors.cyan(clack.S_BAR_END) : "";
+						return `${header}${linePrefix}${inputValue}\n${footer}\n`;
+					}
+				}
+			},
 		});
+		let previousInput = question.initial ?? "";
+		textPrompt.on("key", (_key, keyInfo) => {
+			if (keyInfo.name !== "backspace") {
+				previousInput = textPrompt.userInput;
+				return;
+			}
+			const wasEmptyBeforeKeypress = previousInput.length === 0;
+			const isEmptyAfterKeypress = textPrompt.userInput.length === 0;
+			if (question.allowBackspaceNavigation && wasEmptyBeforeKeypress && isEmptyAfterKeypress) {
+				textPrompt.state = "submit";
+				textPrompt.value = WIZARD_BACKSPACE_NAVIGATION as unknown as string;
+				return;
+			}
+			previousInput = textPrompt.userInput;
+		});
+		const result = await textPrompt.prompt();
+		if (result === WIZARD_BACKSPACE_NAVIGATION) {
+			return { [WIZARD_NAVIGATION_KEY]: WIZARD_NAVIGATION_PREVIOUS };
+		}
 		if (clack.isCancel(result)) {
 			throw new TaskWizardCancelledError();
 		}
@@ -242,26 +302,31 @@ const clackPromptRunner: TaskWizardPromptRunner = async (question) => {
 async function promptText(
 	prompt: TaskWizardPromptRunner,
 	options: {
-		name: string;
+		name: keyof TaskWizardValues;
 		message: string;
 		initial?: string;
 		validate?: (value: string | undefined) => string | undefined;
+		allowBackspaceNavigation?: boolean;
 	},
-): Promise<string> {
+): Promise<string | typeof WIZARD_BACKSPACE_NAVIGATION> {
 	const response = await prompt({
 		type: "text",
 		name: options.name,
 		message: options.message,
 		initial: options.initial,
 		validate: options.validate,
+		allowBackspaceNavigation: options.allowBackspaceNavigation,
 	});
+	if (response[WIZARD_NAVIGATION_KEY] === WIZARD_NAVIGATION_PREVIOUS) {
+		return WIZARD_BACKSPACE_NAVIGATION;
+	}
 	return String(response[options.name] ?? "");
 }
 
 async function promptSelect(
 	prompt: TaskWizardPromptRunner,
 	options: {
-		name: string;
+		name: keyof TaskWizardValues;
 		message: string;
 		initial?: string;
 		choices: PromptChoice[];
@@ -294,117 +359,156 @@ async function runTaskWizardValues(params: {
 	const priorityPrompt = buildPriorityPromptValues(initial.priority);
 
 	try {
-		const title = await promptText(prompt, {
-			name: "title",
-			message: "Title",
-			initial: initial.title,
-			validate: (value) => {
-				const normalized = String(value ?? "");
-				if (normalized.trim().length === 0) {
-					return "Title is required.";
-				}
-				return undefined;
+		const values: TaskWizardValues = {
+			...initial,
+			status: statusPrompt.initial,
+			priority: priorityPrompt.initial,
+		};
+		const questions: TaskWizardValueQuestion[] = [
+			{
+				type: "text",
+				name: "title",
+				message: "Title",
+				validate: (value) => {
+					const normalized = String(value ?? "");
+					if (normalized.trim().length === 0) {
+						return "Title is required.";
+					}
+					return undefined;
+				},
 			},
-		});
-		const description = await promptText(prompt, {
-			name: "description",
-			message: `Description (${SINGLE_LINE_PROMPT_GUIDANCE})`,
-			initial: initial.description,
-		});
-		const status = await promptSelect(prompt, {
-			name: "status",
-			message: "Status",
-			initial: statusPrompt.initial,
-			choices: statusPrompt.options,
-		});
-		const priority = await promptSelect(prompt, {
-			name: "priority",
-			message: "Priority",
-			initial: priorityPrompt.initial,
-			choices: priorityPrompt.options,
-		});
-		const assignee = await promptText(prompt, {
-			name: "assignee",
-			message:
-				params.mode === "create"
-					? "Assignee (comma-separated)"
-					: "Assignee (comma-separated; blank keeps current value)",
-			initial: initial.assignee,
-		});
-		const labels = await promptText(prompt, {
-			name: "labels",
-			message:
-				params.mode === "create" ? "Labels (comma-separated)" : "Labels (comma-separated; blank keeps current value)",
-			initial: initial.labels,
-		});
-		const acceptanceCriteria = await promptText(prompt, {
-			name: "acceptanceCriteria",
-			message: "Acceptance Criteria (comma/newline-separated; optional [x]/[ ] prefix per item)",
-			initial: initial.acceptanceCriteria,
-		});
-		const definitionOfDone = await promptText(prompt, {
-			name: "definitionOfDone",
-			message:
-				"Task Definition of Done (per-task; project-level DoD configured elsewhere; comma/newline-separated; optional [x]/[ ] prefix per item)",
-			initial: initial.definitionOfDone,
-		});
-		const implementationPlan = await promptText(prompt, {
-			name: "implementationPlan",
-			message:
-				params.mode === "create"
-					? `Implementation Plan (${SINGLE_LINE_PROMPT_GUIDANCE})`
-					: `Implementation Plan (${SINGLE_LINE_PROMPT_GUIDANCE}; blank keeps current value)`,
-			initial: initial.implementationPlan,
-		});
-		const implementationNotes = await promptText(prompt, {
-			name: "implementationNotes",
-			message:
-				params.mode === "create"
-					? `Implementation Notes (${SINGLE_LINE_PROMPT_GUIDANCE})`
-					: `Implementation Notes (${SINGLE_LINE_PROMPT_GUIDANCE}; blank keeps current value)`,
-			initial: initial.implementationNotes,
-		});
-		const references = await promptText(prompt, {
-			name: "references",
-			message:
-				params.mode === "create"
-					? "References (comma-separated)"
-					: "References (comma-separated; blank keeps current value)",
-			initial: initial.references,
-		});
-		const documentation = await promptText(prompt, {
-			name: "documentation",
-			message:
-				params.mode === "create"
-					? "Documentation (comma-separated)"
-					: "Documentation (comma-separated; blank keeps current value)",
-			initial: initial.documentation,
-		});
-		const dependencies = await promptText(prompt, {
-			name: "dependencies",
-			message:
-				params.mode === "create"
-					? "Dependencies (comma-separated task IDs)"
-					: "Dependencies (comma-separated task IDs; blank keeps current value)",
-			initial: initial.dependencies,
-		});
+			{
+				type: "text",
+				name: "description",
+				message: `Description (${SINGLE_LINE_PROMPT_GUIDANCE})`,
+			},
+			{
+				type: "select",
+				name: "status",
+				message: "Status",
+				options: statusPrompt.options,
+			},
+			{
+				type: "select",
+				name: "priority",
+				message: "Priority",
+				options: priorityPrompt.options,
+			},
+			{
+				type: "text",
+				name: "assignee",
+				message:
+					params.mode === "create"
+						? "Assignee (comma-separated)"
+						: "Assignee (comma-separated; blank keeps current value)",
+			},
+			{
+				type: "text",
+				name: "labels",
+				message:
+					params.mode === "create" ? "Labels (comma-separated)" : "Labels (comma-separated; blank keeps current value)",
+			},
+			{
+				type: "text",
+				name: "acceptanceCriteria",
+				message: "Acceptance Criteria (comma/newline-separated; optional [x]/[ ] prefix per item)",
+			},
+			{
+				type: "text",
+				name: "definitionOfDone",
+				message:
+					"Task Definition of Done (per-task; project-level DoD configured elsewhere; comma/newline-separated; optional [x]/[ ] prefix per item)",
+			},
+			{
+				type: "text",
+				name: "implementationPlan",
+				message:
+					params.mode === "create"
+						? `Implementation Plan (${SINGLE_LINE_PROMPT_GUIDANCE})`
+						: `Implementation Plan (${SINGLE_LINE_PROMPT_GUIDANCE}; blank keeps current value)`,
+			},
+			{
+				type: "text",
+				name: "implementationNotes",
+				message:
+					params.mode === "create"
+						? `Implementation Notes (${SINGLE_LINE_PROMPT_GUIDANCE})`
+						: `Implementation Notes (${SINGLE_LINE_PROMPT_GUIDANCE}; blank keeps current value)`,
+			},
+			{
+				type: "text",
+				name: "references",
+				message:
+					params.mode === "create"
+						? "References (comma-separated)"
+						: "References (comma-separated; blank keeps current value)",
+			},
+			{
+				type: "text",
+				name: "documentation",
+				message:
+					params.mode === "create"
+						? "Documentation (comma-separated)"
+						: "Documentation (comma-separated; blank keeps current value)",
+			},
+			{
+				type: "text",
+				name: "dependencies",
+				message:
+					params.mode === "create"
+						? "Dependencies (comma-separated task IDs)"
+						: "Dependencies (comma-separated task IDs; blank keeps current value)",
+			},
+		];
 
-		const canonicalStatus = status.trim().length > 0 ? (findCanonicalStatus(status, statuses) ?? status.trim()) : "";
+		let questionIndex = 0;
+		while (questionIndex < questions.length) {
+			const question = questions[questionIndex];
+			if (!question) {
+				break;
+			}
+			if (question.type === "text") {
+				const response = await promptText(prompt, {
+					name: question.name,
+					message: question.message,
+					initial: values[question.name],
+					validate: question.validate,
+					allowBackspaceNavigation: questionIndex > 0,
+				});
+				if (response === WIZARD_BACKSPACE_NAVIGATION) {
+					questionIndex = Math.max(0, questionIndex - 1);
+					continue;
+				}
+				values[question.name] = response;
+				questionIndex += 1;
+				continue;
+			}
+			values[question.name] = await promptSelect(prompt, {
+				name: question.name,
+				message: question.message,
+				initial: values[question.name],
+				choices: question.options ?? [],
+			});
+			questionIndex += 1;
+		}
+
+		const canonicalStatus =
+			values.status.trim().length > 0 ? (findCanonicalStatus(values.status, statuses) ?? values.status.trim()) : "";
 
 		return {
-			title: title.trim(),
-			description,
+			title: values.title.trim(),
+			description: values.description,
 			status: canonicalStatus,
-			priority: priority.trim().toLowerCase(),
-			assignee,
-			labels,
-			acceptanceCriteria,
-			definitionOfDone,
-			implementationPlan,
-			implementationNotes,
-			references,
-			documentation,
-			dependencies,
+			priority: values.priority.trim().toLowerCase(),
+			assignee: values.assignee,
+			labels: values.labels,
+			acceptanceCriteria: values.acceptanceCriteria,
+			definitionOfDone: values.definitionOfDone,
+			implementationPlan: values.implementationPlan,
+			implementationNotes: values.implementationNotes,
+			references: values.references,
+			documentation: values.documentation,
+			dependencies: values.dependencies,
 		};
 	} catch (error) {
 		if (error instanceof TaskWizardCancelledError) {

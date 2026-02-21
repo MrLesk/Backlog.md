@@ -171,6 +171,63 @@ describe("task wizard", () => {
 		expect(createInput).toBeNull();
 	});
 
+	it("supports back navigation from step N to N-1 for text prompts", async () => {
+		const asked: string[] = [];
+		let titleAttempts = 0;
+		let descriptionAttempts = 0;
+		const prompt: TaskWizardPromptRunner = async (question) => {
+			asked.push(question.name);
+			if (question.name === "title") {
+				titleAttempts += 1;
+				return { title: titleAttempts === 1 ? "Initial title" : "Updated title" };
+			}
+			if (question.name === "description") {
+				descriptionAttempts += 1;
+				if (descriptionAttempts === 1) {
+					return { __wizardNavigation: "previous" };
+				}
+				return { description: "Updated description" };
+			}
+			return { [question.name]: question.initial ?? "" };
+		};
+
+		const input = await runTaskCreateWizard({
+			statuses: ["To Do", "Done"],
+			promptImpl: prompt,
+		});
+
+		expect(input).not.toBeNull();
+		expect(input?.title).toBe("Updated title");
+		expect(input?.description).toBe("Updated description");
+		expect(asked.slice(0, 4)).toEqual(["title", "description", "title", "description"]);
+	});
+
+	it("treats first-step backspace-empty navigation signal as a no-op", async () => {
+		let titleAttempts = 0;
+		const asked: string[] = [];
+		const prompt: TaskWizardPromptRunner = async (question) => {
+			asked.push(question.name);
+			if (question.name === "title") {
+				titleAttempts += 1;
+				if (titleAttempts === 1) {
+					return { __wizardNavigation: "previous" };
+				}
+				return { title: "Recovered title" };
+			}
+			return { [question.name]: question.initial ?? "" };
+		};
+
+		const input = await runTaskCreateWizard({
+			statuses: ["To Do", "Done"],
+			promptImpl: prompt,
+		});
+
+		expect(input).not.toBeNull();
+		expect(input?.title).toBe("Recovered title");
+		expect(asked[0]).toBe("title");
+		expect(asked[1]).toBe("title");
+	});
+
 	it("uses prompt-level validation for required title and keeps default selected status", async () => {
 		const prompt = createPromptRunner({
 			title: ["   ", "Validated title"],
