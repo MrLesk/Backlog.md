@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../lib/api";
-import { buildMilestoneBuckets, collectArchivedMilestoneKeys } from "../utils/milestones";
+import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
@@ -197,11 +197,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		},
 		[onRefreshData],
 	);
-
-	const isDoneStatus = (status?: string | null) => {
-		const normalized = (status ?? "").toLowerCase();
-		return normalized.includes("done") || normalized.includes("complete");
-	};
 
 	const getStatusBadgeClass = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
@@ -410,10 +405,11 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const renderUnassignedSection = () => {
 		if (!unassignedBucket || unassignedBucket.total === 0) return null;
 
-		const sortedTasks = getSortedTasks(unassignedBucket.tasks);
+		const sortedActiveTasks = getSortedTasks(unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status)));
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
-		const displayTasks = showAllUnassigned ? sortedTasks : sortedTasks.slice(0, 12);
-		const hasMore = sortedTasks.length > 12;
+		const displayTasks = showAllUnassigned ? sortedActiveTasks : sortedActiveTasks.slice(0, 12);
+		const hasMore = sortedActiveTasks.length > 12;
+		const hasActiveUnassignedTasks = sortedActiveTasks.length > 0;
 
 		return (
 			<div className="mb-8 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 transition-colors duration-200">
@@ -428,7 +424,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								Unassigned tasks
 							</h3>
 							<span className="text-sm text-gray-500 dark:text-gray-400">
-								({unassignedBucket.total})
+								({sortedActiveTasks.length})
 							</span>
 						</div>
 						<button
@@ -445,53 +441,61 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 					{isExpanded && (
 						<div className="mt-4">
-							{/* Table */}
-							<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
-								{/* Table header */}
-								<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-									<div className="w-6" /> {/* Drag handle column */}
-									<div className="w-24">ID</div>
-									<div>Title</div>
-									<div className="text-center w-24">Status</div>
-									<div className="text-center w-20">Priority</div>
-								</div>
+							{hasActiveUnassignedTasks ? (
+								<>
+									{/* Table */}
+									<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+										{/* Table header */}
+										<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+											<div className="w-6" /> {/* Drag handle column */}
+											<div className="w-24">ID</div>
+											<div>Title</div>
+											<div className="text-center w-24">Status</div>
+											<div className="text-center w-20">Priority</div>
+										</div>
 
-								{/* Table rows */}
-								<div className="divide-y divide-gray-200 dark:divide-gray-700">
-									{displayTasks.map((task) => (
-										<MilestoneTaskRow
-											key={task.id}
-											task={task}
-											isDone={isDoneStatus(task.status)}
-											statusBadgeClass={getStatusBadgeClass(task.status)}
-											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
-											onEditTask={onEditTask}
-											onDragStart={handleDragStart}
-											onDragEnd={handleDragEnd}
-										/>
-									))}
-								</div>
+										{/* Table rows */}
+										<div className="divide-y divide-gray-200 dark:divide-gray-700">
+											{displayTasks.map((task) => (
+												<MilestoneTaskRow
+													key={task.id}
+													task={task}
+													isDone={isDoneStatus(task.status)}
+													statusBadgeClass={getStatusBadgeClass(task.status)}
+													priorityBadgeClass={getPriorityBadgeClass(task.priority)}
+													onEditTask={onEditTask}
+													onDragStart={handleDragStart}
+													onDragEnd={handleDragEnd}
+												/>
+											))}
+										</div>
 
-								{/* Footer with show more/less */}
-								{hasMore && (
-									<div className="px-3 py-2 text-xs border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
-										<button
-											type="button"
-											onClick={() => setShowAllUnassigned(!showAllUnassigned)}
-											className="text-blue-600 dark:text-blue-400 hover:underline"
-										>
-											{showAllUnassigned
-												? "Show less ↑"
-												: `Show all ${sortedTasks.length} tasks ↓`}
-										</button>
+										{/* Footer with show more/less */}
+										{hasMore && (
+											<div className="px-3 py-2 text-xs border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+												<button
+													type="button"
+													onClick={() => setShowAllUnassigned(!showAllUnassigned)}
+													className="text-blue-600 dark:text-blue-400 hover:underline"
+												>
+													{showAllUnassigned
+														? "Show less ↑"
+														: `Show all ${sortedActiveTasks.length} tasks ↓`}
+												</button>
+											</div>
+										)}
 									</div>
-								)}
-							</div>
 
-							{/* Hint */}
-							<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-								Drag tasks to a milestone below to assign them
-							</p>
+									{/* Hint */}
+									<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+										Drag tasks to a milestone below to assign them
+									</p>
+								</>
+							) : (
+								<div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
+									No active unassigned tasks. Completed tasks are hidden.
+								</div>
+							)}
 						</div>
 					)}
 				</div>
