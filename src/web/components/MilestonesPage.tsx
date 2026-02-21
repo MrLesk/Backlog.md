@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Fuse from "fuse.js";
 import { apiClient } from "../lib/api";
-import { buildMilestoneBuckets, collectArchivedMilestoneKeys } from "../utils/milestones";
+import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
@@ -491,10 +491,11 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const renderUnassignedSection = () => {
 		if (!unassignedBucket || (!isSearchActive && unassignedBucket.total === 0)) return null;
 
-		const sortedTasks = getSortedTasks(unassignedBucket.tasks);
+		const sortedActiveTasks = getSortedTasks(unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status)));
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
-		const displayTasks = showAllUnassigned ? sortedTasks : sortedTasks.slice(0, 12);
-		const hasMore = sortedTasks.length > 12;
+		const displayTasks = showAllUnassigned ? sortedActiveTasks : sortedActiveTasks.slice(0, 12);
+		const hasMore = sortedActiveTasks.length > 12;
+		const hasActiveUnassignedTasks = sortedActiveTasks.length > 0;
 
 		return (
 			<div className="mb-8 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 transition-colors duration-200">
@@ -509,7 +510,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								Unassigned tasks
 							</h3>
 							<span className="text-sm text-gray-500 dark:text-gray-400">
-								({unassignedBucket.total})
+								({sortedActiveTasks.length})
 							</span>
 						</div>
 						<button
@@ -526,7 +527,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 					{isExpanded && (
 						<div className="mt-4">
-							{sortedTasks.length > 0 ? (
+							{hasActiveUnassignedTasks ? (
 								<>
 									{/* Table */}
 									<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
@@ -565,7 +566,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 												>
 													{showAllUnassigned
 														? "Show less ↑"
-														: `Show all ${sortedTasks.length} tasks ↓`}
+														: `Show all ${sortedActiveTasks.length} tasks ↓`}
 												</button>
 											</div>
 										)}
@@ -578,7 +579,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								</>
 							) : (
 								<p className="rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-white/70 dark:bg-gray-800/50 px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-									No matching unassigned tasks.
+									{isSearchActive
+										? "No matching unassigned tasks."
+										: "No active unassigned tasks. Completed tasks are hidden."}
 								</p>
 							)}
 						</div>
