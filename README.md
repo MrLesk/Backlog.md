@@ -246,6 +246,7 @@ Run `backlog config` with no arguments to launch the full interactive wizard. Th
 - Git workflow: `autoCommit` and `bypassGitHooks`.
 - ID formatting: enable or size `zeroPaddedIds`.
 - Editor integration: pick a `defaultEditor` with availability checks.
+- Definition of Done defaults: interactively add/remove/reorder/clear project-level `definition_of_done` checklist items.
 - Web UI defaults: choose `defaultPort` and whether `autoOpenBrowser` should run.
 
 Skipping the wizard (answering "No" during init) applies the safe defaults that ship with Backlog.md:
@@ -259,7 +260,7 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 
 ### Definition of Done defaults
 
-Set project-wide DoD items in the Web UI (Settings → Definition of Done Defaults) or edit `backlog/config.yml` directly:
+Set project-wide DoD items with `backlog config` (or during `backlog init` advanced setup), in the Web UI (Settings → Definition of Done Defaults), or by editing `backlog/config.yml` directly:
 
 ```yaml
 definition_of_done:
@@ -268,7 +269,7 @@ definition_of_done:
   - No regressions introduced
 ```
 
-These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`. Array values like `definition_of_done` must be edited in the config file or via the Web UI.
+These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`.
 
 For the full configuration reference (all options, commands, and detailed notes), see **[ADVANCED-CONFIG.md](ADVANCED-CONFIG.md)**.
 

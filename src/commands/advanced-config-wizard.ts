@@ -42,6 +42,8 @@ export interface AdvancedConfigWizardResult {
 	installShellCompletions: boolean;
 }
 
+type DefinitionOfDoneAction = "add" | "remove" | "reorder" | "clear" | "done";
+
 function handlePromptCancel(message: string) {
 	clack.cancel(message);
 	process.exit(1);
@@ -49,6 +51,17 @@ function handlePromptCancel(message: string) {
 
 function withHint(message: string, hint?: string): string {
 	return hint ? `${message} (${hint})` : message;
+}
+
+function normalizeDefinitionOfDoneItems(items: string[] | undefined): string[] {
+	return (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
+}
+
+function renderDefinitionOfDonePreview(items: string[]): string {
+	if (items.length === 0) {
+		return "Current defaults:\n  (none)";
+	}
+	return `Current defaults:\n${items.map((item, index) => `  ${index + 1}. ${item}`).join("\n")}`;
 }
 
 async function runSinglePrompt(question: PromptQuestion, options?: PromptOptions): Promise<Record<string, unknown>> {
@@ -199,6 +212,7 @@ export async function runAdvancedConfigWizard({
 		config?.defaultEditor ?? process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null);
 	let defaultPort = config?.defaultPort ?? 6420;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
+	let definitionOfDone = normalizeDefinitionOfDoneItems(config?.definitionOfDone);
 	let installClaudeAgent = false;
 	let installShellCompletions = false;
 
@@ -361,6 +375,191 @@ export async function runAdvancedConfigWizard({
 	defaultEditor = editorResult.length > 0 ? editorResult : undefined;
 
 	while (true) {
+		const preview = renderDefinitionOfDonePreview(definitionOfDone);
+		const definitionOfDonePrompt = await promptImpl(
+			{
+				type: "select",
+				name: "definitionOfDoneAction",
+				message: `Edit Definition of Done defaults\n\n${preview}\n\nChoose an action:`,
+				initial: definitionOfDone.length > 0 ? "done" : "add",
+				choices: [
+					{
+						title: "Add item",
+						value: "add",
+						description: "Append a new checklist item",
+					},
+					{
+						title: "Remove item by index",
+						value: "remove",
+						description: "Delete one item from the list",
+						disabled: definitionOfDone.length === 0,
+					},
+					{
+						title: "Reorder items",
+						value: "reorder",
+						description: "Move an item to a different position",
+						disabled: definitionOfDone.length < 2,
+					},
+					{
+						title: "Clear all items",
+						value: "clear",
+						description: "Remove every default checklist item",
+						disabled: definitionOfDone.length === 0,
+					},
+					{
+						title: "Done",
+						value: "done",
+						description: "Keep these Definition of Done defaults",
+					},
+				],
+			},
+			{ onCancel },
+		);
+
+		const action = String(definitionOfDonePrompt.definitionOfDoneAction ?? "done") as DefinitionOfDoneAction;
+		if (action === "done") {
+			break;
+		}
+
+		if (action === "add") {
+			let goBackToDefinitionOfDoneMenu = false;
+			const addPrompt = await promptImpl(
+				{
+					type: "text",
+					name: "definitionOfDoneItem",
+					message: "New Definition of Done item:",
+					hint: "Item is trimmed; empty input is ignored",
+				},
+				{
+					onCancel: () => {
+						goBackToDefinitionOfDoneMenu = true;
+					},
+				},
+			);
+
+			if (goBackToDefinitionOfDoneMenu) {
+				continue;
+			}
+
+			const item = String(addPrompt.definitionOfDoneItem ?? "").trim();
+			if (item.length > 0) {
+				definitionOfDone = [...definitionOfDone, item];
+			}
+			continue;
+		}
+
+		if (action === "remove") {
+			let goBackToDefinitionOfDoneMenu = false;
+			const removePrompt = await promptImpl(
+				{
+					type: "number",
+					name: "removeDefinitionOfDoneIndex",
+					message: "Remove which item number?",
+					hint: `Enter a value between 1 and ${definitionOfDone.length}`,
+					initial: definitionOfDone.length,
+					min: 1,
+					max: definitionOfDone.length,
+				},
+				{
+					onCancel: () => {
+						goBackToDefinitionOfDoneMenu = true;
+					},
+				},
+			);
+
+			if (goBackToDefinitionOfDoneMenu) {
+				continue;
+			}
+
+			const index = Number(removePrompt.removeDefinitionOfDoneIndex);
+			if (Number.isInteger(index) && index >= 1 && index <= definitionOfDone.length) {
+				definitionOfDone = definitionOfDone.filter((_, itemIndex) => itemIndex !== index - 1);
+			}
+			continue;
+		}
+
+		if (action === "reorder") {
+			let goBackToDefinitionOfDoneMenu = false;
+			const reorderPrompt = await promptImpl(
+				[
+					{
+						type: "number",
+						name: "moveFromIndex",
+						message: "Move which item number?",
+						hint: `Enter a value between 1 and ${definitionOfDone.length}`,
+						initial: definitionOfDone.length,
+						min: 1,
+						max: definitionOfDone.length,
+					},
+					{
+						type: "number",
+						name: "moveToIndex",
+						message: "Move to which position?",
+						hint: `Enter a value between 1 and ${definitionOfDone.length}`,
+						initial: 1,
+						min: 1,
+						max: definitionOfDone.length,
+					},
+				],
+				{
+					onCancel: () => {
+						goBackToDefinitionOfDoneMenu = true;
+					},
+				},
+			);
+
+			if (goBackToDefinitionOfDoneMenu) {
+				continue;
+			}
+
+			const fromIndex = Number(reorderPrompt.moveFromIndex);
+			const toIndex = Number(reorderPrompt.moveToIndex);
+			if (
+				Number.isInteger(fromIndex) &&
+				Number.isInteger(toIndex) &&
+				fromIndex >= 1 &&
+				fromIndex <= definitionOfDone.length &&
+				toIndex >= 1 &&
+				toIndex <= definitionOfDone.length &&
+				fromIndex !== toIndex
+			) {
+				const reordered = [...definitionOfDone];
+				const [moved] = reordered.splice(fromIndex - 1, 1);
+				if (moved !== undefined) {
+					reordered.splice(toIndex - 1, 0, moved);
+					definitionOfDone = reordered;
+				}
+			}
+			continue;
+		}
+
+		if (action === "clear") {
+			let goBackToDefinitionOfDoneMenu = false;
+			const clearPrompt = await promptImpl(
+				{
+					type: "confirm",
+					name: "confirmClearDefinitionOfDone",
+					message: "Clear all Definition of Done defaults?",
+					initial: false,
+				},
+				{
+					onCancel: () => {
+						goBackToDefinitionOfDoneMenu = true;
+					},
+				},
+			);
+
+			if (goBackToDefinitionOfDoneMenu) {
+				continue;
+			}
+
+			if (clearPrompt.confirmClearDefinitionOfDone) {
+				definitionOfDone = [];
+			}
+		}
+	}
+
+	while (true) {
 		const webUIPrompt = await promptImpl(
 			{
 				type: "confirm",
@@ -437,6 +636,7 @@ export async function runAdvancedConfigWizard({
 			autoCommit,
 			zeroPaddedIds,
 			defaultEditor,
+			definitionOfDone,
 			defaultPort,
 			autoOpenBrowser,
 		},
