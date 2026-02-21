@@ -132,4 +132,30 @@ describe("MCP Definition of Done default tools", () => {
 		expect(withoutDefaultsText).toContain("- [ ] #1 Custom per-task DoD");
 		expect(withoutDefaultsText).not.toContain("Run tests");
 	});
+
+	it("rejects delimiter-sensitive DoD defaults (commas) to prevent config corruption", async () => {
+		await server.testInterface.callTool({
+			params: {
+				name: "definition_of_done_defaults_upsert",
+				arguments: {
+					items: ["Run tests", "Update docs"],
+				},
+			},
+		});
+
+		const result = await server.testInterface.callTool({
+			params: {
+				name: "definition_of_done_defaults_upsert",
+				arguments: {
+					items: ["Run unit, integration, and e2e tests"],
+				},
+			},
+		});
+
+		expect(result.isError).toBe(true);
+		expect(getText(result.content)).toContain("cannot contain commas");
+
+		const reloaded = await loadConfigOrThrow(server);
+		expect(reloaded.definitionOfDone).toEqual(["Run tests", "Update docs"]);
+	});
 });

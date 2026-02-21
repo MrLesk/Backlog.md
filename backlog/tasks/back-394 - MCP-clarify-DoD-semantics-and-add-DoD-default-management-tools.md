@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-21 21:39'
-updated_date: '2026-02-21 22:14'
+updated_date: '2026-02-21 22:24'
 labels: []
 dependencies: []
 ---
@@ -46,6 +46,10 @@ Follow-up clarification requested: make `task_create`/`task_edit` DoD bullets ex
 Updated MCP guidance wording so DoD is explicitly not AC and per-task DoD usage is marked exceptional-only in `overview-tools.md`, `overview.md`, and `task-creation.md`.
 
 Opened PR: https://github.com/MrLesk/Backlog.md/pull/542
+
+Addressing PR review: validate `definition_of_done_defaults_upsert` items before config save to prevent delimiter-based corruption (comma case) and add regression test.
+
+Addressed PR review: `definition_of_done_defaults_upsert` now rejects comma-containing items before save to prevent delimiter-based config corruption after reload.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -77,6 +81,8 @@ Additional cleanup:
 - Fixed existing TypeScript compile blocker in `src/web/components/MilestonesPage.tsx` by removing a duplicate local `isDoneStatus` declaration that conflicted with imported utility.
 
 Follow-up clarification applied: task-level DoD bullets now explicitly state DoD is not acceptance criteria and per-task DoD customization should be exceptional.
+
+PR follow-up: added validation to reject comma-containing DoD default items in MCP upsert path, and added regression test covering this corruption scenario.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

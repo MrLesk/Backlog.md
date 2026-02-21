@@ -18,7 +18,7 @@ export const definitionOfDoneDefaultsUpsertSchema: JsonSchema = {
 			},
 			maxItems: 100,
 			description:
-				"Project-level Definition of Done defaults (replaces existing defaults). New tasks inherit these unless disabled.",
+				"Project-level Definition of Done defaults (replaces existing defaults). New tasks inherit these unless disabled. Items must not contain commas.",
 		},
 	},
 	required: ["items"],
