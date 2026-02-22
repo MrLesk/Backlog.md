@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKLOG_CWD_ENV, resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
@@ -27,10 +27,15 @@ describe("resolveRuntimeCwd", () => {
 		await rm(testDir, { recursive: true, force: true });
 	});
 
+	async function expectCanonicalPath(actualPath: string, expectedPath: string): Promise<void> {
+		const [actualCanonical, expectedCanonical] = await Promise.all([realpath(actualPath), realpath(expectedPath)]);
+		expect(actualCanonical).toBe(expectedCanonical);
+	}
+
 	it("uses process.cwd() when no override is provided", async () => {
 		const result = await resolveRuntimeCwd();
 
-		expect(result.cwd).toBe(testDir);
+		await expectCanonicalPath(result.cwd, testDir);
 		expect(result.source).toBe("process");
 	});
 
@@ -41,7 +46,7 @@ describe("resolveRuntimeCwd", () => {
 
 		const result = await resolveRuntimeCwd();
 
-		expect(result.cwd).toBe(nestedDir);
+		await expectCanonicalPath(result.cwd, nestedDir);
 		expect(result.source).toBe("env");
 		expect(result.sourceLabel).toBe(BACKLOG_CWD_ENV);
 	});
@@ -55,7 +60,7 @@ describe("resolveRuntimeCwd", () => {
 
 		const result = await resolveRuntimeCwd({ cwd: optionDir });
 
-		expect(result.cwd).toBe(optionDir);
+		await expectCanonicalPath(result.cwd, optionDir);
 		expect(result.source).toBe("option");
 		expect(result.sourceLabel).toBe("--cwd");
 	});
@@ -65,7 +70,7 @@ describe("resolveRuntimeCwd", () => {
 
 		const result = await resolveRuntimeCwd({ cwd: "./relative/path" });
 
-		expect(result.cwd).toBe(join(testDir, "relative", "path"));
+		await expectCanonicalPath(result.cwd, join(testDir, "relative", "path"));
 		expect(result.source).toBe("option");
 	});
 
