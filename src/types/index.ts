@@ -279,6 +279,8 @@ export interface BacklogConfig {
 	onStatusChange?: string;
 	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
 	prefixes?: PrefixConfig;
+	/** Custom directory path for storing tasks, completed tasks, and drafts. Can be absolute or relative to project root. Defaults to "backlog/tasks" */
+	tasksDirectory?: string;
 	mcp?: {
 		http?: {
 			host?: string;

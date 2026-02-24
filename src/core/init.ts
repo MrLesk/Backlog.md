@@ -34,6 +34,8 @@ export interface InitializeProjectOptions {
 		autoOpenBrowser?: boolean;
 		/** Custom task prefix (e.g., "JIRA"). Only set during first init, read-only after. */
 		taskPrefix?: string;
+		/** Custom directory path for storing all content except config.yml */
+		tasksDirectory?: string;
 	};
 	/** Existing config for re-initialization */
 	existingConfig?: BacklogConfig | null;
@@ -90,6 +92,7 @@ export async function initializeProject(
 	const hasDefaultEditorOverride = Object.hasOwn(advancedConfig, "defaultEditor");
 	const hasZeroPaddedIdsOverride = Object.hasOwn(advancedConfig, "zeroPaddedIds");
 	const hasDefinitionOfDoneOverride = Object.hasOwn(advancedConfig, "definitionOfDone");
+	const hasTasksDirectoryOverride = Object.hasOwn(advancedConfig, "tasksDirectory");
 
 	// Build config, preserving existing values for re-initialization.
 	// Re-init should be idempotent for fields that init does not explicitly manage.
@@ -139,6 +142,9 @@ export async function initializeProject(
 		...(hasDefinitionOfDoneOverride && Array.isArray(advancedConfig.definitionOfDone)
 			? { definitionOfDone: [...advancedConfig.definitionOfDone] }
 			: {}),
+		...(hasTasksDirectoryOverride && advancedConfig.tasksDirectory
+			? { tasksDirectory: advancedConfig.tasksDirectory }
+			: {}),
 	};
 	// Preserve all non-init-managed fields, but allow init-managed optional fields to be explicitly cleared.
 	if (hasDefaultEditorOverride && !advancedConfig.defaultEditor) {
@@ -153,13 +159,15 @@ export async function initializeProject(
 	if (hasDefinitionOfDoneOverride && !Array.isArray(advancedConfig.definitionOfDone)) {
 		delete config.definitionOfDone;
 	}
+	if (hasTasksDirectoryOverride && !advancedConfig.tasksDirectory) {
+		delete config.tasksDirectory;
+	}
 
 	// Create structure and save config
-	if (isReInitialization) {
-		await core.filesystem.saveConfig(config);
-	} else {
+	// Save config first so ensureBacklogStructure can read tasksDirectory
+	await core.filesystem.saveConfig(config);
+	if (!isReInitialization) {
 		await core.filesystem.ensureBacklogStructure();
-		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();
 	}
 
