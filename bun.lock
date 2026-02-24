@@ -37,7 +37,6 @@
         "backlog.md-darwin-arm64": "*",
         "backlog.md-darwin-x64": "*",
         "backlog.md-linux-arm64": "*",
-        "backlog.md-linux-x64": "*",
         "backlog.md-windows-x64": "*",
       },
     },
@@ -389,8 +388,6 @@
     "backlog.md-darwin-x64": ["backlog.md-darwin-x64@1.14.4", "", { "os": "darwin", "cpu": "x64" }, "sha512-DDuT04LqZgTWDJD42wl9Bw/gJACfsAuI1ZPZvqMSh9PtjySC25iCKmjflsgrkgRvGI49Cx7dCONTVfvILZZCTg=="],
 
     "backlog.md-linux-arm64": ["backlog.md-linux-arm64@1.14.4", "", { "os": "linux", "cpu": "arm64" }, "sha512-efMv+NVoC5MkRfHg6rvSEw+MAjMF6w+FUjLtMuOtAR4vdL8sVUNqHgi9zsjQ6glnnz9/JBFtnYjjkRCozZuYuw=="],
-
-    "backlog.md-linux-x64": ["backlog.md-linux-x64@1.14.4", "", { "os": "linux", "cpu": "x64" }, "sha512-h3RT7jMqFZqQ/Sf49oB7ggqGJ2+p53nIqW544Ue+6RLL7VOmXieLU+hQlG5sh1rACbg22Y5gOhpvdnVvNgfiMA=="],
 
     "backlog.md-windows-x64": ["backlog.md-windows-x64@1.14.4", "", { "os": "win32", "cpu": "x64" }, "sha512-8gpi4GVY7wW6Ci8tXfHuodoXFPY4I2hsmOFMK7ggmhhImThALoaw2MTPoJbbFAXS0x5t9lL0R5toufZcmcJwyA=="],
 

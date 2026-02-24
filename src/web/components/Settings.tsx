@@ -78,6 +78,10 @@ const Settings: React.FC = () => {
 			errors.defaultPort = 'Port must be between 1 and 65535';
 		}
 
+		// Validate tasksDirectory - if set, must not be empty
+		if (config.tasksDirectory !== undefined && config.tasksDirectory.trim() === '') {
+			errors.tasksDirectory = 'Tasks directory cannot be empty if set';
+		}
 
 		setValidationErrors(errors);
 		return Object.keys(errors).length === 0;
@@ -88,9 +92,11 @@ const Settings: React.FC = () => {
 
 		try {
 			setSaving(true);
+			// Remove tasksDirectory if it's empty to use default
 			const normalizedConfig = {
 				...config,
 				definitionOfDone: normalizeDefinitionOfDone(config.definitionOfDone),
+				...(config.tasksDirectory === '' && { tasksDirectory: undefined }),
 			};
 			await apiClient.updateConfig(normalizedConfig);
 			setConfig(normalizedConfig);
@@ -428,6 +434,33 @@ const Settings: React.FC = () => {
 								/>
 								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
 									Set during initialization. Cannot be changed to avoid breaking existing task IDs.
+								</p>
+							</div>
+
+							<div>
+								<label htmlFor="tasksDirectory" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+									Tasks Directory
+								</label>
+								<div className="flex gap-2">
+									<input
+										id="tasksDirectory"
+										type="text"
+										value={config.tasksDirectory || ''}
+										onChange={(e) => handleInputChange('tasksDirectory', e.target.value)}
+										placeholder="backlog"
+										className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									/>
+									<button
+										type="button"
+										onClick={() => handleInputChange('tasksDirectory', undefined)}
+										disabled={!config.tasksDirectory}
+										className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+									>
+										Use Default
+									</button>
+								</div>
+								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									Path for storing tasks (absolute or relative to project root). Default: backlog
 								</p>
 							</div>
 						</div>

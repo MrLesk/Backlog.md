@@ -1101,12 +1101,6 @@
     url = "https://registry.npmjs.org/backlog.md-linux-arm64/-/backlog.md-linux-arm64-1.14.4.tgz";
     hash = "sha512-efMv+NVoC5MkRfHg6rvSEw+MAjMF6w+FUjLtMuOtAR4vdL8sVUNqHgi9zsjQ6glnnz9/JBFtnYjjkRCozZuYuw==";
   };
-  "backlog.md-linux-x64" = {
-    out_path = "backlog.md-linux-x64";
-    name = "backlog.md-linux-x64@1.14.4";
-    url = "https://registry.npmjs.org/backlog.md-linux-x64/-/backlog.md-linux-x64-1.14.4.tgz";
-    hash = "sha512-h3RT7jMqFZqQ/Sf49oB7ggqGJ2+p53nIqW544Ue+6RLL7VOmXieLU+hQlG5sh1rACbg22Y5gOhpvdnVvNgfiMA==";
-  };
   "backlog.md-windows-x64" = {
     out_path = "backlog.md-windows-x64";
     name = "backlog.md-windows-x64@1.14.4";
