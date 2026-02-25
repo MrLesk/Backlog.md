@@ -213,6 +213,7 @@ export async function runAdvancedConfigWizard({
 	let defaultPort = config?.defaultPort ?? 6420;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let definitionOfDone = normalizeDefinitionOfDoneItems(config?.definitionOfDone);
+	let tasksDirectory = config?.tasksDirectory ?? "";
 	let installClaudeAgent = false;
 	let installShellCompletions = false;
 
@@ -613,6 +614,48 @@ export async function runAdvancedConfigWizard({
 		break;
 	}
 
+	while (true) {
+		const tasksDirPrompt = await promptImpl(
+			{
+				type: "confirm",
+				name: "configureTasksDirectory",
+				message: "Configure custom tasks directory?",
+				hint: "Store tasks in a custom location (default: backlog/tasks)",
+				initial: !!tasksDirectory,
+			},
+			{ onCancel },
+		);
+
+		if (!tasksDirPrompt.configureTasksDirectory) {
+			break;
+		}
+
+		let goBackToTasksDirPrompt = false;
+		const tasksDirInput = await promptImpl(
+			{
+				type: "text",
+				name: "tasksDirectory",
+				message: "Tasks directory path:",
+				hint: "Absolute path or relative to project root",
+				initial: tasksDirectory,
+			},
+			{
+				onCancel: () => {
+					goBackToTasksDirPrompt = true;
+				},
+			},
+		);
+
+		if (goBackToTasksDirPrompt) {
+			continue;
+		}
+
+		const dirPath = String(tasksDirInput.tasksDirectory ?? "").trim();
+		// Empty string means use default
+		tasksDirectory = dirPath;
+		break;
+	}
+
 	if (includeClaudePrompt) {
 		const claudePrompt = await promptImpl(
 			{
@@ -639,6 +682,8 @@ export async function runAdvancedConfigWizard({
 			definitionOfDone,
 			defaultPort,
 			autoOpenBrowser,
+			// Only include tasksDirectory if it's not empty (empty means use default)
+			...(tasksDirectory ? { tasksDirectory } : {}),
 		},
 		installClaudeAgent,
 		installShellCompletions,

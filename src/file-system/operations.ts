@@ -1,6 +1,6 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
@@ -82,33 +82,45 @@ export class FileSystem {
 		}
 	}
 
+	// Helper to get the base directory for all content (except config.yml)
+	// Uses tasksDirectory if configured, otherwise defaults to backlogDir
+	private getContentBaseDir(): string {
+		if (this.cachedConfig?.tasksDirectory) {
+			const tasksDir = this.cachedConfig.tasksDirectory;
+			return isAbsolute(tasksDir) ? tasksDir : join(this.projectRoot, tasksDir);
+		}
+		return this.backlogDir;
+	}
+
 	// Public accessors for directory paths
+	// All content directories use getContentBaseDir() - only config.yml stays local
 	get tasksDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.TASKS);
+		return join(this.getContentBaseDir(), DEFAULT_DIRECTORIES.TASKS);
 	}
 	get completedDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
+		return join(this.getContentBaseDir(), DEFAULT_DIRECTORIES.COMPLETED);
 	}
 
 	get archiveTasksDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
+		return join(this.getContentBaseDir(), DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
 	get archiveMilestonesDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
+		return join(this.getContentBaseDir(), DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
 	}
 	get decisionsDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.DECISIONS);
+		return join(this.getContentBaseDir(), DEFAULT_DIRECTORIES.DECISIONS);
 	}
 
 	get docsDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.DOCS);
+		return join(this.getContentBaseDir(), DEFAULT_DIRECTORIES.DOCS);
 	}
 
 	get milestonesDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
+		return join(this.getContentBaseDir(), DEFAULT_DIRECTORIES.MILESTONES);
 	}
 
 	get configFilePath(): string {
+		// config.yml always stays in local backlog directory
 		return join(this.backlogDir, DEFAULT_FILES.CONFIG);
 	}
 
@@ -121,65 +133,90 @@ export class FileSystem {
 		this.cachedConfig = null;
 	}
 
+	// Async version of getContentBaseDir that loads config if needed
+	private async getContentBaseDirAsync(): Promise<string> {
+		// Load config if not already cached
+		if (this.cachedConfig === null) {
+			await this.loadConfig();
+		}
+		if (this.cachedConfig?.tasksDirectory) {
+			const tasksDir = this.cachedConfig.tasksDirectory;
+			return isAbsolute(tasksDir) ? tasksDir : join(this.projectRoot, tasksDir);
+		}
+		return this.backlogDir;
+	}
+
 	private async getTasksDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.TASKS);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.TASKS);
 	}
 
 	async getDraftsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.DRAFTS);
 	}
 
 	async getArchiveTasksDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
 
 	private async getArchiveMilestonesDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
 	}
 
 	private async getArchiveDraftsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
 	}
 
 	private async getDecisionsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.DECISIONS);
 	}
 
 	private async getDocsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.DOCS);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.DOCS);
 	}
 
 	private async getMilestonesDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.MILESTONES);
 	}
 
 	private async getCompletedDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
+		const baseDir = await this.getContentBaseDirAsync();
+		return join(baseDir, DEFAULT_DIRECTORIES.COMPLETED);
 	}
 
 	async ensureBacklogStructure(): Promise<void> {
 		const backlogDir = await this.getBacklogDir();
-		const directories = [
-			backlogDir,
-			join(backlogDir, DEFAULT_DIRECTORIES.TASKS),
-			join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS),
-			join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED),
-			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS),
-			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS),
-			join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES),
-			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES),
-			join(backlogDir, DEFAULT_DIRECTORIES.DOCS),
-			join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS),
-		];
+		const config = await this.loadConfig();
+
+		// Always create local backlog directory with only config.yml
+		const directories = [backlogDir];
+
+		// Get the content base directory (custom if configured, otherwise backlog dir)
+		const contentBaseDir = config?.tasksDirectory
+			? isAbsolute(config.tasksDirectory)
+				? config.tasksDirectory
+				: join(this.projectRoot, config.tasksDirectory)
+			: backlogDir;
+
+		// All content directories go in the content base directory
+		directories.push(
+			join(contentBaseDir, DEFAULT_DIRECTORIES.TASKS),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.DRAFTS),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.COMPLETED),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.MILESTONES),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.DOCS),
+			join(contentBaseDir, DEFAULT_DIRECTORIES.DECISIONS),
+		);
 
 		for (const dir of directories) {
 			await mkdir(dir, { recursive: true });
@@ -188,10 +225,12 @@ export class FileSystem {
 
 	// Task operations
 	async saveTask(task: Task): Promise<string> {
+		// Always load config to ensure cachedConfig is populated for tasksDirectory
+		const config = await this.loadConfig();
+
 		// Extract prefix from task ID, or use configured prefix, or fall back to default "task"
 		let prefix = extractAnyPrefix(task.id);
 		if (!prefix) {
-			const config = await this.loadConfig();
 			prefix = config?.prefixes?.task ?? "task";
 		}
 		const taskId = normalizeId(task.id, prefix);
@@ -1340,6 +1379,9 @@ ${description || `Milestone: ${title}`}`,
 				case "task_prefix":
 					config.prefixes = { task: value.replace(/['"]/g, "") };
 					break;
+				case "tasks_directory":
+					config.tasksDirectory = value.replace(/['"]/g, "");
+					break;
 			}
 		}
 
@@ -1364,6 +1406,7 @@ ${description || `Milestone: ${title}`}`,
 			activeBranchDays: config.activeBranchDays,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
+			tasksDirectory: config.tasksDirectory,
 		};
 	}
 
@@ -1394,6 +1437,7 @@ ${description || `Milestone: ${title}`}`,
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
+			...(config.tasksDirectory ? [`tasks_directory: "${config.tasksDirectory}"`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

@@ -957,6 +957,7 @@ program
 						defaultPort: advancedConfig.defaultPort,
 						autoOpenBrowser: advancedConfig.autoOpenBrowser,
 						taskPrefix: taskPrefix || undefined,
+						tasksDirectory: advancedConfig.tasksDirectory,
 					},
 					existingConfig,
 				});
@@ -1046,6 +1047,9 @@ program
 							(config.definitionOfDone ?? []).length > 0 ? config.definitionOfDone?.join(" | ") : muted("none")
 						}`,
 					);
+					if (config.tasksDirectory) {
+						summaryLines.push(`  ${label("Tasks directory:")} ${config.tasksDirectory}`);
+					}
 				} else {
 					summaryLines.push(`${label("Advanced settings:")} ${muted("unchanged (run `backlog config` to customize)")}`);
 				}
@@ -3125,6 +3129,9 @@ const configCmd = program
 			if (mergedConfig.defaultEditor) {
 				console.log(`  Default editor: ${mergedConfig.defaultEditor}`);
 			}
+			if (mergedConfig.tasksDirectory) {
+				console.log(`  Tasks directory: ${mergedConfig.tasksDirectory}`);
+			}
 			if (shouldInstallClaude) {
 				await installClaudeAgent(cwd);
 				console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
@@ -3270,10 +3277,13 @@ configCmd
 				case "activeBranchDays":
 					console.log(config.activeBranchDays?.toString() || "30");
 					break;
+				case "tasksDirectory":
+					console.log(config.tasksDirectory || "");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays, tasksDirectory",
 					);
 					process.exit(1);
 			}
@@ -3417,6 +3427,17 @@ configCmd
 					config.activeBranchDays = days;
 					break;
 				}
+				case "tasksDirectory": {
+					// Allow setting custom tasks directory path
+					// Can be absolute or relative to project root
+					if (!value || value.trim() === "") {
+						// Empty value - remove the setting to use default
+						config.tasksDirectory = undefined;
+					} else {
+						config.tasksDirectory = value.trim();
+					}
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -3495,6 +3516,7 @@ configCmd
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
+			console.log(`  tasksDirectory: ${config.tasksDirectory || "(default: backlog)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;
