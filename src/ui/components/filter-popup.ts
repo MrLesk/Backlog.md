@@ -80,12 +80,20 @@ function createPopupChrome(options: PopupChromeOptions): {
 		width: Math.min(screenWidth, popupWidth + 4),
 		height: Math.min(screenHeight, popupHeight + 2),
 		style: {
-			bg: "gray",
-			fg: "black",
+			bg: "black",
 		},
 	});
-	(backdrop as BoxInterface & { setBack?: () => void }).setBack?.();
 	(popup as BoxInterface & { setFront?: () => void }).setFront?.();
+
+	const escBadge = box({
+		parent: popup,
+		content: " Esc ",
+		top: -1,
+		right: 1,
+		width: 5,
+		height: 1,
+		style: { fg: "white", bg: "blue" },
+	});
 
 	const helpBox = box({
 		parent: popup,
@@ -99,6 +107,7 @@ function createPopupChrome(options: PopupChromeOptions): {
 	});
 
 	const close = () => {
+		escBadge.destroy();
 		helpBox.destroy();
 		popup.destroy();
 		backdrop.destroy();
