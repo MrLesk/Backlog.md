@@ -25,6 +25,7 @@ import {
 } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { createGenericList, type GenericList } from "./components/generic-list.ts";
+import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
@@ -434,6 +435,7 @@ export async function viewTaskEnhanced(
 		width: "100%",
 		height: 1,
 		tags: true,
+		wrap: true,
 		content: "",
 	});
 	let transientHelpContent: string | null = null;
@@ -451,6 +453,26 @@ export async function viewTaskEnhanced(
 			helpRestoreTimer = null;
 			updateHelpBar();
 		}, durationMs);
+	}
+
+	function getTerminalWidth(): number {
+		return typeof screen.width === "number" ? screen.width : 80;
+	}
+
+	function syncPaneLayout() {
+		const headerHeight = filterHeader.getHeight();
+		const footerHeight = typeof helpBar.height === "number" ? helpBar.height : 1;
+		taskListPane.top = headerHeight;
+		taskListPane.height = `100%-${headerHeight + footerHeight}`;
+		detailPane.top = headerHeight;
+		detailPane.height = `100%-${headerHeight + footerHeight}`;
+	}
+
+	function setHelpBarContent(content: string) {
+		const formatted = formatFooterContent(content, getTerminalWidth());
+		helpBar.height = formatted.height;
+		helpBar.setContent(formatted.content);
+		syncPaneLayout();
 	}
 
 	function setActivePane(active: "list" | "detail" | "none") {
@@ -906,7 +928,7 @@ export async function viewTaskEnhanced(
 	// Dynamic help bar content
 	function updateHelpBar() {
 		if (transientHelpContent) {
-			helpBar.setContent(transientHelpContent);
+			setHelpBarContent(transientHelpContent);
 			screen.render();
 			return;
 		}
@@ -917,10 +939,9 @@ export async function viewTaskEnhanced(
 		if (currentFocus === "filters" && filterFocus) {
 			if (filterFocus === "search") {
 				content =
-					" {cyan-fg}[Tab]{/} Next Filter | {cyan-fg}[↑/↓]{/} Back to Tasks | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}";
+					" {cyan-fg}[←/→]{/} Cursor (edge=Prev/Next) | {cyan-fg}[↑/↓]{/} Back to Tasks | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}";
 			} else {
-				content =
-					" {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[Tab]{/} Next Filter | {cyan-fg}[Shift+Tab]{/} Prev | {cyan-fg}[Esc]{/} Back";
+				content = " {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[←/→]{/} Prev/Next | {cyan-fg}[Esc]{/} Back";
 			}
 		} else if (currentFocus === "detail") {
 			content =
@@ -928,10 +949,10 @@ export async function viewTaskEnhanced(
 		} else {
 			// Task list help
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[m]{/} Milestone | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[i]{/} Milestone | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		}
 
-		helpBar.setContent(content);
+		setHelpBarContent(content);
 		screen.render();
 	}
 
@@ -984,15 +1005,7 @@ export async function viewTaskEnhanced(
 	// Handle resize
 	screen.on("resize", () => {
 		filterHeader.rebuild();
-		const headerHeight = filterHeader.getHeight();
-
-		// Update pane positions
-		taskListPane.top = headerHeight;
-		taskListPane.height = `100%-${headerHeight + 1}`;
-		detailPane.top = headerHeight;
-		detailPane.height = `100%-${headerHeight + 1}`;
-
-		screen.render();
+		updateHelpBar();
 	});
 
 	// Keyboard shortcuts
@@ -1018,7 +1031,7 @@ export async function viewTaskEnhanced(
 		void openFilterPicker("labels");
 	});
 
-	screen.key(["m", "M"], () => {
+	screen.key(["i", "I"], () => {
 		void openFilterPicker("milestone");
 	});
 
@@ -1027,6 +1040,9 @@ export async function viewTaskEnhanced(
 	});
 
 	screen.key(["escape"], () => {
+		if (filterPopupOpen) {
+			return;
+		}
 		if (currentFocus === "filters") {
 			filterHeader.setBorderColor("cyan");
 			if (taskList) {
@@ -1064,6 +1080,9 @@ export async function viewTaskEnhanced(
 
 	// Quit handlers
 	screen.key(["q", "C-c"], () => {
+		if (filterPopupOpen) {
+			return;
+		}
 		searchService?.dispose();
 		contentStore?.dispose();
 		filterHeader.destroy();

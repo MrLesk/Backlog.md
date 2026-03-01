@@ -166,6 +166,12 @@ export async function openSingleSelectFilterPopup(options: {
 			return false;
 		});
 
+		// Ensure cancel keys work while list widget has focus.
+		picker.key(["escape", "q"], () => {
+			finish(null);
+			return false;
+		});
+
 		picker.key(["enter"], () => {
 			const index = picker.selected ?? 0;
 			const choice = options.choices[index];
@@ -247,6 +253,13 @@ export async function openMultiSelectFilterPopup(options: {
 		};
 
 		popup.key(["escape", "q"], () => {
+			finish(null);
+			return false;
+		});
+
+		// Ensure cancel keys work while generic-list widget has focus.
+		const pickerList = picker.getListBox();
+		pickerList.key(["escape", "q"], () => {
 			finish(null);
 			return false;
 		});

@@ -56,6 +56,23 @@ const ALL_FILTER_ITEMS: FilterItem[] = [
 const PADDING = 1; // Left padding inside header box
 const GAP = 2; // Gap between filter items
 
+export function resolveSearchHorizontalNavigation(
+	textWidth: number,
+	cursorX: number,
+	direction: "left" | "right",
+): "stay" | "cycle-prev" | "cycle-next" {
+	if (textWidth <= 0) {
+		return direction === "left" ? "cycle-prev" : "cycle-next";
+	}
+	if (direction === "left" && cursorX <= -textWidth) {
+		return "cycle-prev";
+	}
+	if (direction === "right" && cursorX >= 0) {
+		return "cycle-next";
+	}
+	return "stay";
+}
+
 function normalizeVisibleFilters(visible: FilterControlId[] | undefined): FilterControlId[] {
 	if (!visible || visible.length === 0) {
 		return ALL_FILTER_ITEMS.map((item) => item.id);
@@ -120,6 +137,7 @@ export class FilterHeader {
 	private currentFocus: FilterControlId | null = null;
 	private onFocusChange?: (focus: FilterControlId | null) => void;
 	private onExitRequest?: (direction: "up" | "down" | "escape") => void;
+	private suppressHorizontalCycle = false;
 
 	constructor(options: FilterHeaderOptions) {
 		this.options = options;
@@ -286,6 +304,31 @@ export class FilterHeader {
 		this.onFocusChange?.(null);
 	}
 
+	private commitSearchValue(): void {
+		const value = this.searchInput?.getValue?.();
+		if (value !== undefined && value !== this.state.search) {
+			this.state.search = String(value);
+			this.emitFilterChange();
+		}
+	}
+
+	private getSearchCursorX(): number {
+		const searchInput = this.searchInput as unknown as { getCursor?: () => { x: number; y: number } };
+		return searchInput.getCursor?.().x ?? 0;
+	}
+
+	private getSearchTextWidth(value: string): number {
+		const searchInput = this.searchInput as unknown as { strWidth?: (input: string) => number };
+		return searchInput.strWidth?.(value) ?? value.length;
+	}
+
+	private suppressNextHorizontalCycle(): void {
+		this.suppressHorizontalCycle = true;
+		setImmediate(() => {
+			this.suppressHorizontalCycle = false;
+		});
+	}
+
 	private focusByName(name: FilterControlId): void {
 		switch (name) {
 			case "search":
@@ -391,7 +434,7 @@ export class FilterHeader {
 			left: x,
 			width,
 			height: 1,
-			inputOnFocus: true,
+			inputOnFocus: false,
 			mouse: true,
 			keys: true,
 			style: {
@@ -410,58 +453,59 @@ export class FilterHeader {
 		this.searchInput.on("focus", () => {
 			this.currentFocus = "search";
 			this.setBorderColor("yellow");
+			this.searchInput?.readInput?.();
 			this.onFocusChange?.("search");
 		});
 
 		this.searchInput.on("blur", () => {
 			if (this.currentFocus === "search") {
-				const value = this.searchInput?.getValue?.() ?? this.state.search;
-				if (value !== this.state.search) {
-					this.state.search = String(value);
-					this.emitFilterChange();
-				}
+				this.commitSearchValue();
 			}
 		});
 
-		this.searchInput.key(["tab"], () => {
-			const value = this.searchInput?.getValue?.();
-			if (value !== undefined && value !== this.state.search) {
-				this.state.search = String(value);
-				this.emitFilterChange();
+		this.searchInput.key(["left"], () => {
+			const value = String(this.searchInput?.getValue?.() ?? this.state.search);
+			const behavior = resolveSearchHorizontalNavigation(
+				this.getSearchTextWidth(value),
+				this.getSearchCursorX(),
+				"left",
+			);
+			if (behavior === "cycle-prev") {
+				this.commitSearchValue();
+				this.searchInput?.cancel();
+				this.suppressNextHorizontalCycle();
+				this.cyclePrev();
+				return false;
 			}
-			this.searchInput?.cancel();
-			this.cycleNext();
-			return false;
+			return true;
 		});
 
-		this.searchInput.key(["S-tab"], () => {
-			const value = this.searchInput?.getValue?.();
-			if (value !== undefined && value !== this.state.search) {
-				this.state.search = String(value);
-				this.emitFilterChange();
+		this.searchInput.key(["right"], () => {
+			const value = String(this.searchInput?.getValue?.() ?? this.state.search);
+			const behavior = resolveSearchHorizontalNavigation(
+				this.getSearchTextWidth(value),
+				this.getSearchCursorX(),
+				"right",
+			);
+			if (behavior === "cycle-next") {
+				this.commitSearchValue();
+				this.searchInput?.cancel();
+				this.suppressNextHorizontalCycle();
+				this.cycleNext();
+				return false;
 			}
-			this.searchInput?.cancel();
-			this.cyclePrev();
-			return false;
+			return true;
 		});
 
 		this.searchInput.key(["down"], () => {
-			const value = this.searchInput?.getValue?.();
-			if (value !== undefined && value !== this.state.search) {
-				this.state.search = String(value);
-				this.emitFilterChange();
-			}
+			this.commitSearchValue();
 			this.searchInput?.cancel();
 			this.requestExit("down");
 			return false;
 		});
 
 		this.searchInput.key(["up"], () => {
-			const value = this.searchInput?.getValue?.();
-			if (value !== undefined && value !== this.state.search) {
-				this.state.search = String(value);
-				this.emitFilterChange();
-			}
+			this.commitSearchValue();
 			this.searchInput?.cancel();
 			this.requestExit("up");
 			return false;
@@ -536,12 +580,18 @@ export class FilterHeader {
 			return false;
 		});
 
-		button.key(["tab"], () => {
+		button.key(["right"], () => {
+			if (this.suppressHorizontalCycle) {
+				return false;
+			}
 			this.cycleNext();
 			return false;
 		});
 
-		button.key(["S-tab"], () => {
+		button.key(["left"], () => {
+			if (this.suppressHorizontalCycle) {
+				return false;
+			}
 			this.cyclePrev();
 			return false;
 		});

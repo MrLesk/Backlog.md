@@ -13,8 +13,13 @@ import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-sea
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
+import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { createTaskPopup } from "./task-viewer-with-search.ts";
+import {
+	createTaskPopup,
+	resolveSearchExitTargetIndex,
+	shouldMoveFromListBoundaryToSearch,
+} from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 
 export type ColumnData = {
@@ -224,6 +229,7 @@ export async function renderBoardTui(
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
+		let pendingSearchWrap: "to-first" | "to-last" | null = null;
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
 			priorityFilter: options?.filters?.priorityFilter ?? "",
@@ -312,7 +318,8 @@ export async function renderBoardTui(
 			height: 1,
 			width: "100%",
 			tags: true,
-			content: DEFAULT_FOOTER_CONTENT,
+			wrap: true,
+			content: "",
 		});
 		let transientFooterContent: string | null = null;
 		let footerRestoreTimer: ReturnType<typeof setTimeout> | null = null;
@@ -320,6 +327,13 @@ export async function renderBoardTui(
 			if (!footerRestoreTimer) return;
 			clearTimeout(footerRestoreTimer);
 			footerRestoreTimer = null;
+		};
+		const getTerminalWidth = () => (typeof screen.width === "number" ? screen.width : 80);
+		const getFooterHeight = () => (typeof footerBox.height === "number" ? footerBox.height : 1);
+		const setFooterContent = (content: string) => {
+			const formatted = formatFooterContent(content, getTerminalWidth());
+			footerBox.height = formatted.height;
+			footerBox.setContent(formatted.content);
 		};
 
 		const clearColumns = () => {
@@ -597,43 +611,53 @@ export async function renderBoardTui(
 				screen.render();
 			}
 		});
-		filterHeader.setExitRequestHandler(() => {
-			focusColumn(currentCol);
+		filterHeader.setExitRequestHandler((direction) => {
+			const currentColumn = columns[currentCol];
+			const selected = currentColumn?.list.selected;
+			const currentIndex = typeof selected === "number" ? selected : undefined;
+			const totalTasks = currentColumn?.tasks.length ?? 0;
+			const targetIndex = resolveSearchExitTargetIndex(direction, pendingSearchWrap, totalTasks, currentIndex);
+			pendingSearchWrap = null;
+			focusColumn(currentCol, targetIndex);
 			updateFooter();
 		});
 		const syncBoardAreaLayout = () => {
 			const headerHeight = filterHeader?.getHeight() ?? 0;
 			boardArea.top = headerHeight;
-			boardArea.height = `100%-${headerHeight + 1}`;
+			boardArea.height = `100%-${headerHeight + getFooterHeight()}`;
 		};
 		syncBoardAreaLayout();
 
 		const updateFooter = () => {
 			if (transientFooterContent) {
-				footerBox.setContent(transientFooterContent);
+				setFooterContent(transientFooterContent);
+				syncBoardAreaLayout();
 				return;
 			}
 			if (currentFocus === "filters") {
 				const filterFocus = filterHeader?.getCurrentFocus();
 				if (filterFocus === "search") {
-					footerBox.setContent(
-						" {cyan-fg}[Tab]{/} Next Filter | {cyan-fg}[↑/↓]{/} Back to Board | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}",
+					setFooterContent(
+						" {cyan-fg}[←/→]{/} Cursor (edge=Prev/Next) | {cyan-fg}[↑/↓]{/} Back to Board | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}",
 					);
+					syncBoardAreaLayout();
 					return;
 				}
-				footerBox.setContent(
-					" {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[Tab]{/} Next | {cyan-fg}[Shift+Tab]{/} Prev | {cyan-fg}[Esc]{/} Back",
+				setFooterContent(
+					" {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[←/→]{/} Prev/Next | {cyan-fg}[Esc]{/} Back",
 				);
+				syncBoardAreaLayout();
 				return;
 			}
 			if (moveOp) {
-				footerBox.setContent(
+				setFooterContent(
 					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
 				);
 			} else {
 				const base = DEFAULT_FOOTER_CONTENT;
-				footerBox.setContent(hasActiveSharedFilters() ? `${base} | {yellow-fg}Filtered{/}` : base);
+				setFooterContent(hasActiveSharedFilters() ? `${base} | {yellow-fg}Filtered{/}` : base);
 			}
+			syncBoardAreaLayout();
 		};
 
 		const showTransientFooter = (message: string, durationMs = 3000) => {
@@ -721,6 +745,7 @@ export async function renderBoardTui(
 
 		screen.key(["/", "C-f"], () => {
 			if (popupOpen || filterPopupOpen || moveOp) return;
+			pendingSearchWrap = null;
 			focusFilterControl("search");
 			updateFooter();
 		});
@@ -792,8 +817,21 @@ export async function renderBoardTui(
 				const listWidget = column.list;
 				const selected = listWidget.selected ?? 0;
 				const total = column.tasks.length;
-				if (total === 0) return;
-				const nextIndex = selected > 0 ? selected - 1 : total - 1;
+				if (total === 0) {
+					pendingSearchWrap = null;
+					focusFilterControl("search");
+					updateFooter();
+					screen.render();
+					return;
+				}
+				if (shouldMoveFromListBoundaryToSearch("up", selected, total)) {
+					pendingSearchWrap = "to-last";
+					focusFilterControl("search");
+					updateFooter();
+					screen.render();
+					return;
+				}
+				const nextIndex = selected - 1;
 				listWidget.select(nextIndex);
 				screen.render();
 			}
@@ -816,8 +854,21 @@ export async function renderBoardTui(
 				const listWidget = column.list;
 				const selected = listWidget.selected ?? 0;
 				const total = column.tasks.length;
-				if (total === 0) return;
-				const nextIndex = selected < total - 1 ? selected + 1 : 0;
+				if (total === 0) {
+					pendingSearchWrap = null;
+					focusFilterControl("search");
+					updateFooter();
+					screen.render();
+					return;
+				}
+				if (shouldMoveFromListBoundaryToSearch("down", selected, total)) {
+					pendingSearchWrap = "to-first";
+					focusFilterControl("search");
+					updateFooter();
+					screen.render();
+					return;
+				}
+				const nextIndex = selected + 1;
 				listWidget.select(nextIndex);
 				screen.render();
 			}
@@ -1037,12 +1088,14 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["q", "C-c"], () => {
+			if (popupOpen || filterPopupOpen) return;
 			clearFooterTimer();
 			screen.destroy();
 			resolve();
 		});
 
 		screen.key(["escape"], () => {
+			if (popupOpen || filterPopupOpen) return;
 			if (currentFocus === "filters") {
 				focusColumn(currentCol);
 				updateFooter();
