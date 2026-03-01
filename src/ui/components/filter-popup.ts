@@ -80,7 +80,7 @@ function createPopupChrome(options: PopupChromeOptions): {
 		width: Math.min(screenWidth, popupWidth + 4),
 		height: Math.min(screenHeight, popupHeight + 2),
 		style: {
-			bg: "black",
+			bg: "gray",
 		},
 	});
 	(popup as BoxInterface & { setFront?: () => void }).setFront?.();
@@ -102,7 +102,7 @@ function createPopupChrome(options: PopupChromeOptions): {
 		right: 1,
 		height: 1,
 		tags: true,
-		style: { fg: "gray" },
+		style: { fg: "gray", bg: "black" },
 		content: options.helpText,
 	});
 
@@ -156,8 +156,9 @@ export async function openSingleSelectFilterPopup(options: {
 			tags: true,
 			scrollable: true,
 			style: {
+				bg: "black",
 				selected: { bg: "blue", fg: "white" },
-				item: { hover: { bg: "blue" } },
+				item: { bg: "black", hover: { bg: "blue" } },
 			},
 		});
 
@@ -243,6 +244,11 @@ export async function openMultiSelectFilterPopup(options: {
 			height: "100%-3",
 			border: false,
 			showHelp: false,
+			style: {
+				bg: "black",
+				item: { fg: "white", bg: "black" },
+				selected: { fg: "white", bg: "blue" },
+			},
 			keys: {
 				cancel: ["C-]"],
 			},
