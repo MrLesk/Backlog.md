@@ -60,6 +60,16 @@ function createMilestoneLabelResolver(milestones: Milestone[]): (milestone: stri
 	};
 }
 
+export function buildTaskViewerMilestoneFilterModel(activeMilestones: Milestone[]): {
+	availableMilestoneTitles: string[];
+	resolveMilestoneLabel: (milestone: string) => string;
+} {
+	return {
+		availableMilestoneTitles: activeMilestones.map((milestone) => milestone.title),
+		resolveMilestoneLabel: createMilestoneLabelResolver(activeMilestones),
+	};
+}
+
 /**
  * Display task details with search/filter header UI
  */
@@ -107,11 +117,8 @@ export async function viewTaskEnhanced(
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
 	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
-	const [milestoneEntities, archivedMilestoneEntities] = await Promise.all([
-		core.filesystem.listMilestones(),
-		core.filesystem.listArchivedMilestones(),
-	]);
-	const resolveMilestoneLabel = createMilestoneLabelResolver([...milestoneEntities, ...archivedMilestoneEntities]);
+	const milestoneEntities = await core.filesystem.listMilestones();
+	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(milestoneEntities);
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
@@ -348,7 +355,7 @@ export async function viewTaskEnhanced(
 		parent: container,
 		statuses,
 		availableLabels,
-		availableMilestones: milestoneEntities.map((m) => m.title),
+		availableMilestones: availableMilestoneTitles,
 		initialFilters: {
 			search: searchQuery,
 			status: statusFilter,
