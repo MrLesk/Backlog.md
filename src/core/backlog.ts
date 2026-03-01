@@ -196,6 +196,10 @@ export class Core {
 			const priorityLower = String(filters.priority).toLowerCase();
 			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
 		}
+		if (filters.milestone) {
+			const milestoneLower = filters.milestone.toLowerCase();
+			result = result.filter((task) => (task.milestone ?? "").toLowerCase() === milestoneLower);
+		}
 		if (filters.parentTaskId) {
 			const parentFilter = filters.parentTaskId;
 			result = result.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId));

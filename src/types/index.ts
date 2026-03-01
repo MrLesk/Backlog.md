@@ -151,6 +151,7 @@ export interface TaskListFilter {
 	status?: string;
 	assignee?: string;
 	priority?: "high" | "medium" | "low";
+	milestone?: string;
 	parentTaskId?: string;
 	labels?: string[];
 }

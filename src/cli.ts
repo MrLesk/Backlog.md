@@ -1755,6 +1755,7 @@ taskCmd
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
+	.option("-m, --milestone <milestone>", "filter tasks by milestone (case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
 	.option("--sort <field>", "sort tasks by field (priority, id)")
@@ -1772,6 +1773,9 @@ taskCmd
 		}
 		if (options.assignee) {
 			baseFilters.assignee = options.assignee;
+		}
+		if (options.milestone) {
+			baseFilters.milestone = options.milestone;
 		}
 		if (options.priority) {
 			const priorityLower = options.priority.toLowerCase();
@@ -1909,6 +1913,7 @@ taskCmd
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
+		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
 		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
 
@@ -1970,6 +1975,7 @@ taskCmd
 			filter: {
 				status: options.status,
 				assignee: options.assignee,
+				milestone: options.milestone,
 				priority: options.priority,
 				sort: options.sort,
 				title,

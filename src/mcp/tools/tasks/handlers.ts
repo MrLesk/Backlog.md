@@ -37,6 +37,7 @@ export type TaskCreateArgs = {
 export type TaskListArgs = {
 	status?: string;
 	assignee?: string;
+	milestone?: string;
 	labels?: string[];
 	search?: string;
 	limit?: number;
@@ -232,6 +233,10 @@ export class TaskHandlers {
 			if (args.assignee) {
 				drafts = drafts.filter((draft) => (draft.assignee ?? []).includes(args.assignee ?? ""));
 			}
+			if (args.milestone) {
+				const milestoneLower = args.milestone.toLowerCase();
+				drafts = drafts.filter((draft) => (draft.milestone ?? "").toLowerCase() === milestoneLower);
+			}
 
 			const labelFilters = args.labels ?? [];
 			if (labelFilters.length > 0) {
@@ -277,6 +282,9 @@ export class TaskHandlers {
 		}
 		if (args.assignee) {
 			filters.assignee = args.assignee;
+		}
+		if (args.milestone) {
+			filters.milestone = args.milestone;
 		}
 
 		const tasks = await this.core.queryTasks({
