@@ -60,6 +60,16 @@ function createMilestoneLabelResolver(milestones: Milestone[]): (milestone: stri
 	};
 }
 
+export function buildTaskViewerMilestoneFilterModel(activeMilestones: Milestone[]): {
+	availableMilestoneTitles: string[];
+	resolveMilestoneLabel: (milestone: string) => string;
+} {
+	return {
+		availableMilestoneTitles: activeMilestones.map((milestone) => milestone.title),
+		resolveMilestoneLabel: createMilestoneLabelResolver(activeMilestones),
+	};
+}
+
 /**
  * Display task details with search/filter header UI
  */
@@ -73,6 +83,7 @@ export async function viewTaskEnhanced(
 		searchQuery?: string;
 		statusFilter?: string;
 		priorityFilter?: string;
+		milestoneFilter?: string;
 		labelFilter?: string[];
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
@@ -84,6 +95,7 @@ export async function viewTaskEnhanced(
 			statusFilter: string;
 			priorityFilter: string;
 			labelFilter: string[];
+			milestoneFilter: string;
 		}) => void;
 	} = {},
 ): Promise<void> {
@@ -105,11 +117,8 @@ export async function viewTaskEnhanced(
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
 	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
-	const [milestoneEntities, archivedMilestoneEntities] = await Promise.all([
-		core.filesystem.listMilestones(),
-		core.filesystem.listArchivedMilestones(),
-	]);
-	const resolveMilestoneLabel = createMilestoneLabelResolver([...milestoneEntities, ...archivedMilestoneEntities]);
+	const milestoneEntities = await core.filesystem.listMilestones();
+	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(milestoneEntities);
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
@@ -156,6 +165,7 @@ export async function viewTaskEnhanced(
 	// Priority is already lowercase
 	let priorityFilter = options.priorityFilter || "";
 	let labelFilter: string[] = [];
+	let milestoneFilter = options.milestoneFilter || "";
 	let filteredTasks = [...allTasks];
 
 	if (options.labelFilter && options.labelFilter.length > 0) {
@@ -163,7 +173,9 @@ export async function viewTaskEnhanced(
 		labelFilter = options.labelFilter.filter((label) => availableSet.has(label.toLowerCase()));
 	}
 
-	const filtersActive = Boolean(searchQuery || statusFilter || priorityFilter || labelFilter.length > 0);
+	const filtersActive = Boolean(
+		searchQuery || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+	);
 	let requireInitialFilterSelection = filtersActive;
 
 	const enrichTask = (candidate: Task | null): Task | null => {
@@ -343,17 +355,20 @@ export async function viewTaskEnhanced(
 		parent: container,
 		statuses,
 		availableLabels,
+		availableMilestones: availableMilestoneTitles,
 		initialFilters: {
 			search: searchQuery,
 			status: statusFilter,
 			priority: priorityFilter,
 			labels: labelFilter,
+			milestone: milestoneFilter,
 		},
 		onFilterChange: (filters: FilterState) => {
 			searchQuery = filters.search;
 			statusFilter = filters.status;
 			priorityFilter = filters.priority;
 			labelFilter = filters.labels;
+			milestoneFilter = filters.milestone;
 			applyFilters();
 			notifyFilterChange();
 		},
@@ -473,6 +488,7 @@ export async function viewTaskEnhanced(
 				statusFilter,
 				priorityFilter,
 				labelFilter,
+				milestoneFilter,
 			});
 		}
 	}
@@ -480,7 +496,7 @@ export async function viewTaskEnhanced(
 	// Function to apply filters and refresh the task list
 	function applyFilters() {
 		// Check for non-empty search query or active filters
-		if (searchQuery.trim() || statusFilter || priorityFilter || labelFilter.length > 0) {
+		if (searchQuery.trim() || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter) {
 			// Use in-memory search if available, otherwise use ContentStore-backed search
 			if (taskSearchIndex) {
 				filteredTasks = taskSearchIndex.search({
@@ -502,6 +518,17 @@ export async function viewTaskEnhanced(
 				filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
 			} else {
 				filteredTasks = [...allTasks];
+			}
+
+			// Apply milestone filter (not supported by search index/service, so filter post-query)
+			if (milestoneFilter) {
+				// milestoneFilter is the milestone title to filter by
+				filteredTasks = filteredTasks.filter((task) => {
+					if (!task.milestone) return false;
+					// Resolve the task's milestone to its title and compare
+					const taskMilestoneTitle = resolveMilestoneLabel(task.milestone);
+					return taskMilestoneTitle.toLowerCase() === milestoneFilter.toLowerCase();
+				});
 			}
 		} else {
 			// No filters, show all tasks
@@ -531,6 +558,9 @@ export async function viewTaskEnhanced(
 			}
 			if (labelFilter.length > 0) {
 				activeFilters.push(`Labels: {yellow-fg}${labelFilter.join(", ")}{/}`);
+			}
+			if (milestoneFilter) {
+				activeFilters.push(`Milestone: {magenta-fg}${milestoneFilter}{/}`);
 			}
 			let listPaneMessage: string;
 			if (activeFilters.length > 0) {
@@ -882,7 +912,7 @@ export async function viewTaskEnhanced(
 		} else {
 			// Task list help
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[m]{/} Milestone | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		}
 
 		helpBar.setContent(content);
@@ -968,6 +998,10 @@ export async function viewTaskEnhanced(
 
 	screen.key(["l", "L"], () => {
 		openLabelPicker();
+	});
+
+	screen.key(["m", "M"], () => {
+		filterHeader.focusMilestone();
 	});
 
 	screen.key(["e", "E", "S-e"], () => {

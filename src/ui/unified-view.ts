@@ -25,6 +25,7 @@ export interface UnifiedViewOptions {
 		assignee?: string;
 		priority?: string;
 		labels?: string[];
+		milestone?: string;
 		sort?: string;
 		title?: string;
 		filterDescription?: string;
@@ -47,6 +48,35 @@ type LoadingScreen = {
 export interface UnifiedViewLoadResult {
 	tasks: Task[];
 	statuses: string[];
+}
+
+export interface UnifiedViewFilters {
+	searchQuery: string;
+	statusFilter: string;
+	priorityFilter: string;
+	labelFilter: string[];
+	milestoneFilter: string;
+}
+
+export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | undefined): UnifiedViewFilters {
+	return {
+		searchQuery: filter?.searchQuery || "",
+		statusFilter: filter?.status || "",
+		priorityFilter: filter?.priority || "",
+		labelFilter: [...(filter?.labels || [])],
+		milestoneFilter: filter?.milestone || "",
+	};
+}
+
+export function mergeUnifiedViewFilters(current: UnifiedViewFilters, update: UnifiedViewFilters): UnifiedViewFilters {
+	return {
+		...current,
+		searchQuery: update.searchQuery,
+		statusFilter: update.statusFilter,
+		priorityFilter: update.priorityFilter,
+		labelFilter: [...update.labelFilter],
+		milestoneFilter: update.milestoneFilter,
+	};
 }
 
 export async function loadTasksForUnifiedView(
@@ -144,12 +174,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let isInitialLoad = true; // Track if this is the first view load
 
 		// Track current filter state
-		const currentFilters = {
-			searchQuery: options.filter?.searchQuery || "",
-			statusFilter: options.filter?.status || "",
-			priorityFilter: options.filter?.priority || "",
-			labelFilter: options.filter?.labels || [],
-		};
+		let currentFilters = createUnifiedViewFilters(options.filter);
 
 		// Create view switcher (without problematic onViewChange callback)
 		viewSwitcher = new ViewSwitcher({
@@ -251,6 +276,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					statusFilter: currentFilters.statusFilter,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
+					milestoneFilter: currentFilters.milestoneFilter,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					onTaskChange: (newTask) => {
@@ -258,10 +284,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentView = "task-detail";
 					},
 					onFilterChange: (filters) => {
-						currentFilters.searchQuery = filters.searchQuery;
-						currentFilters.statusFilter = filters.statusFilter;
-						currentFilters.priorityFilter = filters.priorityFilter;
-						currentFilters.labelFilter = filters.labelFilter;
+						currentFilters = mergeUnifiedViewFilters(currentFilters, filters);
 					},
 					onTabPress,
 				}).then(() => {

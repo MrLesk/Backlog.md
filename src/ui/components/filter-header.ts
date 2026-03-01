@@ -11,19 +11,21 @@ export interface FilterState {
 	status: string;
 	priority: string;
 	labels: string[];
+	milestone: string;
 }
 
 export interface FilterHeaderOptions {
 	parent: BoxInterface | ScreenInterface;
 	statuses: string[];
 	availableLabels: string[];
+	availableMilestones: string[];
 	initialFilters?: Partial<FilterState>;
 	onFilterChange: (filters: FilterState) => void;
 	onLabelPickerOpen: () => void;
 }
 
 interface FilterItem {
-	id: "search" | "status" | "priority" | "labels";
+	id: "search" | "status" | "priority" | "labels" | "milestone";
 	labelText: string;
 	labelWidth: number;
 	minWidth: number;
@@ -45,6 +47,7 @@ const FILTER_ITEMS: FilterItem[] = [
 	{ id: "search", labelText: "Search:", labelWidth: 8, minWidth: 28, flexGrow: true },
 	{ id: "status", labelText: "Status:", labelWidth: 8, minWidth: 22, flexGrow: false },
 	{ id: "priority", labelText: "Priority:", labelWidth: 9, minWidth: 20, flexGrow: false },
+	{ id: "milestone", labelText: "Milestone:", labelWidth: 10, minWidth: 22, flexGrow: false },
 	{ id: "labels", labelText: "Labels:", labelWidth: 8, minWidth: 18, flexGrow: false },
 ];
 
@@ -95,12 +98,13 @@ export class FilterHeader {
 	private searchInput: TextboxInterface | null = null;
 	private statusSelector: ListInterface | null = null;
 	private prioritySelector: ListInterface | null = null;
+	private milestoneSelector: ListInterface | null = null;
 	private labelsButton: BoxInterface | null = null;
 	private elements: (BoxInterface | TextboxInterface | ListInterface)[] = [];
 
 	// Focus tracking
-	private currentFocus: "search" | "status" | "priority" | "labels" | null = null;
-	private onFocusChange?: (focus: "search" | "status" | "priority" | "labels" | null) => void;
+	private currentFocus: "search" | "status" | "priority" | "labels" | "milestone" | null = null;
+	private onFocusChange?: (focus: "search" | "status" | "priority" | "labels" | "milestone" | null) => void;
 
 	constructor(options: FilterHeaderOptions) {
 		this.options = options;
@@ -110,6 +114,7 @@ export class FilterHeader {
 			status: options.initialFilters?.status ?? "",
 			priority: options.initialFilters?.priority ?? "",
 			labels: options.initialFilters?.labels ?? [],
+			milestone: options.initialFilters?.milestone ?? "",
 		};
 
 		// Compute initial layout
@@ -166,6 +171,10 @@ export class FilterHeader {
 			this.state.labels = filters.labels;
 			this.updateLabelsButton();
 		}
+		if (filters.milestone !== undefined) {
+			this.state.milestone = filters.milestone;
+			this.updateMilestoneSelector();
+		}
 	}
 
 	/**
@@ -212,6 +221,13 @@ export class FilterHeader {
 	}
 
 	/**
+	 * Focus the milestone selector
+	 */
+	focusMilestone(): void {
+		this.milestoneSelector?.focus();
+	}
+
+	/**
 	 * Focus the labels button
 	 */
 	focusLabels(): void {
@@ -221,7 +237,9 @@ export class FilterHeader {
 	/**
 	 * Set callback for focus changes
 	 */
-	setFocusChangeHandler(handler: (focus: "search" | "status" | "priority" | "labels" | null) => void): void {
+	setFocusChangeHandler(
+		handler: (focus: "search" | "status" | "priority" | "labels" | "milestone" | null) => void,
+	): void {
 		this.onFocusChange = handler;
 	}
 
@@ -243,7 +261,7 @@ export class FilterHeader {
 	/**
 	 * Get current focus
 	 */
-	getCurrentFocus(): "search" | "status" | "priority" | "labels" | null {
+	getCurrentFocus(): "search" | "status" | "priority" | "labels" | "milestone" | null {
 		return this.currentFocus;
 	}
 
@@ -251,7 +269,13 @@ export class FilterHeader {
 	 * Cycle to next filter (Tab navigation)
 	 */
 	cycleNext(): void {
-		const order: ("search" | "status" | "priority" | "labels")[] = ["search", "status", "priority", "labels"];
+		const order: ("search" | "status" | "priority" | "milestone" | "labels")[] = [
+			"search",
+			"status",
+			"priority",
+			"milestone",
+			"labels",
+		];
 		const currentIndex = this.currentFocus ? order.indexOf(this.currentFocus) : -1;
 		const nextIndex = (currentIndex + 1) % order.length;
 		const nextFocus = order[nextIndex];
@@ -264,7 +288,13 @@ export class FilterHeader {
 	 * Cycle to previous filter (Shift+Tab navigation)
 	 */
 	cyclePrev(): void {
-		const order: ("search" | "status" | "priority" | "labels")[] = ["search", "status", "priority", "labels"];
+		const order: ("search" | "status" | "priority" | "milestone" | "labels")[] = [
+			"search",
+			"status",
+			"priority",
+			"milestone",
+			"labels",
+		];
 		const currentIndex = this.currentFocus ? order.indexOf(this.currentFocus) : 0;
 		const prevIndex = (currentIndex - 1 + order.length) % order.length;
 		const prevFocus = order[prevIndex];
@@ -283,7 +313,7 @@ export class FilterHeader {
 
 	// Private methods
 
-	private focusByName(name: "search" | "status" | "priority" | "labels"): void {
+	private focusByName(name: "search" | "status" | "priority" | "labels" | "milestone"): void {
 		switch (name) {
 			case "search":
 				this.focusSearch();
@@ -293,6 +323,9 @@ export class FilterHeader {
 				break;
 			case "priority":
 				this.focusPriority();
+				break;
+			case "milestone":
+				this.focusMilestone();
 				break;
 			case "labels":
 				this.focusLabels();
@@ -308,6 +341,7 @@ export class FilterHeader {
 		this.searchInput = null;
 		this.statusSelector = null;
 		this.prioritySelector = null;
+		this.milestoneSelector = null;
 		this.labelsButton = null;
 	}
 
@@ -376,6 +410,9 @@ export class FilterHeader {
 				break;
 			case "priority":
 				this.buildPrioritySelector(controlX, y, controlWidth);
+				break;
+			case "milestone":
+				this.buildMilestoneSelector(controlX, y, controlWidth);
 				break;
 			case "labels":
 				this.buildLabelsButton(controlX, y, controlWidth);
@@ -527,6 +564,91 @@ export class FilterHeader {
 		this.setupSelectorEvents(this.prioritySelector, "priority", priorities);
 	}
 
+	private buildMilestoneSelector(x: number, y: number, width: number): void {
+		const milestones = this.options.availableMilestones;
+		const items = ["All", ...milestones];
+		const selectedIndex = this.state.milestone ? milestones.indexOf(this.state.milestone) + 1 : 0;
+
+		this.milestoneSelector = list({
+			parent: this.container,
+			items: items.map((s, i) => (i === 0 ? `${s} ▼` : s)),
+			selected: Math.max(0, selectedIndex),
+			top: y,
+			left: x,
+			width,
+			height: 1,
+			mouse: true,
+			keys: true,
+			interactive: true,
+			style: {
+				fg: "white",
+				bg: "black",
+				selected: { bg: "black", fg: "white" },
+				item: { hover: { bg: "blue" } },
+			},
+		});
+		this.elements.push(this.milestoneSelector);
+
+		this.setupMilestoneSelectorEvents(this.milestoneSelector, milestones);
+	}
+
+	private setupMilestoneSelectorEvents(selector: ListInterface, values: string[]): void {
+		// Handle selection
+		const handleSelect = (index: number) => {
+			const value = index === 0 ? "" : (values[index - 1] ?? "");
+			this.state.milestone = value;
+			this.emitFilterChange();
+		};
+
+		selector.on("select", (...args: unknown[]) => {
+			const index = typeof args[1] === "number" ? args[1] : typeof args[0] === "number" ? args[0] : 0;
+			handleSelect(index);
+		});
+
+		// Live filter on navigation
+		selector.on("select item", (...args: unknown[]) => {
+			const index = typeof args[1] === "number" ? args[1] : typeof args[0] === "number" ? args[0] : 0;
+			handleSelect(index);
+		});
+
+		// Focus handling
+		selector.on("focus", () => {
+			this.currentFocus = "milestone";
+			this.setBorderColor("yellow");
+			const style = selector.style as { selected?: { bg?: string; fg?: string } };
+			if (style.selected) {
+				style.selected.bg = "blue";
+				style.selected.fg = "white";
+			}
+			this.onFocusChange?.("milestone");
+		});
+
+		selector.on("blur", () => {
+			const style = selector.style as { selected?: { bg?: string; fg?: string } };
+			if (style.selected) {
+				style.selected.bg = "black";
+				style.selected.fg = "white";
+			}
+		});
+
+		// Tab navigation
+		selector.key(["tab"], () => {
+			this.cycleNext();
+			return false;
+		});
+
+		selector.key(["S-tab"], () => {
+			this.cyclePrev();
+			return false;
+		});
+
+		// Escape/down to exit
+		selector.key(["escape", "down"], () => {
+			this.onFocusChange?.(null);
+			return false;
+		});
+	}
+
 	private setupSelectorEvents(selector: ListInterface, field: "status" | "priority", values: string[]): void {
 		// Handle selection
 		const handleSelect = (index: number) => {
@@ -670,6 +792,13 @@ export class FilterHeader {
 		const priorities = ["high", "medium", "low"];
 		const selectedIndex = this.state.priority ? priorities.indexOf(this.state.priority) + 1 : 0;
 		this.prioritySelector.select(Math.max(0, selectedIndex));
+	}
+
+	private updateMilestoneSelector(): void {
+		if (!this.milestoneSelector) return;
+		const milestones = this.options.availableMilestones;
+		const selectedIndex = this.state.milestone ? milestones.indexOf(this.state.milestone) + 1 : 0;
+		this.milestoneSelector.select(Math.max(0, selectedIndex));
 	}
 
 	private updateLabelsButton(): void {
