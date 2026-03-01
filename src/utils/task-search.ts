@@ -6,14 +6,26 @@
 import Fuse from "fuse.js";
 import type { Task } from "../types/index.ts";
 
-interface TaskSearchOptions {
+export interface TaskSearchOptions {
 	query?: string;
 	status?: string;
 	priority?: "high" | "medium" | "low";
 	labels?: string[];
 }
 
-interface TaskSearchIndex {
+export interface SharedTaskFilterOptions {
+	query?: string;
+	priority?: "high" | "medium" | "low";
+	labels?: string[];
+	milestone?: string;
+	resolveMilestoneLabel?: (milestone: string) => string;
+}
+
+export interface TaskFilterOptions extends SharedTaskFilterOptions {
+	status?: string;
+}
+
+export interface TaskSearchIndex {
 	search(options: TaskSearchOptions): Task[];
 }
 
@@ -169,4 +181,63 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 			return results.map((r) => r.task);
 		},
 	};
+}
+
+function applyMilestoneFilter(
+	tasks: Task[],
+	milestone: string,
+	resolveMilestoneLabel?: (milestone: string) => string,
+): Task[] {
+	const normalizedMilestone = milestone.trim().toLowerCase();
+	if (!normalizedMilestone) {
+		return tasks;
+	}
+
+	return tasks.filter((task) => {
+		if (!task.milestone) {
+			return false;
+		}
+		const value = resolveMilestoneLabel ? resolveMilestoneLabel(task.milestone) : task.milestone;
+		return value.trim().toLowerCase() === normalizedMilestone;
+	});
+}
+
+export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, index?: TaskSearchIndex): Task[] {
+	const query = options.query?.trim() ?? "";
+	const hasBaseFilters = Boolean(
+		query || options.status || options.priority || (options.labels && options.labels.length > 0),
+	);
+
+	let results = hasBaseFilters
+		? (index ?? createTaskSearchIndex(tasks)).search({
+				query,
+				status: options.status,
+				priority: options.priority,
+				labels: options.labels,
+			})
+		: [...tasks];
+
+	if (options.milestone) {
+		results = applyMilestoneFilter(results, options.milestone, options.resolveMilestoneLabel);
+	}
+
+	return results;
+}
+
+export function applySharedTaskFilters(
+	tasks: Task[],
+	options: SharedTaskFilterOptions,
+	index?: TaskSearchIndex,
+): Task[] {
+	return applyTaskFilters(
+		tasks,
+		{
+			query: options.query,
+			priority: options.priority,
+			labels: options.labels,
+			milestone: options.milestone,
+			resolveMilestoneLabel: options.resolveMilestoneLabel,
+		},
+		index,
+	);
 }
