@@ -137,6 +137,14 @@ export async function openSingleSelectFilterPopup(options: {
 			width: "48%",
 			height: "60%",
 		});
+		const contentBox = box({
+			parent: popup,
+			top: 1,
+			left: 1,
+			width: "100%-4",
+			height: "100%-3",
+			style: { bg: "black" },
+		});
 
 		const selectedIndex = Math.max(
 			0,
@@ -144,11 +152,11 @@ export async function openSingleSelectFilterPopup(options: {
 		);
 
 		const picker = list({
-			parent: popup,
-			top: 1,
-			left: 1,
-			width: "100%-4",
-			height: "100%-3",
+			parent: contentBox,
+			top: 0,
+			left: 0,
+			width: "100%",
+			height: "100%",
 			items: options.choices.map((choice) => choice.label),
 			selected: selectedIndex,
 			keys: true,
@@ -166,6 +174,7 @@ export async function openSingleSelectFilterPopup(options: {
 			if (settled) return;
 			settled = true;
 			picker.destroy();
+			contentBox.destroy();
 			close();
 			options.screen.render();
 			resolve(value);
@@ -225,6 +234,14 @@ export async function openMultiSelectFilterPopup(options: {
 			width: "52%",
 			height: "72%",
 		});
+		const contentBox = box({
+			parent: popup,
+			top: 1,
+			left: 1,
+			width: "100%-4",
+			height: "100%-3",
+			style: { bg: "black" },
+		});
 
 		const selectedSet = new Set(options.selectedItems.map((item) => item.toLowerCase()));
 		const selectableItems = options.items.map((label) => ({ id: label, title: label }));
@@ -233,15 +250,15 @@ export async function openMultiSelectFilterPopup(options: {
 			.filter((index) => index >= 0);
 
 		const picker = createGenericList({
-			parent: popup,
+			parent: contentBox,
 			title: "",
 			items: selectableItems,
 			multiSelect: true,
 			selectedIndices,
-			top: 1,
-			left: 1,
-			width: "100%-4",
-			height: "100%-3",
+			top: 0,
+			left: 0,
+			width: "100%",
+			height: "100%",
 			border: false,
 			showHelp: false,
 			style: {
@@ -262,6 +279,7 @@ export async function openMultiSelectFilterPopup(options: {
 			if (settled) return;
 			settled = true;
 			picker.destroy();
+			contentBox.destroy();
 			close();
 			options.screen.render();
 			resolve(value);
