@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeMilestoneFilterValue, resolveClosestMilestoneFilterValue } from "../utils/milestone-filter.ts";
+import {
+	createMilestoneFilterValueResolver,
+	normalizeMilestoneFilterValue,
+	resolveClosestMilestoneFilterValue,
+} from "../utils/milestone-filter.ts";
 
 describe("milestone filter matching", () => {
 	it("normalizes punctuation and case", () => {
@@ -19,5 +23,21 @@ describe("milestone filter matching", () => {
 	it("returns closest milestone for partial input", () => {
 		const resolved = resolveClosestMilestoneFilterValue("roadmp", ["Release-1", "Roadmap Alpha"]);
 		expect(resolved).toBe("roadmap alpha");
+	});
+
+	it("resolves milestone IDs to titles for filtering", () => {
+		const resolveMilestone = createMilestoneFilterValueResolver([
+			{
+				id: "m-7",
+				title: "New Milestones UI",
+				description: "",
+				rawContent: "",
+			},
+		]);
+
+		expect(resolveMilestone("m-7")).toBe("New Milestones UI");
+		expect(resolveMilestone("7")).toBe("New Milestones UI");
+		expect(resolveMilestone("New Milestones UI")).toBe("New Milestones UI");
+		expect(resolveMilestone("m-99")).toBe("m-99");
 	});
 });

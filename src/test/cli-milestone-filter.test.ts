@@ -25,6 +25,7 @@ describe("CLI milestone filtering", () => {
 
 		const core = new Core(TEST_DIR);
 		await core.initializeProject("Milestone Filter Test Project");
+		const newMilestone = await core.filesystem.createMilestone("New Milestones UI");
 
 		await core.createTask(
 			{
@@ -99,6 +100,21 @@ describe("CLI milestone filtering", () => {
 			},
 			false,
 		);
+
+		await core.createTask(
+			{
+				id: "task-6",
+				title: "ID milestone task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-18",
+				labels: [],
+				dependencies: [],
+				description: "Task with milestone stored as ID",
+				milestone: newMilestone.id,
+			},
+			false,
+		);
 	});
 
 	afterEach(async () => {
@@ -120,6 +136,7 @@ describe("CLI milestone filtering", () => {
 		expect(output).not.toContain("TASK-3 - Other milestone task");
 		expect(output).not.toContain("TASK-4 - No milestone task");
 		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+		expect(output).not.toContain("TASK-6 - ID milestone task");
 	});
 
 	it("supports -m shorthand and combines milestone with status filter", async () => {
@@ -133,6 +150,7 @@ describe("CLI milestone filtering", () => {
 		expect(output).not.toContain("TASK-3 - Other milestone task");
 		expect(output).not.toContain("TASK-4 - No milestone task");
 		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+		expect(output).not.toContain("TASK-6 - ID milestone task");
 	});
 
 	it("matches closest milestone for partial and typo inputs", async () => {
@@ -155,6 +173,20 @@ describe("CLI milestone filtering", () => {
 		expect(partialOutput).not.toContain("TASK-2 - Milestone task two");
 		expect(partialOutput).not.toContain("TASK-3 - Other milestone task");
 		expect(partialOutput).not.toContain("TASK-4 - No milestone task");
+		expect(partialOutput).not.toContain("TASK-6 - ID milestone task");
+	});
+
+	it("matches milestone title when tasks store milestone IDs", async () => {
+		const result = await $`bun ${cliPath} task list -m new --plain`.cwd(TEST_DIR).quiet();
+		expect(result.exitCode).toBe(0);
+		const output = result.stdout.toString();
+
+		expect(output).toContain("TASK-6 - ID milestone task");
+		expect(output).not.toContain("TASK-1 - Milestone task one");
+		expect(output).not.toContain("TASK-2 - Milestone task two");
+		expect(output).not.toContain("TASK-3 - Other milestone task");
+		expect(output).not.toContain("TASK-4 - No milestone task");
+		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
 	});
 
 	it("preserves existing listing behavior when milestone filter is omitted", async () => {
@@ -168,5 +200,6 @@ describe("CLI milestone filtering", () => {
 		expect(output).toContain("TASK-3 - Other milestone task");
 		expect(output).toContain("TASK-4 - No milestone task");
 		expect(output).toContain("TASK-5 - Roadmap milestone task");
+		expect(output).toContain("TASK-6 - ID milestone task");
 	});
 });

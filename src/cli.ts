@@ -51,6 +51,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
@@ -1921,6 +1922,25 @@ taskCmd
 			filterDescription = activeFilters.join(", ");
 			title = `Tasks (${activeFilters.join(" • ")})`;
 		}
+		const initialUnifiedFilter: {
+			status?: string;
+			assignee?: string;
+			milestone?: string;
+			priority?: string;
+			sort?: string;
+			title?: string;
+			filterDescription?: string;
+			parentTaskId?: string;
+		} = {
+			status: options.status,
+			assignee: options.assignee,
+			milestone: options.milestone,
+			priority: options.priority,
+			sort: options.sort,
+			title,
+			filterDescription,
+			parentTaskId: parentId,
+		};
 
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
 		await runUnifiedView({
@@ -1967,21 +1987,30 @@ taskCmd
 					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
 				}
 
+				if (options.milestone && filtered.length > 0) {
+					const [activeMilestones, archivedMilestones] = await Promise.all([
+						core.filesystem.listMilestones(),
+						core.filesystem.listArchivedMilestones(),
+					]);
+					const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
+						...activeMilestones,
+						...archivedMilestones,
+					]);
+					const resolvedMilestone = resolveClosestMilestoneFilterValue(
+						options.milestone,
+						filtered.map((task) => resolveMilestoneFilterValue(task.milestone ?? "")),
+					);
+					if (resolvedMilestone) {
+						initialUnifiedFilter.milestone = resolvedMilestone;
+					}
+				}
+
 				return {
 					tasks: filtered,
 					statuses: config?.statuses || [],
 				};
 			},
-			filter: {
-				status: options.status,
-				assignee: options.assignee,
-				milestone: options.milestone,
-				priority: options.priority,
-				sort: options.sort,
-				title,
-				filterDescription,
-				parentTaskId: parentId,
-			},
+			filter: initialUnifiedFilter,
 		});
 		cleanup();
 	});

@@ -1,8 +1,32 @@
 import Fuse from "fuse.js";
+import type { Milestone } from "../types/index.ts";
 
 interface MilestoneCandidate {
 	value: string;
 	compact: string;
+}
+
+export function createMilestoneFilterValueResolver(milestones: Milestone[]): (milestoneValue: string) => string {
+	const milestoneLabelsByKey = new Map<string, string>();
+	for (const milestone of milestones) {
+		const normalizedId = milestone.id.trim();
+		const normalizedTitle = milestone.title.trim();
+		if (!normalizedId || !normalizedTitle) continue;
+		milestoneLabelsByKey.set(normalizedId.toLowerCase(), normalizedTitle);
+		const idMatch = normalizedId.match(/^m-(\d+)$/i);
+		if (idMatch?.[1]) {
+			const numericAlias = String(Number.parseInt(idMatch[1], 10));
+			milestoneLabelsByKey.set(`m-${numericAlias}`, normalizedTitle);
+			milestoneLabelsByKey.set(numericAlias, normalizedTitle);
+		}
+		milestoneLabelsByKey.set(normalizedTitle.toLowerCase(), normalizedTitle);
+	}
+
+	return (milestoneValue: string) => {
+		const normalized = milestoneValue.trim();
+		if (!normalized) return milestoneValue;
+		return milestoneLabelsByKey.get(normalized.toLowerCase()) ?? milestoneValue;
+	};
 }
 
 export function normalizeMilestoneFilterValue(value: string): string {
