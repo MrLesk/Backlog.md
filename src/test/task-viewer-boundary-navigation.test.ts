@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	type PendingSearchWrap,
+	resolveFilterExitPane,
 	resolveSearchExitTargetIndex,
 	shouldMoveFromDetailBoundaryToSearch,
 	shouldMoveFromListBoundaryToSearch,
@@ -41,5 +42,16 @@ describe("task viewer boundary navigation", () => {
 	it("preserves current selection when no boundary wrap is pending", () => {
 		expect(resolveSearchExitTargetIndex("down", null, 5, 2)).toBe(2);
 		expect(resolveSearchExitTargetIndex("escape", null, 5, 3)).toBe(3);
+	});
+
+	it("restores filter exit to preferred pane when available", () => {
+		expect(resolveFilterExitPane("detail", true, true)).toBe("detail");
+		expect(resolveFilterExitPane("list", true, true)).toBe("list");
+	});
+
+	it("falls back filter exit to an available pane", () => {
+		expect(resolveFilterExitPane("detail", true, false)).toBe("list");
+		expect(resolveFilterExitPane("list", false, true)).toBe("detail");
+		expect(resolveFilterExitPane("list", false, false)).toBeNull();
 	});
 });

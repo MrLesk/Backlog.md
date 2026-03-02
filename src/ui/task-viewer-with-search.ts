@@ -79,6 +79,7 @@ export function buildTaskViewerMilestoneFilterModel(activeMilestones: Milestone[
 
 export type TaskListBoundaryDirection = "up" | "down";
 export type PendingSearchWrap = "to-first" | "to-last" | null;
+type PaneFocus = "list" | "detail";
 
 export function shouldMoveFromListBoundaryToSearch(
 	direction: TaskListBoundaryDirection,
@@ -120,6 +121,23 @@ export function resolveSearchExitTargetIndex(
 		return 0;
 	}
 	return currentIndex;
+}
+
+export function resolveFilterExitPane(
+	preferredPane: PaneFocus,
+	hasTaskList: boolean,
+	hasDetailPane: boolean,
+): PaneFocus | null {
+	if (preferredPane === "detail" && hasDetailPane) {
+		return "detail";
+	}
+	if (hasTaskList) {
+		return "list";
+	}
+	if (hasDetailPane) {
+		return "detail";
+	}
+	return null;
 }
 
 /**
@@ -253,6 +271,7 @@ export async function viewTaskEnhanced(
 	let currentFocus: "filters" | "list" | "detail" = "list";
 	let filterPopupOpen = false;
 	let pendingSearchWrap: PendingSearchWrap = null;
+	let filterExitPane: PaneFocus = "list";
 
 	// Create filter header component
 	let filterHeader: FilterHeader;
@@ -387,6 +406,9 @@ export async function viewTaskEnhanced(
 	// Handle focus changes from filter header
 	filterHeader.setFocusChangeHandler((focus) => {
 		if (focus !== null) {
+			if (currentFocus !== "filters") {
+				filterExitPane = currentFocus === "detail" ? "detail" : "list";
+			}
 			currentFocus = "filters";
 			setActivePane("none");
 			updateHelpBar();
@@ -394,7 +416,8 @@ export async function viewTaskEnhanced(
 	});
 	filterHeader.setExitRequestHandler((direction) => {
 		filterHeader.setBorderColor("cyan");
-		if (taskList) {
+		const targetPane = resolveFilterExitPane(filterExitPane, Boolean(taskList), Boolean(descriptionBox));
+		if (targetPane === "list" && taskList) {
 			const selected = taskList.getSelectedIndex();
 			const currentIndex = Array.isArray(selected) ? selected[0] : selected;
 			const targetIndex = resolveSearchExitTargetIndex(
@@ -404,7 +427,7 @@ export async function viewTaskEnhanced(
 				currentIndex,
 			);
 			focusTaskList(targetIndex);
-		} else if (descriptionBox) {
+		} else if (targetPane === "detail" && descriptionBox) {
 			focusDetailPane();
 		}
 		pendingSearchWrap = null;
@@ -1065,8 +1088,11 @@ export async function viewTaskEnhanced(
 		}
 		if (currentFocus === "filters") {
 			filterHeader.setBorderColor("cyan");
-			if (taskList) {
+			const targetPane = resolveFilterExitPane(filterExitPane, Boolean(taskList), Boolean(descriptionBox));
+			if (targetPane === "list" && taskList) {
 				focusTaskList();
+			} else if (targetPane === "detail" && descriptionBox) {
+				focusDetailPane();
 			}
 		} else if (currentFocus !== "list") {
 			if (taskList) {
