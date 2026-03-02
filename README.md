@@ -5,7 +5,7 @@
 <code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>brew install backlog-md</code> or <code>nix run github:MrLesk/Backlog.md</code>
 </p>
 
-![Backlog demo GIF using: backlog board](./.github/backlog.gif)
+![Backlog demo GIF using: backlog board](./.github/backlog-v1.40.gif)
 
 
 ---
