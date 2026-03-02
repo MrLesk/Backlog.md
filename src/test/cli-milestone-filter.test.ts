@@ -84,6 +84,21 @@ describe("CLI milestone filtering", () => {
 			},
 			false,
 		);
+
+		await core.createTask(
+			{
+				id: "task-5",
+				title: "Roadmap milestone task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-18",
+				labels: [],
+				dependencies: [],
+				description: "Task in roadmap milestone",
+				milestone: "Roadmap Alpha",
+			},
+			false,
+		);
 	});
 
 	afterEach(async () => {
@@ -94,7 +109,7 @@ describe("CLI milestone filtering", () => {
 		}
 	});
 
-	it("filters by milestone with case-insensitive exact matching", async () => {
+	it("filters by milestone with case-insensitive matching", async () => {
 		const result = await $`bun ${cliPath} task list --milestone RELEASE-1 --plain`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -104,6 +119,7 @@ describe("CLI milestone filtering", () => {
 		expect(output).toContain("TASK-2 - Milestone task two");
 		expect(output).not.toContain("TASK-3 - Other milestone task");
 		expect(output).not.toContain("TASK-4 - No milestone task");
+		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
 	});
 
 	it("supports -m shorthand and combines milestone with status filter", async () => {
@@ -116,6 +132,29 @@ describe("CLI milestone filtering", () => {
 		expect(output).not.toContain("TASK-2 - Milestone task two");
 		expect(output).not.toContain("TASK-3 - Other milestone task");
 		expect(output).not.toContain("TASK-4 - No milestone task");
+		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+	});
+
+	it("matches closest milestone for partial and typo inputs", async () => {
+		const typoResult = await $`bun ${cliPath} task list --milestone releas-1 --plain`.cwd(TEST_DIR).quiet();
+		expect(typoResult.exitCode).toBe(0);
+		const typoOutput = typoResult.stdout.toString();
+
+		expect(typoOutput).toContain("TASK-1 - Milestone task one");
+		expect(typoOutput).toContain("TASK-2 - Milestone task two");
+		expect(typoOutput).not.toContain("TASK-3 - Other milestone task");
+		expect(typoOutput).not.toContain("TASK-4 - No milestone task");
+		expect(typoOutput).not.toContain("TASK-5 - Roadmap milestone task");
+
+		const partialResult = await $`bun ${cliPath} task list --milestone roadmp --plain`.cwd(TEST_DIR).quiet();
+		expect(partialResult.exitCode).toBe(0);
+		const partialOutput = partialResult.stdout.toString();
+
+		expect(partialOutput).toContain("TASK-5 - Roadmap milestone task");
+		expect(partialOutput).not.toContain("TASK-1 - Milestone task one");
+		expect(partialOutput).not.toContain("TASK-2 - Milestone task two");
+		expect(partialOutput).not.toContain("TASK-3 - Other milestone task");
+		expect(partialOutput).not.toContain("TASK-4 - No milestone task");
 	});
 
 	it("preserves existing listing behavior when milestone filter is omitted", async () => {
@@ -128,5 +167,6 @@ describe("CLI milestone filtering", () => {
 		expect(output).toContain("TASK-2 - Milestone task two");
 		expect(output).toContain("TASK-3 - Other milestone task");
 		expect(output).toContain("TASK-4 - No milestone task");
+		expect(output).toContain("TASK-5 - Roadmap milestone task");
 	});
 });

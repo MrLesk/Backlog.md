@@ -7,6 +7,7 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
+import { normalizeMilestoneFilterValue, resolveClosestMilestoneFilterValue } from "../../../utils/milestone-filter.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortTasks } from "../../../utils/task-sorting.ts";
@@ -234,8 +235,11 @@ export class TaskHandlers {
 				drafts = drafts.filter((draft) => (draft.assignee ?? []).includes(args.assignee ?? ""));
 			}
 			if (args.milestone) {
-				const milestoneLower = args.milestone.toLowerCase();
-				drafts = drafts.filter((draft) => (draft.milestone ?? "").toLowerCase() === milestoneLower);
+				const milestoneFilter = resolveClosestMilestoneFilterValue(
+					args.milestone,
+					drafts.map((draft) => draft.milestone ?? ""),
+				);
+				drafts = drafts.filter((draft) => normalizeMilestoneFilterValue(draft.milestone ?? "") === milestoneFilter);
 			}
 
 			const labelFilters = args.labels ?? [];

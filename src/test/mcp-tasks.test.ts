@@ -85,7 +85,7 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
-	it("filters task_list by milestone (case-insensitive) and combines with status", async () => {
+	it("filters task_list by milestone using closest matching and combines with status", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_create",
@@ -125,6 +125,16 @@ describe("MCP task tools (MVP)", () => {
 				},
 			},
 		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Roadmap Milestone Task",
+					status: "To Do",
+					milestone: "Roadmap Alpha",
+				},
+			},
+		});
 
 		const milestoneResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_list", arguments: { milestone: "RELEASE-1" } },
@@ -136,6 +146,17 @@ describe("MCP task tools (MVP)", () => {
 		expect(milestoneText).toContain("TASK-2 - Milestone Task Two");
 		expect(milestoneText).not.toContain("TASK-3 - Other Milestone Task");
 		expect(milestoneText).not.toContain("TASK-4 - No Milestone Task");
+		expect(milestoneText).not.toContain("TASK-5 - Roadmap Milestone Task");
+
+		const fuzzyResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { milestone: "roadmp" } },
+		});
+		const fuzzyText = (fuzzyResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
+		expect(fuzzyText).toContain("TASK-5 - Roadmap Milestone Task");
+		expect(fuzzyText).not.toContain("TASK-1 - Milestone Task One");
+		expect(fuzzyText).not.toContain("TASK-2 - Milestone Task Two");
+		expect(fuzzyText).not.toContain("TASK-3 - Other Milestone Task");
+		expect(fuzzyText).not.toContain("TASK-4 - No Milestone Task");
 
 		const combinedResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_list", arguments: { milestone: "release-1", status: "To Do" } },
@@ -147,6 +168,7 @@ describe("MCP task tools (MVP)", () => {
 		expect(combinedText).not.toContain("TASK-2 - Milestone Task Two");
 		expect(combinedText).not.toContain("TASK-3 - Other Milestone Task");
 		expect(combinedText).not.toContain("TASK-4 - No Milestone Task");
+		expect(combinedText).not.toContain("TASK-5 - Roadmap Milestone Task");
 	});
 
 	it("applies milestone filtering in task_list draft status path", async () => {
@@ -172,7 +194,7 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const draftResult = await mcpServer.testInterface.callTool({
-			params: { name: "task_list", arguments: { status: "Draft", milestone: "DRAFT-ALPHA" } },
+			params: { name: "task_list", arguments: { status: "Draft", milestone: "draft-alph" } },
 		});
 		const draftText = getText(draftResult.content);
 		expect(draftText).toContain("DRAFT-1 - Draft Milestone One");

@@ -21,6 +21,7 @@ import {
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
+import { normalizeMilestoneFilterValue, resolveClosestMilestoneFilterValue } from "../utils/milestone-filter.ts";
 import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
@@ -197,8 +198,11 @@ export class Core {
 			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
 		}
 		if (filters.milestone) {
-			const milestoneLower = filters.milestone.toLowerCase();
-			result = result.filter((task) => (task.milestone ?? "").toLowerCase() === milestoneLower);
+			const milestoneFilter = resolveClosestMilestoneFilterValue(
+				filters.milestone,
+				result.map((task) => task.milestone ?? ""),
+			);
+			result = result.filter((task) => normalizeMilestoneFilterValue(task.milestone ?? "") === milestoneFilter);
 		}
 		if (filters.parentTaskId) {
 			const parentFilter = filters.parentTaskId;
