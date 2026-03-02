@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	type PendingSearchWrap,
 	resolveSearchExitTargetIndex,
+	shouldMoveFromDetailBoundaryToSearch,
 	shouldMoveFromListBoundaryToSearch,
 } from "../ui/task-viewer-with-search.ts";
 
@@ -19,6 +20,12 @@ describe("task viewer boundary navigation", () => {
 	it("does not move to search when there are no rows", () => {
 		expect(shouldMoveFromListBoundaryToSearch("up", 0, 0)).toBe(false);
 		expect(shouldMoveFromListBoundaryToSearch("down", 0, 0)).toBe(false);
+	});
+
+	it("moves from detail pane to search only when navigating up at top boundary", () => {
+		expect(shouldMoveFromDetailBoundaryToSearch("up", 0)).toBe(true);
+		expect(shouldMoveFromDetailBoundaryToSearch("up", 2)).toBe(false);
+		expect(shouldMoveFromDetailBoundaryToSearch("down", 0)).toBe(false);
 	});
 
 	it("resolves search exit target to last row after top-boundary handoff", () => {

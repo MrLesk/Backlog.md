@@ -94,6 +94,16 @@ export function shouldMoveFromListBoundaryToSearch(
 	return selectedIndex >= totalTasks - 1;
 }
 
+export function shouldMoveFromDetailBoundaryToSearch(
+	direction: TaskListBoundaryDirection,
+	scrollOffset: number,
+): boolean {
+	if (direction !== "up") {
+		return false;
+	}
+	return scrollOffset <= 0;
+}
+
 export function resolveSearchExitTargetIndex(
 	direction: "up" | "down" | "escape",
 	pendingWrap: PendingSearchWrap,
@@ -774,12 +784,22 @@ export async function viewTaskEnhanced(
 				scroll?: (offset: number) => void;
 				setScroll?: (offset: number) => void;
 				setScrollPerc?: (perc: number) => void;
+				getScroll?: () => number;
 			};
 
 			const pageAmount = () => {
 				const height = typeof boxInstance.height === "number" ? boxInstance.height : 0;
 				return height > 0 ? Math.max(1, height - 3) : 0;
 			};
+
+			boxInstance.key(["up", "k"], () => {
+				if (!shouldMoveFromDetailBoundaryToSearch("up", scrollable.getScroll?.() ?? 0)) {
+					return true;
+				}
+				pendingSearchWrap = null;
+				filterHeader.focusSearch();
+				return false;
+			});
 
 			boxInstance.key(["pageup", "b"], () => {
 				const delta = pageAmount();
@@ -945,7 +965,7 @@ export async function viewTaskEnhanced(
 			}
 		} else if (currentFocus === "detail") {
 			content =
-				" {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		} else {
 			// Task list help
 			content =
@@ -1065,8 +1085,11 @@ export async function viewTaskEnhanced(
 	// Tab key handling for view switching - only when in task list
 	if (options.onTabPress) {
 		screen.key(["tab"], async () => {
-			// Only switch views if we're in the task list, not in filters
-			if (currentFocus === "list") {
+			// Keep tab as filter-navigation while filters are focused.
+			if (filterPopupOpen || currentFocus === "filters") {
+				return;
+			}
+			if (currentFocus === "list" || currentFocus === "detail") {
 				// Cleanup before switching
 				searchService?.dispose();
 				contentStore?.dispose();
@@ -1074,7 +1097,6 @@ export async function viewTaskEnhanced(
 				screen.destroy();
 				await options.onTabPress?.();
 			}
-			// If in filters, Tab is handled by FilterHeader
 		});
 	}
 
