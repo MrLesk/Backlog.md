@@ -382,6 +382,19 @@ export async function renderBoardTui(
 
 				taskList.setItems(getFormattedItems(columnData.tasks));
 				columns.push({ status: columnData.status, tasks: columnData.tasks, list: taskList, box: columnBox });
+
+				taskList.on("focus", () => {
+					if (popupOpen || filterPopupOpen) return;
+					if (currentCol !== idx) {
+						setColumnActiveState(columns[currentCol], false);
+						currentCol = idx;
+					}
+					setColumnActiveState(columns[currentCol], true);
+					currentFocus = "board";
+					filterHeader?.setBorderColor("cyan");
+					updateFooter();
+					screen.render();
+				});
 			});
 		};
 
