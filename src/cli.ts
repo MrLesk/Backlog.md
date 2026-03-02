@@ -1943,6 +1943,13 @@ taskCmd
 		};
 
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
+		const interactiveLoaderFilters: TaskListFilter = {};
+		if (options.assignee) {
+			interactiveLoaderFilters.assignee = options.assignee;
+		}
+		if (parentId) {
+			interactiveLoaderFilters.parentTaskId = parentId;
+		}
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
@@ -1959,7 +1966,9 @@ taskCmd
 				// Now query with filters - this will use the already-populated ContentStore
 				updateProgress("Applying filters...");
 				const [tasks, allTasksForParentCheck] = await Promise.all([
-					core.queryTasks({ filters: baseFilters }),
+					core.queryTasks({
+						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
+					}),
 					parentId ? core.queryTasks() : Promise.resolve(undefined),
 				]);
 
