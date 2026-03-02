@@ -61,7 +61,7 @@ function createPopupChrome(options: PopupChromeOptions): {
 		border: { type: "line" },
 		style: {
 			border: { fg: "yellow" },
-			bg: "black",
+			bg: "default",
 		},
 		label: ` ${options.title} `,
 	});
@@ -102,7 +102,7 @@ function createPopupChrome(options: PopupChromeOptions): {
 		right: 1,
 		height: 1,
 		tags: true,
-		style: { fg: "gray", bg: "black" },
+		style: { fg: "gray", bg: "default" },
 		content: options.helpText,
 	});
 
@@ -143,7 +143,7 @@ export async function openSingleSelectFilterPopup(options: {
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
-			style: { bg: "black" },
+			style: { bg: "default" },
 		});
 
 		const selectedIndex = Math.max(
@@ -164,9 +164,9 @@ export async function openSingleSelectFilterPopup(options: {
 			tags: true,
 			scrollable: true,
 			style: {
-				bg: "black",
+				bg: "default",
 				selected: { bg: "blue", fg: "white" },
-				item: { bg: "black", hover: { bg: "blue" } },
+				item: { bg: "default", hover: { bg: "blue" } },
 			},
 		});
 
@@ -240,7 +240,7 @@ export async function openMultiSelectFilterPopup(options: {
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
-			style: { bg: "black" },
+			style: { bg: "default" },
 		});
 
 		const selectedSet = new Set(options.selectedItems.map((item) => item.toLowerCase()));
@@ -262,8 +262,8 @@ export async function openMultiSelectFilterPopup(options: {
 			border: false,
 			showHelp: false,
 			style: {
-				bg: "black",
-				item: { fg: "white", bg: "black" },
+				bg: "default",
+				item: { fg: "white", bg: "default" },
 				selected: { fg: "white", bg: "blue" },
 			},
 			keys: {
