@@ -464,20 +464,11 @@ export class FilterHeader {
 		});
 
 		this.searchInput.key(["left"], () => {
-			const value = String(this.searchInput?.getValue?.() ?? this.state.search);
-			const behavior = resolveSearchHorizontalNavigation(
-				this.getSearchTextWidth(value),
-				this.getSearchCursorX(),
-				"left",
-			);
-			if (behavior === "cycle-prev") {
-				this.commitSearchValue();
-				this.searchInput?.cancel();
-				this.suppressNextHorizontalCycle();
-				this.cyclePrev();
-				return false;
-			}
-			return true;
+			this.commitSearchValue();
+			this.searchInput?.cancel();
+			this.suppressNextHorizontalCycle();
+			this.cyclePrev();
+			return false;
 		});
 
 		this.searchInput.key(["right"], () => {
