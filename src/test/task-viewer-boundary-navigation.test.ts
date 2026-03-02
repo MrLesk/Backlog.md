@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
 	type PendingSearchWrap,
+	resolveFilterExitPane,
 	resolveSearchExitTargetIndex,
+	shouldMoveFromDetailBoundaryToSearch,
 	shouldMoveFromListBoundaryToSearch,
 } from "../ui/task-viewer-with-search.ts";
 
@@ -21,6 +23,12 @@ describe("task viewer boundary navigation", () => {
 		expect(shouldMoveFromListBoundaryToSearch("down", 0, 0)).toBe(false);
 	});
 
+	it("moves from detail pane to search only when navigating up at top boundary", () => {
+		expect(shouldMoveFromDetailBoundaryToSearch("up", 0)).toBe(true);
+		expect(shouldMoveFromDetailBoundaryToSearch("up", 2)).toBe(false);
+		expect(shouldMoveFromDetailBoundaryToSearch("down", 0)).toBe(false);
+	});
+
 	it("resolves search exit target to last row after top-boundary handoff", () => {
 		const pending: PendingSearchWrap = "to-last";
 		expect(resolveSearchExitTargetIndex("up", pending, 5, 2)).toBe(4);
@@ -34,5 +42,16 @@ describe("task viewer boundary navigation", () => {
 	it("preserves current selection when no boundary wrap is pending", () => {
 		expect(resolveSearchExitTargetIndex("down", null, 5, 2)).toBe(2);
 		expect(resolveSearchExitTargetIndex("escape", null, 5, 3)).toBe(3);
+	});
+
+	it("restores filter exit to preferred pane when available", () => {
+		expect(resolveFilterExitPane("detail", true, true)).toBe("detail");
+		expect(resolveFilterExitPane("list", true, true)).toBe("list");
+	});
+
+	it("falls back filter exit to an available pane", () => {
+		expect(resolveFilterExitPane("detail", true, false)).toBe("list");
+		expect(resolveFilterExitPane("list", false, true)).toBe("detail");
+		expect(resolveFilterExitPane("list", false, false)).toBeNull();
 	});
 });

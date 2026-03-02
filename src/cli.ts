@@ -51,6 +51,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
@@ -1755,6 +1756,7 @@ taskCmd
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
+	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
 	.option("--sort <field>", "sort tasks by field (priority, id)")
@@ -1772,6 +1774,9 @@ taskCmd
 		}
 		if (options.assignee) {
 			baseFilters.assignee = options.assignee;
+		}
+		if (options.milestone) {
+			baseFilters.milestone = options.milestone;
 		}
 		if (options.priority) {
 			const priorityLower = options.priority.toLowerCase();
@@ -1909,6 +1914,7 @@ taskCmd
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
+		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
 		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
 
@@ -1916,8 +1922,34 @@ taskCmd
 			filterDescription = activeFilters.join(", ");
 			title = `Tasks (${activeFilters.join(" • ")})`;
 		}
+		const initialUnifiedFilter: {
+			status?: string;
+			assignee?: string;
+			milestone?: string;
+			priority?: string;
+			sort?: string;
+			title?: string;
+			filterDescription?: string;
+			parentTaskId?: string;
+		} = {
+			status: options.status,
+			assignee: options.assignee,
+			milestone: options.milestone,
+			priority: options.priority,
+			sort: options.sort,
+			title,
+			filterDescription,
+			parentTaskId: parentId,
+		};
 
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
+		const interactiveLoaderFilters: TaskListFilter = {};
+		if (options.assignee) {
+			interactiveLoaderFilters.assignee = options.assignee;
+		}
+		if (parentId) {
+			interactiveLoaderFilters.parentTaskId = parentId;
+		}
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
@@ -1934,7 +1966,9 @@ taskCmd
 				// Now query with filters - this will use the already-populated ContentStore
 				updateProgress("Applying filters...");
 				const [tasks, allTasksForParentCheck] = await Promise.all([
-					core.queryTasks({ filters: baseFilters }),
+					core.queryTasks({
+						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
+					}),
 					parentId ? core.queryTasks() : Promise.resolve(undefined),
 				]);
 
@@ -1962,20 +1996,30 @@ taskCmd
 					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
 				}
 
+				if (options.milestone && filtered.length > 0) {
+					const [activeMilestones, archivedMilestones] = await Promise.all([
+						core.filesystem.listMilestones(),
+						core.filesystem.listArchivedMilestones(),
+					]);
+					const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
+						...activeMilestones,
+						...archivedMilestones,
+					]);
+					const resolvedMilestone = resolveClosestMilestoneFilterValue(
+						options.milestone,
+						filtered.map((task) => resolveMilestoneFilterValue(task.milestone ?? "")),
+					);
+					if (resolvedMilestone) {
+						initialUnifiedFilter.milestone = resolvedMilestone;
+					}
+				}
+
 				return {
 					tasks: filtered,
 					statuses: config?.statuses || [],
 				};
 			},
-			filter: {
-				status: options.status,
-				assignee: options.assignee,
-				priority: options.priority,
-				sort: options.sort,
-				title,
-				filterDescription,
-				parentTaskId: parentId,
-			},
+			filter: initialUnifiedFilter,
 		});
 		cleanup();
 	});

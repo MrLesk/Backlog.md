@@ -79,6 +79,7 @@ export function buildTaskViewerMilestoneFilterModel(activeMilestones: Milestone[
 
 export type TaskListBoundaryDirection = "up" | "down";
 export type PendingSearchWrap = "to-first" | "to-last" | null;
+type PaneFocus = "list" | "detail";
 
 export function shouldMoveFromListBoundaryToSearch(
 	direction: TaskListBoundaryDirection,
@@ -92,6 +93,16 @@ export function shouldMoveFromListBoundaryToSearch(
 		return selectedIndex <= 0;
 	}
 	return selectedIndex >= totalTasks - 1;
+}
+
+export function shouldMoveFromDetailBoundaryToSearch(
+	direction: TaskListBoundaryDirection,
+	scrollOffset: number,
+): boolean {
+	if (direction !== "up") {
+		return false;
+	}
+	return scrollOffset <= 0;
 }
 
 export function resolveSearchExitTargetIndex(
@@ -110,6 +121,23 @@ export function resolveSearchExitTargetIndex(
 		return 0;
 	}
 	return currentIndex;
+}
+
+export function resolveFilterExitPane(
+	preferredPane: PaneFocus,
+	hasTaskList: boolean,
+	hasDetailPane: boolean,
+): PaneFocus | null {
+	if (preferredPane === "detail" && hasDetailPane) {
+		return "detail";
+	}
+	if (hasTaskList) {
+		return "list";
+	}
+	if (hasDetailPane) {
+		return "detail";
+	}
+	return null;
 }
 
 /**
@@ -243,6 +271,7 @@ export async function viewTaskEnhanced(
 	let currentFocus: "filters" | "list" | "detail" = "list";
 	let filterPopupOpen = false;
 	let pendingSearchWrap: PendingSearchWrap = null;
+	let filterExitPane: PaneFocus = "list";
 
 	// Create filter header component
 	let filterHeader: FilterHeader;
@@ -377,6 +406,9 @@ export async function viewTaskEnhanced(
 	// Handle focus changes from filter header
 	filterHeader.setFocusChangeHandler((focus) => {
 		if (focus !== null) {
+			if (currentFocus !== "filters") {
+				filterExitPane = currentFocus === "detail" ? "detail" : "list";
+			}
 			currentFocus = "filters";
 			setActivePane("none");
 			updateHelpBar();
@@ -384,7 +416,8 @@ export async function viewTaskEnhanced(
 	});
 	filterHeader.setExitRequestHandler((direction) => {
 		filterHeader.setBorderColor("cyan");
-		if (taskList) {
+		const targetPane = resolveFilterExitPane(filterExitPane, Boolean(taskList), Boolean(descriptionBox));
+		if (targetPane === "list" && taskList) {
 			const selected = taskList.getSelectedIndex();
 			const currentIndex = Array.isArray(selected) ? selected[0] : selected;
 			const targetIndex = resolveSearchExitTargetIndex(
@@ -394,7 +427,7 @@ export async function viewTaskEnhanced(
 				currentIndex,
 			);
 			focusTaskList(targetIndex);
-		} else if (descriptionBox) {
+		} else if (targetPane === "detail" && descriptionBox) {
 			focusDetailPane();
 		}
 		pendingSearchWrap = null;
@@ -774,12 +807,22 @@ export async function viewTaskEnhanced(
 				scroll?: (offset: number) => void;
 				setScroll?: (offset: number) => void;
 				setScrollPerc?: (perc: number) => void;
+				getScroll?: () => number;
 			};
 
 			const pageAmount = () => {
 				const height = typeof boxInstance.height === "number" ? boxInstance.height : 0;
 				return height > 0 ? Math.max(1, height - 3) : 0;
 			};
+
+			boxInstance.key(["up", "k"], () => {
+				if (!shouldMoveFromDetailBoundaryToSearch("up", scrollable.getScroll?.() ?? 0)) {
+					return true;
+				}
+				pendingSearchWrap = null;
+				filterHeader.focusSearch();
+				return false;
+			});
 
 			boxInstance.key(["pageup", "b"], () => {
 				const delta = pageAmount();
@@ -945,7 +988,7 @@ export async function viewTaskEnhanced(
 			}
 		} else if (currentFocus === "detail") {
 			content =
-				" {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		} else {
 			// Task list help
 			content =
@@ -1045,8 +1088,11 @@ export async function viewTaskEnhanced(
 		}
 		if (currentFocus === "filters") {
 			filterHeader.setBorderColor("cyan");
-			if (taskList) {
+			const targetPane = resolveFilterExitPane(filterExitPane, Boolean(taskList), Boolean(descriptionBox));
+			if (targetPane === "list" && taskList) {
 				focusTaskList();
+			} else if (targetPane === "detail" && descriptionBox) {
+				focusDetailPane();
 			}
 		} else if (currentFocus !== "list") {
 			if (taskList) {
@@ -1065,8 +1111,11 @@ export async function viewTaskEnhanced(
 	// Tab key handling for view switching - only when in task list
 	if (options.onTabPress) {
 		screen.key(["tab"], async () => {
-			// Only switch views if we're in the task list, not in filters
-			if (currentFocus === "list") {
+			// Keep tab as filter-navigation while filters are focused.
+			if (filterPopupOpen || currentFocus === "filters") {
+				return;
+			}
+			if (currentFocus === "list" || currentFocus === "detail") {
 				// Cleanup before switching
 				searchService?.dispose();
 				contentStore?.dispose();
@@ -1074,7 +1123,6 @@ export async function viewTaskEnhanced(
 				screen.destroy();
 				await options.onTabPress?.();
 			}
-			// If in filters, Tab is handled by FilterHeader
 		});
 	}
 
