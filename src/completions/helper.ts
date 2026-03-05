@@ -120,7 +120,7 @@ async function getFlagValueCompletions(flagName: string): Promise<string[]> {
 		case "assignee":
 			return await getAssignees();
 		case "shell":
-			return ["bash", "zsh", "fish"];
+			return ["bash", "zsh", "fish", "pwsh"];
 		default:
 			return [];
 	}
