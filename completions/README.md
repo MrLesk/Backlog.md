@@ -241,7 +241,7 @@ To update completion scripts:
    ```
    ```powershell
    # PowerShell
-   TabExpansion2 -inputScript "backlog " -cursorColumn 8
+   (TabExpansion2 -inputScript "backlog " -cursorColumn 8).CompletionMatches
    ```
 
 3. Test the completion backend directly:
