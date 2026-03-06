@@ -1,0 +1,6 @@
+interface:
+  display_name: "Backlog.md Technical PM"
+  short_description: "Orchestrate Backlog.md task delivery with sub-agents"
+  default_prompt: "Use $backlog-technical-project-manager to coordinate these Backlog.md tasks with parallel sub-agents."
+policy:
+  allow_implicit_invocation: false

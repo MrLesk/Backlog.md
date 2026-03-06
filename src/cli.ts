@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 
 import { basename, join } from "node:path";
-import { stdin as input, stdout as output } from "node:process";
+import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
+import * as clack from "@clack/prompts";
 import { $, spawn } from "bun";
 import { Command } from "commander";
-import prompts from "prompts";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
+import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -47,10 +48,12 @@ import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
-import { promptText, scrollableViewer } from "./ui/tui.ts";
-import { type AgentSelectionValue, PLACEHOLDER_AGENT_VALUE, processAgentSelection } from "./utils/agent-selection.ts";
+import { scrollableViewer } from "./ui/tui.ts";
+import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
 	buildDefinitionOfDoneItems,
@@ -156,6 +159,71 @@ function createMultiValueAccumulator() {
 	};
 }
 
+function printMissingRequiredArgument(argumentName: string): void {
+	console.error(`error: missing required argument '${argumentName}'`);
+	process.exitCode = 1;
+}
+
+function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
+	return Boolean(
+		options.description !== undefined ||
+			options.desc !== undefined ||
+			options.assignee !== undefined ||
+			options.status !== undefined ||
+			options.labels !== undefined ||
+			options.priority !== undefined ||
+			options.plain ||
+			options.ac !== undefined ||
+			options.acceptanceCriteria !== undefined ||
+			options.dod !== undefined ||
+			options.dodDefaults === false ||
+			options.plan !== undefined ||
+			options.notes !== undefined ||
+			options.finalSummary !== undefined ||
+			options.draft ||
+			options.parent !== undefined ||
+			options.dependsOn !== undefined ||
+			options.dep !== undefined ||
+			options.ref !== undefined ||
+			options.doc !== undefined,
+	);
+}
+
+function hasEditFieldFlags(options: Record<string, unknown>): boolean {
+	return Boolean(
+		options.title !== undefined ||
+			options.description !== undefined ||
+			options.desc !== undefined ||
+			options.assignee !== undefined ||
+			options.status !== undefined ||
+			options.label !== undefined ||
+			options.priority !== undefined ||
+			options.ordinal !== undefined ||
+			options.plain ||
+			options.addLabel !== undefined ||
+			options.removeLabel !== undefined ||
+			options.ac !== undefined ||
+			options.dod !== undefined ||
+			options.removeAc !== undefined ||
+			options.removeDod !== undefined ||
+			options.checkAc !== undefined ||
+			options.checkDod !== undefined ||
+			options.uncheckAc !== undefined ||
+			options.uncheckDod !== undefined ||
+			options.acceptanceCriteria !== undefined ||
+			options.plan !== undefined ||
+			options.notes !== undefined ||
+			options.finalSummary !== undefined ||
+			options.appendNotes !== undefined ||
+			options.appendFinalSummary !== undefined ||
+			options.clearFinalSummary ||
+			options.dependsOn !== undefined ||
+			options.dep !== undefined ||
+			options.ref !== undefined ||
+			options.doc !== undefined,
+	);
+}
+
 // Helper function to process multiple AC operations
 /**
  * Processes --ac and --acceptance-criteria options to extract acceptance criteria
@@ -170,6 +238,7 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
 		autoCommit: existingConfig?.autoCommit ?? false,
 		zeroPaddedIds: existingConfig?.zeroPaddedIds,
 		defaultEditor: existingConfig?.defaultEditor,
+		definitionOfDone: existingConfig?.definitionOfDone ? [...existingConfig.definitionOfDone] : undefined,
 		defaultPort: existingConfig?.defaultPort ?? 6420,
 		autoOpenBrowser: existingConfig?.autoOpenBrowser ?? true,
 	};
@@ -181,7 +250,16 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
  * Exits with error message if no Backlog.md project is found.
  */
 async function requireProjectRoot(): Promise<string> {
-	const root = await findBacklogRoot(process.cwd());
+	let runtimeCwd: RuntimeCwdResolution;
+	try {
+		runtimeCwd = await resolveRuntimeCwd();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(message);
+		process.exit(1);
+	}
+
+	const root = await findBacklogRoot(runtimeCwd.cwd);
 	if (!root) {
 		console.error("No Backlog.md project found. Run `backlog init` to initialize.");
 		process.exit(1);
@@ -244,7 +322,8 @@ try {
 
 		let initialized = false;
 		try {
-			const projectRoot = await findBacklogRoot(process.cwd());
+			const runtimeCwd = await resolveRuntimeCwd();
+			const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 			if (projectRoot) {
 				const core = new Core(projectRoot);
 				const cfg = await core.filesystem.loadConfig();
@@ -271,6 +350,31 @@ try {
 	// Fall through to normal CLI parsing on any splash error
 }
 
+function getMcpStartCwdOverrideFromArgv(argv = process.argv): string | undefined {
+	const args = argv.slice(2);
+	const mcpIndex = args.indexOf("mcp");
+	if (mcpIndex < 0 || args[mcpIndex + 1] !== "start") {
+		return undefined;
+	}
+
+	for (let i = mcpIndex + 2; i < args.length; i++) {
+		const arg = args[i];
+		if (!arg) {
+			continue;
+		}
+		if (arg === "--cwd") {
+			const next = args[i + 1]?.trim();
+			return next || undefined;
+		}
+		if (arg?.startsWith("--cwd=")) {
+			const value = arg.slice("--cwd=".length).trim();
+			return value || undefined;
+		}
+	}
+
+	return undefined;
+}
+
 // Global config migration - run before any command processing
 // Only run if we're in a backlog project (skip for init, help, version)
 const shouldRunMigration =
@@ -283,7 +387,8 @@ const shouldRunMigration =
 
 if (shouldRunMigration) {
 	try {
-		const projectRoot = await findBacklogRoot(process.cwd());
+		const runtimeCwd = await resolveRuntimeCwd({ cwd: getMcpStartCwdOverrideFromArgv() });
+		const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 		if (projectRoot) {
 			const core = new Core(projectRoot);
 
@@ -348,17 +453,20 @@ program
 				const isRepo = await isGitRepository(cwd);
 
 				if (!isRepo) {
-					const rl = createInterface({ input, output });
-					const answer = (await rl.question("No git repository found. Initialize one here? [y/N] "))
-						.trim()
-						.toLowerCase();
-					rl.close();
+					const initializeRepo = await clack.confirm({
+						message: "No git repository found. Initialize one here?",
+						initialValue: false,
+					});
+					if (clack.isCancel(initializeRepo)) {
+						abortInitialization();
+						return;
+					}
 
-					if (answer.startsWith("y")) {
+					if (initializeRepo) {
 						await initializeGitRepository(cwd);
 					} else {
-						console.log("Aborting initialization.");
-						process.exit(1);
+						abortInitialization();
+						return;
 					}
 				}
 
@@ -386,6 +494,13 @@ program
 					const parsed = Number.parseInt(value, 10);
 					return Number.isNaN(parsed) ? defaultValue : parsed;
 				};
+				function abortInitialization(message = "Aborting initialization.") {
+					clack.cancel(message);
+					process.exitCode = 1;
+				}
+				function cancelInitialization(message = "Initialization cancelled.") {
+					clack.cancel(message);
+				}
 
 				// Non-interactive mode when any flag is provided or --defaults is used
 				const isNonInteractive = !!(
@@ -409,21 +524,54 @@ program
 				if (!name) {
 					const defaultName = existingConfig?.projectName || "";
 					const promptMessage = isReInitialization && defaultName ? `Project name (${defaultName}):` : "Project name:";
-					name = await promptText(promptMessage);
+					const enteredName = await clack.text({
+						message: promptMessage,
+						defaultValue: isReInitialization && defaultName ? defaultName : undefined,
+						validate: (value) => {
+							if (!isReInitialization || !defaultName) {
+								if (!String(value ?? "").trim()) {
+									return "Project name is required.";
+								}
+							}
+							return undefined;
+						},
+					});
+					if (clack.isCancel(enteredName)) {
+						abortInitialization();
+						return;
+					}
+					name = String(enteredName ?? "").trim();
 					// Use existing name if nothing entered during re-init
 					if (!name && isReInitialization && defaultName) {
 						name = defaultName;
 					}
 					if (!name) {
-						console.log("Aborting initialization.");
-						process.exit(1);
+						abortInitialization();
+						return;
 					}
 				}
 
 				// Get task prefix (first-time init only, preserved on re-init)
 				let taskPrefix = options.taskPrefix;
 				if (!taskPrefix && !isNonInteractive && !isReInitialization) {
-					taskPrefix = await promptText("Task prefix (default: task):");
+					const enteredPrefix = await clack.text({
+						message: "Task prefix (default: task):",
+						validate: (value) => {
+							const normalized = String(value ?? "").trim();
+							if (!normalized) {
+								return undefined;
+							}
+							if (!/^[a-zA-Z]+$/.test(normalized)) {
+								return "Task prefix must contain only letters (a-z, A-Z).";
+							}
+							return undefined;
+						},
+					});
+					if (clack.isCancel(enteredPrefix)) {
+						abortInitialization();
+						return;
+					}
+					taskPrefix = String(enteredPrefix ?? "").trim();
 				}
 				// Validate task prefix if provided
 				if (taskPrefix && !/^[a-zA-Z]+$/.test(taskPrefix)) {
@@ -493,49 +641,38 @@ program
 					process.exit(1);
 				}
 
+				let integrationTipShown = false;
 				mainSelection: while (true) {
 					if (integrationMode === null) {
-						let cancelled = false;
-						const integrationPrompt = await prompts(
-							{
-								type: "select",
-								name: "mode",
-								message: "How would you like your AI tools to connect to Backlog.md?",
-								hint: "Pick MCP when your editor supports the Model Context Protocol.",
-								initial: 0,
-								choices: [
-									{
-										title: "via MCP connector (recommended for Claude Code, Codex, Gemini CLI, Kiro, Cursor, etc.)",
-										description: "Agents learn the Backlog.md workflow through MCP tools, resources, and prompts.",
-										value: "mcp",
-									},
-									{
-										title: "via CLI commands (broader compatibility)",
-										description: "Agents will use Backlog.md by invoking CLI commands directly",
-										value: "cli",
-									},
-									{
-										title: "Skip for now (I am not using Backlog.md with AI tools)",
-										description: "Continue without setting up MCP or instruction files.",
-										value: "none",
-									},
-								],
-							},
-							{
-								onCancel: () => {
-									cancelled = true;
+						if (!integrationTipShown) {
+							clack.note("MCP connector is recommended for AI tool integration.", "AI setup tip");
+							integrationTipShown = true;
+						}
+						const integrationPrompt = await clack.select({
+							message: "How would you like your AI tools to connect to Backlog.md?",
+							initialValue: "mcp",
+							options: [
+								{
+									label: "via MCP connector (recommended for Claude Code, Codex, Gemini CLI, Kiro, Cursor, etc.)",
+									value: "mcp",
 								},
-							},
-						);
+								{
+									label: "via CLI commands (broader compatibility)",
+									value: "cli",
+								},
+								{
+									label: "Skip for now (I am not using Backlog.md with AI tools)",
+									value: "none",
+								},
+							],
+						});
 
-						if (cancelled) {
-							console.log("Initialization cancelled.");
+						if (clack.isCancel(integrationPrompt)) {
+							cancelInitialization();
 							return;
 						}
 
-						const selectedMode = integrationPrompt?.mode
-							? normalizeIntegrationOption(String(integrationPrompt.mode))
-							: null;
+						const selectedMode = integrationPrompt ? normalizeIntegrationOption(String(integrationPrompt)) : null;
 						integrationMode = selectedMode ?? "mcp";
 						console.log("");
 					}
@@ -578,79 +715,32 @@ program
 						} else if (isNonInteractive) {
 							agentFiles = [];
 						} else {
-							const defaultHint = "Enter selects highlighted agent (after moving); space toggles selections\n";
 							while (true) {
-								let highlighted: AgentSelection | undefined;
-								let initialCursor: number | undefined;
-								let cursorMoved = false;
-								let selectionCancelled = false;
-								const response = await prompts(
-									{
-										type: "multiselect",
-										name: "files",
-										message: "Select instruction files for CLI-based AI tools",
-										choices: [
-											{
-												title: "↓ Use space to toggle instruction files (enter accepts)",
-												value: PLACEHOLDER_AGENT_VALUE,
-												disabled: true,
-											},
-											{ title: "CLAUDE.md — Claude Code", value: "CLAUDE.md" },
-											{
-												title: "AGENTS.md — Codex, Cursor, Zed, Warp, Aider, RooCode, etc.",
-												value: "AGENTS.md",
-											},
-											{ title: "GEMINI.md — Google Gemini Code Assist CLI", value: "GEMINI.md" },
-											{ title: "Copilot instructions — GitHub Copilot", value: ".github/copilot-instructions.md" },
-										],
-										hint: defaultHint,
-										instructions: false,
-										onRender: function () {
-											try {
-												const promptInstance = this as unknown as {
-													cursor: number;
-													value: Array<{ value: AgentSelection }>;
-													hint: string;
-												};
-												if (initialCursor === undefined) {
-													initialCursor = promptInstance.cursor;
-												}
-												if (initialCursor !== undefined && promptInstance.cursor !== initialCursor) {
-													cursorMoved = true;
-												}
-												const focus = promptInstance.value?.[promptInstance.cursor];
-												highlighted = focus?.value;
-												promptInstance.hint = defaultHint;
-											} catch {}
-											return undefined;
+								const response = await clack.multiselect({
+									message: "Select instruction files for CLI-based AI tools (space toggles selections; enter accepts)",
+									options: [
+										{ label: "CLAUDE.md — Claude Code", value: "CLAUDE.md" },
+										{
+											label: "AGENTS.md — Codex, Cursor, Zed, Warp, Aider, RooCode, etc.",
+											value: "AGENTS.md",
 										},
-									},
-									{
-										onCancel: () => {
-											selectionCancelled = true;
+										{ label: "GEMINI.md — Google Gemini Code Assist CLI", value: "GEMINI.md" },
+										{
+											label: "Copilot instructions — GitHub Copilot",
+											value: ".github/copilot-instructions.md",
 										},
-									},
-								);
+									],
+									required: false,
+								});
 
-								if (selectionCancelled) {
+								if (clack.isCancel(response)) {
 									integrationMode = null;
 									console.log("");
 									continue mainSelection;
 								}
 
-								const rawSelection = (response?.files ?? []) as AgentSelection[];
-								const selected =
-									rawSelection.length === 0 &&
-									highlighted &&
-									highlighted !== PLACEHOLDER_AGENT_VALUE &&
-									highlighted !== "none"
-										? [highlighted]
-										: rawSelection;
-								const { files, needsRetry, skipped } = processAgentSelection({
-									selected,
-									highlighted,
-									useHighlightFallback: cursorMoved,
-								});
+								const selected = Array.isArray(response) ? (response as AgentSelection[]) : [];
+								const { files, needsRetry, skipped } = processAgentSelection({ selected });
 								if (needsRetry) {
 									console.log("Please select at least one agent instruction file before continuing.");
 									continue;
@@ -672,53 +762,28 @@ program
 
 						console.log(`  MCP server name: ${mcpServerName}`);
 						while (true) {
-							let clientSelectionCancelled = false;
-							let highlightedClient: string | undefined;
-							const clientResponse = await prompts(
-								{
-									type: "multiselect",
-									name: "clients",
-									message: "Which AI tools should we configure right now?",
-									hint: "Space toggles items • Enter confirms (leave empty to skip)",
-									instructions: false,
-									choices: [
-										{ title: "Claude Code", value: "claude" },
-										{ title: "OpenAI Codex", value: "codex" },
-										{ title: "Gemini CLI", value: "gemini" },
-										{ title: "Kiro", value: "kiro" },
-										{ title: "Other (open setup guide)", value: "guide" },
-									],
-									onRender: function () {
-										try {
-											const promptInstance = this as unknown as {
-												cursor: number;
-												value: Array<{ value: string }>;
-											};
-											highlightedClient = promptInstance.value?.[promptInstance.cursor]?.value;
-										} catch {}
-										return undefined;
-									},
-								},
-								{
-									onCancel: () => {
-										clientSelectionCancelled = true;
-									},
-								},
-							);
+							const clientResponse = await clack.multiselect({
+								message: "Which AI tools should we configure right now? (space toggles items; enter confirms)",
+								options: [
+									{ label: "Claude Code", value: "claude" },
+									{ label: "OpenAI Codex", value: "codex" },
+									{ label: "Gemini CLI", value: "gemini" },
+									{ label: "Kiro", value: "kiro" },
+									{ label: "Other (open setup guide)", value: "guide" },
+								],
+								required: true,
+							});
 
-							if (clientSelectionCancelled) {
+							if (clack.isCancel(clientResponse)) {
 								integrationMode = null;
 								console.log("");
 								continue mainSelection;
 							}
 
-							const rawClients = (clientResponse?.clients ?? []) as string[];
-							const selectedClients = rawClients.length === 0 && highlightedClient ? [highlightedClient] : rawClients;
-							highlightedClient = undefined;
+							const selectedClients = Array.isArray(clientResponse) ? clientResponse : [];
 							if (selectedClients.length === 0) {
-								console.log("  MCP client setup skipped (configure later if needed).");
-								mcpClientSetupSummary = "skipped";
-								break;
+								console.log("Please select at least one AI tool before continuing.");
+								continue;
 							}
 
 							const results: string[] = [];
@@ -846,23 +911,16 @@ program
 					installClaudeAgentSelection =
 						integrationMode === "cli" ? parseBoolean(options.installClaudeAgent, false) : false;
 				} else {
-					const advancedPrompt = await prompts(
-						{
-							type: "confirm",
-							name: "configureAdvanced",
-							message: "Configure advanced settings now?",
-							hint: "Runs the advanced backlog config wizard",
-							initial: false,
-						},
-						{
-							onCancel: () => {
-								console.log("Aborting initialization.");
-								process.exit(1);
-							},
-						},
-					);
+					const advancedPrompt = await clack.confirm({
+						message: "Configure advanced settings now? (Runs the advanced backlog config wizard)",
+						initialValue: false,
+					});
+					if (clack.isCancel(advancedPrompt)) {
+						abortInitialization();
+						return;
+					}
 
-					if (advancedPrompt.configureAdvanced) {
+					if (advancedPrompt) {
 						const wizardResult = await runAdvancedConfigWizard({
 							existingConfig,
 							cancelMessage: "Aborting initialization.",
@@ -896,6 +954,7 @@ program
 						autoCommit: advancedConfig.autoCommit,
 						zeroPaddedIds: advancedConfig.zeroPaddedIds,
 						defaultEditor: advancedConfig.defaultEditor,
+						definitionOfDone: advancedConfig.definitionOfDone,
 						defaultPort: advancedConfig.defaultPort,
 						autoOpenBrowser: advancedConfig.autoOpenBrowser,
 						taskPrefix: taskPrefix || undefined,
@@ -906,65 +965,101 @@ program
 				const config = initResult.config;
 
 				// Show configuration summary
-				console.log("\nInitialization Summary:");
-				console.log(`  Project Name: ${config.projectName}`);
+				const supportsColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+				const colorize = (code: string, value: string): string =>
+					supportsColor ? `\u001B[${code}m${value}\u001B[0m` : value;
+				const label = (value: string): string => colorize("1;36", value);
+				const good = (value: string): string => colorize("32", value);
+				const bad = (value: string): string => colorize("31", value);
+				const muted = (value: string): string => colorize("2", value);
+				const boolValue = (value: boolean): string => (value ? good("true") : bad("false"));
+				const formatCompletionInstructions = (instructions: string): string =>
+					instructions
+						.split("\n")
+						.map((line) => {
+							const trimmed = line.trim();
+							if (!trimmed) {
+								return line;
+							}
+							if (/^(path=|autoload|source )/.test(trimmed)) {
+								return colorize("1;32", line);
+							}
+							if (
+								/^(To enable completions, ensure the directory is in your fpath\.|Add this to your ~\/\.zshrc:|Then restart your shell or run:)$/.test(
+									trimmed,
+								)
+							) {
+								return colorize("36", line);
+							}
+							return line;
+						})
+						.join("\n");
+				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
 				if (integrationMode === "cli") {
-					console.log("  AI Integration: CLI commands (legacy)");
+					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
 					if (agentFiles.length > 0) {
-						console.log(`  Agent instructions: ${agentFiles.join(", ")}`);
+						summaryLines.push(`${label("Agent instructions:")} ${agentFiles.join(", ")}`);
 					} else if (agentInstructionsSkipped) {
-						console.log("  Agent instructions: skipped");
+						summaryLines.push(`${label("Agent instructions:")} ${muted("skipped")}`);
 					} else {
-						console.log("  Agent instructions: none");
+						summaryLines.push(`${label("Agent instructions:")} ${muted("none")}`);
 					}
 				} else if (integrationMode === "mcp") {
-					console.log("  AI Integration: MCP connector");
-					console.log("  Agent instruction files: guidance is provided through the MCP connector.");
-					console.log(`  MCP server name: ${mcpServerName}`);
-					console.log(`  MCP client setup: ${mcpClientSetupSummary ?? "skipped"}`);
-				} else {
-					console.log(
-						"  AI integration skipped. Configure later via `backlog init` or by registering the MCP server manually.",
+					summaryLines.push(`${label("AI Integration:")} ${good("MCP connector")}`);
+					summaryLines.push(
+						`${label("Agent instruction files:")} ${muted("guidance is provided through the MCP connector.")}`,
 					);
+					summaryLines.push(`${label("MCP server name:")} ${mcpServerName}`);
+					summaryLines.push(`${label("MCP client setup:")} ${mcpClientSetupSummary ?? muted("skipped")}`);
+				} else {
+					summaryLines.push(`${label("AI integration:")} ${muted("skipped (configure later via `backlog init`)")}`);
 				}
 				let completionSummary: string;
 				if (completionInstallResult) {
-					completionSummary = `installed to ${completionInstallResult.installPath}`;
+					completionSummary = `${good("installed")} to ${completionInstallResult.installPath}`;
 				} else if (installShellCompletionsSelection) {
-					completionSummary = "installation failed (see warning below)";
+					completionSummary = `${bad("installation failed")} (${muted("see warning below")})`;
 				} else if (advancedConfigured) {
-					completionSummary = "skipped";
+					completionSummary = muted("skipped");
 				} else {
-					completionSummary = "not configured";
+					completionSummary = muted("not configured");
 				}
-				console.log(`  Shell completions: ${completionSummary}`);
+				summaryLines.push(`${label("Shell completions:")} ${completionSummary}`);
 				if (advancedConfigured) {
-					console.log("  Advanced settings:");
-					console.log(`    Check active branches: ${config.checkActiveBranches}`);
-					console.log(`    Remote operations: ${config.remoteOperations}`);
-					console.log(`    Active branch days: ${config.activeBranchDays}`);
-					console.log(`    Bypass git hooks: ${config.bypassGitHooks}`);
-					console.log(`    Auto commit: ${config.autoCommit}`);
-					console.log(`    Zero-padded IDs: ${config.zeroPaddedIds ? `${config.zeroPaddedIds} digits` : "disabled"}`);
-					console.log(`    Web UI port: ${config.defaultPort}`);
-					console.log(`    Auto open browser: ${config.autoOpenBrowser}`);
+					summaryLines.push(label("Advanced settings:"));
+					summaryLines.push(`  ${label("Check active branches:")} ${boolValue(Boolean(config.checkActiveBranches))}`);
+					summaryLines.push(`  ${label("Remote operations:")} ${boolValue(Boolean(config.remoteOperations))}`);
+					summaryLines.push(`  ${label("Active branch days:")} ${String(config.activeBranchDays)}`);
+					summaryLines.push(`  ${label("Bypass git hooks:")} ${boolValue(Boolean(config.bypassGitHooks))}`);
+					summaryLines.push(`  ${label("Auto commit:")} ${boolValue(Boolean(config.autoCommit))}`);
+					summaryLines.push(
+						`  ${label("Zero-padded IDs:")} ${
+							config.zeroPaddedIds ? `${String(config.zeroPaddedIds)} digits` : muted("disabled")
+						}`,
+					);
+					summaryLines.push(`  ${label("Web UI port:")} ${String(config.defaultPort)}`);
+					summaryLines.push(`  ${label("Auto open browser:")} ${boolValue(Boolean(config.autoOpenBrowser))}`);
 					if (config.defaultEditor) {
-						console.log(`    Default editor: ${config.defaultEditor}`);
+						summaryLines.push(`  ${label("Default editor:")} ${config.defaultEditor}`);
 					}
+					summaryLines.push(
+						`  ${label("Definition of Done defaults:")} ${
+							(config.definitionOfDone ?? []).length > 0 ? config.definitionOfDone?.join(" | ") : muted("none")
+						}`,
+					);
 				} else {
-					console.log("  Advanced settings: unchanged (run `backlog config` to customize).");
+					summaryLines.push(`${label("Advanced settings:")} ${muted("unchanged (run `backlog config` to customize)")}`);
 				}
-				console.log("");
+				clack.note(summaryLines.join("\n"), "Initialization Summary");
 
 				if (completionInstallResult) {
 					const instructions = completionInstallResult.instructions.trim();
-					console.log(
+					clack.note(
 						[
-							`Shell completion script installed for ${completionInstallResult.shell}.`,
-							`  Path: ${completionInstallResult.installPath}`,
-							instructions,
-							"",
-						].join("\n"),
+							`${label("Path:")} ${colorize("1", completionInstallResult.installPath)}`,
+							formatCompletionInstructions(instructions),
+						].join("\n\n"),
+						`Shell completions installed (${completionInstallResult.shell})`,
 					);
 				} else if (completionInstallError) {
 					const indentedError = completionInstallError
@@ -978,23 +1073,23 @@ program
 
 				// Log init result
 				if (initResult.isReInitialization) {
-					console.log(`Updated backlog project configuration: ${name}`);
+					clack.outro(`Updated backlog project configuration: ${name}`);
 				} else {
-					console.log(`Initialized backlog project: ${name}`);
+					clack.outro(`Initialized backlog project: ${name}`);
 				}
 
 				// Log agent files result from shared init
 				if (integrationMode === "cli") {
 					if (initResult.mcpResults?.agentFiles) {
-						console.log(`✓ ${initResult.mcpResults.agentFiles}`);
+						clack.log.info(initResult.mcpResults.agentFiles);
 					} else if (agentInstructionsSkipped) {
-						console.log("Skipping agent instruction files per selection.");
+						clack.log.info("Skipping agent instruction files per selection.");
 					}
 				}
 
 				// Log Claude agent result from shared init
 				if (integrationMode === "cli" && initResult.mcpResults?.claudeAgent) {
-					console.log(`✓ Claude Code Backlog.md agent ${initResult.mcpResults.claudeAgent}`);
+					clack.log.info(`Claude Code Backlog.md agent ${initResult.mcpResults.claudeAgent}`);
 				}
 
 				// Final warning if remote operations were enabled but no git remotes are configured
@@ -1277,7 +1372,7 @@ function buildTaskFromOptions(id: string, title: string, options: Record<string,
 const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
-	.command("create <title>")
+	.command("create [title]")
 	.option(
 		"-d, --description <text>",
 		"task description (multi-line: bash $'Line1\\nLine2', POSIX printf, PowerShell \"Line1`nLine2\")",
@@ -1325,16 +1420,43 @@ taskCmd
 			return [...soFar, value];
 		},
 	)
-	.action(async (title: string, options) => {
+	.action(async (title: string | undefined, options) => {
+		const shouldUseWizard = hasInteractiveTTY && title === undefined && !hasCreateFieldFlags(options);
+		if (!shouldUseWizard && (title === undefined || title.trim().length === 0)) {
+			printMissingRequiredArgument("title");
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
+
+		if (shouldUseWizard) {
+			const statuses = await getValidStatuses(core);
+			const wizardInput = await runTaskCreateWizard({ statuses });
+			if (!wizardInput) {
+				clack.cancel("Task create cancelled.");
+				return;
+			}
+			try {
+				const { task, filePath } = await core.createTaskFromInput(wizardInput);
+				console.log(`Created task ${task.id}`);
+				if (filePath) {
+					console.log(`File: ${filePath}`);
+				}
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exitCode = 1;
+			}
+			return;
+		}
+
 		const createAsDraft = Boolean(options.draft);
 		const id = await core.generateNextId(
 			createAsDraft ? EntityType.Draft : EntityType.Task,
 			createAsDraft ? undefined : options.parent,
 		);
-		const task = buildTaskFromOptions(id, title, options);
+		const task = buildTaskFromOptions(id, title ?? "", options);
 
 		// Normalize and validate status if provided (case-insensitive)
 		if (options.status) {
@@ -1634,6 +1756,7 @@ taskCmd
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
+	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
 	.option("--sort <field>", "sort tasks by field (priority, id)")
@@ -1651,6 +1774,9 @@ taskCmd
 		}
 		if (options.assignee) {
 			baseFilters.assignee = options.assignee;
+		}
+		if (options.milestone) {
+			baseFilters.milestone = options.milestone;
 		}
 		if (options.priority) {
 			const priorityLower = options.priority.toLowerCase();
@@ -1788,6 +1914,7 @@ taskCmd
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
+		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
 		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
 
@@ -1795,8 +1922,34 @@ taskCmd
 			filterDescription = activeFilters.join(", ");
 			title = `Tasks (${activeFilters.join(" • ")})`;
 		}
+		const initialUnifiedFilter: {
+			status?: string;
+			assignee?: string;
+			milestone?: string;
+			priority?: string;
+			sort?: string;
+			title?: string;
+			filterDescription?: string;
+			parentTaskId?: string;
+		} = {
+			status: options.status,
+			assignee: options.assignee,
+			milestone: options.milestone,
+			priority: options.priority,
+			sort: options.sort,
+			title,
+			filterDescription,
+			parentTaskId: parentId,
+		};
 
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
+		const interactiveLoaderFilters: TaskListFilter = {};
+		if (options.assignee) {
+			interactiveLoaderFilters.assignee = options.assignee;
+		}
+		if (parentId) {
+			interactiveLoaderFilters.parentTaskId = parentId;
+		}
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
@@ -1813,7 +1966,9 @@ taskCmd
 				// Now query with filters - this will use the already-populated ContentStore
 				updateProgress("Applying filters...");
 				const [tasks, allTasksForParentCheck] = await Promise.all([
-					core.queryTasks({ filters: baseFilters }),
+					core.queryTasks({
+						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
+					}),
 					parentId ? core.queryTasks() : Promise.resolve(undefined),
 				]);
 
@@ -1841,26 +1996,36 @@ taskCmd
 					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
 				}
 
+				if (options.milestone && filtered.length > 0) {
+					const [activeMilestones, archivedMilestones] = await Promise.all([
+						core.filesystem.listMilestones(),
+						core.filesystem.listArchivedMilestones(),
+					]);
+					const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
+						...activeMilestones,
+						...archivedMilestones,
+					]);
+					const resolvedMilestone = resolveClosestMilestoneFilterValue(
+						options.milestone,
+						filtered.map((task) => resolveMilestoneFilterValue(task.milestone ?? "")),
+					);
+					if (resolvedMilestone) {
+						initialUnifiedFilter.milestone = resolvedMilestone;
+					}
+				}
+
 				return {
 					tasks: filtered,
 					statuses: config?.statuses || [],
 				};
 			},
-			filter: {
-				status: options.status,
-				assignee: options.assignee,
-				priority: options.priority,
-				sort: options.sort,
-				title,
-				filterDescription,
-				parentTaskId: parentId,
-			},
+			filter: initialUnifiedFilter,
 		});
 		cleanup();
 	});
 
 taskCmd
-	.command("edit <taskId>")
+	.command("edit [taskId]")
 	.description("edit an existing task")
 	.option("-t, --title <title>")
 	.option(
@@ -1943,10 +2108,60 @@ taskCmd
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
-	.action(async (taskId: string, options) => {
+	.action(async (taskId: string | undefined, options) => {
+		const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
+		if (!shouldUseWizard && !taskId) {
+			printMissingRequiredArgument("taskId");
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const canonicalId = normalizeTaskId(taskId);
+
+		if (shouldUseWizard) {
+			let selectedTaskId = taskId ? normalizeTaskId(taskId) : undefined;
+			if (!selectedTaskId) {
+				const localTasks = await core.queryTasks({ includeCrossBranch: false });
+				const taskOptions = localTasks.map((candidate) => ({
+					id: candidate.id,
+					title: candidate.title,
+				}));
+				if (taskOptions.length === 0) {
+					console.log("No tasks found.");
+					return;
+				}
+				selectedTaskId = await pickTaskForEditWizard({ tasks: taskOptions });
+				if (!selectedTaskId) {
+					clack.cancel("Task edit cancelled.");
+					return;
+				}
+			}
+
+			const existingTaskForWizard = await core.loadTaskById(selectedTaskId);
+			if (!existingTaskForWizard) {
+				console.error(`Task ${selectedTaskId} not found.`);
+				process.exitCode = 1;
+				return;
+			}
+
+			const statuses = await getValidStatuses(core);
+			const wizardInput = await runTaskEditWizard({ task: existingTaskForWizard, statuses });
+			if (!wizardInput) {
+				clack.cancel("Task edit cancelled.");
+				return;
+			}
+
+			try {
+				const updatedTask = await core.editTask(existingTaskForWizard.id, wizardInput);
+				console.log(`Updated task ${updatedTask.id}`);
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exitCode = 1;
+			}
+			return;
+		}
+
+		const canonicalId = normalizeTaskId(taskId ?? "");
 		const existingTask = await core.loadTaskById(canonicalId);
 
 		if (!existingTask) {
@@ -2866,21 +3081,24 @@ agentsCmd
 
 			const _agentOptions = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".github/copilot-instructions.md"] as const;
 
-			const { files: selected } = await prompts({
-				type: "multiselect",
-				name: "files",
-				message: "Select agent instruction files to update",
-				choices: [
-					{ title: "CLAUDE.md (Claude Code)", value: "CLAUDE.md" },
-					{ title: "AGENTS.md (Codex, Jules, Amp, Cursor, Zed, Warp, Aider, GitHub, RooCode)", value: "AGENTS.md" },
-					{ title: "GEMINI.md (Google CLI)", value: "GEMINI.md" },
-					{ title: "Copilot (GitHub Copilot)", value: ".github/copilot-instructions.md" },
+			const selected = await clack.multiselect({
+				message: "Select agent instruction files to update (space toggles selections; enter confirms)",
+				required: false,
+				options: [
+					{ label: "CLAUDE.md (Claude Code)", value: "CLAUDE.md" },
+					{
+						label: "AGENTS.md (Codex, Jules, Amp, Cursor, Zed, Warp, Aider, GitHub, RooCode)",
+						value: "AGENTS.md",
+					},
+					{ label: "GEMINI.md (Google CLI)", value: "GEMINI.md" },
+					{ label: "Copilot (GitHub Copilot)", value: ".github/copilot-instructions.md" },
 				],
-				hint: "Space to select, Enter to confirm\n",
-				instructions: false,
 			});
-
-			const files: AgentInstructionFile[] = (selected ?? []) as AgentInstructionFile[];
+			const files: AgentInstructionFile[] = clack.isCancel(selected)
+				? []
+				: Array.isArray(selected)
+					? (selected as AgentInstructionFile[])
+					: [];
 
 			if (files.length > 0) {
 				// Get autoCommit setting from config
@@ -2940,6 +3158,7 @@ const configCmd = program
 			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
 			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
 			console.log(`  Auto commit: ${mergedConfig.autoCommit ?? false}`);
+			console.log(`  Definition of Done defaults: ${(mergedConfig.definitionOfDone ?? []).join(" | ") || "(none)"}`);
 			if (completionResult) {
 				console.log(`  Shell completions: installed to ${completionResult.installPath}`);
 			} else if (completionError) {
@@ -3251,6 +3470,11 @@ configCmd
 						console.error(
 							"Use milestone files via milestone commands (e.g. `backlog milestone list`, `backlog milestone add`).",
 						);
+					} else if (key === "definitionOfDone") {
+						console.error("definitionOfDone cannot be set directly.");
+						console.error(
+							"Use `backlog config` for interactive editing, update `backlog/config.yml`, or use Web UI Settings.",
+						);
 					} else {
 						console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
 						console.error("Array values should be edited in the config file directly.");
@@ -3358,13 +3582,11 @@ program
 				{ title: "1 year", value: 365 },
 			];
 
-			const { selectedAge } = await prompts({
-				type: "select",
-				name: "selectedAge",
+			const selectedAgePrompt = await clack.select({
 				message: "Move tasks to completed folder if they are older than:",
-				choices: ageOptions,
-				hint: "Tasks in completed folder are still accessible but won't clutter the main board",
+				options: ageOptions.map((option) => ({ label: option.title, value: option.value })),
 			});
+			const selectedAge = clack.isCancel(selectedAgePrompt) ? undefined : selectedAgePrompt;
 
 			if (selectedAge === undefined) {
 				console.log("Cleanup cancelled.");
@@ -3390,12 +3612,11 @@ program
 				console.log(`  ... and ${tasksToMove.length - 5} more`);
 			}
 
-			const { confirmed } = await prompts({
-				type: "confirm",
-				name: "confirmed",
+			const confirmedPrompt = await clack.confirm({
 				message: `Move ${tasksToMove.length} tasks to completed folder?`,
-				initial: false,
+				initialValue: false,
 			});
+			const confirmed = clack.isCancel(confirmedPrompt) ? false : confirmedPrompt;
 
 			if (!confirmed) {
 				console.log("Cleanup cancelled.");

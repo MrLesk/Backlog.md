@@ -14,6 +14,8 @@ For getting started and the interactive wizard overview, see [README.md](README.
 | Enable cross-branch check | `backlog config set checkActiveBranches true` |
 | Set active branch days | `backlog config set activeBranchDays 30` |
 
+Running `backlog config` with no arguments launches the interactive advanced wizard, including guided Definition of Done defaults editing (add/remove/reorder/clear).
+
 ## Available Configuration Options
 
 | Key               | Purpose            | Default                       |

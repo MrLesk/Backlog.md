@@ -135,6 +135,18 @@
     url = "https://registry.npmjs.org/@chevrotain/utils/-/utils-11.0.3.tgz";
     hash = "sha512-YslZMgtJUyuMbZ+aKvfF3x1f5liK4mWNxghFRv7jqRR9C3R3fAOGTTKvxXDa2Y1s9zSbcpuO0cAxDYsc9SrXoQ==";
   };
+  "@clack/core" = {
+    out_path = "@clack/core";
+    name = "@clack/core@1.0.1";
+    url = "https://registry.npmjs.org/@clack/core/-/core-1.0.1.tgz";
+    hash = "sha512-WKeyK3NOBwDOzagPR5H08rFk9D/WuN705yEbuZvKqlkmoLM2woKtXb10OO2k1NoSU4SFG947i2/SCYh+2u5e4g==";
+  };
+  "@clack/prompts" = {
+    out_path = "@clack/prompts";
+    name = "@clack/prompts@1.0.1";
+    url = "https://registry.npmjs.org/@clack/prompts/-/prompts-1.0.1.tgz";
+    hash = "sha512-/42G73JkuYdyWZ6m8d/CJtBrGl1Hegyc7Fy78m5Ob+jF85TOUmLR5XLce/U3LxYAw0kJ8CT5aI99RIvPHcGp/Q==";
+  };
   "@csstools/color-helpers" = {
     out_path = "@csstools/color-helpers";
     name = "@csstools/color-helpers@5.1.0";
@@ -899,12 +911,6 @@
     name = "@types/prismjs@1.26.5";
     url = "https://registry.npmjs.org/@types/prismjs/-/prismjs-1.26.5.tgz";
     hash = "sha512-AUZTa7hQ2KY5L7AmtSiqxlhWxb4ina0yd8hNbl4TWuqnv/pFP0nDMb3YrfSBf4hJVGLh2YEIBfKaBW/9UEl6IQ==";
-  };
-  "@types/prompts" = {
-    out_path = "@types/prompts";
-    name = "@types/prompts@2.4.9";
-    url = "https://registry.npmjs.org/@types/prompts/-/prompts-2.4.9.tgz";
-    hash = "sha512-qTxFi6Buiu8+50/+3DGIWLHM6QuWsEKugJnnP6iv2Mc4ncxE4A/OJkjuVOA+5X0X1S/nq5VJRa8Lu+nwcvbrKA==";
   };
   "@types/react" = {
     out_path = "@types/react";
@@ -2403,12 +2409,6 @@
     url = "https://registry.npmjs.org/kind-of/-/kind-of-6.0.3.tgz";
     hash = "sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==";
   };
-  "kleur" = {
-    out_path = "kleur";
-    name = "kleur@3.0.3";
-    url = "https://registry.npmjs.org/kleur/-/kleur-3.0.3.tgz";
-    hash = "sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==";
-  };
   "kolorist" = {
     out_path = "kolorist";
     name = "kolorist@1.8.0";
@@ -3152,12 +3152,6 @@
     name = "process@0.11.10";
     url = "https://registry.npmjs.org/process/-/process-0.11.10.tgz";
     hash = "sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==";
-  };
-  "prompts" = {
-    out_path = "prompts";
-    name = "prompts@2.4.2";
-    url = "https://registry.npmjs.org/prompts/-/prompts-2.4.2.tgz";
-    hash = "sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q==";
   };
   "property-information" = {
     out_path = "property-information";

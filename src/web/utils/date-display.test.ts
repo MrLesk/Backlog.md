@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { formatStoredUtcDateForDisplay, parseStoredUtcDate } from "./date-display";
+import {
+	formatStoredUtcDateForCompactDisplay,
+	formatStoredUtcDateForDisplay,
+	parseStoredUtcDate,
+} from "./date-display";
 
 describe("parseStoredUtcDate", () => {
 	it("parses stored UTC datetime strings", () => {
@@ -36,5 +40,25 @@ describe("formatStoredUtcDateForDisplay", () => {
 
 	it("falls back to original value when parsing fails", () => {
 		expect(formatStoredUtcDateForDisplay("not-a-date")).toBe("not-a-date");
+	});
+});
+
+describe("formatStoredUtcDateForCompactDisplay", () => {
+	const now = new Date(Date.UTC(2026, 1, 21, 12, 0, 0));
+
+	it("formats recent values as relative days", () => {
+		expect(formatStoredUtcDateForCompactDisplay("2026-02-21", now)).toBe("today");
+		expect(formatStoredUtcDateForCompactDisplay("2026-02-20", now)).toBe("yesterday");
+		expect(formatStoredUtcDateForCompactDisplay("2026-02-18", now)).toBe("3d ago");
+	});
+
+	it("formats older values as short date", () => {
+		const expected = new Date(Date.UTC(2026, 1, 10, 0, 0, 0)).toLocaleDateString();
+		expect(formatStoredUtcDateForCompactDisplay("2026-02-10", now)).toBe(expected);
+	});
+
+	it("handles missing and invalid values gracefully", () => {
+		expect(formatStoredUtcDateForCompactDisplay("", now)).toBe("—");
+		expect(formatStoredUtcDateForCompactDisplay("not-a-date", now)).toBe("not-a-date");
 	});
 });

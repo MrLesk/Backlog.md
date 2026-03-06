@@ -47,7 +47,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		{
 			name: "task_edit",
 			description:
-				"Edit a Backlog.md task, including metadata, implementation plan/notes, dependencies, and acceptance criteria",
+				"Edit a Backlog.md task, including metadata, implementation plan/notes, dependencies, acceptance criteria, and task-specific Definition of Done items",
 			inputSchema: taskEditSchema,
 		},
 		taskEditSchema,

@@ -3,11 +3,11 @@ id: BACK-383
 title: >-
   Restructure README into two usage paths (MCP spec-driven vs manual CLI) based
   on conference guidance
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-11 20:26'
-updated_date: '2026-02-15 16:44'
+updated_date: '2026-02-21 15:13'
 labels: []
 dependencies: []
 references:
@@ -15,7 +15,6 @@ references:
   - /Users/alex/projects/mrlesk.com/talks/voxxed/backlog-presentation/pages
 priority: medium
 ---
-
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->

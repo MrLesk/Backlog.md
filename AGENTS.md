@@ -19,7 +19,7 @@ This project uses Backlog.md MCP for all task and project management activities.
 These guides cover:
 - Decision framework for when to create tasks
 - Search-first workflow to avoid duplicates
-- Links to detailed guides for task creation, execution, and completion
+- Links to detailed guides for task creation, execution, and finalization
 - MCP tools reference
 
 You MUST read the overview resource to understand the complete workflow. The information is NOT summarized here.

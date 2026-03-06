@@ -11,6 +11,10 @@ export const taskListSchema: JsonSchema = {
 			type: "string",
 			maxLength: 100,
 		},
+		milestone: {
+			type: "string",
+			maxLength: 100,
+		},
 		labels: {
 			type: "array",
 			items: { type: "string", maxLength: 50 },

@@ -21,6 +21,11 @@ import {
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { documentIdsEqual } from "../utils/document-id.ts";
 import { openInEditor } from "../utils/editor.ts";
+import {
+	createMilestoneFilterValueResolver,
+	normalizeMilestoneFilterValue,
+	resolveClosestMilestoneFilterValue,
+} from "../utils/milestone-filter.ts";
 import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
@@ -36,6 +41,7 @@ import {
 } from "../utils/task-builders.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
+import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
@@ -80,6 +86,14 @@ interface TaskQueryOptions {
 	query?: string;
 	limit?: number;
 	includeCrossBranch?: boolean;
+}
+
+export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed";
+
+export interface TuiTaskEditResult {
+	changed: boolean;
+	task?: Task;
+	reason?: TuiTaskEditFailureReason;
 }
 
 function buildLatestStateMap(
@@ -170,7 +184,11 @@ export class Core {
 		return this.searchService;
 	}
 
-	private applyTaskFilters(tasks: Task[], filters?: TaskListFilter): Task[] {
+	private applyTaskFilters(
+		tasks: Task[],
+		filters?: TaskListFilter,
+		resolveMilestoneFilterValue?: (milestoneValue: string) => string,
+	): Task[] {
 		if (!filters) {
 			return tasks;
 		}
@@ -186,6 +204,17 @@ export class Core {
 		if (filters.priority) {
 			const priorityLower = String(filters.priority).toLowerCase();
 			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
+		}
+		if (filters.milestone) {
+			const milestoneFilter = resolveClosestMilestoneFilterValue(
+				filters.milestone,
+				result.map((task) => resolveMilestoneFilterValue?.(task.milestone ?? "") ?? task.milestone ?? ""),
+			);
+			result = result.filter(
+				(task) =>
+					normalizeMilestoneFilterValue(resolveMilestoneFilterValue?.(task.milestone ?? "") ?? task.milestone ?? "") ===
+					milestoneFilter,
+			);
 		}
 		if (filters.parentTaskId) {
 			const parentFilter = filters.parentTaskId;
@@ -278,9 +307,16 @@ export class Core {
 		const { filters, query, limit } = options;
 		const trimmedQuery = query?.trim();
 		const includeCrossBranch = options.includeCrossBranch ?? true;
+		const milestoneResolverPromise = filters?.milestone
+			? Promise.all([this.fs.listMilestones(), this.fs.listArchivedMilestones()]).then(
+					([activeMilestones, archivedMilestones]) =>
+						createMilestoneFilterValueResolver([...activeMilestones, ...archivedMilestones]),
+				)
+			: undefined;
 
-		const applyFiltersAndLimit = (collection: Task[]): Task[] => {
-			let filtered = this.applyTaskFilters(collection, filters);
+		const applyFiltersAndLimit = async (collection: Task[]): Promise<Task[]> => {
+			const resolveMilestoneFilterValue = milestoneResolverPromise ? await milestoneResolverPromise : undefined;
+			let filtered = this.applyTaskFilters(collection, filters, resolveMilestoneFilterValue);
 			if (!includeCrossBranch) {
 				filtered = this.filterLocalEditableTasks(filtered);
 			}
@@ -293,7 +329,7 @@ export class Core {
 		if (!trimmedQuery) {
 			const store = await this.getContentStore();
 			const tasks = store.getTasks();
-			return applyFiltersAndLimit(tasks);
+			return await applyFiltersAndLimit(tasks);
 		}
 
 		const searchService = await this.getSearchService();
@@ -328,7 +364,7 @@ export class Core {
 			tasks.push(task);
 		}
 
-		return applyFiltersAndLimit(tasks);
+		return await applyFiltersAndLimit(tasks);
 	}
 
 	async getTask(taskId: string): Promise<Task | null> {
@@ -2367,6 +2403,68 @@ export class Core {
 	 * @param filePath - Path to the file to edit
 	 * @param screen - Optional blessed screen to suspend (for TUI contexts)
 	 */
+	async editTaskInTui(taskId: string, screen: BlessedScreen, selectedTask?: Task): Promise<TuiTaskEditResult> {
+		const contextualTask = selectedTask && taskIdsEqual(selectedTask.id, taskId) ? selectedTask : undefined;
+
+		if (contextualTask && (!isLocalEditableTask(contextualTask) || contextualTask.branch)) {
+			return { changed: false, task: contextualTask, reason: "read_only" };
+		}
+
+		const resolvedTask = contextualTask ?? (await this.getTask(taskId));
+		if (!resolvedTask) {
+			return { changed: false, reason: "not_found" };
+		}
+		if (!isLocalEditableTask(resolvedTask) || resolvedTask.branch) {
+			return { changed: false, task: resolvedTask, reason: "read_only" };
+		}
+
+		const localTask = await this.fs.loadTask(resolvedTask.id);
+		const editableTask = localTask ?? resolvedTask;
+
+		const filePath = await getTaskPath(editableTask.id, this);
+		if (!filePath) {
+			return { changed: false, task: editableTask, reason: "not_found" };
+		}
+
+		let beforeContent: string;
+		try {
+			beforeContent = await Bun.file(filePath).text();
+		} catch {
+			return { changed: false, task: editableTask, reason: "not_found" };
+		}
+
+		const opened = await this.openEditor(filePath, screen);
+		if (!opened) {
+			return { changed: false, task: editableTask, reason: "editor_failed" };
+		}
+
+		let afterContent: string;
+		try {
+			afterContent = await Bun.file(filePath).text();
+		} catch {
+			return { changed: false, task: editableTask, reason: "not_found" };
+		}
+
+		if (afterContent === beforeContent) {
+			const refreshedTask = await this.fs.loadTask(editableTask.id);
+			return { changed: false, task: refreshedTask ?? editableTask };
+		}
+
+		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
+		await Bun.write(filePath, withUpdatedDate);
+
+		const refreshedTask = await this.fs.loadTask(editableTask.id);
+		if (refreshedTask && this.contentStore) {
+			this.contentStore.upsertTask(refreshedTask);
+		}
+
+		return {
+			changed: true,
+			task: refreshedTask ?? { ...editableTask, updatedDate: now },
+		};
+	}
+
 	async openEditor(filePath: string, screen?: BlessedScreen): Promise<boolean> {
 		const config = await this.fs.loadConfig();
 

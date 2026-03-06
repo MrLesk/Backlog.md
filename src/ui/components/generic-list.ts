@@ -26,6 +26,8 @@ export interface GenericListOptions<T extends GenericListItem> {
 	onSelect?: (selected: T | T[], index?: number | number[]) => void;
 	// Called whenever the highlighted item changes (live navigation)
 	onHighlight?: (selected: T | null, index: number) => void;
+	// Called before wrapping at list boundaries. Return true to consume navigation.
+	onBoundaryNavigation?: (direction: "up" | "down", selectedIndex: number, total: number) => boolean;
 	width?: string | number;
 	height?: string | number;
 	top?: string | number;
@@ -262,6 +264,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			const total = this.filteredItems.length;
 			if (total === 0) return;
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
+			if (sel <= 0 && this.options.onBoundaryNavigation?.("up", sel, total)) {
+				return;
+			}
 			const nextIndex = sel > 0 ? sel - 1 : total - 1;
 			this.listBox.select(nextIndex);
 			this.selectedIndex = nextIndex;
@@ -273,6 +278,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			const total = this.filteredItems.length;
 			if (total === 0) return;
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
+			if (sel >= total - 1 && this.options.onBoundaryNavigation?.("down", sel, total)) {
+				return;
+			}
 			const nextIndex = sel < total - 1 ? sel + 1 : 0;
 			this.listBox.select(nextIndex);
 			this.selectedIndex = nextIndex;

@@ -5,7 +5,7 @@
 <code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>brew install backlog-md</code> or <code>nix run github:MrLesk/Backlog.md</code>
 </p>
 
-![Backlog demo GIF using: backlog board](./.github/backlog.gif)
+![Backlog demo GIF using: backlog board](./.github/backlog-v1.40.gif)
 
 
 ---
@@ -197,11 +197,17 @@ Use the shared `backlog` server name everywhere – the MCP server auto-detects 
   "mcpServers": {
     "backlog": {
       "command": "backlog",
-      "args": ["mcp", "start"]
+      "args": ["mcp", "start"],
+      "env": {
+        "BACKLOG_CWD": "/absolute/path/to/your/project"
+      }
     }
   }
 }
 ```
+
+If your IDE can't set the process working directory for MCP servers, set `BACKLOG_CWD` as shown above.
+If your IDE supports custom args but not env vars, you can also use `["mcp", "start", "--cwd", "/absolute/path/to/your/project"]`.
 
 > [!IMPORTANT]
 > When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md.
@@ -240,6 +246,7 @@ Run `backlog config` with no arguments to launch the full interactive wizard. Th
 - Git workflow: `autoCommit` and `bypassGitHooks`.
 - ID formatting: enable or size `zeroPaddedIds`.
 - Editor integration: pick a `defaultEditor` with availability checks.
+- Definition of Done defaults: interactively add/remove/reorder/clear project-level `definition_of_done` checklist items.
 - Web UI defaults: choose `defaultPort` and whether `autoOpenBrowser` should run.
 
 Skipping the wizard (answering "No" during init) applies the safe defaults that ship with Backlog.md:
@@ -253,7 +260,7 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 
 ### Definition of Done defaults
 
-Set project-wide DoD items in the Web UI (Settings → Definition of Done Defaults) or edit `backlog/config.yml` directly:
+Set project-wide DoD items with `backlog config` (or during `backlog init` advanced setup), in the Web UI (Settings → Definition of Done Defaults), or by editing `backlog/config.yml` directly:
 
 ```yaml
 definition_of_done:
@@ -262,7 +269,7 @@ definition_of_done:
   - No regressions introduced
 ```
 
-These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`. Array values like `definition_of_done` must be edited in the config file or via the Web UI.
+These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`.
 
 For the full configuration reference (all options, commands, and detailed notes), see **[ADVANCED-CONFIG.md](ADVANCED-CONFIG.md)**.
 

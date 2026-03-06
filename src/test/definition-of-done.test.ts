@@ -51,6 +51,40 @@ describe("Definition of Done", () => {
 		expect(rawConfig).toContain("Run tests");
 	});
 
+	it("trims, drops empty values, and preserves order when saving definition_of_done", async () => {
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		expect(config).toBeTruthy();
+
+		if (config) {
+			config.definitionOfDone = ["  First item  ", " ", "Second item", "", "  Third item"];
+			await core.filesystem.saveConfig(config);
+		}
+
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.definitionOfDone).toEqual(["First item", "Second item", "Third item"]);
+
+		const rawConfig = await readConfigFile(TEST_DIR);
+		expect(rawConfig).toContain('definition_of_done: ["First item", "Second item", "Third item"]');
+	});
+
+	it("ignores non-string values when saving definition_of_done", async () => {
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		expect(config).toBeTruthy();
+
+		if (config) {
+			config.definitionOfDone = ["  First item  ", 1, null, "", "Second item"] as unknown as string[];
+			await core.filesystem.saveConfig(config);
+		}
+
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.definitionOfDone).toEqual(["First item", "Second item"]);
+
+		const rawConfig = await readConfigFile(TEST_DIR);
+		expect(rawConfig).toContain('definition_of_done: ["First item", "Second item"]');
+	});
+
 	it("applies Definition of Done defaults on create", async () => {
 		const core = new Core(TEST_DIR);
 		const config = await core.filesystem.loadConfig();

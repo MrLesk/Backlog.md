@@ -7,6 +7,11 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
+import {
+	createMilestoneFilterValueResolver,
+	normalizeMilestoneFilterValue,
+	resolveClosestMilestoneFilterValue,
+} from "../../../utils/milestone-filter.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortTasks } from "../../../utils/task-sorting.ts";
@@ -37,6 +42,7 @@ export type TaskCreateArgs = {
 export type TaskListArgs = {
 	status?: string;
 	assignee?: string;
+	milestone?: string;
 	labels?: string[];
 	search?: string;
 	limit?: number;
@@ -232,6 +238,24 @@ export class TaskHandlers {
 			if (args.assignee) {
 				drafts = drafts.filter((draft) => (draft.assignee ?? []).includes(args.assignee ?? ""));
 			}
+			if (args.milestone) {
+				const [activeMilestones, archivedMilestones] = await Promise.all([
+					this.core.filesystem.listMilestones(),
+					this.core.filesystem.listArchivedMilestones(),
+				]);
+				const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
+					...activeMilestones,
+					...archivedMilestones,
+				]);
+				const milestoneFilter = resolveClosestMilestoneFilterValue(
+					args.milestone,
+					drafts.map((draft) => resolveMilestoneFilterValue(draft.milestone ?? "")),
+				);
+				drafts = drafts.filter(
+					(draft) =>
+						normalizeMilestoneFilterValue(resolveMilestoneFilterValue(draft.milestone ?? "")) === milestoneFilter,
+				);
+			}
 
 			const labelFilters = args.labels ?? [];
 			if (labelFilters.length > 0) {
@@ -277,6 +301,9 @@ export class TaskHandlers {
 		}
 		if (args.assignee) {
 			filters.assignee = args.assignee;
+		}
+		if (args.milestone) {
+			filters.milestone = args.milestone;
 		}
 
 		const tasks = await this.core.queryTasks({

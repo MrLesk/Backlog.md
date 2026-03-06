@@ -5,11 +5,13 @@
 import type { Core } from "../core/backlog.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
+import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
+import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
-import { viewTaskEnhanced } from "./task-viewer-with-search.ts";
+import { buildTaskViewerMilestoneFilterModel, viewTaskEnhanced } from "./task-viewer-with-search.ts";
 import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
 
 export interface UnifiedViewOptions {
@@ -25,6 +27,7 @@ export interface UnifiedViewOptions {
 		assignee?: string;
 		priority?: string;
 		labels?: string[];
+		milestone?: string;
 		sort?: string;
 		title?: string;
 		filterDescription?: string;
@@ -47,6 +50,79 @@ type LoadingScreen = {
 export interface UnifiedViewLoadResult {
 	tasks: Task[];
 	statuses: string[];
+}
+
+export interface UnifiedViewFilters {
+	searchQuery: string;
+	statusFilter: string;
+	priorityFilter: string;
+	labelFilter: string[];
+	milestoneFilter: string;
+}
+
+export interface KanbanSharedFilters {
+	searchQuery: string;
+	priorityFilter: string;
+	labelFilter: string[];
+	milestoneFilter: string;
+}
+
+export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSharedFilters {
+	return {
+		searchQuery: filters.searchQuery,
+		priorityFilter: filters.priorityFilter,
+		labelFilter: [...filters.labelFilter],
+		milestoneFilter: filters.milestoneFilter,
+	};
+}
+
+export function filterTasksForKanban(
+	tasks: Task[],
+	filters: KanbanSharedFilters,
+	resolveMilestoneLabel?: (milestone: string) => string,
+): Task[] {
+	if (
+		!filters.searchQuery.trim() &&
+		!filters.priorityFilter &&
+		filters.labelFilter.length === 0 &&
+		!filters.milestoneFilter
+	) {
+		return [...tasks];
+	}
+
+	const searchIndex = createTaskSearchIndex(tasks);
+	return applySharedTaskFilters(
+		tasks,
+		{
+			query: filters.searchQuery,
+			priority: filters.priorityFilter as "high" | "medium" | "low" | undefined,
+			labels: filters.labelFilter,
+			milestone: filters.milestoneFilter || undefined,
+			resolveMilestoneLabel,
+		},
+		searchIndex,
+	);
+}
+
+export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | undefined): UnifiedViewFilters {
+	return {
+		searchQuery: filter?.searchQuery || "",
+		statusFilter: filter?.status || "",
+		priorityFilter: filter?.priority || "",
+		labelFilter: [...(filter?.labels || [])],
+		milestoneFilter: filter?.milestone || "",
+	};
+}
+
+export function mergeUnifiedViewFilters(current: UnifiedViewFilters, update: UnifiedViewFilters): UnifiedViewFilters {
+	return {
+		...current,
+		searchQuery: update.searchQuery,
+		statusFilter: update.statusFilter,
+		priorityFilter: update.priorityFilter,
+		labelFilter: [...update.labelFilter],
+		milestoneFilter: update.milestoneFilter,
+	};
 }
 
 export async function loadTasksForUnifiedView(
@@ -111,6 +187,11 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			}
 			return;
 		}
+		const initialConfig = await options.core.filesystem.loadConfig();
+		let configuredLabels = initialConfig?.labels ?? [];
+		let milestoneEntities = await options.core.filesystem.listMilestones();
+		let milestoneFilterModel = buildTaskViewerMilestoneFilterModel(milestoneEntities);
+		let currentFilters = createUnifiedViewFilters(options.filter);
 		const initialState: ViewState = {
 			type: options.initialView,
 			selectedTask: options.selectedTask,
@@ -136,20 +217,14 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let boardUpdater: ((nextTasks: Task[], nextStatuses: string[]) => void) | null = null;
 
 		const getRenderableTasks = () => tasks.filter((task) => task.id && task.id.trim() !== "" && hasAnyPrefix(task.id));
+		const getBoardAvailableLabels = () => collectAvailableLabels(getRenderableTasks(), configuredLabels);
+		const getBoardAvailableMilestones = () => [...milestoneFilterModel.availableMilestoneTitles];
 
 		const emitBoardUpdate = () => {
 			if (!boardUpdater) return;
 			boardUpdater(getRenderableTasks(), kanbanStatuses);
 		};
 		let isInitialLoad = true; // Track if this is the first view load
-
-		// Track current filter state
-		const currentFilters = {
-			searchQuery: options.filter?.searchQuery || "",
-			statusFilter: options.filter?.status || "",
-			priorityFilter: options.filter?.priority || "",
-			labelFilter: options.filter?.labels || [],
-		};
 
 		// Create view switcher (without problematic onViewChange callback)
 		viewSwitcher = new ViewSwitcher({
@@ -198,6 +273,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		const configWatcher = watchConfig(options.core, {
 			onConfigChanged: (config) => {
 				kanbanStatuses = config?.statuses ?? [];
+				configuredLabels = config?.labels ?? [];
 				emitBoardUpdate();
 			},
 		});
@@ -251,6 +327,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					statusFilter: currentFilters.statusFilter,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
+					milestoneFilter: currentFilters.milestoneFilter,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					onTaskChange: (newTask) => {
@@ -258,10 +335,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentView = "task-detail";
 					},
 					onFilterChange: (filters) => {
-						currentFilters.searchQuery = filters.searchQuery;
-						currentFilters.statusFilter = filters.statusFilter;
-						currentFilters.priorityFilter = filters.priorityFilter;
-						currentFilters.labelFilter = filters.labelFilter;
+						currentFilters = mergeUnifiedViewFilters(currentFilters, filters);
 					},
 					onTabPress,
 				}).then(() => {
@@ -276,14 +350,14 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 
 		// Function to show kanban view
 		const showKanbanView = async (): Promise<ViewResult> => {
-			// Use the already-loaded tasks - no need for separate kanban loading
-			const kanbanTasks = getRenderableTasks();
-			const statuses = kanbanStatuses;
-
 			const config = await options.core.filesystem.loadConfig();
+			configuredLabels = config?.labels ?? configuredLabels;
 			const layout = "horizontal" as const;
 			const maxColumnWidth = config?.maxColumnWidth || 20;
-			const milestoneEntities = await options.core.filesystem.listMilestones();
+			milestoneEntities = await options.core.filesystem.listMilestones();
+			milestoneFilterModel = buildTaskViewerMilestoneFilterModel(milestoneEntities);
+			const kanbanTasks = getRenderableTasks();
+			const statuses = kanbanStatuses;
 
 			// Show kanban board with view switching support
 			return new Promise<ViewResult>((resolve) => {
@@ -298,6 +372,18 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						selectedTask = task;
 					},
 					onTabPress,
+					filters: createKanbanSharedFilters(currentFilters),
+					availableLabels: getBoardAvailableLabels(),
+					availableMilestones: getBoardAvailableMilestones(),
+					onFilterChange: (filters) => {
+						currentFilters = {
+							...currentFilters,
+							searchQuery: filters.searchQuery,
+							priorityFilter: filters.priorityFilter,
+							labelFilter: [...filters.labelFilter],
+							milestoneFilter: filters.milestoneFilter,
+						};
+					},
 					subscribeUpdates: (updater) => {
 						boardUpdater = updater;
 						emitBoardUpdate();

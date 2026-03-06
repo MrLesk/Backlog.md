@@ -50,10 +50,14 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `get_workflow_overview`, `get_task_creation_guide`, `get_task_execution_guide`, `get_task_finalization_guide`
 - `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_complete`, `task_archive`
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`
+- `definition_of_done_defaults_get`, `definition_of_done_defaults_upsert`
 
 **Definition of Done support**
-- `task_create` accepts `definitionOfDoneAdd` and `disableDefinitionOfDoneDefaults`
-- `task_edit` accepts `definitionOfDoneAdd`, `definitionOfDoneRemove`, `definitionOfDoneCheck`, `definitionOfDoneUncheck`
+- `definition_of_done_defaults_get` reads project-level DoD defaults from config
+- `definition_of_done_defaults_upsert` updates project-level DoD defaults in config
+- `task_create` accepts `definitionOfDoneAdd` and `disableDefinitionOfDoneDefaults` for **exceptional** task-level DoD overrides only
+- `task_edit` accepts `definitionOfDoneAdd`, `definitionOfDoneRemove`, `definitionOfDoneCheck`, `definitionOfDoneUncheck` for **exceptional** task-level DoD updates only
+- DoD is a completion checklist, not acceptance criteria: keep scope/behavior in acceptance criteria, not DoD fields
 - `task_view` output includes the Definition of Done checklist with checked state
 
 **Always operate through the MCP tools above. Never edit markdown files directly; use the tools so relationships, metadata, and history stay consistent.**
