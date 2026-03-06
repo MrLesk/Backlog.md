@@ -196,7 +196,7 @@ complete -C'backlog '
 # Manually verify
 pwsh
 . ./completions/backlog.ps1
-TabExpansion2 -inputScript "backlog task " -cursorColumn 13
+(TabExpansion2 -inputScript "backlog task " -cursorColumn 13).CompletionMatches
 ```
 
 ### Adding New Completions
