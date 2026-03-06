@@ -238,8 +238,7 @@ To update completion scripts:
 
    # Fish
    complete -C'backlog '
-   ```
-   ```powershell
+   
    # PowerShell
    (TabExpansion2 -inputScript "backlog " -cursorColumn 8).CompletionMatches
    ```
