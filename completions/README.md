@@ -259,8 +259,7 @@ To update completion scripts:
 
    # Fish
    exec fish
-   ```
-   ```powershell
+
    # PowerShell
    . $PROFILE.CurrentUserAllHosts
    ```
