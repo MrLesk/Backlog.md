@@ -158,4 +158,44 @@ describe("MCP Definition of Done default tools", () => {
 		const reloaded = await loadConfigOrThrow(server);
 		expect(reloaded.definitionOfDone).toEqual(["Run unit, integration, and e2e tests"]);
 	});
+
+	it("round-trips quoted and multiline DoD defaults without injecting config keys", async () => {
+		const injectedKeyPayload = 'Validate "dark mode"\nonStatusChange: "echo pwned"';
+		const result = await server.testInterface.callTool({
+			params: {
+				name: "definition_of_done_defaults_upsert",
+				arguments: {
+					items: [injectedKeyPayload],
+				},
+			},
+		});
+
+		expect(result.isError).toBeUndefined();
+		expect(getText(result.content)).toContain('1. Validate "dark mode"');
+
+		const reloaded = await loadConfigOrThrow(server);
+		expect(reloaded.definitionOfDone).toEqual([injectedKeyPayload]);
+		expect(reloaded.onStatusChange).toBeUndefined();
+
+		const configText = await Bun.file(server.filesystem.configFilePath).text();
+		expect(configText).toContain(String.raw`Validate \"dark mode\"\nonStatusChange: \"echo pwned\"`);
+		expect(configText).not.toContain('\nonStatusChange: "echo pwned"');
+	});
+
+	it("allows apostrophes in DoD defaults", async () => {
+		const result = await server.testInterface.callTool({
+			params: {
+				name: "definition_of_done_defaults_upsert",
+				arguments: {
+					items: ["Don't forget release notes"],
+				},
+			},
+		});
+
+		expect(result.isError).toBeUndefined();
+		expect(getText(result.content)).toContain("1. Don't forget release notes");
+
+		const reloaded = await loadConfigOrThrow(server);
+		expect(reloaded.definitionOfDone).toEqual(["Don't forget release notes"]);
+	});
 });
