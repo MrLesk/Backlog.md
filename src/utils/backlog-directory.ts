@@ -93,7 +93,13 @@ function resolveBuiltInBacklogDirectory(projectRoot: string): {
 	source: "backlog" | ".backlog";
 } | null {
 	const defaultBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
-	if (directoryExists(defaultBacklogPath)) {
+	const hiddenBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.HIDDEN_BACKLOG);
+	const defaultBacklogExists = directoryExists(defaultBacklogPath);
+	const hiddenBacklogExists = directoryExists(hiddenBacklogPath);
+	const defaultConfigPath = defaultBacklogExists ? resolveFolderConfigPath(defaultBacklogPath) : null;
+	const hiddenConfigPath = hiddenBacklogExists ? resolveFolderConfigPath(hiddenBacklogPath) : null;
+
+	if (defaultConfigPath) {
 		return {
 			backlogDir: DEFAULT_DIRECTORIES.BACKLOG,
 			backlogPath: defaultBacklogPath,
@@ -101,8 +107,23 @@ function resolveBuiltInBacklogDirectory(projectRoot: string): {
 		};
 	}
 
-	const hiddenBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.HIDDEN_BACKLOG);
-	if (directoryExists(hiddenBacklogPath)) {
+	if (hiddenConfigPath) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.HIDDEN_BACKLOG,
+			backlogPath: hiddenBacklogPath,
+			source: ".backlog",
+		};
+	}
+
+	if (defaultBacklogExists) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.BACKLOG,
+			backlogPath: defaultBacklogPath,
+			source: "backlog",
+		};
+	}
+
+	if (hiddenBacklogExists) {
 		return {
 			backlogDir: DEFAULT_DIRECTORIES.HIDDEN_BACKLOG,
 			backlogPath: hiddenBacklogPath,
