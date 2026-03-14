@@ -1,11 +1,11 @@
 ---
 id: BACK-402
 title: Support project-local custom backlog directories
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-03-14 19:55'
-updated_date: '2026-03-14 22:09'
+updated_date: '2026-03-14 22:11'
 labels: []
 dependencies: []
 references:
@@ -26,12 +26,12 @@ Relevant implementation areas:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Project root discovery recognizes root `backlog.config.yml` as a valid backlog marker alongside `backlog/` and `.backlog/.`
-- [ ] #2 If root `backlog.config.yml` exists, it is the canonical config file. When it contains `backlog_directory`, Backlog.md resolves the backlog folder from that project-relative path.
-- [ ] #3 If root `backlog.config.yml` exists but omits `backlog_directory`, Backlog.md falls back to `backlog/` then `.backlog/` inside the same project root.
-- [ ] #4 If root `backlog.config.yml` does not exist, Backlog.md falls back to the folder-local model using `backlog/config.yml` or `.backlog/config.yml`.
-- [ ] #5 CLI init and web init support `backlog/`, `.backlog/`, and custom project-relative folders via root `backlog.config.yml`, and non-interactive CLI supports the same explicitly.
-- [ ] #6 The previous user-profile backlog-directory model is removed from code, tests, and task documentation.
+- [x] #1 Project root discovery recognizes root `backlog.config.yml` as a valid backlog marker alongside `backlog/` and `.backlog/.`
+- [x] #2 If root `backlog.config.yml` exists, it is the canonical config file. When it contains `backlog_directory`, Backlog.md resolves the backlog folder from that project-relative path.
+- [x] #3 If root `backlog.config.yml` exists but omits `backlog_directory`, Backlog.md falls back to `backlog/` then `.backlog/` inside the same project root.
+- [x] #4 If root `backlog.config.yml` does not exist, Backlog.md falls back to the folder-local model using `backlog/config.yml` or `.backlog/config.yml`.
+- [x] #5 CLI init and web init support `backlog/`, `.backlog/`, and custom project-relative folders via root `backlog.config.yml`, and non-interactive CLI supports the same explicitly.
+- [x] #6 The previous user-profile backlog-directory model is removed from code, tests, and task documentation.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -48,6 +48,21 @@ Relevant implementation areas:
 <!-- SECTION:NOTES:BEGIN -->
 Implementation will treat root `backlog.config.yml` as the canonical per-project discovery mechanism and preserve legacy folder-local configs only when the root config is absent.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Reworked `BACK-402` to use deterministic project-root discovery instead of the earlier user-profile backlog-directory model. Backlog root detection now recognizes `backlog.config.yml`, `backlog/`, and `.backlog/`, with root `backlog.config.yml` acting as the canonical config file when present. That root config can declare `backlog_directory` for custom project-relative backlog folders; otherwise Backlog.md falls back to `backlog/` then `.backlog/` within the same project.
+
+Updated shared init, CLI init, web init, and filesystem config resolution so built-in folders and custom project-relative folders all flow through the root config model. Non-interactive CLI now supports explicit backlog-folder and config-location selection without relying on any user-profile setting.
+
+Removed the previous user-profile backlog-directory discovery path from code, tests, and task documentation, and aligned the task record/guidance with the canonical root-config design.
+
+Validation:
+- `bunx tsc --noEmit`
+- `bun run check .`
+- `bun test`
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
