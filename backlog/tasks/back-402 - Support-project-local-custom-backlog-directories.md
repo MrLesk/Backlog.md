@@ -1,11 +1,11 @@
 ---
 id: BACK-402
 title: Support project-local custom backlog directories
-status: Done
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-03-14 19:55'
-updated_date: '2026-03-14 22:11'
+updated_date: '2026-03-14 22:20'
 labels: []
 dependencies: []
 references:
@@ -47,6 +47,8 @@ Relevant implementation areas:
 
 <!-- SECTION:NOTES:BEGIN -->
 Implementation will treat root `backlog.config.yml` as the canonical per-project discovery mechanism and preserve legacy folder-local configs only when the root config is absent.
+
+Fixing init so custom backlog directories always require root config discovery in shared initialization, even when API callers omit `configLocation`.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

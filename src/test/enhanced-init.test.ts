@@ -502,4 +502,33 @@ describe("Enhanced init command", () => {
 		expect(freshConfig?.projectName).toBe("Custom Backlog Init");
 		expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
 	});
+
+	test("initializeProject should default custom backlog directories to root config when configLocation is omitted", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Custom Backlog Default Root",
+			backlogDirectory: "planning/backlog-data",
+			backlogDirectorySource: "custom",
+			integrationMode: "none",
+		});
+
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		expect(await Bun.file(rootConfigPath).exists()).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
+	});
+
+	test("initializeProject should reject custom backlog directories with folder config location", async () => {
+		const core = new Core(tmpDir);
+		await expect(
+			initializeProject(core, {
+				projectName: "Invalid Custom Folder Config",
+				backlogDirectory: "planning/backlog-data",
+				backlogDirectorySource: "custom",
+				configLocation: "folder",
+				integrationMode: "none",
+			}),
+		).rejects.toThrow("Custom backlog directories require root config discovery.");
+	});
 });
