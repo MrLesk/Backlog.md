@@ -5,7 +5,7 @@ import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -24,7 +24,7 @@ describe("Config commands", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Test Config Project");
+		await initializeTestProject(core, "Test Config Project");
 	});
 
 	function createPromptStub(sequence: Array<Record<string, unknown>>): PromptRunner {

@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -22,7 +22,7 @@ describe("Task edit section preservation", () => {
 
 		// Initialize backlog project using Core
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Task Edit Preservation Test");
+		await initializeTestProject(core, "Task Edit Preservation Test");
 	});
 
 	afterEach(async () => {

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { apiClient } from '../lib/api';
+import React, { useState, useEffect } from 'react';
 import { type Task } from '../../types';
 
 interface DraftsListProps {

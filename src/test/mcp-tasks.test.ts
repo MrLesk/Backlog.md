@@ -4,7 +4,7 @@ import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 // Helper to extract text from MCP content (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -33,7 +33,7 @@ describe("MCP task tools (MVP)", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-		await mcpServer.initializeProject("Test Project");
+		await initializeTestProject(mcpServer, "Test Project");
 
 		const config = await loadConfig(mcpServer);
 		registerTaskTools(mcpServer, config);

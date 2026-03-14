@@ -56,7 +56,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSubmit,
   onArchive,
   availableStatuses,
-  availableMilestones,
+  availableMilestones: _availableMilestones,
   milestoneEntities,
   archivedMilestoneEntities,
   isDraftMode,
@@ -1087,32 +1087,6 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void; d
         <option key={s} value={s}>{s}</option>
       ))}
     </select>
-  );
-};
-
-const AutoResizeTextarea: React.FC<{
-  value: string;
-  onChange: (v: string) => void;
-  onBlur?: () => void;
-  placeholder?: string;
-}> = ({ value, onChange, onBlur, placeholder }) => {
-  const ref = React.useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    const el = ref.current;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onBlur={onBlur}
-      rows={1}
-      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 resize-none"
-      placeholder={placeholder}
-    />
   );
 };
 

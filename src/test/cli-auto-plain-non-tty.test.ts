@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -22,7 +22,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Auto Plain Non-TTY Test");
+		await initializeTestProject(core, "Auto Plain Non-TTY Test");
 
 		const seedTask: Task = {
 			id: "task-1",

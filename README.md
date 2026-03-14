@@ -57,7 +57,7 @@ The init wizard will ask how you want to connect AI tools:
 - **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.
 - **Skip** — no AI setup; use Backlog.md purely as a task manager.
 
-All data is saved under the `backlog` folder as human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`).
+Backlog data is stored in a project-local backlog folder such as `backlog/`, `.backlog/`, or a custom project-relative path configured through `backlog.config.yml`. Tasks remain human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`).
 
 ---
 
@@ -235,9 +235,10 @@ Full help: `backlog --help`
 Backlog.md merges the following layers (highest → lowest):
 
 1. CLI flags
-2. `backlog/config.yml` (per‑project)
-3. `~/backlog/user` (per‑user)
-4. Built‑ins
+2. Project config file:
+   - `backlog.config.yml` when present
+   - otherwise `backlog/config.yml` or `.backlog/config.yml`
+3. Built‑ins
 
 ### Interactive wizard (`backlog config`)
 
@@ -260,7 +261,7 @@ Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-po
 
 ### Definition of Done defaults
 
-Set project-wide DoD items with `backlog config` (or during `backlog init` advanced setup), in the Web UI (Settings → Definition of Done Defaults), or by editing `backlog/config.yml` directly:
+Set project-wide DoD items with `backlog config` (or during `backlog init` advanced setup), in the Web UI (Settings → Definition of Done Defaults), or by editing the project config file directly:
 
 ```yaml
 definition_of_done:
@@ -268,6 +269,8 @@ definition_of_done:
   - Documentation updated
   - No regressions introduced
 ```
+
+When a project uses root config discovery, edit `backlog.config.yml` instead of `backlog/config.yml`.
 
 These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`.
 

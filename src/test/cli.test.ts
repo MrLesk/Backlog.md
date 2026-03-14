@@ -7,7 +7,7 @@ import { parseTask } from "../markdown/parser.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -40,7 +40,7 @@ describe("CLI Integration", () => {
 
 			// Initialize backlog project using Core (simulating CLI)
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("CLI Test Project", true);
+			await initializeTestProject(core, "CLI Test Project", true);
 
 			// Verify directory structure was created
 			const configExists = await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists();
@@ -64,7 +64,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Directory Test");
+			await initializeTestProject(core, "Directory Test");
 
 			// Check all expected directories exist
 			const expectedDirs = [
@@ -99,7 +99,7 @@ describe("CLI Integration", () => {
 
 			const core = new Core(TEST_DIR);
 			const specialProjectName = "My-Project_2024 (v1.0)";
-			await core.initializeProject(specialProjectName);
+			await initializeTestProject(core, specialProjectName);
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe(specialProjectName);
@@ -115,7 +115,7 @@ describe("CLI Integration", () => {
 			expect(isRepo).toBe(true);
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Existing Repo Test");
+			await initializeTestProject(core, "Existing Repo Test");
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Existing Repo Test");
@@ -128,7 +128,7 @@ describe("CLI Integration", () => {
 
 			// Test the CLI implementation by directly using the Core functionality
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Test Project");
+			await initializeTestProject(core, "Test Project");
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Test Project");
@@ -142,7 +142,7 @@ describe("CLI Integration", () => {
 
 			// Simulate the agent instructions being added
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Agent Test Project");
+			await initializeTestProject(core, "Agent Test Project");
 
 			// Import and call addAgentInstructions directly (simulating user saying "y")
 			const { addAgentInstructions } = await import("../index.ts");
@@ -195,7 +195,7 @@ describe("CLI Integration", () => {
 				.cwd(TEST_DIR)
 				.text();
 
-			expect(output).toContain("Initialization Summary:");
+			expect(output).toContain("Initialization Summary");
 			expect(output).toContain("Project Name: SummaryProj");
 			expect(output).toContain("AI Integration: CLI commands (legacy)");
 			expect(output).toContain("Advanced settings: unchanged");
@@ -240,11 +240,71 @@ describe("CLI Integration", () => {
 			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`.cwd(TEST_DIR).text();
 
 			expect(output).not.toContain("AI Integration:");
-			expect(output).toContain("AI integration skipped");
+			expect(output).toContain("AI integration: skipped");
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			expect(agentsFile).toBe(false);
 			expect(claudeFile).toBe(false);
+		});
+
+		it("should support non-interactive .backlog selection via --backlog-dir", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output = await $`bun ${CLI_PATH} init HiddenProj --defaults --integration-mode none --backlog-dir .backlog`
+				.cwd(TEST_DIR)
+				.text();
+
+			expect(output).toContain("Backlog directory: .backlog");
+			expect(await Bun.file(join(TEST_DIR, ".backlog", "config.yml")).exists()).toBe(true);
+			expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
+		});
+
+		it("should store custom non-interactive backlog dir in root backlog.config.yml", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output =
+				await $`bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --backlog-dir planning/backlog-data`
+					.cwd(TEST_DIR)
+					.text();
+
+			expect(output).toContain("Backlog directory: planning/backlog-data");
+			expect(output).toContain("Config location: backlog.config.yml");
+			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
+			const rootConfig = await Bun.file(join(TEST_DIR, "backlog.config.yml")).text();
+			expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		});
+
+		it("should reject invalid --backlog-dir values", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const result =
+				await $`bun ${CLI_PATH} init InvalidDirProj --defaults --integration-mode none --backlog-dir ../outside`
+					.cwd(TEST_DIR)
+					.nothrow();
+			const output = result.stdout.toString() + result.stderr.toString();
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Invalid --backlog-dir value");
+		});
+
+		it("should reject --backlog-dir during re-initialization", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
+
+			const result = await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none --backlog-dir .backlog`
+				.cwd(TEST_DIR)
+				.nothrow();
+			const output = result.stdout.toString() + result.stderr.toString();
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("fixed after initialization");
 		});
 
 		it("should reject MCP integration when agent instruction flags are provided", async () => {
@@ -309,7 +369,7 @@ describe("CLI Integration", () => {
 
 		it("should create initial commit with backlog structure", async () => {
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Git Integration Test", true);
+			await initializeTestProject(core, "Git Integration Test", true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toBe("backlog: Initialize backlog project: Git Integration Test");
@@ -328,7 +388,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("List Test Project", true);
+			await initializeTestProject(core, "List Test Project", true);
 		});
 
 		it("should show 'No tasks found' when no tasks exist", async () => {
@@ -534,7 +594,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("View Test Project");
+			await initializeTestProject(core, "View Test Project");
 		});
 
 		it("should display task details with markdown formatting", async () => {
@@ -636,7 +696,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Shortcut Test Project");
+			await initializeTestProject(core, "Shortcut Test Project");
 		});
 
 		it("should display formatted task details like the view command", async () => {
@@ -675,7 +735,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Edit Test Project", true);
+			await initializeTestProject(core, "Edit Test Project", true);
 		});
 
 		it("should update task title, description, and status", async () => {
@@ -938,7 +998,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Archive Test Project");
+			await initializeTestProject(core, "Archive Test Project");
 		});
 
 		it("should archive a task", async () => {
@@ -1187,7 +1247,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Doc Test Project");
+			await initializeTestProject(core, "Doc Test Project");
 		});
 
 		it("should create and list documents", async () => {
@@ -1232,7 +1292,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await core.initializeProject("Board Test Project", true);
+			await initializeTestProject(core, "Board Test Project", true);
 		});
 
 		it("should display kanban board with tasks grouped by status", async () => {

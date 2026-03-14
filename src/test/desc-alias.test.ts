@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -26,7 +26,7 @@ describe("--desc alias functionality", () => {
 
 		// Initialize backlog project using Core
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Desc Alias Test Project");
+		await initializeTestProject(core, "Desc Alias Test Project");
 	});
 
 	afterEach(async () => {
@@ -38,9 +38,7 @@ describe("--desc alias functionality", () => {
 	});
 
 	it("should create task with --desc alias", async () => {
-		const _result = await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`
-			.cwd(TEST_DIR)
-			.quiet();
+		await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`.cwd(TEST_DIR).quiet();
 
 		// Check that command succeeded (no exception thrown)
 		const output = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();

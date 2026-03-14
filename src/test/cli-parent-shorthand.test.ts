@@ -19,7 +19,7 @@ describe("CLI parent shorthand option", () => {
 
 		// Initialize backlog project using Core (simulating CLI)
 		const core = new Core(testDir);
-		await core.initializeProject("Test Project");
+		await initializeTestProject(core, "Test Project");
 	});
 
 	afterAll(async () => {
@@ -89,3 +89,5 @@ describe("CLI parent shorthand option", () => {
 		expect(helpResult.stdout).toContain("--no-dod-defaults");
 	});
 });
+
+import { initializeTestProject } from "./test-utils.ts";

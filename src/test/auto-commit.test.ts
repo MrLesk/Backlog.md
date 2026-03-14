@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -22,7 +22,7 @@ describe("Auto-commit configuration", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Test Auto-commit Project", true);
+		await initializeTestProject(core, "Test Auto-commit Project", true);
 	});
 
 	afterEach(async () => {

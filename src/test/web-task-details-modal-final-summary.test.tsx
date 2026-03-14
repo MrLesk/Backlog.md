@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
-import React from "react";
 import { renderToString } from "react-dom/server";
 import type { Milestone, Task } from "../types/index.ts";
 import { ThemeProvider } from "../web/contexts/ThemeContext";

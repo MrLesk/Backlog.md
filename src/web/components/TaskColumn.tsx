@@ -100,10 +100,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     });
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);

@@ -17,8 +17,6 @@ const bold = (c: boolean | undefined, s: string) => colorize(c, "1", s);
 const dim = (c: boolean | undefined, s: string) => colorize(c, "2", s);
 const cyan = (c: boolean | undefined, s: string) => colorize(c, "36", s);
 const green = (c: boolean | undefined, s: string) => colorize(c, "32", s);
-const _magenta = (c: boolean | undefined, s: string) => colorize(c, "35", s);
-
 // Removed terminal theme heuristics; keep splash accent simple and consistent
 
 function getWideLogoLines(): string[] {

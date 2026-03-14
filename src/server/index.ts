@@ -1492,15 +1492,24 @@ export class BacklogServer {
 	private async handleGetStatus(): Promise<Response> {
 		try {
 			const config = await this.core.filesystem.loadConfig();
+			const backlogResolution = this.core.filesystem.resolveBacklogDirectoryInfo();
 			return Response.json({
 				initialized: !!config,
 				projectPath: this.core.filesystem.rootDir,
+				backlogDirectory: backlogResolution.backlogDir,
+				backlogDirectorySource: backlogResolution.source,
+				configLocation: backlogResolution.configSource,
+				rootConfigPath: backlogResolution.rootConfigPath,
 			});
 		} catch (error) {
 			console.error("Error getting status:", error);
 			return Response.json({
 				initialized: false,
 				projectPath: this.core.filesystem.rootDir,
+				backlogDirectory: null,
+				backlogDirectorySource: null,
+				configLocation: null,
+				rootConfigPath: null,
 			});
 		}
 	}
@@ -1509,6 +1518,15 @@ export class BacklogServer {
 		try {
 			const body = await req.json();
 			const projectName = typeof body.projectName === "string" ? body.projectName.trim() : "";
+			const backlogDirectory = typeof body.backlogDirectory === "string" ? body.backlogDirectory.trim() : undefined;
+			const backlogDirectorySource =
+				body.backlogDirectorySource === "backlog" ||
+				body.backlogDirectorySource === ".backlog" ||
+				body.backlogDirectorySource === "custom"
+					? body.backlogDirectorySource
+					: undefined;
+			const configLocation =
+				body.configLocation === "folder" || body.configLocation === "root" ? body.configLocation : undefined;
 			const integrationMode = body.integrationMode as "mcp" | "cli" | "none" | undefined;
 			const mcpClients = Array.isArray(body.mcpClients) ? body.mcpClients : [];
 			const agentInstructions = Array.isArray(body.agentInstructions) ? body.agentInstructions : [];
@@ -1529,6 +1547,9 @@ export class BacklogServer {
 			// Call shared core init function
 			const result = await initializeProject(this.core, {
 				projectName,
+				backlogDirectory,
+				backlogDirectorySource,
+				configLocation,
 				integrationMode: integrationMode || "none",
 				mcpClients,
 				agentInstructions,

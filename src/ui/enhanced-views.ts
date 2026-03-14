@@ -32,7 +32,6 @@ export async function runEnhancedViews(options: EnhancedViewOptions): Promise<vo
 		filter: options.filter,
 	};
 
-	const _currentView: (() => Promise<void>) | null = null;
 	let viewSwitcher: ViewSwitcher | null = null;
 
 	// Create view switcher with state change handler

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -20,7 +20,7 @@ describe("Board Loading with checkActiveBranches", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize project with default config
-		await core.initializeProject("Test Project", false);
+		await initializeTestProject(core, "Test Project", false);
 	});
 
 	afterEach(async () => {
@@ -154,10 +154,6 @@ describe("Board Loading with checkActiveBranches", () => {
 			expect(tasks.find((t) => t.id === "TASK-4")).toBeUndefined();
 
 			// Check that branch checking happened with the right days
-			const _branchCheckMessage = progressMessages.find(
-				(msg) => msg.includes("branches") && (msg.includes("30 days") || msg.includes("from 30 days")),
-			);
-			// The message format might vary, so we just check that some branch-related message exists
 			const anyBranchMessage = progressMessages.find((msg) => msg.includes("branch"));
 			expect(anyBranchMessage).toBeDefined();
 		});
