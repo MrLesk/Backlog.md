@@ -171,7 +171,13 @@ export async function initializeProject(
 		if (options.backlogDirectorySource === "custom" && effectiveConfigLocation !== "root") {
 			throw new Error("Custom backlog directories require root config discovery.");
 		}
-		const selectedBacklogDirectory = normalizedBacklogDirectory ?? "backlog";
+		const selectedBacklogDirectory =
+			normalizedBacklogDirectory ??
+			(options.backlogDirectorySource === ".backlog"
+				? ".backlog"
+				: options.backlogDirectorySource === "backlog"
+					? "backlog"
+					: "backlog");
 		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);
 		core.filesystem.setConfigLocation(effectiveConfigLocation);
 		await core.filesystem.ensureBacklogStructure();

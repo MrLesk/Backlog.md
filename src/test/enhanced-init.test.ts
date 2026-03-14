@@ -480,6 +480,19 @@ describe("Enhanced init command", () => {
 		expect(core.filesystem.backlogDirName).toBe(".backlog");
 	});
 
+	test("initializeProject should honor .backlog source when backlogDirectory is omitted", async () => {
+		const core = new Core(tmpDir);
+
+		await initializeProject(core, {
+			projectName: "Hidden Backlog Source Only",
+			backlogDirectorySource: ".backlog",
+			integrationMode: "none",
+		});
+
+		expect(await Bun.file(join(tmpDir, ".backlog", "config.yml")).exists()).toBe(true);
+		expect(await Bun.file(join(tmpDir, "backlog", "config.yml")).exists()).toBe(false);
+	});
+
 	test("initializeProject should create a root backlog.config.yml for custom backlog directories", async () => {
 		const core = new Core(tmpDir);
 		await initializeProject(core, {
