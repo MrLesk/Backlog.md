@@ -32,7 +32,7 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 	// Walk up the directory tree looking for a supported backlog directory or backlog.json
 	while (current !== dirname(current)) {
 		const backlogResolution = resolveBacklogDirectory(current);
-		if (backlogResolution.rootConfigExists || backlogResolution.backlogPath) {
+		if (backlogResolution.configPath || backlogResolution.backlogPath) {
 			return current;
 		}
 
@@ -55,7 +55,7 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 			const backlogJson = join(gitRoot, "backlog.json");
 
 			const backlogResolution = resolveBacklogDirectory(gitRoot);
-			if (backlogResolution.rootConfigExists || backlogResolution.backlogPath || (await fileExists(backlogJson))) {
+			if (backlogResolution.configPath || backlogResolution.backlogPath || (await fileExists(backlogJson))) {
 				return gitRoot;
 			}
 		}

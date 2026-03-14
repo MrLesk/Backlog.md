@@ -151,9 +151,19 @@ describe("findBacklogRoot", () => {
 
 	it("should find root when project root backlog.config.yml points to a custom backlog directory", async () => {
 		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
-		await writeFile(join(testDir, "backlog.config.yml"), 'backlog_directory: "planning/backlog"\n');
+		await writeFile(
+			join(testDir, "backlog.config.yml"),
+			'project_name: "Test"\nbacklog_directory: "planning/backlog"\n',
+		);
 
 		const result = await findBacklogRoot(testDir);
 		expect(result).toBe(testDir);
+	});
+
+	it("should ignore placeholder backlog.config.yml files that do not look like Backlog config", async () => {
+		await writeFile(join(testDir, "backlog.config.yml"), 'name: "placeholder"\n');
+
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBeNull();
 	});
 });

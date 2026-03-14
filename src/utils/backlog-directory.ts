@@ -16,6 +16,11 @@ export interface BacklogDirectoryResolution {
 	rootConfigExists: boolean;
 }
 
+interface BacklogConfigMetadata {
+	projectName: string | null;
+	backlogDirectory: string | null;
+}
+
 function directoryExists(path: string): boolean {
 	try {
 		return statSync(path).isDirectory();
@@ -32,7 +37,10 @@ function fileExists(path: string): boolean {
 	}
 }
 
-function parseBacklogDirectoryValue(content: string): string | null {
+function parseBacklogConfigMetadata(content: string): BacklogConfigMetadata {
+	let projectName: string | null = null;
+	let backlogDirectory: string | null = null;
+
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
 		if (!line || line.startsWith("#")) {
@@ -43,24 +51,28 @@ function parseBacklogDirectoryValue(content: string): string | null {
 			continue;
 		}
 		const key = line.slice(0, colonIndex).trim();
-		if (key !== "backlog_directory" && key !== "backlogDirectory") {
-			continue;
-		}
 		const value = line
 			.slice(colonIndex + 1)
 			.trim()
 			.replace(/^['"]|['"]$/g, "");
-		return normalizeProjectBacklogDirectory(value);
+		if ((key === "project_name" || key === "projectName") && value) {
+			projectName = value;
+			continue;
+		}
+		if (key === "backlog_directory" || key === "backlogDirectory") {
+			backlogDirectory = normalizeProjectBacklogDirectory(value);
+		}
 	}
-	return null;
+	return { projectName, backlogDirectory };
 }
 
-function readRootBacklogDirectory(rootConfigPath: string): string | null {
+function readRootBacklogConfigMetadata(rootConfigPath: string): BacklogConfigMetadata | null {
 	if (!fileExists(rootConfigPath)) {
 		return null;
 	}
 	try {
-		return parseBacklogDirectoryValue(readFileSync(rootConfigPath, "utf8"));
+		const metadata = parseBacklogConfigMetadata(readFileSync(rootConfigPath, "utf8"));
+		return metadata.projectName ? metadata : null;
 	} catch {
 		return null;
 	}
@@ -125,8 +137,22 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 	const rootConfigExists = fileExists(rootConfigPath);
 
 	if (rootConfigExists) {
-		const configuredBacklogDir = readRootBacklogDirectory(rootConfigPath);
+		const metadata = readRootBacklogConfigMetadata(rootConfigPath);
+		const configuredBacklogDir = metadata?.backlogDirectory ?? null;
 		if (configuredBacklogDir) {
+			const configuredBacklogPath = join(projectRoot, configuredBacklogDir);
+			if (!directoryExists(configuredBacklogPath)) {
+				return {
+					projectRoot,
+					backlogDir: null,
+					backlogPath: null,
+					source: null,
+					configPath: null,
+					configSource: null,
+					rootConfigPath,
+					rootConfigExists,
+				};
+			}
 			const configuredSource: BacklogDirectorySource =
 				configuredBacklogDir === DEFAULT_DIRECTORIES.BACKLOG
 					? "backlog"
@@ -136,7 +162,7 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 			return {
 				projectRoot,
 				backlogDir: configuredBacklogDir,
-				backlogPath: join(projectRoot, configuredBacklogDir),
+				backlogPath: configuredBacklogPath,
 				source: configuredSource,
 				configPath: rootConfigPath,
 				configSource: "root",
@@ -146,7 +172,7 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 		}
 
 		const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
-		if (builtIn) {
+		if (metadata && builtIn) {
 			return {
 				projectRoot,
 				backlogDir: builtIn.backlogDir,
@@ -164,8 +190,8 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 			backlogDir: null,
 			backlogPath: null,
 			source: null,
-			configPath: rootConfigPath,
-			configSource: "root",
+			configPath: null,
+			configSource: null,
 			rootConfigPath,
 			rootConfigExists,
 		};
