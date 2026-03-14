@@ -1,4 +1,3 @@
-import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { Core } from "../index.ts";
 
 /**
@@ -13,7 +12,7 @@ export async function generateNextDocId(core: Core): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const backlogDir = core.filesystem.backlogDirName;
 
 		// Skip remote operations if disabled
 		if (config?.remoteOperations === false) {
@@ -86,7 +85,7 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const backlogDir = core.filesystem.backlogDirName;
 
 		// Skip remote operations if disabled
 		if (config?.remoteOperations === false) {

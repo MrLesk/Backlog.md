@@ -1,10 +1,10 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import {
 	buildGlobPattern,
@@ -24,92 +24,56 @@ interface TaskPathContext {
 }
 
 export class FileSystem {
-	private readonly backlogDir: string;
+	private resolvedBacklogDir: string;
+	private resolvedBacklogDirName: string;
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
-		this.backlogDir = join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+		const resolution = resolveBacklogDirectory(projectRoot);
+		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
+		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 	}
 
 	private async getBacklogDir(): Promise<string> {
-		// Ensure migration is checked if needed
-		if (!this.cachedConfig) {
-			this.cachedConfig = await this.loadConfigDirect();
-		}
-		// Always use "backlog" as the directory name - no configuration needed
-		return join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
-	}
-
-	private async loadConfigDirect(): Promise<BacklogConfig | null> {
-		try {
-			// First try the standard "backlog" directory
-			let configPath = join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.CONFIG);
-			let file = Bun.file(configPath);
-			let exists = await file.exists();
-
-			// If not found, check for legacy ".backlog" directory and migrate it
-			if (!exists) {
-				const legacyBacklogDir = join(this.projectRoot, ".backlog");
-				const legacyConfigPath = join(legacyBacklogDir, DEFAULT_FILES.CONFIG);
-				const legacyFile = Bun.file(legacyConfigPath);
-				const legacyExists = await legacyFile.exists();
-
-				if (legacyExists) {
-					// Migrate legacy .backlog directory to backlog
-					const newBacklogDir = join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
-					await rename(legacyBacklogDir, newBacklogDir);
-
-					// Update paths to use the new location
-					configPath = join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.CONFIG);
-					file = Bun.file(configPath);
-					exists = true;
-				}
-			}
-
-			if (!exists) {
-				return null;
-			}
-
-			const content = await file.text();
-			return this.parseConfig(content);
-		} catch (_error) {
-			if (process.env.DEBUG) {
-				console.error("Error loading config:", _error);
-			}
-			return null;
-		}
+		return this.resolvedBacklogDir;
 	}
 
 	// Public accessors for directory paths
+	get backlogDir(): string {
+		return this.resolvedBacklogDir;
+	}
+	get backlogDirName(): string {
+		return this.resolvedBacklogDirName;
+	}
 	get tasksDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.TASKS);
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.TASKS);
 	}
 	get completedDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.COMPLETED);
 	}
 
 	get archiveTasksDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
 	get archiveMilestonesDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
 	}
 	get decisionsDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.DECISIONS);
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.DECISIONS);
 	}
 
 	get docsDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.DOCS);
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.DOCS);
 	}
 
 	get milestonesDir(): string {
-		return join(this.backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.MILESTONES);
 	}
 
 	get configFilePath(): string {
-		return join(this.backlogDir, DEFAULT_FILES.CONFIG);
+		return join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 	}
 
 	/** Get the project root directory */
@@ -119,6 +83,22 @@ export class FileSystem {
 
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
+		const resolution = resolveBacklogDirectory(this.projectRoot);
+		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
+		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+	}
+
+	setBacklogDirectory(backlogDir: string): void {
+		const normalized = normalizeProjectBacklogDirectory(backlogDir);
+		if (!normalized) {
+			throw new Error("Backlog directory must be a project-relative path.");
+		}
+		this.resolvedBacklogDirName = normalized;
+		this.resolvedBacklogDir = join(this.projectRoot, normalized);
+	}
+
+	resolveBacklogDirectoryInfo() {
+		return resolveBacklogDirectory(this.projectRoot);
 	}
 
 	private async getTasksDir(): Promise<string> {
@@ -1166,69 +1146,6 @@ ${description || `Milestone: ${title}`}`,
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
-	}
-
-	async getUserSetting(key: string, global = false): Promise<string | undefined> {
-		const settings = await this.loadUserSettings(global);
-		return settings ? settings[key] : undefined;
-	}
-
-	async setUserSetting(key: string, value: string, global = false): Promise<void> {
-		const settings = (await this.loadUserSettings(global)) || {};
-		settings[key] = value;
-		await this.saveUserSettings(settings, global);
-	}
-
-	private async loadUserSettings(global = false): Promise<Record<string, string> | null> {
-		const primaryPath = global
-			? join(homedir(), "backlog", DEFAULT_FILES.USER)
-			: join(this.projectRoot, DEFAULT_FILES.USER);
-		const fallbackPath = global ? join(this.projectRoot, "backlog", DEFAULT_FILES.USER) : undefined;
-		const tryPaths = fallbackPath ? [primaryPath, fallbackPath] : [primaryPath];
-		for (const filePath of tryPaths) {
-			try {
-				const content = await Bun.file(filePath).text();
-				const result: Record<string, string> = {};
-				for (const line of content.split(/\r?\n/)) {
-					const trimmed = line.trim();
-					if (!trimmed || trimmed.startsWith("#")) continue;
-					const idx = trimmed.indexOf(":");
-					if (idx === -1) continue;
-					const k = trimmed.substring(0, idx).trim();
-					result[k] = trimmed
-						.substring(idx + 1)
-						.trim()
-						.replace(/^['"]|['"]$/g, "");
-				}
-				return result;
-			} catch {
-				// Try next path (if any)
-			}
-		}
-		return null;
-	}
-
-	private async saveUserSettings(settings: Record<string, string>, global = false): Promise<void> {
-		const primaryPath = global
-			? join(homedir(), "backlog", DEFAULT_FILES.USER)
-			: join(this.projectRoot, DEFAULT_FILES.USER);
-		const fallbackPath = global ? join(this.projectRoot, "backlog", DEFAULT_FILES.USER) : undefined;
-
-		const lines = Object.entries(settings).map(([k, v]) => `${k}: ${v}`);
-		const data = `${lines.join("\n")}\n`;
-
-		try {
-			await this.ensureDirectoryExists(dirname(primaryPath));
-			await Bun.write(primaryPath, data);
-			return;
-		} catch {
-			// Fall through to fallback when global write fails (e.g., sandboxed env)
-		}
-
-		if (fallbackPath) {
-			await this.ensureDirectoryExists(dirname(fallbackPath));
-			await Bun.write(fallbackPath, data);
-		}
 	}
 
 	// Utility methods

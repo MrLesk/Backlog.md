@@ -195,7 +195,7 @@ describe("CLI Integration", () => {
 				.cwd(TEST_DIR)
 				.text();
 
-			expect(output).toContain("Initialization Summary:");
+			expect(output).toContain("Initialization Summary");
 			expect(output).toContain("Project Name: SummaryProj");
 			expect(output).toContain("AI Integration: CLI commands (legacy)");
 			expect(output).toContain("Advanced settings: unchanged");
@@ -240,11 +240,77 @@ describe("CLI Integration", () => {
 			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`.cwd(TEST_DIR).text();
 
 			expect(output).not.toContain("AI Integration:");
-			expect(output).toContain("AI integration skipped");
+			expect(output).toContain("AI integration: skipped");
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			expect(agentsFile).toBe(false);
 			expect(claudeFile).toBe(false);
+		});
+
+		it("should support non-interactive .backlog selection via --backlog-dir", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output = await $`bun ${CLI_PATH} init HiddenProj --defaults --integration-mode none --backlog-dir .backlog`
+				.cwd(TEST_DIR)
+				.text();
+
+			expect(output).toContain("Backlog directory: .backlog");
+			expect(await Bun.file(join(TEST_DIR, ".backlog", "config.yml")).exists()).toBe(true);
+			expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
+		});
+
+		it("should store custom non-interactive backlog dir in profile config", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const testHome = createUniqueTestDir("test-cli-home");
+			await mkdir(join(testHome, ".config", "backlog.md"), { recursive: true });
+
+			try {
+				const output =
+					await $`env HOME=${testHome} bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --backlog-dir planning/backlog-data`
+						.cwd(TEST_DIR)
+						.text();
+
+				expect(output).toContain("Backlog directory: planning/backlog-data");
+				expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(true);
+				const userConfig = await Bun.file(join(testHome, ".config", "backlog.md", "config.yaml")).text();
+				expect(userConfig).toContain('backlog_directory: "planning/backlog-data"');
+			} finally {
+				await safeCleanup(testHome);
+			}
+		});
+
+		it("should reject invalid --backlog-dir values", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const result =
+				await $`bun ${CLI_PATH} init InvalidDirProj --defaults --integration-mode none --backlog-dir ../outside`
+					.cwd(TEST_DIR)
+					.nothrow();
+			const output = result.stdout.toString() + result.stderr.toString();
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Invalid --backlog-dir value");
+		});
+
+		it("should reject --backlog-dir during re-initialization", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
+
+			const result = await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none --backlog-dir .backlog`
+				.cwd(TEST_DIR)
+				.nothrow();
+			const output = result.stdout.toString() + result.stderr.toString();
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("fixed after initialization");
 		});
 
 		it("should reject MCP integration when agent instruction flags are provided", async () => {

@@ -38,9 +38,7 @@ describe("--desc alias functionality", () => {
 	});
 
 	it("should create task with --desc alias", async () => {
-		const _result = await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`
-			.cwd(TEST_DIR)
-			.quiet();
+		await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`.cwd(TEST_DIR).quiet();
 
 		// Check that command succeeded (no exception thrown)
 		const output = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();

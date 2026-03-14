@@ -50,6 +50,7 @@ import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
+import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
@@ -426,6 +427,10 @@ program
 	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
 	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
+	.option(
+		"--backlog-dir <path>",
+		"backlog folder for init: backlog, .backlog, or a project-relative path stored in the user profile config",
+	)
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--defaults", "use default values for all prompts")
 	.action(
@@ -443,6 +448,7 @@ program
 				autoOpenBrowser?: string;
 				installClaudeAgent?: string;
 				integrationMode?: string;
+				backlogDir?: string;
 				taskPrefix?: string;
 				defaults?: boolean;
 			},
@@ -480,6 +486,12 @@ program
 					console.log(
 						"Existing backlog project detected. Current configuration will be preserved where not specified.",
 					);
+					if (options.backlogDir) {
+						console.error(
+							"The backlog directory is fixed after initialization. Re-run init without --backlog-dir for this project.",
+						);
+						process.exit(1);
+					}
 				}
 
 				// Helper function to parse boolean strings
@@ -516,6 +528,7 @@ program
 					options.autoOpenBrowser ||
 					options.installClaudeAgent ||
 					options.integrationMode ||
+					options.backlogDir ||
 					options.taskPrefix
 				);
 
@@ -548,6 +561,100 @@ program
 					if (!name) {
 						abortInitialization();
 						return;
+					}
+				}
+
+				let backlogDirectory: string | undefined;
+				let backlogDirectorySource: "backlog" | ".backlog" | "profile" | undefined;
+				if (!isReInitialization) {
+					const backlogResolution = core.filesystem.resolveBacklogDirectoryInfo();
+					const defaultBacklogDirectory =
+						backlogResolution.backlogDir ?? backlogResolution.profileBacklogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
+					const defaultBacklogSource =
+						backlogResolution.source ??
+						(backlogResolution.profileBacklogDir && !backlogResolution.profileBacklogExists ? "profile" : "backlog");
+					const normalizedBacklogDirOption = options.backlogDir
+						? normalizeProjectBacklogDirectory(options.backlogDir)
+						: undefined;
+					if (options.backlogDir && !normalizedBacklogDirOption) {
+						console.error(
+							"Invalid --backlog-dir value. Use 'backlog', '.backlog', or a project-relative path inside the project.",
+						);
+						process.exit(1);
+					}
+
+					if (isNonInteractive) {
+						if (normalizedBacklogDirOption) {
+							backlogDirectory = normalizedBacklogDirOption;
+							backlogDirectorySource =
+								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.BACKLOG ||
+								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
+									? (normalizedBacklogDirOption as "backlog" | ".backlog")
+									: "profile";
+						} else {
+							backlogDirectory = defaultBacklogDirectory;
+							backlogDirectorySource = defaultBacklogSource;
+						}
+					} else {
+						if (backlogResolution.profileBacklogDir && !backlogResolution.profileBacklogExists) {
+							clack.note(
+								[
+									`Profile config points to "${backlogResolution.profileBacklogDir}", but that folder does not exist in this project yet.`,
+									"You can keep that choice or switch to backlog/ or .backlog.",
+								].join(" "),
+								"Backlog folder hint",
+							);
+						}
+
+						const locationPrompt = await clack.select({
+							message: "Where should Backlog.md store project files?",
+							initialValue: defaultBacklogSource,
+							options: [
+								{
+									label: "backlog/ (default)",
+									value: "backlog",
+									hint: "Store tasks and config in backlog/",
+								},
+								{
+									label: ".backlog/",
+									value: ".backlog",
+									hint: "Store tasks and config in .backlog/",
+								},
+								{
+									label: "Custom path from profile config",
+									value: "profile",
+									hint: backlogResolution.profileBacklogDir
+										? `Use or update ${backlogResolution.profileBacklogDir}`
+										: `Set a project-relative path in ${backlogResolution.profileConfigPath}`,
+								},
+							],
+						});
+						if (clack.isCancel(locationPrompt)) {
+							abortInitialization();
+							return;
+						}
+
+						backlogDirectorySource = locationPrompt as "backlog" | ".backlog" | "profile";
+						if (backlogDirectorySource === "profile") {
+							const customDirectory = await clack.text({
+								message: "Project-relative backlog directory:",
+								defaultValue: backlogResolution.profileBacklogDir ?? "",
+								validate: (value) => {
+									const normalized = normalizeProjectBacklogDirectory(String(value ?? ""));
+									if (!normalized) {
+										return "Enter a project-relative path inside the current project.";
+									}
+									return undefined;
+								},
+							});
+							if (clack.isCancel(customDirectory)) {
+								abortInitialization();
+								return;
+							}
+							backlogDirectory = normalizeProjectBacklogDirectory(String(customDirectory ?? "")) ?? undefined;
+						} else {
+							backlogDirectory = backlogDirectorySource;
+						}
 					}
 				}
 
@@ -942,6 +1049,8 @@ program
 				// Call shared core init function
 				const initResult = await initializeProject(core, {
 					projectName: name,
+					backlogDirectory,
+					backlogDirectorySource,
 					integrationMode: integrationMode || "none",
 					mcpClients: [], // MCP clients are handled separately in CLI with interactive prompts
 					agentInstructions: agentFiles,
@@ -995,6 +1104,7 @@ program
 						})
 						.join("\n");
 				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
+				summaryLines.push(`${label("Backlog directory:")} ${core.filesystem.backlogDirName}`);
 				if (integrationMode === "cli") {
 					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
 					if (agentFiles.length > 0) {
@@ -1124,7 +1234,7 @@ export async function generateNextDocId(core: Core): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const backlogDir = core.filesystem.backlogDirName;
 
 		// Skip remote operations if disabled
 		if (config?.remoteOperations === false) {
@@ -1192,7 +1302,7 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	const allIds: string[] = [];
 
 	try {
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const backlogDir = core.filesystem.backlogDirName;
 
 		// Skip remote operations if disabled
 		if (config?.remoteOperations === false) {
@@ -2764,8 +2874,6 @@ async function handleBoardView(options: { layout?: string; vertical?: boolean; m
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
 
-	const _layout = options.vertical ? "vertical" : (options.layout as "horizontal" | "vertical") || "horizontal";
-	const _maxColumnWidth = config?.maxColumnWidth || 20; // Default for terminal display
 	const statuses = config?.statuses || [];
 
 	// Use unified view for Tab switching support
@@ -3078,8 +3186,6 @@ agentsCmd
 				console.error("No backlog project found. Initialize one first with: backlog init");
 				process.exit(1);
 			}
-
-			const _agentOptions = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".github/copilot-instructions.md"] as const;
 
 			const selected = await clack.multiselect({
 				message: "Select agent instruction files to update (space toggles selections; enter confirms)",

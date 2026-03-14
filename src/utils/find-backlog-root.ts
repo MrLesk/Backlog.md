@@ -1,18 +1,7 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { $ } from "bun";
-
-/**
- * Check if a path exists and is a directory
- */
-async function isDirectory(path: string): Promise<boolean> {
-	try {
-		const s = await stat(path);
-		return s.isDirectory();
-	} catch {
-		return false;
-	}
-}
+import { resolveBacklogDirectory } from "./backlog-directory.ts";
 
 /**
  * Check if a file exists
@@ -30,7 +19,7 @@ async function fileExists(path: string): Promise<boolean> {
  * Finds the Backlog.md project root by walking up the directory tree.
  *
  * Search order:
- * 1. Walk up from startDir looking for `backlog/` directory or `backlog.json` file
+ * 1. Walk up from startDir looking for a supported backlog directory or `backlog.json` file
  * 2. If not found, fall back to git repository root (via `git rev-parse --show-toplevel`)
  * 3. Return null if no Backlog.md project found
  *
@@ -40,11 +29,10 @@ async function fileExists(path: string): Promise<boolean> {
 export async function findBacklogRoot(startDir: string): Promise<string | null> {
 	let current = startDir;
 
-	// Walk up the directory tree looking for backlog/ or backlog.json
+	// Walk up the directory tree looking for a supported backlog directory or backlog.json
 	while (current !== dirname(current)) {
-		// Check for backlog/ directory
-		const backlogDir = join(current, "backlog");
-		if (await isDirectory(backlogDir)) {
+		const backlogResolution = resolveBacklogDirectory(current);
+		if (backlogResolution.backlogPath) {
 			return current;
 		}
 
@@ -64,10 +52,9 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 
 		if (gitRoot) {
 			// Verify the git root has a backlog setup
-			const backlogDir = join(gitRoot, "backlog");
 			const backlogJson = join(gitRoot, "backlog.json");
 
-			if ((await isDirectory(backlogDir)) || (await fileExists(backlogJson))) {
+			if (resolveBacklogDirectory(gitRoot).backlogPath || (await fileExists(backlogJson))) {
 				return gitRoot;
 			}
 		}

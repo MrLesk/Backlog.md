@@ -154,10 +154,6 @@ describe("Board Loading with checkActiveBranches", () => {
 			expect(tasks.find((t) => t.id === "TASK-4")).toBeUndefined();
 
 			// Check that branch checking happened with the right days
-			const _branchCheckMessage = progressMessages.find(
-				(msg) => msg.includes("branches") && (msg.includes("30 days") || msg.includes("from 30 days")),
-			);
-			// The message format might vary, so we just check that some branch-related message exists
 			const anyBranchMessage = progressMessages.find((msg) => msg.includes("branch"));
 			expect(anyBranchMessage).toBeDefined();
 		});

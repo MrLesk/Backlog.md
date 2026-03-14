@@ -77,8 +77,6 @@ describe("Core", () => {
 			expect(loadedTask?.id).toBe("TASK-1");
 
 			// Check git status to see if there are uncommitted changes
-			const _hasChanges = await core.gitOps.hasUncommittedChanges();
-
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			// For now, just check that we have a commit (could be initialization or task)
 			expect(lastCommit).toBeDefined();
@@ -558,8 +556,6 @@ describe("Core", () => {
 			await core.createTask(task, false);
 
 			// Verify the task file was created in the correct directory
-			const _tasksDir = core.filesystem.tasksDir;
-
 			// List all files to see what was actually created
 			const allFiles = await core.filesystem.listTasks();
 

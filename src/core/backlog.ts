@@ -1,6 +1,6 @@
 import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -406,7 +406,7 @@ export class Core {
 		const localBranchTask = await findTaskInLocalBranches(
 			this.git,
 			canonicalId,
-			DEFAULT_DIRECTORIES.BACKLOG,
+			await this.getBacklogDirectoryName(),
 			sinceDays,
 			taskPrefix,
 		);
@@ -416,7 +416,13 @@ export class Core {
 		if (config?.remoteOperations === false) return null;
 
 		// Try remote branches
-		return await findTaskInRemoteBranches(this.git, canonicalId, DEFAULT_DIRECTORIES.BACKLOG, sinceDays, taskPrefix);
+		return await findTaskInRemoteBranches(
+			this.git,
+			canonicalId,
+			await this.getBacklogDirectoryName(),
+			sinceDays,
+			taskPrefix,
+		);
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -480,8 +486,7 @@ export class Core {
 	}
 
 	private async getBacklogDirectoryName(): Promise<string> {
-		// Always use "backlog" as the directory name
-		return DEFAULT_DIRECTORIES.BACKLOG;
+		return this.fs.backlogDirName;
 	}
 
 	async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
@@ -575,7 +580,7 @@ export class Core {
 
 	private async extractLegacyConfigMilestones(): Promise<string[]> {
 		try {
-			const configPath = join(this.fs.rootDir, DEFAULT_DIRECTORIES.BACKLOG, "config.yml");
+			const configPath = this.fs.configFilePath;
 			const content = await Bun.file(configPath).text();
 			const lines = content.split("\n");
 			for (let i = 0; i < lines.length; i += 1) {
@@ -811,11 +816,12 @@ export class Core {
 		// If cross-branch checking is enabled, scan other branches for task states
 		if (config?.checkActiveBranches !== false) {
 			const branchStateEntries: BranchTaskStateEntry[] = [];
+			const backlogDir = await this.getBacklogDirectoryName();
 
 			// Load states from remote and local branches in parallel
 			await Promise.all([
-				loadRemoteTasks(this.git, config, undefined, localTasks, branchStateEntries),
-				loadLocalBranchTasks(this.git, config, undefined, localTasks, branchStateEntries),
+				loadRemoteTasks(this.git, config, undefined, localTasks, branchStateEntries, false, backlogDir),
+				loadLocalBranchTasks(this.git, config, undefined, localTasks, branchStateEntries, false, backlogDir),
 			]);
 
 			// Add branch state entries
@@ -2346,7 +2352,10 @@ export class Core {
 		return document;
 	}
 
-	async initializeProject(projectName: string, autoCommit = false): Promise<void> {
+	async initializeProject(projectName: string, autoCommit = false, backlogDirectory?: string): Promise<void> {
+		if (backlogDirectory) {
+			this.fs.setBacklogDirectory(backlogDirectory);
+		}
 		await this.fs.ensureBacklogStructure();
 
 		const config: BacklogConfig = {
@@ -2538,9 +2547,10 @@ export class Core {
 		// Load remote tasks and local branch tasks in parallel
 		const branchStateEntries: BranchTaskStateEntry[] | undefined =
 			config?.checkActiveBranches === false ? undefined : [];
+		const backlogDir = await this.getBacklogDirectoryName();
 		const [remoteTasks, localBranchTasks] = await Promise.all([
-			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
-			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries),
+			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
+			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
 		]);
 		progressCallback?.("Loaded tasks");
 
@@ -2630,9 +2640,18 @@ export class Core {
 
 		const branchStateEntries: BranchTaskStateEntry[] | undefined =
 			config?.checkActiveBranches === false ? undefined : [];
+		const backlogDir = await this.getBacklogDirectoryName();
 		const [remoteTasks, localBranchTasks] = await Promise.all([
-			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, includeCompleted),
-			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, includeCompleted),
+			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, includeCompleted, backlogDir),
+			loadLocalBranchTasks(
+				this.git,
+				config,
+				progressCallback,
+				localTasks,
+				branchStateEntries,
+				includeCompleted,
+				backlogDir,
+			),
 		]);
 
 		// Check for cancellation after loading

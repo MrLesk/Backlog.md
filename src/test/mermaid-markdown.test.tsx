@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { renderToString } from "react-dom/server";
-import React from "react";
 import MermaidMarkdown from "../web/components/MermaidMarkdown.tsx";
 
 describe("MermaidMarkdown", () => {

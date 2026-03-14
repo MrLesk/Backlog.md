@@ -188,11 +188,6 @@ export async function runSequencesView(
 	// Drop zone overlay boxes (visible only in move mode)
 	const dropZoneBoxes = new Map<number, BoxInterface>();
 
-	function _pickNumber(arr: number[], idx: number, fallback: number): number {
-		const v = arr[idx];
-		return typeof v === "number" ? v : fallback;
-	}
-
 	function hideDropZones() {
 		for (const [, node] of dropZoneBoxes) node.destroy();
 		dropZoneBoxes.clear();

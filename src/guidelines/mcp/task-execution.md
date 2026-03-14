@@ -6,7 +6,7 @@
 
 1. **Mark task as In Progress** via `task_edit` with status "In Progress"
 2. **Assign to yourself** via `task_edit` with assignee field
-3. **Review task references and documentation** - Check any `references` (related code, issues) and `documentation` (design docs, API specs) attached to the task before planning
+3. **Review task description, acceptance criteria, references, and documentation** - Check the description for outcome and any local code context, review acceptance criteria to confirm scope and success conditions, check `references` for external links/issues, and check `documentation` for design docs or API specs before planning
 4. **Draft the implementation plan** - Think through the approach, review code, identify key files
 5. **Present plan to user** - Show your proposed implementation approach
 6. **Wait for explicit approval** - Do not start coding until user confirms or asks you to skip review

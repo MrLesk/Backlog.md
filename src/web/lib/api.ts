@@ -20,6 +20,16 @@ export interface ReorderTaskPayload {
 	targetMilestone?: string | null;
 }
 
+export interface InitializationStatus {
+	initialized: boolean;
+	projectPath: string;
+	backlogDirectory?: string | null;
+	backlogDirectorySource?: "backlog" | ".backlog" | "profile" | null;
+	profileBacklogDirectory?: string | null;
+	profileBacklogExists?: boolean;
+	profileConfigPath?: string | null;
+}
+
 // Enhanced error types for better error handling
 export class ApiError extends Error {
 	constructor(
@@ -463,12 +473,14 @@ export class ApiClient {
 		>(`${API_BASE}/statistics`);
 	}
 
-	async checkStatus(): Promise<{ initialized: boolean; projectPath: string }> {
-		return this.fetchJson<{ initialized: boolean; projectPath: string }>(`${API_BASE}/status`);
+	async checkStatus(): Promise<InitializationStatus> {
+		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
 	}
 
 	async initializeProject(options: {
 		projectName: string;
+		backlogDirectory?: string;
+		backlogDirectorySource?: "backlog" | ".backlog" | "profile";
 		integrationMode: "mcp" | "cli" | "none";
 		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "guide")[];
 		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];

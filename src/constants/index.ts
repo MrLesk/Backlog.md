@@ -4,6 +4,8 @@
 export const DEFAULT_DIRECTORIES = {
 	/** Main backlog directory */
 	BACKLOG: "backlog",
+	/** Hidden backlog directory */
+	HIDDEN_BACKLOG: ".backlog",
 	/** Active tasks directory */
 	TASKS: "tasks",
 	/** Draft tasks directory */
@@ -32,8 +34,17 @@ export const DEFAULT_DIRECTORIES = {
 export const DEFAULT_FILES = {
 	/** Main configuration file */
 	CONFIG: "config.yml",
-	/** Local user settings file */
-	USER: ".user",
+	/** Alternate config filename accepted for discovery/profile config */
+	CONFIG_YAML: "config.yaml",
+} as const;
+
+/**
+ * User profile config paths for backlog.md settings.
+ */
+export const PROFILE_CONFIG = {
+	APP_DIR: "backlog.md",
+	UNIX_DIR: ".config/backlog.md",
+	WINDOWS_DIR: "AppData/Roaming",
 } as const;
 
 /**

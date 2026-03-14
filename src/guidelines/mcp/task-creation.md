@@ -34,8 +34,9 @@ If the work requires multiple tasks, proceed to choose the appropriate task stru
 - Write tasks as work orders for strangers: include all required context inside the task
 - Never reference "what we discussed" without restating the essential decisions and constraints
 - Dependencies must explicitly state what the other task provides (e.g., output, schema, artifact)
-- Use the `references` field to link relevant code files or related issues
-- Use the `documentation` field to link design docs, API specs, or other reference materials that help understand the task context
+- Use the `references` field for external references such as GitHub issues, PRs, tickets, or URLs
+- Use the `documentation` field for design docs, API specs, manuals, or other reference materials that help understand the task context
+- Only include minimal local code context in the description when omitting it would make the task ambiguous or unsafe for a future implementer
 
 ### Step 3: Choose task structure
 
@@ -68,7 +69,7 @@ Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
 
-**Title and description**: Explain desired outcome and user value (the WHY)
+**Title and description**: Explain desired outcome and user value (the WHY). Keep the description focused on outcome and essential handoff context.
 
 **Acceptance criteria**: Specific, testable, and independent (the WHAT)
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")

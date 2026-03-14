@@ -464,4 +464,53 @@ describe("Enhanced init command", () => {
 		// This test would fail if prefixes aren't properly serialized/parsed from disk
 		expect(loadedConfig?.prefixes?.task).toBe("PERSIST");
 	});
+
+	test("initializeProject should create .backlog when selected", async () => {
+		const core = new Core(tmpDir);
+
+		await initializeProject(core, {
+			projectName: "Hidden Backlog Init",
+			backlogDirectory: ".backlog",
+			backlogDirectorySource: ".backlog",
+			integrationMode: "none",
+		});
+
+		const configExists = await Bun.file(join(tmpDir, ".backlog", "config.yml")).exists();
+		expect(configExists).toBe(true);
+		expect(core.filesystem.backlogDirName).toBe(".backlog");
+	});
+
+	test("initializeProject should create and persist a profile-configured custom backlog directory", async () => {
+		const core = new Core(tmpDir);
+		const originalHome = process.env.HOME;
+		const homeDir = createUniqueTestDir("test-enhanced-init-home");
+		process.env.HOME = homeDir;
+
+		try {
+			await initializeProject(core, {
+				projectName: "Custom Backlog Init",
+				backlogDirectory: "planning/backlog-data",
+				backlogDirectorySource: "profile",
+				integrationMode: "none",
+			});
+
+			const configExists = await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists();
+			const userConfig = await Bun.file(join(homeDir, ".config", "backlog.md", "config.yaml")).text();
+			const freshCore = new Core(tmpDir);
+			const freshConfig = await freshCore.filesystem.loadConfig();
+
+			expect(configExists).toBe(true);
+			expect(userConfig).toContain('backlog_directory: "planning/backlog-data"');
+			expect(core.filesystem.backlogDirName).toBe("planning/backlog-data");
+			expect(freshConfig?.projectName).toBe("Custom Backlog Init");
+			expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
+		} finally {
+			if (originalHome === undefined) {
+				delete process.env.HOME;
+			} else {
+				process.env.HOME = originalHome;
+			}
+			await safeCleanup(homeDir);
+		}
+	});
 });

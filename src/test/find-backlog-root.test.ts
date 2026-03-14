@@ -31,6 +31,13 @@ describe("findBacklogRoot", () => {
 		expect(result).toBe(testDir);
 	});
 
+	it("should find root when .backlog/ directory exists at start dir", async () => {
+		await mkdir(join(testDir, ".backlog", "tasks"), { recursive: true });
+
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBe(testDir);
+	});
+
 	it("should find root when backlog.json exists at start dir", async () => {
 		// Create backlog.json at root
 		await writeFile(join(testDir, "backlog.json"), JSON.stringify({ name: "Test" }));
@@ -140,5 +147,26 @@ describe("findBacklogRoot", () => {
 
 		const result = await findBacklogRoot(testDir);
 		expect(result).toBe(testDir);
+	});
+
+	it("should find root when profile-configured custom backlog directory exists", async () => {
+		const originalHome = process.env.HOME;
+		const homeDir = join(testDir, "home");
+		process.env.HOME = homeDir;
+
+		try {
+			await mkdir(join(homeDir, ".config", "backlog.md"), { recursive: true });
+			await writeFile(join(homeDir, ".config", "backlog.md", "config.yaml"), 'backlog_directory: "planning/backlog"\n');
+			await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
+
+			const result = await findBacklogRoot(testDir);
+			expect(result).toBe(testDir);
+		} finally {
+			if (originalHome === undefined) {
+				delete process.env.HOME;
+			} else {
+				process.env.HOME = originalHome;
+			}
+		}
 	});
 });

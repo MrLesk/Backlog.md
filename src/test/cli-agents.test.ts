@@ -135,8 +135,6 @@ describe("CLI agents command", () => {
 
 		const agents3 = Bun.file(join(TEST_DIR, "AGENTS.md"));
 		expect(await agents3.exists()).toBe(true);
-		const _originalContent = await agents3.text();
-
 		// Update it again - should be idempotent
 		await expect(async () => {
 			await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"]);

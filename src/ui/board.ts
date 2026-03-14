@@ -125,14 +125,6 @@ function formatColumnLabel(status: string, count: number): string {
 const DEFAULT_FOOTER_CONTENT =
 	" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[I]{/} Milestone | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit";
 
-function _arraysEqual(left: string[], right: string[]): boolean {
-	if (left.length !== right.length) return false;
-	for (let index = 0; index < left.length; index += 1) {
-		if (left[index] !== right[index]) return false;
-	}
-	return true;
-}
-
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
 		return true;
