@@ -163,19 +163,28 @@ export async function initializeProject(
 		await core.filesystem.saveConfig(config);
 	} else {
 		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
-		if (options.backlogDirectorySource === "custom" && !normalizedBacklogDirectory) {
+		const effectiveBacklogDirectorySource =
+			options.backlogDirectorySource ??
+			(normalizedBacklogDirectory === ".backlog"
+				? ".backlog"
+				: normalizedBacklogDirectory === "backlog"
+					? "backlog"
+					: normalizedBacklogDirectory
+						? "custom"
+						: undefined);
+		if (effectiveBacklogDirectorySource === "custom" && !normalizedBacklogDirectory) {
 			throw new Error("Backlog directory must be a valid project-relative path.");
 		}
 		const effectiveConfigLocation =
-			options.configLocation ?? (options.backlogDirectorySource === "custom" ? "root" : "folder");
-		if (options.backlogDirectorySource === "custom" && effectiveConfigLocation !== "root") {
+			options.configLocation ?? (effectiveBacklogDirectorySource === "custom" ? "root" : "folder");
+		if (effectiveBacklogDirectorySource === "custom" && effectiveConfigLocation !== "root") {
 			throw new Error("Custom backlog directories require root config discovery.");
 		}
 		const selectedBacklogDirectory =
 			normalizedBacklogDirectory ??
-			(options.backlogDirectorySource === ".backlog"
+			(effectiveBacklogDirectorySource === ".backlog"
 				? ".backlog"
-				: options.backlogDirectorySource === "backlog"
+				: effectiveBacklogDirectorySource === "backlog"
 					? "backlog"
 					: "backlog");
 		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);

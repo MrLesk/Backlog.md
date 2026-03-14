@@ -532,6 +532,21 @@ describe("Enhanced init command", () => {
 		expect(await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
 	});
 
+	test("initializeProject should infer custom source from backlogDirectory when source is omitted", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Custom Backlog Inferred Source",
+			backlogDirectory: "planning/backlog-data",
+			integrationMode: "none",
+		});
+
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		expect(await Bun.file(rootConfigPath).exists()).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
+	});
+
 	test("initializeProject should reject custom backlog directories with folder config location", async () => {
 		const core = new Core(tmpDir);
 		await expect(
