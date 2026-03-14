@@ -34,17 +34,10 @@ export const DEFAULT_DIRECTORIES = {
 export const DEFAULT_FILES = {
 	/** Main configuration file */
 	CONFIG: "config.yml",
-	/** Alternate config filename accepted for discovery/profile config */
+	/** Alternate config filename accepted for discovery */
 	CONFIG_YAML: "config.yaml",
-} as const;
-
-/**
- * User profile config paths for backlog.md settings.
- */
-export const PROFILE_CONFIG = {
-	APP_DIR: "backlog.md",
-	UNIX_DIR: ".config/backlog.md",
-	WINDOWS_DIR: "AppData/Roaming",
+	/** Root-level backlog configuration file */
+	ROOT_CONFIG: "backlog.config.yml",
 } as const;
 
 /**

@@ -1,24 +1,54 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveUserBacklogConfigPath } from "../utils/backlog-directory.ts";
+import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 
-describe("resolveUserBacklogConfigPath", () => {
-	it("uses XDG-style config path on non-Windows platforms", () => {
-		const homeDir = "/tmp/backlog-home";
-		const path = resolveUserBacklogConfigPath("darwin", {}, homeDir);
-		expect(path).toBe(join(homeDir, ".config", "backlog.md", "config.yaml"));
+describe("resolveBacklogDirectory", () => {
+	let testDir: string;
+
+	beforeEach(async () => {
+		testDir = join(tmpdir(), `backlog-directory-test-${Date.now()}`);
+		await mkdir(testDir, { recursive: true });
 	});
 
-	it("uses APPDATA on Windows when available", () => {
-		const homeDir = "C:/Users/alex";
-		const appData = "C:/Users/alex/AppData/Roaming";
-		const path = resolveUserBacklogConfigPath("win32", { APPDATA: appData }, homeDir);
-		expect(path).toBe(join(appData, "backlog.md", "config.yaml"));
+	afterEach(async () => {
+		await rm(testDir, { recursive: true, force: true });
 	});
 
-	it("falls back to AppData/Roaming under the home directory on Windows", () => {
-		const homeDir = "C:/Users/alex";
-		const path = resolveUserBacklogConfigPath("win32", {}, homeDir);
-		expect(path).toBe(join(homeDir, "AppData", "Roaming", "backlog.md", "config.yaml"));
+	it("prefers root backlog.config.yml with backlog_directory for custom folders", async () => {
+		await mkdir(join(testDir, "planning", "backlog-data", "tasks"), { recursive: true });
+		await writeFile(
+			join(testDir, "backlog.config.yml"),
+			'project_name: "Test"\nbacklog_directory: "planning/backlog-data"\n',
+		);
+
+		const resolution = resolveBacklogDirectory(testDir);
+		expect(resolution.source).toBe("custom");
+		expect(resolution.configSource).toBe("root");
+		expect(resolution.backlogDir).toBe("planning/backlog-data");
+		expect(resolution.configPath).toBe(join(testDir, "backlog.config.yml"));
+	});
+
+	it("uses root backlog.config.yml with built-in backlog folder when backlog_directory is omitted", async () => {
+		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, "backlog.config.yml"), 'project_name: "Test"\n');
+
+		const resolution = resolveBacklogDirectory(testDir);
+		expect(resolution.source).toBe("backlog");
+		expect(resolution.configSource).toBe("root");
+		expect(resolution.backlogDir).toBe("backlog");
+		expect(resolution.configPath).toBe(join(testDir, "backlog.config.yml"));
+	});
+
+	it("falls back to folder-local config when root backlog.config.yml is absent", async () => {
+		await mkdir(join(testDir, ".backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, ".backlog", "config.yml"), 'project_name: "Test"\n');
+
+		const resolution = resolveBacklogDirectory(testDir);
+		expect(resolution.source).toBe(".backlog");
+		expect(resolution.configSource).toBe("folder");
+		expect(resolution.backlogDir).toBe(".backlog");
+		expect(resolution.configPath).toBe(join(testDir, ".backlog", "config.yml"));
 	});
 });

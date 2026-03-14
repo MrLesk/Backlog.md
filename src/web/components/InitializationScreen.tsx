@@ -5,7 +5,8 @@ import { apiClient } from "../lib/api";
 type IntegrationMode = "mcp" | "cli" | "none";
 type McpClient = "claude" | "codex" | "gemini" | "guide";
 type AgentFile = "CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md";
-type BacklogDirectoryChoice = "backlog" | ".backlog" | "profile";
+type BacklogDirectoryChoice = "backlog" | ".backlog" | "custom";
+type ConfigLocationChoice = "folder" | "root";
 
 interface AdvancedConfig {
 	checkActiveBranches: boolean;
@@ -39,8 +40,8 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 	const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
 	const [backlogDirectorySource, setBacklogDirectorySource] = useState<BacklogDirectoryChoice>("backlog");
 	const [backlogDirectory, setBacklogDirectory] = useState("backlog");
-	const [backlogDirectoryHint, setBacklogDirectoryHint] = useState<string | null>(null);
-	const [profileConfigPath, setProfileConfigPath] = useState<string | null>(null);
+	const [configLocation, setConfigLocation] = useState<ConfigLocationChoice>("folder");
+	const [rootConfigPath, setRootConfigPath] = useState<string | null>(null);
 	const [advancedConfig, setAdvancedConfig] = useState<AdvancedConfig>({
 		checkActiveBranches: DEFAULT_INIT_CONFIG.checkActiveBranches,
 		remoteOperations: DEFAULT_INIT_CONFIG.remoteOperations,
@@ -77,18 +78,12 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 				if (status.initialized) {
 					return;
 				}
-				const suggestedSource =
-					status.backlogDirectorySource ??
-					(status.profileBacklogDirectory && status.profileBacklogExists === false ? "profile" : "backlog");
-				const suggestedDirectory = status.backlogDirectory ?? status.profileBacklogDirectory ?? "backlog";
-				setProfileConfigPath(status.profileConfigPath ?? null);
+				const suggestedSource = status.backlogDirectorySource ?? "backlog";
+				const suggestedDirectory = status.backlogDirectory ?? "backlog";
+				setRootConfigPath(status.rootConfigPath ?? null);
 				setBacklogDirectorySource(suggestedSource);
 				setBacklogDirectory(suggestedDirectory);
-				if (status.profileBacklogDirectory && status.profileBacklogExists === false) {
-					setBacklogDirectoryHint(
-						`Profile config points to "${status.profileBacklogDirectory}", but that folder does not exist in this project yet.`,
-					);
-				}
+				setConfigLocation(status.configLocation ?? (suggestedSource === "custom" ? "root" : "folder"));
 			} catch {
 				// Keep built-in defaults when status lookup fails.
 			}
@@ -165,13 +160,14 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 
 		try {
 			const normalizedBacklogDirectory =
-				backlogDirectorySource === "profile"
+				backlogDirectorySource === "custom"
 					? normalizeRelativeBacklogDirectory(backlogDirectory) ?? backlogDirectory
 					: backlogDirectory;
 			await apiClient.initializeProject({
 				projectName: projectName.trim(),
 				backlogDirectory: normalizedBacklogDirectory,
 				backlogDirectorySource,
+				configLocation,
 				integrationMode: integrationMode || "none",
 				mcpClients: integrationMode === "mcp" ? selectedMcpClients : undefined,
 				agentInstructions: integrationMode === "cli" ? selectedAgentFiles : undefined,
@@ -475,9 +471,9 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 							description: "Store tasks and config in .backlog/",
 						},
 						{
-							id: "profile" as BacklogDirectoryChoice,
-							label: "Custom path from profile config",
-							description: `Store a project-relative path in ${profileConfigPath ?? "your profile config"}`,
+							id: "custom" as BacklogDirectoryChoice,
+							label: "Custom project-relative path",
+							description: `Use ${rootConfigPath ?? "backlog.config.yml"} as the project-root pointer file`,
 						},
 					]).map((option) => (
 						<label
@@ -495,8 +491,11 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 								checked={backlogDirectorySource === option.id}
 								onChange={() => {
 									setBacklogDirectorySource(option.id);
-									if (option.id !== "profile") {
+									if (option.id !== "custom") {
 										setBacklogDirectory(option.id);
+									}
+									if (option.id === "custom") {
+										setConfigLocation("root");
 									}
 								}}
 								className="mt-1 mr-3"
@@ -508,10 +507,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 						</label>
 					))}
 				</div>
-				{backlogDirectoryHint && (
-					<p className="mt-3 text-sm text-amber-600 dark:text-amber-400">{backlogDirectoryHint}</p>
-				)}
-				{backlogDirectorySource === "profile" && (
+				{backlogDirectorySource === "custom" && (
 					<div className="mt-4">
 						<label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
 							Project-relative backlog directory
@@ -524,8 +520,49 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 							className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700"
 						/>
 						<p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-							This path is stored in {profileConfigPath ?? "your profile config"} and resolved inside each project.
+							This path is stored in {rootConfigPath ?? "backlog.config.yml"} and resolved from the project root.
 						</p>
+					</div>
+				)}
+				{backlogDirectorySource !== "custom" && (
+					<div className="mt-4">
+						<label className="block text-sm text-gray-700 dark:text-gray-300 mb-3">Config Location</label>
+						<div className="space-y-3">
+							{([
+								{
+									id: "folder" as ConfigLocationChoice,
+									label: `${backlogDirectory}/config.yml`,
+									description: "Store config inside the backlog folder",
+								},
+								{
+									id: "root" as ConfigLocationChoice,
+									label: "backlog.config.yml",
+									description: "Store config in the project root and point to the backlog folder there",
+								},
+							]).map((option) => (
+								<label
+									key={option.id}
+									className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
+										configLocation === option.id
+											? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+											: "border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+									}`}
+								>
+									<input
+										type="radio"
+										name="configLocation"
+										value={option.id}
+										checked={configLocation === option.id}
+										onChange={() => setConfigLocation(option.id)}
+										className="mt-1 mr-3"
+									/>
+									<div>
+										<div className="font-medium text-gray-900 dark:text-gray-100">{option.label}</div>
+										<div className="text-sm text-gray-500 dark:text-gray-400">{option.description}</div>
+									</div>
+								</label>
+							))}
+						</div>
 					</div>
 				)}
 			</div>
@@ -797,6 +834,12 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					<span className="text-gray-600 dark:text-gray-400">Backlog Directory:</span>
 					<span className="font-medium text-gray-900 dark:text-gray-100">{backlogDirectory}</span>
 				</div>
+				<div className="flex justify-between">
+					<span className="text-gray-600 dark:text-gray-400">Config Location:</span>
+					<span className="font-medium text-gray-900 dark:text-gray-100">
+						{configLocation === "root" ? "backlog.config.yml" : `${backlogDirectory}/config.yml`}
+					</span>
+				</div>
 				{integrationMode === "mcp" && selectedMcpClients.length > 0 && (
 					<div className="flex justify-between">
 						<span className="text-gray-600 dark:text-gray-400">MCP Clients:</span>
@@ -876,7 +919,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 			case "agentFiles":
 				return true; // Can proceed with no selection
 			case "advancedConfig":
-				return backlogDirectorySource !== "profile" || normalizeRelativeBacklogDirectory(backlogDirectory) !== null;
+				return backlogDirectorySource !== "custom" || normalizeRelativeBacklogDirectory(backlogDirectory) !== null;
 			case "summary":
 				return true;
 		}

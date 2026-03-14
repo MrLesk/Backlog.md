@@ -24,10 +24,9 @@ export interface InitializationStatus {
 	initialized: boolean;
 	projectPath: string;
 	backlogDirectory?: string | null;
-	backlogDirectorySource?: "backlog" | ".backlog" | "profile" | null;
-	profileBacklogDirectory?: string | null;
-	profileBacklogExists?: boolean;
-	profileConfigPath?: string | null;
+	backlogDirectorySource?: "backlog" | ".backlog" | "custom" | null;
+	configLocation?: "folder" | "root" | null;
+	rootConfigPath?: string | null;
 }
 
 // Enhanced error types for better error handling
@@ -480,7 +479,8 @@ export class ApiClient {
 	async initializeProject(options: {
 		projectName: string;
 		backlogDirectory?: string;
-		backlogDirectorySource?: "backlog" | ".backlog" | "profile";
+		backlogDirectorySource?: "backlog" | ".backlog" | "custom";
+		configLocation?: "folder" | "root";
 		integrationMode: "mcp" | "cli" | "none";
 		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "guide")[];
 		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];

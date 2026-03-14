@@ -1498,9 +1498,8 @@ export class BacklogServer {
 				projectPath: this.core.filesystem.rootDir,
 				backlogDirectory: backlogResolution.backlogDir,
 				backlogDirectorySource: backlogResolution.source,
-				profileBacklogDirectory: backlogResolution.profileBacklogDir,
-				profileBacklogExists: backlogResolution.profileBacklogExists,
-				profileConfigPath: backlogResolution.profileConfigPath,
+				configLocation: backlogResolution.configSource,
+				rootConfigPath: backlogResolution.rootConfigPath,
 			});
 		} catch (error) {
 			console.error("Error getting status:", error);
@@ -1509,9 +1508,8 @@ export class BacklogServer {
 				projectPath: this.core.filesystem.rootDir,
 				backlogDirectory: null,
 				backlogDirectorySource: null,
-				profileBacklogDirectory: null,
-				profileBacklogExists: false,
-				profileConfigPath: null,
+				configLocation: null,
+				rootConfigPath: null,
 			});
 		}
 	}
@@ -1524,9 +1522,11 @@ export class BacklogServer {
 			const backlogDirectorySource =
 				body.backlogDirectorySource === "backlog" ||
 				body.backlogDirectorySource === ".backlog" ||
-				body.backlogDirectorySource === "profile"
+				body.backlogDirectorySource === "custom"
 					? body.backlogDirectorySource
 					: undefined;
+			const configLocation =
+				body.configLocation === "folder" || body.configLocation === "root" ? body.configLocation : undefined;
 			const integrationMode = body.integrationMode as "mcp" | "cli" | "none" | undefined;
 			const mcpClients = Array.isArray(body.mcpClients) ? body.mcpClients : [];
 			const agentInstructions = Array.isArray(body.agentInstructions) ? body.agentInstructions : [];
@@ -1549,6 +1549,7 @@ export class BacklogServer {
 				projectName,
 				backlogDirectory,
 				backlogDirectorySource,
+				configLocation,
 				integrationMode: integrationMode || "none",
 				mcpClients,
 				agentInstructions,

@@ -261,27 +261,21 @@ describe("CLI Integration", () => {
 			expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
 		});
 
-		it("should store custom non-interactive backlog dir in profile config", async () => {
+		it("should store custom non-interactive backlog dir in root backlog.config.yml", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			const testHome = createUniqueTestDir("test-cli-home");
-			await mkdir(join(testHome, ".config", "backlog.md"), { recursive: true });
+			const output =
+				await $`bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --backlog-dir planning/backlog-data`
+					.cwd(TEST_DIR)
+					.text();
 
-			try {
-				const output =
-					await $`env HOME=${testHome} bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --backlog-dir planning/backlog-data`
-						.cwd(TEST_DIR)
-						.text();
-
-				expect(output).toContain("Backlog directory: planning/backlog-data");
-				expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(true);
-				const userConfig = await Bun.file(join(testHome, ".config", "backlog.md", "config.yaml")).text();
-				expect(userConfig).toContain('backlog_directory: "planning/backlog-data"');
-			} finally {
-				await safeCleanup(testHome);
-			}
+			expect(output).toContain("Backlog directory: planning/backlog-data");
+			expect(output).toContain("Config location: backlog.config.yml");
+			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
+			const rootConfig = await Bun.file(join(TEST_DIR, "backlog.config.yml")).text();
+			expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
 		});
 
 		it("should reject invalid --backlog-dir values", async () => {

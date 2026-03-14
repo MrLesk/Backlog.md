@@ -480,37 +480,26 @@ describe("Enhanced init command", () => {
 		expect(core.filesystem.backlogDirName).toBe(".backlog");
 	});
 
-	test("initializeProject should create and persist a profile-configured custom backlog directory", async () => {
+	test("initializeProject should create a root backlog.config.yml for custom backlog directories", async () => {
 		const core = new Core(tmpDir);
-		const originalHome = process.env.HOME;
-		const homeDir = createUniqueTestDir("test-enhanced-init-home");
-		process.env.HOME = homeDir;
+		await initializeProject(core, {
+			projectName: "Custom Backlog Init",
+			backlogDirectory: "planning/backlog-data",
+			backlogDirectorySource: "custom",
+			configLocation: "root",
+			integrationMode: "none",
+		});
 
-		try {
-			await initializeProject(core, {
-				projectName: "Custom Backlog Init",
-				backlogDirectory: "planning/backlog-data",
-				backlogDirectorySource: "profile",
-				integrationMode: "none",
-			});
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		const configExists = await Bun.file(rootConfigPath).exists();
+		const freshCore = new Core(tmpDir);
+		const freshConfig = await freshCore.filesystem.loadConfig();
 
-			const configExists = await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists();
-			const userConfig = await Bun.file(join(homeDir, ".config", "backlog.md", "config.yaml")).text();
-			const freshCore = new Core(tmpDir);
-			const freshConfig = await freshCore.filesystem.loadConfig();
-
-			expect(configExists).toBe(true);
-			expect(userConfig).toContain('backlog_directory: "planning/backlog-data"');
-			expect(core.filesystem.backlogDirName).toBe("planning/backlog-data");
-			expect(freshConfig?.projectName).toBe("Custom Backlog Init");
-			expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
-		} finally {
-			if (originalHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = originalHome;
-			}
-			await safeCleanup(homeDir);
-		}
+		expect(configExists).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(core.filesystem.backlogDirName).toBe("planning/backlog-data");
+		expect(freshConfig?.projectName).toBe("Custom Backlog Init");
+		expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
 	});
 });

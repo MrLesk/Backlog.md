@@ -149,24 +149,11 @@ describe("findBacklogRoot", () => {
 		expect(result).toBe(testDir);
 	});
 
-	it("should find root when profile-configured custom backlog directory exists", async () => {
-		const originalHome = process.env.HOME;
-		const homeDir = join(testDir, "home");
-		process.env.HOME = homeDir;
+	it("should find root when project root backlog.config.yml points to a custom backlog directory", async () => {
+		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, "backlog.config.yml"), 'backlog_directory: "planning/backlog"\n');
 
-		try {
-			await mkdir(join(homeDir, ".config", "backlog.md"), { recursive: true });
-			await writeFile(join(homeDir, ".config", "backlog.md", "config.yaml"), 'backlog_directory: "planning/backlog"\n');
-			await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
-
-			const result = await findBacklogRoot(testDir);
-			expect(result).toBe(testDir);
-		} finally {
-			if (originalHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = originalHome;
-			}
-		}
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBe(testDir);
 	});
 });

@@ -7,7 +7,7 @@ import {
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { normalizeProjectBacklogDirectory, writeUserConfiguredBacklogDirectory } from "../utils/backlog-directory.ts";
+import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import type { Core } from "./backlog.ts";
 
 export const MCP_SERVER_NAME = "backlog";
@@ -19,7 +19,8 @@ export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 export interface InitializeProjectOptions {
 	projectName: string;
 	backlogDirectory?: string;
-	backlogDirectorySource?: "backlog" | ".backlog" | "profile";
+	backlogDirectorySource?: "backlog" | ".backlog" | "custom";
+	configLocation?: "folder" | "root";
 	integrationMode: IntegrationMode;
 	mcpClients?: McpClient[];
 	agentInstructions?: AgentInstructionFile[];
@@ -162,14 +163,12 @@ export async function initializeProject(
 		await core.filesystem.saveConfig(config);
 	} else {
 		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
-		if (options.backlogDirectorySource === "profile" && !normalizedBacklogDirectory) {
+		if (options.backlogDirectorySource === "custom" && !normalizedBacklogDirectory) {
 			throw new Error("Backlog directory must be a valid project-relative path.");
 		}
 		const selectedBacklogDirectory = normalizedBacklogDirectory ?? "backlog";
 		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);
-		if (options.backlogDirectorySource === "profile") {
-			writeUserConfiguredBacklogDirectory(selectedBacklogDirectory);
-		}
+		core.filesystem.setConfigLocation(options.configLocation ?? "folder");
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();

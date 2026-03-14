@@ -1,23 +1,19 @@
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, isAbsolute, join, normalize } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, PROFILE_CONFIG } from "../constants/index.ts";
+import { readFileSync, statSync } from "node:fs";
+import { join, normalize } from "node:path";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
 
-export type BacklogDirectorySource = "backlog" | ".backlog" | "profile";
+export type BacklogDirectorySource = "backlog" | ".backlog" | "custom";
+export type BacklogConfigSource = "folder" | "root";
 
 export interface BacklogDirectoryResolution {
 	projectRoot: string;
 	backlogDir: string | null;
 	backlogPath: string | null;
 	source: BacklogDirectorySource | null;
-	profileBacklogDir: string | null;
-	profileBacklogPath: string | null;
-	profileBacklogExists: boolean;
-	profileConfigPath: string;
-}
-
-function getUserHomeDir(): string {
-	return process.env.HOME?.trim() || homedir();
+	configPath: string | null;
+	configSource: BacklogConfigSource | null;
+	rootConfigPath: string;
+	rootConfigExists: boolean;
 }
 
 function directoryExists(path: string): boolean {
@@ -36,7 +32,7 @@ function fileExists(path: string): boolean {
 	}
 }
 
-function parseBacklogDirectoryConfig(content: string): string | null {
+function parseBacklogDirectoryValue(content: string): string | null {
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
 		if (!line || line.startsWith("#")) {
@@ -59,12 +55,58 @@ function parseBacklogDirectoryConfig(content: string): string | null {
 	return null;
 }
 
+function readRootBacklogDirectory(rootConfigPath: string): string | null {
+	if (!fileExists(rootConfigPath)) {
+		return null;
+	}
+	try {
+		return parseBacklogDirectoryValue(readFileSync(rootConfigPath, "utf8"));
+	} catch {
+		return null;
+	}
+}
+
+function resolveFolderConfigPath(backlogPath: string): string | null {
+	const primary = join(backlogPath, DEFAULT_FILES.CONFIG);
+	if (fileExists(primary)) {
+		return primary;
+	}
+	const alternate = join(backlogPath, DEFAULT_FILES.CONFIG_YAML);
+	return fileExists(alternate) ? alternate : null;
+}
+
+function resolveBuiltInBacklogDirectory(projectRoot: string): {
+	backlogDir: string;
+	backlogPath: string;
+	source: "backlog" | ".backlog";
+} | null {
+	const defaultBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+	if (directoryExists(defaultBacklogPath)) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.BACKLOG,
+			backlogPath: defaultBacklogPath,
+			source: "backlog",
+		};
+	}
+
+	const hiddenBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.HIDDEN_BACKLOG);
+	if (directoryExists(hiddenBacklogPath)) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.HIDDEN_BACKLOG,
+			backlogPath: hiddenBacklogPath,
+			source: ".backlog",
+		};
+	}
+
+	return null;
+}
+
 export function normalizeProjectBacklogDirectory(value: string | null | undefined): string | null {
 	const trimmed = String(value ?? "").trim();
 	if (!trimmed) {
 		return null;
 	}
-	if (isAbsolute(trimmed)) {
+	if (/^(?:[a-zA-Z]:)?[\\/]/.test(trimmed)) {
 		return null;
 	}
 
@@ -78,98 +120,80 @@ export function normalizeProjectBacklogDirectory(value: string | null | undefine
 	return normalized;
 }
 
-export function resolveUserBacklogConfigPath(
-	platform = process.platform,
-	env: NodeJS.ProcessEnv = process.env,
-	userHome = getUserHomeDir(),
-): string {
-	if (platform === "win32") {
-		const appDataRoot = env.APPDATA?.trim() || join(userHome, PROFILE_CONFIG.WINDOWS_DIR);
-		return join(appDataRoot, PROFILE_CONFIG.APP_DIR, DEFAULT_FILES.CONFIG_YAML);
-	}
-
-	return join(userHome, PROFILE_CONFIG.UNIX_DIR, DEFAULT_FILES.CONFIG_YAML);
-}
-
-export function getUserBacklogConfigPath(): string {
-	return resolveUserBacklogConfigPath();
-}
-
-export function readUserConfiguredBacklogDirectory(): string | null {
-	const configPath = getUserBacklogConfigPath();
-	if (!fileExists(configPath)) {
-		return null;
-	}
-	try {
-		return parseBacklogDirectoryConfig(readFileSync(configPath, "utf8"));
-	} catch {
-		return null;
-	}
-}
-
-export function writeUserConfiguredBacklogDirectory(backlogDir: string): void {
-	const normalized = normalizeProjectBacklogDirectory(backlogDir);
-	if (!normalized) {
-		throw new Error("Backlog directory must be a project-relative path.");
-	}
-	const configPath = getUserBacklogConfigPath();
-	mkdirSync(dirname(configPath), { recursive: true });
-	writeFileSync(configPath, `backlog_directory: "${normalized}"\n`);
-}
-
 export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryResolution {
-	const defaultBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
-	if (directoryExists(defaultBacklogPath)) {
+	const rootConfigPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
+	const rootConfigExists = fileExists(rootConfigPath);
+
+	if (rootConfigExists) {
+		const configuredBacklogDir = readRootBacklogDirectory(rootConfigPath);
+		if (configuredBacklogDir) {
+			const configuredSource: BacklogDirectorySource =
+				configuredBacklogDir === DEFAULT_DIRECTORIES.BACKLOG
+					? "backlog"
+					: configuredBacklogDir === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
+						? ".backlog"
+						: "custom";
+			return {
+				projectRoot,
+				backlogDir: configuredBacklogDir,
+				backlogPath: join(projectRoot, configuredBacklogDir),
+				source: configuredSource,
+				configPath: rootConfigPath,
+				configSource: "root",
+				rootConfigPath,
+				rootConfigExists,
+			};
+		}
+
+		const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
+		if (builtIn) {
+			return {
+				projectRoot,
+				backlogDir: builtIn.backlogDir,
+				backlogPath: builtIn.backlogPath,
+				source: builtIn.source,
+				configPath: rootConfigPath,
+				configSource: "root",
+				rootConfigPath,
+				rootConfigExists,
+			};
+		}
+
 		return {
 			projectRoot,
-			backlogDir: DEFAULT_DIRECTORIES.BACKLOG,
-			backlogPath: defaultBacklogPath,
-			source: "backlog",
-			profileBacklogDir: null,
-			profileBacklogPath: null,
-			profileBacklogExists: false,
-			profileConfigPath: getUserBacklogConfigPath(),
+			backlogDir: null,
+			backlogPath: null,
+			source: null,
+			configPath: rootConfigPath,
+			configSource: "root",
+			rootConfigPath,
+			rootConfigExists,
 		};
 	}
 
-	const hiddenBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.HIDDEN_BACKLOG);
-	if (directoryExists(hiddenBacklogPath)) {
+	const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
+	if (!builtIn) {
 		return {
 			projectRoot,
-			backlogDir: DEFAULT_DIRECTORIES.HIDDEN_BACKLOG,
-			backlogPath: hiddenBacklogPath,
-			source: ".backlog",
-			profileBacklogDir: null,
-			profileBacklogPath: null,
-			profileBacklogExists: false,
-			profileConfigPath: getUserBacklogConfigPath(),
+			backlogDir: null,
+			backlogPath: null,
+			source: null,
+			configPath: null,
+			configSource: null,
+			rootConfigPath,
+			rootConfigExists,
 		};
 	}
 
-	const profileBacklogDir = readUserConfiguredBacklogDirectory();
-	const profileBacklogPath = profileBacklogDir ? join(projectRoot, profileBacklogDir) : null;
-	const profileBacklogExists = profileBacklogPath ? directoryExists(profileBacklogPath) : false;
-	if (profileBacklogDir && profileBacklogPath && profileBacklogExists) {
-		return {
-			projectRoot,
-			backlogDir: profileBacklogDir,
-			backlogPath: profileBacklogPath,
-			source: "profile",
-			profileBacklogDir,
-			profileBacklogPath,
-			profileBacklogExists,
-			profileConfigPath: getUserBacklogConfigPath(),
-		};
-	}
-
+	const folderConfigPath = resolveFolderConfigPath(builtIn.backlogPath);
 	return {
 		projectRoot,
-		backlogDir: null,
-		backlogPath: null,
-		source: null,
-		profileBacklogDir,
-		profileBacklogPath,
-		profileBacklogExists,
-		profileConfigPath: getUserBacklogConfigPath(),
+		backlogDir: builtIn.backlogDir,
+		backlogPath: builtIn.backlogPath,
+		source: builtIn.source,
+		configPath: folderConfigPath,
+		configSource: folderConfigPath ? "folder" : null,
+		rootConfigPath,
+		rootConfigExists,
 	};
 }

@@ -4,6 +4,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constan
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import {
@@ -26,6 +27,8 @@ interface TaskPathContext {
 export class FileSystem {
 	private resolvedBacklogDir: string;
 	private resolvedBacklogDirName: string;
+	private resolvedConfigPath: string;
+	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
 
@@ -34,6 +37,8 @@ export class FileSystem {
 		const resolution = resolveBacklogDirectory(projectRoot);
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+		this.configSource = resolution.configSource ?? "folder";
 	}
 
 	private async getBacklogDir(): Promise<string> {
@@ -73,7 +78,7 @@ export class FileSystem {
 	}
 
 	get configFilePath(): string {
-		return join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+		return this.resolvedConfigPath;
 	}
 
 	/** Get the project root directory */
@@ -86,6 +91,8 @@ export class FileSystem {
 		const resolution = resolveBacklogDirectory(this.projectRoot);
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+		this.configSource = resolution.configSource ?? "folder";
 	}
 
 	setBacklogDirectory(backlogDir: string): void {
@@ -95,6 +102,17 @@ export class FileSystem {
 		}
 		this.resolvedBacklogDirName = normalized;
 		this.resolvedBacklogDir = join(this.projectRoot, normalized);
+		if (this.configSource === "folder") {
+			this.resolvedConfigPath = join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+		}
+	}
+
+	setConfigLocation(configSource: BacklogConfigSource): void {
+		this.configSource = configSource;
+		this.resolvedConfigPath =
+			configSource === "root"
+				? join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG)
+				: join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 	}
 
 	resolveBacklogDirectoryInfo() {
@@ -1114,8 +1132,7 @@ ${description || `Milestone: ${title}`}`,
 		}
 
 		try {
-			const backlogDir = await this.getBacklogDir();
-			const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
+			const configPath = this.resolvedConfigPath;
 
 			// Check if file exists first to avoid hanging on Windows
 			const file = Bun.file(configPath);
@@ -1137,12 +1154,15 @@ ${description || `Milestone: ${title}`}`,
 	}
 
 	async saveConfig(config: BacklogConfig): Promise<void> {
-		const backlogDir = await this.getBacklogDir();
-		const configPath = join(backlogDir, DEFAULT_FILES.CONFIG);
 		const normalizedConfig: BacklogConfig = {
 			...config,
+			...(this.configSource === "root" ? { backlogDirectory: this.resolvedBacklogDirName } : {}),
 			definitionOfDone: this.normalizeDefinitionOfDone(config.definitionOfDone),
 		};
+		if (this.configSource === "folder") {
+			delete normalizedConfig.backlogDirectory;
+		}
+		const configPath = this.resolvedConfigPath;
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
@@ -1257,6 +1277,10 @@ ${description || `Milestone: ${title}`}`,
 				case "task_prefix":
 					config.prefixes = { task: value.replace(/['"]/g, "") };
 					break;
+				case "backlog_directory":
+				case "backlogDirectory":
+					config.backlogDirectory = value.replace(/['"]/g, "");
+					break;
 			}
 		}
 
@@ -1281,6 +1305,7 @@ ${description || `Milestone: ${title}`}`,
 			activeBranchDays: config.activeBranchDays,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
+			backlogDirectory: config.backlogDirectory,
 		};
 	}
 
@@ -1311,6 +1336,7 @@ ${description || `Milestone: ${title}`}`,
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
+			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

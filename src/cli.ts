@@ -11,7 +11,7 @@ import { type CompletionInstallResult, installCompletion, registerCompletionComm
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
-import { DEFAULT_DIRECTORIES } from "./constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { computeSequences } from "./core/sequences.ts";
@@ -427,10 +427,8 @@ program
 	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
 	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
-	.option(
-		"--backlog-dir <path>",
-		"backlog folder for init: backlog, .backlog, or a project-relative path stored in the user profile config",
-	)
+	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
+	.option("--config-location <location>", "config location for init: folder or root")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--defaults", "use default values for all prompts")
 	.action(
@@ -449,6 +447,7 @@ program
 				installClaudeAgent?: string;
 				integrationMode?: string;
 				backlogDir?: string;
+				configLocation?: string;
 				taskPrefix?: string;
 				defaults?: boolean;
 			},
@@ -492,6 +491,12 @@ program
 						);
 						process.exit(1);
 					}
+					if (options.configLocation) {
+						console.error(
+							"The config location is fixed after initialization. Re-run init without --config-location for this project.",
+						);
+						process.exit(1);
+					}
 				}
 
 				// Helper function to parse boolean strings
@@ -529,6 +534,7 @@ program
 					options.installClaudeAgent ||
 					options.integrationMode ||
 					options.backlogDir ||
+					options.configLocation ||
 					options.taskPrefix
 				);
 
@@ -565,21 +571,29 @@ program
 				}
 
 				let backlogDirectory: string | undefined;
-				let backlogDirectorySource: "backlog" | ".backlog" | "profile" | undefined;
+				let backlogDirectorySource: "backlog" | ".backlog" | "custom" | undefined;
+				let configLocation: "folder" | "root" | undefined;
 				if (!isReInitialization) {
 					const backlogResolution = core.filesystem.resolveBacklogDirectoryInfo();
-					const defaultBacklogDirectory =
-						backlogResolution.backlogDir ?? backlogResolution.profileBacklogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
-					const defaultBacklogSource =
-						backlogResolution.source ??
-						(backlogResolution.profileBacklogDir && !backlogResolution.profileBacklogExists ? "profile" : "backlog");
+					const defaultBacklogDirectory = backlogResolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
+					const defaultBacklogSource = backlogResolution.source ?? "backlog";
+					const defaultConfigLocation = backlogResolution.configSource ?? "folder";
 					const normalizedBacklogDirOption = options.backlogDir
 						? normalizeProjectBacklogDirectory(options.backlogDir)
 						: undefined;
+					const normalizedConfigLocation = options.configLocation?.trim().toLowerCase();
 					if (options.backlogDir && !normalizedBacklogDirOption) {
 						console.error(
 							"Invalid --backlog-dir value. Use 'backlog', '.backlog', or a project-relative path inside the project.",
 						);
+						process.exit(1);
+					}
+					if (
+						normalizedConfigLocation &&
+						normalizedConfigLocation !== "folder" &&
+						normalizedConfigLocation !== "root"
+					) {
+						console.error("Invalid --config-location value. Use 'folder' or 'root'.");
 						process.exit(1);
 					}
 
@@ -590,22 +604,19 @@ program
 								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.BACKLOG ||
 								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
 									? (normalizedBacklogDirOption as "backlog" | ".backlog")
-									: "profile";
+									: "custom";
 						} else {
 							backlogDirectory = defaultBacklogDirectory;
 							backlogDirectorySource = defaultBacklogSource;
 						}
-					} else {
-						if (backlogResolution.profileBacklogDir && !backlogResolution.profileBacklogExists) {
-							clack.note(
-								[
-									`Profile config points to "${backlogResolution.profileBacklogDir}", but that folder does not exist in this project yet.`,
-									"You can keep that choice or switch to backlog/ or .backlog.",
-								].join(" "),
-								"Backlog folder hint",
-							);
+						configLocation =
+							(normalizedConfigLocation as "folder" | "root" | undefined) ??
+							(backlogDirectorySource === "custom" ? "root" : defaultConfigLocation);
+						if (backlogDirectorySource === "custom" && configLocation !== "root") {
+							console.error("Custom backlog directories require --config-location root.");
+							process.exit(1);
 						}
-
+					} else {
 						const locationPrompt = await clack.select({
 							message: "Where should Backlog.md store project files?",
 							initialValue: defaultBacklogSource,
@@ -621,11 +632,9 @@ program
 									hint: "Store tasks and config in .backlog/",
 								},
 								{
-									label: "Custom path from profile config",
-									value: "profile",
-									hint: backlogResolution.profileBacklogDir
-										? `Use or update ${backlogResolution.profileBacklogDir}`
-										: `Set a project-relative path in ${backlogResolution.profileConfigPath}`,
+									label: "Custom project-relative path",
+									value: "custom",
+									hint: `Backlog.md will store project config in ${backlogResolution.rootConfigPath}`,
 								},
 							],
 						});
@@ -634,11 +643,12 @@ program
 							return;
 						}
 
-						backlogDirectorySource = locationPrompt as "backlog" | ".backlog" | "profile";
-						if (backlogDirectorySource === "profile") {
+						backlogDirectorySource = locationPrompt as "backlog" | ".backlog" | "custom";
+						if (backlogDirectorySource === "custom") {
 							const customDirectory = await clack.text({
 								message: "Project-relative backlog directory:",
-								defaultValue: backlogResolution.profileBacklogDir ?? "",
+								defaultValue:
+									defaultBacklogSource === "custom" && defaultBacklogDirectory ? defaultBacklogDirectory : "",
 								validate: (value) => {
 									const normalized = normalizeProjectBacklogDirectory(String(value ?? ""));
 									if (!normalized) {
@@ -652,8 +662,30 @@ program
 								return;
 							}
 							backlogDirectory = normalizeProjectBacklogDirectory(String(customDirectory ?? "")) ?? undefined;
+							configLocation = "root";
 						} else {
 							backlogDirectory = backlogDirectorySource;
+							const configPrompt = await clack.select({
+								message: "Where should Backlog.md store project configuration?",
+								initialValue: defaultConfigLocation,
+								options: [
+									{
+										label: `${backlogDirectorySource}/config.yml`,
+										value: "folder",
+										hint: "Keep config inside the backlog folder",
+									},
+									{
+										label: "backlog.config.yml in project root",
+										value: "root",
+										hint: "Keep config at project root and point to the backlog folder there",
+									},
+								],
+							});
+							if (clack.isCancel(configPrompt)) {
+								abortInitialization();
+								return;
+							}
+							configLocation = configPrompt as "folder" | "root";
 						}
 					}
 				}
@@ -1051,6 +1083,7 @@ program
 					projectName: name,
 					backlogDirectory,
 					backlogDirectorySource,
+					configLocation,
 					integrationMode: integrationMode || "none",
 					mcpClients: [], // MCP clients are handled separately in CLI with interactive prompts
 					agentInstructions: agentFiles,
@@ -1104,7 +1137,10 @@ program
 						})
 						.join("\n");
 				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
-				summaryLines.push(`${label("Backlog directory:")} ${core.filesystem.backlogDirName}`);
+				summaryLines.push(`${label("Backlog directory:")} ${backlogDirectory ?? core.filesystem.backlogDirName}`);
+				summaryLines.push(
+					`${label("Config location:")} ${configLocation === "root" ? DEFAULT_FILES.ROOT_CONFIG : "folder config.yml"}`,
+				);
 				if (integrationMode === "cli") {
 					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
 					if (agentFiles.length > 0) {
@@ -3579,7 +3615,7 @@ configCmd
 					} else if (key === "definitionOfDone") {
 						console.error("definitionOfDone cannot be set directly.");
 						console.error(
-							"Use `backlog config` for interactive editing, update `backlog/config.yml`, or use Web UI Settings.",
+							"Use `backlog config` for interactive editing, update the project config file (`backlog/config.yml`, `.backlog/config.yml`, or `backlog.config.yml`), or use Web UI Settings.",
 						);
 					} else {
 						console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
