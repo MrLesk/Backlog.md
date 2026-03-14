@@ -1,6 +1,6 @@
 import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -2355,6 +2355,9 @@ export class Core {
 	async initializeProject(projectName: string, autoCommit = false, backlogDirectory?: string): Promise<void> {
 		if (backlogDirectory) {
 			this.fs.setBacklogDirectory(backlogDirectory);
+			const isBuiltInDirectory =
+				backlogDirectory === DEFAULT_DIRECTORIES.BACKLOG || backlogDirectory === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG;
+			this.fs.setConfigLocation(isBuiltInDirectory ? "folder" : "root");
 		}
 		await this.fs.ensureBacklogStructure();
 

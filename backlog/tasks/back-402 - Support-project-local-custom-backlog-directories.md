@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-03-14 19:55'
-updated_date: '2026-03-14 22:20'
+updated_date: '2026-03-14 22:34'
 labels: []
 dependencies: []
 references:
@@ -49,6 +49,8 @@ Relevant implementation areas:
 Implementation will treat root `backlog.config.yml` as the canonical per-project discovery mechanism and preserve legacy folder-local configs only when the root config is absent.
 
 Fixing init so custom backlog directories always require root config discovery in shared initialization, even when API callers omit `configLocation`.
+
+Fixing the public Core.initializeProject API so custom backlog directories remain discoverable by forcing root backlog.config.yml for custom paths there as well.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
