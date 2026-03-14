@@ -166,4 +166,16 @@ describe("findBacklogRoot", () => {
 		const result = await findBacklogRoot(testDir);
 		expect(result).toBeNull();
 	});
+
+	it("should not stop at nested custom backlog directories without a config marker", async () => {
+		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
+		await writeFile(
+			join(testDir, "backlog.config.yml"),
+			'project_name: "Test"\nbacklog_directory: "planning/backlog"\n',
+		);
+
+		const nestedStart = join(testDir, "planning", "backlog", "tasks");
+		const result = await findBacklogRoot(nestedStart);
+		expect(result).toBe(testDir);
+	});
 });

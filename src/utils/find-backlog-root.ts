@@ -28,12 +28,16 @@ async function fileExists(path: string): Promise<boolean> {
  */
 export async function findBacklogRoot(startDir: string): Promise<string | null> {
 	let current = startDir;
+	let fallbackBacklogRoot: string | null = null;
 
 	// Walk up the directory tree looking for a supported backlog directory or backlog.json
 	while (current !== dirname(current)) {
 		const backlogResolution = resolveBacklogDirectory(current);
-		if (backlogResolution.configPath || backlogResolution.backlogPath) {
+		if (backlogResolution.configPath) {
 			return current;
+		}
+		if (!fallbackBacklogRoot && backlogResolution.backlogPath) {
+			fallbackBacklogRoot = current;
 		}
 
 		// Check for backlog.json file
@@ -55,7 +59,7 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 			const backlogJson = join(gitRoot, "backlog.json");
 
 			const backlogResolution = resolveBacklogDirectory(gitRoot);
-			if (backlogResolution.configPath || backlogResolution.backlogPath || (await fileExists(backlogJson))) {
+			if (backlogResolution.configPath || (await fileExists(backlogJson))) {
 				return gitRoot;
 			}
 		}
@@ -63,7 +67,7 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 		// Not in a git repository or git not available
 	}
 
-	return null;
+	return fallbackBacklogRoot;
 }
 
 // Cache for the project root within a single CLI execution
