@@ -65,4 +65,16 @@ describe("resolveBacklogDirectory", () => {
 		expect(resolution.backlogDir).toBe(".backlog");
 		expect(resolution.configPath).toBe(join(testDir, ".backlog", "config.yml"));
 	});
+
+	it("falls back to folder-local config when root backlog.config.yml is invalid", async () => {
+		await mkdir(join(testDir, ".backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, ".backlog", "config.yml"), 'project_name: "Test"\n');
+		await writeFile(join(testDir, "backlog.config.yml"), 'name: "placeholder"\n');
+
+		const resolution = resolveBacklogDirectory(testDir);
+		expect(resolution.source).toBe(".backlog");
+		expect(resolution.configSource).toBe("folder");
+		expect(resolution.backlogDir).toBe(".backlog");
+		expect(resolution.configPath).toBe(join(testDir, ".backlog", "config.yml"));
+	});
 });

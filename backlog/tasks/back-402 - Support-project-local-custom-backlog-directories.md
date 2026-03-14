@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-03-14 19:55'
-updated_date: '2026-03-14 22:56'
+updated_date: '2026-03-14 23:15'
 labels: []
 dependencies: []
 references:
@@ -61,6 +61,8 @@ Fixing shared init to infer `custom` source from a non-built-in backlogDirectory
 Fixing root-config discovery so valid `backlog.config.yml` projects stay discoverable even when the configured backlog directory has not been created yet.
 
 Fixing root detection so walking up from nested custom backlog folders requires a config marker instead of accepting any matching backlog directory name.
+
+Fixing resolver fallback so an invalid placeholder root backlog.config.yml does not suppress an otherwise valid folder-local backlog config project.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
