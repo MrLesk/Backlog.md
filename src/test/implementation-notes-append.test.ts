@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 let TEST_DIR: string;
@@ -19,7 +19,7 @@ describe("Implementation Notes - append", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Append Notes Test Project");
+		await initializeTestProject(core, "Append Notes Test Project");
 	});
 
 	afterEach(async () => {

@@ -43,7 +43,6 @@ import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
-import { initializeProject as initializeProjectShared } from "./init.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
@@ -2350,31 +2349,6 @@ export class Core {
 
 		await this.createDocument(document, autoCommit);
 		return document;
-	}
-
-	async initializeProject(projectName: string, autoCommit = false, backlogDirectory?: string): Promise<void> {
-		const backlogDirectorySource = backlogDirectory
-			? backlogDirectory === "backlog" || backlogDirectory === ".backlog"
-				? (backlogDirectory as "backlog" | ".backlog")
-				: "custom"
-			: undefined;
-		const configLocation = backlogDirectorySource === "custom" ? "root" : "folder";
-		await initializeProjectShared(this, {
-			projectName,
-			backlogDirectory,
-			backlogDirectorySource,
-			configLocation,
-			integrationMode: "none",
-			advancedConfig: {
-				autoCommit: false,
-			},
-		});
-
-		if (autoCommit) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Initialize backlog project: ${projectName}`, repoRoot);
-		}
 	}
 
 	async listTasksWithMetadata(

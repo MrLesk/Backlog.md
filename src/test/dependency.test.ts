@@ -19,7 +19,7 @@ describe("Task Dependencies", () => {
 		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
 
 		core = new Core(tempDir);
-		await core.initializeProject("test-project");
+		await initializeTestProject(core, "test-project");
 	});
 
 	afterEach(() => {
@@ -340,3 +340,5 @@ describe("Task Dependencies", () => {
 		expect(draft?.dependencies).toEqual(["task-1"]);
 	});
 });
+
+import { initializeTestProject } from "./test-utils.ts";

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { initializeProject } from "../core/init.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("Enhanced init command", () => {
 	let tmpDir: string;
@@ -24,7 +24,7 @@ describe("Enhanced init command", () => {
 		const core = new Core(tmpDir);
 
 		// First initialization
-		await core.initializeProject("Test Project");
+		await initializeTestProject(core, "Test Project");
 
 		// Verify initial config
 		const initialConfig = await core.filesystem.loadConfig();
@@ -64,7 +64,7 @@ describe("Enhanced init command", () => {
 		expect(initialConfig).toBeNull();
 
 		// Initialize project
-		await core.initializeProject("New Project");
+		await initializeTestProject(core, "New Project");
 
 		// Verify config was created with defaults
 		const config = await core.filesystem.loadConfig();
@@ -315,7 +315,7 @@ describe("Enhanced init command", () => {
 		const core = new Core(tmpDir);
 
 		// Initialize project without custom prefix
-		await core.initializeProject("Default Prefix Project");
+		await initializeTestProject(core, "Default Prefix Project");
 
 		// Verify default prefix is "task"
 		const config = await core.filesystem.loadConfig();

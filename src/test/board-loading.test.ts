@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -20,7 +20,7 @@ describe("Board Loading with checkActiveBranches", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize project with default config
-		await core.initializeProject("Test Project", false);
+		await initializeTestProject(core, "Test Project", false);
 	});
 
 	afterEach(async () => {

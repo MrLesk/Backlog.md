@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 function createMockScreen(): Parameters<Core["editTaskInTui"]>[1] {
 	return {
@@ -62,7 +62,7 @@ describe("Core.editTaskInTui", () => {
 		testDir = createUniqueTestDir("test-tui-edit-session");
 		await mkdir(testDir, { recursive: true });
 		core = new Core(testDir, { enableWatchers: true });
-		await core.initializeProject("TUI Edit Session Test");
+		await initializeTestProject(core, "TUI Edit Session Test");
 
 		const task: Task = {
 			id: "task-1",

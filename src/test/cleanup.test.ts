@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -39,7 +39,7 @@ describe("Cleanup functionality", () => {
 
 		// Initialize backlog project
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Cleanup Test Project");
+		await initializeTestProject(core, "Cleanup Test Project");
 	});
 
 	afterEach(async () => {

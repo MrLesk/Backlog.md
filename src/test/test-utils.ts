@@ -6,6 +6,8 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
+import type { Core } from "../core/backlog.ts";
+import { initializeProject as initializeProjectShared } from "../core/init.ts";
 
 /**
  * Creates a unique test directory name to avoid conflicts in parallel execution
@@ -81,4 +83,39 @@ export function getPlatformTimeout(baseTimeout = 5000): number {
  */
 export function getExitCode(result: { status: number | null; error?: Error }): number {
 	return result.status ?? (result.error ? 1 : 0);
+}
+
+/**
+ * Shared test helper for project initialization.
+ * Uses the same init path as CLI/web and optionally mirrors the legacy auto-commit behavior
+ * needed by tests that assert against the post-init commit state.
+ */
+export async function initializeTestProject(
+	core: Core,
+	projectName: string,
+	autoCommit = false,
+	backlogDirectory?: string,
+): Promise<void> {
+	const backlogDirectorySource = backlogDirectory
+		? backlogDirectory === "backlog" || backlogDirectory === ".backlog"
+			? (backlogDirectory as "backlog" | ".backlog")
+			: "custom"
+		: undefined;
+	const configLocation = backlogDirectorySource === "custom" ? "root" : "folder";
+
+	await initializeProjectShared(core, {
+		projectName,
+		backlogDirectory,
+		backlogDirectorySource,
+		configLocation,
+		integrationMode: "none",
+		advancedConfig: {
+			autoCommit: false,
+		},
+	});
+
+	if (autoCommit) {
+		const repoRoot = await core.gitOps.stageBacklogDirectory(core.filesystem.backlogDirName);
+		await core.gitOps.commitChanges(`backlog: Initialize backlog project: ${projectName}`, repoRoot);
+	}
 }

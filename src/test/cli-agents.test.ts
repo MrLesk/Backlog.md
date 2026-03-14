@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -22,7 +22,7 @@ describe("CLI agents command", () => {
 
 		// Initialize backlog project using Core
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Agents Test Project");
+		await initializeTestProject(core, "Agents Test Project");
 	});
 
 	afterEach(async () => {

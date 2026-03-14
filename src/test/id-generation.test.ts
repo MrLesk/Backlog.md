@@ -15,7 +15,7 @@ describe("Task ID Generation with Archives", () => {
 	beforeEach(async () => {
 		testDir = await mkdtemp(TEST_DIR);
 		core = new Core(testDir);
-		await core.initializeProject("Test Project", false);
+		await initializeTestProject(core, "Test Project", false);
 	});
 
 	afterEach(async () => {
@@ -157,3 +157,5 @@ describe("Task ID Generation with Archives", () => {
 		expect(newSubtask.task.id).toBe("TASK-1.2");
 	});
 });
+
+import { initializeTestProject } from "./test-utils.ts";

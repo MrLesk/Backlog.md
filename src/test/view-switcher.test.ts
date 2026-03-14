@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { type ViewState, ViewSwitcher } from "../ui/view-switcher.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("View Switcher", () => {
 	let TEST_DIR: string;
@@ -20,7 +20,7 @@ describe("View Switcher", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Test View Switcher Project");
+		await initializeTestProject(core, "Test View Switcher Project");
 
 		// Disable remote operations for tests to prevent background git fetches
 		const config = await core.filesystem.loadConfig();

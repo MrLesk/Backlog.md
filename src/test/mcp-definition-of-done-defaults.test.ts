@@ -3,7 +3,7 @@ import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const getText = (content: unknown[] | undefined, index = 0): string => {
 	const item = content?.[index] as { text?: string } | undefined;
@@ -31,7 +31,7 @@ describe("MCP Definition of Done default tools", () => {
 		await $`git config user.name "Test User"`.cwd(testDir).quiet();
 		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
-		await server.initializeProject("Test Project");
+		await initializeTestProject(server, "Test Project");
 
 		const config = await loadConfigOrThrow(server);
 		registerTaskTools(server, config);

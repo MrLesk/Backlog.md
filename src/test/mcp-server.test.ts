@@ -12,7 +12,7 @@ import { createMcpServer, McpServer } from "../mcp/server.ts";
 import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 // Helpers to extract text from MCP responses (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -36,7 +36,7 @@ async function bootstrapServer(): Promise<McpServer> {
 	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-	await server.initializeProject("Test Project");
+	await initializeTestProject(server, "Test Project");
 
 	// Register workflow resources and tools manually (normally done in createMcpServer)
 	registerWorkflowResources(server);
@@ -198,7 +198,7 @@ describe("McpServer bootstrap", () => {
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await bootstrap.initializeProject("Factory Project");
+		await initializeTestProject(bootstrap, "Factory Project");
 		await bootstrap.stop();
 
 		const server = await createMcpServer(TEST_DIR);
