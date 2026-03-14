@@ -1,11 +1,10 @@
 import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
-	type BacklogConfig,
 	type Decision,
 	type Document,
 	EntityType,
@@ -44,6 +43,7 @@ import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
+import { initializeProject as initializeProjectShared } from "./init.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
@@ -2353,30 +2353,22 @@ export class Core {
 	}
 
 	async initializeProject(projectName: string, autoCommit = false, backlogDirectory?: string): Promise<void> {
-		if (backlogDirectory) {
-			this.fs.setBacklogDirectory(backlogDirectory);
-			const isBuiltInDirectory =
-				backlogDirectory === DEFAULT_DIRECTORIES.BACKLOG || backlogDirectory === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG;
-			this.fs.setConfigLocation(isBuiltInDirectory ? "folder" : "root");
-		}
-		await this.fs.ensureBacklogStructure();
-
-		const config: BacklogConfig = {
-			projectName: projectName,
-			statuses: [...DEFAULT_STATUSES],
-			labels: [],
-			defaultStatus: DEFAULT_STATUSES[0], // Use first status as default
-			dateFormat: "yyyy-mm-dd",
-			maxColumnWidth: 20, // Default for terminal display
-			autoCommit: false, // Default to false for user control
-			prefixes: {
-				task: "task",
+		const backlogDirectorySource = backlogDirectory
+			? backlogDirectory === "backlog" || backlogDirectory === ".backlog"
+				? (backlogDirectory as "backlog" | ".backlog")
+				: "custom"
+			: undefined;
+		const configLocation = backlogDirectorySource === "custom" ? "root" : "folder";
+		await initializeProjectShared(this, {
+			projectName,
+			backlogDirectory,
+			backlogDirectorySource,
+			configLocation,
+			integrationMode: "none",
+			advancedConfig: {
+				autoCommit: false,
 			},
-		};
-
-		await this.fs.saveConfig(config);
-		// Update git operations with the new config
-		await this.ensureConfigLoaded();
+		});
 
 		if (autoCommit) {
 			const backlogDir = await this.getBacklogDirectoryName();
