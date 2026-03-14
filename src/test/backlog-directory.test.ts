@@ -30,6 +30,20 @@ describe("resolveBacklogDirectory", () => {
 		expect(resolution.configPath).toBe(join(testDir, "backlog.config.yml"));
 	});
 
+	it("keeps root backlog.config.yml canonical even when the configured backlog directory does not exist yet", async () => {
+		await writeFile(
+			join(testDir, "backlog.config.yml"),
+			'project_name: "Test"\nbacklog_directory: "planning/backlog-data"\n',
+		);
+
+		const resolution = resolveBacklogDirectory(testDir);
+		expect(resolution.source).toBe("custom");
+		expect(resolution.configSource).toBe("root");
+		expect(resolution.backlogDir).toBe("planning/backlog-data");
+		expect(resolution.backlogPath).toBe(join(testDir, "planning", "backlog-data"));
+		expect(resolution.configPath).toBe(join(testDir, "backlog.config.yml"));
+	});
+
 	it("uses root backlog.config.yml with built-in backlog folder when backlog_directory is omitted", async () => {
 		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
 		await writeFile(join(testDir, "backlog.config.yml"), 'project_name: "Test"\n');

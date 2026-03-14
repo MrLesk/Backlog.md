@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-03-14 19:55'
-updated_date: '2026-03-14 22:48'
+updated_date: '2026-03-14 22:55'
 labels: []
 dependencies: []
 references:
@@ -57,6 +57,8 @@ Refactoring the public Core.initializeProject path to delegate to the shared ini
 Fixing shared init so built-in backlogDirectorySource values (`backlog` / `.backlog`) are honored even when callers omit the redundant backlogDirectory string.
 
 Fixing shared init to infer `custom` source from a non-built-in backlogDirectory value when callers omit backlogDirectorySource, so API callers still get root config discovery.
+
+Fixing root-config discovery so valid `backlog.config.yml` projects stay discoverable even when the configured backlog directory has not been created yet.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

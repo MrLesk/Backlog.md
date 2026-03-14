@@ -141,18 +141,6 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 		const configuredBacklogDir = metadata?.backlogDirectory ?? null;
 		if (configuredBacklogDir) {
 			const configuredBacklogPath = join(projectRoot, configuredBacklogDir);
-			if (!directoryExists(configuredBacklogPath)) {
-				return {
-					projectRoot,
-					backlogDir: null,
-					backlogPath: null,
-					source: null,
-					configPath: null,
-					configSource: null,
-					rootConfigPath,
-					rootConfigExists,
-				};
-			}
 			const configuredSource: BacklogDirectorySource =
 				configuredBacklogDir === DEFAULT_DIRECTORIES.BACKLOG
 					? "backlog"
