@@ -559,4 +559,16 @@ describe("Enhanced init command", () => {
 			}),
 		).rejects.toThrow("Custom backlog directories require root config discovery.");
 	});
+
+	test("initializeProject should reject mismatched built-in source and custom backlog path", async () => {
+		const core = new Core(tmpDir);
+		await expect(
+			initializeProject(core, {
+				projectName: "Mismatched Backlog Source",
+				backlogDirectory: "planning/backlog-data",
+				backlogDirectorySource: ".backlog",
+				integrationMode: "none",
+			}),
+		).rejects.toThrow("Backlog directory source and backlog directory value must agree.");
+	});
 });

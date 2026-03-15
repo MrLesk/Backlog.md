@@ -163,15 +163,21 @@ export async function initializeProject(
 		await core.filesystem.saveConfig(config);
 	} else {
 		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
-		const effectiveBacklogDirectorySource =
-			options.backlogDirectorySource ??
-			(normalizedBacklogDirectory === ".backlog"
+		const inferredBacklogDirectorySource = normalizedBacklogDirectory
+			? normalizedBacklogDirectory === ".backlog"
 				? ".backlog"
 				: normalizedBacklogDirectory === "backlog"
 					? "backlog"
-					: normalizedBacklogDirectory
-						? "custom"
-						: undefined);
+					: "custom"
+			: undefined;
+		if (
+			options.backlogDirectorySource &&
+			inferredBacklogDirectorySource &&
+			options.backlogDirectorySource !== inferredBacklogDirectorySource
+		) {
+			throw new Error("Backlog directory source and backlog directory value must agree.");
+		}
+		const effectiveBacklogDirectorySource = options.backlogDirectorySource ?? inferredBacklogDirectorySource;
 		if (effectiveBacklogDirectorySource === "custom" && !normalizedBacklogDirectory) {
 			throw new Error("Backlog directory must be a valid project-relative path.");
 		}

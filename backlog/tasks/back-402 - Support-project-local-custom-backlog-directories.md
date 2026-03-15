@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-03-14 19:55'
-updated_date: '2026-03-14 23:26'
+updated_date: '2026-03-15 10:30'
 labels: []
 dependencies: []
 references:
@@ -65,6 +65,8 @@ Fixing root detection so walking up from nested custom backlog folders requires 
 Fixing resolver fallback so an invalid placeholder root backlog.config.yml does not suppress an otherwise valid folder-local backlog config project.
 
 Fixing built-in folder precedence so `backlog/` only wins over `.backlog/` when it has a config marker; otherwise resolution falls back to the built-in folder that actually contains backlog config.
+
+Fixing shared init validation so backlogDirectorySource and backlogDirectory must agree when both are provided, preventing callers from smuggling a custom path under a built-in source.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
