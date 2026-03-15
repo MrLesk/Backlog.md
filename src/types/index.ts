@@ -90,6 +90,7 @@ export interface TaskCreateInput {
 	description?: string;
 	status?: TaskStatus;
 	priority?: "high" | "medium" | "low";
+	ordinal?: number;
 	milestone?: string;
 	labels?: string[];
 	assignee?: string[];

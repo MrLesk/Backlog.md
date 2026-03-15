@@ -14,7 +14,7 @@ import {
 } from "../../../utils/milestone-filter.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
-import { sortTasks } from "../../../utils/task-sorting.ts";
+import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
 import { McpError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -27,6 +27,7 @@ export type TaskCreateArgs = {
 	labels?: string[];
 	assignee?: string[];
 	priority?: "high" | "medium" | "low";
+	ordinal?: number;
 	status?: string;
 	milestone?: string;
 	parentTaskId?: string;
@@ -205,6 +206,7 @@ export class TaskHandlers {
 				description: args.description,
 				status: args.status,
 				priority: args.priority,
+				ordinal: args.ordinal,
 				milestone,
 				labels: args.labels,
 				assignee: args.assignee,
@@ -276,7 +278,7 @@ export class TaskHandlers {
 				};
 			}
 
-			let sortedDrafts = sortTasks(drafts, "priority");
+			let sortedDrafts = sortByOrdinalAndPriority(drafts);
 			if (typeof args.limit === "number" && args.limit >= 0) {
 				sortedDrafts = sortedDrafts.slice(0, args.limit);
 			}
@@ -359,7 +361,7 @@ export class TaskHandlers {
 		const contentItems: Array<{ type: "text"; text: string }> = [];
 		for (const status of orderedStatuses) {
 			const bucket = grouped.get(status) ?? [];
-			const sortedBucket = sortTasks(bucket, "priority");
+			const sortedBucket = sortByOrdinalAndPriority(bucket);
 			const sectionLines: string[] = [`${status || "No Status"}:`];
 			for (const task of sortedBucket) {
 				sectionLines.push(this.formatTaskSummaryLine(task));

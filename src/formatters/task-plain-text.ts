@@ -76,6 +76,9 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	if (priorityLabel) {
 		lines.push(`Priority: ${priorityLabel}`);
 	}
+	if (task.ordinal !== undefined) {
+		lines.push(`Ordinal: ${task.ordinal}`);
+	}
 
 	const assigneeText = formatAssignees(task.assignee);
 	if (assigneeText) {
