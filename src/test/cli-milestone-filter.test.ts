@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -24,7 +24,7 @@ describe("CLI milestone filtering", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Milestone Filter Test Project");
+		await initializeTestProject(core, "Milestone Filter Test Project");
 		const newMilestone = await core.filesystem.createMilestone("New Milestones UI");
 
 		await core.createTask(

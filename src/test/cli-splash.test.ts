@@ -33,7 +33,7 @@ describe("CLI Splash (bare run)", () => {
 		await $`git config user.name Test`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Splash Test");
+		await initializeTestProject(core, "Splash Test");
 
 		const result = await $`bun ${CLI_PATH}`.cwd(TEST_DIR).quiet();
 		const out = result.stdout.toString();
@@ -59,3 +59,5 @@ describe("CLI Splash (bare run)", () => {
 		expect(out).toContain("Docs: https://backlog.md");
 	});
 });
+
+import { initializeTestProject } from "./test-utils.ts";

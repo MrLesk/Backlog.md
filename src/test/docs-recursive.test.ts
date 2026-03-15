@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../index.ts";
-import { isWindows } from "./test-utils.ts";
+import { initializeTestProject, isWindows } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -16,7 +16,7 @@ describe("Docs recursive listing and ID generation", () => {
 
 		// Init backlog project
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Docs Test");
+		await initializeTestProject(core, "Docs Test");
 
 		// Disable remote operations to simulate offline mode
 		const cfg = await core.filesystem.loadConfig();

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -19,7 +19,7 @@ describe("Acceptance Criteria CLI", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("AC Test Project");
+		await initializeTestProject(core, "AC Test Project");
 	});
 
 	afterEach(async () => {
@@ -469,7 +469,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR_UNIT).quiet();
 
 		const core = new Core(TEST_DIR_UNIT);
-		await core.initializeProject("AC Unit Test Project");
+		await initializeTestProject(core, "AC Unit Test Project");
 	});
 
 	afterEach(async () => {

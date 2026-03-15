@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { createTaskPlatformAware, editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("CLI Dependency Support", () => {
 	let TEST_DIR: string;
@@ -24,7 +24,7 @@ describe("CLI Dependency Support", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("test-project");
+		await initializeTestProject(core, "test-project");
 	});
 
 	afterEach(async () => {

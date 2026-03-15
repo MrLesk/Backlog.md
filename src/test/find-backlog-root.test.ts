@@ -31,6 +31,13 @@ describe("findBacklogRoot", () => {
 		expect(result).toBe(testDir);
 	});
 
+	it("should find root when .backlog/ directory exists at start dir", async () => {
+		await mkdir(join(testDir, ".backlog", "tasks"), { recursive: true });
+
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBe(testDir);
+	});
+
 	it("should find root when backlog.json exists at start dir", async () => {
 		// Create backlog.json at root
 		await writeFile(join(testDir, "backlog.json"), JSON.stringify({ name: "Test" }));
@@ -139,6 +146,36 @@ describe("findBacklogRoot", () => {
 		await writeFile(join(testDir, "backlog", "config.yaml"), "name: Test");
 
 		const result = await findBacklogRoot(testDir);
+		expect(result).toBe(testDir);
+	});
+
+	it("should find root when project root backlog.config.yml points to a custom backlog directory", async () => {
+		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
+		await writeFile(
+			join(testDir, "backlog.config.yml"),
+			'project_name: "Test"\nbacklog_directory: "planning/backlog"\n',
+		);
+
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBe(testDir);
+	});
+
+	it("should ignore placeholder backlog.config.yml files that do not look like Backlog config", async () => {
+		await writeFile(join(testDir, "backlog.config.yml"), 'name: "placeholder"\n');
+
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBeNull();
+	});
+
+	it("should not stop at nested custom backlog directories without a config marker", async () => {
+		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
+		await writeFile(
+			join(testDir, "backlog.config.yml"),
+			'project_name: "Test"\nbacklog_directory: "planning/backlog"\n',
+		);
+
+		const nestedStart = join(testDir, "planning", "backlog", "tasks");
+		const result = await findBacklogRoot(nestedStart);
 		expect(result).toBe(testDir);
 	});
 });

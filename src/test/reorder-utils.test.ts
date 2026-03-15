@@ -6,7 +6,7 @@ import { Core } from "../core/backlog.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "../core/reorder.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const item = (id: string, ordinal?: number) => ({ id, ordinal });
 
@@ -33,7 +33,7 @@ beforeEach(async () => {
 	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	core = new Core(TEST_DIR);
-	await core.initializeProject("Reorder Utilities Test Project");
+	await initializeTestProject(core, "Reorder Utilities Test Project");
 });
 
 afterEach(async () => {

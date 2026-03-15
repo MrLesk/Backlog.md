@@ -234,7 +234,7 @@ backlog task edit 42 --remove-ac 2 --remove-ac 4    # Remove multiple ACs (proce
 
 ### Definition of Done checklist (per-task)
 
-Definition of Done items are a second checklist in each task. Defaults come from `definition_of_done` in `backlog/config.yml` (or Web UI Settings) and can be disabled per task.
+Definition of Done items are a second checklist in each task. Defaults come from `definition_of_done` in the project config file (`backlog/config.yml`, `.backlog/config.yml`, or `backlog.config.yml`) or from Web UI Settings, and can be disabled per task.
 
 **Managing Definition of Done via CLI:**
 

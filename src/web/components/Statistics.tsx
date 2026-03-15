@@ -16,7 +16,12 @@ interface StatisticsProps {
 	projectName?: string;
 }
 
-const Statistics: React.FC<StatisticsProps> = ({ tasks, isLoading: externalLoading, onEditTask, projectName }) => {
+const Statistics: React.FC<StatisticsProps> = ({
+	tasks: _tasks,
+	isLoading: externalLoading,
+	onEditTask,
+	projectName,
+}) => {
 	const [statistics, setStatistics] = useState<StatisticsData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);

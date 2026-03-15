@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -32,7 +32,7 @@ describe("CLI parent task id normalization", () => {
 
 	it("should normalize parent task id when creating subtasks", async () => {
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Normalization Test", true);
+		await initializeTestProject(core, "Normalization Test", true);
 
 		const parent: Task = {
 			id: "task-4",

@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { DEFAULT_INIT_CONFIG } from "../../constants/index.ts";
 import { apiClient } from "../lib/api";
 
 type IntegrationMode = "mcp" | "cli" | "none";
 type McpClient = "claude" | "codex" | "gemini" | "guide";
 type AgentFile = "CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md";
+type BacklogDirectoryChoice = "backlog" | ".backlog" | "custom";
+type ConfigLocationChoice = "folder" | "root";
 
 interface AdvancedConfig {
 	checkActiveBranches: boolean;
@@ -36,6 +38,10 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 	const [selectedAgentFiles, setSelectedAgentFiles] = useState<AgentFile[]>([]);
 	const [installClaudeAgent, setInstallClaudeAgent] = useState(false);
 	const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
+	const [backlogDirectorySource, setBacklogDirectorySource] = useState<BacklogDirectoryChoice>("backlog");
+	const [backlogDirectory, setBacklogDirectory] = useState("backlog");
+	const [configLocation, setConfigLocation] = useState<ConfigLocationChoice>("folder");
+	const [rootConfigPath, setRootConfigPath] = useState<string | null>(null);
 	const [advancedConfig, setAdvancedConfig] = useState<AdvancedConfig>({
 		checkActiveBranches: DEFAULT_INIT_CONFIG.checkActiveBranches,
 		remoteOperations: DEFAULT_INIT_CONFIG.remoteOperations,
@@ -53,6 +59,37 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 	const [isInitializing, setIsInitializing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [mcpSetupResults, setMcpSetupResults] = useState<Record<string, string>>({});
+
+	const normalizeRelativeBacklogDirectory = (value: string): string | null => {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		if (/^(?:[a-zA-Z]:)?[\\/]/.test(trimmed)) return null;
+		const normalized = trimmed.replace(/\\/g, "/").replace(/\/+$/g, "");
+		if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
+			return null;
+		}
+		return normalized;
+	};
+
+	useEffect(() => {
+		const loadBacklogDirectoryDefaults = async () => {
+			try {
+				const status = await apiClient.checkStatus();
+				if (status.initialized) {
+					return;
+				}
+				const suggestedSource = status.backlogDirectorySource ?? "backlog";
+				const suggestedDirectory = status.backlogDirectory ?? "backlog";
+				setRootConfigPath(status.rootConfigPath ?? null);
+				setBacklogDirectorySource(suggestedSource);
+				setBacklogDirectory(suggestedDirectory);
+				setConfigLocation(status.configLocation ?? (suggestedSource === "custom" ? "root" : "folder"));
+			} catch {
+				// Keep built-in defaults when status lookup fails.
+			}
+		};
+		void loadBacklogDirectoryDefaults();
+	}, []);
 
 	const handleNext = () => {
 		setError(null);
@@ -122,8 +159,15 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 		setMcpSetupResults({});
 
 		try {
+			const normalizedBacklogDirectory =
+				backlogDirectorySource === "custom"
+					? normalizeRelativeBacklogDirectory(backlogDirectory) ?? backlogDirectory
+					: backlogDirectory;
 			await apiClient.initializeProject({
 				projectName: projectName.trim(),
+				backlogDirectory: normalizedBacklogDirectory,
+				backlogDirectorySource,
+				configLocation,
 				integrationMode: integrationMode || "none",
 				mcpClients: integrationMode === "mcp" ? selectedMcpClients : undefined,
 				agentInstructions: integrationMode === "cli" ? selectedAgentFiles : undefined,
@@ -412,6 +456,117 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 		<div>
 			<h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Advanced Settings</h2>
 
+			<div className="mb-6">
+				<h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Backlog Folder</h3>
+				<div className="space-y-3">
+					{([
+						{
+							id: "backlog" as BacklogDirectoryChoice,
+							label: "backlog/",
+							description: "Store tasks and config in backlog/",
+						},
+						{
+							id: ".backlog" as BacklogDirectoryChoice,
+							label: ".backlog/",
+							description: "Store tasks and config in .backlog/",
+						},
+						{
+							id: "custom" as BacklogDirectoryChoice,
+							label: "Custom project-relative path",
+							description: `Use ${rootConfigPath ?? "backlog.config.yml"} as the project-root pointer file`,
+						},
+					]).map((option) => (
+						<label
+							key={option.id}
+							className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
+								backlogDirectorySource === option.id
+									? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+									: "border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+							}`}
+						>
+							<input
+								type="radio"
+								name="backlogDirectorySource"
+								value={option.id}
+								checked={backlogDirectorySource === option.id}
+								onChange={() => {
+									setBacklogDirectorySource(option.id);
+									if (option.id !== "custom") {
+										setBacklogDirectory(option.id);
+									}
+									if (option.id === "custom") {
+										setConfigLocation("root");
+									}
+								}}
+								className="mt-1 mr-3"
+							/>
+							<div>
+								<div className="font-medium text-gray-900 dark:text-gray-100">{option.label}</div>
+								<div className="text-sm text-gray-500 dark:text-gray-400">{option.description}</div>
+							</div>
+						</label>
+					))}
+				</div>
+				{backlogDirectorySource === "custom" && (
+					<div className="mt-4">
+						<label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
+							Project-relative backlog directory
+						</label>
+						<input
+							type="text"
+							value={backlogDirectory}
+							onChange={(e) => setBacklogDirectory(e.target.value)}
+							placeholder="e.g. planning/backlog"
+							className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700"
+						/>
+						<p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+							This path is stored in {rootConfigPath ?? "backlog.config.yml"} and resolved from the project root.
+						</p>
+					</div>
+				)}
+				{backlogDirectorySource !== "custom" && (
+					<div className="mt-4">
+						<label className="block text-sm text-gray-700 dark:text-gray-300 mb-3">Config Location</label>
+						<div className="space-y-3">
+							{([
+								{
+									id: "folder" as ConfigLocationChoice,
+									label: `${backlogDirectory}/config.yml`,
+									description: "Store config inside the backlog folder",
+								},
+								{
+									id: "root" as ConfigLocationChoice,
+									label: "backlog.config.yml",
+									description: "Store config in the project root and point to the backlog folder there",
+								},
+							]).map((option) => (
+								<label
+									key={option.id}
+									className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
+										configLocation === option.id
+											? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+											: "border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+									}`}
+								>
+									<input
+										type="radio"
+										name="configLocation"
+										value={option.id}
+										checked={configLocation === option.id}
+										onChange={() => setConfigLocation(option.id)}
+										className="mt-1 mr-3"
+									/>
+									<div>
+										<div className="font-medium text-gray-900 dark:text-gray-100">{option.label}</div>
+										<div className="text-sm text-gray-500 dark:text-gray-400">{option.description}</div>
+									</div>
+								</label>
+							))}
+						</div>
+					</div>
+				)}
+			</div>
+
 			<label className="flex items-center mb-6 cursor-pointer">
 				<input
 					type="checkbox"
@@ -675,6 +830,16 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 								: "None"}
 					</span>
 				</div>
+				<div className="flex justify-between">
+					<span className="text-gray-600 dark:text-gray-400">Backlog Directory:</span>
+					<span className="font-medium text-gray-900 dark:text-gray-100">{backlogDirectory}</span>
+				</div>
+				<div className="flex justify-between">
+					<span className="text-gray-600 dark:text-gray-400">Config Location:</span>
+					<span className="font-medium text-gray-900 dark:text-gray-100">
+						{configLocation === "root" ? "backlog.config.yml" : `${backlogDirectory}/config.yml`}
+					</span>
+				</div>
 				{integrationMode === "mcp" && selectedMcpClients.length > 0 && (
 					<div className="flex justify-between">
 						<span className="text-gray-600 dark:text-gray-400">MCP Clients:</span>
@@ -754,7 +919,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 			case "agentFiles":
 				return true; // Can proceed with no selection
 			case "advancedConfig":
-				return true;
+				return backlogDirectorySource !== "custom" || normalizeRelativeBacklogDirectory(backlogDirectory) !== null;
 			case "summary":
 				return true;
 		}

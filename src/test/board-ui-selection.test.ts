@@ -132,8 +132,6 @@ describe("board UI task selection", () => {
 
 		// Simulate the display order (sorted)
 		const sortedTasks = [...unsortedTasks].sort((a, b) => compareTaskIds(a.id, b.id));
-		const _displayItems = sortedTasks.map((t) => `${t.id} - ${t.title}`);
-
 		// User clicks on index 0 (expects task-1)
 		const selectedIndex = 0;
 

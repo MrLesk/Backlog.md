@@ -3,7 +3,6 @@
  * Determines the latest state of tasks across all git branches
  */
 
-import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import type { GitOperations as GitOps } from "../git/operations.ts";
 import type { Task } from "../types/index.ts";
@@ -28,7 +27,7 @@ export interface TaskDirectoryInfo {
  */
 export async function getLatestTaskStatesForIds(
 	gitOps: GitOps,
-	_filesystem: FileSystem,
+	filesystem: FileSystem,
 	taskIds: string[],
 	onProgress?: (message: string) => void,
 	options?: { recentBranchesOnly?: boolean; daysAgo?: number; prefix?: string },
@@ -52,8 +51,7 @@ export async function getLatestTaskStatesForIds(
 			return taskDirectories;
 		}
 
-		// Use standard backlog directory
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const backlogDir = filesystem.backlogDirName;
 
 		// Filter branches that actually have backlog changes
 		const branchesWithBacklog: string[] = [];

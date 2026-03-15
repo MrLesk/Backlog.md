@@ -7,6 +7,7 @@ import {
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
+import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import type { Core } from "./backlog.ts";
 
 export const MCP_SERVER_NAME = "backlog";
@@ -17,6 +18,9 @@ export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 
 export interface InitializeProjectOptions {
 	projectName: string;
+	backlogDirectory?: string;
+	backlogDirectorySource?: "backlog" | ".backlog" | "custom";
+	configLocation?: "folder" | "root";
 	integrationMode: IntegrationMode;
 	mcpClients?: McpClient[];
 	agentInstructions?: AgentInstructionFile[];
@@ -158,6 +162,39 @@ export async function initializeProject(
 	if (isReInitialization) {
 		await core.filesystem.saveConfig(config);
 	} else {
+		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
+		const inferredBacklogDirectorySource = normalizedBacklogDirectory
+			? normalizedBacklogDirectory === ".backlog"
+				? ".backlog"
+				: normalizedBacklogDirectory === "backlog"
+					? "backlog"
+					: "custom"
+			: undefined;
+		if (
+			options.backlogDirectorySource &&
+			inferredBacklogDirectorySource &&
+			options.backlogDirectorySource !== inferredBacklogDirectorySource
+		) {
+			throw new Error("Backlog directory source and backlog directory value must agree.");
+		}
+		const effectiveBacklogDirectorySource = options.backlogDirectorySource ?? inferredBacklogDirectorySource;
+		if (effectiveBacklogDirectorySource === "custom" && !normalizedBacklogDirectory) {
+			throw new Error("Backlog directory must be a valid project-relative path.");
+		}
+		const effectiveConfigLocation =
+			options.configLocation ?? (effectiveBacklogDirectorySource === "custom" ? "root" : "folder");
+		if (effectiveBacklogDirectorySource === "custom" && effectiveConfigLocation !== "root") {
+			throw new Error("Custom backlog directories require root config discovery.");
+		}
+		const selectedBacklogDirectory =
+			normalizedBacklogDirectory ??
+			(effectiveBacklogDirectorySource === ".backlog"
+				? ".backlog"
+				: effectiveBacklogDirectorySource === "backlog"
+					? "backlog"
+					: "backlog");
+		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);
+		core.filesystem.setConfigLocation(effectiveConfigLocation);
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();

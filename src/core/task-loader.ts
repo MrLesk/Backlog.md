@@ -478,6 +478,7 @@ export async function loadRemoteTasks(
 	localTasks?: Task[],
 	stateCollector?: BranchTaskStateEntry[],
 	includeCompleted = false,
+	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
 ): Promise<Task[]> {
 	try {
 		// Skip remote operations if disabled
@@ -502,7 +503,6 @@ export async function loadRemoteTasks(
 		onProgress?.(`Indexing ${branches.length} recent remote branches (last ${days} days)...`);
 
 		// Build a cheap index without fetching content
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
 		const remoteIndex = await buildRemoteTaskIndex(
 			gitOps,
@@ -608,6 +608,7 @@ export async function loadLocalBranchTasks(
 	localTasks?: Task[],
 	stateCollector?: BranchTaskStateEntry[],
 	includeCompleted = false,
+	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
 ): Promise<Task[]> {
 	try {
 		const currentBranch = await gitOps.getCurrentBranch();
@@ -633,7 +634,6 @@ export async function loadLocalBranchTasks(
 		onProgress?.(`Indexing ${localBranches.length - 1} other local branches...`);
 
 		// Build index of tasks from other local branches
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
 		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
 		const localBranchIndex = await buildLocalBranchTaskIndex(
 			gitOps,

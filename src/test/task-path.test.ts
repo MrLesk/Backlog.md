@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists, taskIdsEqual } from "../utils/task-path.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("Task path utilities", () => {
 	let TEST_DIR: string;
@@ -21,7 +21,7 @@ describe("Task path utilities", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Test Project");
+		await initializeTestProject(core, "Test Project");
 
 		// Create some test task files
 		const tasksDir = core.filesystem.tasksDir;

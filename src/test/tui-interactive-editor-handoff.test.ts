@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = process.env.TUI_TEST_CLI_PATH?.trim() || join(process.cwd(), "src", "cli.ts");
 const CLI_RUNTIME = process.env.TUI_TEST_CLI_RUNTIME?.trim() ?? "bun";
@@ -109,7 +109,7 @@ setTimeout(() => {
 	await $`git config user.name "Test User"`.cwd(testDir).quiet();
 
 	const core = new Core(testDir);
-	await core.initializeProject(`Interactive ${options.scenario}`);
+	await initializeTestProject(core, `Interactive ${options.scenario}`);
 
 	const config = await core.filesystem.loadConfig();
 	if (!config) {
