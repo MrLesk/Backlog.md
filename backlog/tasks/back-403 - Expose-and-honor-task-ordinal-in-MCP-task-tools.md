@@ -1,11 +1,11 @@
 ---
 id: BACK-403
 title: Expose and honor task ordinal in MCP task tools
-status: In Progress
+status: Done
 assignee:
   - codex
 created_date: '2026-03-15 12:57'
-updated_date: '2026-03-15 13:49'
+updated_date: '2026-03-15 13:52'
 labels: []
 dependencies: []
 references:
@@ -71,6 +71,8 @@ Replaced CLAUDE.md with a symlink to AGENTS.md and removed GEMINI.md so AGENTS.m
 Verification: bun test src/test/mcp-tasks.test.ts, bunx tsc --noEmit, and bun run check on the touched TypeScript files all passed after the documentation update.
 
 Follow-up refinement: remove the ordinal-specific example from AGENTS.md so the generic agent instruction file stays product-agnostic, while leaving the concrete convention in the MCP field descriptions where external agents actually consume it.
+
+Addressed PR feedback: non-draft task_list now applies limit only after status ordering and ordinal-aware bucket sorting, so manual ordering is respected for limited results as well. Added a regression test for limit: 1 with ordinal-ordered tasks. Verification: bun test src/test/mcp-tasks.test.ts, bunx tsc --noEmit, and bun run check on the touched files.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -81,6 +83,8 @@ Exposed the existing task ordinal field through MCP task_create and task_edit wi
 Follow-up: rejected explicit null ordinal values on the MCP create path and in core task creation so null cannot be persisted and later parse back to ordinal 0.
 
 Follow-up: documented the spaced-integer ordinal convention in the public MCP field descriptions and consolidated repo agent instructions by making AGENTS.md the canonical source, with CLAUDE.md symlinked to it and GEMINI.md removed.
+
+Follow-up: moved non-draft task_list limit application to after ordinal-aware sorting and added a regression test so limited results honor manual ordering.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

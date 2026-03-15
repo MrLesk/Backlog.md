@@ -315,7 +315,6 @@ export class TaskHandlers {
 
 		const tasks = await this.core.queryTasks({
 			query: args.search,
-			limit: args.limit,
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
 			includeCrossBranch: false,
 		});
@@ -364,11 +363,19 @@ export class TaskHandlers {
 		];
 
 		const contentItems: Array<{ type: "text"; text: string }> = [];
+		let remaining = typeof args.limit === "number" && args.limit >= 0 ? args.limit : undefined;
 		for (const status of orderedStatuses) {
 			const bucket = grouped.get(status) ?? [];
 			const sortedBucket = sortByOrdinalAndPriority(bucket);
+			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
+			if (remaining !== undefined) {
+				remaining -= limitedBucket.length;
+			}
+			if (limitedBucket.length === 0) {
+				continue;
+			}
 			const sectionLines: string[] = [`${status || "No Status"}:`];
-			for (const task of sortedBucket) {
+			for (const task of limitedBucket) {
 				sectionLines.push(this.formatTaskSummaryLine(task));
 			}
 			contentItems.push({

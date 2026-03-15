@@ -486,6 +486,43 @@ describe("MCP task tools (MVP)", () => {
 		expect(getText(viewResult.content)).toContain("Ordinal: 5");
 	});
 
+	it("applies task_list limit after ordinal-aware sorting", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Limited ordinal later id",
+					status: "To Do",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Limited ordinal first by order",
+					status: "To Do",
+					ordinal: 1000,
+				},
+			},
+		});
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_list",
+				arguments: {
+					status: "To Do",
+					search: "Limited ordinal",
+					limit: 1,
+				},
+			},
+		});
+
+		const listText = getText(listResult.content);
+		expect(listText).toContain("TASK-2 - Limited ordinal first by order");
+		expect(listText).not.toContain("TASK-1 - Limited ordinal later id");
+	});
+
 	it("rejects invalid ordinal input", async () => {
 		const invalidCreate = await mcpServer.testInterface.callTool({
 			params: {
