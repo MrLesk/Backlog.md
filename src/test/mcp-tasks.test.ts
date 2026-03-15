@@ -529,6 +529,18 @@ describe("MCP task tools (MVP)", () => {
 		});
 		expect(invalidEdit.isError).toBe(true);
 		expect(getText(invalidEdit.content)).toContain("must be at least 0");
+
+		const nullEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					ordinal: null,
+				},
+			},
+		});
+		expect(nullEdit.isError).toBe(true);
+		expect(getText(nullEdit.content)).toContain("Ordinal must be a non-negative number.");
 	});
 
 	it("creates and edits Definition of Done items", async () => {

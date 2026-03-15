@@ -557,6 +557,11 @@ export class TaskHandlers {
 
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
 		try {
+			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
+			if (rawOrdinal === null) {
+				throw new McpError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
+			}
+
 			const updateInput = buildTaskUpdateInput(args);
 			if (typeof updateInput.milestone === "string") {
 				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);
