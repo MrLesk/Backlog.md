@@ -79,7 +79,7 @@ If you can simplify the code, do it.
 - Treat Backlog.md as a shipped CLI/MCP binary that may be used from other repositories where agents cannot inspect this source tree.
 - When you decide what another agent can rely on, use only the public surface: MCP workflow resources, MCP tool descriptions/schemas, CLI help, and instruction files shipped with the project.
 - Do not assume external agents know internal implementation details, constants, or source-only conventions.
-- If a convention matters for agent behavior, document it in the public MCP/instruction surface. Example: ordinal values should prefer spaced integers such as `1000`, `2000`, `3000` so later inserts have room.
+- If a convention matters for agent behavior, document it in the public MCP/instruction surface rather than relying on source-code discovery.
 
 ## Code Standards
 

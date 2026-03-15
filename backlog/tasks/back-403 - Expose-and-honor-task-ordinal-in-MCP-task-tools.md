@@ -1,11 +1,11 @@
 ---
 id: BACK-403
 title: Expose and honor task ordinal in MCP task tools
-status: Done
+status: In Progress
 assignee:
   - codex
 created_date: '2026-03-15 12:57'
-updated_date: '2026-03-15 13:47'
+updated_date: '2026-03-15 13:49'
 labels: []
 dependencies: []
 references:
@@ -69,6 +69,8 @@ Updated AGENTS.md to state that Backlog.md should be treated as a shipped CLI/MC
 Replaced CLAUDE.md with a symlink to AGENTS.md and removed GEMINI.md so AGENTS.md is the single maintained instruction source.
 
 Verification: bun test src/test/mcp-tasks.test.ts, bunx tsc --noEmit, and bun run check on the touched TypeScript files all passed after the documentation update.
+
+Follow-up refinement: remove the ordinal-specific example from AGENTS.md so the generic agent instruction file stays product-agnostic, while leaving the concrete convention in the MCP field descriptions where external agents actually consume it.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
