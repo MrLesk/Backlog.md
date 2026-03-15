@@ -14,7 +14,7 @@ import {
 } from "../../../utils/milestone-filter.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
-import { sortTasks } from "../../../utils/task-sorting.ts";
+import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
 import { McpError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -27,6 +27,7 @@ export type TaskCreateArgs = {
 	labels?: string[];
 	assignee?: string[];
 	priority?: "high" | "medium" | "low";
+	ordinal?: number;
 	status?: string;
 	milestone?: string;
 	parentTaskId?: string;
@@ -191,6 +192,11 @@ export class TaskHandlers {
 
 	async createTask(args: TaskCreateArgs): Promise<CallToolResult> {
 		try {
+			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
+			if (rawOrdinal === null) {
+				throw new McpError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
+			}
+
 			const acceptanceCriteria =
 				args.acceptanceCriteria
 					?.map((text) => String(text).trim())
@@ -205,6 +211,7 @@ export class TaskHandlers {
 				description: args.description,
 				status: args.status,
 				priority: args.priority,
+				...(typeof rawOrdinal === "number" ? { ordinal: rawOrdinal } : {}),
 				milestone,
 				labels: args.labels,
 				assignee: args.assignee,
@@ -276,7 +283,7 @@ export class TaskHandlers {
 				};
 			}
 
-			let sortedDrafts = sortTasks(drafts, "priority");
+			let sortedDrafts = sortByOrdinalAndPriority(drafts);
 			if (typeof args.limit === "number" && args.limit >= 0) {
 				sortedDrafts = sortedDrafts.slice(0, args.limit);
 			}
@@ -308,7 +315,6 @@ export class TaskHandlers {
 
 		const tasks = await this.core.queryTasks({
 			query: args.search,
-			limit: args.limit,
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
 			includeCrossBranch: false,
 		});
@@ -357,11 +363,19 @@ export class TaskHandlers {
 		];
 
 		const contentItems: Array<{ type: "text"; text: string }> = [];
+		let remaining = typeof args.limit === "number" && args.limit >= 0 ? args.limit : undefined;
 		for (const status of orderedStatuses) {
 			const bucket = grouped.get(status) ?? [];
-			const sortedBucket = sortTasks(bucket, "priority");
+			const sortedBucket = sortByOrdinalAndPriority(bucket);
+			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
+			if (remaining !== undefined) {
+				remaining -= limitedBucket.length;
+			}
+			if (limitedBucket.length === 0) {
+				continue;
+			}
 			const sectionLines: string[] = [`${status || "No Status"}:`];
-			for (const task of sortedBucket) {
+			for (const task of limitedBucket) {
 				sectionLines.push(this.formatTaskSummaryLine(task));
 			}
 			contentItems.push({
@@ -550,6 +564,11 @@ export class TaskHandlers {
 
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
 		try {
+			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
+			if (rawOrdinal === null) {
+				throw new McpError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
+			}
+
 			const updateInput = buildTaskUpdateInput(args);
 			if (typeof updateInput.milestone === "string") {
 				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);

@@ -299,6 +299,26 @@ describe("MCP task tools (MVP)", () => {
 		expect(editSchema?.properties?.definitionOfDoneCheck?.description).toContain("this task");
 	});
 
+	it("exposes ordinal in task schemas", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
+
+		expect(createSchema?.properties?.ordinal).toEqual({
+			type: "number",
+			minimum: 0,
+			description:
+				"Optional non-negative ordering value for manual task ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
+		});
+		expect(editSchema?.properties?.ordinal).toEqual({
+			type: "number",
+			minimum: 0,
+			description:
+				"Set task ordinal for manual ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
+		});
+	});
+
 	it("allows case-insensitive and whitespace-normalized status values", async () => {
 		const createResult = await mcpServer.testInterface.callTool({
 			params: {
@@ -400,6 +420,166 @@ describe("MCP task tools (MVP)", () => {
 		const criteriaText = getText(criteriaUpdate.content);
 		expect(criteriaText).toContain("- [x] #1 Plan documented");
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
+	});
+
+	it("creates, edits, lists, and views tasks with ordinal", async () => {
+		const createdA = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Ordinal task A",
+					status: "To Do",
+					priority: "low",
+					ordinal: 20,
+				},
+			},
+		});
+		const createdB = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Ordinal task B",
+					status: "To Do",
+					priority: "high",
+					ordinal: 10,
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Ordinal task C",
+					status: "To Do",
+					priority: "medium",
+				},
+			},
+		});
+
+		expect(getText(createdA.content)).toContain("Ordinal: 20");
+		expect(getText(createdB.content)).toContain("Ordinal: 10");
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { status: "To Do", search: "Ordinal task" } },
+		});
+		const listText = getText(listResult.content);
+		expect(listText.indexOf("TASK-2 - Ordinal task B")).toBeLessThan(listText.indexOf("TASK-1 - Ordinal task A"));
+		expect(listText.indexOf("TASK-1 - Ordinal task A")).toBeLessThan(listText.indexOf("TASK-3 - Ordinal task C"));
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-3",
+					ordinal: 5,
+				},
+			},
+		});
+		expect(getText(editResult.content)).toContain("Ordinal: 5");
+
+		const updatedTask = await mcpServer.getTask("task-3");
+		expect(updatedTask?.ordinal).toBe(5);
+
+		const viewResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-3" } },
+		});
+		expect(getText(viewResult.content)).toContain("Ordinal: 5");
+	});
+
+	it("applies task_list limit after ordinal-aware sorting", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Limited ordinal later id",
+					status: "To Do",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Limited ordinal first by order",
+					status: "To Do",
+					ordinal: 1000,
+				},
+			},
+		});
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_list",
+				arguments: {
+					status: "To Do",
+					search: "Limited ordinal",
+					limit: 1,
+				},
+			},
+		});
+
+		const listText = getText(listResult.content);
+		expect(listText).toContain("TASK-2 - Limited ordinal first by order");
+		expect(listText).not.toContain("TASK-1 - Limited ordinal later id");
+	});
+
+	it("rejects invalid ordinal input", async () => {
+		const invalidCreate = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Invalid ordinal create",
+					ordinal: -1,
+				},
+			},
+		});
+		expect(invalidCreate.isError).toBe(true);
+		expect(getText(invalidCreate.content)).toContain("must be at least 0");
+
+		const nullCreate = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Null ordinal create",
+					ordinal: null,
+				},
+			},
+		});
+		expect(nullCreate.isError).toBe(true);
+		expect(getText(nullCreate.content)).toContain("Ordinal must be a non-negative number.");
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Valid task",
+				},
+			},
+		});
+
+		const invalidEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					ordinal: -1,
+				},
+			},
+		});
+		expect(invalidEdit.isError).toBe(true);
+		expect(getText(invalidEdit.content)).toContain("must be at least 0");
+
+		const nullEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					ordinal: null,
+				},
+			},
+		});
+		expect(nullEdit.isError).toBe(true);
+		expect(getText(nullEdit.content)).toContain("Ordinal must be a non-negative number.");
 	});
 
 	it("creates and edits Definition of Done items", async () => {

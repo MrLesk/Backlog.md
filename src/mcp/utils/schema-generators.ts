@@ -45,6 +45,12 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				enum: ["high", "medium", "low"],
 			},
+			ordinal: {
+				type: "number",
+				minimum: 0,
+				description:
+					"Optional non-negative ordering value for manual task ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
+			},
 			milestone: {
 				type: "string",
 				minLength: 1,
@@ -148,6 +154,12 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			priority: {
 				type: "string",
 				enum: ["high", "medium", "low"],
+			},
+			ordinal: {
+				type: "number",
+				minimum: 0,
+				description:
+					"Set task ordinal for manual ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
 			},
 			milestone: {
 				type: "string",
