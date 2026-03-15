@@ -192,6 +192,11 @@ export class TaskHandlers {
 
 	async createTask(args: TaskCreateArgs): Promise<CallToolResult> {
 		try {
+			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
+			if (rawOrdinal === null) {
+				throw new McpError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
+			}
+
 			const acceptanceCriteria =
 				args.acceptanceCriteria
 					?.map((text) => String(text).trim())
@@ -206,7 +211,7 @@ export class TaskHandlers {
 				description: args.description,
 				status: args.status,
 				priority: args.priority,
-				ordinal: args.ordinal,
+				...(typeof rawOrdinal === "number" ? { ordinal: rawOrdinal } : {}),
 				milestone,
 				labels: args.labels,
 				assignee: args.assignee,

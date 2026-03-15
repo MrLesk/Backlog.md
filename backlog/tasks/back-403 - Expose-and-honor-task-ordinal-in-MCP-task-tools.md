@@ -5,7 +5,7 @@ status: Done
 assignee:
   - codex
 created_date: '2026-03-15 12:57'
-updated_date: '2026-03-15 13:00'
+updated_date: '2026-03-15 13:18'
 labels: []
 dependencies: []
 references:
@@ -53,12 +53,16 @@ Updated plain-text task formatting so task_view and create/edit responses render
 Created and continued the work on branch tasks/back-403-ordinal-mcp after the user requested branch isolation.
 
 Verification: bun test src/test/mcp-tasks.test.ts, bunx tsc --noEmit, and bun run check on the touched files all passed.
+
+Addressed PR feedback: task_create now rejects explicit null ordinal values instead of persisting them and having them parse back as 0 on read. Re-verified with bun test src/test/mcp-tasks.test.ts, bunx tsc --noEmit, and bun run check on the touched files.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Exposed the existing task ordinal field through MCP task_create and task_edit without introducing any new tools. The create path now persists ordinal values, MCP task schemas advertise the field with non-negative numeric validation, task_list now respects manual ordering by using the existing ordinal-aware sorting within each status bucket, and task_view/create/edit plain-text output now shows Ordinal when present. Added targeted MCP tests covering schema exposure, create/edit persistence, task_list ordering, validation failures, and task_view output. Verified with bun test src/test/mcp-tasks.test.ts, bunx tsc --noEmit, and bun run check on the touched files.
+
+Follow-up: rejected explicit null ordinal values on the MCP create path and in core task creation so null cannot be persisted and later parse back to ordinal 0.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

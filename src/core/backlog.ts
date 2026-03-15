@@ -963,7 +963,10 @@ export class Core {
 
 		const priority = this.normalizePriority(input.priority);
 		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
-		if (input.ordinal !== undefined && (Number.isNaN(input.ordinal) || input.ordinal < 0)) {
+		if (
+			input.ordinal !== undefined &&
+			(typeof input.ordinal !== "number" || Number.isNaN(input.ordinal) || input.ordinal < 0)
+		) {
 			throw new Error("Ordinal must be a non-negative number.");
 		}
 
@@ -996,7 +999,7 @@ export class Core {
 			createdDate,
 			...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
 			...(priority && { priority }),
-			...(input.ordinal !== undefined && { ordinal: input.ordinal }),
+			...(typeof input.ordinal === "number" && { ordinal: input.ordinal }),
 			...(typeof input.milestone === "string" &&
 				input.milestone.trim().length > 0 && {
 					milestone: input.milestone.trim(),

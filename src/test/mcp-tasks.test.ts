@@ -497,6 +497,18 @@ describe("MCP task tools (MVP)", () => {
 		expect(invalidCreate.isError).toBe(true);
 		expect(getText(invalidCreate.content)).toContain("must be at least 0");
 
+		const nullCreate = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Null ordinal create",
+					ordinal: null,
+				},
+			},
+		});
+		expect(nullCreate.isError).toBe(true);
+		expect(getText(nullCreate.content)).toContain("Ordinal must be a non-negative number.");
+
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_create",
