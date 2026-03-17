@@ -4,7 +4,7 @@ title: Harden task ID locking for concurrent create/promote/demote operations
 status: Done
 assignee: []
 created_date: '2026-03-17 14:07'
-updated_date: '2026-03-17 14:07'
+updated_date: '2026-03-17 14:15'
 labels: []
 dependencies: []
 ---
@@ -46,4 +46,16 @@ Refactored `src/core/backlog.ts` so create/promote/demote hold the lock only whi
 Added deterministic regression coverage in `src/test/atomic-task-create.test.ts` for concurrent create, promote, demote, and timeout behavior, plus a repository-level smoke script at `scripts/smoke-parallel-task-locking.sh`.
 
 Follow-up fixes preserved prior behavior in the CLI create path: non-wizard `task create` / `draft create` once again honor repo `autoCommit: true`, and dependency validation continues to accept tasks visible from other active branches by validating through `queryTasks()`.
+
+Additional follow-up fix after PR review: restored legacy comma splitting for `task create --ref` and `task create --doc` so values like `file1.ts,file2.ts` and `doc1.md,doc2.md` are stored as separate entries again. Implemented a shared `parseDelimitedStringList()` helper in `src/utils/task-builders.ts`, applied it to the non-wizard create path in `src/cli.ts`, and re-validated with `src/test/cli-refs-docs.test.ts`.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Hardened concurrent task ID allocation across create, promote, and demote flows by replacing the ad hoc create lock with a `proper-lockfile`-backed implementation and narrowing the critical section to ID allocation plus file mutations. Added deterministic concurrency regression tests and a real parallel smoke test so duplicate-ID races and lock-timeout behavior are covered explicitly.
+
+Follow-up review fixes preserved previous CLI behavior: non-wizard create commands now honor repo `autoCommit` configuration again, dependency validation still accepts tasks visible from other active branches, and comma-delimited `--ref` / `--doc` values on `task create` once again split into separate entries.
+
+Validation included focused concurrency, auto-commit, dependency, and refs/docs CLI suites, plus the parallel smoke test script.
+<!-- SECTION:FINAL_SUMMARY:END -->
