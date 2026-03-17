@@ -434,6 +434,45 @@ describe("CLI Integration", () => {
 			expect(await git.getLastCommitMessage()).toContain(`Create draft ${draft?.id}`);
 			expect(draft?.title).toBe("CLI Auto Commit Draft");
 		});
+
+		it("should accept dependencies from other active branches", async () => {
+			const core = new Core(TEST_DIR);
+
+			const remoteDir = join(TEST_DIR, "remote.git");
+			await $`git init --bare -b main ${remoteDir}`.quiet();
+			await $`git remote add origin ${remoteDir}`.cwd(TEST_DIR).quiet();
+			await $`git push -u origin main`.cwd(TEST_DIR).quiet();
+
+			await $`git checkout -b feature`.cwd(TEST_DIR).quiet();
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Cross-branch dependency target",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-09",
+					labels: [],
+					dependencies: [],
+					rawContent: "Created on feature branch",
+				},
+				true,
+			);
+			await $`git push -u origin feature`.cwd(TEST_DIR).quiet();
+			await $`git remote update origin --prune`.cwd(TEST_DIR).quiet();
+			await $`git checkout main`.cwd(TEST_DIR).quiet();
+			await core.gitOps.fetch();
+
+			const visibleTasks = await core.queryTasks();
+			expect(visibleTasks.some((task) => task.id === "TASK-1")).toBe(true);
+
+			const output = await $`bun ${CLI_PATH} task create "Depends on feature task" --depends-on task-1`
+				.cwd(TEST_DIR)
+				.text();
+			const createdTask = await core.filesystem.loadTask("task-2");
+
+			expect(output).toContain("Created task TASK-2");
+			expect(createdTask?.dependencies).toEqual(["TASK-1"]);
+		});
 	});
 
 	describe("task list command", () => {
