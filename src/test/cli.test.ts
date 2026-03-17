@@ -380,6 +380,62 @@ describe("CLI Integration", () => {
 		});
 	});
 
+	describe("create commands", () => {
+		beforeEach(async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			await initializeTestProject(core, "Create Command Test", true);
+
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected backlog config to exist");
+			}
+
+			config.autoCommit = true;
+			await core.filesystem.saveConfig(config);
+			const git = await core.getGitOps();
+			await git.addFile(join(TEST_DIR, "backlog", "config.yml"));
+			await git.commitChanges("backlog: Enable autoCommit for CLI create tests");
+		});
+
+		it("should honor autoCommit config for task create", async () => {
+			const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+			const output = await $`bun ${CLI_PATH} task create "CLI Auto Commit Task"`.cwd(TEST_DIR).text();
+			const afterCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+
+			const core = new Core(TEST_DIR);
+			const git = await core.getGitOps();
+			const task = await core.filesystem.loadTask("task-1");
+
+			expect(task).not.toBeNull();
+			expect(output).toContain(`Created task ${task?.id}`);
+			expect(afterCount).toBe(beforeCount + 1);
+			expect(await git.isClean()).toBe(true);
+			expect(await git.getLastCommitMessage()).toContain(`Create task ${task?.id}`);
+			expect(task?.title).toBe("CLI Auto Commit Task");
+		});
+
+		it("should honor autoCommit config for draft create", async () => {
+			const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+			const output = await $`bun ${CLI_PATH} draft create "CLI Auto Commit Draft"`.cwd(TEST_DIR).text();
+			const afterCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+
+			const core = new Core(TEST_DIR);
+			const git = await core.getGitOps();
+			const draft = await core.filesystem.loadDraft("draft-1");
+
+			expect(draft).not.toBeNull();
+			expect(output).toContain(`Created draft ${draft?.id}`);
+			expect(afterCount).toBe(beforeCount + 1);
+			expect(await git.isClean()).toBe(true);
+			expect(await git.getLastCommitMessage()).toContain(`Create draft ${draft?.id}`);
+			expect(draft?.title).toBe("CLI Auto Commit Draft");
+		});
+	});
+
 	describe("task list command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog

@@ -1600,33 +1600,30 @@ taskCmd
 
 		try {
 			const criteria = processAcceptanceCriteriaOptions(options);
-			const { task, filePath } = await core.createTaskFromInput(
-				{
-					title: title ?? "",
-					description: options.description || options.desc ? String(options.description || options.desc) : undefined,
-					status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
-					assignee: options.assignee ? [String(options.assignee)] : undefined,
-					labels: options.labels
-						? String(options.labels)
-								.split(",")
-								.map((label: string) => label.trim())
-								.filter(Boolean)
-						: undefined,
-					dependencies:
-						options.dependsOn || options.dep ? normalizeDependencies(options.dependsOn || options.dep) : undefined,
-					references: options.ref ? normalizeStringList(toStringArray(options.ref)) : undefined,
-					documentation: options.doc ? normalizeStringList(toStringArray(options.doc)) : undefined,
-					parentTaskId: options.parent ? String(options.parent) : undefined,
-					priority: options.priority ? String(options.priority).toLowerCase() : undefined,
-					implementationPlan: options.plan ? String(options.plan) : undefined,
-					implementationNotes: options.notes ? String(options.notes) : undefined,
-					finalSummary: options.finalSummary ? String(options.finalSummary) : undefined,
-					acceptanceCriteria: criteria.map((text) => ({ text, checked: false })),
-					definitionOfDoneAdd: toStringArray(options.dod),
-					disableDefinitionOfDoneDefaults: options.dodDefaults === false,
-				},
-				false,
-			);
+			const { task, filePath } = await core.createTaskFromInput({
+				title: title ?? "",
+				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
+				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
+				assignee: options.assignee ? [String(options.assignee)] : undefined,
+				labels: options.labels
+					? String(options.labels)
+							.split(",")
+							.map((label: string) => label.trim())
+							.filter(Boolean)
+					: undefined,
+				dependencies:
+					options.dependsOn || options.dep ? normalizeDependencies(options.dependsOn || options.dep) : undefined,
+				references: options.ref ? normalizeStringList(toStringArray(options.ref)) : undefined,
+				documentation: options.doc ? normalizeStringList(toStringArray(options.doc)) : undefined,
+				parentTaskId: options.parent ? String(options.parent) : undefined,
+				priority: options.priority ? String(options.priority).toLowerCase() : undefined,
+				implementationPlan: options.plan ? String(options.plan) : undefined,
+				implementationNotes: options.notes ? String(options.notes) : undefined,
+				finalSummary: options.finalSummary ? String(options.finalSummary) : undefined,
+				acceptanceCriteria: criteria.map((text) => ({ text, checked: false })),
+				definitionOfDoneAdd: toStringArray(options.dod),
+				disableDefinitionOfDoneDefaults: options.dodDefaults === false,
+			});
 
 			if (usePlainOutput) {
 				console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
@@ -2692,21 +2689,18 @@ draftCmd
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
 		try {
-			const { task, filePath } = await core.createTaskFromInput(
-				{
-					title,
-					description: options.description || options.desc ? String(options.description || options.desc) : undefined,
-					status: "Draft",
-					assignee: options.assignee ? [String(options.assignee)] : undefined,
-					labels: options.labels
-						? String(options.labels)
-								.split(",")
-								.map((label: string) => label.trim())
-								.filter(Boolean)
-						: undefined,
-				},
-				false,
-			);
+			const { task, filePath } = await core.createTaskFromInput({
+				title,
+				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
+				status: "Draft",
+				assignee: options.assignee ? [String(options.assignee)] : undefined,
+				labels: options.labels
+					? String(options.labels)
+							.split(",")
+							.map((label: string) => label.trim())
+							.filter(Boolean)
+					: undefined,
+			});
 			console.log(`Created draft ${task.id}`);
 			console.log(`File: ${filePath}`);
 		} catch (error) {
