@@ -109,6 +109,19 @@ export function toStringArray(value: unknown): string[] {
 }
 
 /**
+ * Parse repeated or comma-delimited CLI list values into a normalized string list.
+ * Returns `undefined` when the resulting list is empty.
+ */
+export function parseDelimitedStringList(value: unknown): string[] | undefined {
+	const entries = toStringArray(value).flatMap((entry) =>
+		String(entry)
+			.split(",")
+			.map((item) => item.trim()),
+	);
+	return normalizeStringList(entries);
+}
+
+/**
  * Parse a Commander option (single value or array) into a strictly positive integer list.
  * Throws an Error when any value is invalid so callers can surface CLI-friendly messaging.
  */

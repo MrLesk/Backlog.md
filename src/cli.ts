@@ -57,6 +57,7 @@ import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cw
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
 	normalizeStringList,
+	parseDelimitedStringList,
 	parsePositiveIndexList,
 	processAcceptanceCriteriaOptions,
 	toStringArray,
@@ -1613,8 +1614,8 @@ taskCmd
 					: undefined,
 				dependencies:
 					options.dependsOn || options.dep ? normalizeDependencies(options.dependsOn || options.dep) : undefined,
-				references: options.ref ? normalizeStringList(toStringArray(options.ref)) : undefined,
-				documentation: options.doc ? normalizeStringList(toStringArray(options.doc)) : undefined,
+				references: parseDelimitedStringList(options.ref),
+				documentation: parseDelimitedStringList(options.doc),
 				parentTaskId: options.parent ? String(options.parent) : undefined,
 				priority: options.priority ? String(options.priority).toLowerCase() : undefined,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
