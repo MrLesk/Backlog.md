@@ -1,5 +1,6 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
@@ -22,6 +23,35 @@ interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
 	};
+}
+
+interface CreateLockOptions {
+	timeoutMs?: number;
+	retryDelayMs?: number;
+	staleMs?: number;
+}
+
+const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
+const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
+const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
+
+export const CREATE_LOCK_ERROR_CODE = "ECREATELOCK";
+export const CREATE_LOCK_ERROR_MESSAGE =
+	"Another task create/promote/demote operation is already in progress. Please try again.";
+
+function createLockError(message: string, cause?: unknown): Error {
+	const error = new Error(message, cause === undefined ? undefined : { cause }) as Error & { code?: string };
+	error.name = "CreateLockError";
+	error.code = CREATE_LOCK_ERROR_CODE;
+	return error;
+}
+
+export function isCreateLockError(error: unknown): error is Error {
+	return (
+		error instanceof Error &&
+		(error as Error & { code?: string }).code === CREATE_LOCK_ERROR_CODE &&
+		error.name === "CreateLockError"
+	);
 }
 
 export class FileSystem {
@@ -181,6 +211,75 @@ export class FileSystem {
 
 		for (const dir of directories) {
 			await mkdir(dir, { recursive: true });
+		}
+	}
+
+	private toCreateLockError(error: unknown): Error {
+		if (isCreateLockError(error)) {
+			return error;
+		}
+
+		const code = (error as NodeJS.ErrnoException | undefined)?.code;
+		if (code === "ELOCKED") {
+			return createLockError(CREATE_LOCK_ERROR_MESSAGE, error);
+		}
+		if (code === "ECOMPROMISED") {
+			return createLockError("Task creation lock was interrupted. Please try again.", error);
+		}
+		return error instanceof Error ? error : new Error(String(error));
+	}
+
+	// Uses a maintained lockfile with stale-lock recovery; USE_GLOBAL_TASK_ID_LOCK=false restores legacy behavior.
+	async withCreateLock<T>(fn: () => Promise<T>, options: CreateLockOptions = {}): Promise<T> {
+		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") {
+			return await fn();
+		}
+
+		const backlogDir = await this.getBacklogDir();
+		const locksDir = join(backlogDir, ".locks");
+		const lockDir = join(locksDir, "create");
+		const timeoutMs = options.timeoutMs ?? DEFAULT_CREATE_LOCK_TIMEOUT_MS;
+		const retryDelayMs = options.retryDelayMs ?? DEFAULT_CREATE_LOCK_RETRY_DELAY_MS;
+		const staleMs = Math.max(options.staleMs ?? DEFAULT_CREATE_LOCK_STALE_MS, 2_000);
+		const retries = Math.max(Math.ceil(timeoutMs / retryDelayMs) - 1, 0);
+
+		await mkdir(locksDir, { recursive: true });
+
+		let release: (() => Promise<void>) | undefined;
+		try {
+			release = await lockfile.lock(backlogDir, {
+				lockfilePath: lockDir,
+				realpath: true,
+				stale: staleMs,
+				retries: {
+					retries,
+					factor: 1,
+					minTimeout: retryDelayMs,
+					maxTimeout: retryDelayMs,
+					randomize: false,
+				},
+			});
+		} catch (error) {
+			throw this.toCreateLockError(error);
+		}
+
+		try {
+			const result = await fn();
+			try {
+				await release?.();
+			} catch (error) {
+				throw this.toCreateLockError(error);
+			}
+			return result;
+		} catch (error) {
+			if (release) {
+				try {
+					await release();
+				} catch {
+					// Preserve the original operation error if lock cleanup also fails.
+				}
+			}
+			throw error;
 		}
 	}
 
@@ -439,70 +538,80 @@ export class FileSystem {
 
 	async promoteDraft(draftId: string): Promise<boolean> {
 		try {
-			// Load the draft
-			const draft = await this.loadDraft(draftId);
-			if (!draft || !draft.filePath) return false;
+			return await this.withCreateLock(async () => {
+				// Load the draft
+				const draft = await this.loadDraft(draftId);
+				if (!draft || !draft.filePath) return false;
 
-			// Get task prefix from config (default: "task")
-			const config = await this.loadConfig();
-			const taskPrefix = config?.prefixes?.task ?? "task";
+				// Get task prefix from config (default: "task")
+				const config = await this.loadConfig();
+				const taskPrefix = config?.prefixes?.task ?? "task";
 
-			// Get existing task IDs to generate next ID
-			// Include both active and completed tasks to prevent ID collisions
-			const existingTasks = await this.listTasks();
-			const completedTasks = await this.listCompletedTasks();
-			const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
+				// Get existing task IDs to generate next ID
+				// Include both active and completed tasks to prevent ID collisions
+				const existingTasks = await this.listTasks();
+				const completedTasks = await this.listCompletedTasks();
+				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
 
-			// Generate new task ID
-			const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
+				// Generate new task ID
+				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
 
-			// Update draft with new task ID and save as task
-			const promotedTask: Task = {
-				...draft,
-				id: newTaskId,
-				filePath: undefined, // Will be set by saveTask
-			};
+				// Update draft with new task ID and save as task
+				const promotedTask: Task = {
+					...draft,
+					id: newTaskId,
+					filePath: undefined, // Will be set by saveTask
+				};
 
-			await this.saveTask(promotedTask);
+				await this.saveTask(promotedTask);
 
-			// Delete old draft file
-			await unlink(draft.filePath);
+				// Delete old draft file
+				await unlink(draft.filePath);
 
-			return true;
-		} catch {
+				return true;
+			});
+		} catch (error) {
+			if (isCreateLockError(error)) {
+				throw error;
+			}
 			return false;
 		}
 	}
 
 	async demoteTask(taskId: string): Promise<boolean> {
 		try {
-			// Load the task
-			const task = await this.loadTask(taskId);
-			if (!task || !task.filePath) return false;
+			return await this.withCreateLock(async () => {
+				// Load the task
+				const task = await this.loadTask(taskId);
+				if (!task || !task.filePath) return false;
 
-			// Get existing draft IDs to generate next ID
-			// Draft prefix is always "draft" (not configurable like task prefix)
-			const existingDrafts = await this.listDrafts();
-			const existingIds = existingDrafts.map((d) => d.id);
+				// Get existing draft IDs to generate next ID
+				// Draft prefix is always "draft" (not configurable like task prefix)
+				const existingDrafts = await this.listDrafts();
+				const existingIds = existingDrafts.map((d) => d.id);
 
-			// Generate new draft ID
-			const config = await this.loadConfig();
-			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
+				// Generate new draft ID
+				const config = await this.loadConfig();
+				const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
 
-			// Update task with new draft ID and save as draft
-			const demotedDraft: Task = {
-				...task,
-				id: newDraftId,
-				filePath: undefined, // Will be set by saveDraft
-			};
+				// Update task with new draft ID and save as draft
+				const demotedDraft: Task = {
+					...task,
+					id: newDraftId,
+					filePath: undefined, // Will be set by saveDraft
+				};
 
-			await this.saveDraft(demotedDraft);
+				await this.saveDraft(demotedDraft);
 
-			// Delete old task file
-			await unlink(task.filePath);
+				// Delete old task file
+				await unlink(task.filePath);
 
-			return true;
-		} catch {
+				return true;
+			});
+		} catch (error) {
+			if (isCreateLockError(error)) {
+				throw error;
+			}
 			return false;
 		}
 	}

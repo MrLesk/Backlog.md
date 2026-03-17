@@ -1,4 +1,5 @@
 import { basename, join } from "node:path";
+import { isCreateLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
 	type Milestone,
@@ -227,6 +228,9 @@ export class TaskHandlers {
 
 			return await formatTaskCallResult(createdTask);
 		} catch (error) {
+			if (isCreateLockError(error)) {
+				throw new McpError(error.message, "OPERATION_FAILED");
+			}
 			if (error instanceof Error) {
 				throw new McpError(error.message, "VALIDATION_ERROR");
 			}
@@ -553,7 +557,15 @@ export class TaskHandlers {
 
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
-		const success = await this.core.demoteTask(task.id, false);
+		let success: boolean;
+		try {
+			success = await this.core.demoteTask(task.id, false);
+		} catch (error) {
+			if (isCreateLockError(error)) {
+				throw new McpError(error.message, "OPERATION_FAILED");
+			}
+			throw error;
+		}
 		if (!success) {
 			throw new McpError(`Failed to demote task: ${args.id}`, "OPERATION_FAILED");
 		}
