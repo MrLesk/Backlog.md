@@ -94,5 +94,8 @@
 	"trustedDependencies": [
 		"@biomejs/biome",
 		"node-pty"
-	]
+	],
+	"dependencies": {
+		"proper-lockfile": "^4.1.2"
+	}
 }

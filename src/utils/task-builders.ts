@@ -45,8 +45,9 @@ export async function validateDependencies(
 	if (dependencies.length === 0) {
 		return { valid, invalid };
 	}
-	// Load both tasks and drafts to validate dependencies
-	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
+	// Task dependencies should honor cross-branch visibility when enabled in config,
+	// while draft dependencies remain local-only.
+	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.filesystem.listDrafts()]);
 	const knownIds = [...tasks.map((t) => t.id), ...drafts.map((d) => d.id)];
 	for (const dep of dependencies) {
 		const match = knownIds.find((id) => taskIdsEqual(dep, id));
@@ -105,6 +106,19 @@ export function toStringArray(value: unknown): string[] {
 		return [];
 	}
 	return [String(value)];
+}
+
+/**
+ * Parse repeated or comma-delimited CLI list values into a normalized string list.
+ * Returns `undefined` when the resulting list is empty.
+ */
+export function parseDelimitedStringList(value: unknown): string[] | undefined {
+	const entries = toStringArray(value).flatMap((entry) =>
+		String(entry)
+			.split(",")
+			.map((item) => item.trim()),
+	);
+	return normalizeStringList(entries);
 }
 
 /**

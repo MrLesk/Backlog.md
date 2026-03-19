@@ -34,7 +34,6 @@ import {
 	type DecisionSearchResult,
 	type Document as DocType,
 	type DocumentSearchResult,
-	EntityType,
 	isLocalEditableTask,
 	type Milestone,
 	type SearchPriorityFilter,
@@ -57,8 +56,8 @@ import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
-	buildDefinitionOfDoneItems,
 	normalizeStringList,
+	parseDelimitedStringList,
 	parsePositiveIndexList,
 	processAcceptanceCriteriaOptions,
 	toStringArray,
@@ -1598,88 +1597,51 @@ taskCmd
 		}
 
 		const createAsDraft = Boolean(options.draft);
-		const id = await core.generateNextId(
-			createAsDraft ? EntityType.Draft : EntityType.Task,
-			createAsDraft ? undefined : options.parent,
-		);
-		const task = buildTaskFromOptions(id, title ?? "", options);
-
-		// Normalize and validate status if provided (case-insensitive)
-		if (options.status) {
-			const canonical = await getCanonicalStatus(String(options.status), core);
-			if (!canonical) {
-				const configuredStatuses = await getValidStatuses(core);
-				console.error(
-					`Invalid status: ${options.status}. Valid statuses are: ${formatValidStatuses(configuredStatuses)}`,
-				);
-				process.exitCode = 1;
-				return;
-			}
-			task.status = canonical;
-		}
-
-		// Validate dependencies if provided
-		if (task.dependencies.length > 0) {
-			const { valid, invalid } = await validateDependencies(task.dependencies, core);
-			if (invalid.length > 0) {
-				console.error(`Error: The following dependencies do not exist: ${invalid.join(", ")}`);
-				console.error("Please create these tasks first or check the task IDs.");
-				process.exitCode = 1;
-				return;
-			}
-			task.dependencies = valid;
-		}
-
-		// Handle acceptance criteria for create command (structured only)
-		const criteria = processAcceptanceCriteriaOptions(options);
-		if (criteria.length > 0) {
-			let idx = 1;
-			task.acceptanceCriteriaItems = criteria.map((text) => ({ index: idx++, text, checked: false }));
-		}
-
-		const config = await core.filesystem.loadConfig();
-		const dodItems = buildDefinitionOfDoneItems({
-			defaults: config?.definitionOfDone,
-			add: toStringArray(options.dod),
-			disableDefaults: options.dodDefaults === false,
-		});
-		if (dodItems) {
-			task.definitionOfDoneItems = dodItems;
-		}
-
-		// Handle implementation plan
-		if (options.plan) {
-			task.implementationPlan = String(options.plan);
-		}
-
-		// Handle implementation notes
-		if (options.notes) {
-			task.implementationNotes = String(options.notes);
-		}
-
-		// Handle final summary
-		if (options.finalSummary) {
-			task.finalSummary = String(options.finalSummary);
-		}
-
 		const usePlainOutput = isPlainRequested(options);
 
-		if (createAsDraft) {
-			const filepath = await core.createDraft(task);
+		try {
+			const criteria = processAcceptanceCriteriaOptions(options);
+			const { task, filePath } = await core.createTaskFromInput({
+				title: title ?? "",
+				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
+				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
+				assignee: options.assignee ? [String(options.assignee)] : undefined,
+				labels: options.labels
+					? String(options.labels)
+							.split(",")
+							.map((label: string) => label.trim())
+							.filter(Boolean)
+					: undefined,
+				dependencies:
+					options.dependsOn || options.dep ? normalizeDependencies(options.dependsOn || options.dep) : undefined,
+				references: parseDelimitedStringList(options.ref),
+				documentation: parseDelimitedStringList(options.doc),
+				parentTaskId: options.parent ? String(options.parent) : undefined,
+				priority: options.priority ? String(options.priority).toLowerCase() : undefined,
+				implementationPlan: options.plan ? String(options.plan) : undefined,
+				implementationNotes: options.notes ? String(options.notes) : undefined,
+				finalSummary: options.finalSummary ? String(options.finalSummary) : undefined,
+				acceptanceCriteria: criteria.map((text) => ({ text, checked: false })),
+				definitionOfDoneAdd: toStringArray(options.dod),
+				disableDefinitionOfDoneDefaults: options.dodDefaults === false,
+			});
+
 			if (usePlainOutput) {
-				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
+				console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
 				return;
 			}
-			console.log(`Created draft ${task.id}`);
-			console.log(`File: ${filepath}`);
-		} else {
-			const filepath = await core.createTask(task);
-			if (usePlainOutput) {
-				console.log(formatTaskPlainText(task, { filePathOverride: filepath }));
+
+			if (createAsDraft) {
+				console.log(`Created draft ${task.id}`);
+				console.log(`File: ${filePath}`);
 				return;
 			}
+
 			console.log(`Created task ${task.id}`);
-			console.log(`File: ${filepath}`);
+			console.log(`File: ${filePath}`);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
 		}
 	});
 
@@ -2588,11 +2550,16 @@ taskCmd
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const success = await core.demoteTask(taskId);
-		if (success) {
-			console.log(`Demoted task ${taskId}`);
-		} else {
-			console.error(`Task ${taskId} not found.`);
+		try {
+			const success = await core.demoteTask(taskId);
+			if (success) {
+				console.log(`Demoted task ${taskId}`);
+			} else {
+				console.error(`Task ${taskId} not found.`);
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
 		}
 	});
 
@@ -2722,11 +2689,25 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
-		const id = await core.generateNextId(EntityType.Draft);
-		const task = buildTaskFromOptions(id, title, options);
-		const filepath = await core.createDraft(task);
-		console.log(`Created draft ${id}`);
-		console.log(`File: ${filepath}`);
+		try {
+			const { task, filePath } = await core.createTaskFromInput({
+				title,
+				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
+				status: "Draft",
+				assignee: options.assignee ? [String(options.assignee)] : undefined,
+				labels: options.labels
+					? String(options.labels)
+							.split(",")
+							.map((label: string) => label.trim())
+							.filter(Boolean)
+					: undefined,
+			});
+			console.log(`Created draft ${task.id}`);
+			console.log(`File: ${filePath}`);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+		}
 	});
 
 draftCmd
@@ -2749,11 +2730,16 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const success = await core.promoteDraft(taskId);
-		if (success) {
-			console.log(`Promoted draft ${taskId}`);
-		} else {
-			console.error(`Draft ${taskId} not found.`);
+		try {
+			const success = await core.promoteDraft(taskId);
+			if (success) {
+				console.log(`Promoted draft ${taskId}`);
+			} else {
+				console.error(`Draft ${taskId} not found.`);
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
 		}
 	});
 

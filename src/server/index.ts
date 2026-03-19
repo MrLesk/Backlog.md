@@ -6,6 +6,7 @@ import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
+import { isCreateLockError } from "../file-system/operations.ts";
 import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
@@ -808,6 +809,10 @@ export class BacklogServer {
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
+			if (isCreateLockError(error)) {
+				const message = error instanceof Error ? error.message : "Failed to create task";
+				return Response.json({ error: message }, { status: 409 });
+			}
 			const message = error instanceof Error ? error.message : "Failed to create task";
 			return Response.json({ error: message }, { status: 400 });
 		}
@@ -1188,6 +1193,9 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error promoting draft:", error);
+			if (isCreateLockError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
 		}
 	}
