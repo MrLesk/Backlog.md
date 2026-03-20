@@ -1174,28 +1174,24 @@ describe("CLI Integration", () => {
 		it("should promote draft to tasks", async () => {
 			const core = new Core(TEST_DIR);
 
-			// Create a test draft with proper DRAFT-X id
-			await core.createDraft(
+			// Create a test draft through the canonical create path
+			const { task: draft } = await core.createTaskFromInput(
 				{
-					id: "draft-3",
 					title: "Promote Test Draft",
 					status: "Draft",
-					assignee: [],
-					createdDate: "2025-06-08",
 					labels: ["ready"],
-					dependencies: [],
 					rawContent: "Draft ready for promotion",
 				},
 				false,
 			);
 
 			// Promote the draft
-			const success = await core.promoteDraft("draft-3", false);
+			const success = await core.promoteDraft(draft.id, false);
 			expect(success).toBe(true);
 
 			// Verify draft is no longer in drafts directory
-			const draft = await core.filesystem.loadDraft("draft-3");
-			expect(draft).toBeNull();
+			const loadedDraft = await core.filesystem.loadDraft(draft.id);
+			expect(loadedDraft).toBeNull();
 
 			// Verify promoted task has new task- ID
 			const { readdir } = await import("node:fs/promises");
@@ -1210,33 +1206,29 @@ describe("CLI Integration", () => {
 		it("should archive a draft", async () => {
 			const core = new Core(TEST_DIR);
 
-			// Create a test draft with proper DRAFT-X id
-			await core.createDraft(
+			// Create a test draft through the canonical create path
+			const { task: draft } = await core.createTaskFromInput(
 				{
-					id: "draft-4",
 					title: "Archive Test Draft",
 					status: "Draft",
-					assignee: [],
-					createdDate: "2025-06-08",
 					labels: ["cancelled"],
-					dependencies: [],
 					rawContent: "Draft that should be archived",
 				},
 				false,
 			);
 
 			// Archive the draft
-			const success = await core.archiveDraft("draft-4", false);
+			const success = await core.archiveDraft(draft.id, false);
 			expect(success).toBe(true);
 
 			// Verify draft is no longer in drafts directory
-			const draft = await core.filesystem.loadDraft("draft-4");
-			expect(draft).toBeNull();
+			const loadedDraft = await core.filesystem.loadDraft(draft.id);
+			expect(loadedDraft).toBeNull();
 
 			// Verify draft exists in archive
 			const { readdir } = await import("node:fs/promises");
 			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "drafts"));
-			expect(archiveFiles.some((f) => f.startsWith("draft-4"))).toBe(true);
+			expect(archiveFiles.some((f) => f.startsWith(draft.id.toLowerCase()))).toBe(true);
 		});
 
 		it("should handle promoting non-existent draft", async () => {

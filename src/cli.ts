@@ -56,7 +56,7 @@ import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
-	normalizeStringList,
+	normalizeDependencies,
 	parseDelimitedStringList,
 	parsePositiveIndexList,
 	processAcceptanceCriteriaOptions,
@@ -1398,122 +1398,6 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	return `decision-${nextIdNumber}`;
 }
 
-function normalizeDependencies(dependencies: unknown): string[] {
-	if (!dependencies) return [];
-
-	const normalizeList = (values: string[]): string[] =>
-		values
-			.map((value) => value.trim())
-			.filter((value): value is string => value.length > 0)
-			.map((value) => normalizeTaskId(value));
-
-	if (Array.isArray(dependencies)) {
-		return normalizeList(
-			dependencies.flatMap((dep) =>
-				String(dep)
-					.split(",")
-					.map((d) => d.trim()),
-			),
-		);
-	}
-
-	return normalizeList(String(dependencies).split(","));
-}
-
-async function validateDependencies(
-	dependencies: string[],
-	core: Core,
-): Promise<{ valid: string[]; invalid: string[] }> {
-	const valid: string[] = [];
-	const invalid: string[] = [];
-
-	if (dependencies.length === 0) {
-		return { valid, invalid };
-	}
-
-	// Load both tasks and drafts to validate dependencies
-	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.fs.listDrafts()]);
-
-	const knownIds = [...tasks.map((task) => task.id), ...drafts.map((draft) => draft.id)];
-	for (const dep of dependencies) {
-		const match = knownIds.find((id) => taskIdsEqual(dep, id));
-		if (match) {
-			valid.push(match);
-		} else {
-			invalid.push(dep);
-		}
-	}
-
-	return { valid, invalid };
-}
-
-function buildTaskFromOptions(id: string, title: string, options: Record<string, unknown>): Task {
-	const parentInput = options.parent ? String(options.parent) : undefined;
-	const normalizedParent = parentInput ? normalizeTaskId(parentInput) : undefined;
-
-	const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
-
-	// Handle dependencies - they will be validated separately
-	const dependencies = normalizeDependencies(options.dependsOn || options.dep);
-
-	// Handle references (URLs or file paths)
-	const references = normalizeStringList(
-		Array.isArray(options.ref)
-			? options.ref.flatMap((r: string) =>
-					String(r)
-						.split(",")
-						.map((s: string) => s.trim()),
-				)
-			: options.ref
-				? String(options.ref)
-						.split(",")
-						.map((s: string) => s.trim())
-				: [],
-	);
-
-	// Handle documentation (URLs or file paths)
-	const documentation = normalizeStringList(
-		Array.isArray(options.doc)
-			? options.doc.flatMap((d: string) =>
-					String(d)
-						.split(",")
-						.map((s: string) => s.trim()),
-				)
-			: options.doc
-				? String(options.doc)
-						.split(",")
-						.map((s: string) => s.trim())
-				: [],
-	);
-
-	// Validate priority option
-	const priority = options.priority ? String(options.priority).toLowerCase() : undefined;
-	const validPriorities = ["high", "medium", "low"];
-	const validatedPriority =
-		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
-
-	return {
-		id,
-		title,
-		status: options.status ? String(options.status) : "",
-		assignee: options.assignee ? [String(options.assignee)] : [],
-		createdDate,
-		labels: options.labels
-			? String(options.labels)
-					.split(",")
-					.map((l: string) => l.trim())
-					.filter(Boolean)
-			: [],
-		dependencies,
-		references,
-		documentation,
-		rawContent: "",
-		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
-		...(normalizedParent && { parentTaskId: normalizedParent }),
-		...(validatedPriority && { priority: validatedPriority }),
-	};
-}
-
 const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
@@ -1617,7 +1501,7 @@ taskCmd
 				references: parseDelimitedStringList(options.ref),
 				documentation: parseDelimitedStringList(options.doc),
 				parentTaskId: options.parent ? String(options.parent) : undefined,
-				priority: options.priority ? String(options.priority).toLowerCase() : undefined,
+				priority: options.priority ? (String(options.priority).toLowerCase() as "high" | "medium" | "low") : undefined,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
 				implementationNotes: options.notes ? String(options.notes) : undefined,
 				finalSummary: options.finalSummary ? String(options.finalSummary) : undefined,
@@ -2278,13 +2162,6 @@ taskCmd
 			return;
 		}
 
-		const parseCommaSeparated = (value: unknown): string[] => {
-			return toStringArray(value)
-				.flatMap((entry) => String(entry).split(","))
-				.map((entry) => entry.trim())
-				.filter((entry) => entry.length > 0);
-		};
-
 		let canonicalStatus: string | undefined;
 		if (options.status) {
 			const canonical = await getCanonicalStatus(String(options.status), core);
@@ -2360,10 +2237,10 @@ taskCmd
 			return;
 		}
 
-		const labelValues = parseCommaSeparated(options.label);
-		const addLabelValues = parseCommaSeparated(options.addLabel);
-		const removeLabelValues = parseCommaSeparated(options.removeLabel);
-		const assigneeValues = parseCommaSeparated(options.assignee);
+		const labelValues = parseDelimitedStringList(options.label) ?? [];
+		const addLabelValues = parseDelimitedStringList(options.addLabel) ?? [];
+		const removeLabelValues = parseDelimitedStringList(options.removeLabel) ?? [];
+		const assigneeValues = parseDelimitedStringList(options.assignee) ?? [];
 		const acceptanceAdditions = processAcceptanceCriteriaOptions(options);
 		const definitionOfDoneAdditions = toStringArray(options.dod)
 			.map((value) => String(value).trim())
@@ -2372,29 +2249,8 @@ taskCmd
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
 
-		const referenceValues = toStringArray(options.ref);
-		const normalizedReferences =
-			referenceValues.length > 0
-				? normalizeStringList(
-						referenceValues.flatMap((r: string) =>
-							String(r)
-								.split(",")
-								.map((s: string) => s.trim()),
-						),
-					)
-				: undefined;
-
-		const documentationValues = toStringArray(options.doc);
-		const normalizedDocumentation =
-			documentationValues.length > 0
-				? normalizeStringList(
-						documentationValues.flatMap((d: string) =>
-							String(d)
-								.split(",")
-								.map((s: string) => s.trim()),
-						),
-					)
-				: undefined;
+		const normalizedReferences = parseDelimitedStringList(options.ref);
+		const normalizedDocumentation = parseDelimitedStringList(options.doc);
 
 		const notesAppendValues = toStringArray(options.appendNotes);
 		const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
