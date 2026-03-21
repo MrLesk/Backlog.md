@@ -64,8 +64,9 @@ export class McpServer extends Core {
 	/** Debug log lines collected during roots discovery (exposed to init-required resource). */
 	public readonly debugLog: string[] = [];
 
-	/** Options passed during enableRootsDiscovery (stored for re-runs on roots change). */
-	private rootsDiscoveryOptions?: { debug?: boolean };
+	/** Whether roots discovery is enabled (and options for re-runs on roots change). */
+	private rootsDiscoveryEnabled = false;
+	private rootsDiscoveryOptions: { debug?: boolean } = {};
 
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
@@ -104,7 +105,8 @@ export class McpServer extends Core {
 	 * so clients see the correct tool/resource list from the first request.
 	 */
 	enableRootsDiscovery(options?: { debug?: boolean }): void {
-		this.rootsDiscoveryOptions = options;
+		this.rootsDiscoveryEnabled = true;
+		this.rootsDiscoveryOptions = options ?? {};
 
 		let resolveReady!: () => void;
 		this._ready = new Promise<void>((r) => {
@@ -209,7 +211,7 @@ export class McpServer extends Core {
 
 		// Re-run roots discovery when client workspace changes
 		this.server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
-			if (this.rootsDiscoveryOptions !== undefined) {
+			if (this.rootsDiscoveryEnabled) {
 				await this.resolveFromRoots(this.rootsDiscoveryOptions);
 			}
 		});
