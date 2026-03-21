@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
@@ -14,7 +17,7 @@ export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
 export type IntegrationMode = "mcp" | "cli" | "none";
-export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
+export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "cursor" | "guide";
 
 export interface InitializeProjectOptions {
 	projectName: string;
@@ -69,6 +72,70 @@ async function runMcpClientCommand(label: string, command: string, args: string[
 			`Unable to configure ${label} automatically (${message}). Run manually: ${command} ${args.join(" ")}`,
 		);
 	}
+}
+
+/**
+ * Merge parsed Cursor `mcp.json` root with the canonical Backlog MCP server entry.
+ * Used by `configureCursorProjectMcp` and unit-tested without filesystem I/O.
+ */
+export function mergeCursorMcpProjectJson(base: Record<string, unknown>): Record<string, unknown> {
+	const existingServers = base.mcpServers;
+	let mcpServers: Record<string, unknown>;
+	if (existingServers === undefined) {
+		mcpServers = {};
+	} else if (existingServers !== null && typeof existingServers === "object" && !Array.isArray(existingServers)) {
+		mcpServers = { ...(existingServers as Record<string, unknown>) };
+	} else {
+		throw new Error(`Cursor MCP config has an invalid mcpServers value. Manual setup: ${MCP_GUIDE_URL}`);
+	}
+
+	mcpServers[MCP_SERVER_NAME] = {
+		type: "stdio",
+		command: "backlog",
+		args: ["mcp", "start"],
+	};
+
+	return { ...base, mcpServers };
+}
+
+function cursorMcpConfigDir(projectRoot: string): string {
+	/** Test-only: write under a non-`.cursor` folder when sandbox blocks `.cursor` mkdir (see tests). */
+	const rel = process.env.BACKLOG_TEST_CURSOR_MCP_RELATIVE_DIR ?? ".cursor";
+	return join(projectRoot, rel);
+}
+
+/**
+ * Merge or create Cursor project MCP config at `.cursor/mcp.json` (see Cursor docs).
+ * Preserves other `mcpServers` entries and other top-level keys when valid.
+ */
+export async function configureCursorProjectMcp(projectRoot: string): Promise<string> {
+	const cursorDir = cursorMcpConfigDir(projectRoot);
+	const mcpPath = join(cursorDir, "mcp.json");
+	const displayPath = ".cursor/mcp.json";
+	await mkdir(cursorDir, { recursive: true });
+
+	let base: Record<string, unknown> = {};
+	if (existsSync(mcpPath)) {
+		const raw = await readFile(mcpPath, "utf-8");
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			throw new Error(
+				`Existing Cursor MCP config is not valid JSON (${displayPath}). Fix or remove the file, then retry. Manual setup: ${MCP_GUIDE_URL}`,
+			);
+		}
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			throw new Error(
+				`Existing Cursor MCP config must be a JSON object (${displayPath}). Manual setup: ${MCP_GUIDE_URL}`,
+			);
+		}
+		base = { ...(parsed as Record<string, unknown>) };
+	}
+
+	const out = mergeCursorMcpProjectJson(base);
+	await writeFile(mcpPath, `${JSON.stringify(out, null, "\t")}\n`, "utf-8");
+	return `Added Backlog MCP server to Cursor (${displayPath})`;
 }
 
 /**
@@ -258,6 +325,10 @@ export async function initializeProject(
 						"mcp,start",
 					]);
 					mcpResults.kiro = result;
+					await ensureMcpGuidelines(projectRoot, "AGENTS.md");
+				} else if (client === "cursor") {
+					const result = await configureCursorProjectMcp(projectRoot);
+					mcpResults.cursor = result;
 					await ensureMcpGuidelines(projectRoot, "AGENTS.md");
 				} else if (client === "guide") {
 					mcpResults.guide = `Setup guide: ${MCP_GUIDE_URL}`;

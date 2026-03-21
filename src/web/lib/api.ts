@@ -482,7 +482,7 @@ export class ApiClient {
 		backlogDirectorySource?: "backlog" | ".backlog" | "custom";
 		configLocation?: "folder" | "root";
 		integrationMode: "mcp" | "cli" | "none";
-		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "guide")[];
+		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "cursor" | "guide")[];
 		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];
 		installClaudeAgent?: boolean;
 		advancedConfig?: {

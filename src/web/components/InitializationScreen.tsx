@@ -3,7 +3,15 @@ import { DEFAULT_INIT_CONFIG } from "../../constants/index.ts";
 import { apiClient } from "../lib/api";
 
 type IntegrationMode = "mcp" | "cli" | "none";
-type McpClient = "claude" | "codex" | "gemini" | "guide";
+type McpClient = "claude" | "codex" | "gemini" | "cursor" | "guide";
+
+const MCP_CLIENT_DISPLAY_LABELS: Record<McpClient, string> = {
+	claude: "Claude Code",
+	codex: "OpenAI Codex",
+	gemini: "Gemini CLI",
+	cursor: "Cursor",
+	guide: "Manual Setup Guide",
+};
 type AgentFile = "CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md";
 type BacklogDirectoryChoice = "backlog" | ".backlog" | "custom";
 type ConfigLocationChoice = "folder" | "root";
@@ -353,6 +361,11 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					{ id: "claude" as McpClient, label: "Claude Code", description: "Anthropic's Claude Code editor" },
 					{ id: "codex" as McpClient, label: "OpenAI Codex", description: "OpenAI's Codex CLI" },
 					{ id: "gemini" as McpClient, label: "Gemini CLI", description: "Google's Gemini Code Assist CLI" },
+					{
+						id: "cursor" as McpClient,
+						label: "Cursor",
+						description: "Cursor editor (writes project .cursor/mcp.json)",
+					},
 					{
 						id: "guide" as McpClient,
 						label: "Manual Setup Guide",
@@ -844,7 +857,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					<div className="flex justify-between">
 						<span className="text-gray-600 dark:text-gray-400">MCP Clients:</span>
 						<span className="font-medium text-gray-900 dark:text-gray-100">
-							{selectedMcpClients.join(", ")}
+							{selectedMcpClients.map((id) => MCP_CLIENT_DISPLAY_LABELS[id]).join(", ")}
 						</span>
 					</div>
 				)}
@@ -883,7 +896,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					<h3 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">Setup Progress:</h3>
 					{Object.entries(mcpSetupResults).map(([client, result]) => (
 						<div key={client} className="text-sm text-blue-700 dark:text-blue-400">
-							{client}: {result}
+							{MCP_CLIENT_DISPLAY_LABELS[client as McpClient] ?? client}: {result}
 						</div>
 					))}
 				</div>

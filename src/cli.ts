@@ -12,7 +12,7 @@ import { configureAdvancedSettings } from "./commands/configure-advanced-setting
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "./constants/index.ts";
-import { initializeProject } from "./core/init.ts";
+import { configureCursorProjectMcp, initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { computeSequences } from "./core/sequences.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
@@ -112,6 +112,7 @@ const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
 	codex: "AGENTS.md",
 	gemini: "GEMINI.md",
 	kiro: "AGENTS.md",
+	cursor: "AGENTS.md",
 	guide: "AGENTS.md",
 };
 
@@ -907,6 +908,7 @@ program
 									{ label: "OpenAI Codex", value: "codex" },
 									{ label: "Gemini CLI", value: "gemini" },
 									{ label: "Kiro", value: "kiro" },
+									{ label: "Cursor", value: "cursor" },
 									{ label: "Other (open setup guide)", value: "guide" },
 								],
 								required: true,
@@ -997,6 +999,20 @@ program
 										"mcp,start",
 									]);
 									results.push(result);
+									await recordGuidelinesForClient(client);
+									continue;
+								}
+								if (client === "cursor") {
+									console.log("    Configuring Cursor...");
+									try {
+										const result = await configureCursorProjectMcp(cwd);
+										console.log(`    ✓ ${result}`);
+										results.push(result);
+									} catch (error) {
+										const message = error instanceof Error ? error.message : String(error);
+										console.warn(`    ⚠️ Unable to configure Cursor automatically (${message}).`);
+										results.push(`Cursor (${message})`);
+									}
 									await recordGuidelinesForClient(client);
 									continue;
 								}
