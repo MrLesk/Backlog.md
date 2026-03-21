@@ -68,12 +68,19 @@ export class McpServer extends Core {
 	private rootsDiscoveryEnabled = false;
 	private rootsDiscoveryOptions: { debug?: boolean } = {};
 
+	/** The projectRoot passed to createMcpServer, used to revert on downgrade. */
+	private readonly initialProjectRoot: string;
+
+	/** True when the server has been upgraded from fallback to a real project. */
+	private upgraded = false;
+
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
 	private readonly prompts = new Map<string, McpPromptHandler>();
 
 	constructor(projectRoot: string, instructions: string) {
 		super(projectRoot, { enableWatchers: true });
+		this.initialProjectRoot = projectRoot;
 
 		this.server = new Server(
 			{
@@ -155,6 +162,10 @@ export class McpServer extends Core {
 				}
 			}
 
+			if (this.upgraded) {
+				await this.downgradeToFallback(options);
+			}
+
 			this.log(
 				`No valid backlog project found in MCP roots: ${checkedPaths.map((p) => `\`${p}\``).join(", ")}`,
 				options,
@@ -196,8 +207,30 @@ export class McpServer extends Core {
 		await this.server.sendResourceListChanged();
 		await this.server.sendPromptListChanged();
 
+		this.upgraded = true;
 		this.log(`MCP server upgraded to project: ${projectRoot}`, options);
 		return true;
+	}
+
+	/**
+	 * Revert from an upgraded project back to fallback mode.
+	 * Called when roots change and no valid project is found in the new roots.
+	 */
+	private async downgradeToFallback(options?: { debug?: boolean }): Promise<void> {
+		this.reinitializeProjectRoot(this.initialProjectRoot);
+		this.upgraded = false;
+
+		this.tools.clear();
+		this.resources.clear();
+		this.prompts.clear();
+
+		registerInitRequiredResource(this, this.initialProjectRoot);
+
+		await this.server.sendToolListChanged();
+		await this.server.sendResourceListChanged();
+		await this.server.sendPromptListChanged();
+
+		this.log("MCP server reverted to fallback mode (workspace no longer has a backlog project).", options);
 	}
 
 	private setupHandlers(): void {
