@@ -261,18 +261,14 @@ describe("Auto-commit configuration", () => {
 		});
 
 		it("should respect autoCommit config for draft operations", async () => {
-			const task: Task = {
-				id: "draft-1",
-				title: "Test Draft",
-				status: "Draft",
-				assignee: [],
-				createdDate: "2025-07-07",
-				labels: [],
-				dependencies: [],
-				description: "Test description",
-			};
-
-			await core.createDraft(task);
+			await core.createTaskFromInput(
+				{
+					title: "Test Draft",
+					status: "Draft",
+					description: "Test description",
+				},
+				false,
+			);
 
 			// Check that there are uncommitted changes
 			const git = await core.getGitOps();
@@ -282,20 +278,17 @@ describe("Auto-commit configuration", () => {
 
 		it("should respect autoCommit config for promote draft operations", async () => {
 			// First create a draft with explicit commit
-			const task: Task = {
-				id: "draft-2",
-				title: "Test Draft",
-				status: "Draft",
-				assignee: [],
-				createdDate: "2025-07-07",
-				labels: [],
-				dependencies: [],
-				description: "Test description",
-			};
-			await core.createDraft(task, true);
+			const { task: draft } = await core.createTaskFromInput(
+				{
+					title: "Test Draft",
+					status: "Draft",
+					description: "Test description",
+				},
+				true,
+			);
 
 			// Promote the draft (should not auto-commit)
-			await core.promoteDraft("draft-2");
+			await core.promoteDraft(draft.id);
 
 			// Check that there are uncommitted changes
 			const git = await core.getGitOps();

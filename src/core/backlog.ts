@@ -913,68 +913,6 @@ export class Core {
 		return savedTask;
 	}
 
-	// High-level operations that combine filesystem and git
-	async createTaskFromData(
-		taskData: {
-			title: string;
-			status?: string;
-			assignee?: string[];
-			labels?: string[];
-			dependencies?: string[];
-			parentTaskId?: string;
-			priority?: "high" | "medium" | "low";
-			// First-party structured fields from Web UI / CLI
-			description?: string;
-			acceptanceCriteriaItems?: import("../types/index.ts").AcceptanceCriterion[];
-			implementationPlan?: string;
-			implementationNotes?: string;
-			finalSummary?: string;
-			milestone?: string;
-		},
-		autoCommit?: boolean,
-	): Promise<Task> {
-		// Determine entity type before generating ID - drafts get DRAFT-X, tasks get TASK-X
-		const isDraft = taskData.status?.toLowerCase() === "draft";
-		const entityType = isDraft ? EntityType.Draft : EntityType.Task;
-		const config = !isDraft && !taskData.status ? await this.fs.loadConfig() : null;
-		const resolvedStatus = isDraft ? "Draft" : taskData.status || config?.defaultStatus || FALLBACK_STATUS;
-
-		const { task, filepath } = await this.withCreateLock(async () => {
-			const id = await this.generateNextId(entityType, isDraft ? undefined : taskData.parentTaskId);
-
-			const task: Task = {
-				id,
-				title: taskData.title,
-				status: resolvedStatus,
-				assignee: taskData.assignee || [],
-				labels: taskData.labels || [],
-				dependencies: taskData.dependencies || [],
-				rawContent: "",
-				createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-				...(taskData.parentTaskId && { parentTaskId: taskData.parentTaskId }),
-				...(taskData.priority && { priority: taskData.priority }),
-				...(typeof taskData.milestone === "string" &&
-					taskData.milestone.trim().length > 0 && {
-						milestone: taskData.milestone.trim(),
-					}),
-				...(typeof taskData.description === "string" && { description: taskData.description }),
-				...(Array.isArray(taskData.acceptanceCriteriaItems) &&
-					taskData.acceptanceCriteriaItems.length > 0 && {
-						acceptanceCriteriaItems: taskData.acceptanceCriteriaItems,
-					}),
-				...(typeof taskData.implementationPlan === "string" && { implementationPlan: taskData.implementationPlan }),
-				...(typeof taskData.implementationNotes === "string" && { implementationNotes: taskData.implementationNotes }),
-				...(typeof taskData.finalSummary === "string" && { finalSummary: taskData.finalSummary }),
-			};
-
-			const filepath = await this.writePreparedTask(task, isDraft);
-			return { task, filepath };
-		});
-
-		await this.finalizeCreatedTask(task, filepath, isDraft, autoCommit);
-		return task;
-	}
-
 	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
@@ -1082,13 +1020,6 @@ export class Core {
 
 		const filepath = await this.writePreparedTask(task, false);
 		await this.finalizeCreatedTask(task, filepath, false, autoCommit);
-
-		return filepath;
-	}
-
-	async createDraft(task: Task, autoCommit?: boolean): Promise<string> {
-		const filepath = await this.writePreparedTask(task, true);
-		await this.finalizeCreatedTask(task, filepath, true, autoCommit);
 
 		return filepath;
 	}
