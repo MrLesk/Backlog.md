@@ -6,16 +6,18 @@ import {
 	MCP_WORKFLOW_OVERVIEW_TOOLS,
 } from "../guidelines/mcp/index.ts";
 
+export const WORKFLOW_GUIDE_KEYS = ["overview", "task-creation", "task-execution", "task-finalization"] as const;
+
+export type WorkflowGuideKey = (typeof WORKFLOW_GUIDE_KEYS)[number];
+
 export interface WorkflowGuideDefinition {
-	key: "overview" | "task-creation" | "task-execution" | "task-finalization";
+	key: WorkflowGuideKey;
 	uri: string;
 	name: string;
 	description: string;
 	mimeType: string;
 	resourceText: string;
 	toolText?: string;
-	toolName: string;
-	toolDescription: string;
 }
 
 export const WORKFLOW_GUIDES: WorkflowGuideDefinition[] = [
@@ -27,8 +29,6 @@ export const WORKFLOW_GUIDES: WorkflowGuideDefinition[] = [
 		mimeType: "text/markdown",
 		resourceText: MCP_WORKFLOW_OVERVIEW,
 		toolText: MCP_WORKFLOW_OVERVIEW_TOOLS,
-		toolName: "get_workflow_overview",
-		toolDescription: "Retrieve the Backlog.md workflow overview guidance in markdown format",
 	},
 	{
 		key: "task-creation",
@@ -37,8 +37,6 @@ export const WORKFLOW_GUIDES: WorkflowGuideDefinition[] = [
 		description: "Detailed guide for creating tasks: scope assessment, acceptance criteria, parent/subtasks",
 		mimeType: "text/markdown",
 		resourceText: MCP_TASK_CREATION_GUIDE,
-		toolName: "get_task_creation_guide",
-		toolDescription: "Retrieve the Backlog.md task creation guide in markdown format",
 	},
 	{
 		key: "task-execution",
@@ -47,8 +45,6 @@ export const WORKFLOW_GUIDES: WorkflowGuideDefinition[] = [
 		description: "Detailed guide for planning and executing tasks: workflow, discipline, scope changes",
 		mimeType: "text/markdown",
 		resourceText: MCP_TASK_EXECUTION_GUIDE,
-		toolName: "get_task_execution_guide",
-		toolDescription: "Retrieve the Backlog.md task execution guide in markdown format",
 	},
 	{
 		key: "task-finalization",
@@ -57,11 +53,13 @@ export const WORKFLOW_GUIDES: WorkflowGuideDefinition[] = [
 		description: "Detailed guide for finalizing tasks: Definition of Done, finalization workflow, next steps",
 		mimeType: "text/markdown",
 		resourceText: MCP_TASK_FINALIZATION_GUIDE,
-		toolName: "get_task_finalization_guide",
-		toolDescription: "Retrieve the Backlog.md task finalization guide in markdown format",
 	},
 ];
 
 export function getWorkflowGuideByUri(uri: string): WorkflowGuideDefinition | undefined {
 	return WORKFLOW_GUIDES.find((guide) => guide.uri === uri);
+}
+
+export function getWorkflowGuideByKey(key: WorkflowGuideKey): WorkflowGuideDefinition | undefined {
+	return WORKFLOW_GUIDES.find((guide) => guide.key === key);
 }

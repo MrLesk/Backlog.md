@@ -82,20 +82,23 @@ describe("MCP roots discovery", () => {
 		const configAfter = await server.filesystem.loadConfig();
 		expect(configAfter).toBeTruthy();
 		expect(configAfter?.projectName).toBe("Roots Test Project");
+		if (!configAfter) {
+			throw new Error("Expected config after reinitializing to a valid project");
+		}
 
 		// Register full toolset on the reinitialized server
 		registerWorkflowResources(server);
 		registerWorkflowTools(server);
-		registerTaskTools(server, configAfter!);
+		registerTaskTools(server, configAfter);
 		registerMilestoneTools(server);
 		registerDefinitionOfDoneTools(server);
-		registerDocumentTools(server, configAfter!);
+		registerDocumentTools(server, configAfter);
 
 		const tools = await server.testInterface.listTools();
 		const toolNames = tools.tools.map((t) => t.name);
 		expect(toolNames).toContain("task_create");
 		expect(toolNames).toContain("task_list");
-		expect(toolNames).toContain("get_workflow_overview");
+		expect(toolNames).toContain("get_backlog_instructions");
 
 		const resources = await server.testInterface.listResources();
 		const uris = resources.resources.map((r) => r.uri);
@@ -166,7 +169,7 @@ describe("MCP roots discovery", () => {
 		const tools = await server.testInterface.listTools();
 		const toolNames = tools.tools.map((t) => t.name);
 		expect(toolNames).toContain("task_create");
-		expect(toolNames).toContain("get_workflow_overview");
+		expect(toolNames).toContain("get_backlog_instructions");
 
 		// oninitialized should NOT be set
 		expect(server.getServer().oninitialized).toBeUndefined();
