@@ -85,6 +85,31 @@ export default function BoardPage({
 		}, { replace: true });
 	};
 
+	const handleFiltersChange = (filters: { assignee: string; label: string; priority: string }) => {
+		setSearchParams(params => {
+			if (filters.assignee) {
+				params.set('assignee', filters.assignee);
+			} else {
+				params.delete('assignee');
+			}
+			if (filters.label) {
+				params.set('label', filters.label);
+			} else {
+				params.delete('label');
+			}
+			if (filters.priority) {
+				params.set('priority', filters.priority);
+			} else {
+				params.delete('priority');
+			}
+			return params;
+		}, { replace: true });
+	};
+
+	const filterAssignee = searchParams.get('assignee') ?? '';
+	const filterLabel = searchParams.get('label') ?? '';
+	const filterPriority = searchParams.get('priority') ?? '';
+
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
 			<Board
@@ -101,6 +126,10 @@ export default function BoardPage({
 				laneMode={laneMode}
 				onLaneChange={handleLaneChange}
 				milestoneFilter={milestoneFilter}
+				filterAssignee={filterAssignee}
+				filterLabel={filterLabel}
+				filterPriority={filterPriority}
+				onFiltersChange={handleFiltersChange}
 			/>
 		</div>
 	);

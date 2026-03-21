@@ -21,7 +21,18 @@ interface BoardProps {
   laneMode: LaneMode;
   onLaneChange: (mode: LaneMode) => void;
   milestoneFilter?: string | null;
+  filterAssignee?: string;
+  filterLabel?: string;
+  filterPriority?: string;
+  onFiltersChange?: (filters: { assignee: string; label: string; priority: string }) => void;
 }
+
+const PRIORITY_OPTIONS = [
+  { label: 'All priorities', value: '' },
+  { label: 'High', value: 'high' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Low', value: 'low' },
+] as const;
 
 const Board: React.FC<BoardProps> = ({
   onEditTask,
@@ -36,6 +47,10 @@ const Board: React.FC<BoardProps> = ({
   laneMode,
   onLaneChange,
   milestoneFilter,
+  filterAssignee = '',
+  filterLabel = '',
+  filterPriority = '',
+  onFiltersChange,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
@@ -179,11 +194,48 @@ const Board: React.FC<BoardProps> = ({
   };
   const canonicalMilestoneFilter = canonicalizeMilestone(milestoneFilter);
 
-  // Filter tasks by milestone when milestoneFilter is set
+  // Collect unique assignees and labels from all tasks for filter dropdowns
+  const uniqueAssignees = useMemo(() => {
+    const seen = new Set<string>();
+    for (const task of tasks) {
+      for (const a of task.assignee) {
+        if (a.trim()) seen.add(a.trim());
+      }
+    }
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [tasks]);
+
+  const uniqueLabels = useMemo(() => {
+    const seen = new Set<string>();
+    for (const task of tasks) {
+      for (const l of task.labels) {
+        if (l.trim()) seen.add(l.trim());
+      }
+    }
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [tasks]);
+
+  const hasActiveFilters = filterAssignee !== '' || filterLabel !== '' || filterPriority !== '';
+
+  // Filter tasks by milestone when milestoneFilter is set, then apply assignee/label/priority filters
   const filteredTasks = useMemo(() => {
-    if (!milestoneFilter) return tasks;
-    return tasks.filter(task => canonicalizeMilestone(task.milestone) === canonicalMilestoneFilter);
-  }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical]);
+    let result = tasks;
+    if (milestoneFilter) {
+      result = result.filter(task => canonicalizeMilestone(task.milestone) === canonicalMilestoneFilter);
+    }
+    if (filterAssignee === '__unassigned__') {
+      result = result.filter(task => !task.assignee || task.assignee.length === 0 || task.assignee.every(a => !a.trim()));
+    } else if (filterAssignee) {
+      result = result.filter(task => task.assignee.some(a => a.trim() === filterAssignee));
+    }
+    if (filterLabel) {
+      result = result.filter(task => task.labels.some(l => l.trim() === filterLabel));
+    }
+    if (filterPriority) {
+      result = result.filter(task => task.priority === filterPriority);
+    }
+    return result;
+  }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, filterLabel, filterPriority]);
 
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
@@ -282,8 +334,8 @@ const Board: React.FC<BoardProps> = ({
   );
 
   const getTasksForLane = (laneKey: string, status: string): Task[] => {
-    // When filtering by milestone, use filtered tasks for display
-    const sourceMap = milestoneFilter ? filteredTasksByLane : tasksByLane;
+    // When any filter is active, use filtered tasks for display
+    const sourceMap = (milestoneFilter || hasActiveFilters) ? filteredTasksByLane : tasksByLane;
     const statusMap = sourceMap.get(laneKey);
     if (!statusMap) {
       return [];
@@ -418,6 +470,54 @@ const Board: React.FC<BoardProps> = ({
 	          + New Task
         </button>
       </div>
+
+      {/* Filter bar */}
+      {onFiltersChange && (
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
+          <select
+            value={filterAssignee}
+            onChange={e => onFiltersChange({ assignee: e.target.value, label: filterLabel, priority: filterPriority })}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+          >
+            <option value="">All assignees</option>
+            <option value="__unassigned__">Unassigned</option>
+            {uniqueAssignees.map(a => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+
+          <select
+            value={filterLabel}
+            onChange={e => onFiltersChange({ assignee: filterAssignee, label: e.target.value, priority: filterPriority })}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+          >
+            <option value="">All labels</option>
+            {uniqueLabels.map(l => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+
+          <select
+            value={filterPriority}
+            onChange={e => onFiltersChange({ assignee: filterAssignee, label: filterLabel, priority: e.target.value })}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+          >
+            {PRIORITY_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => onFiltersChange({ assignee: '', label: '', priority: '' })}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-md hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800 transition-colors duration-200"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {laneMode === 'milestone' ? (
         <div className="space-y-6">
