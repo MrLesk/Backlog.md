@@ -500,7 +500,7 @@ jobs:
           files: binaries/*
 
   sync-version:
-    needs: build
+    needs: [github-release, npm-publish, install-sanity]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
