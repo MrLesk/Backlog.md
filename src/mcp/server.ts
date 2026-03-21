@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
+import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
@@ -41,10 +43,8 @@ import type {
  */
 const APP_NAME = getPackageName();
 const APP_VERSION = await getVersion();
-const INSTRUCTIONS_NORMAL =
-	"At the beginning of each session, read the backlog://workflow/overview resource to understand when and how to use Backlog.md for task management. Additional detailed guides are available as resources when needed.";
-const INSTRUCTIONS_FALLBACK =
-	"Backlog.md is not initialized in this directory. Read the backlog://init-required resource for setup instructions.";
+const INSTRUCTIONS =
+	"At the beginning of each session, list the available resources and read the first one to understand how to use Backlog.md for task management. Additional detailed guides are available as resources when needed.";
 
 type ServerInitOptions = {
 	debug?: boolean;
@@ -54,6 +54,12 @@ export class McpServer extends Core {
 	private readonly server: Server;
 	private transport?: StdioServerTransport;
 	private stopping = false;
+
+	/** Resolved once roots discovery completes (or immediately in normal mode). */
+	private _ready: Promise<void> = Promise.resolve();
+
+	/** Debug log lines collected during roots discovery (exposed to init-required resource). */
+	public readonly debugLog: string[] = [];
 
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
@@ -78,6 +84,106 @@ export class McpServer extends Core {
 		);
 
 		this.setupHandlers();
+	}
+
+	/**
+	 * Enable roots-based project discovery for fallback mode.
+	 *
+	 * After the client completes initialization, the server queries MCP roots
+	 * and looks for a valid backlog project. If found, it reinitializes the
+	 * Core, registers the full toolset, and notifies the client.
+	 *
+	 * A readiness gate ensures all handlers wait until discovery completes
+	 * so clients see the correct tool/resource list from the first request.
+	 */
+	enableRootsDiscovery(options?: { debug?: boolean }): void {
+		let resolveReady!: () => void;
+		this._ready = new Promise<void>((r) => {
+			resolveReady = r;
+		});
+
+		this.server.oninitialized = () => {
+			this.resolveFromRoots(options).finally(resolveReady);
+		};
+	}
+
+	private log(message: string, options?: { debug?: boolean }): void {
+		this.debugLog.push(message);
+		if (options?.debug) {
+			console.error(message);
+		}
+	}
+
+	private async resolveFromRoots(options?: { debug?: boolean }): Promise<void> {
+		const caps = this.server.getClientCapabilities();
+		if (!caps?.roots) {
+			this.log("Client does not support MCP roots capability, staying in fallback mode.", options);
+			return;
+		}
+
+		try {
+			const { roots } = await this.server.listRoots();
+			this.log(`Received ${roots.length} root(s) from client.`, options);
+
+			const checkedPaths: string[] = [];
+			for (const root of roots) {
+				if (!root.uri.startsWith("file://")) continue;
+
+				const rootPath = fileURLToPath(root.uri);
+				checkedPaths.push(rootPath);
+
+				// Only check the root itself — don't walk up the tree, as that
+				// could match an unrelated ancestor project outside the workspace.
+				const resolution = resolveBacklogDirectory(rootPath);
+				if (!resolution.configPath) continue;
+
+				if (await this.upgradeToProject(rootPath, options)) {
+					return;
+				}
+			}
+
+			this.log(
+				`No valid backlog project found in MCP roots: ${checkedPaths.map((p) => `\`${p}\``).join(", ")}`,
+				options,
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.log(`Roots discovery failed: ${message}`, options);
+		}
+	}
+
+	/**
+	 * Reinitialize Core with a discovered project root and register the full
+	 * toolset, replacing fallback-mode registrations.
+	 */
+	private async upgradeToProject(projectRoot: string, options?: { debug?: boolean }): Promise<boolean> {
+		this.reinitializeProjectRoot(projectRoot);
+		await this.ensureConfigLoaded();
+		const config = await this.filesystem.loadConfig();
+
+		if (!config) {
+			this.log(`Skipping root ${projectRoot} (no valid config).`, options);
+			return false;
+		}
+
+		// Replace fallback registrations with the full toolset
+		this.tools.clear();
+		this.resources.clear();
+		this.prompts.clear();
+
+		registerWorkflowResources(this);
+		registerWorkflowTools(this);
+		registerTaskTools(this, config);
+		registerMilestoneTools(this);
+		registerDefinitionOfDoneTools(this);
+		registerDocumentTools(this, config);
+
+		// Notify client that available tools/resources changed
+		await this.server.sendToolListChanged();
+		await this.server.sendResourceListChanged();
+
+		this.log(`MCP server upgraded to project: ${projectRoot}`, options);
+		return true;
 	}
 
 	private setupHandlers(): void {
@@ -158,6 +264,7 @@ export class McpServer extends Core {
 	// -- Internal handlers --------------------------------------------------
 
 	protected async listTools(): Promise<ListToolsResult> {
+		await this._ready;
 		return {
 			tools: Array.from(this.tools.values()).map((tool) => ({
 				name: tool.name,
@@ -173,6 +280,7 @@ export class McpServer extends Core {
 	protected async callTool(request: {
 		params: { name: string; arguments?: Record<string, unknown> };
 	}): Promise<CallToolResult> {
+		await this._ready;
 		const { name, arguments: args = {} } = request.params;
 		const tool = this.tools.get(name);
 
@@ -184,6 +292,7 @@ export class McpServer extends Core {
 	}
 
 	protected async listResources(): Promise<ListResourcesResult> {
+		await this._ready;
 		return {
 			resources: Array.from(this.resources.values()).map((resource) => ({
 				uri: resource.uri,
@@ -195,12 +304,14 @@ export class McpServer extends Core {
 	}
 
 	protected async listResourceTemplates(): Promise<ListResourceTemplatesResult> {
+		await this._ready;
 		return {
 			resourceTemplates: [],
 		};
 	}
 
 	protected async readResource(request: { params: { uri: string } }): Promise<ReadResourceResult> {
+		await this._ready;
 		const { uri } = request.params;
 
 		// Exact match first
@@ -220,6 +331,7 @@ export class McpServer extends Core {
 	}
 
 	protected async listPrompts(): Promise<ListPromptsResult> {
+		await this._ready;
 		return {
 			prompts: Array.from(this.prompts.values()).map((prompt) => ({
 				name: prompt.name,
@@ -232,6 +344,7 @@ export class McpServer extends Core {
 	protected async getPrompt(request: {
 		params: { name: string; arguments?: Record<string, unknown> };
 	}): Promise<GetPromptResult> {
+		await this._ready;
 		const { name, arguments: args = {} } = request.params;
 		const prompt = this.prompts.get(name);
 
@@ -263,8 +376,8 @@ export class McpServer extends Core {
  * Factory that bootstraps a fully configured MCP server instance.
  *
  * If backlog is not initialized in the project directory, the server will start
- * successfully but only provide the backlog://init-required resource to guide
- * users to run `backlog init`.
+ * in fallback mode with roots discovery enabled — after the client completes
+ * initialization, the server queries MCP roots to find the correct project.
  */
 export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
 	// We need to check config first to determine which instructions to use
@@ -272,16 +385,16 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	await tempCore.ensureConfigLoaded();
 	const config = await tempCore.filesystem.loadConfig();
 
-	// Create server with appropriate instructions
-	const instructions = config ? INSTRUCTIONS_NORMAL : INSTRUCTIONS_FALLBACK;
-	const server = new McpServer(projectRoot, instructions);
+	const server = new McpServer(projectRoot, INSTRUCTIONS);
 
 	// Graceful fallback: if config doesn't exist, provide init-required resource
+	// and enable roots discovery so the server can find the project via MCP roots
 	if (!config) {
-		registerInitRequiredResource(server);
+		registerInitRequiredResource(server, projectRoot);
+		server.enableRootsDiscovery({ debug: options.debug });
 
 		if (options.debug) {
-			console.error("MCP server initialised in fallback mode (backlog not initialized in this directory).");
+			console.error("MCP server initialised in fallback mode (roots discovery enabled).");
 		}
 
 		return server;

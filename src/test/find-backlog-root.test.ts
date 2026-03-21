@@ -23,19 +23,27 @@ describe("findBacklogRoot", () => {
 		}
 	});
 
-	it("should find root when backlog/ directory exists at start dir", async () => {
-		// Create backlog structure at root
+	it("should find root when backlog/ directory with config exists at start dir", async () => {
 		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Test\n");
 
 		const result = await findBacklogRoot(testDir);
 		expect(result).toBe(testDir);
 	});
 
-	it("should find root when .backlog/ directory exists at start dir", async () => {
+	it("should find root when .backlog/ directory with config exists at start dir", async () => {
 		await mkdir(join(testDir, ".backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, ".backlog", "config.yml"), "project_name: Test\n");
 
 		const result = await findBacklogRoot(testDir);
 		expect(result).toBe(testDir);
+	});
+
+	it("should NOT find root for bare backlog/ directory without config", async () => {
+		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
+
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBeNull();
 	});
 
 	it("should find root when backlog.json exists at start dir", async () => {
@@ -47,10 +55,9 @@ describe("findBacklogRoot", () => {
 	});
 
 	it("should find root from a subfolder", async () => {
-		// Create backlog structure at root
 		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Test\n");
 
-		// Create nested subfolder
 		const subfolder = join(testDir, "src", "components", "ui");
 		await mkdir(subfolder, { recursive: true });
 
@@ -80,14 +87,13 @@ describe("findBacklogRoot", () => {
 	});
 
 	it("should prefer backlog/ directory over git root", async () => {
-		// Initialize git repo
 		await $`git init`.cwd(testDir).quiet();
 
-		// Create backlog in a subfolder (simulating monorepo)
+		// Create backlog with config in a subfolder (simulating monorepo)
 		const projectFolder = join(testDir, "packages", "my-project");
 		await mkdir(join(projectFolder, "backlog", "tasks"), { recursive: true });
+		await writeFile(join(projectFolder, "backlog", "config.yml"), "project_name: Test\n");
 
-		// Search from within the project
 		const searchDir = join(projectFolder, "src");
 		await mkdir(searchDir, { recursive: true });
 
@@ -96,11 +102,10 @@ describe("findBacklogRoot", () => {
 	});
 
 	it("should find git root with backlog as fallback", async () => {
-		// Initialize git repo with backlog at root
 		await $`git init`.cwd(testDir).quiet();
 		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Test\n");
 
-		// Create subfolder without its own backlog
 		const subfolder = join(testDir, "packages", "lib");
 		await mkdir(subfolder, { recursive: true });
 
@@ -121,22 +126,20 @@ describe("findBacklogRoot", () => {
 	});
 
 	it("should handle nested git repos - find nearest backlog root", async () => {
-		// Initialize outer git repo with backlog
 		await $`git init`.cwd(testDir).quiet();
 		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Outer\n");
 
-		// Create inner project with its own backlog (nested repo scenario)
 		const innerProject = join(testDir, "packages", "inner");
 		await mkdir(innerProject, { recursive: true });
 		await $`git init`.cwd(innerProject).quiet();
 		await mkdir(join(innerProject, "backlog", "tasks"), { recursive: true });
+		await writeFile(join(innerProject, "backlog", "config.yml"), "project_name: Inner\n");
 
-		// Search from within inner project
 		const innerSrc = join(innerProject, "src");
 		await mkdir(innerSrc, { recursive: true });
 
 		const result = await findBacklogRoot(innerSrc);
-		// Should find the inner project's backlog, not the outer one
 		expect(result).toBe(innerProject);
 	});
 

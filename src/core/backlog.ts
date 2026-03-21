@@ -453,6 +453,17 @@ export class Core {
 		}
 	}
 
+	/**
+	 * Re-point this Core instance to a different project root.
+	 * Disposes caches and re-creates FileSystem / GitOperations.
+	 */
+	reinitializeProjectRoot(projectRoot: string): void {
+		this.disposeSearchService();
+		this.disposeContentStore();
+		this.fs = new FileSystem(projectRoot);
+		this.git = new GitOperations(projectRoot);
+	}
+
 	disposeSearchService(): void {
 		if (this.searchService) {
 			this.searchService.dispose();
