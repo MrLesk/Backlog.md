@@ -3,10 +3,11 @@ id: BACK-407
 title: >-
   Align MCP server with latest spec (annotations, logging, error codes, roots
   notifications)
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-03-21 13:15'
+updated_date: '2026-03-21 13:34'
 labels: []
 dependencies: []
 priority: high
