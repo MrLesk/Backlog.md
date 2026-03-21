@@ -55,7 +55,7 @@
 		"check:types": "bunx tsc --noEmit",
 		"prepare": "husky",
 		"build:css": "bun ./node_modules/@tailwindcss/cli/dist/index.mjs -i src/web/styles/source.css -o src/web/styles/style.css --minify",
-		"build": "bun run build:css && bun build --production --compile --minify --outfile=dist/backlog src/cli.ts",
+		"build": "bun run build:css && VER=$(bun -e 'console.log(require(\"./package.json\").version)') && bun build --production --compile --minify --define __EMBEDDED_VERSION__=\"\\\"$VER\\\"\" --outfile=dist/backlog src/cli.ts",
 		"cli": "bun run build:css && bun src/cli.ts",
 		"mcp": "bun src/cli.ts mcp start",
 		"update-nix": "sh scripts/update-nix.sh",
