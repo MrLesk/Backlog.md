@@ -3153,6 +3153,12 @@
     url = "https://registry.npmjs.org/process/-/process-0.11.10.tgz";
     hash = "sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==";
   };
+  "proper-lockfile" = {
+    out_path = "proper-lockfile";
+    name = "proper-lockfile@4.1.2";
+    url = "https://registry.npmjs.org/proper-lockfile/-/proper-lockfile-4.1.2.tgz";
+    hash = "sha512-TjNPblN4BwAWMXU8s9AEz4JmQxnD1NNL7bNOY/AKUzyamc379FWASUhc/K1pL2noVb+XmZKLL68cjzLsiOAMaA==";
+  };
   "property-information" = {
     out_path = "property-information";
     name = "property-information@7.1.0";
@@ -3369,6 +3375,18 @@
     url = "https://registry.npmjs.org/restore-cursor/-/restore-cursor-5.1.0.tgz";
     hash = "sha512-oMA2dcrw6u0YfxJQXm342bFKX/E4sG9rbTzO9ptUcR/e8A33cHuvStiYOwH7fszkZlZ1z/ta9AAoPk2F4qIOHA==";
   };
+  "restore-cursor/signal-exit" = {
+    out_path = "restore-cursor/node_modules/signal-exit";
+    name = "signal-exit@4.1.0";
+    url = "https://registry.npmjs.org/signal-exit/-/signal-exit-4.1.0.tgz";
+    hash = "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==";
+  };
+  "retry" = {
+    out_path = "retry";
+    name = "retry@0.12.0";
+    url = "https://registry.npmjs.org/retry/-/retry-0.12.0.tgz";
+    hash = "sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow==";
+  };
   "rfdc" = {
     out_path = "rfdc";
     name = "rfdc@1.4.1";
@@ -3497,9 +3515,9 @@
   };
   "signal-exit" = {
     out_path = "signal-exit";
-    name = "signal-exit@4.1.0";
-    url = "https://registry.npmjs.org/signal-exit/-/signal-exit-4.1.0.tgz";
-    hash = "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==";
+    name = "signal-exit@3.0.7";
+    url = "https://registry.npmjs.org/signal-exit/-/signal-exit-3.0.7.tgz";
+    hash = "sha512-wnD2ZE+l+SPC/uoS0vXeE9L1+0wuaMqKlfz9AMUo38JsyLSBWSFcHR1Rri62LZc12vLr1gb3jl7iwQhgwpAbGQ==";
   };
   "simple-xml-to-json" = {
     out_path = "simple-xml-to-json";

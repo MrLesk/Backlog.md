@@ -498,3 +498,22 @@ jobs:
       - uses: softprops/action-gh-release@v1
         with:
           files: binaries/*
+
+  sync-version:
+    needs: [github-release, npm-publish, install-sanity]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Sync version to tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##refs/tags/v}"
+          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
+      - name: Commit version bump
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "chore: sync package.json version to ${{ github.ref_name }} [skip ci]"
+          branch: main
+          file_pattern: package.json
