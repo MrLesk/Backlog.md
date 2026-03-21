@@ -1,4 +1,4 @@
-import { McpError } from "../../errors/mcp-errors.ts";
+import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 
@@ -30,7 +30,7 @@ export class DefinitionOfDoneHandlers {
 	private async loadConfigOrThrow() {
 		const config = await this.core.filesystem.loadConfig();
 		if (!config) {
-			throw new McpError("Backlog config not found. Initialize Backlog.md first.", "NOT_FOUND");
+			throw new BacklogToolError("Backlog config not found. Initialize Backlog.md first.", "NOT_FOUND");
 		}
 		return config;
 	}
@@ -56,7 +56,7 @@ export class DefinitionOfDoneHandlers {
 		const nextDefaults = normalizeDefinitionOfDoneDefaults(args.items);
 		const commaSensitiveItem = findDelimiterSensitiveItem(nextDefaults);
 		if (commaSensitiveItem) {
-			throw new McpError(
+			throw new BacklogToolError(
 				`Definition of Done defaults cannot contain commas (invalid item: "${commaSensitiveItem}").`,
 				"VALIDATION_ERROR",
 			);

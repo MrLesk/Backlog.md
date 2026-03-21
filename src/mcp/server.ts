@@ -3,12 +3,15 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
 	CallToolRequestSchema,
+	ErrorCode,
 	GetPromptRequestSchema,
 	ListPromptsRequestSchema,
 	ListResourcesRequestSchema,
 	ListResourceTemplatesRequestSchema,
 	ListToolsRequestSchema,
+	McpError,
 	ReadResourceRequestSchema,
+	RootsListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
@@ -61,6 +64,9 @@ export class McpServer extends Core {
 	/** Debug log lines collected during roots discovery (exposed to init-required resource). */
 	public readonly debugLog: string[] = [];
 
+	/** Options passed during enableRootsDiscovery (stored for re-runs on roots change). */
+	private rootsDiscoveryOptions?: { debug?: boolean };
+
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
 	private readonly prompts = new Map<string, McpPromptHandler>();
@@ -78,6 +84,7 @@ export class McpServer extends Core {
 					tools: { listChanged: true },
 					resources: { listChanged: true },
 					prompts: { listChanged: true },
+					logging: {},
 				},
 				instructions,
 			},
@@ -97,6 +104,8 @@ export class McpServer extends Core {
 	 * so clients see the correct tool/resource list from the first request.
 	 */
 	enableRootsDiscovery(options?: { debug?: boolean }): void {
+		this.rootsDiscoveryOptions = options;
+
 		let resolveReady!: () => void;
 		this._ready = new Promise<void>((r) => {
 			resolveReady = r;
@@ -112,6 +121,8 @@ export class McpServer extends Core {
 		if (options?.debug) {
 			console.error(message);
 		}
+		// Also send via MCP logging protocol when transport is connected
+		this.server.sendLoggingMessage({ level: "info", logger: "backlog", data: message }).catch(() => {});
 	}
 
 	private async resolveFromRoots(options?: { debug?: boolean }): Promise<void> {
@@ -178,9 +189,10 @@ export class McpServer extends Core {
 		registerDefinitionOfDoneTools(this);
 		registerDocumentTools(this, config);
 
-		// Notify client that available tools/resources changed
+		// Notify client that available tools/resources/prompts changed
 		await this.server.sendToolListChanged();
 		await this.server.sendResourceListChanged();
+		await this.server.sendPromptListChanged();
 
 		this.log(`MCP server upgraded to project: ${projectRoot}`, options);
 		return true;
@@ -194,6 +206,13 @@ export class McpServer extends Core {
 		this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => this.readResource(request));
 		this.server.setRequestHandler(ListPromptsRequestSchema, async () => this.listPrompts());
 		this.server.setRequestHandler(GetPromptRequestSchema, async (request) => this.getPrompt(request));
+
+		// Re-run roots discovery when client workspace changes
+		this.server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
+			if (this.rootsDiscoveryOptions !== undefined) {
+				await this.resolveFromRoots(this.rootsDiscoveryOptions);
+			}
+		});
 	}
 
 	/**
@@ -273,6 +292,7 @@ export class McpServer extends Core {
 					type: "object",
 					...tool.inputSchema,
 				},
+				...(tool.annotations ? { annotations: tool.annotations } : {}),
 			})),
 		};
 	}
@@ -285,7 +305,7 @@ export class McpServer extends Core {
 		const tool = this.tools.get(name);
 
 		if (!tool) {
-			throw new Error(`Tool not found: ${name}`);
+			throw new McpError(ErrorCode.InvalidParams, `Tool not found: ${name}`);
 		}
 
 		return await tool.handler(args);
@@ -324,7 +344,7 @@ export class McpServer extends Core {
 		}
 
 		if (!resource) {
-			throw new Error(`Resource not found: ${uri}`);
+			throw new McpError(ErrorCode.InvalidParams, `Resource not found: ${uri}`);
 		}
 
 		return await resource.handler(uri);
@@ -349,7 +369,7 @@ export class McpServer extends Core {
 		const prompt = this.prompts.get(name);
 
 		if (!prompt) {
-			throw new Error(`Prompt not found: ${name}`);
+			throw new McpError(ErrorCode.InvalidParams, `Prompt not found: ${name}`);
 		}
 
 		return await prompt.handler(args);

@@ -11,10 +11,19 @@ import type {
 	Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 
+export interface McpToolAnnotations {
+	title?: string;
+	readOnlyHint?: boolean;
+	destructiveHint?: boolean;
+	idempotentHint?: boolean;
+	openWorldHint?: boolean;
+}
+
 export interface McpToolHandler {
 	name: string;
 	description: string;
 	inputSchema: object;
+	annotations?: McpToolAnnotations;
 	handler: (args: Record<string, unknown>) => Promise<CallToolResult>;
 }
 

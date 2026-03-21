@@ -3,21 +3,21 @@ import type { CallToolResult } from "../types.ts";
 /**
  * Base MCP error class for all MCP-related errors
  */
-export class McpError extends Error {
+export class BacklogToolError extends Error {
 	constructor(
 		message: string,
 		public code: string,
 		public details?: unknown,
 	) {
 		super(message);
-		this.name = "McpError";
+		this.name = "BacklogToolError";
 	}
 }
 
 /**
  * Validation error for input validation failures
  */
-export class McpValidationError extends McpError {
+export class McpValidationError extends BacklogToolError {
 	constructor(message: string, validationError?: unknown) {
 		super(message, "VALIDATION_ERROR", validationError);
 	}
@@ -26,7 +26,7 @@ export class McpValidationError extends McpError {
 /**
  * Authentication error for auth failures
  */
-export class McpAuthenticationError extends McpError {
+export class McpAuthenticationError extends BacklogToolError {
 	constructor(message = "Authentication required") {
 		super(message, "AUTH_ERROR");
 	}
@@ -35,7 +35,7 @@ export class McpAuthenticationError extends McpError {
 /**
  * Connection error for transport-level failures
  */
-export class McpConnectionError extends McpError {
+export class McpConnectionError extends BacklogToolError {
 	constructor(message: string, details?: unknown) {
 		super(message, "CONNECTION_ERROR", details);
 	}
@@ -44,7 +44,7 @@ export class McpConnectionError extends McpError {
 /**
  * Internal error for unexpected failures
  */
-export class McpInternalError extends McpError {
+export class McpInternalError extends BacklogToolError {
 	constructor(message = "An unexpected error occurred", details?: unknown) {
 		super(message, "INTERNAL_ERROR", details);
 	}
@@ -68,8 +68,8 @@ function buildErrorResult(code: string, message: string, details?: unknown): Cal
 	};
 }
 
-export function handleMcpError(error: unknown): CallToolResult {
-	if (error instanceof McpError) {
+export function handleBacklogToolError(error: unknown): CallToolResult {
+	if (error instanceof BacklogToolError) {
 		return buildErrorResult(error.code, error.message, error.details);
 	}
 

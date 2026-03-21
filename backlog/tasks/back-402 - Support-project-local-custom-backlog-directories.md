@@ -1,11 +1,11 @@
 ---
 id: BACK-402
 title: Support project-local custom backlog directories
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-03-14 19:55'
-updated_date: '2026-03-15 10:30'
+updated_date: '2026-03-21 13:19'
 labels: []
 dependencies: []
 references:
