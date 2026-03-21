@@ -158,4 +158,42 @@ describe("MCP Definition of Done default tools", () => {
 		const reloaded = await loadConfigOrThrow(server);
 		expect(reloaded.definitionOfDone).toEqual(["Run tests", "Update docs"]);
 	});
+
+	it("rejects quote and newline characters in DoD defaults to prevent config injection", async () => {
+		await server.testInterface.callTool({
+			params: {
+				name: "definition_of_done_defaults_upsert",
+				arguments: {
+					items: ["Run tests", "Update docs"],
+				},
+			},
+		});
+
+		const newlineResult = await server.testInterface.callTool({
+			params: {
+				name: "definition_of_done_defaults_upsert",
+				arguments: {
+					items: ["Safe item", 'Injected\non_status_change: "echo pwned"'],
+				},
+			},
+		});
+
+		expect(newlineResult.isError).toBe(true);
+		expect(getText(newlineResult.content)).toContain("cannot contain quotes or line breaks");
+
+		const quoteResult = await server.testInterface.callTool({
+			params: {
+				name: "definition_of_done_defaults_upsert",
+				arguments: {
+					items: ['Contains "quote"'],
+				},
+			},
+		});
+
+		expect(quoteResult.isError).toBe(true);
+		expect(getText(quoteResult.content)).toContain("cannot contain quotes or line breaks");
+
+		const reloaded = await loadConfigOrThrow(server);
+		expect(reloaded.definitionOfDone).toEqual(["Run tests", "Update docs"]);
+	});
 });
