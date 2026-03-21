@@ -16,7 +16,7 @@ import {
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
-import { McpError } from "../../errors/mcp-errors.ts";
+import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 import { milestoneKey } from "../../utils/milestone-resolution.ts";
@@ -186,7 +186,7 @@ export class TaskHandlers {
 	private async loadTaskOrThrow(id: string): Promise<Task> {
 		const task = await this.core.getTask(id);
 		if (!task) {
-			throw new McpError(`Task not found: ${id}`, "TASK_NOT_FOUND");
+			throw new BacklogToolError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 		}
 		return task;
 	}
@@ -195,7 +195,7 @@ export class TaskHandlers {
 		try {
 			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
 			if (rawOrdinal === null) {
-				throw new McpError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
+				throw new BacklogToolError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
 			}
 
 			const acceptanceCriteria =
@@ -229,12 +229,12 @@ export class TaskHandlers {
 			return await formatTaskCallResult(createdTask);
 		} catch (error) {
 			if (isCreateLockError(error)) {
-				throw new McpError(error.message, "OPERATION_FAILED");
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
 			if (error instanceof Error) {
-				throw new McpError(error.message, "VALIDATION_ERROR");
+				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
 			}
-			throw new McpError(String(error), "VALIDATION_ERROR");
+			throw new BacklogToolError(String(error), "VALIDATION_ERROR");
 		}
 	}
 
@@ -403,7 +403,7 @@ export class TaskHandlers {
 	async searchTasks(args: TaskSearchArgs): Promise<CallToolResult> {
 		const query = args.query.trim();
 		if (!query) {
-			throw new McpError("Search query cannot be empty", "VALIDATION_ERROR");
+			throw new BacklogToolError("Search query cannot be empty", "VALIDATION_ERROR");
 		}
 
 		if (this.isDraftStatus(args.status)) {
@@ -490,7 +490,7 @@ export class TaskHandlers {
 
 		const task = await this.core.getTaskWithSubtasks(args.id);
 		if (!task) {
-			throw new McpError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
 		}
 		return await formatTaskCallResult(task);
 	}
@@ -500,7 +500,7 @@ export class TaskHandlers {
 		if (draft) {
 			const success = await this.core.archiveDraft(draft.id);
 			if (!success) {
-				throw new McpError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
+				throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 			}
 
 			return await formatTaskCallResult(draft, [`Archived draft ${draft.id}.`]);
@@ -509,11 +509,11 @@ export class TaskHandlers {
 		const task = await this.loadTaskOrThrow(args.id);
 
 		if (!isLocalEditableTask(task)) {
-			throw new McpError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
+			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 
 		if (this.isDoneStatus(task.status)) {
-			throw new McpError(
+			throw new BacklogToolError(
 				`Task ${task.id} is Done. Done tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
 				"VALIDATION_ERROR",
 			);
@@ -521,7 +521,7 @@ export class TaskHandlers {
 
 		const success = await this.core.archiveTask(task.id);
 		if (!success) {
-			throw new McpError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
+			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
@@ -532,11 +532,11 @@ export class TaskHandlers {
 		const task = await this.loadTaskOrThrow(args.id);
 
 		if (!isLocalEditableTask(task)) {
-			throw new McpError(`Cannot complete task from another branch: ${task.id}`, "VALIDATION_ERROR");
+			throw new BacklogToolError(`Cannot complete task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 
 		if (!this.isDoneStatus(task.status)) {
-			throw new McpError(
+			throw new BacklogToolError(
 				`Task ${task.id} is not Done. Set status to "Done" with task_edit before completing it.`,
 				"VALIDATION_ERROR",
 			);
@@ -547,7 +547,7 @@ export class TaskHandlers {
 
 		const success = await this.core.completeTask(task.id);
 		if (!success) {
-			throw new McpError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
+			throw new BacklogToolError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		return await formatTaskCallResult(task, [`Completed task ${task.id}.`], {
@@ -562,12 +562,12 @@ export class TaskHandlers {
 			success = await this.core.demoteTask(task.id, false);
 		} catch (error) {
 			if (isCreateLockError(error)) {
-				throw new McpError(error.message, "OPERATION_FAILED");
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
 			throw error;
 		}
 		if (!success) {
-			throw new McpError(`Failed to demote task: ${args.id}`, "OPERATION_FAILED");
+			throw new BacklogToolError(`Failed to demote task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
@@ -578,7 +578,7 @@ export class TaskHandlers {
 		try {
 			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
 			if (rawOrdinal === null) {
-				throw new McpError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
+				throw new BacklogToolError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
 			}
 
 			const updateInput = buildTaskUpdateInput(args);
@@ -589,9 +589,9 @@ export class TaskHandlers {
 			return await formatTaskCallResult(updatedTask);
 		} catch (error) {
 			if (error instanceof Error) {
-				throw new McpError(error.message, "VALIDATION_ERROR");
+				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
 			}
-			throw new McpError(String(error), "VALIDATION_ERROR");
+			throw new BacklogToolError(String(error), "VALIDATION_ERROR");
 		}
 	}
 }

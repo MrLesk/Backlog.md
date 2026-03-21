@@ -1,10 +1,11 @@
 ---
 id: BACK-406
 title: Use MCP roots for project root discovery when cwd fails
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-03-21 11:12'
+updated_date: '2026-03-21 13:34'
 labels: []
 dependencies: []
 priority: high

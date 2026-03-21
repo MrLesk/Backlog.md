@@ -18,6 +18,7 @@ function createWorkflowTool(guide: (typeof WORKFLOW_GUIDES)[number]): McpToolHan
 			name: guide.toolName,
 			description: guide.toolDescription,
 			inputSchema: emptyInputSchema,
+			annotations: { title: guide.name, readOnlyHint: true, destructiveHint: false },
 		},
 		emptyInputSchema,
 		async () => ({

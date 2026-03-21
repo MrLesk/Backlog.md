@@ -3,12 +3,15 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
 	CallToolRequestSchema,
+	ErrorCode,
 	GetPromptRequestSchema,
 	ListPromptsRequestSchema,
 	ListResourcesRequestSchema,
 	ListResourceTemplatesRequestSchema,
 	ListToolsRequestSchema,
+	McpError,
 	ReadResourceRequestSchema,
+	RootsListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
@@ -61,12 +64,23 @@ export class McpServer extends Core {
 	/** Debug log lines collected during roots discovery (exposed to init-required resource). */
 	public readonly debugLog: string[] = [];
 
+	/** Whether roots discovery is enabled (and options for re-runs on roots change). */
+	private rootsDiscoveryEnabled = false;
+	private rootsDiscoveryOptions: { debug?: boolean } = {};
+
+	/** The projectRoot passed to createMcpServer, used to revert on downgrade. */
+	private readonly initialProjectRoot: string;
+
+	/** True when the server has been upgraded from fallback to a real project. */
+	private upgraded = false;
+
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
 	private readonly prompts = new Map<string, McpPromptHandler>();
 
 	constructor(projectRoot: string, instructions: string) {
 		super(projectRoot, { enableWatchers: true });
+		this.initialProjectRoot = projectRoot;
 
 		this.server = new Server(
 			{
@@ -78,6 +92,7 @@ export class McpServer extends Core {
 					tools: { listChanged: true },
 					resources: { listChanged: true },
 					prompts: { listChanged: true },
+					logging: {},
 				},
 				instructions,
 			},
@@ -97,6 +112,9 @@ export class McpServer extends Core {
 	 * so clients see the correct tool/resource list from the first request.
 	 */
 	enableRootsDiscovery(options?: { debug?: boolean }): void {
+		this.rootsDiscoveryEnabled = true;
+		this.rootsDiscoveryOptions = options ?? {};
+
 		let resolveReady!: () => void;
 		this._ready = new Promise<void>((r) => {
 			resolveReady = r;
@@ -112,6 +130,8 @@ export class McpServer extends Core {
 		if (options?.debug) {
 			console.error(message);
 		}
+		// Also send via MCP logging protocol when transport is connected
+		this.server.sendLoggingMessage({ level: "info", logger: "backlog", data: message }).catch(() => {});
 	}
 
 	private async resolveFromRoots(options?: { debug?: boolean }): Promise<void> {
@@ -140,6 +160,10 @@ export class McpServer extends Core {
 				if (await this.upgradeToProject(rootPath, options)) {
 					return;
 				}
+			}
+
+			if (this.upgraded) {
+				await this.downgradeToFallback(options);
 			}
 
 			this.log(
@@ -178,12 +202,35 @@ export class McpServer extends Core {
 		registerDefinitionOfDoneTools(this);
 		registerDocumentTools(this, config);
 
-		// Notify client that available tools/resources changed
+		// Notify client that available tools/resources/prompts changed
 		await this.server.sendToolListChanged();
 		await this.server.sendResourceListChanged();
+		await this.server.sendPromptListChanged();
 
+		this.upgraded = true;
 		this.log(`MCP server upgraded to project: ${projectRoot}`, options);
 		return true;
+	}
+
+	/**
+	 * Revert from an upgraded project back to fallback mode.
+	 * Called when roots change and no valid project is found in the new roots.
+	 */
+	private async downgradeToFallback(options?: { debug?: boolean }): Promise<void> {
+		this.reinitializeProjectRoot(this.initialProjectRoot);
+		this.upgraded = false;
+
+		this.tools.clear();
+		this.resources.clear();
+		this.prompts.clear();
+
+		registerInitRequiredResource(this, this.initialProjectRoot);
+
+		await this.server.sendToolListChanged();
+		await this.server.sendResourceListChanged();
+		await this.server.sendPromptListChanged();
+
+		this.log("MCP server reverted to fallback mode (workspace no longer has a backlog project).", options);
 	}
 
 	private setupHandlers(): void {
@@ -194,6 +241,13 @@ export class McpServer extends Core {
 		this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => this.readResource(request));
 		this.server.setRequestHandler(ListPromptsRequestSchema, async () => this.listPrompts());
 		this.server.setRequestHandler(GetPromptRequestSchema, async (request) => this.getPrompt(request));
+
+		// Re-run roots discovery when client workspace changes
+		this.server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
+			if (this.rootsDiscoveryEnabled) {
+				await this.resolveFromRoots(this.rootsDiscoveryOptions);
+			}
+		});
 	}
 
 	/**
@@ -273,6 +327,7 @@ export class McpServer extends Core {
 					type: "object",
 					...tool.inputSchema,
 				},
+				...(tool.annotations ? { annotations: tool.annotations } : {}),
 			})),
 		};
 	}
@@ -285,7 +340,7 @@ export class McpServer extends Core {
 		const tool = this.tools.get(name);
 
 		if (!tool) {
-			throw new Error(`Tool not found: ${name}`);
+			throw new McpError(ErrorCode.InvalidParams, `Tool not found: ${name}`);
 		}
 
 		return await tool.handler(args);
@@ -324,7 +379,7 @@ export class McpServer extends Core {
 		}
 
 		if (!resource) {
-			throw new Error(`Resource not found: ${uri}`);
+			throw new McpError(ErrorCode.InvalidParams, `Resource not found: ${uri}`);
 		}
 
 		return await resource.handler(uri);
@@ -349,7 +404,7 @@ export class McpServer extends Core {
 		const prompt = this.prompts.get(name);
 
 		if (!prompt) {
-			throw new Error(`Prompt not found: ${name}`);
+			throw new McpError(ErrorCode.InvalidParams, `Prompt not found: ${name}`);
 		}
 
 		return await prompt.handler(args);
