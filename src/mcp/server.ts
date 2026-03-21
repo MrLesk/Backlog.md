@@ -43,10 +43,8 @@ import type {
  */
 const APP_NAME = getPackageName();
 const APP_VERSION = await getVersion();
-const INSTRUCTIONS_NORMAL =
+const INSTRUCTIONS =
 	"At the beginning of each session, read the backlog://workflow/overview resource to understand when and how to use Backlog.md for task management. Additional detailed guides are available as resources when needed.";
-const INSTRUCTIONS_FALLBACK =
-	"Backlog.md is not initialized in this directory. Read the backlog://init-required resource for setup instructions.";
 
 type ServerInitOptions = {
 	debug?: boolean;
@@ -380,9 +378,7 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	await tempCore.ensureConfigLoaded();
 	const config = await tempCore.filesystem.loadConfig();
 
-	// Create server with appropriate instructions
-	const instructions = config ? INSTRUCTIONS_NORMAL : INSTRUCTIONS_FALLBACK;
-	const server = new McpServer(projectRoot, instructions);
+	const server = new McpServer(projectRoot, INSTRUCTIONS);
 
 	// Graceful fallback: if config doesn't exist, provide init-required resource
 	// and enable roots discovery so the server can find the project via MCP roots
