@@ -8,7 +8,7 @@ This project uses Backlog.md MCP for all task and project management activities.
 **CRITICAL GUIDANCE**
 
 - If your client supports MCP resources, read `backlog://workflow/overview` to understand when and how to use Backlog for this project.
-- If your client only supports tools or the above request fails, call `backlog.get_workflow_overview()` tool to load the tool-oriented overview (it lists the matching guide tools).
+- If your client only supports tools or the above request fails, call `backlog.get_backlog_instructions()` to load the tool-oriented overview. Use the `instruction` selector when you need `task-creation`, `task-execution`, or `task-finalization`.
 
 - **First time working here?** Read the overview resource IMMEDIATELY to learn the workflow
 - **Already familiar?** You should have the overview cached ("## Backlog.md Overview (MCP)")
