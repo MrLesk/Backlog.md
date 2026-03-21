@@ -12,7 +12,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
-import { findBacklogRoot } from "../utils/find-backlog-root.ts";
+import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
@@ -131,9 +131,13 @@ export class McpServer extends Core {
 
 				const rootPath = fileURLToPath(root.uri);
 				checkedPaths.push(rootPath);
-				const projectRoot = await findBacklogRoot(rootPath);
 
-				if (projectRoot && (await this.upgradeToProject(projectRoot, options))) {
+				// Only check the root itself — don't walk up the tree, as that
+				// could match an unrelated ancestor project outside the workspace.
+				const resolution = resolveBacklogDirectory(rootPath);
+				if (!resolution.configPath) continue;
+
+				if (await this.upgradeToProject(rootPath, options)) {
 					return;
 				}
 			}
