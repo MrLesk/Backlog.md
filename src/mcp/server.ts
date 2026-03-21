@@ -127,8 +127,7 @@ export class McpServer extends Core {
 				const rootPath = fileURLToPath(root.uri);
 				const projectRoot = await findBacklogRoot(rootPath);
 
-				if (projectRoot) {
-					await this.upgradeToProject(projectRoot, options);
+				if (projectRoot && (await this.upgradeToProject(projectRoot, options))) {
 					return;
 				}
 			}
@@ -148,12 +147,17 @@ export class McpServer extends Core {
 	 * Reinitialize Core with a discovered project root and register the full
 	 * toolset, replacing fallback-mode registrations.
 	 */
-	private async upgradeToProject(projectRoot: string, options?: { debug?: boolean }): Promise<void> {
+	private async upgradeToProject(projectRoot: string, options?: { debug?: boolean }): Promise<boolean> {
 		this.reinitializeProjectRoot(projectRoot);
 		await this.ensureConfigLoaded();
 		const config = await this.filesystem.loadConfig();
 
-		if (!config) return;
+		if (!config) {
+			if (options?.debug) {
+				console.error(`Skipping root ${projectRoot} (no valid config).`);
+			}
+			return false;
+		}
 
 		// Replace fallback registrations with the full toolset
 		this.tools.clear();
@@ -174,6 +178,7 @@ export class McpServer extends Core {
 		if (options?.debug) {
 			console.error(`MCP server upgraded to project: ${projectRoot}`);
 		}
+		return true;
 	}
 
 	private setupHandlers(): void {
