@@ -58,6 +58,9 @@ export class McpServer extends Core {
 	/** Resolved once roots discovery completes (or immediately in normal mode). */
 	private _ready: Promise<void> = Promise.resolve();
 
+	/** Debug log lines collected during roots discovery (exposed to init-required resource). */
+	public readonly debugLog: string[] = [];
+
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
 	private readonly prompts = new Map<string, McpPromptHandler>();
@@ -104,25 +107,29 @@ export class McpServer extends Core {
 		};
 	}
 
+	private log(message: string, options?: { debug?: boolean }): void {
+		this.debugLog.push(message);
+		if (options?.debug) {
+			console.error(message);
+		}
+	}
+
 	private async resolveFromRoots(options?: { debug?: boolean }): Promise<void> {
 		const caps = this.server.getClientCapabilities();
 		if (!caps?.roots) {
-			if (options?.debug) {
-				console.error("Client does not support MCP roots capability, staying in fallback mode.");
-			}
+			this.log("Client does not support MCP roots capability, staying in fallback mode.", options);
 			return;
 		}
 
 		try {
 			const { roots } = await this.server.listRoots();
-			if (options?.debug) {
-				console.error(`Received ${roots.length} root(s) from client.`);
-			}
+			this.log(`Received ${roots.length} root(s) from client.`, options);
 
 			for (const root of roots) {
 				if (!root.uri.startsWith("file://")) continue;
 
 				const rootPath = fileURLToPath(root.uri);
+				this.log(`Checking root: ${rootPath}`, options);
 				const projectRoot = await findBacklogRoot(rootPath);
 
 				if (projectRoot && (await this.upgradeToProject(projectRoot, options))) {
@@ -130,14 +137,10 @@ export class McpServer extends Core {
 				}
 			}
 
-			if (options?.debug) {
-				console.error("No valid backlog project found in MCP roots.");
-			}
+			this.log("No valid backlog project found in MCP roots.", options);
 		} catch (error) {
-			if (options?.debug) {
-				const message = error instanceof Error ? error.message : String(error);
-				console.error(`Roots discovery failed: ${message}`);
-			}
+			const message = error instanceof Error ? error.message : String(error);
+			this.log(`Roots discovery failed: ${message}`, options);
 		}
 	}
 
@@ -151,9 +154,7 @@ export class McpServer extends Core {
 		const config = await this.filesystem.loadConfig();
 
 		if (!config) {
-			if (options?.debug) {
-				console.error(`Skipping root ${projectRoot} (no valid config).`);
-			}
+			this.log(`Skipping root ${projectRoot} (no valid config).`, options);
 			return false;
 		}
 
@@ -173,9 +174,7 @@ export class McpServer extends Core {
 		await this.server.sendToolListChanged();
 		await this.server.sendResourceListChanged();
 
-		if (options?.debug) {
-			console.error(`MCP server upgraded to project: ${projectRoot}`);
-		}
+		this.log(`MCP server upgraded to project: ${projectRoot}`, options);
 		return true;
 	}
 

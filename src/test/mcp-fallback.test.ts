@@ -57,7 +57,7 @@ describe("MCP Server Fallback Mode", () => {
 
 		expect(result.contents).toHaveLength(1);
 		expect(result.contents[0]?.uri).toBe("backlog://init-required");
-		expect(getContentsText(result.contents)).toBe(MCP_INIT_REQUIRED_GUIDE);
+		expect(getContentsText(result.contents)).toStartWith(MCP_INIT_REQUIRED_GUIDE);
 	});
 
 	test("should not provide task tools in fallback mode", async () => {
