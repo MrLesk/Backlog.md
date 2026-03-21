@@ -125,11 +125,12 @@ export class McpServer extends Core {
 			const { roots } = await this.server.listRoots();
 			this.log(`Received ${roots.length} root(s) from client.`, options);
 
+			const checkedPaths: string[] = [];
 			for (const root of roots) {
 				if (!root.uri.startsWith("file://")) continue;
 
 				const rootPath = fileURLToPath(root.uri);
-				this.log(`Checking root: ${rootPath}`, options);
+				checkedPaths.push(rootPath);
 				const projectRoot = await findBacklogRoot(rootPath);
 
 				if (projectRoot && (await this.upgradeToProject(projectRoot, options))) {
@@ -137,7 +138,10 @@ export class McpServer extends Core {
 				}
 			}
 
-			this.log("No valid backlog project found in MCP roots.", options);
+			this.log(
+				`No valid backlog project found in MCP roots: ${checkedPaths.map((p) => `\`${p}\``).join(", ")}`,
+				options,
+			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.log(`Roots discovery failed: ${message}`, options);
