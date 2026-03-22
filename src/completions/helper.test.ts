@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { parseCompletionContext } from "./helper.ts";
+import { Command } from "commander";
+import { getCompletions, parseCompletionContext } from "./helper.ts";
 
 describe("parseCompletionContext", () => {
 	test("parses empty command line", () => {
@@ -103,5 +104,20 @@ describe("parseCompletionContext", () => {
 		expect(context.command).toBe("task");
 		expect(context.subcommand).toBe("create");
 		expect(context.argPosition).toBe(0);
+	});
+
+	test("includes pwsh in --shell value completions", async () => {
+		const line = "backlog completion install --shell ";
+		const completions = await getCompletions(new Command(), line, line.length);
+
+		expect(completions).toContain("pwsh");
+		expect(completions).not.toContain("powershell");
+	});
+
+	test("filters pwsh shell completion by partial value", async () => {
+		const line = "backlog completion install --shell pws";
+		const completions = await getCompletions(new Command(), line, line.length);
+
+		expect(completions).toEqual(["pwsh"]);
 	});
 });
