@@ -3078,12 +3078,12 @@ agentsCmd
 					{ label: "Copilot (GitHub Copilot)", value: ".github/copilot-instructions.md" },
 				],
 			});
-			const files: AgentInstructionFile[] = clack.isCancel(selected)
-				? []
-				: Array.isArray(selected)
-					? (selected as AgentInstructionFile[])
-					: [];
+			if (clack.isCancel(selected)) {
+				clack.log.info("Agent instruction update cancelled.");
+				return;
+			}
 
+			const files: AgentInstructionFile[] = Array.isArray(selected) ? (selected as AgentInstructionFile[]) : [];
 			if (files.length > 0) {
 				// Get autoCommit setting from config
 				const config = await core.filesystem.loadConfig();
