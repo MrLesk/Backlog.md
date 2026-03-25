@@ -1,0 +1,19 @@
+# Next.js
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Local DB
+local.db
+local.db-shm
+local.db-wal
+
+# Env
+.env
+.env.local
+.env.production
+
+# Build
+dist/
