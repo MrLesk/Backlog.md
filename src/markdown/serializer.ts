@@ -1,7 +1,12 @@
 import matter from "gray-matter";
 import type { Decision, Document, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { AcceptanceCriteriaManager, getStructuredSections, updateStructuredSections } from "./structured-sections.ts";
+import {
+	AcceptanceCriteriaManager,
+	DefinitionOfDoneManager,
+	getStructuredSections,
+	updateStructuredSections,
+} from "./structured-sections.ts";
 
 export function serializeTask(task: Task): string {
 	normalizeAssignee(task);
@@ -16,6 +21,8 @@ export function serializeTask(task: Task): string {
 		labels: task.labels,
 		...(task.milestone && { milestone: task.milestone }),
 		dependencies: task.dependencies,
+		...(task.references && task.references.length > 0 && { references: task.references }),
+		...(task.documentation && task.documentation.length > 0 && { documentation: task.documentation }),
 		...(task.parentTaskId && { parent_task_id: task.parentTaskId }),
 		...(task.subtasks && task.subtasks.length > 0 && { subtasks: task.subtasks }),
 		...(task.priority && { priority: task.priority }),
@@ -34,11 +41,21 @@ export function serializeTask(task: Task): string {
 			contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
 		}
 	}
+	if (Array.isArray(task.definitionOfDoneItems)) {
+		const existingDefinitionOfDone = DefinitionOfDoneManager.parseAllCriteria(task.rawContent ?? "");
+		const hasExistingDefinitionOfDone = existingDefinitionOfDone.length > 0;
+		if (task.definitionOfDoneItems.length > 0 || hasExistingDefinitionOfDone) {
+			contentBody = DefinitionOfDoneManager.updateContent(contentBody, task.definitionOfDoneItems);
+		}
+	}
 	if (typeof task.implementationPlan === "string") {
 		contentBody = updateTaskImplementationPlan(contentBody, task.implementationPlan);
 	}
 	if (typeof task.implementationNotes === "string") {
 		contentBody = updateTaskImplementationNotes(contentBody, task.implementationNotes);
+	}
+	if (typeof task.finalSummary === "string") {
+		contentBody = updateTaskFinalSummary(contentBody, task.finalSummary);
 	}
 
 	const serialized = matter.stringify(contentBody, frontmatter);
@@ -106,6 +123,7 @@ export function updateTaskImplementationPlan(content: string, plan: string): str
 		description: sections.description ?? "",
 		implementationPlan: plan,
 		implementationNotes: sections.implementationNotes ?? "",
+		finalSummary: sections.finalSummary ?? "",
 	});
 }
 
@@ -115,6 +133,17 @@ export function updateTaskImplementationNotes(content: string, notes: string): s
 		description: sections.description ?? "",
 		implementationPlan: sections.implementationPlan ?? "",
 		implementationNotes: notes,
+		finalSummary: sections.finalSummary ?? "",
+	});
+}
+
+export function updateTaskFinalSummary(content: string, summary: string): string {
+	const sections = getStructuredSections(content);
+	return updateStructuredSections(content, {
+		description: sections.description ?? "",
+		implementationPlan: sections.implementationPlan ?? "",
+		implementationNotes: sections.implementationNotes ?? "",
+		finalSummary: summary,
 	});
 }
 
@@ -133,6 +162,7 @@ export function appendTaskImplementationNotes(content: string, notesChunks: stri
 		description: sections.description ?? "",
 		implementationPlan: sections.implementationPlan ?? "",
 		implementationNotes: combined,
+		finalSummary: sections.finalSummary ?? "",
 	});
 }
 
@@ -142,5 +172,6 @@ export function updateTaskDescription(content: string, description: string): str
 		description,
 		implementationPlan: sections.implementationPlan ?? "",
 		implementationNotes: sections.implementationNotes ?? "",
+		finalSummary: sections.finalSummary ?? "",
 	});
 }

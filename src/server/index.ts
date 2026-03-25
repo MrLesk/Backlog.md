@@ -6,14 +6,35 @@ import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
+import { isCreateLockError } from "../file-system/operations.ts";
 import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
 
-const TASK_ID_PREFIX = "task-";
+// Regex pattern to match any prefix (letters followed by dash)
+const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
+const DEFAULT_PREFIX = "task-";
+
+/**
+ * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
+ */
+function stripPrefix(id: string): string {
+	return id.replace(PREFIX_PATTERN, "");
+}
+
+/**
+ * Ensure an ID has a prefix. If it already has one, return as-is.
+ * Otherwise, add the default "task-" prefix.
+ */
+function ensurePrefix(id: string): string {
+	if (PREFIX_PATTERN.test(id)) {
+		return id;
+	}
+	return `${DEFAULT_PREFIX}${id}`;
+}
 
 function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = value.startsWith(TASK_ID_PREFIX) ? value.slice(TASK_ID_PREFIX.length) : value;
+	const withoutPrefix = stripPrefix(value);
 	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
 		return null;
 	}
@@ -21,12 +42,14 @@ function parseTaskIdSegments(value: string): number[] | null {
 }
 
 function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
-	const normalized = inputId.startsWith(TASK_ID_PREFIX) ? inputId : `${TASK_ID_PREFIX}${inputId}`;
-	const exact = tasks.find((task) => task.id === normalized);
+	// First try exact match (case-insensitive)
+	const lowerInputId = inputId.toLowerCase();
+	const exact = tasks.find((task) => task.id.toLowerCase() === lowerInputId);
 	if (exact) {
 		return exact;
 	}
 
+	// Try matching by numeric segments only
 	const inputSegments = parseTaskIdSegments(inputId);
 	if (!inputSegments) {
 		return undefined;
@@ -63,6 +86,128 @@ export class BacklogServer {
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
+	}
+
+	private async resolveMilestoneInput(milestone: string): Promise<string> {
+		const normalized = milestone.trim();
+		if (!normalized) {
+			return normalized;
+		}
+
+		const key = normalized.toLowerCase();
+		const aliasKeys = new Set<string>([key]);
+		const looksLikeMilestoneId = /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized);
+		const canonicalInputId =
+			/^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized)
+				? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
+				: null;
+		if (/^\d+$/.test(normalized)) {
+			const numeric = String(Number.parseInt(normalized, 10));
+			aliasKeys.add(numeric);
+			aliasKeys.add(`m-${numeric}`);
+		} else {
+			const match = normalized.match(/^m-(\d+)$/i);
+			if (match?.[1]) {
+				const numeric = String(Number.parseInt(match[1], 10));
+				aliasKeys.add(numeric);
+				aliasKeys.add(`m-${numeric}`);
+			}
+		}
+		const [activeMilestones, archivedMilestones] = await Promise.all([
+			this.core.filesystem.listMilestones(),
+			this.core.filesystem.listArchivedMilestones(),
+		]);
+		const idMatchesAlias = (milestoneId: string): boolean => {
+			const idKey = milestoneId.trim().toLowerCase();
+			if (aliasKeys.has(idKey)) {
+				return true;
+			}
+			if (/^\d+$/.test(milestoneId.trim())) {
+				const numeric = String(Number.parseInt(milestoneId.trim(), 10));
+				return aliasKeys.has(numeric) || aliasKeys.has(`m-${numeric}`);
+			}
+			const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
+			if (!idMatch?.[1]) {
+				return false;
+			}
+			const numeric = String(Number.parseInt(idMatch[1], 10));
+			return aliasKeys.has(numeric) || aliasKeys.has(`m-${numeric}`);
+		};
+		const findIdMatch = (
+			milestones: Array<{ id: string; title: string }>,
+		): { id: string; title: string } | undefined => {
+			const rawExactMatch = milestones.find((item) => item.id.trim().toLowerCase() === key);
+			if (rawExactMatch) {
+				return rawExactMatch;
+			}
+			if (canonicalInputId) {
+				const canonicalRawMatch = milestones.find((item) => item.id.trim().toLowerCase() === canonicalInputId);
+				if (canonicalRawMatch) {
+					return canonicalRawMatch;
+				}
+			}
+			return milestones.find((item) => idMatchesAlias(item.id));
+		};
+		const findUniqueTitleMatch = (
+			milestones: Array<{ id: string; title: string }>,
+		): { id: string; title: string } | null => {
+			const titleMatches = milestones.filter((item) => item.title.trim().toLowerCase() === key);
+			if (titleMatches.length === 1) {
+				return titleMatches[0] ?? null;
+			}
+			return null;
+		};
+
+		const matchByAlias = (milestones: Array<{ id: string; title: string }>): string | null => {
+			const idMatch = findIdMatch(milestones);
+			const titleMatch = findUniqueTitleMatch(milestones);
+			if (looksLikeMilestoneId) {
+				return idMatch?.id ?? null;
+			}
+			if (titleMatch) {
+				return titleMatch.id;
+			}
+			if (idMatch) {
+				return idMatch.id;
+			}
+			return null;
+		};
+
+		const activeTitleMatches = activeMilestones.filter((item) => item.title.trim().toLowerCase() === key);
+		const hasAmbiguousActiveTitle = activeTitleMatches.length > 1;
+		if (looksLikeMilestoneId) {
+			const activeIdMatch = findIdMatch(activeMilestones);
+			if (activeIdMatch) {
+				return activeIdMatch.id;
+			}
+			const archivedIdMatch = findIdMatch(archivedMilestones);
+			if (archivedIdMatch) {
+				return archivedIdMatch.id;
+			}
+			if (activeTitleMatches.length === 1) {
+				return activeTitleMatches[0]?.id ?? normalized;
+			}
+			if (hasAmbiguousActiveTitle) {
+				return normalized;
+			}
+			const archivedTitleMatch = findUniqueTitleMatch(archivedMilestones);
+			return archivedTitleMatch?.id ?? normalized;
+		}
+
+		const activeMatch = matchByAlias(activeMilestones);
+		if (activeMatch) {
+			return activeMatch;
+		}
+		if (hasAmbiguousActiveTitle) {
+			return normalized;
+		}
+
+		const archivedMatch = matchByAlias(archivedMilestones);
+		if (archivedMatch) {
+			return archivedMatch;
+		}
+
+		return normalized;
 	}
 
 	private async ensureServicesReady(): Promise<void> {
@@ -158,6 +303,7 @@ export class BacklogServer {
 				routes: {
 					"/": indexHtml,
 					"/tasks": indexHtml,
+					"/milestones": indexHtml,
 					"/drafts": indexHtml,
 					"/documentation": indexHtml,
 					"/documentation/*": indexHtml,
@@ -217,6 +363,19 @@ export class BacklogServer {
 					},
 					"/api/drafts/:id/promote": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
+					},
+					"/api/milestones": {
+						GET: async () => await this.handleListMilestones(),
+						POST: async (req: Request) => await this.handleCreateMilestone(req),
+					},
+					"/api/milestones/archived": {
+						GET: async () => await this.handleListArchivedMilestones(),
+					},
+					"/api/milestones/:id": {
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
+					},
+					"/api/milestones/:id/archive": {
+						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
 					},
 					"/api/tasks/reorder": {
 						POST: async (req: Request) => await this.handleReorderTask(req),
@@ -500,7 +659,7 @@ export class BacklogServer {
 			const allTasks = store.getTasks();
 			let parentTask = findTaskByLooseId(allTasks, parent);
 			if (!parentTask) {
-				const fallbackId = parent.startsWith(TASK_ID_PREFIX) ? parent : `${TASK_ID_PREFIX}${parent}`;
+				const fallbackId = ensurePrefix(parent);
 				const fallback = await this.core.filesystem.loadTask(fallbackId);
 				if (fallback) {
 					store.upsertTask(fallback);
@@ -508,7 +667,7 @@ export class BacklogServer {
 				}
 			}
 			if (!parentTask) {
-				const normalizedParent = parent.startsWith(TASK_ID_PREFIX) ? parent : `${TASK_ID_PREFIX}${parent}`;
+				const normalizedParent = ensurePrefix(parent);
 				return Response.json({ error: `Parent task ${normalizedParent} not found` }, { status: 404 });
 			}
 			parentTaskId = parentTask.id;
@@ -619,23 +778,41 @@ export class BacklogServer {
 					}))
 					.filter((item: { text: string }) => item.text.length > 0)
 			: [];
+		const definitionOfDoneAdd = Array.isArray(payload.definitionOfDoneAdd)
+			? payload.definitionOfDoneAdd
+					.map((item: unknown) => String(item ?? "").trim())
+					.filter((item: string) => item.length > 0)
+			: [];
+		const disableDefinitionOfDoneDefaults = Boolean(payload.disableDefinitionOfDoneDefaults);
 
 		try {
+			const milestone =
+				typeof payload.milestone === "string" ? await this.resolveMilestoneInput(payload.milestone) : undefined;
+
 			const { task: createdTask } = await this.core.createTaskFromInput({
 				title: payload.title,
 				description: payload.description,
 				status: payload.status,
 				priority: payload.priority,
+				milestone,
 				labels: payload.labels,
 				assignee: payload.assignee,
 				dependencies: payload.dependencies,
+				references: payload.references,
 				parentTaskId: payload.parentTaskId,
 				implementationPlan: payload.implementationPlan,
 				implementationNotes: payload.implementationNotes,
+				finalSummary: payload.finalSummary,
 				acceptanceCriteria,
+				definitionOfDoneAdd,
+				disableDefinitionOfDoneDefaults,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
+			if (isCreateLockError(error)) {
+				const message = error instanceof Error ? error.message : "Failed to create task";
+				return Response.json({ error: message }, { status: 409 });
+			}
 			const message = error instanceof Error ? error.message : "Failed to create task";
 			return Response.json({ error: message }, { status: 400 });
 		}
@@ -646,7 +823,7 @@ export class BacklogServer {
 		const tasks = store.getTasks();
 		const task = findTaskByLooseId(tasks, taskId);
 		if (!task) {
-			const fallbackId = taskId.startsWith(TASK_ID_PREFIX) ? taskId : `${TASK_ID_PREFIX}${taskId}`;
+			const fallbackId = ensurePrefix(taskId);
 			const fallback = await this.core.filesystem.loadTask(fallbackId);
 			if (fallback) {
 				store.upsertTask(fallback);
@@ -682,6 +859,14 @@ export class BacklogServer {
 			updateInput.priority = updates.priority;
 		}
 
+		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {
+			if (typeof updates.milestone === "string") {
+				updateInput.milestone = await this.resolveMilestoneInput(updates.milestone);
+			} else {
+				updateInput.milestone = updates.milestone;
+			}
+		}
+
 		if ("labels" in updates && Array.isArray(updates.labels)) {
 			updateInput.labels = updates.labels;
 		}
@@ -694,12 +879,20 @@ export class BacklogServer {
 			updateInput.dependencies = updates.dependencies;
 		}
 
+		if ("references" in updates && Array.isArray(updates.references)) {
+			updateInput.references = updates.references;
+		}
+
 		if ("implementationPlan" in updates && typeof updates.implementationPlan === "string") {
 			updateInput.implementationPlan = updates.implementationPlan;
 		}
 
 		if ("implementationNotes" in updates && typeof updates.implementationNotes === "string") {
 			updateInput.implementationNotes = updates.implementationNotes;
+		}
+
+		if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
+			updateInput.finalSummary = updates.finalSummary;
 		}
 
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
@@ -709,6 +902,30 @@ export class BacklogServer {
 					checked: Boolean(item?.checked),
 				}))
 				.filter((item: { text: string }) => item.text.length > 0);
+		}
+
+		if ("definitionOfDoneAdd" in updates && Array.isArray(updates.definitionOfDoneAdd)) {
+			updateInput.addDefinitionOfDone = updates.definitionOfDoneAdd
+				.map((item: unknown) => ({ text: String(item ?? "").trim(), checked: false }))
+				.filter((item: { text: string }) => item.text.length > 0);
+		}
+
+		if ("definitionOfDoneRemove" in updates && Array.isArray(updates.definitionOfDoneRemove)) {
+			updateInput.removeDefinitionOfDone = updates.definitionOfDoneRemove.filter(
+				(value: unknown) => typeof value === "number" && Number.isFinite(value),
+			);
+		}
+
+		if ("definitionOfDoneCheck" in updates && Array.isArray(updates.definitionOfDoneCheck)) {
+			updateInput.checkDefinitionOfDone = updates.definitionOfDoneCheck.filter(
+				(value: unknown) => typeof value === "number" && Number.isFinite(value),
+			);
+		}
+
+		if ("definitionOfDoneUncheck" in updates && Array.isArray(updates.definitionOfDoneUncheck)) {
+			updateInput.uncheckDefinitionOfDone = updates.definitionOfDoneUncheck.filter(
+				(value: unknown) => typeof value === "number" && Number.isFinite(value),
+			);
 		}
 
 		try {
@@ -976,7 +1193,113 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error promoting draft:", error);
+			if (isCreateLockError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
+		}
+	}
+
+	// Milestone handlers
+	private async handleListMilestones(): Promise<Response> {
+		try {
+			const milestones = await this.core.filesystem.listMilestones();
+			return Response.json(milestones);
+		} catch (error) {
+			console.error("Error listing milestones:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleListArchivedMilestones(): Promise<Response> {
+		try {
+			const milestones = await this.core.filesystem.listArchivedMilestones();
+			return Response.json(milestones);
+		} catch (error) {
+			console.error("Error listing archived milestones:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleGetMilestone(milestoneId: string): Promise<Response> {
+		try {
+			const milestone = await this.core.filesystem.loadMilestone(milestoneId);
+			if (!milestone) {
+				return Response.json({ error: "Milestone not found" }, { status: 404 });
+			}
+			return Response.json(milestone);
+		} catch (error) {
+			console.error("Error loading milestone:", error);
+			return Response.json({ error: "Milestone not found" }, { status: 404 });
+		}
+	}
+
+	private async handleCreateMilestone(req: Request): Promise<Response> {
+		try {
+			const body = (await req.json()) as { title?: string; description?: string };
+			const title = body.title?.trim();
+
+			if (!title) {
+				return Response.json({ error: "Milestone title is required" }, { status: 400 });
+			}
+
+			// Check for duplicates
+			const existingMilestones = await this.core.filesystem.listMilestones();
+			const buildAliasKeys = (value: string): Set<string> => {
+				const normalized = value.trim().toLowerCase();
+				const keys = new Set<string>();
+				if (!normalized) {
+					return keys;
+				}
+				keys.add(normalized);
+				if (/^\d+$/.test(normalized)) {
+					const numeric = String(Number.parseInt(normalized, 10));
+					keys.add(numeric);
+					keys.add(`m-${numeric}`);
+					return keys;
+				}
+				const match = normalized.match(/^m-(\d+)$/);
+				if (match?.[1]) {
+					const numeric = String(Number.parseInt(match[1], 10));
+					keys.add(numeric);
+					keys.add(`m-${numeric}`);
+				}
+				return keys;
+			};
+			const requestedKeys = buildAliasKeys(title);
+			const duplicate = existingMilestones.find((milestone) => {
+				const milestoneKeys = new Set<string>([...buildAliasKeys(milestone.id), ...buildAliasKeys(milestone.title)]);
+				for (const key of requestedKeys) {
+					if (milestoneKeys.has(key)) {
+						return true;
+					}
+				}
+				return false;
+			});
+			if (duplicate) {
+				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
+			}
+
+			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			return Response.json(milestone, { status: 201 });
+		} catch (error) {
+			console.error("Error creating milestone:", error);
+			return Response.json({ error: "Failed to create milestone" }, { status: 500 });
+		}
+	}
+
+	private async handleArchiveMilestone(milestoneId: string): Promise<Response> {
+		try {
+			const result = await this.core.archiveMilestone(milestoneId);
+			if (!result.success) {
+				return Response.json({ error: "Milestone not found" }, { status: 404 });
+			}
+			this.broadcastTasksUpdated();
+			return Response.json({ success: true, milestone: result.milestone ?? null });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to archive milestone";
+			console.error("Error archiving milestone:", error);
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 
@@ -996,6 +1319,12 @@ export class BacklogServer {
 			const taskId = typeof body.taskId === "string" ? body.taskId : "";
 			const targetStatus = typeof body.targetStatus === "string" ? body.targetStatus : "";
 			const orderedTaskIds = Array.isArray(body.orderedTaskIds) ? body.orderedTaskIds : [];
+			const targetMilestone =
+				typeof body.targetMilestone === "string"
+					? body.targetMilestone
+					: body.targetMilestone === null
+						? null
+						: undefined;
 
 			if (!taskId || !targetStatus || orderedTaskIds.length === 0) {
 				return Response.json(
@@ -1008,6 +1337,7 @@ export class BacklogServer {
 				taskId,
 				targetStatus,
 				orderedTaskIds,
+				targetMilestone,
 				commitMessage: `Reorder tasks in ${targetStatus}`,
 			});
 
@@ -1170,15 +1500,24 @@ export class BacklogServer {
 	private async handleGetStatus(): Promise<Response> {
 		try {
 			const config = await this.core.filesystem.loadConfig();
+			const backlogResolution = this.core.filesystem.resolveBacklogDirectoryInfo();
 			return Response.json({
 				initialized: !!config,
 				projectPath: this.core.filesystem.rootDir,
+				backlogDirectory: backlogResolution.backlogDir,
+				backlogDirectorySource: backlogResolution.source,
+				configLocation: backlogResolution.configSource,
+				rootConfigPath: backlogResolution.rootConfigPath,
 			});
 		} catch (error) {
 			console.error("Error getting status:", error);
 			return Response.json({
 				initialized: false,
 				projectPath: this.core.filesystem.rootDir,
+				backlogDirectory: null,
+				backlogDirectorySource: null,
+				configLocation: null,
+				rootConfigPath: null,
 			});
 		}
 	}
@@ -1187,6 +1526,15 @@ export class BacklogServer {
 		try {
 			const body = await req.json();
 			const projectName = typeof body.projectName === "string" ? body.projectName.trim() : "";
+			const backlogDirectory = typeof body.backlogDirectory === "string" ? body.backlogDirectory.trim() : undefined;
+			const backlogDirectorySource =
+				body.backlogDirectorySource === "backlog" ||
+				body.backlogDirectorySource === ".backlog" ||
+				body.backlogDirectorySource === "custom"
+					? body.backlogDirectorySource
+					: undefined;
+			const configLocation =
+				body.configLocation === "folder" || body.configLocation === "root" ? body.configLocation : undefined;
 			const integrationMode = body.integrationMode as "mcp" | "cli" | "none" | undefined;
 			const mcpClients = Array.isArray(body.mcpClients) ? body.mcpClients : [];
 			const agentInstructions = Array.isArray(body.agentInstructions) ? body.agentInstructions : [];
@@ -1207,6 +1555,9 @@ export class BacklogServer {
 			// Call shared core init function
 			const result = await initializeProject(this.core, {
 				projectName,
+				backlogDirectory,
+				backlogDirectorySource,
+				configLocation,
 				integrationMode: integrationMode || "none",
 				mcpClients,
 				agentInstructions,

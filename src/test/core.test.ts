@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Document, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -36,12 +36,24 @@ describe("Core", () => {
 		});
 
 		it("should initialize project with default config", async () => {
-			await core.initializeProject("Test Project", true);
+			await initializeTestProject(core, "Test Project", true);
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Test Project");
 			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
 			expect(config?.defaultStatus).toBe("To Do");
+		});
+
+		it("should use root backlog.config.yml for custom backlog directories", async () => {
+			await initializeTestProject(core, "Custom Root Project", false, "planning/backlog-data");
+
+			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
+			expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
+
+			const freshCore = new Core(TEST_DIR);
+			const config = await freshCore.filesystem.loadConfig();
+			expect(config?.projectName).toBe("Custom Root Project");
+			expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
 		});
 	});
 
@@ -58,14 +70,14 @@ describe("Core", () => {
 		};
 
 		beforeEach(async () => {
-			await core.initializeProject("Test Project", true);
+			await initializeTestProject(core, "Test Project", true);
 		});
 
 		it("should create task without auto-commit", async () => {
 			await core.createTask(sampleTask, false);
 
 			const loadedTask = await core.filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe("task-1");
+			expect(loadedTask?.id).toBe("TASK-1");
 			expect(loadedTask?.title).toBe("Test Task");
 		});
 
@@ -74,11 +86,9 @@ describe("Core", () => {
 
 			// Check if task file was created
 			const loadedTask = await core.filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe("task-1");
+			expect(loadedTask?.id).toBe("TASK-1");
 
 			// Check git status to see if there are uncommitted changes
-			const _hasChanges = await core.gitOps.hasUncommittedChanges();
-
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			// For now, just check that we have a commit (could be initialization or task)
 			expect(lastCommit).toBeDefined();
@@ -111,7 +121,7 @@ describe("Core", () => {
 			expect(archived).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Archive task task-1");
+			expect(lastCommit).toContain("backlog: Archive task TASK-1");
 		});
 
 		it("should demote task with auto-commit", async () => {
@@ -121,7 +131,7 @@ describe("Core", () => {
 			expect(demoted).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Demote task task-1");
+			expect(lastCommit).toContain("backlog: Demote task TASK-1");
 		});
 
 		it("should resolve tasks using flexible ID formats", async () => {
@@ -131,16 +141,74 @@ describe("Core", () => {
 			await core.createTask(paddedTask, false);
 
 			const uppercase = await core.getTask("TASK-5");
-			expect(uppercase?.id).toBe("task-5");
+			expect(uppercase?.id).toBe("TASK-5");
 
 			const bare = await core.getTask("5");
-			expect(bare?.id).toBe("task-5");
+			expect(bare?.id).toBe("TASK-5");
 
 			const zeroPadded = await core.getTask("0007");
-			expect(zeroPadded?.id).toBe("task-007");
+			expect(zeroPadded?.id).toBe("TASK-007");
 
 			const mixedCase = await core.getTask("Task-007");
-			expect(mixedCase?.id).toBe("task-007");
+			expect(mixedCase?.id).toBe("TASK-007");
+		});
+
+		it("should resolve numeric-only IDs with custom prefix (BACK-364)", async () => {
+			// Configure custom prefix
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				prefixes: { task: "back" },
+			});
+
+			// Create tasks with custom prefix
+			const task1: Task = { ...sampleTask, id: "back-358", title: "Custom Prefix Task" };
+			const task2: Task = { ...sampleTask, id: "back-5.1", title: "Custom Prefix Subtask" };
+			await core.createTask(task1, false);
+			await core.createTask(task2, false);
+
+			// Numeric-only lookup should find task with custom prefix
+			const byNumeric = await core.getTask("358");
+			expect(byNumeric?.id).toBe("BACK-358");
+			expect(byNumeric?.title).toBe("Custom Prefix Task");
+
+			// Dotted numeric lookup should find subtask
+			const byDotted = await core.getTask("5.1");
+			expect(byDotted?.id).toBe("BACK-5.1");
+			expect(byDotted?.title).toBe("Custom Prefix Subtask");
+
+			// Full prefixed ID should also work (case-insensitive)
+			const byFullId = await core.getTask("BACK-358");
+			expect(byFullId?.id).toBe("BACK-358");
+
+			const byLowercase = await core.getTask("back-358");
+			expect(byLowercase?.id).toBe("BACK-358");
+		});
+
+		it("should NOT match numeric ID with typos when using custom prefix (BACK-364)", async () => {
+			// Configure custom prefix
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				prefixes: { task: "back" },
+			});
+
+			// Create task with custom prefix
+			const task: Task = { ...sampleTask, id: "back-358", title: "Custom Prefix Task" };
+			await core.createTask(task, false);
+
+			// Typos should NOT match (prevent parseInt coercion bug)
+			const withTypo = await core.getTask("358a");
+			expect(withTypo).toBeNull();
+
+			const withTypo2 = await core.getTask("35x8");
+			expect(withTypo2).toBeNull();
 		});
 
 		it("should return false when archiving non-existent task", async () => {
@@ -209,7 +277,7 @@ describe("Core", () => {
 			await nonGitCore.createTask(sampleTask, false);
 
 			const loadedTask = await nonGitCore.filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe("task-1");
+			expect(loadedTask?.id).toBe("TASK-1");
 		});
 
 		it("should normalize assignee for string and array inputs", async () => {
@@ -247,14 +315,14 @@ describe("Core", () => {
 		});
 
 		it("should create sub-tasks with proper hierarchical IDs", async () => {
-			await core.initializeProject("Subtask Project", true);
+			await initializeTestProject(core, "Subtask Project", true);
 
 			// Create parent task
 			const { task: parent } = await core.createTaskFromInput({
 				title: "Parent Task",
 				status: "To Do",
 			});
-			expect(parent.id).toBe("task-1");
+			expect(parent.id).toBe("TASK-1");
 
 			// Create first sub-task
 			const { task: child1 } = await core.createTaskFromInput({
@@ -262,8 +330,8 @@ describe("Core", () => {
 				parentTaskId: parent.id,
 				status: "To Do",
 			});
-			expect(child1.id).toBe("task-1.1");
-			expect(child1.parentTaskId).toBe("task-1");
+			expect(child1.id).toBe("TASK-1.1");
+			expect(child1.parentTaskId).toBe("TASK-1");
 
 			// Create second sub-task
 			const { task: child2 } = await core.createTaskFromInput({
@@ -271,15 +339,15 @@ describe("Core", () => {
 				parentTaskId: parent.id,
 				status: "To Do",
 			});
-			expect(child2.id).toBe("task-1.2");
-			expect(child2.parentTaskId).toBe("task-1");
+			expect(child2.id).toBe("TASK-1.2");
+			expect(child2.parentTaskId).toBe("TASK-1");
 
 			// Create another parent task to ensure sequential numbering still works
 			const { task: parent2 } = await core.createTaskFromInput({
 				title: "Second Parent",
 				status: "To Do",
 			});
-			expect(parent2.id).toBe("task-2");
+			expect(parent2.id).toBe("TASK-2");
 		});
 	});
 
@@ -293,13 +361,15 @@ describe("Core", () => {
 		};
 
 		beforeEach(async () => {
-			await core.initializeProject("Test Project", false);
+			await initializeTestProject(core, "Test Project", false);
 		});
 
 		it("updates a document title without leaving the previous file behind", async () => {
 			await core.createDocument(baseDocument, false);
 
-			const [initialFile] = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			const [initialFile] = await Array.fromAsync(
+				new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }),
+			);
 			expect(initialFile).toBe("doc-1 - Operations-Guide.md");
 
 			const documents = await core.filesystem.listDocuments();
@@ -311,7 +381,9 @@ describe("Core", () => {
 
 			await core.updateDocument({ ...existingDoc, title: "Operations Guide Updated" }, "# Updated content", false);
 
-			const docFiles = await Array.fromAsync(new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir }));
+			const docFiles = await Array.fromAsync(
+				new Bun.Glob("doc-*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }),
+			);
 			expect(docFiles).toHaveLength(1);
 			expect(docFiles[0]).toBe("doc-1 - Operations-Guide-Updated.md");
 
@@ -342,33 +414,36 @@ describe("Core", () => {
 	});
 
 	describe("draft operations", () => {
-		const sampleDraft: Task = {
-			id: "task-draft",
-			title: "Draft Task",
-			status: "Draft",
-			assignee: [],
-			createdDate: "2025-06-07",
-			labels: [],
-			dependencies: [],
-			description: "Draft task",
-		};
-
 		beforeEach(async () => {
-			await core.initializeProject("Draft Project", true);
+			await initializeTestProject(core, "Draft Project", true);
 		});
 
 		it("should create draft without auto-commit", async () => {
-			await core.createDraft(sampleDraft, false);
+			const { task: draft } = await core.createTaskFromInput(
+				{
+					title: "Draft Task",
+					status: "Draft",
+					description: "Draft task",
+				},
+				false,
+			);
 
-			const loaded = await core.filesystem.loadDraft("task-draft");
-			expect(loaded?.id).toBe("task-draft");
+			const loaded = await core.filesystem.loadDraft(draft.id);
+			expect(loaded?.id).toBe("DRAFT-1");
 		});
 
 		it("should create draft with auto-commit", async () => {
-			await core.createDraft(sampleDraft, true);
+			const { task: draft } = await core.createTaskFromInput(
+				{
+					title: "Draft Task",
+					status: "Draft",
+					description: "Draft task",
+				},
+				true,
+			);
 
-			const loaded = await core.filesystem.loadDraft("task-draft");
-			expect(loaded?.id).toBe("task-draft");
+			const loaded = await core.filesystem.loadDraft(draft.id);
+			expect(loaded?.id).toBe("DRAFT-1");
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toBeDefined();
@@ -376,52 +451,61 @@ describe("Core", () => {
 		});
 
 		it("should promote draft with auto-commit", async () => {
-			await core.createDraft(sampleDraft, true);
+			const { task: draft } = await core.createTaskFromInput(
+				{
+					title: "Draft Task",
+					status: "Draft",
+					description: "Draft task",
+				},
+				true,
+			);
 
-			const promoted = await core.promoteDraft("task-draft", true);
+			const promoted = await core.promoteDraft(draft.id, true);
 			expect(promoted).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Promote draft task-draft");
+			expect(lastCommit).toContain(`backlog: Promote draft ${draft.id.toUpperCase()}`);
 		});
 
 		it("should archive draft with auto-commit", async () => {
-			await core.createDraft(sampleDraft, true);
+			const { task: draft } = await core.createTaskFromInput(
+				{
+					title: "Draft Task",
+					status: "Draft",
+					description: "Draft task",
+				},
+				true,
+			);
 
-			const archived = await core.archiveDraft("task-draft", true);
+			const archived = await core.archiveDraft(draft.id, true);
 			expect(archived).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Archive draft task-draft");
+			expect(lastCommit).toContain(`backlog: Archive draft ${draft.id.toUpperCase()}`);
 		});
 
-		it("should normalize assignee for string and array inputs", async () => {
-			const draftString = {
-				...sampleDraft,
-				id: "task-draft-1",
-				title: "Draft String",
-				assignee: "@erin",
-			} as unknown as Task;
-			await core.createDraft(draftString, false);
-			const loadedString = await core.filesystem.loadDraft("task-draft-1");
-			expect(loadedString?.assignee).toEqual(["@erin"]);
+		it("should preserve draft metadata through the canonical create path", async () => {
+			const { task: draft } = await core.createTaskFromInput(
+				{
+					title: "Draft Array",
+					status: "Draft",
+					description: "Draft task",
+					assignee: ["@frank"],
+					labels: ["draft"],
+				},
+				false,
+			);
 
-			const draftArray: Task = {
-				...sampleDraft,
-				id: "task-draft-2",
-				title: "Draft Array",
-				assignee: ["@frank"],
-			};
-			await core.createDraft(draftArray, false);
-			const loadedArray = await core.filesystem.loadDraft("task-draft-2");
-			expect(loadedArray?.assignee).toEqual(["@frank"]);
+			const loaded = await core.filesystem.loadDraft(draft.id);
+			expect(loaded?.assignee).toEqual(["@frank"]);
+			expect(loaded?.labels).toEqual(["draft"]);
 		});
 	});
 
 	describe("integration with config", () => {
 		it("should use custom default status from config", async () => {
 			// Initialize with custom config
-			await core.initializeProject("Custom Project");
+			await initializeTestProject(core, "Custom Project");
 
 			// Update config with custom default status
 			const config = await core.filesystem.loadConfig();
@@ -449,7 +533,7 @@ describe("Core", () => {
 
 		it("should fall back to To Do when config has no default status", async () => {
 			// Initialize project
-			await core.initializeProject("Fallback Project");
+			await initializeTestProject(core, "Fallback Project");
 
 			// Update config to remove default status
 			const config = await core.filesystem.loadConfig();
@@ -478,7 +562,7 @@ describe("Core", () => {
 
 	describe("directory accessor integration", () => {
 		it("should use FileSystem directory accessors for git operations", async () => {
-			await core.initializeProject("Accessor Test");
+			await initializeTestProject(core, "Accessor Test");
 
 			const task: Task = {
 				id: "task-accessor",
@@ -495,13 +579,11 @@ describe("Core", () => {
 			await core.createTask(task, false);
 
 			// Verify the task file was created in the correct directory
-			const _tasksDir = core.filesystem.tasksDir;
-
 			// List all files to see what was actually created
 			const allFiles = await core.filesystem.listTasks();
 
 			// Check that a task with the expected ID exists
-			const createdTask = allFiles.find((t) => t.id === "task-accessor");
+			const createdTask = allFiles.find((t) => t.id === "TASK-ACCESSOR");
 			expect(createdTask).toBeDefined();
 			expect(createdTask?.title).toBe("Accessor Test Task");
 		}, 10000);

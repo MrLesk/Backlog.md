@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -24,7 +24,7 @@ describe("CLI --plain for task create/edit", () => {
 
 		// Initialize backlog project using Core
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("Plain Create/Edit Project");
+		await initializeTestProject(core, "Plain Create/Edit Project");
 	});
 
 	afterEach(async () => {
@@ -45,12 +45,13 @@ describe("CLI --plain for task create/edit", () => {
 		expect(result.exitCode).toBe(0);
 		// Begins with File: line and contains key sections
 		expect(out).toContain("File: ");
-		expect(out).toContain("Task task-1 - Example");
+		expect(out).toContain("Task TASK-1 - Example");
 		expect(out).toContain("Status:");
 		expect(out).toContain("Created:");
 		expect(out).toContain("Description:");
 		expect(out).toContain("Hello");
 		expect(out).toContain("Acceptance Criteria:");
+		expect(out).toContain("Definition of Done:");
 		// Should not contain TUI escape codes
 		expect(out).not.toContain("[?1049h");
 		expect(out).not.toContain("\x1b");
@@ -71,12 +72,13 @@ describe("CLI --plain for task create/edit", () => {
 		expect(result.exitCode).toBe(0);
 		// Begins with File: line and contains updated details
 		expect(out).toContain("File: ");
-		expect(out).toContain("Task task-1 - Edit Me");
+		expect(out).toContain("Task TASK-1 - Edit Me");
 		expect(out).toContain("Status: ◒ In Progress");
 		expect(out).toContain("Created:");
 		expect(out).toContain("Updated:");
 		expect(out).toContain("Description:");
 		expect(out).toContain("Acceptance Criteria:");
+		expect(out).toContain("Definition of Done:");
 		// Should not contain TUI escape codes
 		expect(out).not.toContain("[?1049h");
 		expect(out).not.toContain("\x1b");

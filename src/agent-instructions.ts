@@ -189,11 +189,6 @@ export async function addAgentInstructions(
 
 export { loadContent as _loadAgentGuideline };
 
-function _hasMcpGuidelines(content: string, fileName: string): boolean {
-	const { start } = getMarkers(fileName, "mcp");
-	return content.includes(start);
-}
-
 async function readExistingFile(filePath: string): Promise<string> {
 	if (process.platform === "win32") {
 		return readFileSync(filePath, "utf-8");

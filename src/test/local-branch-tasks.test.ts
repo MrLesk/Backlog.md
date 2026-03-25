@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { buildLocalBranchTaskIndex, loadLocalBranchTasks } from "../core/task-loader.ts";
 import type { GitOperations } from "../git/operations.ts";
-import type { Task } from "../types/index.ts";
+import type { BacklogConfig, Task } from "../types/index.ts";
 
 // Mock GitOperations for testing
 class MockGitOperations implements Partial<GitOperations> {
@@ -95,15 +95,15 @@ describe("Local branch task discovery", () => {
 
 			const index = await buildLocalBranchTaskIndex(mockGit, branches, "main", "backlog");
 
-			// Should find task-3 from feature-a (not in main)
-			expect(index.has("task-3")).toBe(true);
-			const task3Entries = index.get("task-3");
+			// Should find TASK-3 from feature-a (not in main)
+			expect(index.has("TASK-3")).toBe(true);
+			const task3Entries = index.get("TASK-3");
 			expect(task3Entries?.length).toBe(1);
 			expect(task3Entries?.[0]?.branch).toBe("feature-a");
 
 			// Should find task-1 and task-2 from other branches
-			expect(index.has("task-1")).toBe(true);
-			expect(index.has("task-2")).toBe(true);
+			expect(index.has("TASK-1")).toBe(true);
+			expect(index.has("TASK-2")).toBe(true);
 		});
 
 		it("should exclude origin/ branches", async () => {
@@ -113,7 +113,7 @@ describe("Local branch task discovery", () => {
 			const index = await buildLocalBranchTaskIndex(mockGit, branches, "main", "backlog");
 
 			// Should only have entries from feature-a (local), not origin/feature-a
-			const task1Entries = index.get("task-1");
+			const task1Entries = index.get("TASK-1");
 			expect(task1Entries?.every((e) => e.branch === "feature-a")).toBe(true);
 		});
 
@@ -124,7 +124,7 @@ describe("Local branch task discovery", () => {
 			const index = await buildLocalBranchTaskIndex(mockGit, branches, "main", "backlog");
 
 			// task-1 should only be from feature-a, not main
-			const task1Entries = index.get("task-1");
+			const task1Entries = index.get("TASK-1");
 			expect(task1Entries?.every((e) => e.branch !== "main")).toBe(true);
 		});
 	});
@@ -138,8 +138,8 @@ describe("Local branch task discovery", () => {
 				progressMessages.push(msg);
 			});
 
-			// Should find task-3 which only exists in feature-a
-			const task3 = localBranchTasks.find((t) => t.id === "task-3");
+			// Should find TASK-3 which only exists in feature-a
+			const task3 = localBranchTasks.find((t) => t.id === "TASK-3");
 			expect(task3).toBeDefined();
 			expect(task3?.title).toBe("New Task");
 			expect(task3?.source).toBe("local-branch");
@@ -168,8 +168,8 @@ describe("Local branch task discovery", () => {
 
 			const localBranchTasks = await loadLocalBranchTasks(mockGit, null, undefined, localTasks);
 
-			// task-3 should be found (not in local tasks)
-			expect(localBranchTasks.some((t) => t.id === "task-3")).toBe(true);
+			// TASK-3 should be found (not in local tasks)
+			expect(localBranchTasks.some((t) => t.id === "TASK-3")).toBe(true);
 
 			// task-1 should not be hydrated since it exists locally
 			// (unless the remote version is newer, which in this mock it's not)
@@ -193,6 +193,128 @@ describe("Local branch task discovery", () => {
 
 			const tasks = await loadLocalBranchTasks(mockGit, null);
 			expect(tasks).toEqual([]);
+		});
+
+		it("should match local tasks with uppercase IDs to index keys (custom prefix)", async () => {
+			// Mock git operations for custom prefix (JIRA)
+			const mockGit = {
+				getCurrentBranch: async () => "main",
+				listRecentBranches: async () => ["main", "feature-a"],
+				listFilesInTree: async (ref: string) => {
+					if (ref === "feature-a") {
+						return ["backlog/tasks/jira-123 - Remote Task.md"];
+					}
+					return [];
+				},
+				getBranchLastModifiedMap: async () => {
+					const map = new Map<string, Date>();
+					map.set("backlog/tasks/jira-123 - Remote Task.md", new Date("2025-06-10")); // Older than local
+					return map;
+				},
+				showFile: async () => `---
+id: JIRA-123
+title: Remote Task
+status: To Do
+assignee: []
+created_date: 2025-06-10
+labels: []
+dependencies: []
+---
+
+## Description
+
+Task from feature branch`,
+			} as unknown as GitOperations;
+
+			// Local task has uppercase ID (canonical format)
+			const localTasks: Task[] = [
+				{
+					id: "JIRA-123", // Uppercase canonical ID
+					title: "Local Task",
+					status: "In Progress", // More progressed than remote
+					assignee: [],
+					createdDate: "2025-06-13",
+					updatedDate: "2025-06-15", // Newer than remote
+					labels: [],
+					dependencies: [],
+					source: "local",
+				},
+			];
+
+			const config: BacklogConfig = {
+				projectName: "Test",
+				statuses: ["To Do", "In Progress", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "YYYY-MM-DD",
+				prefixes: { task: "jira" },
+			};
+			const localBranchTasks = await loadLocalBranchTasks(mockGit, config, undefined, localTasks);
+
+			// JIRA-123 exists locally with more progress, so it should NOT be hydrated from other branch
+			// This tests that uppercase "JIRA-123" in localById matches normalized index IDs
+			expect(localBranchTasks.find((t) => t.id === "JIRA-123")).toBeUndefined();
+		});
+
+		it("should hydrate tasks that do not exist locally with custom prefix", async () => {
+			const mockGit = {
+				getCurrentBranch: async () => "main",
+				listRecentBranches: async () => ["main", "feature-a"],
+				listFilesInTree: async (ref: string) => {
+					if (ref === "feature-a") {
+						return ["backlog/tasks/jira-456 - New Remote Task.md"];
+					}
+					return [];
+				},
+				getBranchLastModifiedMap: async () => {
+					const map = new Map<string, Date>();
+					map.set("backlog/tasks/jira-456 - New Remote Task.md", new Date("2025-06-13"));
+					return map;
+				},
+				showFile: async () => `---
+id: JIRA-456
+title: New Remote Task
+status: To Do
+assignee: []
+created_date: 2025-06-13
+labels: []
+dependencies: []
+---
+
+## Description
+
+New task from feature branch`,
+			} as unknown as GitOperations;
+
+			// Local tasks do NOT include JIRA-456
+			const localTasks: Task[] = [
+				{
+					id: "JIRA-123",
+					title: "Local Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-13",
+					labels: [],
+					dependencies: [],
+					source: "local",
+				},
+			];
+
+			const config: BacklogConfig = {
+				projectName: "Test",
+				statuses: ["To Do", "In Progress", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "YYYY-MM-DD",
+				prefixes: { task: "jira" },
+			};
+			const localBranchTasks = await loadLocalBranchTasks(mockGit, config, undefined, localTasks);
+
+			// JIRA-456 should be hydrated since it doesn't exist locally
+			const task456 = localBranchTasks.find((t) => t.id === "JIRA-456");
+			expect(task456).toBeDefined();
+			expect(task456?.title).toBe("New Remote Task");
+			expect(task456?.source).toBe("local-branch");
 		});
 	});
 });

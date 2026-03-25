@@ -6,39 +6,76 @@
 import Fuse from "fuse.js";
 import type { Task } from "../types/index.ts";
 
-interface TaskSearchOptions {
+export interface TaskSearchOptions {
 	query?: string;
 	status?: string;
 	priority?: "high" | "medium" | "low";
 	labels?: string[];
 }
 
-interface TaskSearchIndex {
+export interface SharedTaskFilterOptions {
+	query?: string;
+	priority?: "high" | "medium" | "low";
+	labels?: string[];
+	milestone?: string;
+	resolveMilestoneLabel?: (milestone: string) => string;
+}
+
+export interface TaskFilterOptions extends SharedTaskFilterOptions {
+	status?: string;
+}
+
+export interface TaskSearchIndex {
 	search(options: TaskSearchOptions): Task[];
 }
 
-const TASK_ID_PREFIX = "task-";
+// Regex pattern to match any prefix (letters followed by dash)
+const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
+
+/**
+ * Extract prefix from an ID if present (e.g., "task-" from "task-123")
+ */
+function extractPrefix(id: string): string | null {
+	const match = id.match(PREFIX_PATTERN);
+	return match ? match[0] : null;
+}
+
+/**
+ * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
+ */
+function stripPrefix(id: string): string {
+	return id.replace(PREFIX_PATTERN, "");
+}
 
 function createTaskIdVariants(id: string): string[] {
 	const segments = parseTaskIdSegments(id);
+	const prefix = extractPrefix(id) ?? "task-"; // Default to task- if no prefix
+	const lowerId = id.toLowerCase();
+
 	if (!segments) {
-		const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
-		return id === normalized ? [normalized] : [normalized, id];
+		// Non-numeric ID - just return the ID and its lowercase variant
+		return id === lowerId ? [id] : [id, lowerId];
 	}
+
 	const canonicalSuffix = segments.join(".");
 	const variants = new Set<string>();
-	const normalized = id.startsWith(TASK_ID_PREFIX) ? id : `${TASK_ID_PREFIX}${id}`;
-	variants.add(normalized);
-	variants.add(`${TASK_ID_PREFIX}${canonicalSuffix}`);
+
+	// Add original ID and lowercase variant
+	variants.add(id);
+	variants.add(lowerId);
+
+	// Add with extracted/default prefix
+	variants.add(`${prefix}${canonicalSuffix}`);
+	variants.add(`${prefix.toLowerCase()}${canonicalSuffix}`);
+
+	// Add just the numeric part
 	variants.add(canonicalSuffix);
-	if (id !== normalized) {
-		variants.add(id);
-	}
+
 	return Array.from(variants);
 }
 
 function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = value.startsWith(TASK_ID_PREFIX) ? value.slice(TASK_ID_PREFIX.length) : value;
+	const withoutPrefix = stripPrefix(value);
 	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
 		return null;
 	}
@@ -51,6 +88,7 @@ interface SearchableTask {
 	bodyText: string;
 	id: string;
 	idVariants: string[];
+	dependencyIds: string[];
 	statusLower: string;
 	priorityLower?: string;
 	labelsLower: string[];
@@ -59,6 +97,12 @@ interface SearchableTask {
 function buildSearchableTask(task: Task): SearchableTask {
 	const bodyParts: string[] = [];
 	if (task.description) bodyParts.push(task.description);
+	if (Array.isArray(task.acceptanceCriteriaItems) && task.acceptanceCriteriaItems.length > 0) {
+		const lines = [...task.acceptanceCriteriaItems]
+			.sort((a, b) => a.index - b.index)
+			.map((criterion) => `- [${criterion.checked ? "x" : " "}] ${criterion.text}`);
+		bodyParts.push(lines.join("\n"));
+	}
 	if (task.implementationPlan) bodyParts.push(task.implementationPlan);
 	if (task.implementationNotes) bodyParts.push(task.implementationNotes);
 	if (task.labels?.length) bodyParts.push(task.labels.join(" "));
@@ -70,6 +114,7 @@ function buildSearchableTask(task: Task): SearchableTask {
 		bodyText: bodyParts.join(" "),
 		id: task.id,
 		idVariants: createTaskIdVariants(task.id),
+		dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
 		statusLower: (task.status || "").toLowerCase(),
 		priorityLower: task.priority?.toLowerCase(),
 		labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
@@ -92,6 +137,7 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 			{ name: "bodyText", weight: 0.3 },
 			{ name: "id", weight: 0.2 },
 			{ name: "idVariants", weight: 0.1 },
+			{ name: "dependencyIds", weight: 0.05 },
 		],
 	});
 
@@ -135,4 +181,63 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 			return results.map((r) => r.task);
 		},
 	};
+}
+
+function applyMilestoneFilter(
+	tasks: Task[],
+	milestone: string,
+	resolveMilestoneLabel?: (milestone: string) => string,
+): Task[] {
+	const normalizedMilestone = milestone.trim().toLowerCase();
+	if (!normalizedMilestone) {
+		return tasks;
+	}
+
+	return tasks.filter((task) => {
+		if (!task.milestone) {
+			return false;
+		}
+		const value = resolveMilestoneLabel ? resolveMilestoneLabel(task.milestone) : task.milestone;
+		return value.trim().toLowerCase() === normalizedMilestone;
+	});
+}
+
+export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, index?: TaskSearchIndex): Task[] {
+	const query = options.query?.trim() ?? "";
+	const hasBaseFilters = Boolean(
+		query || options.status || options.priority || (options.labels && options.labels.length > 0),
+	);
+
+	let results = hasBaseFilters
+		? (index ?? createTaskSearchIndex(tasks)).search({
+				query,
+				status: options.status,
+				priority: options.priority,
+				labels: options.labels,
+			})
+		: [...tasks];
+
+	if (options.milestone) {
+		results = applyMilestoneFilter(results, options.milestone, options.resolveMilestoneLabel);
+	}
+
+	return results;
+}
+
+export function applySharedTaskFilters(
+	tasks: Task[],
+	options: SharedTaskFilterOptions,
+	index?: TaskSearchIndex,
+): Task[] {
+	return applyTaskFilters(
+		tasks,
+		{
+			query: options.query,
+			priority: options.priority,
+			labels: options.labels,
+			milestone: options.milestone,
+			resolveMilestoneLabel: options.resolveMilestoneLabel,
+		},
+		index,
+	);
 }

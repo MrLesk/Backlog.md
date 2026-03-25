@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { createTaskPlatformAware, editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("CLI Dependency Support", () => {
 	let TEST_DIR: string;
@@ -24,7 +24,7 @@ describe("CLI Dependency Support", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("test-project");
+		await initializeTestProject(core, "test-project");
 	});
 
 	afterEach(async () => {
@@ -43,12 +43,12 @@ describe("CLI Dependency Support", () => {
 		// Create task with dependency
 		const result2 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
-		expect(result2.stdout).toContain("Created task task-2");
+		expect(result2.stdout).toContain("Created task TASK-2");
 
 		// Verify dependency was set
 		const task = await core.filesystem.loadTask("task-2");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1"]);
+		expect(task?.dependencies).toEqual(["TASK-1"]);
 	});
 
 	test("should create task with single dependency using --depends-on", async () => {
@@ -59,12 +59,12 @@ describe("CLI Dependency Support", () => {
 		// Create task with dependency
 		const result2 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
-		expect(result2.stdout).toContain("Created task task-2");
+		expect(result2.stdout).toContain("Created task TASK-2");
 
 		// Verify dependency was set
 		const task = await core.filesystem.loadTask("task-2");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1"]);
+		expect(task?.dependencies).toEqual(["TASK-1"]);
 	});
 
 	test("should create task with multiple dependencies (comma-separated)", async () => {
@@ -77,12 +77,12 @@ describe("CLI Dependency Support", () => {
 		// Create task with multiple dependencies
 		const result3 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1,task-2" }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
-		expect(result3.stdout).toContain("Created task task-3");
+		expect(result3.stdout).toContain("Created task TASK-3");
 
 		// Verify dependencies were set
 		const task = await core.filesystem.loadTask("task-3");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1", "task-2"]);
+		expect(task?.dependencies).toEqual(["TASK-1", "TASK-2"]);
 	});
 
 	test("should create task with multiple dependencies (multiple flags)", async () => {
@@ -95,12 +95,12 @@ describe("CLI Dependency Support", () => {
 		// Create task with multiple dependencies using multiple flags (simulated as comma-separated)
 		const result3 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-1,task-2" }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
-		expect(result3.stdout).toContain("Created task task-3");
+		expect(result3.stdout).toContain("Created task TASK-3");
 
 		// Verify dependencies were set
 		const task = await core.filesystem.loadTask("task-3");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1", "task-2"]);
+		expect(task?.dependencies).toEqual(["TASK-1", "TASK-2"]);
 	});
 
 	test("should normalize task IDs in dependencies", async () => {
@@ -108,22 +108,22 @@ describe("CLI Dependency Support", () => {
 		const result1 = await createTaskPlatformAware({ title: "Base Task" }, TEST_DIR);
 		expect(result1.exitCode).toBe(0);
 
-		// Create task with dependency using numeric ID (should be normalized to task-X)
+		// Create task with dependency using numeric ID (should be normalized to TASK-X)
 		const result2 = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "1" }, TEST_DIR);
 		expect(result2.exitCode).toBe(0);
-		expect(result2.stdout).toContain("Created task task-2");
+		expect(result2.stdout).toContain("Created task TASK-2");
 
 		// Verify dependency was normalized
 		const task = await core.filesystem.loadTask("task-2");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1"]);
+		expect(task?.dependencies).toEqual(["TASK-1"]);
 	});
 
 	test("should fail when dependency task does not exist", async () => {
 		// Try to create task with non-existent dependency
 		const result = await createTaskPlatformAware({ title: "Dependent Task", dependencies: "task-999" }, TEST_DIR);
 		expect(result.exitCode).toBe(1);
-		expect(result.stderr).toContain("The following dependencies do not exist: task-999");
+		expect(result.stderr).toContain("The following dependencies do not exist: TASK-999");
 	});
 
 	test("should edit task to add dependencies", async () => {
@@ -143,7 +143,7 @@ describe("CLI Dependency Support", () => {
 		// Verify dependencies were added
 		const task = await core.filesystem.loadTask("task-3");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1", "task-2"]);
+		expect(task?.dependencies).toEqual(["TASK-1", "TASK-2"]);
 	});
 
 	test("should edit task to update dependencies", async () => {
@@ -178,11 +178,12 @@ describe("CLI Dependency Support", () => {
 		// Verify dependencies were updated (should replace, not append)
 		const task = await core.filesystem.loadTask("task-4");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-2", "task-3"]);
+		expect(task?.dependencies).toEqual(["TASK-2", "TASK-3"]);
 	});
 
 	test("should handle dependencies on draft tasks", async () => {
 		// Create draft task first using platform-aware helper
+		// Drafts now get DRAFT-X ids
 		const result1 = await createTaskPlatformAware(
 			{
 				title: "Draft Task",
@@ -191,22 +192,24 @@ describe("CLI Dependency Support", () => {
 			TEST_DIR,
 		);
 		expect(result1.exitCode).toBe(0);
-		expect(result1.stdout).toContain("Created draft task-1");
+		expect(result1.stdout).toContain("Created draft DRAFT-1");
 
 		// Create task that depends on draft
+		// Note: Tasks and drafts have separate ID sequences now
 		const result2 = await createTaskPlatformAware(
 			{
 				title: "Task depending on draft",
-				dependencies: "task-1",
+				dependencies: "DRAFT-1",
 			},
 			TEST_DIR,
 		);
 		expect(result2.exitCode).toBe(0);
 
 		// Verify dependency on draft was set
-		const task = await core.filesystem.loadTask("task-2");
+		// First non-draft task will be TASK-1
+		const task = await core.filesystem.loadTask("task-1");
 		expect(task).not.toBeNull();
-		expect(task?.dependencies).toEqual(["task-1"]);
+		expect(task?.dependencies).toEqual(["DRAFT-1"]);
 	});
 
 	test("should display dependencies in plain text view", async () => {
@@ -221,6 +224,6 @@ describe("CLI Dependency Support", () => {
 		// View task in plain text mode
 		const result3 = await viewTaskPlatformAware({ taskId: "task-2", plain: true }, TEST_DIR);
 		expect(result3.exitCode).toBe(0);
-		expect(result3.stdout).toContain("Dependencies: task-1");
+		expect(result3.stdout).toContain("Dependencies: TASK-1");
 	});
 });

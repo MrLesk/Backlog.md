@@ -32,6 +32,7 @@ Install at least one AI coding assistant:
 - [Claude Code](https://claude.ai/download)
 - [OpenAI Codex CLI](https://openai.com/codex)
 - [Google Gemini CLI](https://cloud.google.com/gemini/docs/codeassist/gemini-cli)
+- [Kiro CLI](https://kiro.dev)
 
 ### Local MCP Testing
 
@@ -68,6 +69,11 @@ args = ["run", "mcp"]
 **Gemini CLI:**
 ```bash
 gemini mcp add backlog-dev bun run mcp
+```
+
+**Kiro CLI:**
+```bash
+kiro-cli mcp add --scope global --name backlog-dev --command bun --args run,mcp
 ```
 
 #### 3. Test the Connection

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "../core/reorder.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const item = (id: string, ordinal?: number) => ({ id, ordinal });
 
@@ -31,7 +33,7 @@ beforeEach(async () => {
 	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	core = new Core(TEST_DIR);
-	await core.initializeProject("Reorder Utilities Test Project");
+	await initializeTestProject(core, "Reorder Utilities Test Project");
 });
 
 afterEach(async () => {
@@ -122,10 +124,10 @@ describe("Core.reorderTask", () => {
 			orderedTaskIds: ["task-1", "task-3", "task-2"],
 		});
 
-		expect(result.updatedTask.id).toBe("task-3");
+		expect(result.updatedTask.id).toBe("TASK-3");
 		expect(result.updatedTask.ordinal).toBeGreaterThan(1000);
 		expect(result.updatedTask.ordinal).toBeLessThan(2000);
-		expect(result.changedTasks.map((task) => task.id)).toEqual(["task-3"]);
+		expect(result.changedTasks.map((task) => task.id)).toEqual(["TASK-3"]);
 
 		const task2 = await core.filesystem.loadTask("task-2");
 		expect(task2?.ordinal).toBe(2000);
@@ -144,7 +146,7 @@ describe("Core.reorderTask", () => {
 			orderedTaskIds: ["task-1", "task-3", "task-2"],
 		});
 
-		expect(result.changedTasks.map((task) => task.id).sort()).toEqual(["task-2", "task-3"]);
+		expect(result.changedTasks.map((task) => task.id).sort()).toEqual(["TASK-2", "TASK-3"]);
 
 		const task1 = await core.filesystem.loadTask("task-1");
 		const task2 = await core.filesystem.loadTask("task-2");
@@ -169,11 +171,30 @@ describe("Core.reorderTask", () => {
 
 		expect(result.updatedTask.status).toBe("In Progress");
 		expect(result.updatedTask.ordinal).toBeGreaterThan(0);
-		expect(result.changedTasks.map((task) => task.id)).toContain("task-1");
+		expect(result.changedTasks.map((task) => task.id)).toContain("TASK-1");
 
 		const task2 = await core.filesystem.loadTask("task-2");
 		const task3 = await core.filesystem.loadTask("task-3");
 		expect(task2?.ordinal).toBe(1000);
 		expect(task3?.ordinal).toBe(2000);
+	});
+
+	it("reorders tasks with legacy lowercase IDs", async () => {
+		await createTasks([
+			["task-1", "To Do", 1000],
+			["task-2", "To Do", 2000],
+		]);
+
+		const legacyTask = buildTask("task-3", "To Do", 3000);
+		const legacyPath = join(core.filesystem.tasksDir, "task-3 - Legacy Task.md");
+		await Bun.write(legacyPath, serializeTask(legacyTask));
+
+		const result = await core.reorderTask({
+			taskId: "task-3",
+			targetStatus: "To Do",
+			orderedTaskIds: ["task-1", "task-3", "task-2"],
+		});
+
+		expect(result.updatedTask.id).toBe("TASK-3");
 	});
 });

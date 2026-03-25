@@ -4,6 +4,8 @@
 export const DEFAULT_DIRECTORIES = {
 	/** Main backlog directory */
 	BACKLOG: "backlog",
+	/** Hidden backlog directory */
+	HIDDEN_BACKLOG: ".backlog",
 	/** Active tasks directory */
 	TASKS: "tasks",
 	/** Draft tasks directory */
@@ -16,10 +18,14 @@ export const DEFAULT_DIRECTORIES = {
 	ARCHIVE_TASKS: "archive/tasks",
 	/** Archived drafts directory */
 	ARCHIVE_DRAFTS: "archive/drafts",
+	/** Archived milestones directory */
+	ARCHIVE_MILESTONES: "archive/milestones",
 	/** Documentation directory */
 	DOCS: "docs",
 	/** Decision logs directory */
 	DECISIONS: "decisions",
+	/** Milestones directory */
+	MILESTONES: "milestones",
 } as const;
 
 /**
@@ -28,8 +34,10 @@ export const DEFAULT_DIRECTORIES = {
 export const DEFAULT_FILES = {
 	/** Main configuration file */
 	CONFIG: "config.yml",
-	/** Local user settings file */
-	USER: ".user",
+	/** Alternate config filename accepted for discovery */
+	CONFIG_YAML: "config.yaml",
+	/** Root-level backlog configuration file */
+	ROOT_CONFIG: "backlog.config.yml",
 } as const;
 
 /**

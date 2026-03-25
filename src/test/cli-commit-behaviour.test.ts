@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { GitOperations } from "../git/operations.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
@@ -31,7 +31,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 		const core = new Core(TEST_DIR);
 		git = new GitOperations(TEST_DIR);
 
-		await core.initializeProject("Commit Behavior Test", true); // auto-commit the initialization
+		await initializeTestProject(core, "Commit Behavior Test", true); // auto-commit the initialization
 
 		const config = await core.filesystem.loadConfig();
 		if (config) {
@@ -111,7 +111,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 		const core = new Core(TEST_DIR);
 		git = new GitOperations(TEST_DIR);
 
-		await core.initializeProject("Commit Behavior Test", true);
+		await initializeTestProject(core, "Commit Behavior Test", true);
 
 		const config = await core.filesystem.loadConfig();
 		if (config) {

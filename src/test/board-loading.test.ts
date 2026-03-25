@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -20,7 +20,7 @@ describe("Board Loading with checkActiveBranches", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize project with default config
-		await core.initializeProject("Test Project", false);
+		await initializeTestProject(core, "Test Project", false);
 	});
 
 	afterEach(async () => {
@@ -58,9 +58,9 @@ describe("Board Loading with checkActiveBranches", () => {
 			const tasks = await core.loadTasks();
 
 			expect(tasks).toHaveLength(3);
-			expect(tasks.find((t) => t.id === "task-1")).toBeDefined();
-			expect(tasks.find((t) => t.id === "task-2")).toBeDefined();
-			expect(tasks.find((t) => t.id === "task-3")).toBeDefined();
+			expect(tasks.find((t) => t.id === "TASK-1")).toBeDefined();
+			expect(tasks.find((t) => t.id === "TASK-2")).toBeDefined();
+			expect(tasks.find((t) => t.id === "TASK-3")).toBeDefined();
 		});
 
 		it("should skip cross-branch checking when checkActiveBranches is false", async () => {
@@ -82,15 +82,11 @@ describe("Board Loading with checkActiveBranches", () => {
 			// Verify we got tasks
 			expect(tasks).toHaveLength(3);
 
-			// Verify we skipped cross-branch checking
-			const skipMessage = progressMessages.find((msg) =>
-				msg.includes("Skipping cross-branch check (disabled in config)"),
+			// Verify we didn't apply cross-branch state snapshots
+			const applySnapshotsMessage = progressMessages.find((msg) =>
+				msg.includes("Applying latest task states from branch scans..."),
 			);
-			expect(skipMessage).toBeDefined();
-
-			// Verify we didn't do cross-branch checking
-			const crossBranchMessage = progressMessages.find((msg) => msg.includes("Resolving task states across branches"));
-			expect(crossBranchMessage).toBeUndefined();
+			expect(applySnapshotsMessage).toBeUndefined();
 		});
 
 		it("should perform cross-branch checking when checkActiveBranches is true", async () => {
@@ -113,15 +109,11 @@ describe("Board Loading with checkActiveBranches", () => {
 			// Verify we got tasks
 			expect(tasks).toHaveLength(3);
 
-			// Verify we performed cross-branch checking
-			const crossBranchMessage = progressMessages.find((msg) => msg.includes("Resolving task states across branches"));
-			expect(crossBranchMessage).toBeDefined();
-
-			// Verify we didn't skip
-			const skipMessage = progressMessages.find((msg) =>
-				msg.includes("Skipping cross-branch check (disabled in config)"),
+			// Verify we applied cross-branch state snapshots
+			const applySnapshotsMessage = progressMessages.find((msg) =>
+				msg.includes("Applying latest task states from branch scans..."),
 			);
-			expect(skipMessage).toBeUndefined();
+			expect(applySnapshotsMessage).toBeDefined();
 		});
 
 		it("should respect activeBranchDays configuration", async () => {
@@ -159,13 +151,9 @@ describe("Board Loading with checkActiveBranches", () => {
 			// The task-4 from old branch should not be included if branch checking is working
 			// However, since we're in main branch, we should only see the 3 main tasks
 			expect(tasks).toHaveLength(3);
-			expect(tasks.find((t) => t.id === "task-4")).toBeUndefined();
+			expect(tasks.find((t) => t.id === "TASK-4")).toBeUndefined();
 
 			// Check that branch checking happened with the right days
-			const _branchCheckMessage = progressMessages.find(
-				(msg) => msg.includes("branches") && (msg.includes("30 days") || msg.includes("from 30 days")),
-			);
-			// The message format might vary, so we just check that some branch-related message exists
 			const anyBranchMessage = progressMessages.find((msg) => msg.includes("branch"));
 			expect(anyBranchMessage).toBeDefined();
 		});
@@ -246,8 +234,10 @@ describe("Board Loading with checkActiveBranches", () => {
 			expect(tasks.length).toBeGreaterThanOrEqual(0);
 
 			// When checkActiveBranches is undefined, it defaults to true, so should perform checking
-			const crossBranchMessage = progressMessages.find((msg) => msg.includes("Resolving task states across branches"));
-			expect(crossBranchMessage).toBeDefined();
+			const applySnapshotsMessage = progressMessages.find((msg) =>
+				msg.includes("Applying latest task states from branch scans..."),
+			);
+			expect(applySnapshotsMessage).toBeDefined();
 		});
 
 		it("should handle config with checkActiveBranches explicitly set to false", async () => {
@@ -263,11 +253,11 @@ describe("Board Loading with checkActiveBranches", () => {
 				progressMessages.push(msg);
 			});
 
-			// Should skip cross-branch checking
-			const skipMessage = progressMessages.find((msg) =>
-				msg.includes("Skipping cross-branch check (disabled in config)"),
+			// Should not apply cross-branch state snapshots
+			const applySnapshotsMessage = progressMessages.find((msg) =>
+				msg.includes("Applying latest task states from branch scans..."),
 			);
-			expect(skipMessage).toBeDefined();
+			expect(applySnapshotsMessage).toBeUndefined();
 		});
 	});
 });

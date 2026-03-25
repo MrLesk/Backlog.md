@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -39,7 +39,7 @@ describe("Cleanup functionality", () => {
 
 		// Initialize backlog project
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Cleanup Test Project");
+		await initializeTestProject(core, "Cleanup Test Project");
 	});
 
 	afterEach(async () => {
@@ -63,7 +63,7 @@ describe("Cleanup functionality", () => {
 			// Verify task exists in active tasks
 			const activeTasks = await core.filesystem.listTasks();
 			expect(activeTasks).toHaveLength(1);
-			expect(activeTasks[0]?.id).toBe("task-1");
+			expect(activeTasks[0]?.id).toBe("TASK-1");
 
 			// Move to completed
 			const success = await core.completeTask("task-1", false);
@@ -76,7 +76,7 @@ describe("Cleanup functionality", () => {
 			// Verify task is in completed tasks
 			const completedTasks = await core.filesystem.listCompletedTasks();
 			expect(completedTasks).toHaveLength(1);
-			expect(completedTasks[0]?.id).toBe("task-1");
+			expect(completedTasks[0]?.id).toBe("TASK-1");
 			expect(completedTasks[0]?.title).toBe("Test Task");
 		});
 	});
@@ -122,7 +122,7 @@ describe("Cleanup functionality", () => {
 			// Get tasks older than 3 days
 			const oldTasks = await core.getDoneTasksByAge(3);
 			expect(oldTasks).toHaveLength(1);
-			expect(oldTasks[0]?.id).toBe("task-1");
+			expect(oldTasks[0]?.id).toBe("TASK-1");
 
 			// Get tasks older than 0 days (should include recent task too)
 			const allDoneTasks = await core.getDoneTasksByAge(0);

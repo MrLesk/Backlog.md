@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildKanbanStatusGroups, exportKanbanBoardToFile } from "../board.ts";
-import type { Task } from "../types/index.ts";
+import { buildKanbanStatusGroups, exportKanbanBoardToFile, generateMilestoneGroupedBoard } from "../board.ts";
+import type { Milestone, Task } from "../types/index.ts";
 
 describe("exportKanbanBoardToFile", () => {
 	it("creates file and overwrites board content", async () => {
@@ -230,5 +230,87 @@ describe("buildKanbanStatusGroups", () => {
 		expect(orderedStatuses).toEqual(["To Do", "Blocked"]);
 		expect(groupedTasks.get("To Do")?.map((t) => t.id)).toEqual(["task-2"]);
 		expect(groupedTasks.get("Blocked")?.map((t) => t.id)).toEqual(["task-1"]);
+	});
+});
+
+describe("generateMilestoneGroupedBoard", () => {
+	it("groups milestone ID and title aliases into one section using file title", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "By ID",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-01-01",
+				labels: [],
+				dependencies: [],
+				milestone: "m-0",
+			},
+			{
+				id: "task-2",
+				title: "By title",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-01-01",
+				labels: [],
+				dependencies: [],
+				milestone: "Release 1.0",
+			},
+		];
+		const milestones: Milestone[] = [
+			{
+				id: "m-0",
+				title: "Release 1.0",
+				description: "Milestone: Release 1.0",
+				rawContent: "## Description\n\nMilestone: Release 1.0",
+			},
+		];
+
+		const board = generateMilestoneGroupedBoard(tasks, ["To Do"], milestones, "Test Project");
+		expect(board.match(/## Release 1\.0 \(\d+ tasks\)/g)?.length).toBe(1);
+		expect(board).toContain("**TASK-1** - By ID");
+		expect(board).toContain("**TASK-2** - By title");
+	});
+
+	it("keeps ambiguous reused milestone titles as separate sections", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Active by ID",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-01-01",
+				labels: [],
+				dependencies: [],
+				milestone: "m-2",
+			},
+			{
+				id: "task-2",
+				title: "Title alias",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-01-01",
+				labels: [],
+				dependencies: [],
+				milestone: "Shared",
+			},
+		];
+		const milestones: Milestone[] = [
+			{
+				id: "m-2",
+				title: "Shared",
+				description: "Milestone: Shared",
+				rawContent: "## Description\n\nMilestone: Shared",
+			},
+			{
+				id: "m-0",
+				title: "Shared",
+				description: "Milestone: Shared (archived)",
+				rawContent: "## Description\n\nMilestone: Shared (archived)",
+			},
+		];
+
+		const board = generateMilestoneGroupedBoard(tasks, ["To Do"], milestones, "Test Project");
+		expect(board.match(/## Shared \(\d+ tasks\)/g)?.length).toBe(2);
 	});
 });

@@ -23,21 +23,20 @@ Your client is using Backlog.md via tools. Use the following MCP tools to retrie
 
 ### Core Workflow Tools
 
-Use these tools to retrieve the required Backlog.md guidance in markdown form:
+Use this tool to retrieve the required Backlog.md guidance in markdown form:
 
-- `get_workflow_overview` — Overview of when and how to use Backlog
-- `get_task_creation_guide` — Detailed instructions for creating tasks (scope, acceptance criteria, structure)
-- `get_task_execution_guide` — Planning and executing tasks (implementation plans, approvals, scope changes)
-- `get_task_completion_guide` — Definition of Done, completion workflow, next steps
+- `get_backlog_instructions` — Returns workflow guidance. Leave `instruction` empty for the overview, or select `task-creation`, `task-execution`, or `task-finalization`.
 
-Each tool returns the same content that resource-capable clients read via `backlog://workflow/...` URIs.
+The tool returns the same content that resource-capable clients read via `backlog://workflow/...` URIs. The overview response is tool-oriented when `instruction` is omitted or set to `overview`.
 
 ### Typical Workflow (Tools)
 
 1. **Search first:** call `task_search` or `task_list` with filters to find existing work
 2. **If found:** read details via `task_view`; follow execution/plan guidance from the retrieved markdown
-3. **If not found:** consult `get_task_creation_guide`, then create tasks with `task_create`
-4. **Execute & complete:** use the execution/completion guides to manage status, plans, notes, and acceptance criteria (`task_edit`, `task_archive`)
+3. **If not found:** call `get_backlog_instructions` with `instruction="task-creation"`, then create tasks with `task_create`
+4. **Execute & finalize:** call `get_backlog_instructions` with `instruction="task-execution"` or `instruction="task-finalization"` to manage status, plans, notes, and acceptance criteria via `task_edit`
+
+**Note:** "Done" tasks stay in Done until periodic cleanup. Moving to the completed folder (`task_complete`) is a batch operation run occasionally, not part of finishing each task. Do not use `task_archive` for completed work—archive is only for duplicate, canceled, or invalid tasks.
 
 ### Core Principle
 
@@ -45,8 +44,17 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 ### MCP Tools Quick Reference
 
-- `get_workflow_overview`, `get_task_creation_guide`, `get_task_execution_guide`, `get_task_completion_guide`
-- `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_archive`
+- `get_backlog_instructions`
+- `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_complete`, `task_archive`
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`
+- `definition_of_done_defaults_get`, `definition_of_done_defaults_upsert`
+
+**Definition of Done support**
+- `definition_of_done_defaults_get` reads project-level DoD defaults from config
+- `definition_of_done_defaults_upsert` updates project-level DoD defaults in config
+- `task_create` accepts `definitionOfDoneAdd` and `disableDefinitionOfDoneDefaults` for **exceptional** task-level DoD overrides only
+- `task_edit` accepts `definitionOfDoneAdd`, `definitionOfDoneRemove`, `definitionOfDoneCheck`, `definitionOfDoneUncheck` for **exceptional** task-level DoD updates only
+- DoD is a completion checklist, not acceptance criteria: keep scope/behavior in acceptance criteria, not DoD fields
+- `task_view` output includes the Definition of Done checklist with checked state
 
 **Always operate through the MCP tools above. Never edit markdown files directly; use the tools so relationships, metadata, and history stay consistent.**

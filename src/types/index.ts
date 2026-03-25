@@ -1,5 +1,16 @@
 export type TaskStatus = string;
 
+/**
+ * Entity types in the backlog system.
+ * Used for ID generation and prefix resolution.
+ */
+export enum EntityType {
+	Task = "task",
+	Draft = "draft",
+	Document = "document",
+	Decision = "decision",
+}
+
 // Structured Acceptance Criterion (domain-level)
 export interface AcceptanceCriterion {
 	index: number; // 1-based
@@ -23,14 +34,21 @@ export interface Task {
 	labels: string[];
 	milestone?: string;
 	dependencies: string[];
+	references?: string[];
+	documentation?: string[];
 	readonly rawContent?: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
+	finalSummary?: string;
 	/** Structured acceptance criteria parsed from body (checked state + text + index) */
 	acceptanceCriteriaItems?: AcceptanceCriterion[];
+	/** Structured Definition of Done checklist parsed from body (checked state + text + index) */
+	definitionOfDoneItems?: AcceptanceCriterion[];
 	parentTaskId?: string;
+	parentTaskTitle?: string;
 	subtasks?: string[];
+	subtaskSummaries?: Array<{ id: string; title: string }>;
 	priority?: "high" | "medium" | "low";
 	branch?: string;
 	ordinal?: number;
@@ -40,6 +58,24 @@ export interface Task {
 	source?: "local" | "remote" | "completed" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
+}
+
+export interface MilestoneBucket {
+	key: string;
+	label: string;
+	milestone?: string;
+	isNoMilestone: boolean;
+	isCompleted: boolean;
+	tasks: Task[];
+	statusCounts: Record<string, number>;
+	total: number;
+	doneCount: number;
+	progress: number;
+}
+
+export interface MilestoneSummary {
+	milestones: string[];
+	buckets: MilestoneBucket[];
 }
 
 /**
@@ -54,13 +90,20 @@ export interface TaskCreateInput {
 	description?: string;
 	status?: TaskStatus;
 	priority?: "high" | "medium" | "low";
+	ordinal?: number;
+	milestone?: string;
 	labels?: string[];
 	assignee?: string[];
 	dependencies?: string[];
+	references?: string[];
+	documentation?: string[];
 	parentTaskId?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
+	finalSummary?: string;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
+	definitionOfDoneAdd?: string[];
+	disableDefinitionOfDoneDefaults?: boolean;
 	rawContent?: string;
 }
 
@@ -69,6 +112,7 @@ export interface TaskUpdateInput {
 	description?: string;
 	status?: TaskStatus;
 	priority?: "high" | "medium" | "low";
+	milestone?: string | null;
 	labels?: string[];
 	addLabels?: string[];
 	removeLabels?: string[];
@@ -77,17 +121,30 @@ export interface TaskUpdateInput {
 	dependencies?: string[];
 	addDependencies?: string[];
 	removeDependencies?: string[];
+	references?: string[];
+	addReferences?: string[];
+	removeReferences?: string[];
+	documentation?: string[];
+	addDocumentation?: string[];
+	removeDocumentation?: string[];
 	implementationPlan?: string;
 	appendImplementationPlan?: string[];
 	clearImplementationPlan?: boolean;
 	implementationNotes?: string;
 	appendImplementationNotes?: string[];
 	clearImplementationNotes?: boolean;
+	finalSummary?: string;
+	appendFinalSummary?: string[];
+	clearFinalSummary?: boolean;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
 	addAcceptanceCriteria?: Array<AcceptanceCriterionInput | string>;
 	removeAcceptanceCriteria?: number[];
 	checkAcceptanceCriteria?: number[];
 	uncheckAcceptanceCriteria?: number[];
+	addDefinitionOfDone?: Array<AcceptanceCriterionInput | string>;
+	removeDefinitionOfDone?: number[];
+	checkDefinitionOfDone?: number[];
+	uncheckDefinitionOfDone?: number[];
 	rawContent?: string;
 }
 
@@ -95,6 +152,7 @@ export interface TaskListFilter {
 	status?: string;
 	assignee?: string;
 	priority?: "high" | "medium" | "low";
+	milestone?: string;
 	parentTaskId?: string;
 	labels?: string[];
 }
@@ -108,6 +166,13 @@ export interface Decision {
 	decision: string;
 	consequences: string;
 	alternatives?: string;
+	readonly rawContent: string; // Raw markdown content without frontmatter
+}
+
+export interface Milestone {
+	id: string;
+	title: string;
+	description: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
 }
 
@@ -179,13 +244,25 @@ export interface Sequence {
 	tasks: Task[];
 }
 
+/**
+ * Configuration for ID prefixes used in task files.
+ * Allows customization of task prefix (e.g., "JIRA-", "issue-", "bug-").
+ * Note: Draft prefix is always "draft" and not configurable.
+ */
+export interface PrefixConfig {
+	/** Prefix for task IDs (default: "task") - produces IDs like TASK-1, TASK-2 */
+	task: string;
+}
+
 export interface BacklogConfig {
 	projectName: string;
 	defaultAssignee?: string;
 	defaultReporter?: string;
 	statuses: string[];
 	labels: string[];
-	milestones: string[];
+	/** @deprecated Milestones are sourced from milestone files, not config. */
+	milestones?: string[];
+	definitionOfDone?: string[];
 	defaultStatus?: string;
 	dateFormat: string;
 	maxColumnWidth?: number;
@@ -196,13 +273,16 @@ export interface BacklogConfig {
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
 	zeroPaddedIds?: number;
-	timezonePreference?: string; // e.g., 'UTC', 'America/New_York', or 'local'
 	includeDateTimeInDates?: boolean; // Whether to include time in new dates
 	bypassGitHooks?: boolean;
 	checkActiveBranches?: boolean; // Check task states across active branches (default: true)
 	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
+	/** Project-relative backlog folder when config is stored at project root in backlog.config.yml. */
+	backlogDirectory?: string;
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */
 	onStatusChange?: string;
+	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
+	prefixes?: PrefixConfig;
 	mcp?: {
 		http?: {
 			host?: string;

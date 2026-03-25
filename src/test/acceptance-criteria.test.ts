@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -19,7 +19,7 @@ describe("Acceptance Criteria CLI", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await core.initializeProject("AC Test Project");
+		await initializeTestProject(core, "AC Test Project");
 	});
 
 	afterEach(async () => {
@@ -469,7 +469,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR_UNIT).quiet();
 
 		const core = new Core(TEST_DIR_UNIT);
-		await core.initializeProject("AC Unit Test Project");
+		await initializeTestProject(core, "AC Unit Test Project");
 	});
 
 	afterEach(async () => {
@@ -555,7 +555,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 			expect(result.exitCode).toBe(0);
 
 			// Parse task ID from output
-			const taskId = result.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+			const taskId = result.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 			expect(taskId).toBeTruthy();
 
 			// Verify ACs were created
@@ -571,7 +571,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 				await $`bun run ${CLI_PATH_UNIT} task create "Check Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
 					TEST_DIR_UNIT,
 				);
-			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Check multiple ACs at once
 			const checkResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 3`.cwd(
@@ -593,7 +593,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 				await $`bun run ${CLI_PATH_UNIT} task create "Mixed Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
 					TEST_DIR_UNIT,
 				);
-			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Check some ACs first
 			await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 2 --check-ac 3`.cwd(TEST_DIR_UNIT);
@@ -618,7 +618,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 				await $`bun run ${CLI_PATH_UNIT} task create "Remove Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth" --ac "Fifth"`.cwd(
 					TEST_DIR_UNIT,
 				);
-			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Remove ACs 2 and 4 (should be processed in descending order to avoid index shifting)
 			const removeResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --remove-ac 2 --remove-ac 4`.cwd(
@@ -640,7 +640,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 			const createResult = await $`bun run ${CLI_PATH_UNIT} task create "Invalid Test" --ac "First" --ac "Second"`.cwd(
 				TEST_DIR_UNIT,
 			);
-			const taskId = createResult.stdout.toString().match(/Created task (task-\d+)/)?.[1];
+			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Try to check valid and invalid indices
 			const checkResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 5`

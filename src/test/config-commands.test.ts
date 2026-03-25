@@ -5,7 +5,7 @@ import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -24,7 +24,7 @@ describe("Config commands", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await core.initializeProject("Test Config Project");
+		await initializeTestProject(core, "Test Config Project");
 	});
 
 	function createPromptStub(sequence: Array<Record<string, unknown>>): PromptRunner {
@@ -44,6 +44,7 @@ describe("Config commands", () => {
 			{ autoCommit: false },
 			{ enableZeroPadding: false },
 			{ editor: "" },
+			{ definitionOfDoneAction: "done" },
 			{ configureWebUI: false },
 			{ installClaudeAgent: false },
 		]);
@@ -61,10 +62,12 @@ describe("Config commands", () => {
 		expect(mergedConfig.autoCommit).toBe(false);
 		expect(mergedConfig.zeroPaddedIds).toBeUndefined();
 		expect(mergedConfig.defaultEditor).toBeUndefined();
+		expect(mergedConfig.definitionOfDone).toEqual([]);
 		expect(mergedConfig.defaultPort).toBe(6420);
 		expect(mergedConfig.autoOpenBrowser).toBe(true);
 
 		const reloadedConfig = await core.filesystem.loadConfig();
+		expect(reloadedConfig?.definitionOfDone).toEqual([]);
 		expect(reloadedConfig?.defaultPort).toBe(6420);
 		expect(reloadedConfig?.autoOpenBrowser).toBe(true);
 	});
@@ -80,6 +83,9 @@ describe("Config commands", () => {
 			{ enableZeroPadding: true },
 			{ paddingWidth: 4 },
 			{ editor: "echo" },
+			{ definitionOfDoneAction: "add" },
+			{ definitionOfDoneItem: "Ship release notes" },
+			{ definitionOfDoneAction: "done" },
 			{ configureWebUI: true },
 			{ defaultPort: 7007, autoOpenBrowser: false },
 			{ installClaudeAgent: true },
@@ -98,16 +104,54 @@ describe("Config commands", () => {
 		expect(mergedConfig.autoCommit).toBe(true);
 		expect(mergedConfig.zeroPaddedIds).toBe(4);
 		expect(mergedConfig.defaultEditor).toBe("echo");
+		expect(mergedConfig.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(mergedConfig.defaultPort).toBe(7007);
 		expect(mergedConfig.autoOpenBrowser).toBe(false);
 
 		const reloadedConfig = await core.filesystem.loadConfig();
 		expect(reloadedConfig?.zeroPaddedIds).toBe(4);
 		expect(reloadedConfig?.defaultEditor).toBe("echo");
+		expect(reloadedConfig?.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(reloadedConfig?.defaultPort).toBe(7007);
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
 		expect(reloadedConfig?.bypassGitHooks).toBe(true);
 		expect(reloadedConfig?.autoCommit).toBe(true);
+	});
+
+	it("configureAdvancedSettings supports add/remove/reorder/clear actions for Definition of Done defaults", async () => {
+		const promptStub = createPromptStub([
+			{ installCompletions: false },
+			{ checkActiveBranches: true },
+			{ remoteOperations: true },
+			{ activeBranchDays: 30 },
+			{ bypassGitHooks: false },
+			{ autoCommit: false },
+			{ enableZeroPadding: false },
+			{ editor: "" },
+			{ definitionOfDoneAction: "add" },
+			{ definitionOfDoneItem: "  First item  " },
+			{ definitionOfDoneAction: "add" },
+			{ definitionOfDoneItem: "Second item" },
+			{ definitionOfDoneAction: "reorder" },
+			{ moveFromIndex: 2, moveToIndex: 1 },
+			{ definitionOfDoneAction: "remove" },
+			{ removeDefinitionOfDoneIndex: 2 },
+			{ definitionOfDoneAction: "clear" },
+			{ confirmClearDefinitionOfDone: true },
+			{ definitionOfDoneAction: "add" },
+			{ definitionOfDoneItem: "  Final item  " },
+			{ definitionOfDoneAction: "done" },
+			{ configureWebUI: false },
+			{ installClaudeAgent: false },
+		]);
+
+		const { mergedConfig } = await configureAdvancedSettings(core, {
+			promptImpl: promptStub,
+		});
+
+		expect(mergedConfig.definitionOfDone).toEqual(["Final item"]);
+		const reloadedConfig = await core.filesystem.loadConfig();
+		expect(reloadedConfig?.definitionOfDone).toEqual(["Final item"]);
 	});
 
 	it("exposes config list/get/set subcommands", async () => {
@@ -118,6 +162,16 @@ describe("Config commands", () => {
 
 		const portOutput = await $`bun ${CLI_PATH} config get defaultPort`.cwd(TEST_DIR).text();
 		expect(portOutput.trim()).toBe("7001");
+	});
+
+	it("surfaces milestones in config get/list from milestone files", async () => {
+		await core.filesystem.createMilestone("Release 1");
+
+		const milestonesOutput = await $`bun ${CLI_PATH} config get milestones`.cwd(TEST_DIR).text();
+		expect(milestonesOutput.trim()).toBe("m-0");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("milestones: [m-0]");
 	});
 
 	afterEach(async () => {

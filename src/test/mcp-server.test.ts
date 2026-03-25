@@ -1,17 +1,18 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
 import {
-	MCP_TASK_COMPLETION_GUIDE,
 	MCP_TASK_CREATION_GUIDE,
 	MCP_TASK_EXECUTION_GUIDE,
+	MCP_TASK_FINALIZATION_GUIDE,
 	MCP_WORKFLOW_OVERVIEW,
 	MCP_WORKFLOW_OVERVIEW_TOOLS,
 } from "../guidelines/mcp/index.ts";
 import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
+import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 // Helpers to extract text from MCP responses (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -35,7 +36,7 @@ async function bootstrapServer(): Promise<McpServer> {
 	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-	await server.initializeProject("Test Project");
+	await initializeTestProject(server, "Test Project");
 
 	// Register workflow resources and tools manually (normally done in createMcpServer)
 	registerWorkflowResources(server);
@@ -53,19 +54,25 @@ describe("McpServer bootstrap", () => {
 		const server = await bootstrapServer();
 
 		const tools = await server.testInterface.listTools();
-		expect(tools.tools.map((tool) => tool.name)).toEqual([
-			"get_workflow_overview",
-			"get_task_creation_guide",
-			"get_task_execution_guide",
-			"get_task_completion_guide",
-		]);
+		expect(tools.tools.map((tool) => tool.name)).toEqual(["get_backlog_instructions"]);
+		expect(tools.tools[0]?.inputSchema).toEqual({
+			type: "object",
+			properties: {
+				instruction: {
+					type: "string",
+					enum: ["overview", "task-creation", "task-execution", "task-finalization"],
+				},
+			},
+			required: [],
+			additionalProperties: false,
+		});
 
 		const resources = await server.testInterface.listResources();
 		expect(resources.resources.map((r) => r.uri)).toEqual([
 			"backlog://workflow/overview",
 			"backlog://workflow/task-creation",
 			"backlog://workflow/task-execution",
-			"backlog://workflow/task-completion",
+			"backlog://workflow/task-finalization",
 		]);
 
 		const prompts = await server.testInterface.listPrompts();
@@ -117,29 +124,29 @@ describe("McpServer bootstrap", () => {
 		await server.stop();
 	});
 
-	it("task completion guide resource returns correct content", async () => {
+	it("task finalization guide resource returns correct content", async () => {
 		const server = await bootstrapServer();
 
 		const result = await server.testInterface.readResource({
-			params: { uri: "backlog://workflow/task-completion" },
+			params: { uri: "backlog://workflow/task-finalization" },
 		});
 
 		expect(result.contents).toHaveLength(1);
-		expect(getContentsText(result.contents)).toBe(MCP_TASK_COMPLETION_GUIDE);
+		expect(getContentsText(result.contents)).toBe(MCP_TASK_FINALIZATION_GUIDE);
 
 		await server.stop();
 	});
 
-	it("workflow tools mirror resource content", async () => {
+	it("workflow tool returns overview by default and selected guide content when requested", async () => {
 		const server = await bootstrapServer();
 
 		const overview = await server.testInterface.callTool({
-			params: { name: "get_workflow_overview", arguments: {} },
+			params: { name: "get_backlog_instructions", arguments: {} },
 		});
 		expect(getText(overview.content)).toBe(MCP_WORKFLOW_OVERVIEW_TOOLS);
 
 		const creation = await server.testInterface.callTool({
-			params: { name: "get_task_creation_guide", arguments: {} },
+			params: { name: "get_backlog_instructions", arguments: { instruction: "task-creation" } },
 		});
 		expect(getText(creation.content)).toBe(MCP_TASK_CREATION_GUIDE);
 
@@ -154,15 +161,16 @@ describe("McpServer bootstrap", () => {
 		}
 
 		registerTaskTools(server, config);
+		registerDefinitionOfDoneTools(server);
 
 		const tools = await server.testInterface.listTools();
 		const toolNames = tools.tools.map((tool) => tool.name).sort();
 		expect(toolNames).toEqual([
-			"get_task_completion_guide",
-			"get_task_creation_guide",
-			"get_task_execution_guide",
-			"get_workflow_overview",
+			"definition_of_done_defaults_get",
+			"definition_of_done_defaults_upsert",
+			"get_backlog_instructions",
 			"task_archive",
+			"task_complete",
 			"task_create",
 			"task_edit",
 			"task_list",
@@ -175,7 +183,7 @@ describe("McpServer bootstrap", () => {
 			"backlog://workflow/overview",
 			"backlog://workflow/task-creation",
 			"backlog://workflow/task-execution",
-			"backlog://workflow/task-completion",
+			"backlog://workflow/task-finalization",
 		]);
 		expect(MCP_WORKFLOW_OVERVIEW).toContain("## Backlog.md Overview (MCP)");
 
@@ -193,23 +201,28 @@ describe("McpServer bootstrap", () => {
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await bootstrap.initializeProject("Factory Project");
+		await initializeTestProject(bootstrap, "Factory Project");
 		await bootstrap.stop();
 
 		const server = await createMcpServer(TEST_DIR);
 
 		const tools = await server.testInterface.listTools();
 		expect(tools.tools.map((tool) => tool.name)).toEqual([
-			"get_workflow_overview",
-			"get_task_creation_guide",
-			"get_task_execution_guide",
-			"get_task_completion_guide",
+			"get_backlog_instructions",
 			"task_create",
 			"task_list",
 			"task_search",
 			"task_edit",
 			"task_view",
 			"task_archive",
+			"task_complete",
+			"milestone_list",
+			"milestone_add",
+			"milestone_rename",
+			"milestone_remove",
+			"milestone_archive",
+			"definition_of_done_defaults_get",
+			"definition_of_done_defaults_upsert",
 			"document_list",
 			"document_view",
 			"document_create",
@@ -222,7 +235,7 @@ describe("McpServer bootstrap", () => {
 			"backlog://workflow/overview",
 			"backlog://workflow/task-creation",
 			"backlog://workflow/task-execution",
-			"backlog://workflow/task-completion",
+			"backlog://workflow/task-finalization",
 		]);
 		expect(MCP_WORKFLOW_OVERVIEW).toContain("## Backlog.md Overview (MCP)");
 

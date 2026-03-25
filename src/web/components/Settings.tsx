@@ -58,6 +58,11 @@ const Settings: React.FC = () => {
 		}
 	};
 
+	const normalizeDefinitionOfDone = (items: string[] | undefined): string[] | undefined => {
+		const normalized = (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
+		return normalized.length > 0 ? normalized : undefined;
+	};
+
 	const validateConfig = (): boolean => {
 		const errors: Record<string, string> = {};
 
@@ -83,8 +88,13 @@ const Settings: React.FC = () => {
 
 		try {
 			setSaving(true);
-			await apiClient.updateConfig(config);
-			setOriginalConfig(config);
+			const normalizedConfig = {
+				...config,
+				definitionOfDone: normalizeDefinitionOfDone(config.definitionOfDone),
+			};
+			await apiClient.updateConfig(normalizedConfig);
+			setConfig(normalizedConfig);
+			setOriginalConfig(normalizedConfig);
 			setShowSuccess(true);
 			setTimeout(() => setShowSuccess(false), 3000);
 			setError(null);
@@ -166,7 +176,7 @@ const Settings: React.FC = () => {
 									id="dateFormat"
 									value={config.dateFormat}
 									onChange={(e) => handleInputChange('dateFormat', e.target.value)}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 								>
 									<option value="yyyy-mm-dd">yyyy-mm-dd</option>
 									<option value="dd/mm/yyyy">dd/mm/yyyy</option>
@@ -228,7 +238,7 @@ const Settings: React.FC = () => {
 									id="defaultStatus"
 									value={config.defaultStatus}
 									onChange={(e) => handleInputChange('defaultStatus', e.target.value)}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 								>
 									{statuses.map(status => (
 										<option key={status} value={status}>{status}</option>
@@ -255,6 +265,48 @@ const Settings: React.FC = () => {
 									Editor command to use for editing tasks (overrides EDITOR environment variable)
 								</p>
 							</div>
+						</div>
+					</div>
+
+					{/* Definition of Done Defaults */}
+					<div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+						<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Definition of Done Defaults</h2>
+						<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+							These checklist items are added to new tasks by default.
+						</p>
+						<div className="space-y-3">
+							{(config.definitionOfDone ?? []).map((item, index) => (
+								<div key={`definition-of-done-${index}`} className="flex items-center gap-2">
+									<input
+										type="text"
+										value={item}
+										onChange={(e) => {
+											const next = [...(config.definitionOfDone ?? [])];
+											next[index] = e.target.value;
+											handleInputChange('definitionOfDone', next);
+										}}
+										className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+										placeholder="Checklist item"
+									/>
+									<button
+										type="button"
+										onClick={() => {
+											const next = (config.definitionOfDone ?? []).filter((_, idx) => idx !== index);
+											handleInputChange('definitionOfDone', next);
+										}}
+										className="px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:underline"
+									>
+										Remove
+									</button>
+								</div>
+							))}
+							<button
+								type="button"
+								onClick={() => handleInputChange('definitionOfDone', [...(config.definitionOfDone ?? []), ""])}
+								className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+							>
+								+ Add item
+							</button>
 						</div>
 					</div>
 
@@ -336,7 +388,7 @@ const Settings: React.FC = () => {
 									id="taskResolutionStrategy"
 									value={config.taskResolutionStrategy}
 									onChange={(e) => handleInputChange('taskResolutionStrategy', e.target.value as 'most_recent' | 'most_progressed')}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 								>
 									<option value="most_recent">Most Recent</option>
 									<option value="most_progressed">Most Progressed</option>
@@ -363,26 +415,41 @@ const Settings: React.FC = () => {
 									Number of digits for ID padding (0 = disabled, 3 = task-001, 4 = task-0001)
 								</p>
 							</div>
+
+							<div>
+								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+									Task Prefix <span className="text-gray-400 dark:text-gray-500 font-normal">(read-only)</span>
+								</label>
+								<input
+									type="text"
+									value={(config.prefixes?.task || 'task').toUpperCase()}
+									disabled
+									className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
+								/>
+								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									Set during initialization. Cannot be changed to avoid breaking existing task IDs.
+								</p>
+							</div>
 						</div>
 					</div>
 
 					{/* Save/Cancel Buttons */}
-					<div className="flex items-center justify-end space-x-4">
-						<button
-							onClick={handleCancel}
-							disabled={!hasUnsavedChanges || saving}
-							className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-						>
-							Cancel
-						</button>
-						<button
-							onClick={handleSave}
-							disabled={!hasUnsavedChanges || saving}
-							className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-						>
-							{saving ? 'Saving...' : 'Save Changes'}
-						</button>
-					</div>
+						<div className="flex items-center justify-end space-x-4">
+							<button
+								onClick={handleCancel}
+								disabled={!hasUnsavedChanges || saving}
+								className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 disabled:opacity-50 transition-colors duration-200"
+							>
+								Cancel
+							</button>
+							<button
+								onClick={handleSave}
+								disabled={!hasUnsavedChanges || saving}
+								className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 disabled:opacity-50 transition-colors duration-200"
+							>
+								{saving ? 'Saving...' : 'Save Changes'}
+							</button>
+						</div>
 				</div>
 			</div>
 

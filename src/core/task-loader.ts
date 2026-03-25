@@ -12,7 +12,12 @@ import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
+import { normalizeTaskId, normalizeTaskIdentity } from "../utils/task-path.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
+
+/** Default prefix for tasks */
+const DEFAULT_TASK_PREFIX = "task";
 
 export interface BranchTaskStateEntry {
 	id: string;
@@ -93,6 +98,8 @@ export async function buildRemoteTaskIndex(
 	backlogDir = "backlog",
 	sinceDays?: number,
 	stateCollector?: BranchTaskStateEntry[],
+	prefix = DEFAULT_TASK_PREFIX,
+	includeCompleted = false,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -119,13 +126,15 @@ export async function buildRemoteTaskIndex(
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(ref, listPath, sinceDays);
 
-				for (const f of files) {
-					// Extract task ID from filename
-					// Extract task ID from filename (support subtasks like task-123.01)
-					const m = f.match(/task-(\d+(?:\.\d+)?)/);
-					if (!m) continue;
+				// Build regex for configured prefix (no ^ anchor for path matching)
+				const idRegex = buildPathIdRegex(prefix);
 
-					const id = `task-${m[1]}`;
+				for (const f of files) {
+					// Extract task ID from filename using configured prefix
+					const m = f.match(idRegex);
+					if (!m?.[1]) continue;
+
+					const id = normalizeId(m[1], prefix);
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
@@ -144,8 +153,8 @@ export async function buildRemoteTaskIndex(
 						});
 					}
 
-					// Only index active tasks for hydration selection
-					if (type === "task") {
+					// Only index active tasks for hydration selection (optionally include completed)
+					if (type === "task" || (includeCompleted && type === "completed")) {
 						const arr = out.get(id);
 						if (arr) {
 							arr.push(entry);
@@ -187,7 +196,7 @@ async function hydrateTasks(
 
 			try {
 				const content = await git.showFile(w.ref, w.path);
-				const task = parseTask(content);
+				const task = normalizeTaskIdentity(parseTask(content));
 				if (task) {
 					// Mark as remote source and branch
 					task.source = "remote";
@@ -216,6 +225,8 @@ export async function buildLocalBranchTaskIndex(
 	backlogDir = "backlog",
 	sinceDays?: number,
 	stateCollector?: BranchTaskStateEntry[],
+	prefix = DEFAULT_TASK_PREFIX,
+	includeCompleted = false,
 ): Promise<Map<string, RemoteIndexEntry[]>> {
 	const out = new Map<string, RemoteIndexEntry[]>();
 
@@ -244,12 +255,15 @@ export async function buildLocalBranchTaskIndex(
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(br, listPath, sinceDays);
 
-				for (const f of files) {
-					// Extract task ID from filename (support subtasks like task-123.01)
-					const m = f.match(/task-(\d+(?:\.\d+)?)/);
-					if (!m) continue;
+				// Build regex for configured prefix (no ^ anchor for path matching)
+				const idRegex = buildPathIdRegex(prefix);
 
-					const id = `task-${m[1]}`;
+				for (const f of files) {
+					// Extract task ID from filename using configured prefix
+					const m = f.match(idRegex);
+					if (!m?.[1]) continue;
+
+					const id = normalizeId(m[1], prefix);
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
 
@@ -268,8 +282,8 @@ export async function buildLocalBranchTaskIndex(
 						});
 					}
 
-					// Only index active tasks for hydration selection
-					if (type === "task") {
+					// Only index active tasks for hydration selection (optionally include completed)
+					if (type === "task" || (includeCompleted && type === "completed")) {
 						const arr = out.get(id);
 						if (arr) {
 							arr.push(entry);
@@ -355,6 +369,7 @@ export async function findTaskInRemoteBranches(
 	taskId: string,
 	backlogDir = "backlog",
 	sinceDays = 30,
+	prefix = DEFAULT_TASK_PREFIX,
 ): Promise<Task | null> {
 	try {
 		// Check if we have any remote
@@ -365,10 +380,12 @@ export async function findTaskInRemoteBranches(
 		if (branches.length === 0) return null;
 
 		// Build task index for remote branches
-		const remoteIndex = await buildRemoteTaskIndex(git, branches, backlogDir, sinceDays);
+		const remoteIndex = await buildRemoteTaskIndex(git, branches, backlogDir, sinceDays, undefined, prefix);
+
+		const normalizedId = normalizeId(taskId, prefix);
 
 		// Check if the task exists in the index
-		const entries = remoteIndex.get(taskId);
+		const entries = remoteIndex.get(normalizedId);
 		if (!entries || entries.length === 0) return null;
 
 		// Get the newest version
@@ -377,7 +394,7 @@ export async function findTaskInRemoteBranches(
 		// Hydrate the task
 		const ref = `origin/${best.branch}`;
 		const content = await git.showFile(ref, best.path);
-		const task = parseTask(content);
+		const task = normalizeTaskIdentity(parseTask(content));
 		if (task) {
 			task.source = "remote";
 			task.branch = best.branch;
@@ -400,6 +417,7 @@ export async function findTaskInLocalBranches(
 	taskId: string,
 	backlogDir = "backlog",
 	sinceDays = 30,
+	prefix = DEFAULT_TASK_PREFIX,
 ): Promise<Task | null> {
 	try {
 		const currentBranch = await git.getCurrentBranch();
@@ -414,10 +432,20 @@ export async function findTaskInLocalBranches(
 		if (localBranches.length <= 1) return null; // Only current branch
 
 		// Build task index for local branches
-		const localIndex = await buildLocalBranchTaskIndex(git, localBranches, currentBranch, backlogDir, sinceDays);
+		const localIndex = await buildLocalBranchTaskIndex(
+			git,
+			localBranches,
+			currentBranch,
+			backlogDir,
+			sinceDays,
+			undefined,
+			prefix,
+		);
+
+		const normalizedId = normalizeId(taskId, prefix);
 
 		// Check if the task exists in the index
-		const entries = localIndex.get(taskId);
+		const entries = localIndex.get(normalizedId);
 		if (!entries || entries.length === 0) return null;
 
 		// Get the newest version
@@ -425,7 +453,7 @@ export async function findTaskInLocalBranches(
 
 		// Hydrate the task
 		const content = await git.showFile(best.branch, best.path);
-		const task = parseTask(content);
+		const task = normalizeTaskIdentity(parseTask(content));
 		if (task) {
 			task.source = "local-branch";
 			task.branch = best.branch;
@@ -449,6 +477,8 @@ export async function loadRemoteTasks(
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
 	stateCollector?: BranchTaskStateEntry[],
+	includeCompleted = false,
+	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
 ): Promise<Task[]> {
 	try {
 		// Skip remote operations if disabled
@@ -473,8 +503,16 @@ export async function loadRemoteTasks(
 		onProgress?.(`Indexing ${branches.length} recent remote branches (last ${days} days)...`);
 
 		// Build a cheap index without fetching content
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
-		const remoteIndex = await buildRemoteTaskIndex(gitOps, branches, backlogDir, days, stateCollector);
+		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
+		const remoteIndex = await buildRemoteTaskIndex(
+			gitOps,
+			branches,
+			backlogDir,
+			days,
+			stateCollector,
+			taskPrefix,
+			includeCompleted,
+		);
 
 		if (remoteIndex.size === 0) {
 			onProgress?.("No remote tasks found");
@@ -487,8 +525,7 @@ export async function loadRemoteTasks(
 		let winners: Array<{ id: string; ref: string; path: string }>;
 
 		if (localTasks && localTasks.length > 0) {
-			// Build local task map for comparison
-			const localById = new Map(localTasks.map((t) => [t.id, t]));
+			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
 			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
 
 			// Only hydrate remote tasks that are newer or missing locally
@@ -570,6 +607,8 @@ export async function loadLocalBranchTasks(
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
 	stateCollector?: BranchTaskStateEntry[],
+	includeCompleted = false,
+	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
 ): Promise<Task[]> {
 	try {
 		const currentBranch = await gitOps.getCurrentBranch();
@@ -595,7 +634,7 @@ export async function loadLocalBranchTasks(
 		onProgress?.(`Indexing ${localBranches.length - 1} other local branches...`);
 
 		// Build index of tasks from other local branches
-		const backlogDir = DEFAULT_DIRECTORIES.BACKLOG;
+		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
 		const localBranchIndex = await buildLocalBranchTaskIndex(
 			gitOps,
 			localBranches,
@@ -603,6 +642,8 @@ export async function loadLocalBranchTasks(
 			backlogDir,
 			days,
 			stateCollector,
+			taskPrefix,
+			includeCompleted,
 		);
 
 		if (localBranchIndex.size === 0) {
@@ -615,8 +656,7 @@ export async function loadLocalBranchTasks(
 		let winners: Array<{ id: string; ref: string; path: string }>;
 
 		if (localTasks && localTasks.length > 0) {
-			// Build local task map for comparison
-			const localById = new Map(localTasks.map((t) => [t.id, t]));
+			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
 			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
 
 			// Only hydrate tasks that are missing locally or potentially newer

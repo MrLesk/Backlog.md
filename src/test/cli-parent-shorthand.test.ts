@@ -19,7 +19,7 @@ describe("CLI parent shorthand option", () => {
 
 		// Initialize backlog project using Core (simulating CLI)
 		const core = new Core(testDir);
-		await core.initializeProject("Test Project");
+		await initializeTestProject(core, "Test Project");
 	});
 
 	afterAll(async () => {
@@ -44,7 +44,7 @@ describe("CLI parent shorthand option", () => {
 		// Verify the subtask was created with correct parent
 		if (subtaskFiles[0]) {
 			const subtaskFile = await Bun.file(join(tasksDir, subtaskFiles[0])).text();
-			expect(subtaskFile).toContain("parent_task_id: task-1");
+			expect(subtaskFile).toContain("parent_task_id: TASK-1");
 		}
 	});
 
@@ -70,8 +70,8 @@ describe("CLI parent shorthand option", () => {
 			const subtask1 = await Bun.file(join(tasksDir, subtaskFiles1[0])).text();
 			const subtask2 = await Bun.file(join(tasksDir, subtaskFiles2[0])).text();
 
-			expect(subtask1).toContain("parent_task_id: task-1");
-			expect(subtask2).toContain("parent_task_id: task-1");
+			expect(subtask1).toContain("parent_task_id: TASK-1");
+			expect(subtask2).toContain("parent_task_id: TASK-1");
 		}
 	});
 
@@ -81,4 +81,13 @@ describe("CLI parent shorthand option", () => {
 		expect(helpResult.stdout).toContain("-p, --parent <taskId>");
 		expect(helpResult.stdout).toContain("specify parent task ID");
 	});
+
+	it("should show Definition of Done options in help text", async () => {
+		const helpResult = await getCliHelpPlatformAware(["task", "create", "--help"], testDir);
+
+		expect(helpResult.stdout).toContain("--dod <item>");
+		expect(helpResult.stdout).toContain("--no-dod-defaults");
+	});
 });
+
+import { initializeTestProject } from "./test-utils.ts";

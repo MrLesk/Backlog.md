@@ -27,6 +27,17 @@ Use `task_view` to read full context of related tasks.
 
 If the work requires multiple tasks, proceed to choose the appropriate task structure (subtasks vs separate tasks).
 
+### Agent Lifecycle Reality
+
+**Assume the agent who creates tasks will NOT execute them.** Each task is handled by an independent agent session with no memory of prior conversations or other tasks.
+
+- Write tasks as work orders for strangers: include all required context inside the task
+- Never reference "what we discussed" without restating the essential decisions and constraints
+- Dependencies must explicitly state what the other task provides (e.g., output, schema, artifact)
+- Use the `references` field for external references such as GitHub issues, PRs, tickets, or URLs
+- Use the `documentation` field for design docs, API specs, manuals, or other reference materials that help understand the task context
+- Only include minimal local code context in the description when omitting it would make the task ambiguous or unsafe for a future implementer
+
 ### Step 3: Choose task structure
 
 **When to use subtasks vs separate tasks:**
@@ -52,22 +63,35 @@ When scope requires multiple tasks:
 2. **Explain what you created** to the user after creation, including the reasoning for the structure
 3. **Document relationships**: Record dependencies using `task_edit` so scheduling and merge-risk tooling stay accurate
 
+**Follow-up work on an existing task:** Create it as a **subtask** of that parent task (not a new top-level task).
+
 Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
 
-**Title and description**: Explain desired outcome and user value (the WHY)
+**Title and description**: Explain desired outcome and user value (the WHY). Keep the description focused on outcome and essential handoff context.
 
 **Acceptance criteria**: Specific, testable, and independent (the WHAT)
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
 - Include negative or edge scenarios when relevant
 - Capture testing expectations explicitly
+- Include documentation expectations in the same task (no deferring to follow-up tasks)
+
+**Definition of Done defaults (optional):**
+- Project-level defaults are managed with `definition_of_done_defaults_get` / `definition_of_done_defaults_upsert`
+- DoD is not acceptance criteria: AC defines product scope/behavior, DoD defines completion hygiene
+- Per-task DoD customization should be exceptional; default to project-level DoD plus strong acceptance criteria
+- Use `definitionOfDoneAdd` only for task-specific DoD items that apply to this one task
+- Use `disableDefinitionOfDoneDefaults` to skip project defaults for this task when needed
+- Do **not** duplicate project defaults into `definitionOfDoneAdd` unless you are intentionally customizing this task
 
 **Never embed implementation details** in title, description, or acceptance criteria
 
 **Record dependencies** using `task_edit` for task ordering
 
 **Ask for clarification** if requirements are ambiguous
+
+**Drafts (exceptional):** Default to creating regular tasks (e.g., To Do) for any work you are committing to track. Only create a Draft when the user explicitly requests a draft, or when there is clear uncertainty that makes a commitment inappropriate (e.g., missing requirements and the user wants a placeholder). Use `task_create` with status `Draft` to create a draft, `task_edit` to promote/demote by changing status, and pass status `Draft` to `task_list`/`task_search` to include drafts. Drafts are excluded unless explicitly filtered.
 
 ### Step 6: Report created tasks
 
@@ -78,12 +102,15 @@ After creation, show the user each new task's ID, title, description, and accept
 - Creating a single task called "Build desktop application" with 10+ acceptance criteria
 - Adding implementation steps to acceptance criteria
 - Creating a task before understanding if it needs to be split
+- Deferring tests or documentation to "later tasks" (e.g., "Add tests/docs in a follow-up")
 
 ### Correct Pattern
 
 "This request spans electron setup, IPC bridge, UI adaptation, and packaging. I'll create 4 separate tasks to break this down properly."
 
 Then create the tasks and report what was created.
+
+**Standalone task example (includes tests/docs):** "Add API endpoint for bulk updates" with acceptance criteria that include required tests and documentation updates in the same task.
 
 ### Additional Context Gathering
 

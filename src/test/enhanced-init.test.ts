@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { initializeProject } from "../core/init.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("Enhanced init command", () => {
 	let tmpDir: string;
@@ -23,7 +24,7 @@ describe("Enhanced init command", () => {
 		const core = new Core(tmpDir);
 
 		// First initialization
-		await core.initializeProject("Test Project");
+		await initializeTestProject(core, "Test Project");
 
 		// Verify initial config
 		const initialConfig = await core.filesystem.loadConfig();
@@ -63,7 +64,7 @@ describe("Enhanced init command", () => {
 		expect(initialConfig).toBeNull();
 
 		// Initialize project
-		await core.initializeProject("New Project");
+		await initializeTestProject(core, "New Project");
 
 		// Verify config was created with defaults
 		const config = await core.filesystem.loadConfig();
@@ -146,9 +147,81 @@ describe("Enhanced init command", () => {
 		expect(existingConfig).toBeTruthy();
 		expect(existingConfig?.statuses).toEqual(["Backlog", "In Progress", "Review", "Done"]);
 		expect(existingConfig?.labels).toEqual(["bug", "feature", "enhancement"]);
-		expect(existingConfig?.milestones).toEqual(["v1.0", "v2.0"]);
 		expect(existingConfig?.dateFormat).toBe("dd/mm/yyyy");
 		expect(existingConfig?.maxColumnWidth).toBe(30);
+	});
+
+	test("should preserve non-init-managed config fields during re-initialization", async () => {
+		const core = new Core(tmpDir);
+
+		const initialConfig: BacklogConfig = {
+			projectName: "Preserve Fields Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: ["bug"],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			definitionOfDone: ["Run tests", "Update docs"],
+			defaultAssignee: "@alex",
+			defaultReporter: "@bot",
+			includeDateTimeInDates: true,
+			onStatusChange: "echo changed",
+			mcp: {
+				http: {
+					host: "127.0.0.1",
+					port: 7777,
+					auth: { type: "none" },
+				},
+			},
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(initialConfig);
+
+		const existingConfig = await core.filesystem.loadConfig();
+		if (!existingConfig) throw new Error("Expected existing config");
+
+		await initializeProject(core, {
+			projectName: "Preserve Fields Project Updated",
+			integrationMode: "none",
+			existingConfig,
+		});
+
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.projectName).toBe("Preserve Fields Project Updated");
+		expect(reloaded?.definitionOfDone).toEqual(["Run tests", "Update docs"]);
+		expect(reloaded?.defaultAssignee).toBe("@alex");
+		expect(reloaded?.defaultReporter).toBe("@bot");
+		expect(reloaded?.includeDateTimeInDates).toBe(true);
+		expect(reloaded?.onStatusChange).toBe("echo changed");
+		expect(reloaded?.mcp?.http?.host).toBe("127.0.0.1");
+		expect(reloaded?.mcp?.http?.port).toBe(7777);
+	});
+
+	test("initializeProject should persist advanced Definition of Done defaults and allow clearing them", async () => {
+		const core = new Core(tmpDir);
+
+		await initializeProject(core, {
+			projectName: "Definition Defaults Init",
+			integrationMode: "none",
+			advancedConfig: {
+				definitionOfDone: ["  Run tests  ", "", "Update docs", 1, null] as unknown as string[],
+			},
+		});
+
+		let loaded = await core.filesystem.loadConfig();
+		expect(loaded?.definitionOfDone).toEqual(["Run tests", "Update docs"]);
+
+		await initializeProject(core, {
+			projectName: "Definition Defaults Init",
+			integrationMode: "none",
+			existingConfig: loaded,
+			advancedConfig: {
+				definitionOfDone: [],
+			},
+		});
+
+		loaded = await core.filesystem.loadConfig();
+		expect(loaded?.definitionOfDone).toEqual([]);
 	});
 
 	test("should handle zero-padding configuration in init flow", async () => {
@@ -236,5 +309,266 @@ describe("Enhanced init command", () => {
 		// Verify the padding config is preserved
 		// (ID generation happens in CLI, not in Core.createTask)
 		expect(existingConfig?.zeroPaddedIds).toBe(4);
+	});
+
+	test("should create default task prefix when not specified", async () => {
+		const core = new Core(tmpDir);
+
+		// Initialize project without custom prefix
+		await initializeTestProject(core, "Default Prefix Project");
+
+		// Verify default prefix is "task"
+		const config = await core.filesystem.loadConfig();
+		expect(config?.prefixes).toBeTruthy();
+		expect(config?.prefixes?.task).toBe("task");
+	});
+
+	test("should handle custom task prefix in config", async () => {
+		const core = new Core(tmpDir);
+
+		// Create config with custom prefix
+		const customPrefixConfig = {
+			projectName: "JIRA Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			backlogDirectory: "backlog",
+			autoCommit: false,
+			prefixes: {
+				task: "JIRA",
+				draft: "draft",
+			},
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(customPrefixConfig);
+
+		// Verify custom prefix was saved
+		const loadedConfig = await core.filesystem.loadConfig();
+		expect(loadedConfig?.prefixes?.task).toBe("JIRA");
+	});
+
+	test("should preserve existing prefix during re-initialization", async () => {
+		const core = new Core(tmpDir);
+
+		// Create initial config with custom prefix
+		const initialConfig = {
+			projectName: "Custom Prefix Project",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+			backlogDirectory: "backlog",
+			autoCommit: false,
+			prefixes: {
+				task: "BUG",
+				draft: "draft",
+			},
+		};
+
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(initialConfig);
+
+		// Simulate re-initialization by loading existing config
+		const existingConfig = await core.filesystem.loadConfig();
+		expect(existingConfig).toBeTruthy();
+		expect(existingConfig?.prefixes?.task).toBe("BUG");
+
+		// Verify the prefix is preserved (cannot be changed after init)
+		expect(existingConfig?.prefixes?.task).toBe("BUG");
+	});
+
+	test("initializeProject should use custom taskPrefix from advancedConfig", async () => {
+		const core = new Core(tmpDir);
+
+		// Initialize project with custom prefix via initializeProject function
+		const result = await initializeProject(core, {
+			projectName: "JIRA Init Test",
+			integrationMode: "none",
+			advancedConfig: {
+				taskPrefix: "JIRA",
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.config.prefixes?.task).toBe("JIRA");
+
+		// Verify it was saved
+		const loadedConfig = await core.filesystem.loadConfig();
+		expect(loadedConfig?.prefixes?.task).toBe("JIRA");
+	});
+
+	test("initializeProject should preserve existing prefix on re-init", async () => {
+		const core = new Core(tmpDir);
+
+		// First init with custom prefix
+		await initializeProject(core, {
+			projectName: "Re-Init Test",
+			integrationMode: "none",
+			advancedConfig: {
+				taskPrefix: "ISSUE",
+			},
+		});
+
+		// Verify initial prefix
+		const initialConfig = await core.filesystem.loadConfig();
+		expect(initialConfig?.prefixes?.task).toBe("ISSUE");
+
+		// Re-initialize (simulating re-init with different taskPrefix - should be ignored)
+		const result = await initializeProject(core, {
+			projectName: "Re-Init Test Updated",
+			integrationMode: "none",
+			existingConfig: initialConfig,
+			advancedConfig: {
+				taskPrefix: "CHANGED", // This should be ignored since existingConfig has prefixes
+			},
+		});
+
+		// Verify prefix was preserved from existingConfig
+		expect(result.config.prefixes?.task).toBe("ISSUE");
+	});
+
+	test("initializeProject should use default prefix when not specified", async () => {
+		const core = new Core(tmpDir);
+
+		// Initialize without custom prefix
+		const result = await initializeProject(core, {
+			projectName: "Default Prefix Init",
+			integrationMode: "none",
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.config.prefixes?.task).toBe("task");
+	});
+
+	test("prefixes should persist to disk and reload correctly with new Core instance", async () => {
+		const core1 = new Core(tmpDir);
+
+		// Initialize with custom prefix
+		await initializeProject(core1, {
+			projectName: "Disk Persistence Test",
+			integrationMode: "none",
+			advancedConfig: {
+				taskPrefix: "PERSIST",
+			},
+		});
+
+		// Create a NEW Core instance to bypass any in-memory cache
+		// This simulates what happens when a user runs a new command in a new process
+		const core2 = new Core(tmpDir);
+		const loadedConfig = await core2.filesystem.loadConfig();
+
+		// This test would fail if prefixes aren't properly serialized/parsed from disk
+		expect(loadedConfig?.prefixes?.task).toBe("PERSIST");
+	});
+
+	test("initializeProject should create .backlog when selected", async () => {
+		const core = new Core(tmpDir);
+
+		await initializeProject(core, {
+			projectName: "Hidden Backlog Init",
+			backlogDirectory: ".backlog",
+			backlogDirectorySource: ".backlog",
+			integrationMode: "none",
+		});
+
+		const configExists = await Bun.file(join(tmpDir, ".backlog", "config.yml")).exists();
+		expect(configExists).toBe(true);
+		expect(core.filesystem.backlogDirName).toBe(".backlog");
+	});
+
+	test("initializeProject should honor .backlog source when backlogDirectory is omitted", async () => {
+		const core = new Core(tmpDir);
+
+		await initializeProject(core, {
+			projectName: "Hidden Backlog Source Only",
+			backlogDirectorySource: ".backlog",
+			integrationMode: "none",
+		});
+
+		expect(await Bun.file(join(tmpDir, ".backlog", "config.yml")).exists()).toBe(true);
+		expect(await Bun.file(join(tmpDir, "backlog", "config.yml")).exists()).toBe(false);
+	});
+
+	test("initializeProject should create a root backlog.config.yml for custom backlog directories", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Custom Backlog Init",
+			backlogDirectory: "planning/backlog-data",
+			backlogDirectorySource: "custom",
+			configLocation: "root",
+			integrationMode: "none",
+		});
+
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		const configExists = await Bun.file(rootConfigPath).exists();
+		const freshCore = new Core(tmpDir);
+		const freshConfig = await freshCore.filesystem.loadConfig();
+
+		expect(configExists).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(core.filesystem.backlogDirName).toBe("planning/backlog-data");
+		expect(freshConfig?.projectName).toBe("Custom Backlog Init");
+		expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
+	});
+
+	test("initializeProject should default custom backlog directories to root config when configLocation is omitted", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Custom Backlog Default Root",
+			backlogDirectory: "planning/backlog-data",
+			backlogDirectorySource: "custom",
+			integrationMode: "none",
+		});
+
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		expect(await Bun.file(rootConfigPath).exists()).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
+	});
+
+	test("initializeProject should infer custom source from backlogDirectory when source is omitted", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Custom Backlog Inferred Source",
+			backlogDirectory: "planning/backlog-data",
+			integrationMode: "none",
+		});
+
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		expect(await Bun.file(rootConfigPath).exists()).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
+	});
+
+	test("initializeProject should reject custom backlog directories with folder config location", async () => {
+		const core = new Core(tmpDir);
+		await expect(
+			initializeProject(core, {
+				projectName: "Invalid Custom Folder Config",
+				backlogDirectory: "planning/backlog-data",
+				backlogDirectorySource: "custom",
+				configLocation: "folder",
+				integrationMode: "none",
+			}),
+		).rejects.toThrow("Custom backlog directories require root config discovery.");
+	});
+
+	test("initializeProject should reject mismatched built-in source and custom backlog path", async () => {
+		const core = new Core(tmpDir);
+		await expect(
+			initializeProject(core, {
+				projectName: "Mismatched Backlog Source",
+				backlogDirectory: "planning/backlog-data",
+				backlogDirectorySource: ".backlog",
+				integrationMode: "none",
+			}),
+		).rejects.toThrow("Backlog directory source and backlog directory value must agree.");
 	});
 });

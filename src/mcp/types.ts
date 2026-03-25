@@ -9,12 +9,14 @@ import type {
 	ReadResourceResult,
 	Resource,
 	Tool,
+	ToolAnnotations,
 } from "@modelcontextprotocol/sdk/types.js";
 
 export interface McpToolHandler {
 	name: string;
 	description: string;
 	inputSchema: object;
+	annotations?: ToolAnnotations;
 	handler: (args: Record<string, unknown>) => Promise<CallToolResult>;
 }
 

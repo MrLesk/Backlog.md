@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
+import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { normalizeDependencies } from "../utils/task-builders.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -60,7 +61,7 @@ async function createTaskViaCore(
 		assignee: options.assignee ? [options.assignee] : undefined,
 		dependencies: options.dependencies ? normalizeDependencies(options.dependencies) : undefined,
 		parentTaskId: options.parent
-			? options.parent.startsWith("task-")
+			? hasAnyPrefix(options.parent)
 				? options.parent
 				: `task-${options.parent}`
 			: undefined,
@@ -107,38 +108,6 @@ async function createTaskViaCore(
 	}
 }
 
-async function _createTaskViaCLI(
-	options: TaskCreateOptions,
-	testDir: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string; taskId?: string }> {
-	// Build CLI arguments
-	const args = [CLI_PATH, "task", "create", options.title];
-
-	if (options.description) args.push("--description", options.description);
-	if (options.assignee) args.push("--assignee", options.assignee);
-	if (options.status) args.push("--status", options.status);
-	if (options.labels) args.push("--labels", options.labels);
-	if (options.priority) args.push("--priority", options.priority);
-	if (options.ac) args.push("--ac", options.ac);
-	if (options.plan) args.push("--plan", options.plan);
-	if (options.draft) args.push("--draft");
-	if (options.parent) args.push("--parent", options.parent);
-	if (options.dependencies) args.push("--dep", options.dependencies);
-
-	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
-
-	// Extract task ID from stdout
-	const match = result.stdout.toString().match(/Created (?:task|draft) (task-\d+)/);
-	const taskId = match ? match[1] : undefined;
-
-	return {
-		exitCode: result.exitCode,
-		stdout: result.stdout.toString(),
-		stderr: result.stderr.toString(),
-		taskId,
-	};
-}
-
 export interface TaskEditOptions {
 	taskId: string;
 	title?: string;
@@ -172,7 +141,7 @@ async function editTaskViaCore(
 		const core = new Core(testDir);
 
 		// Load existing task
-		const taskId = options.taskId.startsWith("task-") ? options.taskId : `task-${options.taskId}`;
+		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
 		const existingTask = await core.filesystem.loadTask(taskId);
 		if (!existingTask) {
 			return {
@@ -214,32 +183,6 @@ async function editTaskViaCore(
 	}
 }
 
-async function _editTaskViaCLI(
-	options: TaskEditOptions,
-	testDir: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	// Build CLI arguments
-	const args = [CLI_PATH, "task", "edit", options.taskId];
-
-	if (options.title) args.push("--title", options.title);
-	if (options.description) args.push("--description", options.description);
-	if (options.assignee) args.push("--assignee", options.assignee);
-	if (options.status) args.push("--status", options.status);
-	if (options.labels) args.push("--labels", options.labels);
-	if (options.priority) args.push("--priority", options.priority);
-	if (options.dependencies) args.push("--dep", options.dependencies);
-	if (options.notes) args.push("--notes", options.notes);
-	if (options.plan) args.push("--plan", options.plan);
-
-	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
-
-	return {
-		exitCode: result.exitCode,
-		stdout: result.stdout.toString(),
-		stderr: result.stderr.toString(),
-	};
-}
-
 export interface TaskViewOptions {
 	taskId: string;
 	plain?: boolean;
@@ -264,7 +207,7 @@ async function viewTaskViaCore(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
 		const core = new Core(testDir);
-		const taskId = options.taskId.startsWith("task-") ? options.taskId : `task-${options.taskId}`;
+		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
 
 		const task = await core.filesystem.loadTask(taskId);
 		if (!task) {
@@ -307,32 +250,6 @@ async function viewTaskViaCore(
 	}
 }
 
-async function _viewTaskViaCLI(
-	options: TaskViewOptions,
-	testDir: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	const args = [CLI_PATH, "task"];
-
-	// Handle both "task 1" and "task view 1" formats
-	if (options.useViewCommand) {
-		args.push("view", options.taskId);
-	} else {
-		args.push(options.taskId);
-	}
-
-	if (options.plain) {
-		args.push("--plain");
-	}
-
-	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
-
-	return {
-		exitCode: result.exitCode,
-		stdout: result.stdout.toString(),
-		stderr: result.stderr.toString(),
-	};
-}
-
 /**
  * Platform-aware CLI help command execution
  */
@@ -354,6 +271,8 @@ Options:
   -l, --labels <labels>           add labels (comma-separated)
   --priority <priority>           set task priority (high, medium, low)
   --ac <criteria>                 acceptance criteria (comma-separated)
+  --dod <item>                    add Definition of Done item (can be used multiple times)
+  --no-dod-defaults               disable Definition of Done defaults
   --plan <plan>                   implementation plan
   --draft                         create as draft
   -p, --parent <taskId>           specify parent task ID
@@ -467,33 +386,6 @@ async function listTasksViaCore(
 			stderr: error instanceof Error ? error.message : String(error),
 		};
 	}
-}
-
-async function _listTasksViaCLI(
-	options: TaskListOptions,
-	testDir: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	const args = [CLI_PATH, "task", "list"];
-
-	if (options.plain) {
-		args.push("--plain");
-	}
-
-	if (options.status) {
-		args.push("-s", options.status);
-	}
-
-	if (options.assignee) {
-		args.push("-a", options.assignee);
-	}
-
-	const result = await $`bun ${args}`.cwd(testDir).quiet().nothrow();
-
-	return {
-		exitCode: result.exitCode,
-		stdout: result.stdout.toString(),
-		stderr: result.stderr.toString(),
-	};
 }
 
 export { isWindows };

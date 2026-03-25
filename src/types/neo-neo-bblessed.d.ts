@@ -1,6 +1,16 @@
 declare module "neo-neo-bblessed" {
 	export interface ProgramInterface {
+		disableMouse(): void;
+		enableMouse(): void;
+		hideCursor(): void;
+		showCursor(): void;
+		input: NodeJS.EventEmitter;
 		pause?: () => (() => void) | undefined;
+		flush?: () => void;
+		put?: {
+			keypad_local?: () => void;
+			keypad_xmit?: () => void;
+		};
 	}
 
 	export interface ScreenOptions {
@@ -11,7 +21,7 @@ declare module "neo-neo-bblessed" {
 	}
 
 	export interface ScreenInterface {
-		program?: ProgramInterface;
+		program: ProgramInterface;
 		key(keys: string | string[], callback: (...args: unknown[]) => void): void;
 		on(event: string, callback: (...args: unknown[]) => void): void;
 		append(el: ElementInterface): void;
@@ -22,6 +32,8 @@ declare module "neo-neo-bblessed" {
 		height: number;
 		emit(event: string): void;
 		title?: string;
+		leave(): void;
+		enter(): void;
 	}
 
 	export interface ElementInterface {

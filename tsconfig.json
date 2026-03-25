@@ -20,8 +20,8 @@
 		"noUncheckedIndexedAccess": true,
 		"noImplicitOverride": true,
 		// Some stricter flags (disabled by default)
-		"noUnusedLocals": false,
-		"noUnusedParameters": false,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
 		"noPropertyAccessFromIndexSignature": false
 	},
 	"exclude": []

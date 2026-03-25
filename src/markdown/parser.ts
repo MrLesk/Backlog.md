@@ -1,13 +1,19 @@
 import matter from "gray-matter";
-import type { AcceptanceCriterion, Decision, Document, ParsedMarkdown, Task } from "../types/index.ts";
-import { AcceptanceCriteriaManager, extractStructuredSection, STRUCTURED_SECTION_KEYS } from "./structured-sections.ts";
+import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
+import {
+	AcceptanceCriteriaManager,
+	DefinitionOfDoneManager,
+	extractStructuredSection,
+	STRUCTURED_SECTION_KEYS,
+} from "./structured-sections.ts";
 
 function normalizeFlowList(prefix: string, rawValue: string): string | null {
 	// Handle inline lists like assignee: [@user, "someone"]
 	const match = rawValue.match(/^\[(.*)\]\s*(#.*)?$/);
 	if (!match) return null;
 
-	const [, listBody, comment] = match;
+	const listBody = match[1] ?? "";
+	const comment = match[2];
 	const items = listBody
 		.split(",")
 		.map((entry) => entry.trim())
@@ -36,8 +42,9 @@ function preprocessFrontmatter(frontmatter: string): string {
 			const match = line.match(/^(\s*(?:assignee|reporter):\s*)(.*)$/);
 			if (!match) return line;
 
-			const [, prefix, raw] = match;
-			const value = raw?.trim() || "";
+			const prefix = match[1] ?? "";
+			const raw = match[2] ?? "";
+			const value = raw.trim();
 
 			const normalizedFlowList = normalizeFlowList(prefix, value);
 			if (normalizedFlowList !== null) {
@@ -51,7 +58,7 @@ function preprocessFrontmatter(frontmatter: string): string {
 				!value.startsWith('"') &&
 				!value.startsWith("-")
 			) {
-				return `${prefix}"${value.replace(/"/g, '\\"')}"`;
+				return `${prefix}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 			}
 			return line;
 		})
@@ -126,7 +133,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 	if (match) {
 		const processed = preprocessFrontmatter(match[1] || "");
 		// Replace with consistent line endings
-		toParse = content.replace(fmRegex, `---\n${processed}\n---`);
+		toParse = content.replace(fmRegex, () => `---\n${processed}\n---`);
 	}
 
 	const parsed = matter(toParse);
@@ -147,11 +154,13 @@ export function parseTask(content: string): Task {
 
 	// Parse structured acceptance criteria (checked/text/index) from all sections
 	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(rawContent);
+	const structuredDefinitionOfDone: AcceptanceCriterion[] = DefinitionOfDoneManager.parseAllCriteria(rawContent);
 
 	// Parse other sections
 	const descriptionSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.description) || "";
 	const planSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationPlan) || undefined;
 	const notesSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationNotes) || undefined;
+	const finalSummarySection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary) || undefined;
 
 	return {
 		id: String(frontmatter.id || ""),
@@ -168,11 +177,15 @@ export function parseTask(content: string): Task {
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
+		references: Array.isArray(frontmatter.references) ? frontmatter.references.map(String) : [],
+		documentation: Array.isArray(frontmatter.documentation) ? frontmatter.documentation.map(String) : [],
 		rawContent,
 		acceptanceCriteriaItems: structuredCriteria,
+		definitionOfDoneItems: structuredDefinitionOfDone,
 		description: descriptionSection,
 		implementationPlan: planSection,
 		implementationNotes: notesSection,
+		finalSummary: finalSummarySection,
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
 		priority: validatedPriority,
@@ -208,6 +221,17 @@ export function parseDocument(content: string): Document {
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
 		rawContent,
 		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+	};
+}
+
+export function parseMilestone(content: string): Milestone {
+	const { frontmatter, content: rawContent } = parseMarkdown(content);
+
+	return {
+		id: String(frontmatter.id || ""),
+		title: String(frontmatter.title || ""),
+		description: extractSection(rawContent, "Description") || "",
+		rawContent,
 	};
 }
 

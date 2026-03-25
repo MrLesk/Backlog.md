@@ -3,6 +3,7 @@ import type {
 	BacklogConfig,
 	Decision,
 	Document,
+	Milestone,
 	SearchPriorityFilter,
 	SearchResult,
 	SearchResultType,
@@ -16,6 +17,16 @@ export interface ReorderTaskPayload {
 	taskId: string;
 	targetStatus: string;
 	orderedTaskIds: string[];
+	targetMilestone?: string | null;
+}
+
+export interface InitializationStatus {
+	initialized: boolean;
+	projectPath: string;
+	backlogDirectory?: string | null;
+	backlogDirectorySource?: "backlog" | ".backlog" | "custom" | null;
+	configLocation?: "folder" | "root" | null;
+	rootConfigPath?: string | null;
 }
 
 // Enhanced error types for better error handling
@@ -208,7 +219,10 @@ export class ApiClient {
 		});
 	}
 
-	async updateTask(id: string, updates: Partial<Task>): Promise<Task> {
+	async updateTask(
+		id: string,
+		updates: Omit<Partial<Task>, "milestone"> & { milestone?: string | null },
+	): Promise<Task> {
 		return this.fetchJson<Task>(`${API_BASE}/tasks/${id}`, {
 			method: "PUT",
 			body: JSON.stringify(updates),
@@ -400,6 +414,56 @@ export class ApiClient {
 		return response.json();
 	}
 
+	async fetchMilestones(): Promise<Milestone[]> {
+		const response = await fetch(`${API_BASE}/milestones`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch milestones");
+		}
+		return response.json();
+	}
+
+	async fetchArchivedMilestones(): Promise<Milestone[]> {
+		const response = await fetch(`${API_BASE}/milestones/archived`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch archived milestones");
+		}
+		return response.json();
+	}
+
+	async fetchMilestone(id: string): Promise<Milestone> {
+		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch milestone");
+		}
+		return response.json();
+	}
+
+	async createMilestone(title: string, description?: string): Promise<Milestone> {
+		const response = await fetch(`${API_BASE}/milestones`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ title, description }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create milestone");
+		}
+		return response.json();
+	}
+
+	async archiveMilestone(id: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
+		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
+			method: "POST",
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to archive milestone");
+		}
+		return response.json();
+	}
+
 	async fetchStatistics(): Promise<
 		TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
 	> {
@@ -408,14 +472,17 @@ export class ApiClient {
 		>(`${API_BASE}/statistics`);
 	}
 
-	async checkStatus(): Promise<{ initialized: boolean; projectPath: string }> {
-		return this.fetchJson<{ initialized: boolean; projectPath: string }>(`${API_BASE}/status`);
+	async checkStatus(): Promise<InitializationStatus> {
+		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
 	}
 
 	async initializeProject(options: {
 		projectName: string;
+		backlogDirectory?: string;
+		backlogDirectorySource?: "backlog" | ".backlog" | "custom";
+		configLocation?: "folder" | "root";
 		integrationMode: "mcp" | "cli" | "none";
-		mcpClients?: ("claude" | "codex" | "gemini" | "guide")[];
+		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "guide")[];
 		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];
 		installClaudeAgent?: boolean;
 		advancedConfig?: {
@@ -425,6 +492,7 @@ export class ApiClient {
 			bypassGitHooks?: boolean;
 			autoCommit?: boolean;
 			zeroPaddedIds?: number;
+			taskPrefix?: string;
 			defaultEditor?: string;
 			defaultPort?: number;
 			autoOpenBrowser?: boolean;

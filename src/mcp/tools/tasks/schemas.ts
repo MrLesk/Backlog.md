@@ -11,6 +11,10 @@ export const taskListSchema: JsonSchema = {
 			type: "string",
 			maxLength: 100,
 		},
+		milestone: {
+			type: "string",
+			maxLength: 100,
+		},
 		labels: {
 			type: "array",
 			items: { type: "string", maxLength: 50 },
@@ -69,6 +73,19 @@ export const taskViewSchema: JsonSchema = {
 };
 
 export const taskArchiveSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		id: {
+			type: "string",
+			minLength: 1,
+			maxLength: 50,
+		},
+	},
+	required: ["id"],
+	additionalProperties: false,
+};
+
+export const taskCompleteSchema: JsonSchema = {
 	type: "object",
 	properties: {
 		id: {

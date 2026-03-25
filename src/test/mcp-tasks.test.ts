@@ -4,7 +4,7 @@ import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 // Helper to extract text from MCP content (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -33,7 +33,7 @@ describe("MCP task tools (MVP)", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-		await mcpServer.initializeProject("Test Project");
+		await initializeTestProject(mcpServer, "Test Project");
 
 		const config = await loadConfig(mcpServer);
 		registerTaskTools(mcpServer, config);
@@ -62,7 +62,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(createResult.content)).toContain("Task task-1 - Agent onboarding checklist");
+		expect(getText(createResult.content)).toContain("Task TASK-1 - Agent onboarding checklist");
 
 		const listResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_list", arguments: { search: "onboarding" } },
@@ -70,7 +70,7 @@ describe("MCP task tools (MVP)", () => {
 
 		const listText = (listResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
 		expect(listText).toContain("To Do:");
-		expect(listText).toContain("[HIGH] task-1 - Agent onboarding checklist");
+		expect(listText).toContain("[HIGH] TASK-1 - Agent onboarding checklist");
 		expect(listText).not.toContain("Implementation Plan:");
 		expect(listText).not.toContain("Acceptance Criteria:");
 
@@ -80,15 +80,191 @@ describe("MCP task tools (MVP)", () => {
 
 		const searchText = getText(searchResult.content);
 		expect(searchText).toContain("Tasks:");
-		expect(searchText).toContain("task-1 - Agent onboarding checklist");
+		expect(searchText).toContain("TASK-1 - Agent onboarding checklist");
 		expect(searchText).toContain("(To Do)");
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("filters task_list by milestone using closest matching and combines with status", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Milestone Task One",
+					status: "To Do",
+					milestone: "Release-1",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Milestone Task Two",
+					status: "In Progress",
+					milestone: "release-1",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Other Milestone Task",
+					status: "To Do",
+					milestone: "Release-2",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "No Milestone Task",
+					status: "To Do",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Roadmap Milestone Task",
+					status: "To Do",
+					milestone: "Roadmap Alpha",
+				},
+			},
+		});
+
+		const milestoneResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { milestone: "RELEASE-1" } },
+		});
+		const milestoneText = (milestoneResult.content ?? [])
+			.map((entry) => ("text" in entry ? entry.text : ""))
+			.join("\n\n");
+		expect(milestoneText).toContain("TASK-1 - Milestone Task One");
+		expect(milestoneText).toContain("TASK-2 - Milestone Task Two");
+		expect(milestoneText).not.toContain("TASK-3 - Other Milestone Task");
+		expect(milestoneText).not.toContain("TASK-4 - No Milestone Task");
+		expect(milestoneText).not.toContain("TASK-5 - Roadmap Milestone Task");
+
+		const fuzzyResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { milestone: "roadmp" } },
+		});
+		const fuzzyText = (fuzzyResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
+		expect(fuzzyText).toContain("TASK-5 - Roadmap Milestone Task");
+		expect(fuzzyText).not.toContain("TASK-1 - Milestone Task One");
+		expect(fuzzyText).not.toContain("TASK-2 - Milestone Task Two");
+		expect(fuzzyText).not.toContain("TASK-3 - Other Milestone Task");
+		expect(fuzzyText).not.toContain("TASK-4 - No Milestone Task");
+
+		const combinedResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { milestone: "release-1", status: "To Do" } },
+		});
+		const combinedText = (combinedResult.content ?? [])
+			.map((entry) => ("text" in entry ? entry.text : ""))
+			.join("\n\n");
+		expect(combinedText).toContain("TASK-1 - Milestone Task One");
+		expect(combinedText).not.toContain("TASK-2 - Milestone Task Two");
+		expect(combinedText).not.toContain("TASK-3 - Other Milestone Task");
+		expect(combinedText).not.toContain("TASK-4 - No Milestone Task");
+		expect(combinedText).not.toContain("TASK-5 - Roadmap Milestone Task");
+	});
+
+	it("applies milestone filtering in task_list draft status path", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Draft Milestone One",
+					status: "Draft",
+					milestone: "draft-alpha",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Draft Milestone Two",
+					status: "Draft",
+					milestone: "draft-beta",
+				},
+			},
+		});
+
+		const draftResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { status: "Draft", milestone: "draft-alph" } },
+		});
+		const draftText = getText(draftResult.content);
+		expect(draftText).toContain("DRAFT-1 - Draft Milestone One");
+		expect(draftText).not.toContain("DRAFT-2 - Draft Milestone Two");
+	});
+
+	it("includes completed tasks in task_search results and excludes archived tasks", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Active task",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Completed task",
+					status: "Done",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_complete",
+				arguments: {
+					id: "task-2",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Archived task",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_archive",
+				arguments: {
+					id: "task-3",
+				},
+			},
+		});
+
+		const searchResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_search", arguments: { query: "task" } },
+		});
+
+		const searchText = getText(searchResult.content);
+		expect(searchText).toContain("TASK-2 - Completed task");
+		expect(searchText).toContain("(Done)");
+		expect(searchText).not.toContain("TASK-3 - Archived task");
+	});
+
 	it("exposes status enums and defaults from configuration", async () => {
 		const config = await loadConfig(mcpServer);
-		const expectedStatuses =
+		const configuredStatuses =
 			config.statuses && config.statuses.length > 0 ? [...config.statuses] : Array.from(DEFAULT_STATUSES);
+		const normalizedStatuses = configuredStatuses.map((status) => status.trim());
+		const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
+		const expectedStatuses = hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
 		const tools = await mcpServer.testInterface.listTools();
 		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
 
@@ -99,14 +275,48 @@ describe("MCP task tools (MVP)", () => {
 		const editStatusSchema = editSchema?.properties?.status;
 
 		expect(createStatusSchema?.enum).toEqual(expectedStatuses);
-		expect(createStatusSchema?.default).toBe(expectedStatuses[0] ?? DEFAULT_STATUSES[0]);
+		expect(createStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
 		expect(createStatusSchema?.enumCaseInsensitive).toBe(true);
 		expect(createStatusSchema?.enumNormalizeWhitespace).toBe(true);
 
 		expect(editStatusSchema?.enum).toEqual(expectedStatuses);
-		expect(editStatusSchema?.default).toBe(expectedStatuses[0] ?? DEFAULT_STATUSES[0]);
+		expect(editStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
 		expect(editStatusSchema?.enumCaseInsensitive).toBe(true);
 		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
+	});
+
+	it("describes Definition of Done fields as task-level in schemas", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
+
+		expect(createSchema?.properties?.definitionOfDoneAdd?.description).toContain("Task-specific");
+		expect(createSchema?.properties?.disableDefinitionOfDoneDefaults?.description).toContain(
+			"definition_of_done_defaults_upsert",
+		);
+		expect(editSchema?.properties?.definitionOfDoneAdd?.description).toContain("Task-specific");
+		expect(editSchema?.properties?.definitionOfDoneCheck?.description).toContain("this task");
+	});
+
+	it("exposes ordinal in task schemas", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
+
+		expect(createSchema?.properties?.ordinal).toEqual({
+			type: "number",
+			minimum: 0,
+			description:
+				"Optional non-negative ordering value for manual task ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
+		});
+		expect(editSchema?.properties?.ordinal).toEqual({
+			type: "number",
+			minimum: 0,
+			description:
+				"Set task ordinal for manual ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
+		});
 	});
 
 	it("allows case-insensitive and whitespace-normalized status values", async () => {
@@ -121,7 +331,7 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const createText = getText(createResult.content);
-		expect(createText).toContain("Task task-1 - Status normalization");
+		expect(createText).toContain("Task TASK-1 - Status normalization");
 
 		const createdTask = await mcpServer.getTask("task-1");
 		expect(createdTask?.status).toBe("Done");
@@ -137,7 +347,7 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const editText = getText(editResult.content);
-		expect(editText).toContain("Task task-1 - Status normalization");
+		expect(editText).toContain("Task TASK-1 - Status normalization");
 
 		const updatedTask = await mcpServer.getTask("task-1");
 		expect(updatedTask?.status).toBe("In Progress");
@@ -155,7 +365,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(seedTask.content)).toContain("Task task-1 - Refine MCP documentation");
+		expect(getText(seedTask.content)).toContain("Task TASK-1 - Refine MCP documentation");
 
 		// Create dependency task
 		const dependencyTask = await mcpServer.testInterface.callTool({
@@ -167,7 +377,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(dependencyTask.content)).toContain("Task task-2 - Placeholder dependency");
+		expect(getText(dependencyTask.content)).toContain("Task TASK-2 - Placeholder dependency");
 
 		const editResult = await mcpServer.testInterface.callTool({
 			params: {
@@ -189,7 +399,7 @@ describe("MCP task tools (MVP)", () => {
 		const editText = getText(editResult.content);
 		expect(editText).toContain("Status: ◒ In Progress");
 		expect(editText).toContain("Labels: docs");
-		expect(editText).toContain("Dependencies: task-2");
+		expect(editText).toContain("Dependencies: TASK-2");
 		expect(editText).toContain("Implementation Plan:");
 		expect(editText).toContain("Implementation Notes:");
 		expect(editText).toContain("#1 Plan documented");
@@ -210,5 +420,315 @@ describe("MCP task tools (MVP)", () => {
 		const criteriaText = getText(criteriaUpdate.content);
 		expect(criteriaText).toContain("- [x] #1 Plan documented");
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
+	});
+
+	it("creates, edits, lists, and views tasks with ordinal", async () => {
+		const createdA = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Ordinal task A",
+					status: "To Do",
+					priority: "low",
+					ordinal: 20,
+				},
+			},
+		});
+		const createdB = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Ordinal task B",
+					status: "To Do",
+					priority: "high",
+					ordinal: 10,
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Ordinal task C",
+					status: "To Do",
+					priority: "medium",
+				},
+			},
+		});
+
+		expect(getText(createdA.content)).toContain("Ordinal: 20");
+		expect(getText(createdB.content)).toContain("Ordinal: 10");
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { status: "To Do", search: "Ordinal task" } },
+		});
+		const listText = getText(listResult.content);
+		expect(listText.indexOf("TASK-2 - Ordinal task B")).toBeLessThan(listText.indexOf("TASK-1 - Ordinal task A"));
+		expect(listText.indexOf("TASK-1 - Ordinal task A")).toBeLessThan(listText.indexOf("TASK-3 - Ordinal task C"));
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-3",
+					ordinal: 5,
+				},
+			},
+		});
+		expect(getText(editResult.content)).toContain("Ordinal: 5");
+
+		const updatedTask = await mcpServer.getTask("task-3");
+		expect(updatedTask?.ordinal).toBe(5);
+
+		const viewResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-3" } },
+		});
+		expect(getText(viewResult.content)).toContain("Ordinal: 5");
+	});
+
+	it("applies task_list limit after ordinal-aware sorting", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Limited ordinal later id",
+					status: "To Do",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Limited ordinal first by order",
+					status: "To Do",
+					ordinal: 1000,
+				},
+			},
+		});
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_list",
+				arguments: {
+					status: "To Do",
+					search: "Limited ordinal",
+					limit: 1,
+				},
+			},
+		});
+
+		const listText = getText(listResult.content);
+		expect(listText).toContain("TASK-2 - Limited ordinal first by order");
+		expect(listText).not.toContain("TASK-1 - Limited ordinal later id");
+	});
+
+	it("rejects invalid ordinal input", async () => {
+		const invalidCreate = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Invalid ordinal create",
+					ordinal: -1,
+				},
+			},
+		});
+		expect(invalidCreate.isError).toBe(true);
+		expect(getText(invalidCreate.content)).toContain("must be at least 0");
+
+		const nullCreate = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Null ordinal create",
+					ordinal: null,
+				},
+			},
+		});
+		expect(nullCreate.isError).toBe(true);
+		expect(getText(nullCreate.content)).toContain("Ordinal must be a non-negative number.");
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Valid task",
+				},
+			},
+		});
+
+		const invalidEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					ordinal: -1,
+				},
+			},
+		});
+		expect(invalidEdit.isError).toBe(true);
+		expect(getText(invalidEdit.content)).toContain("must be at least 0");
+
+		const nullEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					ordinal: null,
+				},
+			},
+		});
+		expect(nullEdit.isError).toBe(true);
+		expect(getText(nullEdit.content)).toContain("Ordinal must be a non-negative number.");
+	});
+
+	it("creates and edits Definition of Done items", async () => {
+		const config = await loadConfig(mcpServer);
+		config.definitionOfDone = ["Run tests", "Update docs"];
+		await mcpServer.filesystem.saveConfig(config);
+
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "DoD MCP task",
+					definitionOfDoneAdd: ["Ship notes"],
+				},
+			},
+		});
+
+		const createText = getText(createResult.content);
+		expect(createText).toContain("Definition of Done:");
+		expect(createText).toContain("- [ ] #1 Run tests");
+		expect(createText).toContain("- [ ] #2 Update docs");
+		expect(createText).toContain("- [ ] #3 Ship notes");
+
+		const disableResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "DoD no defaults",
+					disableDefinitionOfDoneDefaults: true,
+				},
+			},
+		});
+
+		const disableText = getText(disableResult.content);
+		expect(disableText).toContain("Definition of Done:");
+		expect(disableText).toContain("No Definition of Done items defined");
+
+		const checkResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					definitionOfDoneCheck: [2],
+				},
+			},
+		});
+
+		const checkText = getText(checkResult.content);
+		expect(checkText).toContain("- [x] #2 Update docs");
+
+		const removeResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					definitionOfDoneRemove: [1],
+				},
+			},
+		});
+
+		const removeText = getText(removeResult.content);
+		expect(removeText).toContain("- [x] #1 Update docs");
+
+		const uncheckResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					definitionOfDoneUncheck: [1],
+				},
+			},
+		});
+
+		const uncheckText = getText(uncheckResult.content);
+		expect(uncheckText).toContain("- [ ] #1 Update docs");
+	});
+
+	it("includes subtask list in task_view output and hides it when empty", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Parent task",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Child task A",
+					parentTaskId: "TASK-1",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Child task B",
+					parentTaskId: "TASK-1",
+				},
+			},
+		});
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Standalone task",
+				},
+			},
+		});
+
+		const parentView = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-1" } },
+		});
+
+		const parentText = getText(parentView.content);
+		expect(parentText).toContain("Subtasks (2):");
+		expect(parentText).toContain("- TASK-1.1 - Child task A");
+		expect(parentText).toContain("- TASK-1.2 - Child task B");
+		expect(parentText.indexOf("TASK-1.1")).toBeLessThan(parentText.indexOf("TASK-1.2"));
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1.1",
+					title: "Child task A updated",
+				},
+			},
+		});
+
+		const parentAfterEdit = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-1" } },
+		});
+
+		const parentAfterEditText = getText(parentAfterEdit.content);
+		expect(parentAfterEditText).toContain("- TASK-1.1 - Child task A updated");
+
+		const standaloneView = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-2" } },
+		});
+
+		const standaloneText = getText(standaloneView.content);
+		expect(standaloneText).not.toContain("Subtasks (");
+		expect(standaloneText).not.toContain("Subtasks:");
 	});
 });

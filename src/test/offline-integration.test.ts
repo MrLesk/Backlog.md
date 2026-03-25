@@ -86,7 +86,7 @@ remote_operations: false
 		// List tasks should work without remote operations
 		const tasks = await core.listTasksWithMetadata();
 		expect(tasks).toHaveLength(1);
-		expect(tasks[0]?.id).toBe("task-1");
+		expect(tasks[0]?.id).toBe("TASK-1");
 		expect(tasks[0]?.title).toBe("Test task in offline mode");
 	});
 
@@ -125,8 +125,8 @@ remote_operations: false
 		expect(tasks).toHaveLength(2);
 
 		const taskIds = tasks.map((t) => t.id);
-		expect(taskIds).toContain("task-1");
-		expect(taskIds).toContain("task-2");
+		expect(taskIds).toContain("TASK-1");
+		expect(taskIds).toContain("TASK-2");
 	});
 
 	it("should handle repository without remote origin gracefully", async () => {

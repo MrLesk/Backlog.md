@@ -10,6 +10,16 @@
     --radius-circle: 9999px;
 }
 
+@layer base {
+    button {
+        cursor: pointer;
+    }
+
+    button:disabled {
+        cursor: not-allowed;
+    }
+}
+
 @layer utilities {
     .rounded-circle {
         border-radius: var(--radius-circle);

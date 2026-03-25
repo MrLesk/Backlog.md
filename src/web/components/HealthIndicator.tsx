@@ -14,12 +14,12 @@ export function HealthIndicator() {
 						Server disconnected
 					</span>
 				</div>
-				<button
-					onClick={retry}
-					className="px-3 py-1.5 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 rounded text-xs font-medium transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-300 dark:focus:ring-red-400"
-				>
-					Retry
-				</button>
+					<button
+						onClick={retry}
+						className="px-3 py-1.5 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 rounded text-xs font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-300 dark:focus:ring-red-400"
+					>
+						Retry
+					</button>
 			</div>
 		);
 	}

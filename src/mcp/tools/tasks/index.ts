@@ -5,7 +5,7 @@ import { generateTaskCreateSchema, generateTaskEditSchema } from "../../utils/sc
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -18,6 +18,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			name: "task_create",
 			description: "Create a new task using Backlog.md",
 			inputSchema: taskCreateSchema,
+			annotations: { title: "Create Task", destructiveHint: false },
 		},
 		taskCreateSchema,
 		async (input) => handlers.createTask(input as TaskCreateArgs),
@@ -28,6 +29,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			name: "task_list",
 			description: "List Backlog.md tasks from with optional filtering",
 			inputSchema: taskListSchema,
+			annotations: { title: "List Tasks", readOnlyHint: true, destructiveHint: false },
 		},
 		taskListSchema,
 		async (input) => handlers.listTasks(input as TaskListArgs),
@@ -38,6 +40,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			name: "task_search",
 			description: "Search Backlog.md tasks by title and description",
 			inputSchema: taskSearchSchema,
+			annotations: { title: "Search Tasks", readOnlyHint: true, destructiveHint: false },
 		},
 		taskSearchSchema,
 		async (input) => handlers.searchTasks(input as TaskSearchArgs),
@@ -47,8 +50,9 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		{
 			name: "task_edit",
 			description:
-				"Edit a Backlog.md task, including metadata, implementation plan/notes, dependencies, and acceptance criteria",
+				"Edit a Backlog.md task, including metadata, implementation plan/notes, dependencies, acceptance criteria, and task-specific Definition of Done items",
 			inputSchema: taskEditSchema,
+			annotations: { title: "Edit Task", destructiveHint: false },
 		},
 		taskEditSchema,
 		async (input) => handlers.editTask(input as unknown as TaskEditRequest),
@@ -59,6 +63,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			name: "task_view",
 			description: "View a Backlog.md task details",
 			inputSchema: taskViewSchema,
+			annotations: { title: "View Task", readOnlyHint: true, destructiveHint: false },
 		},
 		taskViewSchema,
 		async (input) => handlers.viewTask(input as { id: string }),
@@ -69,9 +74,21 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			name: "task_archive",
 			description: "Archive a Backlog.md task",
 			inputSchema: taskArchiveSchema,
+			annotations: { title: "Archive Task", destructiveHint: true },
 		},
 		taskArchiveSchema,
 		async (input) => handlers.archiveTask(input as { id: string }),
+	);
+
+	const completeTaskTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_complete",
+			description: "Complete a Backlog.md task (move it to the completed folder)",
+			inputSchema: taskCompleteSchema,
+			annotations: { title: "Complete Task", destructiveHint: true },
+		},
+		taskCompleteSchema,
+		async (input) => handlers.completeTask(input as { id: string }),
 	);
 
 	server.addTool(createTaskTool);
@@ -80,7 +97,8 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	server.addTool(editTaskTool);
 	server.addTool(viewTaskTool);
 	server.addTool(archiveTaskTool);
+	server.addTool(completeTaskTool);
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
-export { taskArchiveSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+export { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";

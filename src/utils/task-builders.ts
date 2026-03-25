@@ -1,4 +1,5 @@
 import type { Core } from "../core/backlog.ts";
+import type { AcceptanceCriterion } from "../types/index.ts";
 import { normalizeTaskId, taskIdsEqual } from "./task-path.ts";
 
 /**
@@ -44,8 +45,9 @@ export async function validateDependencies(
 	if (dependencies.length === 0) {
 		return { valid, invalid };
 	}
-	// Load both tasks and drafts to validate dependencies
-	const [tasks, drafts] = await Promise.all([core.filesystem.listTasks(), core.filesystem.listDrafts()]);
+	// Task dependencies should honor cross-branch visibility when enabled in config,
+	// while draft dependencies remain local-only.
+	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.filesystem.listDrafts()]);
 	const knownIds = [...tasks.map((t) => t.id), ...drafts.map((d) => d.id)];
 	for (const dep of dependencies) {
 		const match = knownIds.find((id) => taskIdsEqual(dep, id));
@@ -107,6 +109,19 @@ export function toStringArray(value: unknown): string[] {
 }
 
 /**
+ * Parse repeated or comma-delimited CLI list values into a normalized string list.
+ * Returns `undefined` when the resulting list is empty.
+ */
+export function parseDelimitedStringList(value: unknown): string[] | undefined {
+	const entries = toStringArray(value).flatMap((entry) =>
+		String(entry)
+			.split(",")
+			.map((item) => item.trim()),
+	);
+	return normalizeStringList(entries);
+}
+
+/**
  * Parse a Commander option (single value or array) into a strictly positive integer list.
  * Throws an Error when any value is invalid so callers can surface CLI-friendly messaging.
  */
@@ -124,4 +139,18 @@ export function parsePositiveIndexList(value: unknown): number[] {
 export function stringArraysEqual(a: string[], b: string[]): boolean {
 	if (a.length !== b.length) return false;
 	return a.every((value, index) => value === b[index]);
+}
+
+export function buildDefinitionOfDoneItems(options: {
+	defaults?: string[];
+	add?: string[];
+	disableDefaults?: boolean;
+}): AcceptanceCriterion[] | undefined {
+	const defaults = options.disableDefaults ? [] : (options.defaults ?? []);
+	const additions = options.add ?? [];
+	const combined = [...defaults, ...additions].map((value) => String(value).trim()).filter((value) => value.length > 0);
+	if (combined.length === 0) {
+		return undefined;
+	}
+	return combined.map((text, index) => ({ index: index + 1, text, checked: false }));
 }

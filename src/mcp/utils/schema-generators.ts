@@ -8,16 +8,19 @@ import type { JsonSchema } from "../validation/validators.ts";
 export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
 	const configuredStatuses =
 		config.statuses && config.statuses.length > 0 ? [...config.statuses] : [...DEFAULT_STATUSES];
-	const defaultStatus = configuredStatuses[0] ?? DEFAULT_STATUSES[0];
+	const normalizedStatuses = configuredStatuses.map((status) => status.trim());
+	const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
+	const enumStatuses = hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
+	const defaultStatus = normalizedStatuses[0] ?? DEFAULT_STATUSES[0];
 
 	return {
 		type: "string",
 		maxLength: 100,
-		enum: configuredStatuses,
+		enum: enumStatuses,
 		enumCaseInsensitive: true,
 		enumNormalizeWhitespace: true,
 		default: defaultStatus,
-		description: `Status value (case-insensitive). Valid values: ${configuredStatuses.join(", ")}`,
+		description: `Status value (case-insensitive). Valid values: ${enumStatuses.join(", ")}`,
 	};
 }
 
@@ -42,6 +45,18 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				enum: ["high", "medium", "low"],
 			},
+			ordinal: {
+				type: "number",
+				minimum: 0,
+				description:
+					"Optional non-negative ordering value for manual task ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
+			},
+			milestone: {
+				type: "string",
+				minLength: 1,
+				maxLength: 100,
+				description: "Optional milestone label (trimmed).",
+			},
 			labels: {
 				type: "array",
 				items: {
@@ -63,12 +78,47 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 50,
 				},
 			},
+			references: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Reference URLs or file paths related to this task",
+			},
+			documentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Documentation URLs or file paths for understanding this task",
+			},
+			finalSummary: {
+				type: "string",
+				maxLength: 20000,
+				description: "Final summary for PR-style completion notes. Write this only when the task is complete.",
+			},
 			acceptanceCriteria: {
 				type: "array",
 				items: {
 					type: "string",
 					maxLength: 500,
 				},
+			},
+			definitionOfDoneAdd: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description:
+					"Task-specific Definition of Done items to append for this task only. Do not copy project defaults here.",
+			},
+			disableDefinitionOfDoneDefaults: {
+				type: "boolean",
+				description:
+					"Disable project-level Definition of Done defaults for this task creation. Use definition_of_done_defaults_upsert to change project defaults.",
 			},
 			parentTaskId: {
 				type: "string",
@@ -105,6 +155,18 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				enum: ["high", "medium", "low"],
 			},
+			ordinal: {
+				type: "number",
+				minimum: 0,
+				description:
+					"Set task ordinal for manual ordering. Lower values sort earlier. Prefer spaced integers such as 1000, 2000, 3000 to leave room for inserts.",
+			},
+			milestone: {
+				type: "string",
+				minLength: 1,
+				maxLength: 100,
+				description: "Set milestone label (string) or clear it (null).",
+			},
 			labels: {
 				type: "array",
 				items: {
@@ -126,9 +188,73 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 50,
 				},
 			},
+			references: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Set reference URLs or file paths (replaces existing)",
+			},
+			addReferences: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Add reference URLs or file paths",
+			},
+			removeReferences: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Remove reference URLs or file paths",
+			},
+			documentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Set documentation URLs or file paths (replaces existing)",
+			},
+			addDocumentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Add documentation URLs or file paths",
+			},
+			removeDocumentation: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Remove documentation URLs or file paths",
+			},
 			implementationNotes: {
 				type: "string",
 				maxLength: 10000,
+			},
+			finalSummary: {
+				type: "string",
+				maxLength: 20000,
+				description: "Final summary for PR-style completion notes. Write this only when the task is complete.",
+			},
+			finalSummaryAppend: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 5000,
+				},
+				maxItems: 20,
+			},
+			finalSummaryClear: {
+				type: "boolean",
 			},
 			notesSet: {
 				type: "string",
@@ -199,6 +325,43 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					minimum: 1,
 				},
 				maxItems: 50,
+			},
+			definitionOfDoneAdd: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				maxItems: 50,
+				description:
+					"Task-specific Definition of Done items to add for this task only. Use definition_of_done_defaults_upsert to change project defaults.",
+			},
+			definitionOfDoneRemove: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+				description: "Remove task-specific Definition of Done items by 1-based index on this task.",
+			},
+			definitionOfDoneCheck: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+				description: "Mark task-specific Definition of Done items as complete by 1-based index on this task.",
+			},
+			definitionOfDoneUncheck: {
+				type: "array",
+				items: {
+					type: "number",
+					minimum: 1,
+				},
+				maxItems: 50,
+				description: "Mark task-specific Definition of Done items as incomplete by 1-based index on this task.",
 			},
 		},
 		required: ["id"],

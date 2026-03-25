@@ -127,7 +127,7 @@
 
           buildInputs = with pkgs; [
             bun
-            nodejs_20
+            nodejs_24
             git
             biome
           ];

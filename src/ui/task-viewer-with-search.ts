@@ -6,16 +6,26 @@ import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import {
 	buildAcceptanceCriteriaItems,
+	buildDefinitionOfDoneItems,
 	formatDateForDisplay,
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
-import type { Task, TaskSearchResult } from "../types/index.ts";
+import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
-import { createTaskSearchIndex } from "../utils/task-search.ts";
+import { hasAnyPrefix } from "../utils/prefix-config.ts";
+import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
-import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
+import {
+	createFilterHeader,
+	type FilterControlId,
+	type FilterHeader,
+	type FilterState,
+} from "./components/filter-header.ts";
+import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { createGenericList, type GenericList } from "./components/generic-list.ts";
+import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
@@ -34,6 +44,102 @@ function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	}
 }
 
+function createMilestoneLabelResolver(milestones: Milestone[]): (milestone: string) => string {
+	const milestoneLabelsByKey = new Map<string, string>();
+	for (const milestone of milestones) {
+		const normalizedId = milestone.id.trim();
+		const normalizedTitle = milestone.title.trim();
+		if (!normalizedId || !normalizedTitle) continue;
+		milestoneLabelsByKey.set(normalizedId.toLowerCase(), normalizedTitle);
+		const idMatch = normalizedId.match(/^m-(\d+)$/i);
+		if (idMatch?.[1]) {
+			const numericAlias = String(Number.parseInt(idMatch[1], 10));
+			milestoneLabelsByKey.set(`m-${numericAlias}`, normalizedTitle);
+			milestoneLabelsByKey.set(numericAlias, normalizedTitle);
+		}
+		milestoneLabelsByKey.set(normalizedTitle.toLowerCase(), normalizedTitle);
+	}
+
+	return (milestone: string) => {
+		const normalized = milestone.trim();
+		if (!normalized) return milestone;
+		return milestoneLabelsByKey.get(normalized.toLowerCase()) ?? milestone;
+	};
+}
+
+export function buildTaskViewerMilestoneFilterModel(activeMilestones: Milestone[]): {
+	availableMilestoneTitles: string[];
+	resolveMilestoneLabel: (milestone: string) => string;
+} {
+	return {
+		availableMilestoneTitles: activeMilestones.map((milestone) => milestone.title),
+		resolveMilestoneLabel: createMilestoneLabelResolver(activeMilestones),
+	};
+}
+
+export type TaskListBoundaryDirection = "up" | "down";
+export type PendingSearchWrap = "to-first" | "to-last" | null;
+type PaneFocus = "list" | "detail";
+
+export function shouldMoveFromListBoundaryToSearch(
+	direction: TaskListBoundaryDirection,
+	selectedIndex: number,
+	totalTasks: number,
+): boolean {
+	if (totalTasks <= 0) {
+		return false;
+	}
+	if (direction === "up") {
+		return selectedIndex <= 0;
+	}
+	return selectedIndex >= totalTasks - 1;
+}
+
+export function shouldMoveFromDetailBoundaryToSearch(
+	direction: TaskListBoundaryDirection,
+	scrollOffset: number,
+): boolean {
+	if (direction !== "up") {
+		return false;
+	}
+	return scrollOffset <= 0;
+}
+
+export function resolveSearchExitTargetIndex(
+	direction: "up" | "down" | "escape",
+	pendingWrap: PendingSearchWrap,
+	totalTasks: number,
+	currentIndex: number | undefined,
+): number | undefined {
+	if (totalTasks <= 0) {
+		return undefined;
+	}
+	if (direction === "up" && pendingWrap === "to-last") {
+		return totalTasks - 1;
+	}
+	if (direction === "down" && pendingWrap === "to-first") {
+		return 0;
+	}
+	return currentIndex;
+}
+
+export function resolveFilterExitPane(
+	preferredPane: PaneFocus,
+	hasTaskList: boolean,
+	hasDetailPane: boolean,
+): PaneFocus | null {
+	if (preferredPane === "detail" && hasDetailPane) {
+		return "detail";
+	}
+	if (hasTaskList) {
+		return "list";
+	}
+	if (hasDetailPane) {
+		return "detail";
+	}
+	return null;
+}
+
 /**
  * Display task details with search/filter header UI
  */
@@ -47,6 +153,7 @@ export async function viewTaskEnhanced(
 		searchQuery?: string;
 		statusFilter?: string;
 		priorityFilter?: string;
+		milestoneFilter?: string;
 		labelFilter?: string[];
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
@@ -58,6 +165,7 @@ export async function viewTaskEnhanced(
 			statusFilter: string;
 			priorityFilter: string;
 			labelFilter: string[];
+			milestoneFilter: string;
 		}) => void;
 	} = {},
 ): Promise<void> {
@@ -79,10 +187,12 @@ export async function viewTaskEnhanced(
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
 	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
+	const milestoneEntities = await core.filesystem.listMilestones();
+	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(milestoneEntities);
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
-		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		const config = await core.filesystem.loadConfig();
 		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
 		labels = config?.labels || [];
@@ -102,7 +212,7 @@ export async function viewTaskEnhanced(
 
 			loadingScreen?.update("Preparing task list...");
 			const tasks = await core.queryTasks();
-			allTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && t.id.startsWith("task-"));
+			allTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		} finally {
 			await loadingScreen?.close();
 		}
@@ -125,6 +235,7 @@ export async function viewTaskEnhanced(
 	// Priority is already lowercase
 	let priorityFilter = options.priorityFilter || "";
 	let labelFilter: string[] = [];
+	let milestoneFilter = options.milestoneFilter || "";
 	let filteredTasks = [...allTasks];
 
 	if (options.labelFilter && options.labelFilter.length > 0) {
@@ -132,11 +243,18 @@ export async function viewTaskEnhanced(
 		labelFilter = options.labelFilter.filter((label) => availableSet.has(label.toLowerCase()));
 	}
 
-	const filtersActive = Boolean(searchQuery || statusFilter || priorityFilter || labelFilter.length > 0);
+	const filtersActive = Boolean(
+		searchQuery || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+	);
 	let requireInitialFilterSelection = filtersActive;
 
+	const enrichTask = (candidate: Task | null): Task | null => {
+		if (!candidate) return null;
+		return attachSubtaskSummaries(candidate, allTasks);
+	};
+
 	// Find the initial selected task
-	let currentSelectedTask = task;
+	let currentSelectedTask = enrichTask(task) ?? task;
 	let selectionRequestId = 0;
 	let noResultsMessage: string | null = null;
 
@@ -151,194 +269,168 @@ export async function viewTaskEnhanced(
 
 	// State for tracking focus
 	let currentFocus: "filters" | "list" | "detail" = "list";
-	let labelPickerOpen = false;
+	let filterPopupOpen = false;
+	let pendingSearchWrap: PendingSearchWrap = null;
+	let filterExitPane: PaneFocus = "list";
 
 	// Create filter header component
 	let filterHeader: FilterHeader;
 
-	const openLabelPicker = () => {
-		if (labelPickerOpen || availableLabels.length === 0) return;
+	const focusFilterControl = (filterId: FilterControlId) => {
+		switch (filterId) {
+			case "search":
+				filterHeader.focusSearch();
+				break;
+			case "status":
+				filterHeader.focusStatus();
+				break;
+			case "priority":
+				filterHeader.focusPriority();
+				break;
+			case "milestone":
+				filterHeader.focusMilestone();
+				break;
+			case "labels":
+				filterHeader.focusLabels();
+				break;
+		}
+	};
 
-		labelPickerOpen = true;
+	const openFilterPicker = async (filterId: Exclude<FilterControlId, "search">) => {
+		if (filterPopupOpen) {
+			return;
+		}
+		filterPopupOpen = true;
 
-		// Create popup first to get dimensions for backdrop
-		const popup = box({
-			parent: screen,
-			top: "center",
-			left: "center",
-			width: "50%",
-			height: "70%",
-			border: { type: "line" },
-			style: {
-				border: { fg: "yellow" },
-			},
-			label: "\u00A0Label Filter\u00A0",
-			tags: true,
-		});
-
-		const resolveDimension = (value: number | string | undefined, total: number): number => {
-			if (typeof value === "number") return value;
-			if (typeof value === "string") {
-				if (value.endsWith("%")) {
-					const pct = Number.parseFloat(value);
-					return Number.isFinite(pct) ? Math.floor((pct / 100) * total) : 0;
+		try {
+			if (filterId === "labels") {
+				const nextLabels = await openMultiSelectFilterPopup({
+					screen,
+					title: "Label Filter",
+					items: [...availableLabels].sort((a, b) => a.localeCompare(b)),
+					selectedItems: labelFilter,
+				});
+				if (nextLabels !== null) {
+					labelFilter = nextLabels;
+					filterHeader.setFilters({ labels: nextLabels });
+					applyFilters();
+					notifyFilterChange();
 				}
+				return;
 			}
-			return 0;
-		};
 
-		const resolvePosition = (value: number | string | undefined, total: number, size: number): number => {
-			if (typeof value === "number") return value;
-			if (value === "center") return Math.max(0, Math.floor((total - size) / 2));
-			if (typeof value === "string" && value.endsWith("%")) {
-				const pct = Number.parseFloat(value);
-				if (Number.isFinite(pct)) {
-					return Math.floor((pct / 100) * total);
+			if (filterId === "status") {
+				const selected = await openSingleSelectFilterPopup({
+					screen,
+					title: "Status Filter",
+					selectedValue: statusFilter,
+					choices: [{ label: "All", value: "" }, ...statuses.map((status) => ({ label: status, value: status }))],
+				});
+				if (selected !== null) {
+					statusFilter = selected;
+					filterHeader.setFilters({ status: selected });
+					applyFilters();
+					notifyFilterChange();
 				}
+				return;
 			}
-			return 0;
-		};
 
-		const screenWidth = screen.width ?? 0;
-		const screenHeight = screen.height ?? 0;
-		const popupWidth = resolveDimension(popup.width ?? "50%", screenWidth);
-		const popupHeight = resolveDimension(popup.height ?? "70%", screenHeight);
-		const popupTop = resolvePosition(popup.top ?? "center", screenHeight, popupHeight);
-		const popupLeft = resolvePosition(popup.left ?? "center", screenWidth, popupWidth);
-
-		// Create backdrop behind the popup
-		const backdrop = box({
-			parent: screen,
-			top: Math.max(0, popupTop - 1),
-			left: Math.max(0, popupLeft - 2),
-			width: Math.min(screenWidth, popupWidth + 4),
-			height: Math.min(screenHeight, popupHeight + 2),
-			style: {
-				bg: "black",
-			},
-		});
-
-		// Bring popup to front
-		popup.setFront?.();
-
-		// Help text at bottom of popup
-		const helpBox = box({
-			parent: popup,
-			bottom: 0,
-			left: 1,
-			right: 1,
-			height: 1,
-			tags: true,
-			content: "{gray-fg}↑/↓ navigate · Space toggle · Enter confirm · Esc cancel{/}",
-		});
-
-		const labelItems = [...availableLabels]
-			.map((label) => label.trim())
-			.filter((label) => label.length > 0)
-			.sort((a, b) => a.localeCompare(b))
-			.map((label) => ({ id: label }));
-
-		const selectedLabelSet = new Set(labelFilter.map((label) => label.toLowerCase()));
-		const selectedIndices = labelItems
-			.map((item, index) => (selectedLabelSet.has(item.id.toLowerCase()) ? index : -1))
-			.filter((index) => index >= 0);
-
-		type LabelItem = { id: string };
-
-		const picker = createGenericList<LabelItem>({
-			parent: popup,
-			items: labelItems,
-			multiSelect: true,
-			selectedIndices,
-			border: false,
-			showHelp: false,
-			top: 0,
-			left: 1,
-			width: "100%-4",
-			height: "100%-3",
-			keys: { cancel: ["C-c"] },
-			style: {
-				selected: { fg: "white", bg: "blue" },
-				item: { fg: "white" },
-			},
-			itemRenderer: (item) => item.id,
-			onSelect: (selected) => {
-				const nextLabels = (Array.isArray(selected) ? selected : []).map((item) => item.id);
-				applyLabelSelection(nextLabels);
-			},
-		});
-
-		const pickerBox = picker.getListBox();
-
-		const closePicker = (restoreFocus: boolean) => {
-			labelPickerOpen = false;
-			picker.destroy();
-			helpBox.destroy();
-			popup.destroy();
-			backdrop.destroy();
-			filterHeader.setBorderColor("cyan");
-			screen.render();
-			if (restoreFocus && taskList) {
-				focusTaskList();
+			if (filterId === "priority") {
+				const priorities = ["high", "medium", "low"];
+				const selected = await openSingleSelectFilterPopup({
+					screen,
+					title: "Priority Filter",
+					selectedValue: priorityFilter,
+					choices: [
+						{ label: "All", value: "" },
+						...priorities.map((priority) => ({ label: priority, value: priority })),
+					],
+				});
+				if (selected !== null) {
+					priorityFilter = selected;
+					filterHeader.setFilters({ priority: selected });
+					applyFilters();
+					notifyFilterChange();
+				}
+				return;
 			}
-		};
 
-		const applyLabelSelection = (nextLabels: string[]) => {
-			labelFilter = nextLabels;
-			filterHeader.setLabels(nextLabels);
-			applyFilters();
-			notifyFilterChange();
-			closePicker(true);
-		};
-
-		pickerBox.key(["escape", "q"], () => {
-			closePicker(true);
-			return false;
-		});
-
-		setImmediate(() => {
-			picker.focus();
+			const selected = await openSingleSelectFilterPopup({
+				screen,
+				title: "Milestone Filter",
+				selectedValue: milestoneFilter,
+				choices: [
+					{ label: "All", value: "" },
+					...availableMilestoneTitles.map((milestone) => ({ label: milestone, value: milestone })),
+				],
+			});
+			if (selected !== null) {
+				milestoneFilter = selected;
+				filterHeader.setFilters({ milestone: selected });
+				applyFilters();
+				notifyFilterChange();
+			}
+		} finally {
+			filterPopupOpen = false;
+			focusFilterControl(filterId);
 			screen.render();
-		});
-		screen.render();
+		}
 	};
 
 	filterHeader = createFilterHeader({
 		parent: container,
 		statuses,
 		availableLabels,
+		availableMilestones: availableMilestoneTitles,
 		initialFilters: {
 			search: searchQuery,
 			status: statusFilter,
 			priority: priorityFilter,
 			labels: labelFilter,
+			milestone: milestoneFilter,
 		},
 		onFilterChange: (filters: FilterState) => {
 			searchQuery = filters.search;
 			statusFilter = filters.status;
 			priorityFilter = filters.priority;
 			labelFilter = filters.labels;
+			milestoneFilter = filters.milestone;
 			applyFilters();
 			notifyFilterChange();
 		},
-		onLabelPickerOpen: openLabelPicker,
+		onFilterPickerOpen: (filterId) => {
+			void openFilterPicker(filterId);
+		},
 	});
 
 	// Handle focus changes from filter header
 	filterHeader.setFocusChangeHandler((focus) => {
-		if (focus === null) {
-			// User wants to leave filters
-			filterHeader.setBorderColor("cyan");
-			if (taskList) {
-				focusTaskList();
-			} else if (descriptionBox) {
-				focusDetailPane();
+		if (focus !== null) {
+			if (currentFocus !== "filters") {
+				filterExitPane = currentFocus === "detail" ? "detail" : "list";
 			}
-		} else {
 			currentFocus = "filters";
 			setActivePane("none");
 			updateHelpBar();
 		}
+	});
+	filterHeader.setExitRequestHandler((direction) => {
+		filterHeader.setBorderColor("cyan");
+		const targetPane = resolveFilterExitPane(filterExitPane, Boolean(taskList), Boolean(descriptionBox));
+		if (targetPane === "list" && taskList) {
+			const selected = taskList.getSelectedIndex();
+			const currentIndex = Array.isArray(selected) ? selected[0] : selected;
+			const targetIndex = resolveSearchExitTargetIndex(
+				direction,
+				pendingSearchWrap,
+				filteredTasks.length,
+				currentIndex,
+			);
+			focusTaskList(targetIndex);
+		} else if (targetPane === "detail" && descriptionBox) {
+			focusDetailPane();
+		}
+		pendingSearchWrap = null;
 	});
 
 	// Get dynamic header height
@@ -376,8 +468,45 @@ export async function viewTaskEnhanced(
 		width: "100%",
 		height: 1,
 		tags: true,
+		wrap: true,
 		content: "",
 	});
+	let transientHelpContent: string | null = null;
+	let helpRestoreTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showTransientHelp(message: string, durationMs = 3000) {
+		transientHelpContent = message;
+		if (helpRestoreTimer) {
+			clearTimeout(helpRestoreTimer);
+			helpRestoreTimer = null;
+		}
+		updateHelpBar();
+		helpRestoreTimer = setTimeout(() => {
+			transientHelpContent = null;
+			helpRestoreTimer = null;
+			updateHelpBar();
+		}, durationMs);
+	}
+
+	function getTerminalWidth(): number {
+		return typeof screen.width === "number" ? screen.width : 80;
+	}
+
+	function syncPaneLayout() {
+		const headerHeight = filterHeader.getHeight();
+		const footerHeight = typeof helpBar.height === "number" ? helpBar.height : 1;
+		taskListPane.top = headerHeight;
+		taskListPane.height = `100%-${headerHeight + footerHeight}`;
+		detailPane.top = headerHeight;
+		detailPane.height = `100%-${headerHeight + footerHeight}`;
+	}
+
+	function setHelpBarContent(content: string) {
+		const formatted = formatFooterContent(content, getTerminalWidth());
+		helpBar.height = formatted.height;
+		helpBar.setContent(formatted.content);
+		syncPaneLayout();
+	}
 
 	function setActivePane(active: "list" | "detail" | "none") {
 		const listBorder = taskListPane.style as { border?: { fg?: string } };
@@ -386,7 +515,7 @@ export async function viewTaskEnhanced(
 		if (detailBorder.border) detailBorder.border.fg = active === "detail" ? "yellow" : "gray";
 	}
 
-	function focusTaskList(): void {
+	function focusTaskList(targetIndex?: number): void {
 		if (!taskList) {
 			if (descriptionBox) {
 				currentFocus = "detail";
@@ -399,6 +528,9 @@ export async function viewTaskEnhanced(
 		}
 		currentFocus = "list";
 		setActivePane("list");
+		if (typeof targetIndex === "number") {
+			taskList.setSelectedIndex(targetIndex);
+		}
 		taskList.focus();
 		updateHelpBar();
 		screen.render();
@@ -421,38 +553,50 @@ export async function viewTaskEnhanced(
 				statusFilter,
 				priorityFilter,
 				labelFilter,
+				milestoneFilter,
 			});
 		}
 	}
 
 	// Function to apply filters and refresh the task list
 	function applyFilters() {
-		// Check for non-empty search query or active filters
-		if (searchQuery.trim() || statusFilter || priorityFilter || labelFilter.length > 0) {
-			// Use in-memory search if available, otherwise use ContentStore-backed search
-			if (taskSearchIndex) {
-				filteredTasks = taskSearchIndex.search({
+		const hasActiveFilters = Boolean(
+			searchQuery.trim() || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		);
+		if (!hasActiveFilters) {
+			filteredTasks = [...allTasks];
+		} else if (taskSearchIndex) {
+			filteredTasks = applyTaskFilters(
+				allTasks,
+				{
 					query: searchQuery,
 					status: statusFilter || undefined,
 					priority: priorityFilter as "high" | "medium" | "low" | undefined,
 					labels: labelFilter,
+					milestone: milestoneFilter || undefined,
+					resolveMilestoneLabel,
+				},
+				taskSearchIndex,
+			);
+		} else if (searchService) {
+			const searchResults = searchService.search({
+				query: searchQuery,
+				filters: {
+					status: statusFilter || undefined,
+					priority: priorityFilter as "high" | "medium" | "low" | undefined,
+					labels: labelFilter.length > 0 ? labelFilter : undefined,
+				},
+				types: ["task"],
+			});
+			filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
+			if (milestoneFilter) {
+				filteredTasks = filteredTasks.filter((task) => {
+					if (!task.milestone) return false;
+					const taskMilestoneTitle = resolveMilestoneLabel(task.milestone);
+					return taskMilestoneTitle.toLowerCase() === milestoneFilter.toLowerCase();
 				});
-			} else if (searchService) {
-				const searchResults = searchService.search({
-					query: searchQuery,
-					filters: {
-						status: statusFilter || undefined,
-						priority: priorityFilter as "high" | "medium" | "low" | undefined,
-						labels: labelFilter.length > 0 ? labelFilter : undefined,
-					},
-					types: ["task"],
-				});
-				filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
-			} else {
-				filteredTasks = [...allTasks];
 			}
 		} else {
-			// No filters, show all tasks
 			filteredTasks = [...allTasks];
 		}
 
@@ -479,6 +623,9 @@ export async function viewTaskEnhanced(
 			}
 			if (labelFilter.length > 0) {
 				activeFilters.push(`Labels: {yellow-fg}${labelFilter.join(", ")}{/}`);
+			}
+			if (milestoneFilter) {
+				activeFilters.push(`Milestone: {magenta-fg}${milestoneFilter}{/}`);
 			}
 			let listPaneMessage: string;
 			if (activeFilters.length > 0) {
@@ -555,12 +702,13 @@ export async function viewTaskEnhanced(
 		if (currentSelectedTask && selectedTask.id === currentSelectedTask.id) {
 			return;
 		}
-		currentSelectedTask = selectedTask;
-		options.onTaskChange?.(selectedTask);
+		const enriched = enrichTask(selectedTask);
+		currentSelectedTask = enriched ?? selectedTask;
+		options.onTaskChange?.(currentSelectedTask);
 		const requestId = ++selectionRequestId;
 		refreshDetailPane();
 		screen.render();
-		const refreshed = await core.getTask(selectedTask.id);
+		const refreshed = await core.getTaskWithSubtasks(selectedTask.id, allTasks);
 		if (requestId !== selectionRequestId) {
 			return;
 		}
@@ -610,6 +758,14 @@ export async function viewTaskEnhanced(
 			onHighlight: (selected: Task | null) => {
 				void applySelection(selected);
 			},
+			onBoundaryNavigation: (direction, selectedIndex, total) => {
+				if (!shouldMoveFromListBoundaryToSearch(direction, selectedIndex, total)) {
+					return false;
+				}
+				pendingSearchWrap = direction === "up" ? "to-last" : "to-first";
+				filterHeader.focusSearch();
+				return true;
+			},
 			showHelp: false,
 		});
 
@@ -651,12 +807,22 @@ export async function viewTaskEnhanced(
 				scroll?: (offset: number) => void;
 				setScroll?: (offset: number) => void;
 				setScrollPerc?: (perc: number) => void;
+				getScroll?: () => number;
 			};
 
 			const pageAmount = () => {
 				const height = typeof boxInstance.height === "number" ? boxInstance.height : 0;
 				return height > 0 ? Math.max(1, height - 3) : 0;
 			};
+
+			boxInstance.key(["up", "k"], () => {
+				if (!shouldMoveFromDetailBoundaryToSearch("up", scrollable.getScroll?.() ?? 0)) {
+					return true;
+				}
+				pendingSearchWrap = null;
+				filterHeader.focusSearch();
+				return false;
+			});
 
 			boxInstance.key(["pageup", "b"], () => {
 				const delta = pageAmount();
@@ -749,7 +915,7 @@ export async function viewTaskEnhanced(
 
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		const detailContent = generateDetailContent(currentSelectedTask);
+		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel);
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -804,71 +970,129 @@ export async function viewTaskEnhanced(
 
 	// Dynamic help bar content
 	function updateHelpBar() {
+		if (transientHelpContent) {
+			setHelpBarContent(transientHelpContent);
+			screen.render();
+			return;
+		}
+
 		let content = "";
 
 		const filterFocus = filterHeader.getCurrentFocus();
 		if (currentFocus === "filters" && filterFocus) {
 			if (filterFocus === "search") {
 				content =
-					" {cyan-fg}[Tab]{/} Next Filter | {cyan-fg}[↓]{/} Task List | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}";
-			} else if (filterFocus === "labels") {
-				content = " {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[Tab]{/} Next | {cyan-fg}[Esc]{/} Back to Tasks";
+					" {cyan-fg}[←/→]{/} Cursor (edge=Prev/Next) | {cyan-fg}[↑/↓]{/} Back to Tasks | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}";
 			} else {
-				content =
-					" {cyan-fg}[Tab]{/} Next Filter | {cyan-fg}[Shift+Tab]{/} Prev | {cyan-fg}[↑↓]{/} Select | {cyan-fg}[Esc]{/} Back | {gray-fg}(Live filter){/}";
+				content = " {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[←/→]{/} Prev/Next | {cyan-fg}[Esc]{/} Back";
 			}
 		} else if (currentFocus === "detail") {
-			content = " {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[q/Esc]{/} Quit";
+			content =
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		} else {
 			// Task list help
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[i]{/} Milestone | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
 		}
 
-		helpBar.setContent(content);
+		setHelpBarContent(content);
 		screen.render();
 	}
+
+	const openCurrentTaskInEditor = async () => {
+		if (filterPopupOpen || currentFocus === "filters" || noResultsMessage) {
+			return;
+		}
+		const selectedTask = currentSelectedTask;
+
+		try {
+			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
+			if (result.reason === "read_only") {
+				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
+				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
+				return;
+			}
+			if (result.reason === "editor_failed") {
+				showTransientHelp(" {red-fg}Editor exited with an error; task was not modified.{/}");
+				return;
+			}
+			if (result.reason === "not_found") {
+				showTransientHelp(` {red-fg}Task ${selectedTask.id} was not found on this branch.{/}`);
+				return;
+			}
+
+			if (result.task) {
+				const index = allTasks.findIndex((taskItem) => taskItem.id === selectedTask.id);
+				if (index >= 0) {
+					allTasks[index] = result.task;
+				}
+				const enhancedTask = enrichTask(result.task) ?? result.task;
+				currentSelectedTask = enhancedTask;
+				options.onTaskChange?.(enhancedTask);
+				if (taskSearchIndex) {
+					taskSearchIndex = createTaskSearchIndex(allTasks);
+				}
+			}
+
+			applyFilters();
+			if (result.changed) {
+				showTransientHelp(` {green-fg}Task ${result.task?.id ?? selectedTask.id} marked modified.{/}`);
+				return;
+			}
+			showTransientHelp(` {gray-fg}No changes detected for ${result.task?.id ?? selectedTask.id}.{/}`);
+		} catch (_error) {
+			showTransientHelp(" {red-fg}Failed to open editor.{/}");
+		}
+	};
 
 	// Handle resize
 	screen.on("resize", () => {
 		filterHeader.rebuild();
-		const headerHeight = filterHeader.getHeight();
-
-		// Update pane positions
-		taskListPane.top = headerHeight;
-		taskListPane.height = `100%-${headerHeight + 1}`;
-		detailPane.top = headerHeight;
-		detailPane.height = `100%-${headerHeight + 1}`;
-
-		screen.render();
+		updateHelpBar();
 	});
 
 	// Keyboard shortcuts
 	screen.key(["/"], () => {
+		pendingSearchWrap = null;
 		filterHeader.focusSearch();
 	});
 
 	screen.key(["C-f"], () => {
+		pendingSearchWrap = null;
 		filterHeader.focusSearch();
 	});
 
 	screen.key(["s", "S"], () => {
-		filterHeader.focusStatus();
+		void openFilterPicker("status");
 	});
 
 	screen.key(["p", "P"], () => {
-		filterHeader.focusPriority();
+		void openFilterPicker("priority");
 	});
 
 	screen.key(["l", "L"], () => {
-		openLabelPicker();
+		void openFilterPicker("labels");
+	});
+
+	screen.key(["i", "I"], () => {
+		void openFilterPicker("milestone");
+	});
+
+	screen.key(["e", "E", "S-e"], () => {
+		void openCurrentTaskInEditor();
 	});
 
 	screen.key(["escape"], () => {
+		if (filterPopupOpen) {
+			return;
+		}
 		if (currentFocus === "filters") {
 			filterHeader.setBorderColor("cyan");
-			if (taskList) {
+			const targetPane = resolveFilterExitPane(filterExitPane, Boolean(taskList), Boolean(descriptionBox));
+			if (targetPane === "list" && taskList) {
 				focusTaskList();
+			} else if (targetPane === "detail" && descriptionBox) {
+				focusDetailPane();
 			}
 		} else if (currentFocus !== "list") {
 			if (taskList) {
@@ -887,8 +1111,11 @@ export async function viewTaskEnhanced(
 	// Tab key handling for view switching - only when in task list
 	if (options.onTabPress) {
 		screen.key(["tab"], async () => {
-			// Only switch views if we're in the task list, not in filters
-			if (currentFocus === "list") {
+			// Keep tab as filter-navigation while filters are focused.
+			if (filterPopupOpen || currentFocus === "filters") {
+				return;
+			}
+			if (currentFocus === "list" || currentFocus === "detail") {
 				// Cleanup before switching
 				searchService?.dispose();
 				contentStore?.dispose();
@@ -896,12 +1123,14 @@ export async function viewTaskEnhanced(
 				screen.destroy();
 				await options.onTabPress?.();
 			}
-			// If in filters, Tab is handled by FilterHeader
 		});
 	}
 
 	// Quit handlers
 	screen.key(["q", "C-c"], () => {
+		if (filterPopupOpen) {
+			return;
+		}
 		searchService?.dispose();
 		contentStore?.dispose();
 		filterHeader.destroy();
@@ -938,6 +1167,10 @@ export async function viewTaskEnhanced(
 	// Wait for screen to close
 	return new Promise<void>((resolve) => {
 		screen.on("destroy", () => {
+			if (helpRestoreTimer) {
+				clearTimeout(helpRestoreTimer);
+				helpRestoreTimer = null;
+			}
 			searchService?.dispose();
 			contentStore?.dispose();
 			resolve();
@@ -945,7 +1178,10 @@ export async function viewTaskEnhanced(
 	});
 }
 
-function generateDetailContent(task: Task): { headerContent: string[]; bodyContent: string[] } {
+function generateDetailContent(
+	task: Task,
+	resolveMilestoneLabel?: (milestone: string) => string,
+): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -984,10 +1220,12 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 		metadata.push(`{bold}Reporter:{/bold} {cyan-fg}${reporterText}{/}`);
 	}
 	if (task.milestone) {
-		metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${task.milestone}{/}`);
+		const milestoneLabel = resolveMilestoneLabel ? resolveMilestoneLabel(task.milestone) : task.milestone;
+		metadata.push(`{bold}Milestone:{/bold} {magenta-fg}${milestoneLabel}{/}`);
 	}
 	if (task.parentTaskId) {
-		metadata.push(`{bold}Parent:{/bold} {blue-fg}${task.parentTaskId}{/}`);
+		const parentLabel = task.parentTaskTitle ? `${task.parentTaskId} - ${task.parentTaskTitle}` : task.parentTaskId;
+		metadata.push(`{bold}Parent:{/bold} {blue-fg}${parentLabel}{/}`);
 	}
 	if (task.subtasks?.length) {
 		metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
@@ -1006,6 +1244,31 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 		: "{gray-fg}No description provided{/}";
 	bodyContent.push(descriptionContent);
 	bodyContent.push("");
+
+	if (task.references?.length) {
+		bodyContent.push(formatHeading("References", 2));
+		const formattedRefs = task.references.map((ref) => {
+			// Color URLs differently from file paths
+			if (ref.startsWith("http://") || ref.startsWith("https://")) {
+				return `  {cyan-fg}${ref}{/}`;
+			}
+			return `  {yellow-fg}${ref}{/}`;
+		});
+		bodyContent.push(formattedRefs.join("\n"));
+		bodyContent.push("");
+	}
+
+	if (task.documentation?.length) {
+		bodyContent.push(formatHeading("Documentation", 2));
+		const formattedDocs = task.documentation.map((doc) => {
+			if (doc.startsWith("http://") || doc.startsWith("https://")) {
+				return `  {cyan-fg}${doc}{/}`;
+			}
+			return `  {yellow-fg}${doc}{/}`;
+		});
+		bodyContent.push(formattedDocs.join("\n"));
+		bodyContent.push("");
+	}
 
 	bodyContent.push(formatHeading("Acceptance Criteria", 2));
 	const checklistItems = buildAcceptanceCriteriaItems(task);
@@ -1029,6 +1292,28 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 	}
 	bodyContent.push("");
 
+	bodyContent.push(formatHeading("Definition of Done", 2));
+	const definitionItems = buildDefinitionOfDoneItems(task);
+	if (definitionItems.length > 0) {
+		const formattedDefinition = definitionItems.map((item) =>
+			formatChecklistItem(
+				{
+					text: transformCodePaths(item.text),
+					checked: item.checked,
+				},
+				{
+					padding: " ",
+					checkedSymbol: "{green-fg}✓{/}",
+					uncheckedSymbol: "{gray-fg}○{/}",
+				},
+			),
+		);
+		bodyContent.push(formattedDefinition.join("\n"));
+	} else {
+		bodyContent.push("{gray-fg}No Definition of Done items defined{/}");
+	}
+	bodyContent.push("");
+
 	const implementationPlan = task.implementationPlan?.trim();
 	if (implementationPlan) {
 		bodyContent.push(formatHeading("Implementation Plan", 2));
@@ -1043,12 +1328,20 @@ function generateDetailContent(task: Task): { headerContent: string[]; bodyConte
 		bodyContent.push("");
 	}
 
+	const finalSummary = task.finalSummary?.trim();
+	if (finalSummary) {
+		bodyContent.push(formatHeading("Final Summary", 2));
+		bodyContent.push(transformCodePaths(finalSummary));
+		bodyContent.push("");
+	}
+
 	return { headerContent, bodyContent };
 }
 
 export async function createTaskPopup(
 	screen: ScreenInterface,
 	task: Task,
+	resolveMilestoneLabel?: (milestone: string) => string,
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1085,7 +1378,7 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(task);
+	const { headerContent, bodyContent } = generateDetailContent(task, resolveMilestoneLabel);
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;
