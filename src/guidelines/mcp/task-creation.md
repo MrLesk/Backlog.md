@@ -71,7 +71,7 @@ Create all tasks in the same session to maintain consistency and context.
 
 **Title and description**: Explain desired outcome and user value (the WHY). Keep the description focused on outcome and essential handoff context.
 
-**Acceptance criteria**: Specific, testable, and independent (the WHAT)
+**Acceptance criteria**: An array of strings - specific, testable, and independent items (the WHAT)
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
 - Include negative or edge scenarios when relevant
 - Capture testing expectations explicitly
