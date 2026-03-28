@@ -14,6 +14,10 @@ function findDelimiterSensitiveItem(items: string[]): string | undefined {
 	return items.find((item) => item.includes(","));
 }
 
+function findConfigUnsafeItem(items: string[]): string | undefined {
+	return items.find((item) => /[\r\n"']/.test(item));
+}
+
 function formatDefinitionOfDoneDefaults(items: string[]): string {
 	if (items.length === 0) {
 		return "Project Definition of Done defaults (0):\n  (none)";
@@ -58,6 +62,14 @@ export class DefinitionOfDoneHandlers {
 		if (commaSensitiveItem) {
 			throw new BacklogToolError(
 				`Definition of Done defaults cannot contain commas (invalid item: "${commaSensitiveItem}").`,
+				"VALIDATION_ERROR",
+			);
+		}
+
+		const configUnsafeItem = findConfigUnsafeItem(nextDefaults);
+		if (configUnsafeItem) {
+			throw new McpError(
+				`Definition of Done defaults cannot contain quotes or line breaks (invalid item: "${configUnsafeItem}").`,
 				"VALIDATION_ERROR",
 			);
 		}
