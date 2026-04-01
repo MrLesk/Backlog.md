@@ -8,6 +8,7 @@ import type { ElementInterface, ListInterface, ScreenInterface } from "neo-neo-b
 import { list } from "neo-neo-bblessed";
 import { formatHeading } from "../heading.ts";
 import { createScreen } from "../tui.ts";
+import { stripBlessedFgTags } from "../utils/strip-tags.ts";
 
 export interface GenericListItem {
 	id: string;
@@ -76,6 +77,12 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private searchTerm = "";
 	private isSearchMode = false;
 	private options: GenericListOptions<T>;
+	private displayIndexByFilteredIndex = new Map<number, number>();
+	private filteredIndexByDisplayIndex = new Map<number, number>();
+	private normalDisplayByFilteredIndex = new Map<number, string>();
+	private highlightedDisplayByFilteredIndex = new Map<number, string>();
+	private highlightedIndex: number | null = null;
+	private updatingListSelection = false;
 
 	constructor(options: GenericListOptions<T>) {
 		this.options = options;
@@ -104,6 +111,17 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		}
 
 		this.createListComponent();
+	}
+
+	private buildDisplayContent(item: T, index: number, grouped: boolean): { normal: string; highlighted: string } {
+		const isSelected = this.isMultiSelect ? this.selectedIndices.has(index) : false;
+		const rendered = this.itemRenderer(item, index, isSelected);
+		const prefix = this.isMultiSelect ? (isSelected ? "[✓] " : "[ ] ") : grouped ? "  " : "";
+		const normal = prefix + rendered;
+		return {
+			normal,
+			highlighted: stripBlessedFgTags(normal),
+		};
 	}
 
 	private handleNonTTY(): void {
@@ -176,51 +194,57 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 
 		// Build display items
 		const displayItems: string[] = [];
-		const itemMap = new Map<number, T | null>();
-		let index = 0;
+		this.displayIndexByFilteredIndex.clear();
+		this.filteredIndexByDisplayIndex.clear();
+		this.normalDisplayByFilteredIndex.clear();
+		this.highlightedDisplayByFilteredIndex.clear();
+		let displayIndex = 0;
+
+		if (this.options.searchable && this.isSearchMode) {
+			displayItems.push(`{cyan-fg}Search: ${this.searchTerm}_{/}`);
+			displayIndex += 1;
+		}
 
 		if (this.groupBy) {
 			// Group items
-			const groups = new Map<string, T[]>();
-			for (const item of this.filteredItems) {
+			const groups = new Map<string, Array<{ item: T; filteredIndex: number }>>();
+			for (const [filteredIndex, item] of this.filteredItems.entries()) {
 				const group = this.groupBy(item);
 				if (!groups.has(group)) {
 					groups.set(group, []);
 				}
 				const groupList = groups.get(group);
 				if (groupList) {
-					groupList.push(item);
+					groupList.push({ item, filteredIndex });
 				}
 			}
 
 			// Render groups
 			for (const [group, groupItems] of groups) {
 				displayItems.push(formatHeading(group || "No Group", 2));
-				itemMap.set(index++, null); // Group header
-				for (const item of groupItems) {
-					const isSelected = this.isMultiSelect ? this.selectedIndices.has(index) : false;
-					const rendered = this.itemRenderer(item, index, isSelected);
-					const prefix = this.isMultiSelect ? (isSelected ? "[✓] " : "[ ] ") : "  ";
-					displayItems.push(prefix + rendered);
-					itemMap.set(index++, item);
+				displayIndex += 1;
+				for (const { item, filteredIndex } of groupItems) {
+					const content = this.buildDisplayContent(item, filteredIndex, true);
+					displayItems.push(content.normal);
+					this.displayIndexByFilteredIndex.set(filteredIndex, displayIndex);
+					this.filteredIndexByDisplayIndex.set(displayIndex, filteredIndex);
+					this.normalDisplayByFilteredIndex.set(filteredIndex, content.normal);
+					this.highlightedDisplayByFilteredIndex.set(filteredIndex, content.highlighted);
+					displayIndex += 1;
 				}
 			}
 		} else {
 			// Render flat list
-			for (let i = 0; i < this.filteredItems.length; i++) {
-				const item = this.filteredItems[i];
+			for (const [filteredIndex, item] of this.filteredItems.entries()) {
 				if (!item) continue;
-				const isSelected = this.isMultiSelect ? this.selectedIndices.has(i) : false;
-				const rendered = this.itemRenderer(item, i, isSelected);
-				const prefix = this.isMultiSelect ? (isSelected ? "[✓] " : "[ ] ") : "";
-				displayItems.push(prefix + rendered);
-				itemMap.set(index++, item);
+				const content = this.buildDisplayContent(item, filteredIndex, false);
+				displayItems.push(content.normal);
+				this.displayIndexByFilteredIndex.set(filteredIndex, displayIndex);
+				this.filteredIndexByDisplayIndex.set(displayIndex, filteredIndex);
+				this.normalDisplayByFilteredIndex.set(filteredIndex, content.normal);
+				this.highlightedDisplayByFilteredIndex.set(filteredIndex, content.highlighted);
+				displayIndex += 1;
 			}
-		}
-
-		// Add search indicator
-		if (this.options.searchable && this.isSearchMode) {
-			displayItems.unshift(`{cyan-fg}Search: ${this.searchTerm}_{/}`);
 		}
 
 		// Add help text
@@ -230,6 +254,12 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		}
 
 		this.listBox.setItems(displayItems);
+		this.highlightedIndex = null;
+		if (this.filteredItems.length === 0) {
+			return;
+		}
+		const clampedIndex = Math.max(0, Math.min(this.selectedIndex, this.filteredItems.length - 1));
+		this.setHighlightedIndex(clampedIndex, { emitHighlight: false });
 	}
 
 	private buildHelpText(): string {
@@ -267,11 +297,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			if (sel <= 0 && this.options.onBoundaryNavigation?.("up", sel, total)) {
 				return;
 			}
-			const nextIndex = sel > 0 ? sel - 1 : total - 1;
-			this.listBox.select(nextIndex);
-			this.selectedIndex = nextIndex;
-			this.onHighlight?.(this.filteredItems[nextIndex] ?? null, nextIndex);
-			this.getScreen()?.render?.();
+			this.setHighlightedIndex(sel > 0 ? sel - 1 : total - 1, { render: true });
 		};
 
 		const moveDown = () => {
@@ -281,20 +307,26 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			if (sel >= total - 1 && this.options.onBoundaryNavigation?.("down", sel, total)) {
 				return;
 			}
-			const nextIndex = sel < total - 1 ? sel + 1 : 0;
-			this.listBox.select(nextIndex);
-			this.selectedIndex = nextIndex;
-			this.onHighlight?.(this.filteredItems[nextIndex] ?? null, nextIndex);
-			this.getScreen()?.render?.();
+			this.setHighlightedIndex(sel < total - 1 ? sel + 1 : 0, { render: true });
 		};
 
 		this.listBox.key(["up", "k"], moveUp);
 		this.listBox.key(["down", "j"], moveDown);
 
+		this.listBox.on("select item", (_item: unknown, displayIndex: unknown) => {
+			if (this.updatingListSelection) return;
+			if (typeof displayIndex !== "number") return;
+			const filteredIndex = this.filteredIndexByDisplayIndex.get(displayIndex);
+			if (filteredIndex === undefined) return;
+			this.setHighlightedIndex(filteredIndex, { selectList: false, render: true });
+		});
+
 		// Selection/Toggle
 		if (this.isMultiSelect) {
 			this.listBox.key(keys.toggle || ["space"], () => {
-				this.toggleSelection(this.listBox.selected ?? 0);
+				const filteredIndex = this.getFilteredIndexFromSelection();
+				if (filteredIndex === null) return;
+				this.toggleSelection(filteredIndex);
 			});
 
 			this.listBox.key(keys.select || ["enter"], () => {
@@ -302,7 +334,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			});
 		} else {
 			this.listBox.key(keys.select || ["enter"], () => {
-				this.selectedIndex = this.listBox.selected ?? 0;
+				const filteredIndex = this.getFilteredIndexFromSelection();
+				if (filteredIndex === null) return;
+				this.selectedIndex = filteredIndex;
 				this.triggerSelection();
 			});
 		}
@@ -345,11 +379,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private selectInitialItem(): void {
 		if (this.filteredItems.length > 0) {
 			const validIndex = Math.min(this.selectedIndex, this.filteredItems.length - 1);
-			this.listBox.select(validIndex);
-			this.selectedIndex = validIndex;
-			// Emit initial highlight so hosts can synchronize detail panes
-			this.onHighlight?.(this.filteredItems[validIndex] ?? null, validIndex);
-			// For multi-select, keep internal selectedIndex aligned with highlight
+			this.setHighlightedIndex(validIndex);
 		}
 	}
 
@@ -362,10 +392,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		// Update just the current item's display without full refresh
 		const item = this.filteredItems[index];
 		if (item) {
-			const isSelected = this.selectedIndices.has(index);
-			const rendered = this.itemRenderer(item, index, isSelected);
-			const prefix = isSelected ? "[✓] " : "[ ] ";
-			(this.listBox as { setItem?: (i: number, content: string) => void }).setItem?.(index, prefix + rendered);
+			const content = this.buildDisplayContent(item, index, Boolean(this.groupBy));
+			this.normalDisplayByFilteredIndex.set(index, content.normal);
+			this.highlightedDisplayByFilteredIndex.set(index, content.highlighted);
+			this.setDisplayContent(index, index === this.selectedIndex);
 			this.getScreen()?.render?.();
 		}
 	}
@@ -429,17 +459,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			return;
 		}
 		const clamped = Math.max(0, Math.min(index, this.filteredItems.length - 1));
-		if (this.selectedIndex === clamped) {
-			// Still emit highlight to ensure host state stays synchronized
-			this.onHighlight?.(this.filteredItems[clamped] ?? null, clamped);
-			return;
-		}
-		this.selectedIndex = clamped;
-		this.listBox.select(clamped);
-		const listWithSelected = this.listBox as ListInterface & { selected?: number };
-		listWithSelected.selected = clamped;
-		this.onHighlight?.(this.filteredItems[clamped] ?? null, clamped);
-		this.getScreen()?.render?.();
+		this.setHighlightedIndex(clamped, { render: true });
 	}
 
 	public updateItems(items: T[]): void {
@@ -471,6 +491,64 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		if (this.screen) return this.screen;
 		const maybeHasScreen = this.listBox as unknown as { screen?: ScreenInterface };
 		return maybeHasScreen?.screen;
+	}
+
+	private getFilteredIndexFromSelection(): number | null {
+		const displayIndex = (this.listBox as ListInterface & { selected?: number }).selected ?? 0;
+		return this.filteredIndexByDisplayIndex.get(displayIndex) ?? null;
+	}
+
+	private selectFilteredIndex(index: number): void {
+		const displayIndex = this.displayIndexByFilteredIndex.get(index);
+		if (displayIndex === undefined) {
+			return;
+		}
+		this.listBox.select(displayIndex);
+		(this.listBox as ListInterface & { selected?: number }).selected = displayIndex;
+	}
+
+	private setHighlightedIndex(
+		index: number,
+		options: { selectList?: boolean; emitHighlight?: boolean; render?: boolean } = {},
+	): void {
+		if (!this.listBox || index < 0 || index >= this.filteredItems.length) {
+			return;
+		}
+		const { selectList = true, emitHighlight = true, render = false } = options;
+		if (this.highlightedIndex !== null && this.highlightedIndex !== index) {
+			this.setDisplayContent(this.highlightedIndex, false);
+		}
+		this.selectedIndex = index;
+		if (selectList) {
+			this.updatingListSelection = true;
+			try {
+				this.selectFilteredIndex(index);
+			} finally {
+				this.updatingListSelection = false;
+			}
+		}
+		this.setDisplayContent(index, true);
+		this.highlightedIndex = index;
+		if (emitHighlight) {
+			this.onHighlight?.(this.filteredItems[index] ?? null, index);
+		}
+		if (render) {
+			this.getScreen()?.render?.();
+		}
+	}
+
+	private setDisplayContent(index: number, highlighted: boolean): void {
+		const displayIndex = this.displayIndexByFilteredIndex.get(index);
+		if (displayIndex === undefined) {
+			return;
+		}
+		const content = highlighted
+			? this.highlightedDisplayByFilteredIndex.get(index)
+			: this.normalDisplayByFilteredIndex.get(index);
+		if (!content) {
+			return;
+		}
+		(this.listBox as { setItem?: (itemIndex: number, content: string) => void }).setItem?.(displayIndex, content);
 	}
 }
 
