@@ -3729,6 +3729,67 @@ program
 		}
 	});
 
+// Drift detection command group
+const driftCmd = program.command("drift").description("detect when code changes make backlog tasks stale");
+
+driftCmd
+	.command("check")
+	.description("run structural drift checks on all tasks")
+	.option("--json", "output results as JSON")
+	.action(async (options) => {
+		try {
+			const cwd = await requireProjectRoot();
+			const core = new Core(cwd);
+			const config = await core.filesystem.loadConfig();
+
+			if (!config) {
+				console.error("No backlog project found. Initialize one first with: backlog init");
+				process.exit(1);
+			}
+
+			const { checkDrift, formatDriftResults } = await import("./core/drift.ts");
+			const summary = await checkDrift(core);
+
+			if (options.json) {
+				console.log(JSON.stringify(summary, null, 2));
+			} else {
+				console.log(formatDriftResults(summary));
+			}
+
+			if (summary.errors > 0) {
+				process.exitCode = 1;
+			}
+		} catch (err) {
+			console.error("Failed to check drift", err);
+			process.exitCode = 1;
+		}
+	});
+
+// Make `backlog drift` (no subcommand) run check by default
+driftCmd.action(async () => {
+	try {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const config = await core.filesystem.loadConfig();
+
+		if (!config) {
+			console.error("No backlog project found. Initialize one first with: backlog init");
+			process.exit(1);
+		}
+
+		const { checkDrift, formatDriftResults } = await import("./core/drift.ts");
+		const summary = await checkDrift(core);
+		console.log(formatDriftResults(summary));
+
+		if (summary.errors > 0) {
+			process.exitCode = 1;
+		}
+	} catch (err) {
+		console.error("Failed to check drift", err);
+		process.exitCode = 1;
+	}
+});
+
 // Completion command group
 registerCompletionCommand(program);
 
