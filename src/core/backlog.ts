@@ -2,7 +2,8 @@ import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
-import { GitOperations } from "../git/operations.ts";
+import { createGitAdapter, type GitAdapter } from "../git/adapter.ts";
+import { GitButlerOperations } from "../git/gitbutler.ts";
 import {
 	type AcceptanceCriterion,
 	type Decision,
@@ -62,9 +63,11 @@ import {
 	type BranchTaskStateEntry,
 	findTaskInLocalBranches,
 	findTaskInRemoteBranches,
+	getAppliedVirtualBranches,
 	getTaskLoadingMessage,
 	loadLocalBranchTasks,
 	loadRemoteTasks,
+	loadVirtualBranchTasks,
 	resolveTaskConflict,
 } from "./task-loader.ts";
 
@@ -172,18 +175,19 @@ function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTas
 
 export class Core {
 	public fs: FileSystem;
-	public git: GitOperations;
+	public git: GitAdapter;
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
-		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
+		// Use adapter for seamless Git/GitButler switching
+		this.git = createGitAdapter(projectRoot, null);
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
-		// Note: Config is loaded lazily when needed since constructor can't be async
+		// Note: Config is loaded lazily since constructor can't be async
 	}
 
 	async withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -504,7 +508,8 @@ export class Core {
 		this.disposeSearchService();
 		this.disposeContentStore();
 		this.fs = new FileSystem(projectRoot);
-		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
+		// Re-initialize with default GitAdapter - will be replaced based on config
+		this.git = createGitAdapter(projectRoot, null);
 	}
 
 	disposeSearchService(): void {
@@ -533,7 +538,18 @@ export class Core {
 	async ensureConfigLoaded(): Promise<void> {
 		try {
 			const config = await this.fs.loadConfig();
-			this.git.setConfig(config);
+
+			// Check if GitButler is available when gitbutler mode is enabled
+			if (config?.gitbutler === true) {
+				const available = await GitButlerOperations.isAvailable(this.fs.projectRoot);
+				if (!available) {
+					// GitButler not available - log warning but continue with regular Git adapter
+					console.warn("GitButler is enabled but not installed. Falling back to regular Git adapter.");
+				}
+			}
+
+			// Always recreate the adapter to ensure we have the right one (Git or GitButler)
+			this.git = createGitAdapter(this.fs.projectRoot, config);
 		} catch (error) {
 			// Config loading failed, git operations will work with null config
 			if (process.env.DEBUG) {
@@ -961,6 +977,7 @@ export class Core {
 	}
 
 	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
+		await this.ensureConfigLoaded();
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
 		}
@@ -1063,6 +1080,7 @@ export class Core {
 	}
 
 	async createTask(task: Task, autoCommit?: boolean): Promise<string> {
+		await this.ensureConfigLoaded();
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
@@ -1075,6 +1093,7 @@ export class Core {
 	}
 
 	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
+		await this.ensureConfigLoaded();
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
@@ -1593,6 +1612,7 @@ export class Core {
 	}
 
 	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		await this.ensureConfigLoaded();
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -1678,6 +1698,7 @@ export class Core {
 	}
 
 	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		await this.ensureConfigLoaded();
 		const targetStatus = input.status?.trim();
 		if (!targetStatus || targetStatus.toLowerCase() === "draft") {
 			throw new Error("Promoting a draft requires a non-draft status.");
@@ -1731,6 +1752,7 @@ export class Core {
 	}
 
 	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		await this.ensureConfigLoaded();
 		const { mutated } = await this.applyTaskUpdateInput(task, { ...input, status: undefined }, async (status) => {
 			if (status.trim().toLowerCase() === "draft") {
 				return "Draft";
@@ -1813,6 +1835,7 @@ export class Core {
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+		await this.ensureConfigLoaded();
 		// Update all tasks without committing individually
 		for (const task of tasks) {
 			await this.updateTask(task, false); // Don't auto-commit each one
@@ -1835,6 +1858,7 @@ export class Core {
 		autoCommit?: boolean;
 		defaultStep?: number;
 	}): Promise<{ updatedTask: Task; changedTasks: Task[] }> {
+		await this.ensureConfigLoaded();
 		const taskId = normalizeTaskId(String(params.taskId || "").trim());
 		const targetStatus = String(params.targetStatus || "").trim();
 		const orderedTaskIds = params.orderedTaskIds.map((id) => normalizeTaskId(String(id || "").trim())).filter(Boolean);
@@ -1992,6 +2016,7 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		await this.ensureConfigLoaded();
 		const taskToArchive = await this.fs.loadTask(taskId);
 		if (!taskToArchive) {
 			return false;
@@ -2101,6 +2126,7 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		await this.ensureConfigLoaded();
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
 		const taskPath = await getTaskPath(taskId, this);
@@ -2154,6 +2180,7 @@ export class Core {
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		await this.ensureConfigLoaded();
 		const success = await this.fs.promoteDraft(draftId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
@@ -2166,6 +2193,7 @@ export class Core {
 	}
 
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		await this.ensureConfigLoaded();
 		const success = await this.fs.demoteTask(taskId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
@@ -2679,6 +2707,7 @@ export class Core {
 		abortSignal?: AbortSignal,
 		options?: { includeCompleted?: boolean },
 	): Promise<Task[]> {
+		await this.ensureConfigLoaded();
 		const config = await this.fs.loadConfig();
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
@@ -2732,6 +2761,11 @@ export class Core {
 			]);
 		}
 
+		// Load virtual branch tasks if GitButler is enabled
+		if (config?.gitbutler === true) {
+			await loadVirtualBranchTasks(this.git, config, progressCallback, backlogDir);
+		}
+
 		// Check for cancellation after loading
 		if (abortSignal?.aborted) {
 			throw new Error("Loading cancelled");
@@ -2775,6 +2809,28 @@ export class Core {
 			} else {
 				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
 				tasksById.set(remoteTask.id, resolved);
+			}
+		}
+
+		// Annotate local tasks with virtual branch metadata if GitButler is enabled
+		if (config?.gitbutler === true) {
+			try {
+				const branches = await getAppliedVirtualBranches(this.git, config);
+				if (branches.length > 0) {
+					const branch = branches[0]; // V1: use first applied branch
+					for (const [id, task] of tasksById) {
+						tasksById.set(id, {
+							...task,
+							source: "virtual-branch" as const,
+							virtualBranch: {
+								name: branch.name,
+								state: branch.state,
+							},
+						});
+					}
+				}
+			} catch {
+				// Silently continue if annotation fails
 			}
 		}
 

@@ -739,6 +739,8 @@ const TaskList: React.FC<TaskListProps> = ({
 							<tbody className="divide-y divide-gray-200 dark:divide-gray-700">
 								{sortedDisplayTasks.map((task) => {
 									const isFromOtherBranch = Boolean(task.branch);
+									const isFromVirtualBranch = Boolean(task.virtualBranch);
+									const branchLabel = task.virtualBranch ? `Virtual: ${task.virtualBranch.name}` : task.branch;
 									const visibleLabels = task.labels.slice(0, 2);
 									const labelOverflow = Math.max(task.labels.length - visibleLabels.length, 0);
 									const visibleAssignees = task.assignee.slice(0, 2);
@@ -771,12 +773,12 @@ const TaskList: React.FC<TaskListProps> = ({
 													>
 														{task.title}
 													</span>
-													{isFromOtherBranch && task.branch && (
+													{(isFromOtherBranch || isFromVirtualBranch) && branchLabel && (
 														<span
 															className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-															title={`Read-only task from ${task.branch} branch`}
+															title={`Read-only task from ${branchLabel}`}
 														>
-															{task.branch}
+															{branchLabel}
 														</span>
 													)}
 												</div>

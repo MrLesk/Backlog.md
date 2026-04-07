@@ -117,16 +117,19 @@ export function formatTaskListItem(task: Task, isMoving = false): string {
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
 	const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
-	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
-	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
+	const branch = task.branch ? ` {green-fg}(${task.branch}){/}` : "";
+	const virtualBranch = task.virtualBranch ? ` {yellow-fg}(vb:${task.virtualBranch.name}){/}` : "";
 
 	// Cross-branch tasks are dimmed to indicate read-only status
-	const content = `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}${branch}`;
+	const content = `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}${branch}${virtualBranch}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
-	if (isCrossBranch) {
+	if (task.branch) {
 		return `{gray-fg}${content}{/}`;
+	}
+	if (task.virtualBranch) {
+		return `{yellow-fg}${content}{/}`;
 	}
 	return content;
 }
@@ -988,8 +991,12 @@ export async function renderBoardTui(
 				const core = new Core(process.cwd(), { enableWatchers: true });
 				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
-					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
-					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
+					const branchLabel = result.task?.virtualBranch
+						? ` from virtual branch "${result.task.virtualBranch.name}"`
+						: result.task?.branch
+							? ` from branch "${result.task.branch}"`
+							: "";
+					showTransientFooter(` {red-fg}Cannot edit task${branchLabel}.{/}`);
 					return;
 				}
 				if (result.reason === "editor_failed") {
@@ -1231,8 +1238,11 @@ export async function renderBoardTui(
 				if (!task) return;
 
 				// Prevent move mode for cross-branch tasks
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot move task from branch "${task.branch}".{/}`);
+				const branchLabel = task.virtualBranch ? task.virtualBranch.name : task.branch;
+				if (branchLabel) {
+					showTransientFooter(
+						` {red-fg}Cannot move task from ${task.virtualBranch ? "virtual branch" : "branch"} "${branchLabel}".{/}`,
+					);
 					return;
 				}
 

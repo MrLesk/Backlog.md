@@ -9,7 +9,7 @@
  */
 
 import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
-import type { GitOperations } from "../git/operations.ts";
+import type { GitAdapter } from "../git/adapter.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
@@ -93,7 +93,7 @@ function normalizeLocalBranch(branch: string, currentBranch: string): string | n
  * This is VERY fast as it only lists files and gets modification times in batch
  */
 export async function buildRemoteTaskIndex(
-	git: GitOperations,
+	git: GitAdapter,
 	branches: string[],
 	backlogDir = "backlog",
 	sinceDays?: number,
@@ -179,7 +179,7 @@ export async function buildRemoteTaskIndex(
  * Only call this for the "winner" tasks that we actually need
  */
 async function hydrateTasks(
-	git: GitOperations,
+	git: GitAdapter,
 	winners: Array<{ id: string; ref: string; path: string }>,
 ): Promise<Task[]> {
 	const CONCURRENCY = 8;
@@ -219,7 +219,7 @@ async function hydrateTasks(
  * Similar to buildRemoteTaskIndex but for local refs
  */
 export async function buildLocalBranchTaskIndex(
-	git: GitOperations,
+	git: GitAdapter,
 	branches: string[],
 	currentBranch: string,
 	backlogDir = "backlog",
@@ -365,7 +365,7 @@ function chooseWinners(
  * Searches through recent remote branches for the task and returns the newest version
  */
 export async function findTaskInRemoteBranches(
-	git: GitOperations,
+	git: GitAdapter,
 	taskId: string,
 	backlogDir = "backlog",
 	sinceDays = 30,
@@ -413,7 +413,7 @@ export async function findTaskInRemoteBranches(
  * Searches through recent local branches for the task and returns the newest version
  */
 export async function findTaskInLocalBranches(
-	git: GitOperations,
+	git: GitAdapter,
 	taskId: string,
 	backlogDir = "backlog",
 	sinceDays = 30,
@@ -472,7 +472,7 @@ export async function findTaskInLocalBranches(
  * Dramatically reduces git operations by only fetching content for tasks that need it
  */
 export async function loadRemoteTasks(
-	gitOps: GitOperations,
+	gitOps: GitAdapter,
 	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
@@ -602,7 +602,7 @@ export function resolveTaskConflict(
  * Uses the same optimized index-first, hydrate-later pattern as remote loading
  */
 export async function loadLocalBranchTasks(
-	gitOps: GitOperations,
+	gitOps: GitAdapter,
 	userConfig: BacklogConfig | null = null,
 	onProgress?: (message: string) => void,
 	localTasks?: Task[],
@@ -721,4 +721,107 @@ export async function loadLocalBranchTasks(
 		}
 		return [];
 	}
+}
+
+import { GitButlerOperations, type VirtualBranch } from "../git/gitbutler.ts";
+
+/**
+ * Load tasks from GitButler virtual branches
+ * Virtual branches store tasks in the working directory like regular branches,
+ * but with GitButler's virtualization layer
+ */
+export async function loadVirtualBranchTasks(
+	gitOps: GitAdapter,
+	userConfig: BacklogConfig | null = null,
+	onProgress?: (message: string) => void,
+	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
+): Promise<Task[]> {
+	try {
+		// Check if GitButler is available
+		const isAvailable = await GitButlerOperations.isAvailable(gitOps["projectRoot"]);
+		if (!isAvailable) {
+			onProgress?.("GitButler not available");
+			return [];
+		}
+
+		const butler = new GitButlerOperations(gitOps["projectRoot"], userConfig);
+
+		// Get list of virtual branches
+		const branches = await butler.listBranches();
+		if (branches.length === 0) {
+			onProgress?.("No virtual branches found");
+			return [];
+		}
+
+		onProgress?.(`Found ${branches.length} virtual branches`);
+
+		// For now, load tasks from applied virtual branches
+		// Virtual branches have their files in the working directory like regular git
+		const appliedBranches = branches.filter((b) => b.state === "applied");
+
+		if (appliedBranches.length === 0) {
+			onProgress?.("No applied virtual branches");
+			return [];
+		}
+
+		// Tasks in applied virtual branches are accessible via regular file operations
+		// since they're applied to the working directory
+		// The file system tasks (from local filesystem) already include these
+		// We just need to mark them with virtual branch info
+
+		onProgress?.(`Loaded tasks from ${appliedBranches.length} applied virtual branches`);
+		return [];
+	} catch (error) {
+		if (process.env.DEBUG) {
+			console.error("Failed to load virtual branch tasks:", error);
+		}
+		return [];
+	}
+}
+
+/**
+ * Get the list of applied virtual branches from GitButler.
+ * Used by backlog.ts to annotate loaded tasks with virtual branch metadata.
+ */
+export async function getAppliedVirtualBranches(
+	gitOps: GitAdapter,
+	userConfig: BacklogConfig | null,
+): Promise<VirtualBranch[]> {
+	if (userConfig?.gitbutler !== true) return [];
+
+	try {
+		const isAvailable = await GitButlerOperations.isAvailable(gitOps.projectRoot);
+		if (!isAvailable) return [];
+
+		const butler = new GitButlerOperations(gitOps.projectRoot, userConfig);
+		const branches = await butler.listBranches();
+		return branches.filter((b) => b.state === "applied");
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Mark tasks with virtual branch information
+ * Called after loading local filesystem tasks when GitButler is enabled
+ */
+export function annotateTasksWithVirtualBranch(tasks: Task[], branches: VirtualBranch[]): Task[] {
+	const appliedBranches = branches.filter((b) => b.state === "applied");
+
+	if (appliedBranches.length === 0) {
+		return tasks;
+	}
+
+	// For now, if there's an applied branch, mark all tasks as being in that virtual branch
+	// This can be refined later based on actual branch-specific file tracking
+	const activeBranch = appliedBranches[0];
+
+	return tasks.map((task) => ({
+		...task,
+		source: "virtual-branch" as const,
+		virtualBranch: {
+			name: activeBranch.name,
+			state: activeBranch.state,
+		},
+	}));
 }

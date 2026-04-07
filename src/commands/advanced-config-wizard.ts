@@ -207,6 +207,7 @@ export async function runAdvancedConfigWizard({
 	let activeBranchDays = config?.activeBranchDays ?? 30;
 	let bypassGitHooks = config?.bypassGitHooks ?? false;
 	let autoCommit = config?.autoCommit ?? false;
+	let gitbutlerEnabled = config?.gitbutler ?? false;
 	let zeroPaddedIds = config?.zeroPaddedIds;
 	let defaultEditor: string | undefined =
 		config?.defaultEditor ?? process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null);
@@ -295,6 +296,18 @@ export async function runAdvancedConfigWizard({
 		{ onCancel },
 	);
 	autoCommit = Boolean(autoCommitPrompt.autoCommit ?? autoCommit);
+
+	const gitbutlerPrompt = await promptImpl(
+		{
+			type: "confirm",
+			name: "gitbutlerEnabled",
+			message: "Enable GitButler virtual branch support?",
+			hint: "Uses GitButler for virtual branches instead of regular Git (requires GitButler installed)",
+			initial: gitbutlerEnabled,
+		},
+		{ onCancel },
+	);
+	gitbutlerEnabled = Boolean(gitbutlerPrompt.gitbutlerEnabled);
 
 	while (true) {
 		const zeroPaddingPrompt = await promptImpl(
@@ -639,6 +652,7 @@ export async function runAdvancedConfigWizard({
 			definitionOfDone,
 			defaultPort,
 			autoOpenBrowser,
+			gitbutler: gitbutlerEnabled,
 		},
 		installClaudeAgent,
 		installShellCompletions,

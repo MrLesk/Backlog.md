@@ -1469,6 +1469,7 @@ taskCmd
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--draft")
+	.option("--virtual-branch <name>", "create task in GitButler virtual branch (requires gitbutler enabled in config)")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
 		"--depends-on <taskIds>",
@@ -1512,6 +1513,16 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
+
+		const config = await core.fs.loadConfig();
+		const virtualBranchName = options.virtualBranch ? String(options.virtualBranch) : undefined;
+
+		// Validate virtual branch usage
+		if (virtualBranchName && !config?.gitbutler) {
+			console.error("Error: --virtual-branch requires gitbutler to be enabled in config");
+			process.exitCode = 1;
+			return;
+		}
 
 		if (shouldUseWizard) {
 			const statuses = await getValidStatuses(core);
@@ -1840,6 +1851,7 @@ taskCmd
 	.command("list")
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
+	.option("--source <source>", "filter by source (local, remote, local-branch, virtual-branch)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")

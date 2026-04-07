@@ -17,6 +17,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
 
   // Check if task is from another branch (read-only)
   const isFromOtherBranch = Boolean(task.branch);
+  const isFromVirtualBranch = Boolean(task.virtualBranch);
+  const branchLabel = task.virtualBranch ? `Virtual: ${task.virtualBranch.name}` : task.branch;
 
   const handleDragStart = (e: React.DragEvent) => {
     // Prevent dragging cross-branch tasks
@@ -87,7 +89,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            Switch to <span className="font-semibold text-amber-300">{task.branch}</span> branch to move this task
+            Switch to <span className="font-semibold text-amber-300">{branchLabel}</span> to move this task
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-gray-700"></div>
         </div>
@@ -113,7 +115,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
             <span className="truncate">
-              From <span className="font-semibold">{task.branch}</span> branch
+              From <span className="font-semibold">{branchLabel}</span>
             </span>
           </div>
         )}

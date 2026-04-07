@@ -52,11 +52,15 @@ export interface Task {
 	subtaskSummaries?: Array<{ id: string; title: string }>;
 	priority?: "high" | "medium" | "low";
 	branch?: string;
+	virtualBranch?: {
+		name: string;
+		state: "applied" | "unapplied";
+	};
 	ordinal?: number;
 	filePath?: string;
 	// Metadata fields
 	lastModified?: Date;
-	source?: "local" | "remote" | "completed" | "local-branch";
+	source?: "local" | "remote" | "completed" | "local-branch" | "virtual-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
 }
@@ -328,6 +332,7 @@ export interface BacklogConfig {
 			allowedOrigins?: string[];
 		};
 	};
+	gitbutler?: boolean;
 }
 
 export interface ParsedMarkdown {

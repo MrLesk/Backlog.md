@@ -1421,6 +1421,9 @@ ${description || `Milestone: ${title}`}`,
 				case "backlogDirectory":
 					config.backlogDirectory = value.replace(/['"]/g, "");
 					break;
+				case "gitbutler":
+					config.gitbutler = value.toLowerCase() === "true";
+					break;
 			}
 		}
 
@@ -1447,6 +1450,7 @@ ${description || `Milestone: ${title}`}`,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
+			gitbutler: config.gitbutler,
 		};
 	}
 
