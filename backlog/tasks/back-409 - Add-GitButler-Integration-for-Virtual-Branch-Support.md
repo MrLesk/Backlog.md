@@ -1,15 +1,15 @@
 ---
 id: BACK-409
 title: Add GitButler Integration for Virtual Branch Support
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-04-07'
-updated_date: '2026-04-09 13:09'
+updated_date: '2026-04-09 15:31'
 labels:
   - git-integration
 dependencies: []
 priority: high
-ordinal: 51000
+ordinal: 1000
 ---
 
 ## Description
