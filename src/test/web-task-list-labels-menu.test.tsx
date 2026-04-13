@@ -136,6 +136,8 @@ describe("TaskList labels filter menu", () => {
 		expect(labelsMenu).toBeTruthy();
 		expect(stickyHeader).toBeTruthy();
 		expect(labelsMenu?.textContent).toContain("bug");
+		expect(labelsButton.getAttribute("aria-haspopup")).toBeNull();
+		expect(labelsMenu?.getAttribute("role")).toBeNull();
 		expect(getZIndexClass(labelsMenu as Element)).toBeGreaterThan(getZIndexClass(stickyHeader as Element) ?? 0);
 	});
 
