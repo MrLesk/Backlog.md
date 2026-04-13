@@ -716,6 +716,9 @@ const TaskList: React.FC<TaskListProps> = ({
 							type="button"
 							ref={labelsButtonRef}
 							onClick={() => setShowLabelsMenu((open) => !open)}
+							aria-haspopup="menu"
+							aria-expanded={showLabelsMenu}
+							aria-controls="task-list-labels-menu"
 							className="min-w-[200px] py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200 text-left"
 						>
 							<div className="flex items-center justify-between gap-2">
@@ -731,8 +734,10 @@ const TaskList: React.FC<TaskListProps> = ({
 						</button>
 						{showLabelsMenu && (
 							<div
+								id="task-list-labels-menu"
 								ref={labelsMenuRef}
-								className="absolute z-10 mt-2 w-[220px] max-h-56 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
+								role="menu"
+								className="absolute z-50 mt-2 w-[220px] max-h-56 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
 							>
 								{mergedAvailableLabels.length === 0 ? (
 									<div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No labels</div>
