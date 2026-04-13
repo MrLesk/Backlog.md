@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-13 16:05'
-updated_date: '2026-04-13 16:10'
+updated_date: '2026-04-13 16:12'
 labels: []
 dependencies: []
 references:
@@ -43,6 +43,8 @@ Raised the TaskList labels popover above the sticky table header by increasing t
 Added a focused JSDOM regression test for the TaskList labels menu that verifies the popover stacks above the sticky header and that a preselected label filter can be cleared through the UI.
 
 Validation: `bun test src/test/web-task-list-labels-menu.test.tsx` passed and `bunx tsc --noEmit` passed. `bun run check .` still fails on an unrelated existing `package.json` formatting issue in the repository baseline.
+
+Opened PR #594 for this fix: https://github.com/MrLesk/Backlog.md/pull/594
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
