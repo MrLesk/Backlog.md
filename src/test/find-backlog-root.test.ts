@@ -1,26 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { clearProjectRootCache, findBacklogRoot } from "../utils/find-backlog-root.ts";
+import { safeCleanup } from "./test-utils.ts";
 
 describe("findBacklogRoot", () => {
 	let testDir: string;
 
 	beforeEach(async () => {
-		testDir = join(tmpdir(), `backlog-root-test-${Date.now()}`);
+		testDir = join(tmpdir(), `backlog-root-test-${randomUUID()}`);
 		await mkdir(testDir, { recursive: true });
 		clearProjectRootCache();
 	});
 
 	afterEach(async () => {
 		clearProjectRootCache();
-		try {
-			await rm(testDir, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(testDir);
 	});
 
 	it("should find root when backlog/ directory with config exists at start dir", async () => {

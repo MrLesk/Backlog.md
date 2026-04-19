@@ -13,18 +13,39 @@ interface ProjectRegistryInput {
 	}>;
 }
 
+interface ParsedProjectEntry {
+	key?: string;
+	path?: string;
+	keySeen?: boolean;
+	pathSeen?: boolean;
+}
+
 function projectRegistryPath(projectRoot: string): string {
 	return join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY);
 }
 
-function stripQuotes(value: string): string {
+function parseScalar(value: string): string | null {
 	const trimmed = value.trim();
-	if (
-		(trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-		(trimmed.startsWith("'") && trimmed.endsWith("'"))
-	) {
+	if (!trimmed) {
+		return null;
+	}
+
+	if (trimmed.startsWith("\"")) {
+		try {
+			const parsed = JSON.parse(trimmed);
+			return typeof parsed === "string" ? parsed : null;
+		} catch {
+			return null;
+		}
+	}
+
+	if (trimmed.startsWith("'")) {
+		if (!trimmed.endsWith("'")) {
+			return null;
+		}
 		return trimmed.slice(1, -1);
 	}
+
 	return trimmed;
 }
 
@@ -100,14 +121,26 @@ function normalizeProjectRegistry(registry: ProjectRegistryInput): ProjectRegist
 
 function parseProjectRegistry(content: string): ProjectRegistry | null {
 	const registry: ProjectRegistryInput = { projects: [] };
-	let currentProject: ProjectRegistryInput["projects"][number] | null = null;
+	let currentProject: ParsedProjectEntry | null = null;
 	let inProjects = false;
+	let seenVersion = false;
+	let seenDefaultProject = false;
+	let seenProjectsSection = false;
 
-	const pushCurrentProject = (): void => {
-		if (currentProject) {
-			registry.projects.push(currentProject);
-			currentProject = null;
+	const finalizeCurrentProject = (): boolean => {
+		if (!currentProject) {
+			return true;
 		}
+		if (!currentProject.key) {
+			return false;
+		}
+
+		registry.projects.push({
+			key: currentProject.key,
+			path: currentProject.path,
+		});
+		currentProject = null;
+		return true;
 	};
 
 	for (const rawLine of content.split(/\r?\n/)) {
@@ -116,50 +149,75 @@ function parseProjectRegistry(content: string): ProjectRegistry | null {
 			continue;
 		}
 
-		if (line.startsWith("version:")) {
-			const parsed = splitKeyValue(line);
-			if (!parsed) {
-				return null;
-			}
-			const value = Number.parseInt(stripQuotes(parsed[1]), 10);
-			if (!Number.isInteger(value)) {
-				return null;
-			}
-			registry.version = value;
-			continue;
-		}
-
-		if (line.startsWith("default_project:") || line.startsWith("defaultProject:")) {
-			const parsed = splitKeyValue(line);
-			if (!parsed) {
-				return null;
-			}
-			const value = normalizeProjectKey(stripQuotes(parsed[1]));
-			if (!value) {
-				return null;
-			}
-			registry.defaultProject = value;
-			continue;
-		}
-
-		if (line === "projects: []") {
-			pushCurrentProject();
-			inProjects = false;
-			continue;
-		}
-
-		if (line === "projects:") {
-			pushCurrentProject();
-			inProjects = true;
-			continue;
-		}
-
 		if (!inProjects) {
-			continue;
+			if (line.startsWith("version:")) {
+				if (seenVersion) {
+					return null;
+				}
+				const parsed = splitKeyValue(line);
+				if (!parsed) {
+					return null;
+				}
+				const valueText = parseScalar(parsed[1]);
+				if (!valueText) {
+					return null;
+				}
+				const value = Number.parseInt(valueText, 10);
+				if (!Number.isInteger(value)) {
+					return null;
+				}
+				registry.version = value;
+				seenVersion = true;
+				continue;
+			}
+
+			if (line.startsWith("default_project:") || line.startsWith("defaultProject:")) {
+				if (seenDefaultProject) {
+					return null;
+				}
+				const parsed = splitKeyValue(line);
+				if (!parsed) {
+					return null;
+				}
+				const value = normalizeProjectKey(parseScalar(parsed[1]));
+				if (!value) {
+					return null;
+				}
+				registry.defaultProject = value;
+				seenDefaultProject = true;
+				continue;
+			}
+
+			if (line === "projects: []") {
+				if (seenProjectsSection) {
+					return null;
+				}
+				if (!finalizeCurrentProject()) {
+					return null;
+				}
+				seenProjectsSection = true;
+				continue;
+			}
+
+			if (line === "projects:") {
+				if (seenProjectsSection) {
+					return null;
+				}
+				if (!finalizeCurrentProject()) {
+					return null;
+				}
+				inProjects = true;
+				seenProjectsSection = true;
+				continue;
+			}
+
+			return null;
 		}
 
 		if (line.startsWith("- ")) {
-			pushCurrentProject();
+			if (!finalizeCurrentProject()) {
+				return null;
+			}
 			currentProject = {};
 			const parsed = splitKeyValue(line.slice(2).trim());
 			if (!parsed) {
@@ -167,9 +225,19 @@ function parseProjectRegistry(content: string): ProjectRegistry | null {
 			}
 			const [key, value] = parsed;
 			if (key === "key") {
-				currentProject.key = stripQuotes(value);
+				const parsedKey = parseScalar(value);
+				if (!parsedKey) {
+					return null;
+				}
+				currentProject.key = parsedKey;
+				currentProject.keySeen = true;
 			} else if (key === "path") {
-				currentProject.path = stripQuotes(value);
+				const parsedPath = parseScalar(value);
+				if (!parsedPath) {
+					return null;
+				}
+				currentProject.path = parsedPath;
+				currentProject.pathSeen = true;
 			} else {
 				return null;
 			}
@@ -186,18 +254,36 @@ function parseProjectRegistry(content: string): ProjectRegistry | null {
 		}
 		const [key, value] = parsed;
 		if (key === "key") {
-			currentProject.key = stripQuotes(value);
+			if (currentProject.keySeen) {
+				return null;
+			}
+			const parsedKey = parseScalar(value);
+			if (!parsedKey) {
+				return null;
+			}
+			currentProject.key = parsedKey;
+			currentProject.keySeen = true;
 			continue;
 		}
 		if (key === "path") {
-			currentProject.path = stripQuotes(value);
+			if (currentProject.pathSeen) {
+				return null;
+			}
+			const parsedPath = parseScalar(value);
+			if (!parsedPath) {
+				return null;
+			}
+			currentProject.path = parsedPath;
+			currentProject.pathSeen = true;
 			continue;
 		}
 
 		return null;
 	}
 
-	pushCurrentProject();
+	if (!finalizeCurrentProject()) {
+		return null;
+	}
 	return normalizeProjectRegistry(registry);
 }
 

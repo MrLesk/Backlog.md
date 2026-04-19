@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readProjectRegistry, resolveProjectContext, writeProjectRegistry } from "../utils/project-registry.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("project registry", () => {
 	let testDir: string;
 
 	beforeEach(async () => {
-		testDir = join(tmpdir(), `backlog-project-registry-${Date.now()}`);
+		testDir = createUniqueTestDir("backlog-project-registry");
 		await mkdir(join(testDir, "backlog"), { recursive: true });
 	});
 
 	afterEach(async () => {
-		await rm(testDir, { recursive: true, force: true });
+		await safeCleanup(testDir);
 	});
 
 	it("writes and rereads the project registry", async () => {
@@ -35,6 +35,41 @@ describe("project registry", () => {
 				{ key: "ops" },
 			],
 		});
+	});
+
+	it("round-trips escaped quoted project paths", async () => {
+		await writeProjectRegistry(testDir, {
+			version: 1,
+			defaultProject: "xx01",
+			projects: [{ key: "xx01", path: 'apps/quoted "dir"' }],
+		});
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toEqual({
+			version: 1,
+			defaultProject: "xx01",
+			projects: [{ key: "xx01", path: 'apps/quoted "dir"' }],
+		});
+	});
+
+	it("rejects unknown top-level registry keys", async () => {
+		await writeFile(
+			join(testDir, "backlog", "projects.yml"),
+			"version: 1\nunexpected: value\nprojects:\n  - key: xx01\n",
+		);
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toBeNull();
+	});
+
+	it("rejects duplicate registry fields", async () => {
+		await writeFile(
+			join(testDir, "backlog", "projects.yml"),
+			"version: 1\nprojects:\n  - key: xx01\n    key: xx02\n",
+		);
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toBeNull();
 	});
 
 	it("prefers an explicit project over cwd matches", async () => {
