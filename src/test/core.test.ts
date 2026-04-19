@@ -44,16 +44,18 @@ describe("Core", () => {
 			expect(config?.defaultStatus).toBe("To Do");
 		});
 
-		it("should use root backlog.config.yml for custom backlog directories", async () => {
+		it("should initialize native project config for custom backlog inputs", async () => {
 			await initializeTestProject(core, "Custom Root Project", false, "planning/backlog-data");
 
-			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
+			const projectRoot = join(TEST_DIR, "backlog", "custom-root-project");
+			expect(await Bun.file(join(projectRoot, "config.yml")).exists()).toBe(true);
+			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(false);
 			expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
 
-			const freshCore = new Core(TEST_DIR);
+			const freshCore = new Core(TEST_DIR, { backlogRoot: projectRoot });
 			const config = await freshCore.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Custom Root Project");
-			expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
+			expect(freshCore.filesystem.backlogDirName).toBe("backlog/custom-root-project");
 		});
 	});
 
@@ -404,8 +406,8 @@ describe("Core", () => {
 			await $`git add -A`.cwd(TEST_DIR).quiet();
 			const diffResult = await $`git diff --name-status -M HEAD`.cwd(TEST_DIR).quiet();
 			const diff = diffResult.stdout.toString();
-			const previousPath = "backlog/docs/doc-1 - Operations-Guide.md";
-			const renamedPath = "backlog/docs/doc-1 - Operations-Guide-Renamed.md";
+			const previousPath = "backlog/test-project/docs/doc-1 - Operations-Guide.md";
+			const renamedPath = "backlog/test-project/docs/doc-1 - Operations-Guide-Renamed.md";
 			const escapeForRegex = (value: string) => value.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
 			expect(diff).toMatch(
 				new RegExp(`^R\\d*\\t${escapeForRegex(previousPath)}\\t${escapeForRegex(renamedPath)}`, "m"),
