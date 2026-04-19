@@ -160,6 +160,17 @@ describe("findBacklogRoot", () => {
 		expect(result).toBe(testDir);
 	});
 
+	it("should find root from a nested subfolder when backlog/projects.yml is the only marker", async () => {
+		await mkdir(join(testDir, "backlog"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1\nprojects: []\n");
+
+		const nested = join(testDir, "packages", "web", "src");
+		await mkdir(nested, { recursive: true });
+
+		const result = await findBacklogRoot(nested);
+		expect(result).toBe(testDir);
+	});
+
 	it("should find root when project root backlog.config.yml points to a custom backlog directory", async () => {
 		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
 		await writeFile(
