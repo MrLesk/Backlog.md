@@ -1,5 +1,6 @@
+import { statSync } from "node:fs";
 import { mkdir, rename, unlink } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
@@ -68,8 +69,8 @@ export class FileSystem {
 		this.usesExplicitBacklogRoot = options?.backlogRoot !== undefined;
 		if (options?.backlogRoot !== undefined) {
 			this.resolvedBacklogDir = options.backlogRoot;
-			this.resolvedBacklogDirName = basename(options.backlogRoot);
-			this.resolvedConfigPath = join(options.backlogRoot, DEFAULT_FILES.CONFIG);
+			this.resolvedBacklogDirName = this.resolveExplicitBacklogDirName(options.backlogRoot);
+			this.resolvedConfigPath = this.resolveExplicitBacklogConfigPath(options.backlogRoot);
 			this.configSource = "folder";
 			return;
 		}
@@ -82,6 +83,36 @@ export class FileSystem {
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
+	}
+
+	private resolveExplicitBacklogDirName(backlogRoot: string): string {
+		const relativeBacklogDir = relative(this.projectRoot, backlogRoot).replace(/\\/g, "/");
+		if (relativeBacklogDir && relativeBacklogDir !== "." && !relativeBacklogDir.startsWith("..")) {
+			return relativeBacklogDir;
+		}
+		return basename(backlogRoot);
+	}
+
+	private resolveExplicitBacklogConfigPath(backlogRoot: string): string {
+		const configPath = join(backlogRoot, DEFAULT_FILES.CONFIG);
+		if (this.fileExists(configPath)) {
+			return configPath;
+		}
+
+		const yamlPath = join(backlogRoot, DEFAULT_FILES.CONFIG_YAML);
+		if (this.fileExists(yamlPath)) {
+			return yamlPath;
+		}
+
+		return configPath;
+	}
+
+	private fileExists(path: string): boolean {
+		try {
+			return statSync(path).isFile();
+		} catch {
+			return false;
+		}
 	}
 
 	private async getBacklogDir(): Promise<string> {
@@ -132,11 +163,8 @@ export class FileSystem {
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
 		if (this.usesExplicitBacklogRoot) {
-			this.resolvedBacklogDirName = basename(this.resolvedBacklogDir);
-			this.resolvedConfigPath =
-				this.configSource === "root"
-					? join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG)
-					: join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+			this.resolvedBacklogDirName = this.resolveExplicitBacklogDirName(this.resolvedBacklogDir);
+			this.resolvedConfigPath = this.resolveExplicitBacklogConfigPath(this.resolvedBacklogDir);
 			return;
 		}
 
