@@ -5,7 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import { initializeProject as initializeProjectShared } from "../core/init.ts";
 
@@ -120,7 +120,8 @@ export async function initializeTestProject(
 	await core.ensureConfigLoaded();
 
 	if (autoCommit) {
-		const repoRoot = await core.gitOps.stageBacklogDirectory(core.filesystem.backlogDirName);
+		const backlogContainerDir = dirname(core.filesystem.backlogDirName);
+		const repoRoot = await core.gitOps.stageBacklogDirectory(backlogContainerDir);
 		await core.gitOps.commitChanges(`backlog: Initialize backlog project: ${projectName}`, repoRoot);
 	}
 }

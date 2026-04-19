@@ -461,6 +461,20 @@ export async function readProjectRegistry(projectRoot: string): Promise<ProjectR
 	return result.registry;
 }
 
+export async function resolveProjectRegistryLocation(
+	projectRoot: string,
+): Promise<{ registryPath: string; containerRoot: string } | null> {
+	const result = await loadProjectRegistry(projectRoot);
+	if (result.state !== "valid") {
+		return null;
+	}
+
+	return {
+		registryPath: result.registryPath,
+		containerRoot: result.containerRoot,
+	};
+}
+
 export async function writeProjectRegistry(projectRoot: string, registry: ProjectRegistry): Promise<void> {
 	const normalized = normalizeProjectRegistry(registry);
 	if (!normalized) {

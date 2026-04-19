@@ -9,7 +9,11 @@ import {
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { readProjectRegistry, writeProjectRegistry } from "../utils/project-registry.ts";
+import {
+	readProjectRegistry,
+	resolveProjectRegistryLocation,
+	writeProjectRegistry,
+} from "../utils/project-registry.ts";
 import type { Core } from "./backlog.ts";
 
 export const MCP_SERVER_NAME = "backlog";
@@ -174,22 +178,24 @@ export async function initializeProject(
 	if (isReInitialization) {
 		await core.filesystem.saveConfig(config);
 	} else {
-		const backlogRoot = join(projectRoot, "backlog");
+		const registryLocation = await resolveProjectRegistryLocation(projectRoot);
+		const backlogRoot = registryLocation?.containerRoot ?? join(projectRoot, "backlog");
 		const projectBacklogRoot = join(backlogRoot, projectKey);
-		await mkdir(backlogRoot, { recursive: true });
 
 		const registry = (await readProjectRegistry(projectRoot)) ?? {
 			version: 1 as const,
 			defaultProject: projectKey,
 			projects: [],
 		};
+		if (registry.projects.some((project) => project.key.toLowerCase() === projectKey.toLowerCase())) {
+			throw new Error(`Project key collision: ${projectKey} already exists in the project registry.`);
+		}
 		if (!registry.defaultProject) {
 			registry.defaultProject = projectKey;
 		}
-		if (!registry.projects.some((project) => project.key.toLowerCase() === projectKey.toLowerCase())) {
-			registry.projects.push({ key: projectKey });
-		}
+		registry.projects.push({ key: projectKey });
 
+		await mkdir(backlogRoot, { recursive: true });
 		await writeProjectRegistry(projectRoot, registry);
 
 		core.reinitializeProjectRoot(projectRoot, { backlogRoot: projectBacklogRoot });
