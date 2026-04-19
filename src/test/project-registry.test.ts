@@ -37,6 +37,24 @@ describe("project registry", () => {
 		});
 	});
 
+	it("writes and rereads the project registry in a hidden backlog container", async () => {
+		await mkdir(join(testDir, ".backlog"), { recursive: true });
+		await writeFile(join(testDir, ".backlog", "config.yml"), "project_name: Test\n");
+
+		await writeProjectRegistry(testDir, {
+			version: 1,
+			defaultProject: "xx01",
+			projects: [{ key: "xx01", path: "apps/web" }],
+		});
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toEqual({
+			version: 1,
+			defaultProject: "xx01",
+			projects: [{ key: "xx01", path: "apps/web" }],
+		});
+	});
+
 	it("round-trips escaped quoted project paths", async () => {
 		await writeProjectRegistry(testDir, {
 			version: 1,
@@ -84,6 +102,13 @@ describe("project registry", () => {
 			join(testDir, "backlog", "projects.yml"),
 			"version: 1\nprojects:\n  - key: xx01\n    path: apps/quoted dir\n",
 		);
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toBeNull();
+	});
+
+	it("rejects unsafe project keys", async () => {
+		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1\nprojects:\n  - key: CON\n");
 
 		const registry = await readProjectRegistry(testDir);
 		expect(registry).toBeNull();

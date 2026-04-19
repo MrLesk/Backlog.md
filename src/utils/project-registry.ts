@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, normalize, relative, resolve } from "node:path";
+import { dirname, join, normalize, relative, resolve } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
 import type { ProjectDefinition, ProjectRegistry, ResolvedProjectContext } from "../types/index.ts";
-import { normalizeProjectBacklogDirectory } from "./backlog-directory.ts";
+import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "./backlog-directory.ts";
 
 interface ProjectRegistryInput {
 	version?: number;
@@ -21,7 +21,12 @@ interface ParsedProjectEntry {
 }
 
 function projectRegistryPath(projectRoot: string): string {
-	return join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY);
+	return join(resolveProjectContainerRoot(projectRoot), DEFAULT_FILES.PROJECT_REGISTRY);
+}
+
+function resolveProjectContainerRoot(projectRoot: string): string {
+	const resolution = resolveBacklogDirectory(projectRoot);
+	return resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 }
 
 function parseScalar(value: string): string | null {
@@ -102,6 +107,21 @@ function normalizeProjectKey(value: string | null | undefined): string | null {
 		return null;
 	}
 	if (normalized === "." || normalized === ".." || normalized.includes("/")) {
+		return null;
+	}
+	if (!/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/.test(normalized)) {
+		return null;
+	}
+
+	const baseName = normalized.split(".")[0].toUpperCase();
+	if (
+		baseName === "CON" ||
+		baseName === "PRN" ||
+		baseName === "AUX" ||
+		baseName === "NUL" ||
+		/^COM[1-9]$/.test(baseName) ||
+		/^LPT[1-9]$/.test(baseName)
+	) {
 		return null;
 	}
 
@@ -373,7 +393,7 @@ function resolveProjectByCwd(projectRoot: string, registry: ProjectRegistry, cwd
 }
 
 function buildResolvedProjectContext(projectRoot: string, project: ProjectDefinition): ResolvedProjectContext {
-	const containerRoot = join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+	const containerRoot = resolveProjectContainerRoot(projectRoot);
 	return {
 		repoRoot: projectRoot,
 		containerRoot,
@@ -398,8 +418,9 @@ export async function writeProjectRegistry(projectRoot: string, registry: Projec
 		throw new Error("Invalid project registry.");
 	}
 
-	await mkdir(join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG), { recursive: true });
-	await writeFile(projectRegistryPath(projectRoot), serializeProjectRegistry(normalized), "utf8");
+	const registryPath = projectRegistryPath(projectRoot);
+	await mkdir(dirname(registryPath), { recursive: true });
+	await writeFile(registryPath, serializeProjectRegistry(normalized), "utf8");
 }
 
 export async function resolveProjectContext(
