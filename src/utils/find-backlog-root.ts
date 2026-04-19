@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { $ } from "bun";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
+import { readProjectRegistry } from "./project-registry.ts";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 
 /**
@@ -37,8 +37,7 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 			return current;
 		}
 
-		const projectRegistry = join(current, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY);
-		if (await fileExists(projectRegistry)) {
+		if ((await readProjectRegistry(current)) !== null) {
 			return current;
 		}
 
@@ -59,12 +58,11 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 			if (gitRoot) {
 				// Verify the git root has a backlog setup
 				const backlogJson = join(gitRoot, "backlog.json");
-				const projectRegistry = join(gitRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY);
 
 				const backlogResolution = resolveBacklogDirectory(gitRoot);
 				if (
 					backlogResolution.configPath ||
-					(await fileExists(projectRegistry)) ||
+					((await readProjectRegistry(gitRoot)) !== null) ||
 					(await fileExists(backlogJson))
 				) {
 					return gitRoot;

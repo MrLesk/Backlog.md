@@ -169,6 +169,21 @@ describe("findBacklogRoot", () => {
 		expect(result).toBe(testDir);
 	});
 
+	it("should ignore malformed nested backlog/projects.yml markers", async () => {
+		await mkdir(join(testDir, "backlog"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Test\n");
+
+		const nestedProject = join(testDir, "packages", "web");
+		await mkdir(join(nestedProject, "backlog"), { recursive: true });
+		await writeFile(join(nestedProject, "backlog", "projects.yml"), "version: 1oops\nprojects: []\n");
+
+		const nestedStart = join(nestedProject, "src");
+		await mkdir(nestedStart, { recursive: true });
+
+		const result = await findBacklogRoot(nestedStart);
+		expect(result).toBe(testDir);
+	});
+
 	it("should find root when project root backlog.config.yml points to a custom backlog directory", async () => {
 		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
 		await writeFile(

@@ -72,6 +72,23 @@ describe("project registry", () => {
 		expect(registry).toBeNull();
 	});
 
+	it("rejects version values with trailing characters", async () => {
+		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1oops\nprojects: []\n");
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toBeNull();
+	});
+
+	it("rejects malformed unquoted scalar values", async () => {
+		await writeFile(
+			join(testDir, "backlog", "projects.yml"),
+			"version: 1\nprojects:\n  - key: xx01\n    path: apps/quoted dir\n",
+		);
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toBeNull();
+	});
+
 	it("prefers an explicit project over cwd matches", async () => {
 		await writeProjectRegistry(testDir, {
 			version: 1,

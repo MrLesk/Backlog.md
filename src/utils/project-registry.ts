@@ -46,7 +46,40 @@ function parseScalar(value: string): string | null {
 		return trimmed.slice(1, -1);
 	}
 
+	if (!/^[A-Za-z0-9._/-]+$/.test(trimmed)) {
+		return null;
+	}
+
 	return trimmed;
+}
+
+function parseVersionScalar(value: string): number | null {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	if (trimmed.startsWith("\"")) {
+		const parsed = parseScalar(trimmed);
+		if (!parsed || !/^\d+$/.test(parsed)) {
+			return null;
+		}
+		return Number.parseInt(parsed, 10);
+	}
+
+	if (trimmed.startsWith("'")) {
+		const parsed = parseScalar(trimmed);
+		if (!parsed || !/^\d+$/.test(parsed)) {
+			return null;
+		}
+		return Number.parseInt(parsed, 10);
+	}
+
+	if (!/^\d+$/.test(trimmed)) {
+		return null;
+	}
+
+	return Number.parseInt(trimmed, 10);
 }
 
 function splitKeyValue(line: string): [string, string] | null {
@@ -158,12 +191,8 @@ function parseProjectRegistry(content: string): ProjectRegistry | null {
 				if (!parsed) {
 					return null;
 				}
-				const valueText = parseScalar(parsed[1]);
-				if (!valueText) {
-					return null;
-				}
-				const value = Number.parseInt(valueText, 10);
-				if (!Number.isInteger(value)) {
+				const value = parseVersionScalar(parsed[1]);
+				if (value === null) {
 					return null;
 				}
 				registry.version = value;
