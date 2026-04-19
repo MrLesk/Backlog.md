@@ -111,7 +111,7 @@ export async function initializeProject(
 	// Re-init should be idempotent for fields that init does not explicitly manage.
 	const d = DEFAULT_INIT_CONFIG;
 	const baseConfig: BacklogConfig = {
-		projectName: projectKey,
+		projectName,
 		statuses: ["To Do", "In Progress", "Done"],
 		labels: [],
 		defaultStatus: "To Do",
@@ -134,7 +134,7 @@ export async function initializeProject(
 	const config: BacklogConfig = {
 		...baseConfig,
 		...(existingConfig ?? {}),
-		projectName: projectKey,
+		projectName,
 		autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
 		remoteOperations: advancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: advancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
