@@ -180,6 +180,18 @@ describe("findBacklogRoot", () => {
 		expect(result).toBe(testDir);
 	});
 
+	it("should find root from a nested subfolder when both built-in containers exist and only .backlog has a valid registry", async () => {
+		await mkdir(join(testDir, "backlog"), { recursive: true });
+		await mkdir(join(testDir, ".backlog"), { recursive: true });
+		await writeFile(join(testDir, ".backlog", "projects.yml"), "version: 1\nprojects: []\n");
+
+		const nested = join(testDir, "packages", "web", "src");
+		await mkdir(nested, { recursive: true });
+
+		const result = await findBacklogRoot(nested);
+		expect(result).toBe(testDir);
+	});
+
 	it("should ignore malformed nested backlog/projects.yml markers", async () => {
 		await mkdir(join(testDir, "backlog"), { recursive: true });
 		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Test\n");

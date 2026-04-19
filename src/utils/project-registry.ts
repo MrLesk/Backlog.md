@@ -22,11 +22,22 @@ interface ParsedProjectEntry {
 
 type ProjectRegistryLoadResult =
 	| { state: "missing" }
-	| { state: "invalid" }
+	| { state: "invalid"; path?: string }
 	| { state: "valid"; registry: ProjectRegistry };
 
 function projectRegistryPath(projectRoot: string): string {
 	return join(resolveProjectContainerRoot(projectRoot), DEFAULT_FILES.PROJECT_REGISTRY);
+}
+
+function projectRegistryCandidatePaths(projectRoot: string): string[] {
+	const activeContainerRoot = resolveProjectContainerRoot(projectRoot);
+	const candidates = [
+		join(activeContainerRoot, DEFAULT_FILES.PROJECT_REGISTRY),
+		join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY),
+		join(projectRoot, DEFAULT_DIRECTORIES.HIDDEN_BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY),
+	];
+
+	return [...new Set(candidates)];
 }
 
 function resolveProjectContainerRoot(projectRoot: string): string {
@@ -157,7 +168,7 @@ function normalizeProjectRegistry(registry: ProjectRegistryInput): ProjectRegist
 		}
 
 		const path = normalizeProjectBacklogDirectory(project.path);
-		const pathIdentity = path?.toLowerCase() ?? null;
+		const pathIdentity = path ?? null;
 		if (!path || !pathIdentity || seenPaths.has(pathIdentity)) {
 			return null;
 		}
@@ -343,16 +354,27 @@ function parseProjectRegistry(content: string): ProjectRegistry | null {
 }
 
 async function loadProjectRegistry(projectRoot: string): Promise<ProjectRegistryLoadResult> {
-	try {
-		const content = await readFile(projectRegistryPath(projectRoot), "utf8");
-		const registry = parseProjectRegistry(content);
-		return registry ? { state: "valid", registry } : { state: "invalid" };
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
-			return { state: "missing" };
+	let invalidPath: string | undefined;
+	const candidates = projectRegistryCandidatePaths(projectRoot);
+
+	for (const candidatePath of candidates) {
+		try {
+			const content = await readFile(candidatePath, "utf8");
+			const registry = parseProjectRegistry(content);
+			if (registry) {
+				return { state: "valid", registry };
+			}
+
+			invalidPath ??= candidatePath;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+				continue;
+			}
+			invalidPath ??= candidatePath;
 		}
-		return { state: "invalid" };
 	}
+
+	return invalidPath ? { state: "invalid", path: invalidPath } : { state: "missing" };
 }
 
 function serializeProjectRegistry(registry: ProjectRegistry): string {
@@ -465,7 +487,7 @@ export async function resolveProjectContext(
 		throw new Error("No projects are registered in backlog/projects.yml.");
 	}
 	if (registryLoad.state === "invalid") {
-		throw new Error(`${projectRegistryPath(projectRoot)} exists but is invalid.`);
+		throw new Error(`${registryLoad.path ?? projectRegistryPath(projectRoot)} exists but is invalid.`);
 	}
 	const registry = registryLoad.registry;
 
