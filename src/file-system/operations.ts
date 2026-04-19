@@ -1,11 +1,11 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
-import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
+import type { BacklogConfigSource, BacklogDirectoryResolution } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import {
@@ -60,13 +60,26 @@ export class FileSystem {
 	private resolvedConfigPath: string;
 	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
+	private readonly usesExplicitBacklogRoot: boolean;
 	private cachedConfig: BacklogConfig | null = null;
 
-	constructor(projectRoot: string) {
+	constructor(projectRoot: string, options?: { backlogRoot?: string }) {
 		this.projectRoot = projectRoot;
-		const resolution = resolveBacklogDirectory(projectRoot);
+		this.usesExplicitBacklogRoot = options?.backlogRoot !== undefined;
+		if (options?.backlogRoot !== undefined) {
+			this.resolvedBacklogDir = options.backlogRoot;
+			this.resolvedBacklogDirName = basename(options.backlogRoot);
+			this.resolvedConfigPath = join(options.backlogRoot, DEFAULT_FILES.CONFIG);
+			this.configSource = "folder";
+			return;
+		}
+
+		this.applyBacklogResolution(resolveBacklogDirectory(projectRoot));
+	}
+
+	private applyBacklogResolution(resolution: BacklogDirectoryResolution): void {
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
-		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
 	}
@@ -118,11 +131,16 @@ export class FileSystem {
 
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
-		const resolution = resolveBacklogDirectory(this.projectRoot);
-		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
-		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
-		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
-		this.configSource = resolution.configSource ?? "folder";
+		if (this.usesExplicitBacklogRoot) {
+			this.resolvedBacklogDirName = basename(this.resolvedBacklogDir);
+			this.resolvedConfigPath =
+				this.configSource === "root"
+					? join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG)
+					: join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+			return;
+		}
+
+		this.applyBacklogResolution(resolveBacklogDirectory(this.projectRoot));
 	}
 
 	setBacklogDirectory(backlogDir: string): void {

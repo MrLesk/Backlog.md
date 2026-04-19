@@ -156,8 +156,8 @@ export class Core {
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
 
-	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
-		this.fs = new FileSystem(projectRoot);
+	constructor(projectRoot: string, options?: { enableWatchers?: boolean; backlogRoot?: string }) {
+		this.fs = new FileSystem(projectRoot, { backlogRoot: options?.backlogRoot });
 		this.git = new GitOperations(projectRoot);
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
@@ -457,10 +457,10 @@ export class Core {
 	 * Re-point this Core instance to a different project root.
 	 * Disposes caches and re-creates FileSystem / GitOperations.
 	 */
-	reinitializeProjectRoot(projectRoot: string): void {
+	reinitializeProjectRoot(projectRoot: string, options?: { backlogRoot?: string }): void {
 		this.disposeSearchService();
 		this.disposeContentStore();
-		this.fs = new FileSystem(projectRoot);
+		this.fs = new FileSystem(projectRoot, { backlogRoot: options?.backlogRoot });
 		this.git = new GitOperations(projectRoot);
 	}
 
