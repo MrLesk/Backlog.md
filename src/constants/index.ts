@@ -38,6 +38,8 @@ export const DEFAULT_FILES = {
 	CONFIG_YAML: "config.yaml",
 	/** Root-level backlog configuration file */
 	ROOT_CONFIG: "backlog.config.yml",
+	/** Repository-level project registry file */
+	PROJECT_REGISTRY: "projects.yml",
 } as const;
 
 /**

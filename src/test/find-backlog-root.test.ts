@@ -152,6 +152,14 @@ describe("findBacklogRoot", () => {
 		expect(result).toBe(testDir);
 	});
 
+	it("should handle backlog/projects.yml as a repository-level backlog marker", async () => {
+		await mkdir(join(testDir, "backlog"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1\nprojects: []\n");
+
+		const result = await findBacklogRoot(testDir);
+		expect(result).toBe(testDir);
+	});
+
 	it("should find root when project root backlog.config.yml points to a custom backlog directory", async () => {
 		await mkdir(join(testDir, "planning", "backlog", "tasks"), { recursive: true });
 		await writeFile(

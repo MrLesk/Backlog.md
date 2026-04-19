@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { $ } from "bun";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 
 /**
@@ -36,6 +37,11 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 			return current;
 		}
 
+		const projectRegistry = join(current, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY);
+		if (await fileExists(projectRegistry)) {
+			return current;
+		}
+
 		// Check for backlog.json file
 		const backlogJson = join(current, "backlog.json");
 		if (await fileExists(backlogJson)) {
@@ -50,15 +56,20 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 		const result = await $`git rev-parse --show-toplevel`.cwd(startDir).quiet();
 		const gitRoot = result.stdout.toString().trim();
 
-		if (gitRoot) {
-			// Verify the git root has a backlog setup
-			const backlogJson = join(gitRoot, "backlog.json");
+			if (gitRoot) {
+				// Verify the git root has a backlog setup
+				const backlogJson = join(gitRoot, "backlog.json");
+				const projectRegistry = join(gitRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY);
 
-			const backlogResolution = resolveBacklogDirectory(gitRoot);
-			if (backlogResolution.configPath || (await fileExists(backlogJson))) {
-				return gitRoot;
+				const backlogResolution = resolveBacklogDirectory(gitRoot);
+				if (
+					backlogResolution.configPath ||
+					(await fileExists(projectRegistry)) ||
+					(await fileExists(backlogJson))
+				) {
+					return gitRoot;
+				}
 			}
-		}
 	} catch {
 		// Not in a git repository or git not available
 	}

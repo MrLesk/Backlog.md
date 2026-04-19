@@ -244,6 +244,25 @@ export interface Sequence {
 	tasks: Task[];
 }
 
+export interface ProjectDefinition {
+	key: string;
+	path?: string;
+}
+
+export interface ProjectRegistry {
+	version: 1;
+	defaultProject?: string;
+	projects: ProjectDefinition[];
+}
+
+export interface ResolvedProjectContext {
+	repoRoot: string;
+	containerRoot: string;
+	registryPath: string;
+	project: ProjectDefinition;
+	backlogRoot: string;
+}
+
 /**
  * Configuration for ID prefixes used in task files.
  * Allows customization of task prefix (e.g., "JIRA-", "issue-", "bug-").
