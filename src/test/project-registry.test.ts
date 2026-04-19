@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readProjectRegistry, resolveProjectContext, writeProjectRegistry } from "../utils/project-registry.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -53,6 +53,36 @@ describe("project registry", () => {
 			defaultProject: "xx01",
 			projects: [{ key: "xx01", path: "apps/web" }],
 		});
+	});
+
+	it("preserves the hidden container when backlog also exists", async () => {
+		await mkdir(join(testDir, "backlog"), { recursive: true });
+		await mkdir(join(testDir, ".backlog"), { recursive: true });
+		await writeFile(join(testDir, "backlog", "projects.yml"), "name: placeholder\n");
+		await writeFile(join(testDir, ".backlog", "projects.yml"), "version: 1\nprojects:\n  - key: xx01\n");
+
+		const context = await resolveProjectContext(testDir, {
+			project: "xx01",
+		});
+
+		expect(context.containerRoot).toBe(join(testDir, ".backlog"));
+		expect(context.registryPath).toBe(join(testDir, ".backlog", "projects.yml"));
+
+		await writeProjectRegistry(testDir, {
+			version: 1,
+			projects: [{ key: "xx01" }],
+		});
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toEqual({
+			version: 1,
+			projects: [{ key: "xx01" }],
+		});
+
+		const hiddenRegistry = await readFile(join(testDir, ".backlog", "projects.yml"), "utf8");
+		expect(hiddenRegistry).toContain('"xx01"');
+		const backlogRegistry = await readFile(join(testDir, "backlog", "projects.yml"), "utf8");
+		expect(backlogRegistry).toBe("name: placeholder\n");
 	});
 
 	it("round-trips escaped quoted project paths", async () => {

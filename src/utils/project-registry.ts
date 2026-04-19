@@ -23,7 +23,7 @@ interface ParsedProjectEntry {
 type ProjectRegistryLoadResult =
 	| { state: "missing" }
 	| { state: "invalid"; path?: string }
-	| { state: "valid"; registry: ProjectRegistry };
+	| { state: "valid"; registry: ProjectRegistry; registryPath: string; containerRoot: string };
 
 function projectRegistryPath(projectRoot: string): string {
 	return join(resolveProjectContainerRoot(projectRoot), DEFAULT_FILES.PROJECT_REGISTRY);
@@ -362,7 +362,12 @@ async function loadProjectRegistry(projectRoot: string): Promise<ProjectRegistry
 			const content = await readFile(candidatePath, "utf8");
 			const registry = parseProjectRegistry(content);
 			if (registry) {
-				return { state: "valid", registry };
+				return {
+					state: "valid",
+					registry,
+					registryPath: candidatePath,
+					containerRoot: dirname(candidatePath),
+				};
 			}
 
 			invalidPath ??= candidatePath;
@@ -447,17 +452,6 @@ function findProjectByKey(registry: ProjectRegistry, key: string): ProjectDefini
 	);
 }
 
-function buildResolvedProjectContext(projectRoot: string, project: ProjectDefinition): ResolvedProjectContext {
-	const containerRoot = resolveProjectContainerRoot(projectRoot);
-	return {
-		repoRoot: projectRoot,
-		containerRoot,
-		registryPath: projectRegistryPath(projectRoot),
-		project,
-		backlogRoot: join(containerRoot, project.key),
-	};
-}
-
 export async function readProjectRegistry(projectRoot: string): Promise<ProjectRegistry | null> {
 	const result = await loadProjectRegistry(projectRoot);
 	if (result.state !== "valid") {
@@ -473,7 +467,9 @@ export async function writeProjectRegistry(projectRoot: string, registry: Projec
 		throw new Error("Invalid project registry.");
 	}
 
-	const registryPath = projectRegistryPath(projectRoot);
+	const existingRegistry = await loadProjectRegistry(projectRoot);
+	const registryPath =
+		existingRegistry.state === "valid" ? existingRegistry.registryPath : projectRegistryPath(projectRoot);
 	await mkdir(dirname(registryPath), { recursive: true });
 	await writeFile(registryPath, serializeProjectRegistry(normalized), "utf8");
 }
@@ -502,20 +498,38 @@ export async function resolveProjectContext(
 			throw new Error(`Unknown project: ${explicitProject}`);
 		}
 
-		return buildResolvedProjectContext(projectRoot, match);
+		return {
+			repoRoot: projectRoot,
+			containerRoot: registryLoad.containerRoot,
+			registryPath: registryLoad.registryPath,
+			project: match,
+			backlogRoot: join(registryLoad.containerRoot, match.key),
+		};
 	}
 
 	if (options.cwd) {
 		const match = resolveProjectByCwd(projectRoot, registry, options.cwd);
 		if (match) {
-			return buildResolvedProjectContext(projectRoot, match);
+			return {
+				repoRoot: projectRoot,
+				containerRoot: registryLoad.containerRoot,
+				registryPath: registryLoad.registryPath,
+				project: match,
+				backlogRoot: join(registryLoad.containerRoot, match.key),
+			};
 		}
 	}
 
 	if (registry.defaultProject) {
 		const defaultProject = findProjectByKey(registry, registry.defaultProject);
 		if (defaultProject) {
-			return buildResolvedProjectContext(projectRoot, defaultProject);
+			return {
+				repoRoot: projectRoot,
+				containerRoot: registryLoad.containerRoot,
+				registryPath: registryLoad.registryPath,
+				project: defaultProject,
+				backlogRoot: join(registryLoad.containerRoot, defaultProject.key),
+			};
 		}
 	}
 
