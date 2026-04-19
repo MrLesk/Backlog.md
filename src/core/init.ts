@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
@@ -7,7 +9,7 @@ import {
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
+import { readProjectRegistry, writeProjectRegistry } from "../utils/project-registry.ts";
 import type { Core } from "./backlog.ts";
 
 export const MCP_SERVER_NAME = "backlog";
@@ -51,6 +53,15 @@ export interface InitializeProjectResult {
 	mcpResults?: Record<string, string>;
 }
 
+function deriveProjectKey(projectName: string): string {
+	const normalized = projectName
+		.trim()
+		.replace(/[^A-Za-z0-9._-]+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "");
+	return normalized ? normalized.toLowerCase() : "project";
+}
+
 async function runMcpClientCommand(label: string, command: string, args: string[]): Promise<string> {
 	try {
 		const child = spawn({
@@ -91,6 +102,7 @@ export async function initializeProject(
 
 	const isReInitialization = !!existingConfig;
 	const projectRoot = core.filesystem.rootDir;
+	const projectKey = deriveProjectKey(projectName);
 	const hasDefaultEditorOverride = Object.hasOwn(advancedConfig, "defaultEditor");
 	const hasZeroPaddedIdsOverride = Object.hasOwn(advancedConfig, "zeroPaddedIds");
 	const hasDefinitionOfDoneOverride = Object.hasOwn(advancedConfig, "definitionOfDone");
@@ -99,7 +111,7 @@ export async function initializeProject(
 	// Re-init should be idempotent for fields that init does not explicitly manage.
 	const d = DEFAULT_INIT_CONFIG;
 	const baseConfig: BacklogConfig = {
-		projectName,
+		projectName: projectKey,
 		statuses: ["To Do", "In Progress", "Done"],
 		labels: [],
 		defaultStatus: "To Do",
@@ -122,7 +134,7 @@ export async function initializeProject(
 	const config: BacklogConfig = {
 		...baseConfig,
 		...(existingConfig ?? {}),
-		projectName,
+		projectName: projectKey,
 		autoCommit: advancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
 		remoteOperations: advancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: advancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -162,39 +174,25 @@ export async function initializeProject(
 	if (isReInitialization) {
 		await core.filesystem.saveConfig(config);
 	} else {
-		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
-		const inferredBacklogDirectorySource = normalizedBacklogDirectory
-			? normalizedBacklogDirectory === ".backlog"
-				? ".backlog"
-				: normalizedBacklogDirectory === "backlog"
-					? "backlog"
-					: "custom"
-			: undefined;
-		if (
-			options.backlogDirectorySource &&
-			inferredBacklogDirectorySource &&
-			options.backlogDirectorySource !== inferredBacklogDirectorySource
-		) {
-			throw new Error("Backlog directory source and backlog directory value must agree.");
+		const backlogRoot = join(projectRoot, "backlog");
+		const projectBacklogRoot = join(backlogRoot, projectKey);
+		await mkdir(backlogRoot, { recursive: true });
+
+		const registry = (await readProjectRegistry(projectRoot)) ?? {
+			version: 1 as const,
+			defaultProject: projectKey,
+			projects: [],
+		};
+		if (!registry.defaultProject) {
+			registry.defaultProject = projectKey;
 		}
-		const effectiveBacklogDirectorySource = options.backlogDirectorySource ?? inferredBacklogDirectorySource;
-		if (effectiveBacklogDirectorySource === "custom" && !normalizedBacklogDirectory) {
-			throw new Error("Backlog directory must be a valid project-relative path.");
+		if (!registry.projects.some((project) => project.key.toLowerCase() === projectKey.toLowerCase())) {
+			registry.projects.push({ key: projectKey });
 		}
-		const effectiveConfigLocation =
-			options.configLocation ?? (effectiveBacklogDirectorySource === "custom" ? "root" : "folder");
-		if (effectiveBacklogDirectorySource === "custom" && effectiveConfigLocation !== "root") {
-			throw new Error("Custom backlog directories require root config discovery.");
-		}
-		const selectedBacklogDirectory =
-			normalizedBacklogDirectory ??
-			(effectiveBacklogDirectorySource === ".backlog"
-				? ".backlog"
-				: effectiveBacklogDirectorySource === "backlog"
-					? "backlog"
-					: "backlog");
-		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);
-		core.filesystem.setConfigLocation(effectiveConfigLocation);
+
+		await writeProjectRegistry(projectRoot, registry);
+
+		core.reinitializeProjectRoot(projectRoot, { backlogRoot: projectBacklogRoot });
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();

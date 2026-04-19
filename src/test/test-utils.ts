@@ -114,6 +114,11 @@ export async function initializeTestProject(
 		},
 	});
 
+	core.reinitializeProjectRoot(core.filesystem.rootDir, {
+		backlogRoot: core.filesystem.backlogDir,
+	});
+	await core.ensureConfigLoaded();
+
 	if (autoCommit) {
 		const repoRoot = await core.gitOps.stageBacklogDirectory(core.filesystem.backlogDirName);
 		await core.gitOps.commitChanges(`backlog: Initialize backlog project: ${projectName}`, repoRoot);
