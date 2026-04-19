@@ -90,6 +90,26 @@ describe("project registry", () => {
 		expect(registry).toBeNull();
 	});
 
+	it("rejects case-insensitive key collisions", async () => {
+		await writeFile(
+			join(testDir, "backlog", "projects.yml"),
+			"version: 1\nprojects:\n  - key: xx01\n  - key: XX01\n",
+		);
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toBeNull();
+	});
+
+	it("rejects duplicate normalized project paths", async () => {
+		await writeFile(
+			join(testDir, "backlog", "projects.yml"),
+			"version: 1\nprojects:\n  - key: xx01\n    path: apps/web\n  - key: xx02\n    path: apps//web\n",
+		);
+
+		const registry = await readProjectRegistry(testDir);
+		expect(registry).toBeNull();
+	});
+
 	it("rejects version values with trailing characters", async () => {
 		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1oops\nprojects: []\n");
 
@@ -112,6 +132,14 @@ describe("project registry", () => {
 
 		const registry = await readProjectRegistry(testDir);
 		expect(registry).toBeNull();
+	});
+
+	it("reports invalid registry files distinctly during project resolution", async () => {
+		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1oops\nprojects: []\n");
+
+		await expect(resolveProjectContext(testDir, { cwd: join(testDir, "src") })).rejects.toThrow(
+			"exists but is invalid",
+		);
 	});
 
 	it("prefers an explicit project over cwd matches", async () => {

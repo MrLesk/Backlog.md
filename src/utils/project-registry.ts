@@ -20,6 +20,11 @@ interface ParsedProjectEntry {
 	pathSeen?: boolean;
 }
 
+type ProjectRegistryLoadResult =
+	| { state: "missing" }
+	| { state: "invalid" }
+	| { state: "valid"; registry: ProjectRegistry };
+
 function projectRegistryPath(projectRoot: string): string {
 	return join(resolveProjectContainerRoot(projectRoot), DEFAULT_FILES.PROJECT_REGISTRY);
 }
@@ -135,14 +140,16 @@ function normalizeProjectRegistry(registry: ProjectRegistryInput): ProjectRegist
 
 	const normalizedProjects: ProjectDefinition[] = [];
 	const seenKeys = new Set<string>();
+	const seenPaths = new Set<string>();
 
 	for (const project of registry.projects) {
 		const key = normalizeProjectKey(project.key);
-		if (!key || seenKeys.has(key)) {
+		const keyIdentity = key?.toLowerCase() ?? null;
+		if (!key || !keyIdentity || seenKeys.has(keyIdentity)) {
 			return null;
 		}
 
-		seenKeys.add(key);
+		seenKeys.add(keyIdentity);
 
 		if (project.path === undefined) {
 			normalizedProjects.push({ key });
@@ -150,18 +157,17 @@ function normalizeProjectRegistry(registry: ProjectRegistryInput): ProjectRegist
 		}
 
 		const path = normalizeProjectBacklogDirectory(project.path);
-		if (!path) {
+		const pathIdentity = path?.toLowerCase() ?? null;
+		if (!path || !pathIdentity || seenPaths.has(pathIdentity)) {
 			return null;
 		}
 
+		seenPaths.add(pathIdentity);
 		normalizedProjects.push({ key, path });
 	}
 
 	const defaultProject = registry.defaultProject ? normalizeProjectKey(registry.defaultProject) : undefined;
-	if (registry.defaultProject && !defaultProject) {
-		return null;
-	}
-	if (defaultProject && !seenKeys.has(defaultProject)) {
+	if (registry.defaultProject && (!defaultProject || !seenKeys.has(defaultProject.toLowerCase()))) {
 		return null;
 	}
 
@@ -336,6 +342,19 @@ function parseProjectRegistry(content: string): ProjectRegistry | null {
 	return normalizeProjectRegistry(registry);
 }
 
+async function loadProjectRegistry(projectRoot: string): Promise<ProjectRegistryLoadResult> {
+	try {
+		const content = await readFile(projectRegistryPath(projectRoot), "utf8");
+		const registry = parseProjectRegistry(content);
+		return registry ? { state: "valid", registry } : { state: "invalid" };
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+			return { state: "missing" };
+		}
+		return { state: "invalid" };
+	}
+}
+
 function serializeProjectRegistry(registry: ProjectRegistry): string {
 	const lines = [`version: ${registry.version}`];
 
@@ -392,6 +411,20 @@ function resolveProjectByCwd(projectRoot: string, registry: ProjectRegistry, cwd
 	return selected;
 }
 
+function findProjectByKey(registry: ProjectRegistry, key: string): ProjectDefinition | null {
+	const normalizedKey = normalizeProjectKey(key);
+	if (!normalizedKey) {
+		return null;
+	}
+
+	const lowerKey = normalizedKey.toLowerCase();
+	return (
+		registry.projects.find((project) => project.key === normalizedKey) ??
+		registry.projects.find((project) => project.key.toLowerCase() === lowerKey) ??
+		null
+	);
+}
+
 function buildResolvedProjectContext(projectRoot: string, project: ProjectDefinition): ResolvedProjectContext {
 	const containerRoot = resolveProjectContainerRoot(projectRoot);
 	return {
@@ -404,12 +437,12 @@ function buildResolvedProjectContext(projectRoot: string, project: ProjectDefini
 }
 
 export async function readProjectRegistry(projectRoot: string): Promise<ProjectRegistry | null> {
-	try {
-		const content = await readFile(projectRegistryPath(projectRoot), "utf8");
-		return parseProjectRegistry(content);
-	} catch {
+	const result = await loadProjectRegistry(projectRoot);
+	if (result.state !== "valid") {
 		return null;
 	}
+
+	return result.registry;
 }
 
 export async function writeProjectRegistry(projectRoot: string, registry: ProjectRegistry): Promise<void> {
@@ -427,10 +460,14 @@ export async function resolveProjectContext(
 	projectRoot: string,
 	options: { cwd?: string; project?: string },
 ): Promise<ResolvedProjectContext> {
-	const registry = await readProjectRegistry(projectRoot);
-	if (!registry || registry.projects.length === 0) {
+	const registryLoad = await loadProjectRegistry(projectRoot);
+	if (registryLoad.state === "missing" || (registryLoad.state === "valid" && registryLoad.registry.projects.length === 0)) {
 		throw new Error("No projects are registered in backlog/projects.yml.");
 	}
+	if (registryLoad.state === "invalid") {
+		throw new Error(`${projectRegistryPath(projectRoot)} exists but is invalid.`);
+	}
+	const registry = registryLoad.registry;
 
 	const explicitProject = options.project?.trim();
 	if (options.project !== undefined && !explicitProject) {
@@ -438,7 +475,7 @@ export async function resolveProjectContext(
 	}
 
 	if (explicitProject) {
-		const match = registry.projects.find((project) => project.key === explicitProject);
+		const match = findProjectByKey(registry, explicitProject);
 		if (!match) {
 			throw new Error(`Unknown project: ${explicitProject}`);
 		}
@@ -454,7 +491,7 @@ export async function resolveProjectContext(
 	}
 
 	if (registry.defaultProject) {
-		const defaultProject = registry.projects.find((project) => project.key === registry.defaultProject);
+		const defaultProject = findProjectByKey(registry, registry.defaultProject);
 		if (defaultProject) {
 			return buildResolvedProjectContext(projectRoot, defaultProject);
 		}
