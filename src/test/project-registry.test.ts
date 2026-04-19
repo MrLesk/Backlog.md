@@ -20,20 +20,14 @@ describe("project registry", () => {
 		await writeProjectRegistry(testDir, {
 			version: 1,
 			defaultProject: "xx01",
-			projects: [
-				{ key: "xx01", path: "apps/web" },
-				{ key: "ops" },
-			],
+			projects: [{ key: "xx01", path: "apps/web" }, { key: "ops" }],
 		});
 
 		const registry = await readProjectRegistry(testDir);
 		expect(registry).toEqual({
 			version: 1,
 			defaultProject: "xx01",
-			projects: [
-				{ key: "xx01", path: "apps/web" },
-				{ key: "ops" },
-			],
+			projects: [{ key: "xx01", path: "apps/web" }, { key: "ops" }],
 		});
 	});
 
@@ -111,20 +105,14 @@ describe("project registry", () => {
 	});
 
 	it("rejects duplicate registry fields", async () => {
-		await writeFile(
-			join(testDir, "backlog", "projects.yml"),
-			"version: 1\nprojects:\n  - key: xx01\n    key: xx02\n",
-		);
+		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1\nprojects:\n  - key: xx01\n    key: xx02\n");
 
 		const registry = await readProjectRegistry(testDir);
 		expect(registry).toBeNull();
 	});
 
 	it("rejects case-insensitive key collisions", async () => {
-		await writeFile(
-			join(testDir, "backlog", "projects.yml"),
-			"version: 1\nprojects:\n  - key: xx01\n  - key: XX01\n",
-		);
+		await writeFile(join(testDir, "backlog", "projects.yml"), "version: 1\nprojects:\n  - key: xx01\n  - key: XX01\n");
 
 		const registry = await readProjectRegistry(testDir);
 		expect(registry).toBeNull();
@@ -215,10 +203,7 @@ describe("project registry", () => {
 		await writeProjectRegistry(testDir, {
 			version: 1,
 			defaultProject: "ops",
-			projects: [
-				{ key: "xx01", path: "apps/web" },
-				{ key: "ops" },
-			],
+			projects: [{ key: "xx01", path: "apps/web" }, { key: "ops" }],
 		});
 
 		const context = await resolveProjectContext(testDir, {

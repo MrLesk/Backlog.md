@@ -51,7 +51,7 @@ function parseScalar(value: string): string | null {
 		return null;
 	}
 
-	if (trimmed.startsWith("\"")) {
+	if (trimmed.startsWith('"')) {
 		try {
 			const parsed = JSON.parse(trimmed);
 			return typeof parsed === "string" ? parsed : null;
@@ -80,7 +80,7 @@ function parseVersionScalar(value: string): number | null {
 		return null;
 	}
 
-	if (trimmed.startsWith("\"")) {
+	if (trimmed.startsWith('"')) {
 		const parsed = parseScalar(trimmed);
 		if (!parsed || !/^\d+$/.test(parsed)) {
 			return null;
@@ -479,7 +479,10 @@ export async function resolveProjectContext(
 	options: { cwd?: string; project?: string },
 ): Promise<ResolvedProjectContext> {
 	const registryLoad = await loadProjectRegistry(projectRoot);
-	if (registryLoad.state === "missing" || (registryLoad.state === "valid" && registryLoad.registry.projects.length === 0)) {
+	if (
+		registryLoad.state === "missing" ||
+		(registryLoad.state === "valid" && registryLoad.registry.projects.length === 0)
+	) {
 		throw new Error("No projects are registered in backlog/projects.yml.");
 	}
 	if (registryLoad.state === "invalid") {

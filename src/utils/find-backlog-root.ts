@@ -1,8 +1,8 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { $ } from "bun";
-import { readProjectRegistry } from "./project-registry.ts";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
+import { readProjectRegistry } from "./project-registry.ts";
 
 /**
  * Check if a file exists
@@ -55,19 +55,19 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 		const result = await $`git rev-parse --show-toplevel`.cwd(startDir).quiet();
 		const gitRoot = result.stdout.toString().trim();
 
-			if (gitRoot) {
-				// Verify the git root has a backlog setup
-				const backlogJson = join(gitRoot, "backlog.json");
+		if (gitRoot) {
+			// Verify the git root has a backlog setup
+			const backlogJson = join(gitRoot, "backlog.json");
 
-				const backlogResolution = resolveBacklogDirectory(gitRoot);
-				if (
-					backlogResolution.configPath ||
-					((await readProjectRegistry(gitRoot)) !== null) ||
-					(await fileExists(backlogJson))
-				) {
-					return gitRoot;
-				}
+			const backlogResolution = resolveBacklogDirectory(gitRoot);
+			if (
+				backlogResolution.configPath ||
+				(await readProjectRegistry(gitRoot)) !== null ||
+				(await fileExists(backlogJson))
+			) {
+				return gitRoot;
 			}
+		}
 	} catch {
 		// Not in a git repository or git not available
 	}
