@@ -3,15 +3,33 @@ import type { McpServer } from "../../server.ts";
 import type { McpToolHandler } from "../../types.ts";
 import { generateTaskCreateSchema, generateTaskEditSchema } from "../../utils/schema-generators.ts";
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
-import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
+import type { ProjectScopedTaskEditRequest, TaskCreateArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
 import { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
 
-export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
-	const handlers = new TaskHandlers(server);
+const projectSchemaProperty = {
+	type: "string",
+	minLength: 1,
+	maxLength: 100,
+	description: "Optional project key from backlog/projects.yml to scope this tool call.",
+} as const;
 
-	const taskCreateSchema = generateTaskCreateSchema(config);
-	const taskEditSchema = generateTaskEditSchema(config);
+function withProjectProperty(schema: ReturnType<typeof generateTaskCreateSchema>) {
+	return {
+		...schema,
+		properties: {
+			...(schema.properties ?? {}),
+			project: projectSchemaProperty,
+		},
+	};
+}
+
+export async function registerTaskTools(server: McpServer, config: BacklogConfig): Promise<void> {
+	const handlers = new TaskHandlers(server);
+	const taskSchemaConfig = await server.getTaskToolConfig(config);
+
+	const taskCreateSchema = withProjectProperty(generateTaskCreateSchema(taskSchemaConfig));
+	const taskEditSchema = withProjectProperty(generateTaskEditSchema(taskSchemaConfig));
 
 	const createTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
@@ -55,7 +73,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			annotations: { title: "Edit Task", destructiveHint: false },
 		},
 		taskEditSchema,
-		async (input) => handlers.editTask(input as unknown as TaskEditRequest),
+		async (input) => handlers.editTask(input as unknown as ProjectScopedTaskEditRequest),
 	);
 
 	const viewTaskTool: McpToolHandler = createSimpleValidatedTool(
@@ -66,7 +84,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			annotations: { title: "View Task", readOnlyHint: true, destructiveHint: false },
 		},
 		taskViewSchema,
-		async (input) => handlers.viewTask(input as { id: string }),
+		async (input) => handlers.viewTask(input as { id: string; project?: string }),
 	);
 
 	const archiveTaskTool: McpToolHandler = createSimpleValidatedTool(
@@ -77,7 +95,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			annotations: { title: "Archive Task", destructiveHint: true },
 		},
 		taskArchiveSchema,
-		async (input) => handlers.archiveTask(input as { id: string }),
+		async (input) => handlers.archiveTask(input as { id: string; project?: string }),
 	);
 
 	const completeTaskTool: McpToolHandler = createSimpleValidatedTool(
@@ -88,7 +106,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			annotations: { title: "Complete Task", destructiveHint: true },
 		},
 		taskCompleteSchema,
-		async (input) => handlers.completeTask(input as { id: string }),
+		async (input) => handlers.completeTask(input as { id: string; project?: string }),
 	);
 
 	server.addTool(createTaskTool);

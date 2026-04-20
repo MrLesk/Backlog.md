@@ -1,4 +1,5 @@
 import { rename as moveFile } from "node:fs/promises";
+import type { Core } from "../../../core/backlog.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
@@ -12,23 +13,27 @@ import {
 } from "../../utils/milestone-resolution.ts";
 
 export type MilestoneAddArgs = {
+	project?: string;
 	name: string;
 	description?: string;
 };
 
 export type MilestoneRenameArgs = {
+	project?: string;
 	from: string;
 	to: string;
 	updateTasks?: boolean;
 };
 
 export type MilestoneRemoveArgs = {
+	project?: string;
 	name: string;
 	taskHandling?: "clear" | "keep" | "reassign";
 	reassignTo?: string;
 };
 
 export type MilestoneArchiveArgs = {
+	project?: string;
 	name: string;
 };
 
@@ -214,15 +219,22 @@ function resolveMilestoneValueForReporting(
 export class MilestoneHandlers {
 	constructor(private readonly core: McpServer) {}
 
-	private async listLocalTasks(): Promise<Task[]> {
-		return await this.core.queryTasks({ includeCrossBranch: false });
+	private async resolveCore(project?: string): Promise<Core> {
+		return await this.core.getCoreForToolCall(project);
 	}
 
-	private async rollbackTaskMilestones(previousMilestones: Map<string, string | undefined>): Promise<string[]> {
+	private async listLocalTasks(core: Core): Promise<Task[]> {
+		return await core.queryTasks({ includeCrossBranch: false });
+	}
+
+	private async rollbackTaskMilestones(
+		core: Core,
+		previousMilestones: Map<string, string | undefined>,
+	): Promise<string[]> {
 		const failedTaskIds: string[] = [];
 		for (const [taskId, milestone] of previousMilestones.entries()) {
 			try {
-				await this.core.editTask(taskId, { milestone: milestone ?? null }, false);
+				await core.editTask(taskId, { milestone: milestone ?? null }, false);
 			} catch {
 				failedTaskIds.push(taskId);
 			}
@@ -231,6 +243,7 @@ export class MilestoneHandlers {
 	}
 
 	private async commitMilestoneMutation(
+		core: Core,
 		commitMessage: string,
 		options: {
 			sourcePath?: string;
@@ -238,7 +251,7 @@ export class MilestoneHandlers {
 			taskFilePaths?: Iterable<string>;
 		},
 	): Promise<void> {
-		const shouldAutoCommit = await this.core.shouldAutoCommit();
+		const shouldAutoCommit = await core.shouldAutoCommit();
 		if (!shouldAutoCommit) {
 			return;
 		}
@@ -246,33 +259,34 @@ export class MilestoneHandlers {
 		let repoRoot: string | null = null;
 		const commitPaths: string[] = [];
 		if (options.sourcePath && options.targetPath) {
-			repoRoot = await this.core.git.stageFileMove(options.sourcePath, options.targetPath);
+			repoRoot = await core.git.stageFileMove(options.sourcePath, options.targetPath);
 			commitPaths.push(options.sourcePath, options.targetPath);
 		}
 		for (const filePath of options.taskFilePaths ?? []) {
-			await this.core.git.addFile(filePath);
+			await core.git.addFile(filePath);
 			commitPaths.push(filePath);
 		}
 		try {
-			await this.core.git.commitFiles(commitMessage, commitPaths, repoRoot);
+			await core.git.commitFiles(commitMessage, commitPaths, repoRoot);
 		} catch (error) {
-			await this.core.git.resetPaths(commitPaths, repoRoot);
+			await core.git.resetPaths(commitPaths, repoRoot);
 			throw error;
 		}
 	}
 
-	private async listFileMilestones(): Promise<Milestone[]> {
-		return await this.core.filesystem.listMilestones();
+	private async listFileMilestones(core: Core): Promise<Milestone[]> {
+		return await core.filesystem.listMilestones();
 	}
 
-	private async listArchivedMilestones(): Promise<Milestone[]> {
-		return await this.core.filesystem.listArchivedMilestones();
+	private async listArchivedMilestones(core: Core): Promise<Milestone[]> {
+		return await core.filesystem.listArchivedMilestones();
 	}
 
-	async listMilestones(): Promise<CallToolResult> {
+	async listMilestones(args: { project?: string } = {}): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		// Get file-based milestones
-		const fileMilestones = await this.listFileMilestones();
-		const archivedMilestones = await this.listArchivedMilestones();
+		const fileMilestones = await this.listFileMilestones(core);
+		const archivedMilestones = await this.listArchivedMilestones(core);
 		const reservedIdKeys = new Set<string>();
 		for (const milestone of [...fileMilestones, ...archivedMilestones]) {
 			for (const key of buildMilestoneMatchKeys(milestone.id, [])) {
@@ -298,7 +312,7 @@ export class MilestoneHandlers {
 		const archivedKeys = new Set<string>(collectArchivedMilestoneKeys(archivedMilestones, fileMilestones));
 
 		// Get milestones discovered from tasks
-		const tasks = await this.listLocalTasks();
+		const tasks = await this.listLocalTasks(core);
 		const discoveredByKey = new Map<string, string>();
 		for (const task of tasks) {
 			const normalized = normalizeMilestoneName(task.milestone ?? "");
@@ -341,13 +355,14 @@ export class MilestoneHandlers {
 	}
 
 	async addMilestone(args: MilestoneAddArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		const name = normalizeMilestoneName(args.name);
 		if (!name) {
 			throw new BacklogToolError("Milestone name cannot be empty.", "VALIDATION_ERROR");
 		}
 
 		// Check for duplicates in existing milestone files
-		const existing = await this.listFileMilestones();
+		const existing = await this.listFileMilestones(core);
 		const requestedKeys = buildMilestoneMatchKeys(name, existing);
 		const duplicate = existing.find((milestone) => {
 			const milestoneKeys = buildMilestoneRecordMatchKeys(milestone);
@@ -361,7 +376,7 @@ export class MilestoneHandlers {
 		}
 
 		// Create milestone file
-		const milestone = await this.core.filesystem.createMilestone(name, args.description);
+		const milestone = await core.filesystem.createMilestone(name, args.description);
 
 		return {
 			content: [
@@ -374,14 +389,15 @@ export class MilestoneHandlers {
 	}
 
 	async renameMilestone(args: MilestoneRenameArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		const fromName = normalizeMilestoneName(args.from);
 		const toName = normalizeMilestoneName(args.to);
 		if (!fromName || !toName) {
 			throw new BacklogToolError("Both 'from' and 'to' milestone names are required.", "VALIDATION_ERROR");
 		}
 
-		const fileMilestones = await this.listFileMilestones();
-		const archivedMilestones = await this.listArchivedMilestones();
+		const fileMilestones = await this.listFileMilestones(core);
+		const archivedMilestones = await this.listArchivedMilestones(core);
 		const sourceMilestone = findActiveMilestoneByAlias(fromName, fileMilestones);
 		if (!sourceMilestone) {
 			throw new BacklogToolError(`Milestone not found: "${fromName}"`, "NOT_FOUND");
@@ -416,7 +432,7 @@ export class MilestoneHandlers {
 
 		const targetMilestone = sourceMilestone.id;
 		const shouldUpdateTasks = args.updateTasks ?? true;
-		const tasks = shouldUpdateTasks ? await this.listLocalTasks() : [];
+		const tasks = shouldUpdateTasks ? await this.listLocalTasks(core) : [];
 		const matchKeys = shouldUpdateTasks
 			? buildTaskMatchKeysForMilestone(fromName, sourceMilestone, !hasTitleCollision)
 			: new Set<string>();
@@ -424,7 +440,7 @@ export class MilestoneHandlers {
 		let updatedTaskIds: string[] = [];
 		const updatedTaskFilePaths = new Set<string>();
 
-		const renameResult = await this.core.renameMilestone(sourceMilestone.id, toName, false);
+		const renameResult = await core.renameMilestone(sourceMilestone.id, toName, false);
 		if (!renameResult.success || !renameResult.milestone) {
 			throw new BacklogToolError(`Failed to rename milestone "${sourceMilestone.title}".`, "INTERNAL_ERROR");
 		}
@@ -435,7 +451,7 @@ export class MilestoneHandlers {
 			try {
 				for (const task of matches) {
 					previousMilestones.set(task.id, task.milestone);
-					const updatedTask = await this.core.editTask(task.id, { milestone: targetMilestone }, false);
+					const updatedTask = await core.editTask(task.id, { milestone: targetMilestone }, false);
 					const taskFilePath = updatedTask.filePath ?? task.filePath;
 					if (taskFilePath) {
 						updatedTaskFilePaths.add(taskFilePath);
@@ -444,8 +460,8 @@ export class MilestoneHandlers {
 				}
 				updatedTaskIds = updatedTaskIds.sort((a, b) => a.localeCompare(b));
 			} catch {
-				const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
-				const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
+				const rollbackTaskFailures = await this.rollbackTaskMilestones(core, previousMilestones);
+				const rollbackRenameResult = await core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
 				const rollbackDetails: string[] = [];
 				if (!rollbackRenameResult.success) {
 					rollbackDetails.push("failed to rollback milestone file rename");
@@ -461,14 +477,14 @@ export class MilestoneHandlers {
 			}
 		}
 		try {
-			await this.commitMilestoneMutation(`backlog: Rename milestone ${sourceMilestone.id}`, {
+			await this.commitMilestoneMutation(core, `backlog: Rename milestone ${sourceMilestone.id}`, {
 				sourcePath: renameResult.sourcePath,
 				targetPath: renameResult.targetPath,
 				taskFilePaths: updatedTaskFilePaths,
 			});
 		} catch {
-			const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
-			const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
+			const rollbackTaskFailures = await this.rollbackTaskMilestones(core, previousMilestones);
+			const rollbackRenameResult = await core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
 			const rollbackDetails: string[] = [];
 			if (!rollbackRenameResult.success) {
 				rollbackDetails.push("failed to rollback milestone file rename");
@@ -508,13 +524,14 @@ export class MilestoneHandlers {
 	}
 
 	async removeMilestone(args: MilestoneRemoveArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		const name = normalizeMilestoneName(args.name);
 		if (!name) {
 			throw new BacklogToolError("Milestone name cannot be empty.", "VALIDATION_ERROR");
 		}
 
-		const fileMilestones = await this.listFileMilestones();
-		const archivedMilestones = await this.listArchivedMilestones();
+		const fileMilestones = await this.listFileMilestones(core);
+		const archivedMilestones = await this.listArchivedMilestones(core);
 		const sourceMilestone = findActiveMilestoneByAlias(name, fileMilestones);
 		if (!sourceMilestone) {
 			throw new BacklogToolError(`Milestone not found: "${name}"`, "NOT_FOUND");
@@ -542,7 +559,7 @@ export class MilestoneHandlers {
 			}
 		}
 
-		const tasks = taskHandling !== "keep" ? await this.listLocalTasks() : [];
+		const tasks = taskHandling !== "keep" ? await this.listLocalTasks(core) : [];
 		const matches =
 			taskHandling !== "keep" ? tasks.filter((task) => removeKeys.has(milestoneKey(task.milestone ?? ""))) : [];
 		const previousMilestones = new Map<string, string | undefined>();
@@ -552,7 +569,7 @@ export class MilestoneHandlers {
 			try {
 				for (const task of matches) {
 					previousMilestones.set(task.id, task.milestone);
-					const updatedTask = await this.core.editTask(
+					const updatedTask = await core.editTask(
 						task.id,
 						{ milestone: taskHandling === "reassign" ? reassignedMilestone : null },
 						false,
@@ -565,7 +582,7 @@ export class MilestoneHandlers {
 				}
 				updatedTaskIds = updatedTaskIds.sort((a, b) => a.localeCompare(b));
 			} catch {
-				const rollbackFailures = await this.rollbackTaskMilestones(previousMilestones);
+				const rollbackFailures = await this.rollbackTaskMilestones(core, previousMilestones);
 				const detailSuffix =
 					rollbackFailures.length > 0 ? ` (failed rollback for: ${rollbackFailures.join(", ")})` : "";
 				throw new BacklogToolError(
@@ -575,11 +592,11 @@ export class MilestoneHandlers {
 			}
 		}
 
-		const archiveResult = await this.core.archiveMilestone(sourceMilestone.id, false);
+		const archiveResult = await core.archiveMilestone(sourceMilestone.id, false);
 		if (!archiveResult.success) {
 			let detailSuffix = "";
 			if (taskHandling !== "keep") {
-				const rollbackFailures = await this.rollbackTaskMilestones(previousMilestones);
+				const rollbackFailures = await this.rollbackTaskMilestones(core, previousMilestones);
 				if (rollbackFailures.length > 0) {
 					detailSuffix = ` (failed rollback for: ${rollbackFailures.join(", ")})`;
 				}
@@ -590,7 +607,7 @@ export class MilestoneHandlers {
 			);
 		}
 		try {
-			await this.commitMilestoneMutation(`backlog: Remove milestone ${sourceMilestone.id}`, {
+			await this.commitMilestoneMutation(core, `backlog: Remove milestone ${sourceMilestone.id}`, {
 				sourcePath: archiveResult.sourcePath,
 				targetPath: archiveResult.targetPath,
 				taskFilePaths: updatedTaskFilePaths,
@@ -605,7 +622,7 @@ export class MilestoneHandlers {
 				}
 			}
 			if (taskHandling !== "keep") {
-				const rollbackFailures = await this.rollbackTaskMilestones(previousMilestones);
+				const rollbackFailures = await this.rollbackTaskMilestones(core, previousMilestones);
 				if (rollbackFailures.length > 0) {
 					rollbackDetails.push(`failed rollback for: ${rollbackFailures.join(", ")}`);
 				}
@@ -641,12 +658,13 @@ export class MilestoneHandlers {
 	}
 
 	async archiveMilestone(args: MilestoneArchiveArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		const name = normalizeMilestoneName(args.name);
 		if (!name) {
 			throw new BacklogToolError("Milestone name cannot be empty.", "VALIDATION_ERROR");
 		}
 
-		const result = await this.core.archiveMilestone(name);
+		const result = await core.archiveMilestone(name);
 		if (!result.success) {
 			throw new BacklogToolError(`Milestone not found: "${name}"`, "NOT_FOUND");
 		}

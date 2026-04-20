@@ -1,8 +1,17 @@
 import type { JsonSchema } from "../../validation/validators.ts";
 
+const projectSchema: JsonSchema = {
+	type: "string",
+	minLength: 1,
+	maxLength: 100,
+	description: "Optional project key from backlog/projects.yml to scope this tool call.",
+};
+
 export const milestoneListSchema: JsonSchema = {
 	type: "object",
-	properties: {},
+	properties: {
+		project: projectSchema,
+	},
 	required: [],
 	additionalProperties: false,
 };
@@ -10,6 +19,7 @@ export const milestoneListSchema: JsonSchema = {
 export const milestoneAddSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		name: {
 			type: "string",
 			minLength: 1,
@@ -29,6 +39,7 @@ export const milestoneAddSchema: JsonSchema = {
 export const milestoneRenameSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		from: {
 			type: "string",
 			minLength: 1,
@@ -54,6 +65,7 @@ export const milestoneRenameSchema: JsonSchema = {
 export const milestoneRemoveSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		name: {
 			type: "string",
 			minLength: 1,
@@ -79,6 +91,7 @@ export const milestoneRemoveSchema: JsonSchema = {
 export const milestoneArchiveSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		name: {
 			type: "string",
 			minLength: 1,

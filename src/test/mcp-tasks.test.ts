@@ -36,7 +36,7 @@ describe("MCP task tools (MVP)", () => {
 		await initializeTestProject(mcpServer, "Test Project");
 
 		const config = await loadConfig(mcpServer);
-		registerTaskTools(mcpServer, config);
+		await registerTaskTools(mcpServer, config);
 	});
 
 	afterEach(async () => {

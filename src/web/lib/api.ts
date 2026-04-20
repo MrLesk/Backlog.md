@@ -27,6 +27,18 @@ export interface InitializationStatus {
 	backlogDirectorySource?: "backlog" | ".backlog" | "custom" | null;
 	configLocation?: "folder" | "root" | null;
 	rootConfigPath?: string | null;
+	currentProject?: string | null;
+}
+
+export interface ProjectSummary {
+	key: string;
+	path?: string;
+	projectName?: string;
+}
+
+export interface ProjectsResponse {
+	defaultProject?: string;
+	projects: ProjectSummary[];
 }
 
 // Enhanced error types for better error handling
@@ -69,9 +81,42 @@ const DEFAULT_CONFIG: RequestConfig = {
 
 export class ApiClient {
 	private config: RequestConfig;
+	private activeProject: string | null = null;
 
 	constructor(config: RequestConfig = {}) {
 		this.config = { ...DEFAULT_CONFIG, ...config };
+	}
+
+	setActiveProject(project: string | null | undefined): void {
+		this.activeProject = project?.trim() || null;
+	}
+
+	getActiveProject(): string | null {
+		return this.activeProject;
+	}
+
+	private resolveProject(project?: string | null): string | null {
+		return project?.trim() || this.activeProject;
+	}
+
+	private buildUrl(path: string, project?: string | null): string {
+		const resolvedProject = this.resolveProject(project);
+		if (!resolvedProject) {
+			return path;
+		}
+
+		const [pathname, queryString = ""] = path.split("?");
+		const params = new URLSearchParams(queryString);
+		params.set("project", resolvedProject);
+		return `${pathname}?${params.toString()}`;
+	}
+
+	private withProjectBody<T extends object>(body: T, project?: string | null): T | (T & { project: string }) {
+		const resolvedProject = this.resolveProject(project);
+		if (!resolvedProject) {
+			return body;
+		}
+		return { ...body, project: resolvedProject };
 	}
 
 	// Enhanced fetch with retry logic and better error handling
@@ -142,6 +187,7 @@ export class ApiClient {
 		priority?: SearchPriorityFilter;
 		labels?: string[];
 		crossBranch?: boolean;
+		project?: string;
 	}): Promise<Task[]> {
 		const params = new URLSearchParams();
 		if (options?.status) params.append("status", options.status);
@@ -158,7 +204,7 @@ export class ApiClient {
 		// Default to true for cross-branch loading to match TUI behavior
 		if (options?.crossBranch !== false) params.append("crossBranch", "true");
 
-		const url = `${API_BASE}/tasks${params.toString() ? `?${params.toString()}` : ""}`;
+		const url = this.buildUrl(`${API_BASE}/tasks${params.toString() ? `?${params.toString()}` : ""}`, options?.project);
 		return this.fetchJson<Task[]>(url);
 	}
 
@@ -170,6 +216,7 @@ export class ApiClient {
 			priority?: SearchPriorityFilter | SearchPriorityFilter[];
 			labels?: string[];
 			limit?: number;
+			project?: string;
 		} = {},
 	): Promise<SearchResult[]> {
 		const params = new URLSearchParams();
@@ -204,46 +251,47 @@ export class ApiClient {
 			params.set("limit", String(options.limit));
 		}
 
-		const url = `${API_BASE}/search${params.toString() ? `?${params.toString()}` : ""}`;
+		const url = this.buildUrl(`${API_BASE}/search${params.toString() ? `?${params.toString()}` : ""}`, options.project);
 		return this.fetchJson<SearchResult[]>(url);
 	}
 
-	async fetchTask(id: string): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/task/${id}`);
+	async fetchTask(id: string, project?: string): Promise<Task> {
+		return this.fetchJson<Task>(this.buildUrl(`${API_BASE}/task/${id}`, project));
 	}
 
-	async createTask(task: Omit<Task, "id" | "createdDate">): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/tasks`, {
+	async createTask(task: Omit<Task, "id" | "createdDate">, project?: string): Promise<Task> {
+		return this.fetchJson<Task>(this.buildUrl(`${API_BASE}/tasks`, project), {
 			method: "POST",
-			body: JSON.stringify(task),
+			body: JSON.stringify(this.withProjectBody(task, project)),
 		});
 	}
 
 	async updateTask(
 		id: string,
 		updates: Omit<Partial<Task>, "milestone"> & { milestone?: string | null },
+		project?: string,
 	): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/tasks/${id}`, {
+		return this.fetchJson<Task>(this.buildUrl(`${API_BASE}/tasks/${id}`, project), {
 			method: "PUT",
-			body: JSON.stringify(updates),
+			body: JSON.stringify(this.withProjectBody(updates, project)),
 		});
 	}
 
-	async reorderTask(payload: ReorderTaskPayload): Promise<{ success: boolean; task: Task }> {
-		return this.fetchJson<{ success: boolean; task: Task }>(`${API_BASE}/tasks/reorder`, {
+	async reorderTask(payload: ReorderTaskPayload, project?: string): Promise<{ success: boolean; task: Task }> {
+		return this.fetchJson<{ success: boolean; task: Task }>(this.buildUrl(`${API_BASE}/tasks/reorder`, project), {
 			method: "POST",
-			body: JSON.stringify(payload),
+			body: JSON.stringify(this.withProjectBody(payload, project)),
 		});
 	}
 
-	async archiveTask(id: string): Promise<void> {
-		await this.fetchWithRetry(`${API_BASE}/tasks/${id}`, {
+	async archiveTask(id: string, project?: string): Promise<void> {
+		await this.fetchWithRetry(this.buildUrl(`${API_BASE}/tasks/${id}`, project), {
 			method: "DELETE",
 		});
 	}
 
-	async completeTask(id: string): Promise<void> {
-		await this.fetchWithRetry(`${API_BASE}/tasks/${id}/complete`, {
+	async completeTask(id: string, project?: string): Promise<void> {
+		await this.fetchWithRetry(this.buildUrl(`${API_BASE}/tasks/${id}/complete`, project), {
 			method: "POST",
 		});
 	}
@@ -255,7 +303,7 @@ export class ApiClient {
 		return this.fetchJson<{
 			count: number;
 			tasks: Array<{ id: string; title: string; updatedDate?: string; createdDate: string }>;
-		}>(`${API_BASE}/tasks/cleanup?age=${age}`);
+		}>(this.buildUrl(`${API_BASE}/tasks/cleanup?age=${age}`));
 	}
 
 	async executeCleanup(
@@ -267,95 +315,72 @@ export class ApiClient {
 			totalCount: number;
 			message: string;
 			failedTasks?: string[];
-		}>(`${API_BASE}/tasks/cleanup/execute`, {
+		}>(this.buildUrl(`${API_BASE}/tasks/cleanup/execute`), {
 			method: "POST",
-			body: JSON.stringify({ age }),
+			body: JSON.stringify(this.withProjectBody({ age }, undefined)),
 		});
 	}
 
-	async updateTaskStatus(id: string, status: TaskStatus): Promise<Task> {
-		return this.updateTask(id, { status });
+	async updateTaskStatus(id: string, status: TaskStatus, project?: string): Promise<Task> {
+		return this.updateTask(id, { status }, project);
 	}
 
-	async fetchStatuses(): Promise<string[]> {
-		const response = await fetch(`${API_BASE}/statuses`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch statuses");
-		}
-		return response.json();
+	async fetchStatuses(project?: string): Promise<string[]> {
+		return this.fetchJson<string[]>(this.buildUrl(`${API_BASE}/statuses`, project));
 	}
 
-	async fetchConfig(): Promise<BacklogConfig> {
-		const response = await fetch(`${API_BASE}/config`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch config");
-		}
-		return response.json();
+	async fetchProjects(): Promise<ProjectsResponse> {
+		return this.fetchJson<ProjectsResponse>(`${API_BASE}/projects`);
 	}
 
-	async updateConfig(config: BacklogConfig): Promise<BacklogConfig> {
-		const response = await fetch(`${API_BASE}/config`, {
+	async fetchConfig(project?: string): Promise<BacklogConfig> {
+		return this.fetchJson<BacklogConfig>(this.buildUrl(`${API_BASE}/config`, project));
+	}
+
+	async updateConfig(config: BacklogConfig, project?: string): Promise<BacklogConfig> {
+		return this.fetchJson<BacklogConfig>(this.buildUrl(`${API_BASE}/config`, project), {
 			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(config),
+			body: JSON.stringify(this.withProjectBody(config, project)),
 		});
-		if (!response.ok) {
-			throw new Error("Failed to update config");
-		}
-		return response.json();
 	}
 
-	async fetchDocs(): Promise<Document[]> {
-		const response = await fetch(`${API_BASE}/docs`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch documentation");
-		}
-		return response.json();
+	async fetchDocs(project?: string): Promise<Document[]> {
+		return this.fetchJson<Document[]>(this.buildUrl(`${API_BASE}/docs`, project));
 	}
 
-	async fetchDoc(filename: string): Promise<Document> {
-		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch document");
-		}
-		return response.json();
+	async fetchDoc(filename: string, project?: string): Promise<Document> {
+		return this.fetchJson<Document>(this.buildUrl(`${API_BASE}/docs/${encodeURIComponent(filename)}`, project));
 	}
 
-	async fetchDocument(id: string): Promise<Document> {
-		const response = await fetch(`${API_BASE}/doc/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch document");
-		}
-		return response.json();
+	async fetchDocument(id: string, project?: string): Promise<Document> {
+		return this.fetchJson<Document>(this.buildUrl(`${API_BASE}/doc/${encodeURIComponent(id)}`, project));
 	}
 
-	async updateDoc(filename: string, content: string, title?: string): Promise<void> {
+	async updateDoc(filename: string, content: string, title?: string, project?: string): Promise<void> {
 		const payload: Record<string, unknown> = { content };
 		if (typeof title === "string") {
 			payload.title = title;
 		}
 
-		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`, {
+		const response = await fetch(this.buildUrl(`${API_BASE}/docs/${encodeURIComponent(filename)}`, project), {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify(payload),
+			body: JSON.stringify(this.withProjectBody(payload, project)),
 		});
 		if (!response.ok) {
 			throw new Error("Failed to update document");
 		}
 	}
 
-	async createDoc(filename: string, content: string): Promise<{ id: string }> {
-		const response = await fetch(`${API_BASE}/docs`, {
+	async createDoc(filename: string, content: string, project?: string): Promise<{ id: string }> {
+		const response = await fetch(this.buildUrl(`${API_BASE}/docs`, project), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ filename, content }),
+			body: JSON.stringify(this.withProjectBody({ filename, content }, project)),
 		});
 		if (!response.ok) {
 			throw new Error("Failed to create document");
@@ -363,32 +388,20 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async fetchDecisions(): Promise<Decision[]> {
-		const response = await fetch(`${API_BASE}/decisions`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch decisions");
-		}
-		return response.json();
+	async fetchDecisions(project?: string): Promise<Decision[]> {
+		return this.fetchJson<Decision[]>(this.buildUrl(`${API_BASE}/decisions`, project));
 	}
 
-	async fetchDecision(id: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch decision");
-		}
-		return response.json();
+	async fetchDecision(id: string, project?: string): Promise<Decision> {
+		return this.fetchJson<Decision>(this.buildUrl(`${API_BASE}/decisions/${encodeURIComponent(id)}`, project));
 	}
 
-	async fetchDecisionData(id: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decision/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch decision");
-		}
-		return response.json();
+	async fetchDecisionData(id: string, project?: string): Promise<Decision> {
+		return this.fetchJson<Decision>(this.buildUrl(`${API_BASE}/decision/${encodeURIComponent(id)}`, project));
 	}
 
-	async updateDecision(id: string, content: string): Promise<void> {
-		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`, {
+	async updateDecision(id: string, content: string, project?: string): Promise<void> {
+		const response = await fetch(this.buildUrl(`${API_BASE}/decisions/${encodeURIComponent(id)}`, project), {
 			method: "PUT",
 			headers: {
 				"Content-Type": "text/plain",
@@ -400,13 +413,13 @@ export class ApiClient {
 		}
 	}
 
-	async createDecision(title: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decisions`, {
+	async createDecision(title: string, project?: string): Promise<Decision> {
+		const response = await fetch(this.buildUrl(`${API_BASE}/decisions`, project), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ title }),
+			body: JSON.stringify(this.withProjectBody({ title }, project)),
 		});
 		if (!response.ok) {
 			throw new Error("Failed to create decision");
@@ -414,37 +427,25 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async fetchMilestones(): Promise<Milestone[]> {
-		const response = await fetch(`${API_BASE}/milestones`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch milestones");
-		}
-		return response.json();
+	async fetchMilestones(project?: string): Promise<Milestone[]> {
+		return this.fetchJson<Milestone[]>(this.buildUrl(`${API_BASE}/milestones`, project));
 	}
 
-	async fetchArchivedMilestones(): Promise<Milestone[]> {
-		const response = await fetch(`${API_BASE}/milestones/archived`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch archived milestones");
-		}
-		return response.json();
+	async fetchArchivedMilestones(project?: string): Promise<Milestone[]> {
+		return this.fetchJson<Milestone[]>(this.buildUrl(`${API_BASE}/milestones/archived`, project));
 	}
 
-	async fetchMilestone(id: string): Promise<Milestone> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch milestone");
-		}
-		return response.json();
+	async fetchMilestone(id: string, project?: string): Promise<Milestone> {
+		return this.fetchJson<Milestone>(this.buildUrl(`${API_BASE}/milestones/${encodeURIComponent(id)}`, project));
 	}
 
-	async createMilestone(title: string, description?: string): Promise<Milestone> {
-		const response = await fetch(`${API_BASE}/milestones`, {
+	async createMilestone(title: string, description?: string, project?: string): Promise<Milestone> {
+		const response = await fetch(this.buildUrl(`${API_BASE}/milestones`, project), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ title, description }),
+			body: JSON.stringify(this.withProjectBody({ title, description }, project)),
 		});
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));
@@ -453,8 +454,8 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async archiveMilestone(id: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
+	async archiveMilestone(id: string, project?: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
+		const response = await fetch(this.buildUrl(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, project), {
 			method: "POST",
 		});
 		if (!response.ok) {
@@ -469,7 +470,7 @@ export class ApiClient {
 	> {
 		return this.fetchJson<
 			TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
-		>(`${API_BASE}/statistics`);
+		>(this.buildUrl(`${API_BASE}/statistics`));
 	}
 
 	async checkStatus(): Promise<InitializationStatus> {

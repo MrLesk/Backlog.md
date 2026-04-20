@@ -1,3 +1,4 @@
+import type { Core } from "../../../core/backlog.ts";
 import type { Document, DocumentSearchResult } from "../../../types/index.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
@@ -5,31 +6,40 @@ import type { CallToolResult } from "../../types.ts";
 import { formatDocumentCallResult } from "../../utils/document-response.ts";
 
 export type DocumentListArgs = {
+	project?: string;
 	search?: string;
 };
 
 export type DocumentViewArgs = {
+	project?: string;
 	id: string;
 };
 
 export type DocumentCreateArgs = {
+	project?: string;
 	title: string;
 	content: string;
 };
 
 export type DocumentUpdateArgs = {
+	project?: string;
 	id: string;
 	title?: string;
 	content: string;
 };
 
 export type DocumentSearchArgs = {
+	project?: string;
 	query: string;
 	limit?: number;
 };
 
 export class DocumentHandlers {
 	constructor(private readonly core: McpServer) {}
+
+	private async resolveCore(project?: string): Promise<Core> {
+		return await this.core.getCoreForToolCall(project);
+	}
 
 	private formatDocumentSummaryLine(document: Document): string {
 		const metadata: string[] = [`type: ${document.type}`, `created: ${document.createdDate}`];
@@ -52,8 +62,8 @@ export class DocumentHandlers {
 		return ` [score ${invertedScore.toFixed(3)}]`;
 	}
 
-	private async loadDocumentOrThrow(id: string): Promise<Document> {
-		const document = await this.core.getDocument(id);
+	private async loadDocumentOrThrow(core: Core, id: string): Promise<Document> {
+		const document = await core.getDocument(id);
 		if (!document) {
 			throw new BacklogToolError(`Document not found: ${id}`, "DOCUMENT_NOT_FOUND");
 		}
@@ -61,8 +71,9 @@ export class DocumentHandlers {
 	}
 
 	async listDocuments(args: DocumentListArgs = {}): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		const search = args.search?.toLowerCase();
-		const documents = await this.core.filesystem.listDocuments();
+		const documents = await core.filesystem.listDocuments();
 
 		const filtered =
 			search && search.length > 0
@@ -99,13 +110,15 @@ export class DocumentHandlers {
 	}
 
 	async viewDocument(args: DocumentViewArgs): Promise<CallToolResult> {
-		const document = await this.loadDocumentOrThrow(args.id);
+		const core = await this.resolveCore(args.project);
+		const document = await this.loadDocumentOrThrow(core, args.id);
 		return await formatDocumentCallResult(document);
 	}
 
 	async createDocument(args: DocumentCreateArgs): Promise<CallToolResult> {
 		try {
-			const document = await this.core.createDocumentWithId(args.title, args.content);
+			const core = await this.resolveCore(args.project);
+			const document = await core.createDocumentWithId(args.title, args.content);
 			return await formatDocumentCallResult(document, {
 				summaryLines: ["Document created successfully."],
 			});
@@ -118,12 +131,13 @@ export class DocumentHandlers {
 	}
 
 	async updateDocument(args: DocumentUpdateArgs): Promise<CallToolResult> {
-		const existing = await this.loadDocumentOrThrow(args.id);
+		const core = await this.resolveCore(args.project);
+		const existing = await this.loadDocumentOrThrow(core, args.id);
 		const nextDocument = args.title ? { ...existing, title: args.title } : existing;
 
 		try {
-			await this.core.updateDocument(nextDocument, args.content);
-			const refreshed = await this.core.getDocument(existing.id);
+			await core.updateDocument(nextDocument, args.content);
+			const refreshed = await core.getDocument(existing.id);
 			if (!refreshed) {
 				throw new BacklogToolError(`Document not found: ${args.id}`, "DOCUMENT_NOT_FOUND");
 			}
@@ -139,7 +153,8 @@ export class DocumentHandlers {
 	}
 
 	async searchDocuments(args: DocumentSearchArgs): Promise<CallToolResult> {
-		const searchService = await this.core.getSearchService();
+		const core = await this.resolveCore(args.project);
+		const searchService = await core.getSearchService();
 		const results = searchService.search({
 			query: args.query,
 			limit: args.limit,

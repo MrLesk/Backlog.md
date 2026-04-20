@@ -1,4 +1,5 @@
 import { basename, join } from "node:path";
+import type { Core } from "../../../core/backlog.ts";
 import { isCreateLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
@@ -22,7 +23,11 @@ import type { CallToolResult } from "../../types.ts";
 import { milestoneKey } from "../../utils/milestone-resolution.ts";
 import { formatTaskCallResult } from "../../utils/task-response.ts";
 
-export type TaskCreateArgs = {
+type ProjectScopedArgs = {
+	project?: string;
+};
+
+export type TaskCreateArgs = ProjectScopedArgs & {
 	title: string;
 	description?: string;
 	labels?: string[];
@@ -41,7 +46,7 @@ export type TaskCreateArgs = {
 	finalSummary?: string;
 };
 
-export type TaskListArgs = {
+export type TaskListArgs = ProjectScopedArgs & {
 	status?: string;
 	assignee?: string;
 	milestone?: string;
@@ -50,20 +55,30 @@ export type TaskListArgs = {
 	limit?: number;
 };
 
-export type TaskSearchArgs = {
+export type TaskSearchArgs = ProjectScopedArgs & {
 	query: string;
 	status?: string;
 	priority?: SearchPriorityFilter;
 	limit?: number;
 };
 
+type TaskIdArgs = ProjectScopedArgs & {
+	id: string;
+};
+
+export type ProjectScopedTaskEditRequest = TaskEditRequest & ProjectScopedArgs;
+
 export class TaskHandlers {
 	constructor(private readonly core: McpServer) {}
 
-	private async resolveMilestoneInput(milestone: string): Promise<string> {
+	private async resolveCore(project?: string): Promise<Core> {
+		return await this.core.getCoreForToolCall(project);
+	}
+
+	private async resolveMilestoneInput(core: Core, milestone: string): Promise<string> {
 		const [activeMilestones, archivedMilestones] = await Promise.all([
-			this.core.filesystem.listMilestones(),
-			this.core.filesystem.listArchivedMilestones(),
+			core.filesystem.listMilestones(),
+			core.filesystem.listArchivedMilestones(),
 		]);
 		const normalized = milestone.trim();
 		const inputKey = milestoneKey(normalized);
@@ -183,8 +198,8 @@ export class TaskHandlers {
 		return `  ${priorityIndicator}${task.id} - ${task.title}${statusText}`;
 	}
 
-	private async loadTaskOrThrow(id: string): Promise<Task> {
-		const task = await this.core.getTask(id);
+	private async loadTaskOrThrow(core: Core, id: string): Promise<Task> {
+		const task = await core.getTask(id);
 		if (!task) {
 			throw new BacklogToolError(`Task not found: ${id}`, "TASK_NOT_FOUND");
 		}
@@ -193,6 +208,7 @@ export class TaskHandlers {
 
 	async createTask(args: TaskCreateArgs): Promise<CallToolResult> {
 		try {
+			const core = await this.resolveCore(args.project);
 			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
 			if (rawOrdinal === null) {
 				throw new BacklogToolError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
@@ -205,9 +221,9 @@ export class TaskHandlers {
 					.map((text) => ({ text, checked: false })) ?? undefined;
 
 			const milestone =
-				typeof args.milestone === "string" ? await this.resolveMilestoneInput(args.milestone) : undefined;
+				typeof args.milestone === "string" ? await this.resolveMilestoneInput(core, args.milestone) : undefined;
 
-			const { task: createdTask } = await this.core.createTaskFromInput({
+			const { task: createdTask } = await core.createTaskFromInput({
 				title: args.title,
 				description: args.description,
 				status: args.status,
@@ -239,8 +255,9 @@ export class TaskHandlers {
 	}
 
 	async listTasks(args: TaskListArgs = {}): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		if (this.isDraftStatus(args.status)) {
-			let drafts = await this.core.filesystem.listDrafts();
+			let drafts = await core.filesystem.listDrafts();
 			if (args.search) {
 				const draftSearch = createTaskSearchIndex(drafts);
 				drafts = draftSearch.search({ query: args.search, status: "Draft" });
@@ -251,8 +268,8 @@ export class TaskHandlers {
 			}
 			if (args.milestone) {
 				const [activeMilestones, archivedMilestones] = await Promise.all([
-					this.core.filesystem.listMilestones(),
-					this.core.filesystem.listArchivedMilestones(),
+					core.filesystem.listMilestones(),
+					core.filesystem.listArchivedMilestones(),
 				]);
 				const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
 					...activeMilestones,
@@ -317,7 +334,7 @@ export class TaskHandlers {
 			filters.milestone = args.milestone;
 		}
 
-		const tasks = await this.core.queryTasks({
+		const tasks = await core.queryTasks({
 			query: args.search,
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
 			includeCrossBranch: false,
@@ -343,7 +360,7 @@ export class TaskHandlers {
 			};
 		}
 
-		const config = await this.core.filesystem.loadConfig();
+		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses ?? [];
 
 		const canonicalByLower = new Map<string, string>();
@@ -401,13 +418,14 @@ export class TaskHandlers {
 	}
 
 	async searchTasks(args: TaskSearchArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
 		const query = args.query.trim();
 		if (!query) {
 			throw new BacklogToolError("Search query cannot be empty", "VALIDATION_ERROR");
 		}
 
 		if (this.isDraftStatus(args.status)) {
-			const drafts = await this.core.filesystem.listDrafts();
+			const drafts = await core.filesystem.listDrafts();
 			const searchIndex = createTaskSearchIndex(drafts);
 			let draftMatches = searchIndex.search({
 				query,
@@ -444,7 +462,7 @@ export class TaskHandlers {
 			};
 		}
 
-		const tasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+		const tasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
 		const searchIndex = createTaskSearchIndex(tasks);
 		let taskMatches = searchIndex.search({
 			query,
@@ -482,23 +500,25 @@ export class TaskHandlers {
 		};
 	}
 
-	async viewTask(args: { id: string }): Promise<CallToolResult> {
-		const draft = await this.core.filesystem.loadDraft(args.id);
+	async viewTask(args: TaskIdArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
+		const draft = await core.filesystem.loadDraft(args.id);
 		if (draft) {
 			return await formatTaskCallResult(draft);
 		}
 
-		const task = await this.core.getTaskWithSubtasks(args.id);
+		const task = await core.getTaskWithSubtasks(args.id);
 		if (!task) {
 			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
 		}
 		return await formatTaskCallResult(task);
 	}
 
-	async archiveTask(args: { id: string }): Promise<CallToolResult> {
-		const draft = await this.core.filesystem.loadDraft(args.id);
+	async archiveTask(args: TaskIdArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
+		const draft = await core.filesystem.loadDraft(args.id);
 		if (draft) {
-			const success = await this.core.archiveDraft(draft.id);
+			const success = await core.archiveDraft(draft.id);
 			if (!success) {
 				throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 			}
@@ -506,7 +526,7 @@ export class TaskHandlers {
 			return await formatTaskCallResult(draft, [`Archived draft ${draft.id}.`]);
 		}
 
-		const task = await this.loadTaskOrThrow(args.id);
+		const task = await this.loadTaskOrThrow(core, args.id);
 
 		if (!isLocalEditableTask(task)) {
 			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
@@ -519,17 +539,18 @@ export class TaskHandlers {
 			);
 		}
 
-		const success = await this.core.archiveTask(task.id);
+		const success = await core.archiveTask(task.id);
 		if (!success) {
 			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 		}
 
-		const refreshed = (await this.core.getTask(task.id)) ?? task;
+		const refreshed = (await core.getTask(task.id)) ?? task;
 		return await formatTaskCallResult(refreshed);
 	}
 
-	async completeTask(args: { id: string }): Promise<CallToolResult> {
-		const task = await this.loadTaskOrThrow(args.id);
+	async completeTask(args: TaskIdArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
+		const task = await this.loadTaskOrThrow(core, args.id);
 
 		if (!isLocalEditableTask(task)) {
 			throw new BacklogToolError(`Cannot complete task from another branch: ${task.id}`, "VALIDATION_ERROR");
@@ -543,9 +564,9 @@ export class TaskHandlers {
 		}
 
 		const filePath = task.filePath ?? null;
-		const completedFilePath = filePath ? join(this.core.filesystem.completedDir, basename(filePath)) : undefined;
+		const completedFilePath = filePath ? join(core.filesystem.completedDir, basename(filePath)) : undefined;
 
-		const success = await this.core.completeTask(task.id);
+		const success = await core.completeTask(task.id);
 		if (!success) {
 			throw new BacklogToolError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
 		}
@@ -555,11 +576,12 @@ export class TaskHandlers {
 		});
 	}
 
-	async demoteTask(args: { id: string }): Promise<CallToolResult> {
-		const task = await this.loadTaskOrThrow(args.id);
+	async demoteTask(args: TaskIdArgs): Promise<CallToolResult> {
+		const core = await this.resolveCore(args.project);
+		const task = await this.loadTaskOrThrow(core, args.id);
 		let success: boolean;
 		try {
-			success = await this.core.demoteTask(task.id, false);
+			success = await core.demoteTask(task.id, false);
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
@@ -570,12 +592,13 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Failed to demote task: ${args.id}`, "OPERATION_FAILED");
 		}
 
-		const refreshed = (await this.core.getTask(task.id)) ?? task;
+		const refreshed = (await core.getTask(task.id)) ?? task;
 		return await formatTaskCallResult(refreshed);
 	}
 
-	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
+	async editTask(args: ProjectScopedTaskEditRequest): Promise<CallToolResult> {
 		try {
+			const core = await this.resolveCore(args.project);
 			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
 			if (rawOrdinal === null) {
 				throw new BacklogToolError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
@@ -583,9 +606,9 @@ export class TaskHandlers {
 
 			const updateInput = buildTaskUpdateInput(args);
 			if (typeof updateInput.milestone === "string") {
-				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);
+				updateInput.milestone = await this.resolveMilestoneInput(core, updateInput.milestone);
 			}
-			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
+			const updatedTask = await core.editTaskOrDraft(args.id, updateInput);
 			return await formatTaskCallResult(updatedTask);
 		} catch (error) {
 			if (error instanceof Error) {

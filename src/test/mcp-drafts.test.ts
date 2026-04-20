@@ -35,7 +35,7 @@ describe("MCP draft support via task tools", () => {
 		await initializeTestProject(mcpServer, "Test Project");
 
 		const config = await loadConfig(mcpServer);
-		registerTaskTools(mcpServer, config);
+		await registerTaskTools(mcpServer, config);
 	});
 
 	afterEach(async () => {
@@ -171,7 +171,7 @@ describe("MCP draft support via task tools", () => {
 		const archivedDraft = await mcpServer.filesystem.loadDraft("draft-1");
 		expect(archivedDraft).toBeNull();
 
-		const archiveDir = join(TEST_DIR, "backlog", "archive", "drafts");
+		const archiveDir = join(mcpServer.filesystem.backlogDir, "archive", "drafts");
 		const archiveFiles = await readdir(archiveDir);
 		expect(archiveFiles.some((file) => file.startsWith("draft-1"))).toBe(true);
 	});

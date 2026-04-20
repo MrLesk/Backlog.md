@@ -61,6 +61,31 @@ Backlog data is stored in a project-local backlog folder such as `backlog/`, `.b
 
 ---
 
+### Multi-project repositories
+
+Backlog.md can also host multiple native backlog projects inside one repository. In that mode, each project gets its own full backlog under `backlog/<project>/...` and remains isolated from the others by default.
+
+```text
+backlog/
+  projects.yml
+  web/
+    config.yml
+    tasks/
+    milestones/
+    docs/
+    decisions/
+  ops/
+    config.yml
+    tasks/
+    milestones/
+    docs/
+    decisions/
+```
+
+Use `--project <key>` in the CLI, MCP tools, and browser integrations when the current working directory or the registry default project does not already resolve the active project. Cross-project task dependencies are rejected; dependencies must point to tasks in the same project.
+
+---
+
 ### Working with AI agents
 
 This is the recommended flow for Claude Code, Codex, Gemini CLI, Kiro and similar tools — following the **spec‑driven AI development** approach.

@@ -14,9 +14,13 @@ import {
 	RootsListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
+import { ProjectManager } from "../core/project-manager.ts";
+import type { BacklogConfig } from "../types/index.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import { readProjectRegistry, resolveProjectContext } from "../utils/project-registry.ts";
 import { getVersion } from "../utils/version.ts";
+import { BacklogToolError } from "./errors/mcp-errors.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
 import { registerDefinitionOfDoneTools } from "./tools/definition-of-done/index.ts";
@@ -53,6 +57,36 @@ type ServerInitOptions = {
 	debug?: boolean;
 };
 
+type McpProjectBootstrap = {
+	config: BacklogConfig;
+	backlogRoot?: string;
+};
+
+async function resolveMcpProjectBootstrap(projectRoot: string): Promise<McpProjectBootstrap | null> {
+	const directCore = new Core(projectRoot);
+	await directCore.ensureConfigLoaded();
+	const directConfig = await directCore.filesystem.loadConfig();
+	if (directConfig) {
+		return { config: directConfig };
+	}
+
+	try {
+		const context = await resolveProjectContext(projectRoot, { cwd: projectRoot });
+		const projectCore = new Core(projectRoot, { backlogRoot: context.backlogRoot });
+		await projectCore.ensureConfigLoaded();
+		const projectConfig = await projectCore.filesystem.loadConfig();
+		if (!projectConfig) {
+			return null;
+		}
+		return {
+			config: projectConfig,
+			backlogRoot: context.backlogRoot,
+		};
+	} catch {
+		return null;
+	}
+}
+
 export class McpServer extends Core {
 	private readonly server: Server;
 	private transport?: StdioServerTransport;
@@ -70,6 +104,7 @@ export class McpServer extends Core {
 
 	/** The projectRoot passed to createMcpServer, used to revert on downgrade. */
 	private readonly initialProjectRoot: string;
+	private readonly projectManager: ProjectManager;
 
 	/** True when the server has been upgraded from fallback to a real project. */
 	private upgraded = false;
@@ -81,6 +116,7 @@ export class McpServer extends Core {
 	constructor(projectRoot: string, instructions: string) {
 		super(projectRoot, { enableWatchers: true });
 		this.initialProjectRoot = projectRoot;
+		this.projectManager = new ProjectManager(projectRoot);
 
 		this.server = new Server(
 			{
@@ -181,14 +217,17 @@ export class McpServer extends Core {
 	 * toolset, replacing fallback-mode registrations.
 	 */
 	private async upgradeToProject(projectRoot: string, options?: { debug?: boolean }): Promise<boolean> {
-		this.reinitializeProjectRoot(projectRoot);
-		await this.ensureConfigLoaded();
-		const config = await this.filesystem.loadConfig();
-
-		if (!config) {
+		const bootstrap = await resolveMcpProjectBootstrap(projectRoot);
+		if (!bootstrap) {
 			this.log(`Skipping root ${projectRoot} (no valid config).`, options);
 			return false;
 		}
+		this.reinitializeProjectRoot(
+			projectRoot,
+			bootstrap.backlogRoot ? { backlogRoot: bootstrap.backlogRoot } : undefined,
+		);
+		await this.ensureConfigLoaded();
+		const config = bootstrap.config;
 
 		// Replace fallback registrations with the full toolset
 		this.tools.clear();
@@ -197,7 +236,7 @@ export class McpServer extends Core {
 
 		registerWorkflowResources(this);
 		registerWorkflowTools(this);
-		registerTaskTools(this, config);
+		await registerTaskTools(this, config);
 		registerMilestoneTools(this);
 		registerDefinitionOfDoneTools(this);
 		registerDocumentTools(this, config);
@@ -313,6 +352,53 @@ export class McpServer extends Core {
 
 	public getServer(): Server {
 		return this.server;
+	}
+
+	public async getCoreForToolCall(project?: string): Promise<Core> {
+		const requestedProject = project?.trim();
+		if (!requestedProject) {
+			const currentConfig = await this.filesystem.loadConfig();
+			if (currentConfig) {
+				return this;
+			}
+		}
+
+		try {
+			return await this.projectManager.getCore({
+				project: requestedProject,
+				cwd: this.initialProjectRoot,
+				enableWatchers: true,
+			});
+		} catch (error) {
+			if (requestedProject) {
+				const message = error instanceof Error ? error.message : String(error);
+				throw new BacklogToolError(message, "VALIDATION_ERROR");
+			}
+			return this;
+		}
+	}
+
+	public async getTaskToolConfig(baseConfig: BacklogConfig): Promise<BacklogConfig> {
+		const registry = await readProjectRegistry(this.initialProjectRoot);
+		if (!registry || registry.projects.length === 0) {
+			return baseConfig;
+		}
+
+		const mergedStatuses = [...(baseConfig.statuses ?? [])];
+		for (const project of registry.projects) {
+			const projectCore = await this.projectManager.getCore({ project: project.key });
+			const projectConfig = await projectCore.filesystem.loadConfig();
+			for (const status of projectConfig?.statuses ?? []) {
+				if (!mergedStatuses.includes(status)) {
+					mergedStatuses.push(status);
+				}
+			}
+		}
+
+		return {
+			...baseConfig,
+			statuses: mergedStatuses,
+		};
 	}
 
 	// -- Internal handlers --------------------------------------------------
@@ -435,16 +521,13 @@ export class McpServer extends Core {
  * initialization, the server queries MCP roots to find the correct project.
  */
 export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
-	// We need to check config first to determine which instructions to use
-	const tempCore = new Core(projectRoot);
-	await tempCore.ensureConfigLoaded();
-	const config = await tempCore.filesystem.loadConfig();
+	const bootstrap = await resolveMcpProjectBootstrap(projectRoot);
 
 	const server = new McpServer(projectRoot, INSTRUCTIONS);
 
 	// Graceful fallback: if config doesn't exist, provide init-required resource
 	// and enable roots discovery so the server can find the project via MCP roots
-	if (!config) {
+	if (!bootstrap) {
 		registerInitRequiredResource(server, projectRoot);
 		server.enableRootsDiscovery({ debug: options.debug });
 
@@ -455,13 +538,18 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 		return server;
 	}
 
+	if (bootstrap.backlogRoot) {
+		server.reinitializeProjectRoot(projectRoot, { backlogRoot: bootstrap.backlogRoot });
+		await server.ensureConfigLoaded();
+	}
+
 	// Normal mode: full tools and resources
 	registerWorkflowResources(server);
 	registerWorkflowTools(server);
-	registerTaskTools(server, config);
+	await registerTaskTools(server, bootstrap.config);
 	registerMilestoneTools(server);
 	registerDefinitionOfDoneTools(server);
-	registerDocumentTools(server, config);
+	registerDocumentTools(server, bootstrap.config);
 
 	if (options.debug) {
 		console.error("MCP server initialised (stdio transport only).");

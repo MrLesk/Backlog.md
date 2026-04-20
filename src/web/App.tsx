@@ -24,7 +24,7 @@ import {
 	type Task,
 	type TaskSearchResult,
 } from '../types';
-import { apiClient } from './lib/api';
+import { apiClient, type ProjectSummary } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
@@ -167,6 +167,9 @@ function App() {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [currentProject, setCurrentProject] = useState<string | null>(null);
+  const [hasResolvedProject, setHasResolvedProject] = useState(false);
   const [config, setConfig] = useState<BacklogConfig | null>(null);
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
@@ -186,6 +189,16 @@ function App() {
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
+
+  const updateProjectUrl = useCallback((projectKey: string | null) => {
+    const url = new URL(window.location.href);
+    if (projectKey) {
+      url.searchParams.set('project', projectKey);
+    } else {
+      url.searchParams.delete('project');
+    }
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   // Set version data attribute on body
   React.useEffect(() => {
@@ -213,6 +226,10 @@ function App() {
 
   const handleInitialized = useCallback(() => {
     setIsInitialized(true);
+  }, []);
+
+  const handleProjectChange = useCallback((projectKey: string) => {
+    setCurrentProject((previousProject) => previousProject === projectKey ? previousProject : projectKey);
   }, []);
 
   const applySearchResults = useCallback((
@@ -289,11 +306,62 @@ function App() {
   }, [applySearchResults]);
 
   React.useEffect(() => {
-    // Only load data when initialized
-    if (isInitialized === true) {
-      loadAllData();
+    if (isInitialized !== true) {
+      return;
     }
-  }, [loadAllData, isInitialized]);
+
+    let cancelled = false;
+
+    const loadProjects = async () => {
+      try {
+        const projectsData = await apiClient.fetchProjects();
+        if (cancelled) {
+          return;
+        }
+
+        setProjects(projectsData.projects);
+
+        const urlProject = new URL(window.location.href).searchParams.get('project');
+        const availableProjectKeys = new Set(projectsData.projects.map((project) => project.key));
+        const nextProject =
+          (urlProject && availableProjectKeys.has(urlProject) ? urlProject : null) ??
+          projectsData.defaultProject ??
+          projectsData.projects[0]?.key ??
+          null;
+
+        apiClient.setActiveProject(nextProject);
+        setCurrentProject(nextProject);
+      } catch (error) {
+        console.error('Failed to load projects:', error);
+        apiClient.setActiveProject(null);
+        setProjects([]);
+        setCurrentProject(null);
+      } finally {
+        if (!cancelled) {
+          setHasResolvedProject(true);
+        }
+      }
+    };
+
+    loadProjects();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isInitialized]);
+
+  React.useEffect(() => {
+    if (isInitialized !== true || !hasResolvedProject) {
+      return;
+    }
+    if (projects.length > 0 && !currentProject) {
+      return;
+    }
+
+    apiClient.setActiveProject(currentProject);
+    updateProjectUrl(currentProject);
+    loadAllData();
+  }, [currentProject, hasResolvedProject, isInitialized, loadAllData, projects.length, updateProjectUrl]);
 
   // Reload data when connection is restored
   React.useEffect(() => {
@@ -478,6 +546,9 @@ function App() {
             element={
               <Layout
                 projectName={projectName}
+                projects={projects}
+                currentProject={currentProject}
+                onProjectChange={handleProjectChange}
                 showSuccessToast={showSuccessToast}
                 onDismissToast={() => setShowSuccessToast(false)}
                 tasks={tasks}

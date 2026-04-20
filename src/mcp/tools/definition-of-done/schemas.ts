@@ -1,8 +1,17 @@
 import type { JsonSchema } from "../../validation/validators.ts";
 
+const projectSchema: JsonSchema = {
+	type: "string",
+	minLength: 1,
+	maxLength: 100,
+	description: "Optional project key from backlog/projects.yml to scope this tool call.",
+};
+
 export const definitionOfDoneDefaultsGetSchema: JsonSchema = {
 	type: "object",
-	properties: {},
+	properties: {
+		project: projectSchema,
+	},
 	required: [],
 	additionalProperties: false,
 };
@@ -10,6 +19,7 @@ export const definitionOfDoneDefaultsGetSchema: JsonSchema = {
 export const definitionOfDoneDefaultsUpsertSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		items: {
 			type: "array",
 			items: {

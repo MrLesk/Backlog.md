@@ -26,6 +26,7 @@ import {
 	resolveClosestMilestoneFilterValue,
 } from "../utils/milestone-filter.ts";
 import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
+import { readProjectRegistry, resolveProjectRegistryLocation } from "../utils/project-registry.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -248,6 +249,59 @@ export class Core {
 		}
 		const validStatuses = await resolveValidStatuses(this);
 		throw new Error(`Invalid status: ${status}. Valid statuses are: ${validStatuses.join(", ")}`);
+	}
+
+	private async findCrossProjectDependencies(dependencies: string[]): Promise<string[]> {
+		if (dependencies.length === 0) {
+			return [];
+		}
+
+		const registry = await readProjectRegistry(this.fs.rootDir);
+		if (!registry || registry.projects.length < 2) {
+			return [];
+		}
+
+		const registryLocation = await resolveProjectRegistryLocation(this.fs.rootDir);
+		if (!registryLocation) {
+			return [];
+		}
+
+		const matches = new Set<string>();
+		for (const project of registry.projects) {
+			const backlogRoot = join(registryLocation.containerRoot, project.key);
+			if (backlogRoot === this.fs.backlogDir) {
+				continue;
+			}
+
+			const projectCore = new Core(this.fs.rootDir, { backlogRoot });
+			for (const dependency of dependencies) {
+				if (matches.has(dependency)) {
+					continue;
+				}
+				const [task, draft] = await Promise.all([
+					projectCore.getTask(dependency),
+					projectCore.filesystem.loadDraft(dependency),
+				]);
+				if (task || draft) {
+					matches.add(dependency);
+				}
+			}
+		}
+
+		return Array.from(matches);
+	}
+
+	private async createDependencyValidationError(invalidDependencies: string[]): Promise<Error> {
+		const crossProjectDependencies = await this.findCrossProjectDependencies(invalidDependencies);
+		if (crossProjectDependencies.length > 0) {
+			return new Error(
+				`The following dependencies must refer to tasks in the same project: ${crossProjectDependencies.join(", ")}.`,
+			);
+		}
+
+		return new Error(
+			`The following dependencies do not exist: ${invalidDependencies.join(", ")}. Please create these tasks first or verify the IDs.`,
+		);
 	}
 
 	private normalizePriority(value: string | undefined): ("high" | "medium" | "low") | undefined {
@@ -936,9 +990,7 @@ export class Core {
 			this,
 		);
 		if (invalidDependencies.length > 0) {
-			throw new Error(
-				`The following dependencies do not exist: ${invalidDependencies.join(", ")}. Please create these tasks first or verify the IDs.`,
-			);
+			throw await this.createDependencyValidationError(invalidDependencies);
 		}
 
 		let status = "";
@@ -1185,9 +1237,7 @@ export class Core {
 				const normalized = normalizeDependencies(input.dependencies);
 				const { valid, invalid } = await validateDependencies(normalized, this);
 				if (invalid.length > 0) {
-					throw new Error(
-						`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs.`,
-					);
+					throw await this.createDependencyValidationError(invalid);
 				}
 				if (!stringArraysEqual(valid, currentDependencies)) {
 					currentDependencies = valid;
@@ -1199,9 +1249,7 @@ export class Core {
 				const additions = normalizeDependencies(input.addDependencies);
 				const { valid, invalid } = await validateDependencies(additions, this);
 				if (invalid.length > 0) {
-					throw new Error(
-						`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs.`,
-					);
+					throw await this.createDependencyValidationError(invalid);
 				}
 				const depSet = new Set(currentDependencies);
 				for (const dep of valid) {

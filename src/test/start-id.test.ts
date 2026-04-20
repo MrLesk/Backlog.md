@@ -36,7 +36,8 @@ describe("task id generation", () => {
 		const result = await $`bun ${CLI_PATH} task create First`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
-		const files = await readdir(join(TEST_DIR, "backlog", "tasks"));
+		const core = new Core(TEST_DIR);
+		const files = await readdir(core.filesystem.tasksDir);
 		const first = files.find((f) => f.startsWith("task-1 -"));
 		expect(first).toBeDefined();
 	});

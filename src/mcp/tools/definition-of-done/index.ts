@@ -15,7 +15,7 @@ export function registerDefinitionOfDoneTools(server: McpServer): void {
 			annotations: { title: "Get DoD Defaults", readOnlyHint: true, destructiveHint: false },
 		},
 		definitionOfDoneDefaultsGetSchema,
-		async () => handlers.getDefaults(),
+		async (input) => handlers.getDefaults(input as { project?: string }),
 	);
 
 	const upsertDefaultsTool: McpToolHandler = createSimpleValidatedTool(

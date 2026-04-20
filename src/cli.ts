@@ -53,6 +53,7 @@ import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import { resolveProjectContext, resolveProjectRegistryLocation } from "./utils/project-registry.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
@@ -249,10 +250,21 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
  * Walks up the directory tree to find backlog/ or backlog.json, with git root fallback.
  * Exits with error message if no Backlog.md project is found.
  */
-async function requireProjectRoot(): Promise<string> {
-	let runtimeCwd: RuntimeCwdResolution;
+async function requireProjectRoot(existingRuntimeCwd?: RuntimeCwdResolution): Promise<string> {
+	let runtimeCwd = existingRuntimeCwd;
+	if (!runtimeCwd) {
+		try {
+			runtimeCwd = await resolveRuntimeCwd();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(message);
+			process.exit(1);
+		}
+	}
 	try {
-		runtimeCwd = await resolveRuntimeCwd();
+		if (!runtimeCwd) {
+			throw new Error("Unable to resolve the current working directory.");
+		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(message);
@@ -265,6 +277,91 @@ async function requireProjectRoot(): Promise<string> {
 		process.exit(1);
 	}
 	return root;
+}
+
+function withProjectOption<T extends Command>(command: T): T {
+	if (!command.options.some((option) => option.long === "--project")) {
+		command.option("--project <project>", "select backlog project by key");
+	}
+	return command;
+}
+
+function getProjectOptionFromArgv(argv = process.argv): string | undefined {
+	let project: string | undefined;
+	const args = argv.slice(2);
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (!arg) {
+			continue;
+		}
+		if (arg === "--project") {
+			const next = args[index + 1]?.trim();
+			if (next) {
+				project = next;
+			}
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--project=")) {
+			const value = arg.slice("--project=".length).trim();
+			if (value) {
+				project = value;
+			}
+		}
+	}
+
+	return project;
+}
+
+async function shouldUseProjectRegistry(projectRoot: string): Promise<boolean> {
+	const registryLocation = await resolveProjectRegistryLocation(projectRoot);
+	if (registryLocation) {
+		return true;
+	}
+
+	const registryCandidates = [
+		join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY),
+		join(projectRoot, DEFAULT_DIRECTORIES.HIDDEN_BACKLOG, DEFAULT_FILES.PROJECT_REGISTRY),
+	];
+
+	for (const candidate of registryCandidates) {
+		if (await Bun.file(candidate).exists()) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+async function createCommandCore(
+	projectRoot?: string,
+	options?: { enableWatchers?: boolean; runtimeCwd?: RuntimeCwdResolution },
+): Promise<Core> {
+	const runtimeCwd = options?.runtimeCwd ?? (await resolveRuntimeCwd());
+	const resolvedProjectRoot = projectRoot ?? (await requireProjectRoot(runtimeCwd));
+
+	if (!(await shouldUseProjectRegistry(resolvedProjectRoot))) {
+		return new Core(resolvedProjectRoot, { enableWatchers: options?.enableWatchers });
+	}
+
+	try {
+		const context = await resolveProjectContext(resolvedProjectRoot, {
+			cwd: runtimeCwd.cwd,
+			project: getProjectOptionFromArgv(),
+		});
+		return new Core(context.repoRoot, {
+			enableWatchers: options?.enableWatchers,
+			backlogRoot: context.backlogRoot,
+		});
+	} catch (error) {
+		if (error instanceof Error && error.message === "Unable to resolve a project from backlog/projects.yml.") {
+			throw new Error(
+				"Unable to resolve the active project. Use --project <key>, run the command from a mapped project path, or set defaultProject in backlog/projects.yml.",
+			);
+		}
+		throw error;
+	}
 }
 
 // Windows color fix
@@ -325,7 +422,7 @@ try {
 			const runtimeCwd = await resolveRuntimeCwd();
 			const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 			if (projectRoot) {
-				const core = new Core(projectRoot);
+				const core = await createCommandCore(projectRoot, { runtimeCwd });
 				const cfg = await core.filesystem.loadConfig();
 				initialized = !!cfg;
 			}
@@ -390,7 +487,7 @@ if (shouldRunMigration) {
 		const runtimeCwd = await resolveRuntimeCwd({ cwd: getMcpStartCwdOverrideFromArgv() });
 		const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 		if (projectRoot) {
-			const core = new Core(projectRoot);
+			const core = await createCommandCore(projectRoot, { runtimeCwd });
 
 			// Only migrate if config already exists (project is already initialized)
 			const config = await core.filesystem.loadConfig();
@@ -474,7 +571,7 @@ program
 					}
 				}
 
-				const core = new Core(cwd);
+				const core = await createCommandCore(cwd);
 
 				// Check if project is already initialized and load existing config
 				const existingConfig = await core.filesystem.loadConfig();
@@ -1136,10 +1233,12 @@ program
 						})
 						.join("\n");
 				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
-				summaryLines.push(`${label("Backlog directory:")} ${backlogDirectory ?? core.filesystem.backlogDirName}`);
-				summaryLines.push(
-					`${label("Config location:")} ${configLocation === "root" ? DEFAULT_FILES.ROOT_CONFIG : "folder config.yml"}`,
-				);
+				const resolvedConfigLocation =
+					core.filesystem.configFilePath === join(core.filesystem.rootDir, DEFAULT_FILES.ROOT_CONFIG)
+						? DEFAULT_FILES.ROOT_CONFIG
+						: "folder config.yml";
+				summaryLines.push(`${label("Backlog directory:")} ${core.filesystem.backlogDirName}`);
+				summaryLines.push(`${label("Config location:")} ${resolvedConfigLocation}`);
 				if (integrationMode === "cli") {
 					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
 					if (agentFiles.length > 0) {
@@ -1398,7 +1497,7 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	return `decision-${nextIdNumber}`;
 }
 
-const taskCmd = program.command("task").aliases(["tasks"]);
+const taskCmd = withProjectOption(program.command("task").aliases(["tasks"]));
 
 taskCmd
 	.command("create [title]")
@@ -1457,7 +1556,7 @@ taskCmd
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		await core.ensureConfigLoaded();
 
 		if (shouldUseWizard) {
@@ -1529,8 +1628,9 @@ taskCmd
 		}
 	});
 
-program
-	.command("search [query]")
+const searchCmd = withProjectOption(program.command("search [query]"));
+
+searchCmd
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
@@ -1539,7 +1639,7 @@ program
 	.option("--plain", "print plain text output instead of interactive UI")
 	.action(async (query: string | undefined, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const searchService = await core.getSearchService();
 		const contentStore = await core.getContentStore();
 		const cleanup = () => {
@@ -1755,7 +1855,7 @@ taskCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const cleanup = () => {
 			core.disposeSearchService();
 			core.disposeContentStore();
@@ -2108,7 +2208,7 @@ taskCmd
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 
 		if (shouldUseWizard) {
 			let selectedTaskId = taskId ? normalizeTaskId(taskId) : undefined;
@@ -2363,7 +2463,7 @@ taskCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const localTasks = await core.fs.listTasks();
 		const task = await core.getTaskWithSubtasks(taskId, localTasks);
 		if (!task) {
@@ -2391,7 +2491,7 @@ taskCmd
 	.description("archive a task")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const success = await core.archiveTask(taskId);
 		if (success) {
 			console.log(`Archived task ${taskId}`);
@@ -2405,7 +2505,7 @@ taskCmd
 	.description("move task back to drafts")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		try {
 			const success = await core.demoteTask(taskId);
 			if (success) {
@@ -2424,7 +2524,7 @@ taskCmd
 	.option("--plain", "use plain text output")
 	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
 		const reservedCommands = ["create", "list", "edit", "view", "archive", "demote"];
@@ -2468,7 +2568,7 @@ taskCmd
 		});
 	});
 
-const draftCmd = program.command("draft");
+const draftCmd = withProjectOption(program.command("draft"));
 
 draftCmd
 	.command("list")
@@ -2477,7 +2577,7 @@ draftCmd
 	.option("--plain", "use plain text output")
 	.action(async (options: { plain?: boolean; sort?: string }) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		await core.ensureConfigLoaded();
 		const drafts = await core.filesystem.listDrafts();
 
@@ -2543,7 +2643,7 @@ draftCmd
 	.option("-l, --labels <labels>")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		await core.ensureConfigLoaded();
 		try {
 			const { task, filePath } = await core.createTaskFromInput({
@@ -2571,7 +2671,7 @@ draftCmd
 	.description("archive a draft")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const success = await core.archiveDraft(taskId);
 		if (success) {
 			console.log(`Archived draft ${taskId}`);
@@ -2585,7 +2685,7 @@ draftCmd
 	.description("promote draft to task")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		try {
 			const success = await core.promoteDraft(taskId);
 			if (success) {
@@ -2605,7 +2705,7 @@ draftCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const { getDraftPath } = await import("./utils/task-path.ts");
 		const filePath = await getDraftPath(taskId, core);
 
@@ -2641,7 +2741,7 @@ draftCmd
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const { getDraftPath } = await import("./utils/task-path.ts");
 		const filePath = await getDraftPath(taskId, core);
 
@@ -2667,7 +2767,7 @@ draftCmd
 		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
 	});
 
-const milestoneCmd = program.command("milestone").aliases(["milestones"]);
+const milestoneCmd = withProjectOption(program.command("milestone").aliases(["milestones"]));
 
 milestoneCmd
 	.command("list")
@@ -2676,7 +2776,7 @@ milestoneCmd
 	.option("--plain", "use plain text output")
 	.action(async (options: { showCompleted?: boolean; plain?: boolean }) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		await core.ensureConfigLoaded();
 
 		const [tasks, milestones, archivedMilestones, config] = await Promise.all([
@@ -2724,7 +2824,7 @@ milestoneCmd
 	.description("archive a milestone by id or title")
 	.action(async (name: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const result = await core.archiveMilestone(name);
 
 		if (!result.success) {
@@ -2738,7 +2838,7 @@ milestoneCmd
 		console.log(`Archived milestone "${label}"${id ? ` (${id})` : ""}.`);
 	});
 
-const boardCmd = program.command("board");
+const boardCmd = withProjectOption(program.command("board"));
 
 function addBoardOptions(cmd: Command) {
 	return cmd
@@ -2749,7 +2849,7 @@ function addBoardOptions(cmd: Command) {
 
 async function handleBoardView(options: { layout?: string; vertical?: boolean; milestones?: boolean }) {
 	const cwd = await requireProjectRoot();
-	const core = new Core(cwd);
+	const core = await createCommandCore(cwd);
 	const config = await core.filesystem.loadConfig();
 
 	const statuses = config?.statuses || [];
@@ -2881,7 +2981,7 @@ boardCmd
 	.option("--export-version <version>", "version to include in the export")
 	.action(async (filename, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
 
@@ -2938,7 +3038,7 @@ boardCmd
 		}
 	});
 
-const docCmd = program.command("doc");
+const docCmd = withProjectOption(program.command("doc"));
 
 docCmd
 	.command("create <title>")
@@ -2946,7 +3046,7 @@ docCmd
 	.option("-t, --type <type>")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const id = await generateNextDocId(core);
 		const document: DocType = {
 			id,
@@ -2964,7 +3064,7 @@ docCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const docs = await core.filesystem.listDocuments();
 		if (docs.length === 0) {
 			console.log("No docs found.");
@@ -3004,7 +3104,7 @@ docCmd
 	.description("view a document")
 	.action(async (docId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		try {
 			const content = await core.getDocumentContent(docId);
 			if (content === null) {
@@ -3017,14 +3117,14 @@ docCmd
 		}
 	});
 
-const decisionCmd = program.command("decision");
+const decisionCmd = withProjectOption(program.command("decision"));
 
 decisionCmd
 	.command("create <title>")
 	.option("-s, --status <status>")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const id = await generateNextDecisionId(core);
 		const decision: Decision = {
 			id,
@@ -3041,7 +3141,7 @@ decisionCmd
 	});
 
 // Agents command group
-const agentsCmd = program.command("agents");
+const agentsCmd = withProjectOption(program.command("agents"));
 
 agentsCmd
 	.description("manage agent instruction files")
@@ -3056,7 +3156,7 @@ agentsCmd
 		}
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = await createCommandCore(cwd);
 
 			// Check if backlog project is initialized
 			const config = await core.filesystem.loadConfig();
@@ -3106,7 +3206,7 @@ const configCmd = program
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = await createCommandCore(cwd);
 			const existingConfig = await core.filesystem.loadConfig();
 
 			if (!existingConfig) {
@@ -3185,7 +3285,9 @@ const configCmd = program
 	});
 
 // Sequences command group
-const sequenceCmd = program.command("sequence");
+withProjectOption(configCmd);
+
+const sequenceCmd = withProjectOption(program.command("sequence"));
 
 sequenceCmd
 	.description("list and inspect execution sequences computed from task dependencies")
@@ -3194,7 +3296,7 @@ sequenceCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = await createCommandCore(cwd);
 		const tasks = await core.queryTasks();
 		// Exclude tasks marked as Done from sequences (case-insensitive)
 		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
@@ -3230,7 +3332,7 @@ configCmd
 	.action(async (key: string) => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = await createCommandCore(cwd);
 			const config = await core.filesystem.loadConfig();
 
 			if (!config) {
@@ -3317,7 +3419,7 @@ configCmd
 	.action(async (key: string, value: string) => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = await createCommandCore(cwd);
 			const config = await core.filesystem.loadConfig();
 
 			if (!config) {
@@ -3495,7 +3597,7 @@ configCmd
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = await createCommandCore(cwd);
 			const config = await core.filesystem.loadConfig();
 
 			if (!config) {
@@ -3530,146 +3632,146 @@ configCmd
 	});
 
 // Cleanup command for managing completed tasks
-program
-	.command("cleanup")
-	.description("move completed tasks to completed folder based on age")
-	.action(async () => {
-		try {
-			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+const cleanupCmd = withProjectOption(program.command("cleanup"));
 
-			// Check if backlog project is initialized
-			const config = await core.filesystem.loadConfig();
-			if (!config) {
-				console.error("No backlog project found. Initialize one first with: backlog init");
-				process.exit(1);
-			}
+cleanupCmd.description("move completed tasks to completed folder based on age").action(async () => {
+	try {
+		const cwd = await requireProjectRoot();
+		const core = await createCommandCore(cwd);
 
-			// Get all Done tasks
-			const tasks = await core.queryTasks();
-			const doneTasks = tasks.filter((task) => task.status === "Done");
-
-			if (doneTasks.length === 0) {
-				console.log("No completed tasks found to clean up.");
-				return;
-			}
-
-			console.log(`Found ${doneTasks.length} tasks marked as Done.`);
-
-			const ageOptions = [
-				{ title: "1 day", value: 1 },
-				{ title: "1 week", value: 7 },
-				{ title: "2 weeks", value: 14 },
-				{ title: "3 weeks", value: 21 },
-				{ title: "1 month", value: 30 },
-				{ title: "3 months", value: 90 },
-				{ title: "1 year", value: 365 },
-			];
-
-			const selectedAgePrompt = await clack.select({
-				message: "Move tasks to completed folder if they are older than:",
-				options: ageOptions.map((option) => ({ label: option.title, value: option.value })),
-			});
-			const selectedAge = clack.isCancel(selectedAgePrompt) ? undefined : selectedAgePrompt;
-
-			if (selectedAge === undefined) {
-				console.log("Cleanup cancelled.");
-				return;
-			}
-
-			// Get tasks older than selected period
-			const tasksToMove = await core.getDoneTasksByAge(selectedAge);
-
-			if (tasksToMove.length === 0) {
-				console.log(`No tasks found that are older than ${ageOptions.find((o) => o.value === selectedAge)?.title}.`);
-				return;
-			}
-
-			console.log(
-				`\nFound ${tasksToMove.length} tasks older than ${ageOptions.find((o) => o.value === selectedAge)?.title}:`,
-			);
-			for (const task of tasksToMove.slice(0, 5)) {
-				const date = task.updatedDate || task.createdDate;
-				console.log(`  - ${task.id}: ${task.title} (${date})`);
-			}
-			if (tasksToMove.length > 5) {
-				console.log(`  ... and ${tasksToMove.length - 5} more`);
-			}
-
-			const confirmedPrompt = await clack.confirm({
-				message: `Move ${tasksToMove.length} tasks to completed folder?`,
-				initialValue: false,
-			});
-			const confirmed = clack.isCancel(confirmedPrompt) ? false : confirmedPrompt;
-
-			if (!confirmed) {
-				console.log("Cleanup cancelled.");
-				return;
-			}
-
-			// Move tasks to completed folder
-			let successCount = 0;
-			const shouldAutoCommit = config.autoCommit ?? false;
-
-			console.log("Moving tasks...");
-			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
-
-			for (const task of tasksToMove) {
-				const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
-
-				if (!fromPath) {
-					console.error(`Failed to locate file for task ${task.id}`);
-					continue;
-				}
-
-				const taskFilename = basename(fromPath);
-				const toPath = join(core.filesystem.completedDir, taskFilename);
-
-				const success = await core.completeTask(task.id);
-				if (success) {
-					successCount++;
-					movedTasks.push({ fromPath, toPath, taskId: task.id });
-				} else {
-					console.error(`Failed to move task ${task.id}`);
-				}
-			}
-
-			// If autoCommit is disabled, stage the moves so Git recognizes them
-			if (successCount > 0 && !shouldAutoCommit) {
-				console.log("Staging file moves for Git...");
-				for (const { fromPath, toPath } of movedTasks) {
-					try {
-						await core.gitOps.stageFileMove(fromPath, toPath);
-					} catch (error) {
-						console.warn(`Warning: Could not stage move for Git: ${error}`);
-					}
-				}
-			}
-
-			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-			if (successCount > 0 && !shouldAutoCommit) {
-				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
-			}
-		} catch (err) {
-			console.error("Failed to run cleanup", err);
-			process.exitCode = 1;
+		// Check if backlog project is initialized
+		const config = await core.filesystem.loadConfig();
+		if (!config) {
+			console.error("No backlog project found. Initialize one first with: backlog init");
+			process.exit(1);
 		}
-	});
+
+		// Get all Done tasks
+		const tasks = await core.queryTasks();
+		const doneTasks = tasks.filter((task) => task.status === "Done");
+
+		if (doneTasks.length === 0) {
+			console.log("No completed tasks found to clean up.");
+			return;
+		}
+
+		console.log(`Found ${doneTasks.length} tasks marked as Done.`);
+
+		const ageOptions = [
+			{ title: "1 day", value: 1 },
+			{ title: "1 week", value: 7 },
+			{ title: "2 weeks", value: 14 },
+			{ title: "3 weeks", value: 21 },
+			{ title: "1 month", value: 30 },
+			{ title: "3 months", value: 90 },
+			{ title: "1 year", value: 365 },
+		];
+
+		const selectedAgePrompt = await clack.select({
+			message: "Move tasks to completed folder if they are older than:",
+			options: ageOptions.map((option) => ({ label: option.title, value: option.value })),
+		});
+		const selectedAge = clack.isCancel(selectedAgePrompt) ? undefined : selectedAgePrompt;
+
+		if (selectedAge === undefined) {
+			console.log("Cleanup cancelled.");
+			return;
+		}
+
+		// Get tasks older than selected period
+		const tasksToMove = await core.getDoneTasksByAge(selectedAge);
+
+		if (tasksToMove.length === 0) {
+			console.log(`No tasks found that are older than ${ageOptions.find((o) => o.value === selectedAge)?.title}.`);
+			return;
+		}
+
+		console.log(
+			`\nFound ${tasksToMove.length} tasks older than ${ageOptions.find((o) => o.value === selectedAge)?.title}:`,
+		);
+		for (const task of tasksToMove.slice(0, 5)) {
+			const date = task.updatedDate || task.createdDate;
+			console.log(`  - ${task.id}: ${task.title} (${date})`);
+		}
+		if (tasksToMove.length > 5) {
+			console.log(`  ... and ${tasksToMove.length - 5} more`);
+		}
+
+		const confirmedPrompt = await clack.confirm({
+			message: `Move ${tasksToMove.length} tasks to completed folder?`,
+			initialValue: false,
+		});
+		const confirmed = clack.isCancel(confirmedPrompt) ? false : confirmedPrompt;
+
+		if (!confirmed) {
+			console.log("Cleanup cancelled.");
+			return;
+		}
+
+		// Move tasks to completed folder
+		let successCount = 0;
+		const shouldAutoCommit = config.autoCommit ?? false;
+
+		console.log("Moving tasks...");
+		const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
+
+		for (const task of tasksToMove) {
+			const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
+
+			if (!fromPath) {
+				console.error(`Failed to locate file for task ${task.id}`);
+				continue;
+			}
+
+			const taskFilename = basename(fromPath);
+			const toPath = join(core.filesystem.completedDir, taskFilename);
+
+			const success = await core.completeTask(task.id);
+			if (success) {
+				successCount++;
+				movedTasks.push({ fromPath, toPath, taskId: task.id });
+			} else {
+				console.error(`Failed to move task ${task.id}`);
+			}
+		}
+
+		// If autoCommit is disabled, stage the moves so Git recognizes them
+		if (successCount > 0 && !shouldAutoCommit) {
+			console.log("Staging file moves for Git...");
+			for (const { fromPath, toPath } of movedTasks) {
+				try {
+					await core.gitOps.stageFileMove(fromPath, toPath);
+				} catch (error) {
+					console.warn(`Warning: Could not stage move for Git: ${error}`);
+				}
+			}
+		}
+
+		console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
+		if (successCount > 0 && !shouldAutoCommit) {
+			console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
+		}
+	} catch (err) {
+		console.error("Failed to run cleanup", err);
+		process.exitCode = 1;
+	}
+});
 
 // Browser command for web UI
-program
-	.command("browser")
+const browserCmd = withProjectOption(program.command("browser"));
+
+browserCmd
 	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
 	.option("--no-open", "don't automatically open browser")
 	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
+			const core = await createCommandCore(cwd);
 			const { BacklogServer } = await import("./server/index.ts");
-			const server = new BacklogServer(cwd);
+			const server = new BacklogServer(cwd, { backlogRoot: core.filesystem.backlogDir });
 
 			// Load config to get default port
-			const core = new Core(cwd);
 			const config = await core.filesystem.loadConfig();
 			const defaultPort = config?.defaultPort ?? 6420;
 
@@ -3706,28 +3808,27 @@ program
 	});
 
 // Overview command for statistics
-program
-	.command("overview")
-	.description("display project statistics and metrics")
-	.action(async () => {
-		try {
-			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
-			const config = await core.filesystem.loadConfig();
+const overviewCmd = withProjectOption(program.command("overview"));
 
-			if (!config) {
-				console.error("No backlog project found. Initialize one first with: backlog init");
-				process.exit(1);
-			}
+overviewCmd.description("display project statistics and metrics").action(async () => {
+	try {
+		const cwd = await requireProjectRoot();
+		const core = await createCommandCore(cwd);
+		const config = await core.filesystem.loadConfig();
 
-			// Import and run the overview command
-			const { runOverviewCommand } = await import("./commands/overview.ts");
-			await runOverviewCommand(core);
-		} catch (err) {
-			console.error("Failed to display project overview", err);
-			process.exitCode = 1;
+		if (!config) {
+			console.error("No backlog project found. Initialize one first with: backlog init");
+			process.exit(1);
 		}
-	});
+
+		// Import and run the overview command
+		const { runOverviewCommand } = await import("./commands/overview.ts");
+		await runOverviewCommand(core);
+	} catch (err) {
+		console.error("Failed to display project overview", err);
+		process.exitCode = 1;
+	}
+});
 
 // Completion command group
 registerCompletionCommand(program);

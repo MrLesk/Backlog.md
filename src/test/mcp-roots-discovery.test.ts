@@ -7,6 +7,7 @@ import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import { registerMilestoneTools } from "../mcp/tools/milestones/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
+import { resolveProjectContext } from "../utils/project-registry.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -76,8 +77,9 @@ describe("MCP roots discovery", () => {
 		const configBefore = await server.filesystem.loadConfig();
 		expect(configBefore).toBeNull();
 
-		// Reinitialize to the real project
-		server.reinitializeProjectRoot(projectRoot);
+		// Reinitialize to the real project's default backlog root
+		const context = await resolveProjectContext(projectRoot, { cwd: projectRoot });
+		server.reinitializeProjectRoot(projectRoot, { backlogRoot: context.backlogRoot });
 		await server.ensureConfigLoaded();
 		const configAfter = await server.filesystem.loadConfig();
 		expect(configAfter).toBeTruthy();
@@ -89,7 +91,7 @@ describe("MCP roots discovery", () => {
 		// Register full toolset on the reinitialized server
 		registerWorkflowResources(server);
 		registerWorkflowTools(server);
-		registerTaskTools(server, configAfter);
+		await registerTaskTools(server, configAfter);
 		registerMilestoneTools(server);
 		registerDefinitionOfDoneTools(server);
 		registerDocumentTools(server, configAfter);

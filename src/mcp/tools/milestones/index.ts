@@ -22,7 +22,7 @@ export function registerMilestoneTools(server: McpServer): void {
 			annotations: { title: "List Milestones", readOnlyHint: true, destructiveHint: false },
 		},
 		milestoneListSchema,
-		async () => handlers.listMilestones(),
+		async (input) => handlers.listMilestones(input as { project?: string }),
 	);
 
 	const addTool: McpToolHandler = createSimpleValidatedTool(

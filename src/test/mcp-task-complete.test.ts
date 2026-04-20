@@ -33,7 +33,7 @@ describe("MCP task_complete", () => {
 		await initializeTestProject(server, "Test Project");
 
 		const config = await loadConfigOrThrow(server);
-		registerTaskTools(server, config);
+		await registerTaskTools(server, config);
 	});
 
 	afterEach(async () => {

@@ -33,7 +33,7 @@ describe("MCP final summary", () => {
 		await initializeTestProject(mcpServer, "MCP Final Summary Project");
 
 		const config = await loadConfig(mcpServer);
-		registerTaskTools(mcpServer, config);
+		await registerTaskTools(mcpServer, config);
 	});
 
 	afterEach(async () => {

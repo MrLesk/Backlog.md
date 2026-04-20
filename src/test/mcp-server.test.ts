@@ -160,7 +160,7 @@ describe("McpServer bootstrap", () => {
 			throw new Error("Failed to load config");
 		}
 
-		registerTaskTools(server, config);
+		await registerTaskTools(server, config);
 		registerDefinitionOfDoneTools(server);
 
 		const tools = await server.testInterface.listTools();

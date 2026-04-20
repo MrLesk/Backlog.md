@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, relative, resolve } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
@@ -129,7 +130,11 @@ function normalizeProjectKey(value: string | null | undefined): string | null {
 		return null;
 	}
 
-	const baseName = normalized.split(".")[0].toUpperCase();
+	const firstSegment = normalized.split(".")[0];
+	if (!firstSegment) {
+		return null;
+	}
+	const baseName = firstSegment.toUpperCase();
 	if (
 		baseName === "CON" ||
 		baseName === "PRN" ||
@@ -382,6 +387,35 @@ async function loadProjectRegistry(projectRoot: string): Promise<ProjectRegistry
 	return invalidPath ? { state: "invalid", path: invalidPath } : { state: "missing" };
 }
 
+function loadProjectRegistrySync(projectRoot: string): ProjectRegistryLoadResult {
+	let invalidPath: string | undefined;
+	const candidates = projectRegistryCandidatePaths(projectRoot);
+
+	for (const candidatePath of candidates) {
+		try {
+			const content = readFileSync(candidatePath, "utf8");
+			const registry = parseProjectRegistry(content);
+			if (registry) {
+				return {
+					state: "valid",
+					registry,
+					registryPath: candidatePath,
+					containerRoot: dirname(candidatePath),
+				};
+			}
+
+			invalidPath ??= candidatePath;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+				continue;
+			}
+			invalidPath ??= candidatePath;
+		}
+	}
+
+	return invalidPath ? { state: "invalid", path: invalidPath } : { state: "missing" };
+}
+
 function serializeProjectRegistry(registry: ProjectRegistry): string {
 	const lines = [`version: ${registry.version}`];
 
@@ -454,6 +488,15 @@ function findProjectByKey(registry: ProjectRegistry, key: string): ProjectDefini
 
 export async function readProjectRegistry(projectRoot: string): Promise<ProjectRegistry | null> {
 	const result = await loadProjectRegistry(projectRoot);
+	if (result.state !== "valid") {
+		return null;
+	}
+
+	return result.registry;
+}
+
+export function readProjectRegistrySync(projectRoot: string): ProjectRegistry | null {
+	const result = loadProjectRegistrySync(projectRoot);
 	if (result.state !== "valid") {
 		return null;
 	}
@@ -551,4 +594,26 @@ export async function resolveProjectContext(
 	}
 
 	throw new Error("Unable to resolve a project from backlog/projects.yml.");
+}
+
+export function resolveDefaultProjectBacklogRoot(projectRoot: string): string | null {
+	const registryLoad = loadProjectRegistrySync(projectRoot);
+	if (registryLoad.state !== "valid") {
+		return null;
+	}
+
+	const registry = registryLoad.registry;
+	if (registry.projects.length === 0) {
+		return null;
+	}
+
+	const defaultProject =
+		(registry.defaultProject ? findProjectByKey(registry, registry.defaultProject) : null) ??
+		registry.projects[0] ??
+		null;
+	if (!defaultProject) {
+		return null;
+	}
+
+	return join(registryLoad.containerRoot, defaultProject.key);
 }

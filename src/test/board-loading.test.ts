@@ -170,7 +170,8 @@ describe("Board Loading with checkActiveBranches", () => {
 
 		it("should handle empty task list gracefully", async () => {
 			// Remove all tasks
-			await $`rm -rf backlog/tasks/*`.cwd(TEST_DIR).quiet();
+			await $`rm -rf ${core.filesystem.tasksDir}`.cwd(TEST_DIR).quiet();
+			await core.filesystem.ensureBacklogStructure();
 
 			const tasks = await core.loadTasks();
 			expect(tasks).toEqual([]);

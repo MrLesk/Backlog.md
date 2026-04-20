@@ -16,6 +16,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
+import { resolveDefaultProjectBacklogRoot } from "../utils/project-registry.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskIdentity } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -56,10 +57,10 @@ export function isCreateLockError(error: unknown): error is Error {
 }
 
 export class FileSystem {
-	private resolvedBacklogDir: string;
-	private resolvedBacklogDirName: string;
-	private resolvedConfigPath: string;
-	private configSource: BacklogConfigSource;
+	private resolvedBacklogDir!: string;
+	private resolvedBacklogDirName!: string;
+	private resolvedConfigPath!: string;
+	private configSource!: BacklogConfigSource;
 	private readonly projectRoot: string;
 	private readonly usesExplicitBacklogRoot: boolean;
 	private cachedConfig: BacklogConfig | null = null;
@@ -71,6 +72,15 @@ export class FileSystem {
 			this.resolvedBacklogDir = options.backlogRoot;
 			this.resolvedBacklogDirName = this.resolveExplicitBacklogDirName(options.backlogRoot);
 			this.resolvedConfigPath = this.resolveExplicitBacklogConfigPath(options.backlogRoot);
+			this.configSource = "folder";
+			return;
+		}
+
+		const defaultProjectBacklogRoot = resolveDefaultProjectBacklogRoot(projectRoot);
+		if (defaultProjectBacklogRoot) {
+			this.resolvedBacklogDir = defaultProjectBacklogRoot;
+			this.resolvedBacklogDirName = this.resolveExplicitBacklogDirName(defaultProjectBacklogRoot);
+			this.resolvedConfigPath = this.resolveExplicitBacklogConfigPath(defaultProjectBacklogRoot);
 			this.configSource = "folder";
 			return;
 		}

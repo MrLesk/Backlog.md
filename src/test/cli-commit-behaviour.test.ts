@@ -38,7 +38,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 			config.autoCommit = false;
 			await core.filesystem.saveConfig(config);
 			// Commit the config change to have a clean state for tests
-			const configPath = join(TEST_DIR, "backlog", "config.yml");
+			const configPath = core.filesystem.configFilePath;
 			await git.addFile(configPath);
 			// Only commit if there are actual changes staged, to avoid errors on empty commits.
 			const diffProc = await $`git diff --staged --quiet`.cwd(TEST_DIR).nothrow().quiet();
@@ -117,7 +117,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 		if (config) {
 			config.autoCommit = true; // Enable auto-commit for this test suite
 			await core.filesystem.saveConfig(config);
-			const configPath = join(TEST_DIR, "backlog", "config.yml");
+			const configPath = core.filesystem.configFilePath;
 			await git.addFile(configPath);
 			// Only commit if there are actual changes staged, to avoid errors on empty commits.
 			const diffProc = await $`git diff --staged --quiet`.cwd(TEST_DIR).nothrow().quiet();

@@ -1,14 +1,23 @@
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
+import { ProjectManager } from "../core/project-manager.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
-import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
+import type {
+	ProjectDefinition,
+	ResolvedProjectContext,
+	SearchPriorityFilter,
+	SearchResultType,
+	Task,
+	TaskUpdateInput,
+} from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
+import { readProjectRegistry, resolveProjectContext } from "../utils/project-registry.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -74,21 +83,133 @@ import favicon from "../web/favicon.png" with { type: "file" };
 import indexHtml from "../web/index.html";
 
 export class BacklogServer {
+	private readonly projectRoot: string;
+	private readonly projectManager: ProjectManager;
 	private core: Core;
 	private server: Server<unknown> | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
-	private contentStore: ContentStore | null = null;
-	private searchService: SearchService | null = null;
-	private unsubscribeContentStore?: () => void;
-	private storeReadyBroadcasted = false;
+	private readonly trackedCores = new Set<Core>();
+	private readonly contentStoreSubscriptions = new Map<
+		string,
+		{ unsubscribe: () => void; storeReadyBroadcasted: boolean }
+	>();
 	private configWatcher: { stop: () => void } | null = null;
+	private readonly initialProject?: string;
 
-	constructor(projectPath: string) {
-		this.core = new Core(projectPath, { enableWatchers: true });
+	constructor(projectPath: string, options?: { backlogRoot?: string }) {
+		this.projectRoot = projectPath;
+		this.projectManager = new ProjectManager(projectPath);
+		this.core = new Core(projectPath, {
+			enableWatchers: true,
+			backlogRoot: options?.backlogRoot,
+		});
+		this.trackedCores.add(this.core);
+		this.initialProject = options?.backlogRoot ? basename(options.backlogRoot) : undefined;
 	}
 
-	private async resolveMilestoneInput(milestone: string): Promise<string> {
+	private getCoreSubscriptionKey(core: Core): string {
+		return core.filesystem.backlogDir;
+	}
+
+	private async ensureServicesReady(core: Core): Promise<{ store: ContentStore; search: SearchService }> {
+		const store = await core.getContentStore();
+		const subscriptionKey = this.getCoreSubscriptionKey(core);
+		const existingSubscription = this.contentStoreSubscriptions.get(subscriptionKey);
+
+		if (!existingSubscription) {
+			const subscriptionState = { storeReadyBroadcasted: false };
+			const unsubscribe = store.subscribe((event) => {
+				if (event.type === "ready") {
+					if (!subscriptionState.storeReadyBroadcasted) {
+						subscriptionState.storeReadyBroadcasted = true;
+						return;
+					}
+					this.broadcastTasksUpdated();
+					return;
+				}
+
+				subscriptionState.storeReadyBroadcasted = true;
+				this.broadcastTasksUpdated();
+			});
+			this.contentStoreSubscriptions.set(subscriptionKey, {
+				unsubscribe,
+				storeReadyBroadcasted: subscriptionState.storeReadyBroadcasted,
+			});
+		}
+
+		const search = await core.getSearchService();
+		this.trackedCores.add(core);
+		return { store, search };
+	}
+
+	private async getContentStoreInstance(core: Core): Promise<ContentStore> {
+		const { store } = await this.ensureServicesReady(core);
+		return store;
+	}
+
+	private async getSearchServiceInstance(core: Core): Promise<SearchService> {
+		const { search } = await this.ensureServicesReady(core);
+		return search;
+	}
+
+	private async getCoreForRequest(
+		req: Request,
+		bodyProject?: string,
+	): Promise<{ core: Core; context?: ResolvedProjectContext }> {
+		const url = new URL(req.url);
+		const queryProject = url.searchParams.get("project")?.trim();
+		const normalizedBodyProject = bodyProject?.trim();
+		const explicitProject = queryProject || normalizedBodyProject;
+		const requestedProject = explicitProject || this.initialProject;
+
+		try {
+			const context = await resolveProjectContext(this.projectRoot, {
+				cwd: this.projectRoot,
+				project: requestedProject,
+			});
+			const core = await this.projectManager.getCore({
+				project: context.project.key,
+				enableWatchers: true,
+			});
+			this.trackedCores.add(core);
+			return { core, context };
+		} catch (error) {
+			if (explicitProject) {
+				throw error;
+			}
+			return { core: this.core };
+		}
+	}
+
+	private projectErrorResponse(error: unknown): Response {
+		const message = error instanceof Error ? error.message : "Invalid project";
+		return Response.json({ error: message }, { status: 400 });
+	}
+
+	private async listProjects(): Promise<Array<ProjectDefinition & { projectName?: string }>> {
+		const registry = await readProjectRegistry(this.projectRoot);
+		if (!registry) {
+			return [];
+		}
+
+		return Promise.all(
+			registry.projects.map(async (project) => {
+				try {
+					const core = await this.projectManager.getCore({ project: project.key });
+					const config = await core.filesystem.loadConfig();
+					return {
+						...project,
+						...(config?.projectName ? { projectName: config.projectName } : {}),
+					};
+				} catch {
+					return project;
+				}
+			}),
+		);
+	}
+
+	private async resolveMilestoneInput(core: Core, milestone: string): Promise<string> {
 		const normalized = milestone.trim();
 		if (!normalized) {
 			return normalized;
@@ -114,8 +235,8 @@ export class BacklogServer {
 			}
 		}
 		const [activeMilestones, archivedMilestones] = await Promise.all([
-			this.core.filesystem.listMilestones(),
-			this.core.filesystem.listArchivedMilestones(),
+			core.filesystem.listMilestones(),
+			core.filesystem.listArchivedMilestones(),
 		]);
 		const idMatchesAlias = (milestoneId: string): boolean => {
 			const idKey = milestoneId.trim().toLowerCase();
@@ -210,47 +331,6 @@ export class BacklogServer {
 		return normalized;
 	}
 
-	private async ensureServicesReady(): Promise<void> {
-		const store = await this.core.getContentStore();
-		this.contentStore = store;
-
-		if (!this.unsubscribeContentStore) {
-			this.unsubscribeContentStore = store.subscribe((event) => {
-				if (event.type === "ready") {
-					if (!this.storeReadyBroadcasted) {
-						this.storeReadyBroadcasted = true;
-						return;
-					}
-					this.broadcastTasksUpdated();
-					return;
-				}
-
-				// Broadcast for tasks/documents/decisions so clients refresh caches/search
-				this.storeReadyBroadcasted = true;
-				this.broadcastTasksUpdated();
-			});
-		}
-
-		const search = await this.core.getSearchService();
-		this.searchService = search;
-	}
-
-	private async getContentStoreInstance(): Promise<ContentStore> {
-		await this.ensureServicesReady();
-		if (!this.contentStore) {
-			throw new Error("Content store not initialized");
-		}
-		return this.contentStore;
-	}
-
-	private async getSearchServiceInstance(): Promise<SearchService> {
-		await this.ensureServicesReady();
-		if (!this.searchService) {
-			throw new Error("Search service not initialized");
-		}
-		return this.searchService;
-	}
-
 	getPort(): number | null {
 		return this.server?.port ?? null;
 	}
@@ -296,7 +376,7 @@ export class BacklogServer {
 		});
 
 		try {
-			await this.ensureServicesReady();
+			await this.ensureServicesReady(this.core);
 			const serveOptions = {
 				port: finalPort,
 				development: process.env.NODE_ENV === "development",
@@ -318,64 +398,71 @@ export class BacklogServer {
 						POST: async (req: Request) => await this.handleCreateTask(req),
 					},
 					"/api/task/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req, req.params.id),
 					},
 					"/api/tasks/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req, req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
+						DELETE: async (req: Request & { params: { id: string } }) =>
+							await this.handleDeleteTask(req, req.params.id),
 					},
 					"/api/tasks/:id/complete": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.handleCompleteTask(req, req.params.id),
 					},
 					"/api/statuses": {
-						GET: async () => await this.handleGetStatuses(),
+						GET: async (req: Request) => await this.handleGetStatuses(req),
+					},
+					"/api/projects": {
+						GET: async () => await this.handleGetProjects(),
 					},
 					"/api/config": {
-						GET: async () => await this.handleGetConfig(),
+						GET: async (req: Request) => await this.handleGetConfig(req),
 						PUT: async (req: Request) => await this.handleUpdateConfig(req),
 					},
 					"/api/docs": {
-						GET: async () => await this.handleListDocs(),
+						GET: async (req: Request) => await this.handleListDocs(req),
 						POST: async (req: Request) => await this.handleCreateDoc(req),
 					},
 					"/api/doc/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req, req.params.id),
 					},
 					"/api/docs/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req, req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
 					},
 					"/api/decisions": {
-						GET: async () => await this.handleListDecisions(),
+						GET: async (req: Request) => await this.handleListDecisions(req),
 						POST: async (req: Request) => await this.handleCreateDecision(req),
 					},
 					"/api/decision/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req, req.params.id),
 					},
 					"/api/decisions/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req, req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) =>
 							await this.handleUpdateDecision(req, req.params.id),
 					},
 					"/api/drafts": {
-						GET: async () => await this.handleListDrafts(),
+						GET: async (req: Request) => await this.handleListDrafts(req),
 					},
 					"/api/drafts/:id/promote": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.handlePromoteDraft(req, req.params.id),
 					},
 					"/api/milestones": {
-						GET: async () => await this.handleListMilestones(),
+						GET: async (req: Request) => await this.handleListMilestones(req),
 						POST: async (req: Request) => await this.handleCreateMilestone(req),
 					},
 					"/api/milestones/archived": {
-						GET: async () => await this.handleListArchivedMilestones(),
+						GET: async (req: Request) => await this.handleListArchivedMilestones(req),
 					},
 					"/api/milestones/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
+						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req, req.params.id),
 					},
 					"/api/milestones/:id/archive": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.handleArchiveMilestone(req, req.params.id),
 					},
 					"/api/tasks/reorder": {
 						POST: async (req: Request) => await this.handleReorderTask(req),
@@ -390,10 +477,10 @@ export class BacklogServer {
 						GET: async () => await this.handleGetVersion(),
 					},
 					"/api/statistics": {
-						GET: async () => await this.handleGetStatistics(),
+						GET: async (req: Request) => await this.handleGetStatistics(req),
 					},
 					"/api/status": {
-						GET: async () => await this.handleGetStatus(),
+						GET: async (req: Request) => await this.handleGetStatus(req),
 					},
 					"/api/init": {
 						POST: async (req: Request) => await this.handleInit(req),
@@ -402,13 +489,13 @@ export class BacklogServer {
 						GET: async (req: Request) => await this.handleSearch(req),
 					},
 					"/sequences": {
-						GET: async () => await this.handleGetSequences(),
+						GET: async (req: Request) => await this.handleGetSequences(req),
 					},
 					"/sequences/move": {
 						POST: async (req: Request) => await this.handleMoveSequence(req),
 					},
 					"/api/sequences": {
-						GET: async () => await this.handleGetSequences(),
+						GET: async (req: Request) => await this.handleGetSequences(req),
 					},
 					"/api/sequences/move": {
 						POST: async (req: Request) => await this.handleMoveSequence(req),
@@ -488,11 +575,12 @@ export class BacklogServer {
 		if (this._stopping) return;
 		this._stopping = true;
 
-		// Stop filesystem watcher first to reduce churn
-		try {
-			this.unsubscribeContentStore?.();
-			this.unsubscribeContentStore = undefined;
-		} catch {}
+		for (const subscription of this.contentStoreSubscriptions.values()) {
+			try {
+				subscription.unsubscribe();
+			} catch {}
+		}
+		this.contentStoreSubscriptions.clear();
 
 		// Stop config watcher
 		try {
@@ -500,11 +588,11 @@ export class BacklogServer {
 			this.configWatcher = null;
 		} catch {}
 
-		this.core.disposeSearchService();
-		this.core.disposeContentStore();
-		this.searchService = null;
-		this.contentStore = null;
-		this.storeReadyBroadcasted = false;
+		for (const core of this.trackedCores) {
+			core.disposeSearchService();
+			core.disposeContentStore();
+		}
+		this.trackedCores.clear();
 
 		// Proactively close WebSocket connections
 		for (const ws of this.sockets) {
@@ -629,62 +717,66 @@ export class BacklogServer {
 
 	// Task handlers
 	private async handleListTasks(req: Request): Promise<Response> {
-		const url = new URL(req.url);
-		const status = url.searchParams.get("status") || undefined;
-		const assignee = url.searchParams.get("assignee") || undefined;
-		const parent = url.searchParams.get("parent") || undefined;
-		const priorityParam = url.searchParams.get("priority") || undefined;
-		const crossBranch = url.searchParams.get("crossBranch") === "true";
-		const labelParams = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
-		const labelsCsv = url.searchParams.get("labels");
-		if (labelsCsv) {
-			labelParams.push(...labelsCsv.split(","));
-		}
-		const labels = labelParams.map((label) => label.trim()).filter((label) => label.length > 0);
-
-		let priority: "high" | "medium" | "low" | undefined;
-		if (priorityParam) {
-			const normalizedPriority = priorityParam.toLowerCase();
-			const allowed = ["high", "medium", "low"];
-			if (!allowed.includes(normalizedPriority)) {
-				return Response.json({ error: "Invalid priority filter" }, { status: 400 });
+		try {
+			const { core } = await this.getCoreForRequest(req);
+			const url = new URL(req.url);
+			const status = url.searchParams.get("status") || undefined;
+			const assignee = url.searchParams.get("assignee") || undefined;
+			const parent = url.searchParams.get("parent") || undefined;
+			const priorityParam = url.searchParams.get("priority") || undefined;
+			const crossBranch = url.searchParams.get("crossBranch") === "true";
+			const labelParams = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
+			const labelsCsv = url.searchParams.get("labels");
+			if (labelsCsv) {
+				labelParams.push(...labelsCsv.split(","));
 			}
-			priority = normalizedPriority as "high" | "medium" | "low";
-		}
+			const labels = labelParams.map((label) => label.trim()).filter((label) => label.length > 0);
 
-		// Resolve parent task ID if provided
-		let parentTaskId: string | undefined;
-		if (parent) {
-			const store = await this.getContentStoreInstance();
-			const allTasks = store.getTasks();
-			let parentTask = findTaskByLooseId(allTasks, parent);
-			if (!parentTask) {
-				const fallbackId = ensurePrefix(parent);
-				const fallback = await this.core.filesystem.loadTask(fallbackId);
-				if (fallback) {
-					store.upsertTask(fallback);
-					parentTask = fallback;
+			let priority: "high" | "medium" | "low" | undefined;
+			if (priorityParam) {
+				const normalizedPriority = priorityParam.toLowerCase();
+				const allowed = ["high", "medium", "low"];
+				if (!allowed.includes(normalizedPriority)) {
+					return Response.json({ error: "Invalid priority filter" }, { status: 400 });
 				}
+				priority = normalizedPriority as "high" | "medium" | "low";
 			}
-			if (!parentTask) {
-				const normalizedParent = ensurePrefix(parent);
-				return Response.json({ error: `Parent task ${normalizedParent} not found` }, { status: 404 });
+
+			let parentTaskId: string | undefined;
+			if (parent) {
+				const store = await this.getContentStoreInstance(core);
+				const allTasks = store.getTasks();
+				let parentTask = findTaskByLooseId(allTasks, parent);
+				if (!parentTask) {
+					const fallbackId = ensurePrefix(parent);
+					const fallback = await core.filesystem.loadTask(fallbackId);
+					if (fallback) {
+						store.upsertTask(fallback);
+						parentTask = fallback;
+					}
+				}
+				if (!parentTask) {
+					const normalizedParent = ensurePrefix(parent);
+					return Response.json({ error: `Parent task ${normalizedParent} not found` }, { status: 404 });
+				}
+				parentTaskId = parentTask.id;
 			}
-			parentTaskId = parentTask.id;
+
+			const tasks = await core.queryTasks({
+				filters: { status, assignee, priority, parentTaskId, labels: labels.length > 0 ? labels : undefined },
+				includeCrossBranch: crossBranch,
+			});
+
+			return Response.json(tasks);
+		} catch (error) {
+			return this.projectErrorResponse(error);
 		}
-
-		// Use Core.queryTasks which handles all filtering and cross-branch logic
-		const tasks = await this.core.queryTasks({
-			filters: { status, assignee, priority, parentTaskId, labels: labels.length > 0 ? labels : undefined },
-			includeCrossBranch: crossBranch,
-		});
-
-		return Response.json(tasks);
 	}
 
 	private async handleSearch(req: Request): Promise<Response> {
 		try {
-			const searchService = await this.getSearchServiceInstance();
+			const { core } = await this.getCoreForRequest(req);
+			const searchService = await this.getSearchServiceInstance(core);
 			const url = new URL(req.url);
 			const query = url.searchParams.get("query") ?? undefined;
 			const limitParam = url.searchParams.get("limit");
@@ -764,32 +856,34 @@ export class BacklogServer {
 	}
 
 	private async handleCreateTask(req: Request): Promise<Response> {
-		const payload = await req.json();
-
-		if (!payload || typeof payload.title !== "string" || payload.title.trim().length === 0) {
-			return Response.json({ error: "Title is required" }, { status: 400 });
-		}
-
-		const acceptanceCriteria = Array.isArray(payload.acceptanceCriteriaItems)
-			? payload.acceptanceCriteriaItems
-					.map((item: { text?: string; checked?: boolean }) => ({
-						text: String(item?.text ?? "").trim(),
-						checked: Boolean(item?.checked),
-					}))
-					.filter((item: { text: string }) => item.text.length > 0)
-			: [];
-		const definitionOfDoneAdd = Array.isArray(payload.definitionOfDoneAdd)
-			? payload.definitionOfDoneAdd
-					.map((item: unknown) => String(item ?? "").trim())
-					.filter((item: string) => item.length > 0)
-			: [];
-		const disableDefinitionOfDoneDefaults = Boolean(payload.disableDefinitionOfDoneDefaults);
-
 		try {
-			const milestone =
-				typeof payload.milestone === "string" ? await this.resolveMilestoneInput(payload.milestone) : undefined;
+			const payload = await req.json();
+			const bodyProject = typeof payload?.project === "string" ? payload.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
 
-			const { task: createdTask } = await this.core.createTaskFromInput({
+			if (!payload || typeof payload.title !== "string" || payload.title.trim().length === 0) {
+				return Response.json({ error: "Title is required" }, { status: 400 });
+			}
+
+			const acceptanceCriteria = Array.isArray(payload.acceptanceCriteriaItems)
+				? payload.acceptanceCriteriaItems
+						.map((item: { text?: string; checked?: boolean }) => ({
+							text: String(item?.text ?? "").trim(),
+							checked: Boolean(item?.checked),
+						}))
+						.filter((item: { text: string }) => item.text.length > 0)
+				: [];
+			const definitionOfDoneAdd = Array.isArray(payload.definitionOfDoneAdd)
+				? payload.definitionOfDoneAdd
+						.map((item: unknown) => String(item ?? "").trim())
+						.filter((item: string) => item.length > 0)
+				: [];
+			const disableDefinitionOfDoneDefaults = Boolean(payload.disableDefinitionOfDoneDefaults);
+
+			const milestone =
+				typeof payload.milestone === "string" ? await this.resolveMilestoneInput(core, payload.milestone) : undefined;
+
+			const { task: createdTask } = await core.createTaskFromInput({
 				title: payload.title,
 				description: payload.description,
 				status: payload.status,
@@ -818,141 +912,160 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetTask(taskId: string): Promise<Response> {
-		const store = await this.getContentStoreInstance();
-		const tasks = store.getTasks();
-		const task = findTaskByLooseId(tasks, taskId);
-		if (!task) {
-			const fallbackId = ensurePrefix(taskId);
-			const fallback = await this.core.filesystem.loadTask(fallbackId);
-			if (fallback) {
-				store.upsertTask(fallback);
-				return Response.json(fallback);
+	private async handleGetTask(req: Request, taskId: string): Promise<Response> {
+		try {
+			const { core } = await this.getCoreForRequest(req);
+			const store = await this.getContentStoreInstance(core);
+			const tasks = store.getTasks();
+			const task = findTaskByLooseId(tasks, taskId);
+			if (!task) {
+				const fallbackId = ensurePrefix(taskId);
+				const fallback = await core.filesystem.loadTask(fallbackId);
+				if (fallback) {
+					store.upsertTask(fallback);
+					return Response.json(fallback);
+				}
+				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
-			return Response.json({ error: "Task not found" }, { status: 404 });
+			return Response.json(task);
+		} catch (error) {
+			return this.projectErrorResponse(error);
 		}
-		return Response.json(task);
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
-		const updates = await req.json();
-		const existingTask = await this.core.filesystem.loadTask(taskId);
-		if (!existingTask) {
-			return Response.json({ error: "Task not found" }, { status: 404 });
-		}
-
-		const updateInput: TaskUpdateInput = {};
-
-		if ("title" in updates && typeof updates.title === "string") {
-			updateInput.title = updates.title;
-		}
-
-		if ("description" in updates && typeof updates.description === "string") {
-			updateInput.description = updates.description;
-		}
-
-		if ("status" in updates && typeof updates.status === "string") {
-			updateInput.status = updates.status;
-		}
-
-		if ("priority" in updates && typeof updates.priority === "string") {
-			updateInput.priority = updates.priority;
-		}
-
-		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {
-			if (typeof updates.milestone === "string") {
-				updateInput.milestone = await this.resolveMilestoneInput(updates.milestone);
-			} else {
-				updateInput.milestone = updates.milestone;
-			}
-		}
-
-		if ("labels" in updates && Array.isArray(updates.labels)) {
-			updateInput.labels = updates.labels;
-		}
-
-		if ("assignee" in updates && Array.isArray(updates.assignee)) {
-			updateInput.assignee = updates.assignee;
-		}
-
-		if ("dependencies" in updates && Array.isArray(updates.dependencies)) {
-			updateInput.dependencies = updates.dependencies;
-		}
-
-		if ("references" in updates && Array.isArray(updates.references)) {
-			updateInput.references = updates.references;
-		}
-
-		if ("implementationPlan" in updates && typeof updates.implementationPlan === "string") {
-			updateInput.implementationPlan = updates.implementationPlan;
-		}
-
-		if ("implementationNotes" in updates && typeof updates.implementationNotes === "string") {
-			updateInput.implementationNotes = updates.implementationNotes;
-		}
-
-		if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
-			updateInput.finalSummary = updates.finalSummary;
-		}
-
-		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
-			updateInput.acceptanceCriteria = updates.acceptanceCriteriaItems
-				.map((item: { text?: string; checked?: boolean }) => ({
-					text: String(item?.text ?? "").trim(),
-					checked: Boolean(item?.checked),
-				}))
-				.filter((item: { text: string }) => item.text.length > 0);
-		}
-
-		if ("definitionOfDoneAdd" in updates && Array.isArray(updates.definitionOfDoneAdd)) {
-			updateInput.addDefinitionOfDone = updates.definitionOfDoneAdd
-				.map((item: unknown) => ({ text: String(item ?? "").trim(), checked: false }))
-				.filter((item: { text: string }) => item.text.length > 0);
-		}
-
-		if ("definitionOfDoneRemove" in updates && Array.isArray(updates.definitionOfDoneRemove)) {
-			updateInput.removeDefinitionOfDone = updates.definitionOfDoneRemove.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
-		if ("definitionOfDoneCheck" in updates && Array.isArray(updates.definitionOfDoneCheck)) {
-			updateInput.checkDefinitionOfDone = updates.definitionOfDoneCheck.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
-		if ("definitionOfDoneUncheck" in updates && Array.isArray(updates.definitionOfDoneUncheck)) {
-			updateInput.uncheckDefinitionOfDone = updates.definitionOfDoneUncheck.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
 		try {
-			const updatedTask = await this.core.updateTaskFromInput(taskId, updateInput);
+			const updates = await req.json();
+			const bodyProject = typeof updates?.project === "string" ? updates.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
+			const existingTask = await core.filesystem.loadTask(taskId);
+			if (!existingTask) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+
+			const updateInput: TaskUpdateInput = {};
+
+			if ("title" in updates && typeof updates.title === "string") {
+				updateInput.title = updates.title;
+			}
+
+			if ("description" in updates && typeof updates.description === "string") {
+				updateInput.description = updates.description;
+			}
+
+			if ("status" in updates && typeof updates.status === "string") {
+				updateInput.status = updates.status;
+			}
+
+			if ("priority" in updates && typeof updates.priority === "string") {
+				updateInput.priority = updates.priority;
+			}
+
+			if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {
+				if (typeof updates.milestone === "string") {
+					updateInput.milestone = await this.resolveMilestoneInput(core, updates.milestone);
+				} else {
+					updateInput.milestone = updates.milestone;
+				}
+			}
+
+			if ("labels" in updates && Array.isArray(updates.labels)) {
+				updateInput.labels = updates.labels;
+			}
+
+			if ("assignee" in updates && Array.isArray(updates.assignee)) {
+				updateInput.assignee = updates.assignee;
+			}
+
+			if ("dependencies" in updates && Array.isArray(updates.dependencies)) {
+				updateInput.dependencies = updates.dependencies;
+			}
+
+			if ("references" in updates && Array.isArray(updates.references)) {
+				updateInput.references = updates.references;
+			}
+
+			if ("implementationPlan" in updates && typeof updates.implementationPlan === "string") {
+				updateInput.implementationPlan = updates.implementationPlan;
+			}
+
+			if ("implementationNotes" in updates && typeof updates.implementationNotes === "string") {
+				updateInput.implementationNotes = updates.implementationNotes;
+			}
+
+			if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
+				updateInput.finalSummary = updates.finalSummary;
+			}
+
+			if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
+				updateInput.acceptanceCriteria = updates.acceptanceCriteriaItems
+					.map((item: { text?: string; checked?: boolean }) => ({
+						text: String(item?.text ?? "").trim(),
+						checked: Boolean(item?.checked),
+					}))
+					.filter((item: { text: string }) => item.text.length > 0);
+			}
+
+			if ("definitionOfDoneAdd" in updates && Array.isArray(updates.definitionOfDoneAdd)) {
+				updateInput.addDefinitionOfDone = updates.definitionOfDoneAdd
+					.map((item: unknown) => ({ text: String(item ?? "").trim(), checked: false }))
+					.filter((item: { text: string }) => item.text.length > 0);
+			}
+
+			if ("definitionOfDoneRemove" in updates && Array.isArray(updates.definitionOfDoneRemove)) {
+				updateInput.removeDefinitionOfDone = updates.definitionOfDoneRemove.filter(
+					(value: unknown) => typeof value === "number" && Number.isFinite(value),
+				);
+			}
+
+			if ("definitionOfDoneCheck" in updates && Array.isArray(updates.definitionOfDoneCheck)) {
+				updateInput.checkDefinitionOfDone = updates.definitionOfDoneCheck.filter(
+					(value: unknown) => typeof value === "number" && Number.isFinite(value),
+				);
+			}
+
+			if ("definitionOfDoneUncheck" in updates && Array.isArray(updates.definitionOfDoneUncheck)) {
+				updateInput.uncheckDefinitionOfDone = updates.definitionOfDoneUncheck.filter(
+					(value: unknown) => typeof value === "number" && Number.isFinite(value),
+				);
+			}
+
+			const updatedTask = await core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
+			if (error instanceof SyntaxError) {
+				return Response.json({ error: "Invalid request payload" }, { status: 400 });
+			}
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			const message = error instanceof Error ? error.message : "Failed to update task";
 			return Response.json({ error: message }, { status: 400 });
 		}
 	}
 
-	private async handleDeleteTask(taskId: string): Promise<Response> {
-		const success = await this.core.archiveTask(taskId);
-		if (!success) {
-			return Response.json({ error: "Task not found" }, { status: 404 });
+	private async handleDeleteTask(req: Request, taskId: string): Promise<Response> {
+		try {
+			const { core } = await this.getCoreForRequest(req);
+			const success = await core.archiveTask(taskId);
+			if (!success) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+			return Response.json({ success: true });
+		} catch (error) {
+			return this.projectErrorResponse(error);
 		}
-		return Response.json({ success: true });
 	}
 
-	private async handleCompleteTask(taskId: string): Promise<Response> {
+	private async handleCompleteTask(req: Request, taskId: string): Promise<Response> {
 		try {
-			const task = await this.core.filesystem.loadTask(taskId);
+			const { core } = await this.getCoreForRequest(req);
+			const task = await core.filesystem.loadTask(taskId);
 			if (!task) {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
 
-			const success = await this.core.completeTask(taskId);
+			const success = await core.completeTask(taskId);
 			if (!success) {
 				return Response.json({ error: "Failed to complete task" }, { status: 500 });
 			}
@@ -967,16 +1080,22 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetStatuses(): Promise<Response> {
-		const config = await this.core.filesystem.loadConfig();
-		const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
-		return Response.json(statuses);
+	private async handleGetStatuses(req: Request): Promise<Response> {
+		try {
+			const { core } = await this.getCoreForRequest(req);
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+			return Response.json(statuses);
+		} catch (error) {
+			return this.projectErrorResponse(error);
+		}
 	}
 
 	// Documentation handlers
-	private async handleListDocs(): Promise<Response> {
+	private async handleListDocs(req: Request): Promise<Response> {
 		try {
-			const store = await this.getContentStoreInstance();
+			const { core } = await this.getCoreForRequest(req);
+			const store = await this.getContentStoreInstance(core);
 			const docs = store.getDocuments();
 			const docFiles = docs.map((doc) => ({
 				name: `${doc.title}.md`,
@@ -995,27 +1114,37 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetDoc(docId: string): Promise<Response> {
+	private async handleGetDoc(req: Request, docId: string): Promise<Response> {
 		try {
-			const doc = await this.core.getDocument(docId);
+			const { core } = await this.getCoreForRequest(req);
+			const doc = await core.getDocument(docId);
 			if (!doc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
 			return Response.json(doc);
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			console.error("Error loading document:", error);
 			return Response.json({ error: "Document not found" }, { status: 404 });
 		}
 	}
 
 	private async handleCreateDoc(req: Request): Promise<Response> {
-		const { filename, content } = await req.json();
-
 		try {
+			const body = await req.json();
+			const bodyProject = typeof body?.project === "string" ? body.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
+			const filename = String(body?.filename ?? "");
+			const content = String(body?.content ?? "");
 			const title = filename.replace(".md", "");
-			const document = await this.core.createDocumentWithId(title, content);
+			const document = await core.createDocumentWithId(title, content);
 			return Response.json({ success: true, id: document.id }, { status: 201 });
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			console.error("Error creating document:", error);
 			return Response.json({ error: "Failed to create document" }, { status: 500 });
 		}
@@ -1024,6 +1153,8 @@ export class BacklogServer {
 	private async handleUpdateDoc(req: Request, docId: string): Promise<Response> {
 		try {
 			const body = await req.json();
+			const bodyProject = typeof body?.project === "string" ? body.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
 			const content = typeof body?.content === "string" ? body.content : undefined;
 			const title = typeof body?.title === "string" ? body.title : undefined;
 
@@ -1040,16 +1171,19 @@ export class BacklogServer {
 				}
 			}
 
-			const existingDoc = await this.core.getDocument(docId);
+			const existingDoc = await core.getDocument(docId);
 			if (!existingDoc) {
 				return Response.json({ error: "Document not found" }, { status: 404 });
 			}
 
 			const nextDoc = normalizedTitle ? { ...existingDoc, title: normalizedTitle } : { ...existingDoc };
 
-			await this.core.updateDocument(nextDoc, content);
+			await core.updateDocument(nextDoc, content);
 			return Response.json({ success: true });
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			console.error("Error updating document:", error);
 			if (error instanceof SyntaxError) {
 				return Response.json({ error: "Invalid request payload" }, { status: 400 });
@@ -1059,9 +1193,10 @@ export class BacklogServer {
 	}
 
 	// Decision handlers
-	private async handleListDecisions(): Promise<Response> {
+	private async handleListDecisions(req: Request): Promise<Response> {
 		try {
-			const store = await this.getContentStoreInstance();
+			const { core } = await this.getCoreForRequest(req);
+			const store = await this.getContentStoreInstance(core);
 			const decisions = store.getDecisions();
 			const decisionFiles = decisions.map((decision) => ({
 				id: decision.id,
@@ -1080,9 +1215,10 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetDecision(decisionId: string): Promise<Response> {
+	private async handleGetDecision(req: Request, decisionId: string): Promise<Response> {
 		try {
-			const store = await this.getContentStoreInstance();
+			const { core } = await this.getCoreForRequest(req);
+			const store = await this.getContentStoreInstance(core);
 			const normalizedId = decisionId.startsWith("decision-") ? decisionId : `decision-${decisionId}`;
 			const decision = store.getDecisions().find((item) => item.id === normalizedId || item.id === decisionId);
 
@@ -1098,24 +1234,32 @@ export class BacklogServer {
 	}
 
 	private async handleCreateDecision(req: Request): Promise<Response> {
-		const { title } = await req.json();
-
 		try {
-			const decision = await this.core.createDecisionWithTitle(title);
+			const body = await req.json();
+			const bodyProject = typeof body?.project === "string" ? body.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
+			const decision = await core.createDecisionWithTitle(String(body?.title ?? ""));
 			return Response.json(decision, { status: 201 });
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			console.error("Error creating decision:", error);
 			return Response.json({ error: "Failed to create decision" }, { status: 500 });
 		}
 	}
 
 	private async handleUpdateDecision(req: Request, decisionId: string): Promise<Response> {
-		const content = await req.text();
-
 		try {
-			await this.core.updateDecisionFromContent(decisionId, content);
+			const bodyProject = new URL(req.url).searchParams.get("project")?.trim() || undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
+			const content = await req.text();
+			await core.updateDecisionFromContent(decisionId, content);
 			return Response.json({ success: true });
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			if (error instanceof Error && error.message.includes("not found")) {
 				return Response.json({ error: "Decision not found" }, { status: 404 });
 			}
@@ -1124,14 +1268,27 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetConfig(): Promise<Response> {
+	private async handleGetProjects(): Promise<Response> {
+		const registry = await readProjectRegistry(this.projectRoot);
+		const projects = await this.listProjects();
+		return Response.json({
+			defaultProject: registry?.defaultProject,
+			projects,
+		});
+	}
+
+	private async handleGetConfig(req: Request): Promise<Response> {
 		try {
-			const config = await this.core.filesystem.loadConfig();
+			const { core } = await this.getCoreForRequest(req);
+			const config = await core.filesystem.loadConfig();
 			if (!config) {
 				return Response.json({ error: "Configuration not found" }, { status: 404 });
 			}
 			return Response.json(config);
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			console.error("Error loading config:", error);
 			return Response.json({ error: "Failed to load configuration" }, { status: 500 });
 		}
@@ -1140,6 +1297,8 @@ export class BacklogServer {
 	private async handleUpdateConfig(req: Request): Promise<Response> {
 		try {
 			const updatedConfig = await req.json();
+			const bodyProject = typeof updatedConfig?.project === "string" ? updatedConfig.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
 
 			// Validate configuration
 			if (!updatedConfig.projectName?.trim()) {
@@ -1151,10 +1310,10 @@ export class BacklogServer {
 			}
 
 			// Save configuration
-			await this.core.filesystem.saveConfig(updatedConfig);
+			await core.filesystem.saveConfig(updatedConfig);
 
 			// Update local project name if changed
-			if (updatedConfig.projectName !== this.projectName) {
+			if (core === this.core && updatedConfig.projectName !== this.projectName) {
 				this.projectName = updatedConfig.projectName;
 			}
 
@@ -1163,6 +1322,9 @@ export class BacklogServer {
 
 			return Response.json(updatedConfig);
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			console.error("Error updating config:", error);
 			return Response.json({ error: "Failed to update configuration" }, { status: 500 });
 		}
@@ -1174,9 +1336,10 @@ export class BacklogServer {
 	}
 
 	// Draft handlers
-	private async handleListDrafts(): Promise<Response> {
+	private async handleListDrafts(req: Request): Promise<Response> {
 		try {
-			const drafts = await this.core.filesystem.listDrafts();
+			const { core } = await this.getCoreForRequest(req);
+			const drafts = await core.filesystem.listDrafts();
 			return Response.json(drafts);
 		} catch (error) {
 			console.error("Error listing drafts:", error);
@@ -1184,9 +1347,10 @@ export class BacklogServer {
 		}
 	}
 
-	private async handlePromoteDraft(draftId: string): Promise<Response> {
+	private async handlePromoteDraft(req: Request, draftId: string): Promise<Response> {
 		try {
-			const success = await this.core.promoteDraft(draftId);
+			const { core } = await this.getCoreForRequest(req);
+			const success = await core.promoteDraft(draftId);
 			if (!success) {
 				return Response.json({ error: "Draft not found" }, { status: 404 });
 			}
@@ -1201,9 +1365,10 @@ export class BacklogServer {
 	}
 
 	// Milestone handlers
-	private async handleListMilestones(): Promise<Response> {
+	private async handleListMilestones(req: Request): Promise<Response> {
 		try {
-			const milestones = await this.core.filesystem.listMilestones();
+			const { core } = await this.getCoreForRequest(req);
+			const milestones = await core.filesystem.listMilestones();
 			return Response.json(milestones);
 		} catch (error) {
 			console.error("Error listing milestones:", error);
@@ -1211,9 +1376,10 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleListArchivedMilestones(): Promise<Response> {
+	private async handleListArchivedMilestones(req: Request): Promise<Response> {
 		try {
-			const milestones = await this.core.filesystem.listArchivedMilestones();
+			const { core } = await this.getCoreForRequest(req);
+			const milestones = await core.filesystem.listArchivedMilestones();
 			return Response.json(milestones);
 		} catch (error) {
 			console.error("Error listing archived milestones:", error);
@@ -1221,9 +1387,10 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetMilestone(milestoneId: string): Promise<Response> {
+	private async handleGetMilestone(req: Request, milestoneId: string): Promise<Response> {
 		try {
-			const milestone = await this.core.filesystem.loadMilestone(milestoneId);
+			const { core } = await this.getCoreForRequest(req);
+			const milestone = await core.filesystem.loadMilestone(milestoneId);
 			if (!milestone) {
 				return Response.json({ error: "Milestone not found" }, { status: 404 });
 			}
@@ -1237,6 +1404,9 @@ export class BacklogServer {
 	private async handleCreateMilestone(req: Request): Promise<Response> {
 		try {
 			const body = (await req.json()) as { title?: string; description?: string };
+			const bodyProject =
+				typeof (body as { project?: string }).project === "string" ? (body as { project?: string }).project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
 			const title = body.title?.trim();
 
 			if (!title) {
@@ -1244,7 +1414,7 @@ export class BacklogServer {
 			}
 
 			// Check for duplicates
-			const existingMilestones = await this.core.filesystem.listMilestones();
+			const existingMilestones = await core.filesystem.listMilestones();
 			const buildAliasKeys = (value: string): Set<string> => {
 				const normalized = value.trim().toLowerCase();
 				const keys = new Set<string>();
@@ -1280,17 +1450,21 @@ export class BacklogServer {
 				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
 			}
 
-			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			const milestone = await core.filesystem.createMilestone(title, body.description);
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("Unknown project:")) {
+				return this.projectErrorResponse(error);
+			}
 			console.error("Error creating milestone:", error);
 			return Response.json({ error: "Failed to create milestone" }, { status: 500 });
 		}
 	}
 
-	private async handleArchiveMilestone(milestoneId: string): Promise<Response> {
+	private async handleArchiveMilestone(req: Request, milestoneId: string): Promise<Response> {
 		try {
-			const result = await this.core.archiveMilestone(milestoneId);
+			const { core } = await this.getCoreForRequest(req);
+			const result = await core.archiveMilestone(milestoneId);
 			if (!result.success) {
 				return Response.json({ error: "Milestone not found" }, { status: 404 });
 			}
@@ -1316,6 +1490,8 @@ export class BacklogServer {
 	private async handleReorderTask(req: Request): Promise<Response> {
 		try {
 			const body = await req.json();
+			const bodyProject = typeof body?.project === "string" ? body.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
 			const taskId = typeof body.taskId === "string" ? body.taskId : "";
 			const targetStatus = typeof body.targetStatus === "string" ? body.targetStatus : "";
 			const orderedTaskIds = Array.isArray(body.orderedTaskIds) ? body.orderedTaskIds : [];
@@ -1333,7 +1509,7 @@ export class BacklogServer {
 				);
 			}
 
-			const { updatedTask } = await this.core.reorderTask({
+			const { updatedTask } = await core.reorderTask({
 				taskId,
 				targetStatus,
 				orderedTaskIds,
@@ -1357,6 +1533,7 @@ export class BacklogServer {
 
 	private async handleCleanupPreview(req: Request): Promise<Response> {
 		try {
+			const { core } = await this.getCoreForRequest(req);
 			const url = new URL(req.url);
 			const ageParam = url.searchParams.get("age");
 
@@ -1370,7 +1547,7 @@ export class BacklogServer {
 			}
 
 			// Get Done tasks older than specified days
-			const tasksToCleanup = await this.core.getDoneTasksByAge(age);
+			const tasksToCleanup = await core.getDoneTasksByAge(age);
 
 			// Return preview of tasks to be cleaned up
 			const preview = tasksToCleanup.map((task) => ({
@@ -1392,7 +1569,10 @@ export class BacklogServer {
 
 	private async handleCleanupExecute(req: Request): Promise<Response> {
 		try {
-			const { age } = await req.json();
+			const body = await req.json();
+			const bodyProject = typeof body?.project === "string" ? body.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
+			const { age } = body;
 
 			if (age === undefined || age === null) {
 				return Response.json({ error: "Missing age parameter" }, { status: 400 });
@@ -1404,7 +1584,7 @@ export class BacklogServer {
 			}
 
 			// Get Done tasks older than specified days
-			const tasksToCleanup = await this.core.getDoneTasksByAge(ageInDays);
+			const tasksToCleanup = await core.getDoneTasksByAge(ageInDays);
 
 			if (tasksToCleanup.length === 0) {
 				return Response.json({
@@ -1420,7 +1600,7 @@ export class BacklogServer {
 
 			for (const task of tasksToCleanup) {
 				try {
-					const success = await this.core.completeTask(task.id);
+					const success = await core.completeTask(task.id);
 					if (success) {
 						successCount++;
 					} else {
@@ -1449,21 +1629,28 @@ export class BacklogServer {
 	}
 
 	// Sequences handlers
-	private async handleGetSequences(): Promise<Response> {
-		const data = await this.core.listActiveSequences();
-		return Response.json(data);
+	private async handleGetSequences(req: Request): Promise<Response> {
+		try {
+			const { core } = await this.getCoreForRequest(req);
+			const data = await core.listActiveSequences();
+			return Response.json(data);
+		} catch (error) {
+			return this.projectErrorResponse(error);
+		}
 	}
 
 	private async handleMoveSequence(req: Request): Promise<Response> {
 		try {
 			const body = await req.json();
+			const bodyProject = typeof body?.project === "string" ? body.project : undefined;
+			const { core } = await this.getCoreForRequest(req, bodyProject);
 			const taskId = String(body.taskId || "").trim();
 			const moveToUnsequenced = Boolean(body.unsequenced === true);
 			const targetSequenceIndex = body.targetSequenceIndex !== undefined ? Number(body.targetSequenceIndex) : undefined;
 
 			if (!taskId) return Response.json({ error: "taskId is required" }, { status: 400 });
 
-			const next = await this.core.moveTaskInSequences({
+			const next = await core.moveTaskInSequences({
 				taskId,
 				unsequenced: moveToUnsequenced,
 				targetSequenceIndex,
@@ -1475,10 +1662,11 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetStatistics(): Promise<Response> {
+	private async handleGetStatistics(req: Request): Promise<Response> {
 		try {
 			// Load tasks using the same logic as CLI overview
-			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+			const { core } = await this.getCoreForRequest(req);
+			const { tasks, drafts, statuses } = await core.loadAllTasksForStatistics();
 
 			// Calculate statistics using the exact same function as CLI
 			const statistics = getTaskStatistics(tasks, drafts, statuses);
@@ -1497,17 +1685,19 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetStatus(): Promise<Response> {
+	private async handleGetStatus(req: Request): Promise<Response> {
 		try {
-			const config = await this.core.filesystem.loadConfig();
-			const backlogResolution = this.core.filesystem.resolveBacklogDirectoryInfo();
+			const { core, context } = await this.getCoreForRequest(req);
+			const config = await core.filesystem.loadConfig();
+			const backlogResolution = core.filesystem.resolveBacklogDirectoryInfo();
 			return Response.json({
 				initialized: !!config,
-				projectPath: this.core.filesystem.rootDir,
+				projectPath: core.filesystem.rootDir,
 				backlogDirectory: backlogResolution.backlogDir,
 				backlogDirectorySource: backlogResolution.source,
 				configLocation: backlogResolution.configSource,
 				rootConfigPath: backlogResolution.rootConfigPath,
+				currentProject: context?.project.key ?? this.initialProject ?? null,
 			});
 		} catch (error) {
 			console.error("Error getting status:", error);
@@ -1570,9 +1760,8 @@ export class BacklogServer {
 			this.projectName = result.projectName;
 
 			// Ensure config watcher is set up now that config file exists
-			if (this.contentStore) {
-				this.contentStore.ensureConfigWatcher();
-			}
+			const contentStore = await this.getContentStoreInstance(this.core);
+			contentStore.ensureConfigWatcher();
 
 			return Response.json({
 				success: result.success,

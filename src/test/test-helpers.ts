@@ -8,10 +8,25 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
+import { readProjectRegistry, resolveProjectRegistryLocation } from "../utils/project-registry.ts";
 import { normalizeDependencies } from "../utils/task-builders.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 const isWindows = process.platform === "win32";
+
+async function createPrimaryProjectCore(testDir: string): Promise<Core> {
+	const registryLocation = await resolveProjectRegistryLocation(testDir);
+	const registry = await readProjectRegistry(testDir);
+	const defaultProjectKey = registry?.defaultProject ?? registry?.projects[0]?.key;
+
+	if (registryLocation && defaultProjectKey) {
+		return new Core(testDir, {
+			backlogRoot: join(registryLocation.containerRoot, defaultProjectKey),
+		});
+	}
+
+	return new Core(testDir);
+}
 
 export interface TaskCreateOptions {
 	title: string;
@@ -44,7 +59,7 @@ async function createTaskViaCore(
 	options: TaskCreateOptions,
 	testDir: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string; taskId?: string }> {
-	const core = new Core(testDir);
+	const core = await createPrimaryProjectCore(testDir);
 
 	const normalizedPriority = options.priority ? String(options.priority).toLowerCase() : undefined;
 	const createInput: TaskCreateInput = {
@@ -138,7 +153,7 @@ async function editTaskViaCore(
 	testDir: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
-		const core = new Core(testDir);
+		const core = await createPrimaryProjectCore(testDir);
 
 		// Load existing task
 		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
@@ -206,7 +221,7 @@ async function viewTaskViaCore(
 	testDir: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
-		const core = new Core(testDir);
+		const core = await createPrimaryProjectCore(testDir);
 		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
 
 		const task = await core.filesystem.loadTask(taskId);
@@ -316,7 +331,7 @@ async function listTasksViaCore(
 	testDir: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
-		const core = new Core(testDir);
+		const core = await createPrimaryProjectCore(testDir);
 		const tasks = await core.filesystem.listTasks();
 
 		// Filter by status if provided

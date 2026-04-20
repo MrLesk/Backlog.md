@@ -59,7 +59,7 @@ describe("MCP milestone tools", () => {
 		await initializeTestProject(server, "Test Project");
 
 		const config = await loadConfigOrThrow(server);
-		registerTaskTools(server, config);
+		await registerTaskTools(server, config);
 		registerMilestoneTools(server);
 	});
 

@@ -29,11 +29,14 @@ describe("MCP task tools local filtering", () => {
 	const mockConfig = { statuses: ["To Do", "In Progress", "Done"] };
 
 	it("filters cross-branch tasks out of task_list", async () => {
-		const handlers = new TaskHandlers({
+		const core = {
 			queryTasks: async () => [localTask, remoteTask],
 			filesystem: {
 				loadConfig: async () => mockConfig,
 			},
+		};
+		const handlers = new TaskHandlers({
+			getCoreForToolCall: async () => core,
 		} as unknown as McpServer);
 
 		const result = await handlers.listTasks({});
@@ -46,11 +49,14 @@ describe("MCP task tools local filtering", () => {
 	});
 
 	it("filters cross-branch tasks out of task_search", async () => {
-		const handlers = new TaskHandlers({
+		const core = {
 			loadTasks: async () => [localTask, remoteTask],
 			filesystem: {
 				loadConfig: async () => mockConfig,
 			},
+		};
+		const handlers = new TaskHandlers({
+			getCoreForToolCall: async () => core,
 		} as unknown as McpServer);
 
 		const result = await handlers.searchTasks({ query: "task" });

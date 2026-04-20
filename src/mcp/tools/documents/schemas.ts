@@ -1,8 +1,16 @@
 import type { JsonSchema } from "../../validation/validators.ts";
 
+const projectSchema: JsonSchema = {
+	type: "string",
+	minLength: 1,
+	maxLength: 100,
+	description: "Optional project key from backlog/projects.yml to scope this tool call.",
+};
+
 export const documentListSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		search: {
 			type: "string",
 			maxLength: 200,
@@ -15,6 +23,7 @@ export const documentListSchema: JsonSchema = {
 export const documentViewSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		id: {
 			type: "string",
 			minLength: 1,
@@ -28,6 +37,7 @@ export const documentViewSchema: JsonSchema = {
 export const documentCreateSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		title: {
 			type: "string",
 			minLength: 1,
@@ -44,6 +54,7 @@ export const documentCreateSchema: JsonSchema = {
 export const documentUpdateSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		id: {
 			type: "string",
 			minLength: 1,
@@ -65,6 +76,7 @@ export const documentUpdateSchema: JsonSchema = {
 export const documentSearchSchema: JsonSchema = {
 	type: "object",
 	properties: {
+		project: projectSchema,
 		query: {
 			type: "string",
 			minLength: 1,

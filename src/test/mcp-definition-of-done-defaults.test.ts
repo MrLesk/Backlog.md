@@ -34,7 +34,7 @@ describe("MCP Definition of Done default tools", () => {
 		await initializeTestProject(server, "Test Project");
 
 		const config = await loadConfigOrThrow(server);
-		registerTaskTools(server, config);
+		await registerTaskTools(server, config);
 		registerDefinitionOfDoneTools(server);
 	});
 
