@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@brenoperucchi'
 created_date: '2026-04-22 15:13'
-updated_date: '2026-04-22 15:17'
+updated_date: '2026-04-22 15:25'
 labels:
   - docs
   - browser
@@ -26,6 +26,7 @@ Add a 'Running as a service' section to README.md showing how to keep `backlog b
 - [x] #4 CLI-INSTRUCTIONS.md Web Interface table links to the new README section
 - [x] #5 npx biome check . produces no new errors vs main (pre-existing package.json drift, not touched here)
 - [x] #6 Docs-only change; no code or tests touched — bun test validation deferred to CI
+- [x] #7 Multi-project setups are called out explicitly (distinct service names + distinct ports per project)
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -49,6 +50,8 @@ Added a "Running as a Service" top-level section to README.md right after the We
 Also added a cross-reference note under the Web Interface table in CLI-INSTRUCTIONS.md pointing at the new section.
 
 No source code touched. The pre-existing `bun run check .` failure on `package.json` is inherited from main and out of scope (same precedent as BACK-413).
+
+Follow-up: addressed multi-project setups on the same machine — each project gets a `<project>`-suffixed service name (systemd, launchd Label, Scheduled Task name, NSSM service name) and a distinct port. Added a callout note at the top of the section and a one-line pointer about systemd template units for users with many projects.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

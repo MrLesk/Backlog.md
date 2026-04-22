@@ -149,13 +149,16 @@ backlog browser --no-open
 
 `backlog browser --no-open` keeps the Web UI running without opening a tab — ideal for treating it as a long-lived local service that auto-starts on boot and restarts on failure. Pick the recipe that matches your OS.
 
+> [!NOTE]
+> **Running more than one Backlog project on the same machine?** Each project needs its **own service name** and its **own port** (one `backlog browser` process per project). The examples below use `<project>` as a placeholder — replace it with a short slug per project (e.g. `work`, `personal`) and assign distinct ports (e.g. `6420`, `6421`). Repeat the recipe once per project.
+
 ### Linux / WSL2 (systemd user unit)
 
-Create `~/.config/systemd/user/backlog-browser.service`:
+Create `~/.config/systemd/user/backlog-browser-<project>.service` (e.g. `backlog-browser-work.service`):
 
 ```ini
 [Unit]
-Description=Backlog.md Browser
+Description=Backlog.md Browser (<project>)
 After=network.target
 
 [Service]
@@ -174,25 +177,25 @@ Enable linger so the unit starts at boot without a terminal session, then enable
 ```bash
 sudo loginctl enable-linger "$USER"
 systemctl --user daemon-reload
-systemctl --user enable --now backlog-browser.service
+systemctl --user enable --now backlog-browser-<project>.service
 
 # Check status or follow logs
-systemctl --user status backlog-browser
-journalctl --user -u backlog-browser -f
+systemctl --user status backlog-browser-<project>
+journalctl --user -u backlog-browser-<project> -f
 ```
 
-Adjust the `ExecStart` path to match `which backlog` on your system.
+Adjust the `ExecStart` path to match `which backlog` on your system. For power users with many projects, a systemd [template unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#Description) (`backlog-browser@.service` + `%i`) is an alternative but adds vocabulary that isn't needed for two or three projects.
 
 ### macOS (launchd LaunchAgent)
 
-Create `~/Library/LaunchAgents/md.backlog.browser.plist`:
+Create `~/Library/LaunchAgents/md.backlog.browser.<project>.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>md.backlog.browser</string>
+  <key>Label</key><string>md.backlog.browser.&lt;project&gt;</string>
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/backlog</string>
@@ -204,8 +207,8 @@ Create `~/Library/LaunchAgents/md.backlog.browser.plist`:
   <key>WorkingDirectory</key><string>/path/to/your/project</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/backlog-browser.out.log</string>
-  <key>StandardErrorPath</key><string>/tmp/backlog-browser.err.log</string>
+  <key>StandardOutPath</key><string>/tmp/backlog-browser-&lt;project&gt;.out.log</string>
+  <key>StandardErrorPath</key><string>/tmp/backlog-browser-&lt;project&gt;.err.log</string>
 </dict>
 </plist>
 ```
@@ -213,10 +216,10 @@ Create `~/Library/LaunchAgents/md.backlog.browser.plist`:
 Load it:
 
 ```bash
-launchctl load -w ~/Library/LaunchAgents/md.backlog.browser.plist
+launchctl load -w ~/Library/LaunchAgents/md.backlog.browser.<project>.plist
 ```
 
-Use `/usr/local/bin/backlog` on Intel Macs, or the path returned by `which backlog`.
+Use `/usr/local/bin/backlog` on Intel Macs, or the path returned by `which backlog`. The `Label` must be unique per project — launchd refuses to load two agents with the same label.
 
 ### Windows (Task Scheduler or NSSM)
 
@@ -227,16 +230,18 @@ $action  = New-ScheduledTaskAction -Execute "backlog.exe" `
             -Argument "browser --no-open --port 6420" `
             -WorkingDirectory "C:\path\to\your\project"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-Register-ScheduledTask -TaskName "Backlog Browser" -Action $action -Trigger $trigger
+Register-ScheduledTask -TaskName "Backlog Browser (<project>)" -Action $action -Trigger $trigger
 ```
 
 For a true background service that starts before login and auto-restarts on failure, wrap the command with [NSSM](https://nssm.cc/):
 
 ```powershell
-nssm install BacklogBrowser "C:\path\to\backlog.exe" "browser --no-open --port 6420"
-nssm set BacklogBrowser AppDirectory "C:\path\to\your\project"
-nssm start BacklogBrowser
+nssm install BacklogBrowser_<project> "C:\path\to\backlog.exe" "browser --no-open --port 6420"
+nssm set BacklogBrowser_<project> AppDirectory "C:\path\to\your\project"
+nssm start BacklogBrowser_<project>
 ```
+
+Both `TaskName` and the NSSM service name must be unique per project.
 
 ---
 
