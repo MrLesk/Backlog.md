@@ -145,6 +145,101 @@ backlog browser --no-open
 
 ---
 
+## Running as a Service
+
+`backlog browser --no-open` keeps the Web UI running without opening a tab — ideal for treating it as a long-lived local service that auto-starts on boot and restarts on failure. Pick the recipe that matches your OS.
+
+### Linux / WSL2 (systemd user unit)
+
+Create `~/.config/systemd/user/backlog-browser.service`:
+
+```ini
+[Unit]
+Description=Backlog.md Browser
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/your/project
+ExecStart=/usr/local/bin/backlog browser --no-open --port 6420
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+Enable linger so the unit starts at boot without a terminal session, then enable the service:
+
+```bash
+sudo loginctl enable-linger "$USER"
+systemctl --user daemon-reload
+systemctl --user enable --now backlog-browser.service
+
+# Check status or follow logs
+systemctl --user status backlog-browser
+journalctl --user -u backlog-browser -f
+```
+
+Adjust the `ExecStart` path to match `which backlog` on your system.
+
+### macOS (launchd LaunchAgent)
+
+Create `~/Library/LaunchAgents/md.backlog.browser.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>md.backlog.browser</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/backlog</string>
+    <string>browser</string>
+    <string>--no-open</string>
+    <string>--port</string>
+    <string>6420</string>
+  </array>
+  <key>WorkingDirectory</key><string>/path/to/your/project</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/backlog-browser.out.log</string>
+  <key>StandardErrorPath</key><string>/tmp/backlog-browser.err.log</string>
+</dict>
+</plist>
+```
+
+Load it:
+
+```bash
+launchctl load -w ~/Library/LaunchAgents/md.backlog.browser.plist
+```
+
+Use `/usr/local/bin/backlog` on Intel Macs, or the path returned by `which backlog`.
+
+### Windows (Task Scheduler or NSSM)
+
+For a "runs when I log in" setup, register a Scheduled Task from PowerShell:
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute "backlog.exe" `
+            -Argument "browser --no-open --port 6420" `
+            -WorkingDirectory "C:\path\to\your\project"
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+Register-ScheduledTask -TaskName "Backlog Browser" -Action $action -Trigger $trigger
+```
+
+For a true background service that starts before login and auto-restarts on failure, wrap the command with [NSSM](https://nssm.cc/):
+
+```powershell
+nssm install BacklogBrowser "C:\path\to\backlog.exe" "browser --no-open --port 6420"
+nssm set BacklogBrowser AppDirectory "C:\path\to\your\project"
+nssm start BacklogBrowser
+```
+
+---
+
 ## 🔧 MCP Integration (Model Context Protocol)
 
 The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, Gemini CLI and Kiro is via the MCP protocol.
