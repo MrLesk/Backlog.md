@@ -217,7 +217,7 @@ Perfect for sharing project status, creating reports, or storing snapshots in ve
 
 ## Shell Tab Completion
 
-Backlog.md includes built-in intelligent tab completion for bash, zsh, and fish shells. Completion scripts are embedded in the binary — no external files needed.
+Backlog.md includes built-in intelligent tab completion for bash, zsh, fish, and PowerShell shells. Completion scripts are embedded in the binary — no external files needed.
 
 **Quick Installation:**
 ```bash
@@ -228,6 +228,7 @@ backlog completion install
 backlog completion install --shell bash
 backlog completion install --shell zsh
 backlog completion install --shell fish
+backlog completion install --shell pwsh
 ```
 
 **What you get:**

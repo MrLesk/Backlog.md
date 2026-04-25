@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -8,7 +9,82 @@ import { getCompletions } from "../completions/helper.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export type Shell = "bash" | "zsh" | "fish";
+export type Shell = "bash" | "zsh" | "fish" | "pwsh";
+
+interface InstallPaths {
+	system?: string;
+	user: string;
+}
+
+type PowerShellProfileResolver = () => string;
+
+type CompletionInstallOptions = {
+	homeDir?: string;
+	resolvePowerShellProfilePath?: PowerShellProfileResolver;
+};
+
+function getScriptFilename(shell: Shell): string {
+	const scriptFiles: Record<Shell, string> = {
+		bash: "backlog.bash",
+		zsh: "_backlog",
+		fish: "backlog.fish",
+		pwsh: "backlog.ps1",
+	};
+
+	return scriptFiles[shell];
+}
+
+function resolvePowerShellProfilePath(): string {
+	const executables = ["pwsh"];
+	const windowsExecutablePaths = process.platform === "win32" ? getWindowsPowerShellExecutables() : [];
+	const candidates = [...executables, ...windowsExecutablePaths];
+	const errors: string[] = [];
+
+	for (const executable of candidates) {
+		const result = spawnSync(executable, ["-NoProfile", "-Command", "$PROFILE.CurrentUserAllHosts"], {
+			encoding: "utf-8",
+			windowsHide: true,
+		});
+
+		if (result.error) {
+			errors.push(`${executable}: ${result.error.message}`);
+			continue;
+		}
+
+		if (result.status !== 0) {
+			const failure = result.stderr.trim() || result.stdout.trim() || `exit code ${result.status}`;
+			errors.push(`${executable}: ${failure}`);
+			continue;
+		}
+
+		const profilePath = result.stdout.trim();
+		if (!profilePath) {
+			errors.push(`${executable}: returned empty profile path`);
+			continue;
+		}
+
+		return profilePath;
+	}
+
+	const details = errors.map((error) => `  - ${error}`);
+	throw new Error(
+		[
+			"Could not resolve your PowerShell profile path automatically.",
+			"Ensure PowerShell 7+ (pwsh) is installed (PATH lookup and common Windows install paths were checked).",
+			"Resolution attempts:",
+			...details,
+		].join("\n"),
+	);
+}
+
+function getWindowsPowerShellExecutables(): string[] {
+	const candidates = [
+		process.env.ProgramFiles ? join(process.env.ProgramFiles, "PowerShell", "7", "pwsh.exe") : null,
+		process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "PowerShell", "7", "pwsh.exe") : null,
+	].filter((path): path is string => Boolean(path));
+
+	return candidates.filter((path) => existsSync(path));
+}
 
 export interface CompletionInstallResult {
 	shell: Shell;
@@ -31,6 +107,9 @@ function detectShell(): Shell | null {
 	if (shell.includes("fish")) {
 		return "fish";
 	}
+	if (shell.includes("pwsh")) {
+		return "pwsh";
+	}
 
 	return null;
 }
@@ -40,13 +119,7 @@ function detectShell(): Shell | null {
  */
 async function getCompletionScript(shell: Shell): Promise<string> {
 	// Try to read from file system first (for development)
-	const scriptFiles: Record<Shell, string> = {
-		bash: "backlog.bash",
-		zsh: "_backlog",
-		fish: "backlog.fish",
-	};
-
-	const scriptPath = join(__dirname, "..", "..", "completions", scriptFiles[shell]);
+	const scriptPath = join(__dirname, "..", "..", "completions", getScriptFilename(shell));
 
 	try {
 		if (existsSync(scriptPath)) {
@@ -195,6 +268,47 @@ end
 # -a: add completion candidates from the function output
 complete -c backlog -f -a '(__backlog_complete)'
 `,
+		pwsh: `# PowerShell completion script for backlog CLI
+#
+# Installation:
+#   - Recommended: backlog completion install --shell pwsh
+#   - Manual: Save this file and source it from your $PROFILE.CurrentUserAllHosts
+#
+# Requirements:
+#   - PowerShell 7+ recommended
+
+$__backlogCompletionScriptBlock = {
+	param($wordToComplete, $commandAst, $cursorPosition)
+
+	$line = $commandAst.ToString()
+	# Preserve trailing whitespace context because CommandAst text omits it.
+	if ($cursorPosition -gt $line.Length) {
+		$line = $line.PadRight($cursorPosition)
+	}
+
+	# Cursor position is already an endpoint offset for completion APIs.
+	$point = [Math]::Min([Math]::Max($cursorPosition, 0), $line.Length)
+
+	try {
+		$completions = @(backlog completion __complete "$line" "$point" 2>$null)
+		foreach ($completion in $completions) {
+			if ($completion) {
+				$completionText = "$completion "
+				[System.Management.Automation.CompletionResult]::new(
+					$completionText,
+					$completion,
+					[System.Management.Automation.CompletionResultType]::ParameterValue,
+					$completion
+				)
+			}
+		}
+	} catch {
+		return
+	}
+}
+
+Register-ArgumentCompleter -Native -CommandName @("backlog", "backlog.exe") -ScriptBlock $__backlogCompletionScriptBlock
+`,
 	};
 
 	return scripts[shell];
@@ -203,10 +317,21 @@ complete -c backlog -f -a '(__backlog_complete)'
 /**
  * Get installation paths for a shell
  */
-function getInstallPaths(shell: Shell): { system: string; user: string } {
-	const home = homedir();
+function getInstallPaths(
+	shell: Shell,
+	resolvePowerShellProfile: PowerShellProfileResolver = resolvePowerShellProfilePath,
+	home = homedir(),
+): InstallPaths {
+	if (shell === "pwsh") {
+		const profilePath = resolvePowerShellProfile();
+		const profileDir = dirname(profilePath);
 
-	const paths: Record<Shell, { system: string; user: string }> = {
+		return {
+			user: join(profileDir, "Completions", "backlog-completion.ps1"),
+		};
+	}
+
+	const paths: Record<Exclude<Shell, "pwsh">, InstallPaths> = {
 		bash: {
 			system: "/etc/bash_completion.d/backlog",
 			user: join(home, ".local/share/bash-completion/completions/backlog"),
@@ -250,6 +375,14 @@ Completions should be automatically loaded by fish.
 Restart your shell or run:
 exec fish
 `,
+		pwsh: `
+To enable completions, add this to your PowerShell profile ($PROFILE.CurrentUserAllHosts):
+$completionScript = Join-Path (Split-Path -Parent $PROFILE.CurrentUserAllHosts) "Completions/backlog-completion.ps1"
+if (Test-Path $completionScript) { . $completionScript }
+
+Then restart PowerShell or run:
+. $PROFILE.CurrentUserAllHosts
+`,
 	};
 
 	return instructions[shell];
@@ -258,7 +391,10 @@ exec fish
 /**
  * Install completion script
  */
-export async function installCompletion(shell?: string): Promise<CompletionInstallResult> {
+export async function installCompletion(
+	shell?: string,
+	options: CompletionInstallOptions = {},
+): Promise<CompletionInstallResult> {
 	// Detect shell if not provided
 	const targetShell = shell as Shell | undefined;
 	const detectedShell = targetShell || detectShell();
@@ -270,12 +406,13 @@ export async function installCompletion(shell?: string): Promise<CompletionInsta
 			"  backlog completion install --shell bash",
 			"  backlog completion install --shell zsh",
 			"  backlog completion install --shell fish",
+			"  backlog completion install --shell pwsh",
 		].join("\n");
 		throw new Error(message);
 	}
 
-	if (!["bash", "zsh", "fish"].includes(detectedShell)) {
-		throw new Error(`Unsupported shell: ${detectedShell}\nSupported shells: bash, zsh, fish`);
+	if (!["bash", "zsh", "fish", "pwsh"].includes(detectedShell)) {
+		throw new Error(`Unsupported shell: ${detectedShell}\nSupported shells: bash, zsh, fish, pwsh`);
 	}
 
 	// Get completion script content
@@ -287,7 +424,7 @@ export async function installCompletion(shell?: string): Promise<CompletionInsta
 	}
 
 	// Get installation paths
-	const paths = getInstallPaths(detectedShell);
+	const paths = getInstallPaths(detectedShell, options.resolvePowerShellProfilePath, options.homeDir);
 
 	// Try user installation first (no sudo required)
 	const installPath = paths.user;
@@ -302,17 +439,32 @@ export async function installCompletion(shell?: string): Promise<CompletionInsta
 		// Write the completion script
 		await writeFile(installPath, scriptContent, "utf-8");
 	} catch (error) {
-		const manualInstructions = [
-			"Failed to install completion script automatically.",
-			"",
-			"Manual installation options:",
-			"1. System-wide installation (requires sudo):",
-			`   sudo cp completions/${detectedShell === "zsh" ? "_backlog" : `backlog.${detectedShell}`} ${paths.system}`,
-			"",
-			"2. User installation:",
-			`   mkdir -p ${installDir}`,
-			`   cp completions/${detectedShell === "zsh" ? "_backlog" : `backlog.${detectedShell}`} ${installPath}`,
-		].join("\n");
+		const scriptFilename = getScriptFilename(detectedShell);
+		const manualInstructions =
+			detectedShell === "pwsh"
+				? [
+						"Failed to install PowerShell completion script automatically.",
+						"",
+						`Target path: ${installPath}`,
+						"",
+						"Ensure the profile directory is writable and run again:",
+						"  backlog completion install --shell pwsh",
+						"",
+						"Then add this to your PowerShell profile ($PROFILE.CurrentUserAllHosts):",
+						'$completionScript = Join-Path (Split-Path -Parent $PROFILE.CurrentUserAllHosts) "Completions/backlog-completion.ps1"',
+						"if (Test-Path $completionScript) { . $completionScript }",
+					].join("\n")
+				: [
+						"Failed to install completion script automatically.",
+						"",
+						"Manual installation options:",
+						"1. System-wide installation (requires sudo):",
+						`   sudo cp completions/${scriptFilename} ${paths.system}`,
+						"",
+						"2. User installation:",
+						`   mkdir -p ${installDir}`,
+						`   cp completions/${scriptFilename} ${installPath}`,
+					].join("\n");
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		throw new Error(`${errorMessage}\n\n${manualInstructions}`);
 	}
@@ -356,7 +508,7 @@ export function registerCompletionCommand(program: Command): void {
 	completionCmd
 		.command("install")
 		.description("install shell completion script")
-		.option("--shell <shell>", "shell type (bash, zsh, fish)")
+		.option("--shell <shell>", "shell type (bash, zsh, fish, pwsh)")
 		.action(async (options: { shell?: string }) => {
 			try {
 				const result = await installCompletion(options.shell);
