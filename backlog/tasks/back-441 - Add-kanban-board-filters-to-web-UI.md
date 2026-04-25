@@ -1,10 +1,11 @@
 ---
 id: BACK-441
 title: Add kanban board filters to web UI
-status: To Do
+status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 22:13'
+updated_date: '2026-04-25 22:30'
 labels:
   - feature
   - web
@@ -25,17 +26,23 @@ Add focused filtering controls to the Web UI kanban board so users can narrow vi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The board view exposes assignee, label, and priority filters when matching task metadata exists.
-- [ ] #2 Selected filters are applied together with AND semantics and continue to respect existing board lane/milestone behavior.
-- [ ] #3 Filter state is reflected in URL query parameters and survives reload/navigation.
-- [ ] #4 A clear action resets all board filters and removes their URL query parameters.
-- [ ] #5 Browser verification covers assignee, label, priority, combined filters, reload persistence, and clearing filters.
-- [ ] #6 Existing board interactions are not regressed by the filter controls.
+- [x] #1 The board view exposes assignee, label, and priority filters when matching task metadata exists.
+- [x] #2 Selected filters are applied together with AND semantics and continue to respect existing board lane/milestone behavior.
+- [x] #3 Filter state is reflected in URL query parameters and survives reload/navigation.
+- [x] #4 A clear action resets all board filters and removes their URL query parameters.
+- [x] #5 Browser verification covers assignee, label, priority, combined filters, reload persistence, and clearing filters.
+- [x] #6 Existing board interactions are not regressed by the filter controls.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Prepared PR #574 for merge readiness: created and linked BACK-441, aligned the PR title/body, rebased the contributor branch onto current main, removed stale bun.lock churn, regenerated Tailwind CSS, added focused board-filter tests, and verified the behavior in a real Chrome browser against the compiled CLI. PR #574 is clean and all GitHub checks are green; merge is pending the repository's Codex AI review approval signal.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
