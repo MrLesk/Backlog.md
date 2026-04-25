@@ -46,6 +46,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 - `get_backlog_instructions`
 - `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_complete`, `task_archive`
+- `task_search` accepts `modifiedFiles` for case-insensitive substring filtering against project-root-relative modified file paths
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`
 - `definition_of_done_defaults_get`, `definition_of_done_defaults_upsert`
 

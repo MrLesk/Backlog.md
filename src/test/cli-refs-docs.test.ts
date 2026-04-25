@@ -111,6 +111,19 @@ describe("CLI --ref and --doc flags", () => {
 		});
 	});
 
+	describe("task create with --modified-file flag", () => {
+		it("creates task with multiple modified files", async () => {
+			const result =
+				await $`bun ${cliPath} task create "Feature" --modified-file src/api.ts --modified-file src/ui.ts --plain`
+					.cwd(TEST_DIR)
+					.quiet();
+
+			expect(result.exitCode).toBe(0);
+			const out = result.stdout.toString();
+			expect(out).toContain("Modified files: src/api.ts, src/ui.ts");
+		});
+	});
+
 	describe("task edit with --ref flag", () => {
 		it("sets references on existing task", async () => {
 			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();
@@ -159,6 +172,20 @@ describe("CLI --ref and --doc flags", () => {
 		});
 	});
 
+	describe("task edit with --modified-file flag", () => {
+		it("sets modified files on existing task", async () => {
+			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();
+
+			const result = await $`bun ${cliPath} task edit 1 --modified-file src/api.ts --modified-file src/ui.ts --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			expect(result.exitCode).toBe(0);
+			const out = result.stdout.toString();
+			expect(out).toContain("Modified files: src/api.ts, src/ui.ts");
+		});
+	});
+
 	describe("persistence in markdown files", () => {
 		it("persists references in task markdown file", async () => {
 			await $`bun ${cliPath} task create "Feature" --ref https://example.com --ref src/index.ts`.cwd(TEST_DIR).quiet();
@@ -176,6 +203,17 @@ describe("CLI --ref and --doc flags", () => {
 			expect(taskFile).toContain("documentation:");
 			expect(taskFile).toContain("https://docs.example.com");
 			expect(taskFile).toContain("spec.md");
+		});
+
+		it("persists modified files in task markdown file", async () => {
+			await $`bun ${cliPath} task create "Feature" --modified-file src/index.ts --modified-file src/ui.ts`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			const taskFile = await Bun.file(join(TEST_DIR, "backlog/tasks/task-1 - Feature.md")).text();
+			expect(taskFile).toContain("modified_files:");
+			expect(taskFile).toContain("src/index.ts");
+			expect(taskFile).toContain("src/ui.ts");
 		});
 	});
 });

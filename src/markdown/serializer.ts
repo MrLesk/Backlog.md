@@ -45,6 +45,7 @@ export function serializeTask(task: Task): string {
 		dependencies: task.dependencies,
 		...(task.references && task.references.length > 0 && { references: task.references }),
 		...(task.documentation && task.documentation.length > 0 && { documentation: task.documentation }),
+		...(task.modifiedFiles && task.modifiedFiles.length > 0 && { modified_files: task.modifiedFiles }),
 		...(task.parentTaskId && { parent_task_id: task.parentTaskId }),
 		...(task.subtasks && task.subtasks.length > 0 && { subtasks: task.subtasks }),
 		...(task.priority && { priority: task.priority }),

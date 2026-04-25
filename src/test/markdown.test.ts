@@ -61,6 +61,7 @@ created_date: "2025-06-03"
 labels: ["bug", "frontend"]
 milestone: "v1.0"
 dependencies: ["task-0"]
+modified_files: ["src/auth/login.ts", "src/web/LoginForm.tsx"]
 parent_task_id: "task-parent"
 subtasks: ["task-1.1", "task-1.2"]
 ---
@@ -85,6 +86,7 @@ Fix the login bug that prevents users from signing in.
 			expect(task.labels).toEqual(["bug", "frontend"]);
 			expect(task.milestone).toBe("v1.0");
 			expect(task.dependencies).toEqual(["task-0"]);
+			expect(task.modifiedFiles).toEqual(["src/auth/login.ts", "src/web/LoginForm.tsx"]);
 			expect(task.parentTaskId).toBe("task-parent");
 			expect(task.subtasks).toEqual(["task-1.1", "task-1.2"]);
 			expect(task.acceptanceCriteriaItems?.map((item) => item.text)).toEqual([
@@ -381,6 +383,7 @@ describe("Markdown Serializer", () => {
 				labels: ["bug", "frontend"],
 				milestone: "v1.0",
 				dependencies: ["task-0"],
+				modifiedFiles: ["src/auth/login.ts", "src/web/LoginForm.tsx"],
 				description: "This is a test task description.",
 			};
 
@@ -393,6 +396,9 @@ describe("Markdown Serializer", () => {
 			expect(result).toContain("labels:");
 			expect(result).toContain("- bug");
 			expect(result).toContain("- frontend");
+			expect(result).toContain("modified_files:");
+			expect(result).toContain("- src/auth/login.ts");
+			expect(result).toContain("- src/web/LoginForm.tsx");
 			expect(result).toContain("## Description");
 			expect(result).toContain("This is a test task description.");
 		});

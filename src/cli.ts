@@ -185,7 +185,8 @@ function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
 			options.dependsOn !== undefined ||
 			options.dep !== undefined ||
 			options.ref !== undefined ||
-			options.doc !== undefined,
+			options.doc !== undefined ||
+			options.modifiedFile !== undefined,
 	);
 }
 
@@ -220,7 +221,8 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.dependsOn !== undefined ||
 			options.dep !== undefined ||
 			options.ref !== undefined ||
-			options.doc !== undefined,
+			options.doc !== undefined ||
+			options.modifiedFile !== undefined,
 	);
 }
 
@@ -1442,6 +1444,14 @@ taskCmd
 		return [...soFar, value];
 	})
 	.option(
+		"--modified-file <path>",
+		"add modified file path from project root (can be used multiple times)",
+		(value, previous) => {
+			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			return [...soFar, value];
+		},
+	)
+	.option(
 		"--doc <documentation>",
 		"add documentation URL or file path (can be used multiple times)",
 		(value, previous) => {
@@ -1500,6 +1510,7 @@ taskCmd
 					options.dependsOn || options.dep ? normalizeDependencies(options.dependsOn || options.dep) : undefined,
 				references: parseDelimitedStringList(options.ref),
 				documentation: parseDelimitedStringList(options.doc),
+				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
 				parentTaskId: options.parent ? String(options.parent) : undefined,
 				priority: options.priority ? (String(options.priority).toLowerCase() as "high" | "medium" | "low") : undefined,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
@@ -1535,6 +1546,11 @@ program
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
 	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
+	.option(
+		"--modified-file <path>",
+		"filter task results by modified file path substring",
+		createMultiValueAccumulator(),
+	)
 	.option("--limit <number>", "limit total results returned")
 	.option("--plain", "print plain text output instead of interactive UI")
 	.action(async (query: string | undefined, options) => {
@@ -1547,6 +1563,7 @@ program
 			contentStore.dispose();
 		};
 
+		const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
 		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
 		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
 		const types = rawTypes
@@ -1559,9 +1576,11 @@ program
 						}
 						return true;
 					})
-			: allowedTypes;
+			: modifiedFileFilters?.length
+				? ["task"]
+				: allowedTypes;
 
-		const filters: { status?: string; priority?: SearchPriorityFilter } = {};
+		const filters: { status?: string; priority?: SearchPriorityFilter; modifiedFiles?: string[] } = {};
 		if (options.status) {
 			filters.status = options.status;
 		}
@@ -1575,6 +1594,9 @@ program
 				return;
 			}
 			filters.priority = priorityLower as SearchPriorityFilter;
+		}
+		if (modifiedFileFilters?.length) {
+			filters.modifiedFiles = modifiedFileFilters;
 		}
 
 		let limit: number | undefined;
@@ -2096,6 +2118,14 @@ taskCmd
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
+	.option(
+		"--modified-file <path>",
+		"set modified file paths from project root (can be used multiple times)",
+		(value, previous) => {
+			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			return [...soFar, value];
+		},
+	)
 	.option("--doc <documentation>", "set documentation (can be used multiple times)", (value, previous) => {
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
@@ -2251,6 +2281,7 @@ taskCmd
 
 		const normalizedReferences = parseDelimitedStringList(options.ref);
 		const normalizedDocumentation = parseDelimitedStringList(options.doc);
+		const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
 		const notesAppendValues = toStringArray(options.appendNotes);
 		const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
@@ -2292,6 +2323,9 @@ taskCmd
 		}
 		if (normalizedDocumentation && normalizedDocumentation.length > 0) {
 			editArgs.documentation = normalizedDocumentation;
+		}
+		if (normalizedModifiedFiles && normalizedModifiedFiles.length > 0) {
+			editArgs.modifiedFiles = normalizedModifiedFiles;
 		}
 		if (typeof options.plan === "string") {
 			editArgs.planSet = String(options.plan);

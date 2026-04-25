@@ -38,7 +38,6 @@ export const taskSearchSchema: JsonSchema = {
 	properties: {
 		query: {
 			type: "string",
-			minLength: 1,
 			maxLength: 200,
 		},
 		status: {
@@ -49,13 +48,18 @@ export const taskSearchSchema: JsonSchema = {
 			type: "string",
 			enum: ["high", "medium", "low"],
 		},
+		modifiedFiles: {
+			type: "array",
+			items: { type: "string", maxLength: 500 },
+			description: "Filter tasks by case-insensitive substring match against modified file paths",
+		},
 		limit: {
 			type: "number",
 			minimum: 1,
 			maximum: 100,
 		},
 	},
-	required: ["query"],
+	required: [],
 	additionalProperties: false,
 };
 

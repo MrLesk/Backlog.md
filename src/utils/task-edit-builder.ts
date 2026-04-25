@@ -110,6 +110,11 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.removeDocumentation = removeDocumentation;
 	}
 
+	const modifiedFiles = sanitizeStringArray(args.modifiedFiles);
+	if (modifiedFiles) {
+		updateInput.modifiedFiles = modifiedFiles;
+	}
+
 	const planSet = args.planSet ?? args.implementationPlan;
 	if (typeof planSet === "string") {
 		updateInput.implementationPlan = planSet;
