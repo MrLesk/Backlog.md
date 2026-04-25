@@ -16,6 +16,13 @@ interface InstallPaths {
 	user: string;
 }
 
+type PowerShellProfileResolver = () => string;
+
+type CompletionInstallOptions = {
+	homeDir?: string;
+	resolvePowerShellProfilePath?: PowerShellProfileResolver;
+};
+
 function getScriptFilename(shell: Shell): string {
 	const scriptFiles: Record<Shell, string> = {
 		bash: "backlog.bash",
@@ -101,9 +108,6 @@ function detectShell(): Shell | null {
 		return "fish";
 	}
 	if (shell.includes("pwsh")) {
-		return "pwsh";
-	}
-	if (process.platform === "win32" && /PowerShell[\\/]+7/i.test(process.env.PSModulePath || "")) {
 		return "pwsh";
 	}
 
@@ -313,11 +317,13 @@ Register-ArgumentCompleter -Native -CommandName @("backlog", "backlog.exe") -Scr
 /**
  * Get installation paths for a shell
  */
-function getInstallPaths(shell: Shell): InstallPaths {
-	const home = homedir();
-
+function getInstallPaths(
+	shell: Shell,
+	resolvePowerShellProfile: PowerShellProfileResolver = resolvePowerShellProfilePath,
+	home = homedir(),
+): InstallPaths {
 	if (shell === "pwsh") {
-		const profilePath = resolvePowerShellProfilePath();
+		const profilePath = resolvePowerShellProfile();
 		const profileDir = dirname(profilePath);
 
 		return {
@@ -385,7 +391,10 @@ Then restart PowerShell or run:
 /**
  * Install completion script
  */
-export async function installCompletion(shell?: string): Promise<CompletionInstallResult> {
+export async function installCompletion(
+	shell?: string,
+	options: CompletionInstallOptions = {},
+): Promise<CompletionInstallResult> {
 	// Detect shell if not provided
 	const targetShell = shell as Shell | undefined;
 	const detectedShell = targetShell || detectShell();
@@ -415,7 +424,7 @@ export async function installCompletion(shell?: string): Promise<CompletionInsta
 	}
 
 	// Get installation paths
-	const paths = getInstallPaths(detectedShell);
+	const paths = getInstallPaths(detectedShell, options.resolvePowerShellProfilePath, options.homeDir);
 
 	// Try user installation first (no sudo required)
 	const installPath = paths.user;

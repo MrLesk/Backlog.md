@@ -22,7 +22,7 @@ $__backlogCompletionScriptBlock = {
 	# Cursor position is already an endpoint offset for completion APIs.
 	$point = [Math]::Min([Math]::Max($cursorPosition, 0), $line.Length)
 
-try {
+	try {
 		$completions = @(backlog completion __complete "$line" "$point" 2>$null)
 		foreach ($completion in $completions) {
 			if ($completion) {
