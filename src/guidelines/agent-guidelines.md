@@ -108,6 +108,9 @@ title: Add GraphQL resolver
 status: To Do
 assignee: [@sara]
 labels: [backend, api]
+modified_files:
+  - src/server/api.ts
+  - src/web/components/TaskList.tsx
 ---
 
 ## Description
@@ -451,11 +454,15 @@ backlog search "login" --type task --plain
 # Search with filters
 backlog search "api" --status "In Progress" --plain
 backlog search "bug" --priority high --plain
+
+# Find tasks that modified a project file path
+backlog search --modified-file src/server/api.ts --plain
 ```
 
 **Key points:**
 - Uses fuzzy matching - finds "authentication" when searching "auth"
 - Searches task titles, descriptions, and content
+- Also searches `modified_files`; `--modified-file` applies a case-insensitive path substring filter
 - Also searches documents and decisions unless filtered with `--type task`
 - Always use `--plain` flag for AI-readable output
 
@@ -496,7 +503,8 @@ backlog search "bug" --priority high --plain
 | With final summary | `backlog task create "Title" --final-summary "PR-style summary"`                 |
 | With references  | `backlog task create "Title" --ref src/api.ts --ref https://github.com/issue/123`   |
 | With documentation | `backlog task create "Title" --doc https://design-docs.example.com`               |
-| With all options | `backlog task create "Title" -d "Desc" -a @sara -s "To Do" -l auth --priority high --ref src/api.ts --doc docs/spec.md` |
+| With modified files | `backlog task create "Title" --modified-file src/api.ts --modified-file src/ui.ts` |
+| With all options | `backlog task create "Title" -d "Desc" -a @sara -s "To Do" -l auth --priority high --ref src/api.ts --doc docs/spec.md --modified-file src/api.ts` |
 | Create draft     | `backlog task create "Title" --draft`                                               |
 | Create subtask   | `backlog task create "Title" -p 42`                                                 |
 
@@ -535,6 +543,7 @@ backlog search "bug" --priority high --plain
 | Add dependencies | `backlog task edit 42 --dep task-1 --dep task-2`         |
 | Add references   | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
 | Add documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
+| Set modified files | `backlog task edit 42 --modified-file src/api.ts --modified-file src/ui.ts` |
 
 ### Multi‑line Input (Description/Plan/Notes/Final Summary)
 
@@ -597,6 +606,7 @@ Tests:
 | List tasks         | `backlog task list --plain`                  |
 | Search tasks       | `backlog search "topic" --plain`              |
 | Search with filter | `backlog search "api" --status "To Do" --plain` |
+| Search by modified file | `backlog search --modified-file src/api.ts --plain` |
 | Filter by status   | `backlog task list -s "In Progress" --plain` |
 | Filter by assignee | `backlog task list -a @sara --plain`         |
 | Archive task       | `backlog task archive 42`                    |

@@ -16,6 +16,7 @@ export interface TaskEditArgs {
 	documentation?: string[];
 	addDocumentation?: string[];
 	removeDocumentation?: string[];
+	modifiedFiles?: string[];
 	implementationPlan?: string;
 	planSet?: string;
 	planAppend?: string[];

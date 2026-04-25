@@ -10,6 +10,7 @@ import type {
 	SearchResultType,
 	Task,
 } from "../types/index.ts";
+import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "../utils/modified-files.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
 
 interface BaseSearchEntity {
@@ -27,6 +28,7 @@ interface TaskSearchEntity extends BaseSearchEntity {
 	readonly labelsLower: string[];
 	readonly idVariants: string[];
 	readonly dependencyIds: string[];
+	readonly modifiedFiles: string[];
 }
 
 interface DocumentSearchEntity extends BaseSearchEntity {
@@ -45,6 +47,7 @@ type NormalizedFilters = {
 	statuses?: string[];
 	priorities?: SearchPriorityFilter[];
 	labels?: string[];
+	modifiedFiles?: string[];
 };
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -225,6 +228,7 @@ export class SearchService {
 			labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 			idVariants: createTaskIdVariants(task.id),
 			dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
+			modifiedFiles: task.modifiedFiles ?? [],
 		}));
 
 		this.documents = documents.map((document) => ({
@@ -265,6 +269,7 @@ export class SearchService {
 				{ name: "id", weight: 0.2 },
 				{ name: "idVariants", weight: 0.1 },
 				{ name: "dependencyIds", weight: 0.05 },
+				{ name: "modifiedFiles", weight: 0.15 },
 			],
 		});
 	}
@@ -331,6 +336,9 @@ export class SearchService {
 				return task.labelsLower.some((label) => requiredLabels.has(label));
 			});
 		}
+		if (filters.modifiedFiles && filters.modifiedFiles.length > 0) {
+			filtered = filtered.filter((task) => matchesModifiedFileFilters(task.modifiedFiles, filters.modifiedFiles));
+		}
 		return filtered;
 	}
 
@@ -358,6 +366,10 @@ export class SearchService {
 			}
 		}
 
+		if (filters.modifiedFiles && !matchesModifiedFileFilters(task.modifiedFiles, filters.modifiedFiles)) {
+			return false;
+		}
+
 		return true;
 	}
 
@@ -369,11 +381,13 @@ export class SearchService {
 		const statuses = this.normalizeStringArray(filters.status);
 		const priorities = this.normalizePriorityArray(filters.priority);
 		const labels = this.normalizeLabelsArray(filters.labels);
+		const modifiedFiles = normalizeModifiedFileFilters(filters.modifiedFiles);
 
 		return {
 			statuses,
 			priorities,
 			labels,
+			modifiedFiles,
 		};
 	}
 
@@ -478,6 +492,10 @@ function buildTaskBodyText(task: Task): string {
 
 	if (task.implementationNotes) {
 		parts.push(task.implementationNotes);
+	}
+
+	if (task.modifiedFiles?.length) {
+		parts.push(task.modifiedFiles.join("\n"));
 	}
 
 	return parts.join("\n\n");

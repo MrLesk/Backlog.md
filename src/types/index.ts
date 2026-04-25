@@ -36,6 +36,7 @@ export interface Task {
 	dependencies: string[];
 	references?: string[];
 	documentation?: string[];
+	modifiedFiles?: string[];
 	readonly rawContent?: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
 	description?: string;
 	implementationPlan?: string;
@@ -97,6 +98,7 @@ export interface TaskCreateInput {
 	dependencies?: string[];
 	references?: string[];
 	documentation?: string[];
+	modifiedFiles?: string[];
 	parentTaskId?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
@@ -127,6 +129,7 @@ export interface TaskUpdateInput {
 	documentation?: string[];
 	addDocumentation?: string[];
 	removeDocumentation?: string[];
+	modifiedFiles?: string[];
 	implementationPlan?: string;
 	appendImplementationPlan?: string[];
 	clearImplementationPlan?: boolean;
@@ -205,6 +208,7 @@ export interface SearchFilters {
 	priority?: SearchPriorityFilter | SearchPriorityFilter[];
 	assignee?: string | string[];
 	labels?: string | string[];
+	modifiedFiles?: string | string[];
 }
 
 export interface SearchOptions {

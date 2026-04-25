@@ -1233,6 +1233,9 @@ function generateDetailContent(
 	if (task.dependencies?.length) {
 		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
 	}
+	if (task.modifiedFiles?.length) {
+		metadata.push(`{bold}Modified files:{/bold} ${task.modifiedFiles.join(", ")}`);
+	}
 
 	bodyContent.push(metadata.join("\n"));
 	bodyContent.push("");

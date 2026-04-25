@@ -38,6 +38,7 @@ export type TaskCreateArgs = {
 	dependencies?: string[];
 	references?: string[];
 	documentation?: string[];
+	modifiedFiles?: string[];
 	finalSummary?: string;
 };
 
@@ -51,9 +52,10 @@ export type TaskListArgs = {
 };
 
 export type TaskSearchArgs = {
-	query: string;
+	query?: string;
 	status?: string;
 	priority?: SearchPriorityFilter;
+	modifiedFiles?: string[];
 	limit?: number;
 };
 
@@ -219,6 +221,7 @@ export class TaskHandlers {
 				dependencies: args.dependencies,
 				references: args.references,
 				documentation: args.documentation,
+				modifiedFiles: args.modifiedFiles,
 				parentTaskId: args.parentTaskId,
 				finalSummary: args.finalSummary,
 				acceptanceCriteria,
@@ -401,9 +404,10 @@ export class TaskHandlers {
 	}
 
 	async searchTasks(args: TaskSearchArgs): Promise<CallToolResult> {
-		const query = args.query.trim();
-		if (!query) {
-			throw new BacklogToolError("Search query cannot be empty", "VALIDATION_ERROR");
+		const query = args.query?.trim() ?? "";
+		const modifiedFiles = args.modifiedFiles?.map((file) => file.trim()).filter((file) => file.length > 0);
+		if (!query && (!modifiedFiles || modifiedFiles.length === 0)) {
+			throw new BacklogToolError("Search query or modifiedFiles filter is required", "VALIDATION_ERROR");
 		}
 
 		if (this.isDraftStatus(args.status)) {
@@ -413,6 +417,7 @@ export class TaskHandlers {
 				query,
 				status: "Draft",
 				priority: args.priority,
+				modifiedFiles,
 			});
 			if (typeof args.limit === "number" && args.limit >= 0) {
 				draftMatches = draftMatches.slice(0, args.limit);
@@ -423,7 +428,7 @@ export class TaskHandlers {
 					content: [
 						{
 							type: "text",
-							text: `No tasks found for "${query}".`,
+							text: `No tasks found for "${query || modifiedFiles?.join(", ")}".`,
 						},
 					],
 				};
@@ -450,6 +455,7 @@ export class TaskHandlers {
 			query,
 			status: args.status,
 			priority: args.priority,
+			modifiedFiles,
 		});
 		if (typeof args.limit === "number" && args.limit >= 0) {
 			taskMatches = taskMatches.slice(0, args.limit);
@@ -461,7 +467,7 @@ export class TaskHandlers {
 				content: [
 					{
 						type: "text",
-						text: `No tasks found for "${query}".`,
+						text: `No tasks found for "${query || modifiedFiles?.join(", ")}".`,
 					},
 				],
 			};

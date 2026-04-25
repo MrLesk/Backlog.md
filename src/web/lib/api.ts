@@ -169,6 +169,7 @@ export class ApiClient {
 			status?: string | string[];
 			priority?: SearchPriorityFilter | SearchPriorityFilter[];
 			labels?: string[];
+			modifiedFiles?: string[];
 			limit?: number;
 		} = {},
 	): Promise<SearchResult[]> {
@@ -197,6 +198,13 @@ export class ApiClient {
 			for (const label of options.labels) {
 				if (label && label.trim().length > 0) {
 					params.append("label", label.trim());
+				}
+			}
+		}
+		if (options.modifiedFiles) {
+			for (const file of options.modifiedFiles) {
+				if (file && file.trim().length > 0) {
+					params.append("modifiedFile", file.trim());
 				}
 			}
 		}

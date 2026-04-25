@@ -692,9 +692,17 @@ export class BacklogServer {
 			const statusParams = url.searchParams.getAll("status");
 			const priorityParamsRaw = url.searchParams.getAll("priority");
 			const labelParamsRaw = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
+			const modifiedFileParamsRaw = [
+				...url.searchParams.getAll("modifiedFile"),
+				...url.searchParams.getAll("modifiedFiles"),
+			];
 			const labelsCsv = url.searchParams.get("labels");
 			if (labelsCsv) {
 				labelParamsRaw.push(...labelsCsv.split(","));
+			}
+			const modifiedFilesCsv = url.searchParams.get("modifiedFiles");
+			if (modifiedFilesCsv) {
+				modifiedFileParamsRaw.push(...modifiedFilesCsv.split(","));
 			}
 
 			let limit: number | undefined;
@@ -724,6 +732,7 @@ export class BacklogServer {
 				status?: string | string[];
 				priority?: SearchPriorityFilter | SearchPriorityFilter[];
 				labels?: string | string[];
+				modifiedFiles?: string | string[];
 			} = {};
 
 			if (statusParams.length === 1) {
@@ -752,6 +761,16 @@ export class BacklogServer {
 				const normalizedLabels = labelParamsRaw.map((value) => value.trim()).filter((value) => value.length > 0);
 				if (normalizedLabels.length > 0) {
 					filters.labels = normalizedLabels.length === 1 ? normalizedLabels[0] : normalizedLabels;
+				}
+			}
+
+			if (modifiedFileParamsRaw.length > 0) {
+				const normalizedModifiedFiles = modifiedFileParamsRaw
+					.map((value) => value.trim())
+					.filter((value) => value.length > 0);
+				if (normalizedModifiedFiles.length > 0) {
+					filters.modifiedFiles =
+						normalizedModifiedFiles.length === 1 ? normalizedModifiedFiles[0] : normalizedModifiedFiles;
 				}
 			}
 
@@ -799,6 +818,7 @@ export class BacklogServer {
 				assignee: payload.assignee,
 				dependencies: payload.dependencies,
 				references: payload.references,
+				modifiedFiles: payload.modifiedFiles,
 				parentTaskId: payload.parentTaskId,
 				implementationPlan: payload.implementationPlan,
 				implementationNotes: payload.implementationNotes,
@@ -881,6 +901,10 @@ export class BacklogServer {
 
 		if ("references" in updates && Array.isArray(updates.references)) {
 			updateInput.references = updates.references;
+		}
+
+		if ("modifiedFiles" in updates && Array.isArray(updates.modifiedFiles)) {
+			updateInput.modifiedFiles = updates.modifiedFiles;
 		}
 
 		if ("implementationPlan" in updates && typeof updates.implementationPlan === "string") {

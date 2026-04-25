@@ -85,6 +85,35 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("searches tasks with a separate modifiedFiles filter", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Button search",
+					modifiedFiles: ["src/web/components/Button.tsx"],
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Server search",
+					modifiedFiles: ["src/server/index.ts"],
+				},
+			},
+		});
+
+		const searchResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_search", arguments: { modifiedFiles: ["components/Button"] } },
+		});
+
+		const searchText = getText(searchResult.content);
+		expect(searchText).toContain("TASK-1 - Button search");
+		expect(searchText).not.toContain("TASK-2 - Server search");
+	});
+
 	it("filters task_list by milestone using closest matching and combines with status", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

@@ -930,6 +930,7 @@ export class Core {
 		const normalizedDependencies = normalizeDependencies(input.dependencies);
 		const normalizedReferences = normalizeStringList(input.references) ?? [];
 		const normalizedDocumentation = normalizeStringList(input.documentation) ?? [];
+		const normalizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
 
 		const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
 			normalizedDependencies,
@@ -987,6 +988,7 @@ export class Core {
 				dependencies: validDependencies,
 				references: normalizedReferences,
 				documentation: normalizedDocumentation,
+				modifiedFiles: normalizedModifiedFiles,
 				rawContent: input.rawContent ?? "",
 				createdDate,
 				...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
@@ -1300,6 +1302,19 @@ export class Core {
 		};
 
 		resolveDocumentation();
+
+		const resolveModifiedFiles = (): void => {
+			if (input.modifiedFiles === undefined) {
+				return;
+			}
+			const sanitizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
+			if (!stringArraysEqual(sanitizedModifiedFiles, task.modifiedFiles ?? [])) {
+				task.modifiedFiles = sanitizedModifiedFiles;
+				mutated = true;
+			}
+		};
+
+		resolveModifiedFiles();
 
 		const sanitizeAppendInput = (values: string[] | undefined): string[] => {
 			if (!values) return [];

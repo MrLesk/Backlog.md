@@ -94,6 +94,14 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				},
 				description: "Documentation URLs or file paths for understanding this task",
 			},
+			modifiedFiles: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Project-root-relative file paths modified by this task",
+			},
 			finalSummary: {
 				type: "string",
 				maxLength: 20000,
@@ -235,6 +243,14 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 500,
 				},
 				description: "Remove documentation URLs or file paths",
+			},
+			modifiedFiles: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 500,
+				},
+				description: "Set project-root-relative modified file paths (replaces existing)",
 			},
 			implementationNotes: {
 				type: "string",

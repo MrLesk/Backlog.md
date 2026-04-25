@@ -32,6 +32,7 @@ describe("SearchService", () => {
 		dependencies: [],
 		rawContent: "## Description\nImplements Fuse based service",
 		priority: "high",
+		modifiedFiles: ["src/core/search-service.ts", "src/utils/task-search.ts"],
 	};
 
 	const baseDoc: Document = {
@@ -182,6 +183,34 @@ describe("SearchService", () => {
 			})
 			.filter(isTaskResult);
 		expect(anyFiltered.map((result) => result.task.id)).toStrictEqual(["TASK-2"]);
+	});
+
+	it("searches and filters tasks by modified file paths", async () => {
+		const uiTask: Task = {
+			...baseTask,
+			id: "task-2",
+			title: "UI search",
+			status: "To Do",
+			priority: "medium",
+			modifiedFiles: ["src/web/components/SearchBox.tsx"],
+			rawContent: "## Description\nUI work",
+		};
+
+		await filesystem.saveTask(baseTask);
+		await filesystem.saveTask(uiTask);
+
+		await search.ensureInitialized();
+
+		const queryMatches = search.search({ query: "components/SearchBox.tsx", types: ["task"] }).filter(isTaskResult);
+		expect(queryMatches.map((result) => result.task.id)).toStrictEqual(["TASK-2"]);
+
+		const filtered = search
+			.search({
+				types: ["task"],
+				filters: { modifiedFiles: ["core/search"] },
+			})
+			.filter(isTaskResult);
+		expect(filtered.map((result) => result.task.id)).toStrictEqual(["TASK-1"]);
 	});
 
 	it("refreshes the index when content changes", async () => {

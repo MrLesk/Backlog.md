@@ -22,6 +22,7 @@ const baseTask: Task = {
 	dependencies: [],
 	description: "Alpha token appears here",
 	priority: "high",
+	modifiedFiles: ["src/server/index.ts", "src/core/search-service.ts"],
 };
 
 const baseDoc: Document = {
@@ -56,6 +57,7 @@ const dependentTask: Task = {
 	dependencies: [baseTask.id],
 	description: "Depends on task-0007 for completion",
 	priority: "medium",
+	modifiedFiles: ["src/ui/task-viewer-with-search.ts"],
 };
 
 describe("BacklogServer search endpoint", () => {
@@ -160,6 +162,20 @@ describe("BacklogServer search endpoint", () => {
 			.map((result) => result.task?.id)
 			.filter((id): id is string => Boolean(id));
 		expect(dependencyIds).toEqual(expect.arrayContaining([baseTask.id, dependentTask.id]));
+	});
+
+	it("searches and filters tasks by modified file path", async () => {
+		const queryMatches = await fetchJson<Array<{ type: string; task?: Task }>>(
+			"/api/search?type=task&query=src/server/index.ts",
+		);
+		const queryIds = queryMatches.filter((result) => result.type === "task").map((result) => result.task?.id);
+		expect(queryIds).toContain(baseTask.id);
+
+		const filterMatches = await fetchJson<Array<{ type: string; task?: Task }>>(
+			"/api/search?type=task&modifiedFile=task-viewer",
+		);
+		const filterIds = filterMatches.filter((result) => result.type === "task").map((result) => result.task?.id);
+		expect(filterIds).toEqual([dependentTask.id]);
 	});
 
 	it("returns newly created tasks immediately after POST", async () => {

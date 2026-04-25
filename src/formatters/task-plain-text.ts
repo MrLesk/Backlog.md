@@ -132,6 +132,10 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push(`Documentation: ${task.documentation.join(", ")}`);
 	}
 
+	if (task.modifiedFiles?.length) {
+		lines.push(`Modified files: ${task.modifiedFiles.join(", ")}`);
+	}
+
 	lines.push("");
 	lines.push("Description:");
 	lines.push("-".repeat(50));

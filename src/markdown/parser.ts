@@ -179,6 +179,7 @@ export function parseTask(content: string): Task {
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
 		references: Array.isArray(frontmatter.references) ? frontmatter.references.map(String) : [],
 		documentation: Array.isArray(frontmatter.documentation) ? frontmatter.documentation.map(String) : [],
+		modifiedFiles: Array.isArray(frontmatter.modified_files) ? frontmatter.modified_files.map(String) : [],
 		rawContent,
 		acceptanceCriteriaItems: structuredCriteria,
 		definitionOfDoneItems: structuredDefinitionOfDone,
