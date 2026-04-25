@@ -90,6 +90,24 @@ describe("Definition of Done", () => {
 		expect(rawConfig).toContain('definition_of_done: ["First item", "Second item"]');
 	});
 
+	it("round-trips saved definition_of_done entries with backslashes", async () => {
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		const windowsCheck = String.raw`Run .\scripts\check.ps1`;
+		expect(config).toBeTruthy();
+
+		if (config) {
+			config.definitionOfDone = [windowsCheck];
+			await core.filesystem.saveConfig(config);
+		}
+
+		const rawConfig = await readConfigFile(TEST_DIR);
+		expect(rawConfig).toContain(String.raw`definition_of_done: ["Run .\\scripts\\check.ps1"]`);
+
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.definitionOfDone).toEqual([windowsCheck]);
+	});
+
 	it("preserves quoted commas in flow-style definition_of_done entries", async () => {
 		await writeConfigFile(
 			TEST_DIR,
@@ -112,6 +130,32 @@ describe("Definition of Done", () => {
 		const body = saved?.rawContent ?? "";
 		expect(body).toContain("- [ ] #1 simple item");
 		expect(body).toContain("- [ ] #2 item with, a comma, inside");
+	});
+
+	it("preserves legacy flow-style definition_of_done entries with unescaped backslashes", async () => {
+		const scriptCheck = String.raw`Run .\scripts\check.ps1`;
+		const tempTasks = String.raw`Run C:\temp\tasks`;
+		await writeConfigFile(
+			TEST_DIR,
+			[
+				'project_name: "DoD Test Project"',
+				String.raw`definition_of_done: ["Run .\scripts\check.ps1", "Run C:\temp\tasks"]`,
+				'statuses: ["To Do", "In Progress", "Done"]',
+				"labels: []",
+				"date_format: yyyy-mm-dd",
+				"",
+			].join("\n"),
+		);
+
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		expect(config?.definitionOfDone).toEqual([scriptCheck, tempTasks]);
+
+		const { task } = await core.createTaskFromInput({ title: "Legacy Windows DoD task" });
+		const saved = await core.filesystem.loadTask(task.id);
+		const body = saved?.rawContent ?? "";
+		expect(body).toContain(`- [ ] #1 ${scriptCheck}`);
+		expect(body).toContain(`- [ ] #2 ${tempTasks}`);
 	});
 
 	it("parses block-style definition_of_done entries with adjacent blank lines", async () => {

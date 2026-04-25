@@ -1450,13 +1450,23 @@ ${description || `Milestone: ${title}`}`,
 	}
 
 	private parseDefinitionOfDone(content: string): string[] | undefined {
+		const definitionOfDoneYaml = this.extractDefinitionOfDoneYaml(content);
+		const legacyEscapedDefinitionOfDoneYaml = definitionOfDoneYaml
+			? this.escapeLegacyDefinitionOfDoneBackslashes(definitionOfDoneYaml)
+			: undefined;
+		if (legacyEscapedDefinitionOfDoneYaml) {
+			const parsedLegacyDefinitionOfDone = this.parseDefinitionOfDoneFromYaml(legacyEscapedDefinitionOfDoneYaml);
+			if (parsedLegacyDefinitionOfDone !== undefined) {
+				return parsedLegacyDefinitionOfDone;
+			}
+		}
+
 		const parsedFromDocument = this.parseDefinitionOfDoneFromYaml(content);
 		if (parsedFromDocument !== undefined) {
 			return parsedFromDocument;
 		}
 
 		// Some legacy config values are accepted by the line parser but are not valid YAML.
-		const definitionOfDoneYaml = this.extractDefinitionOfDoneYaml(content);
 		return definitionOfDoneYaml ? this.parseDefinitionOfDoneFromYaml(definitionOfDoneYaml) : undefined;
 	}
 
@@ -1506,6 +1516,58 @@ ${description || `Milestone: ${title}`}`,
 		}
 
 		return collected.join("\n");
+	}
+
+	private escapeLegacyDefinitionOfDoneBackslashes(content: string): string | undefined {
+		let escaped = "";
+		let quote: "'" | '"' | undefined;
+		let changed = false;
+
+		for (let index = 0; index < content.length; index++) {
+			const char = content[index];
+
+			if (quote) {
+				if (quote === '"' && char === "\\") {
+					let slashCount = 1;
+					while (content[index + slashCount] === "\\") {
+						slashCount++;
+					}
+
+					const nextChar = content[index + slashCount];
+					if (nextChar === '"' && slashCount % 2 === 1) {
+						escaped += "\\".repeat(slashCount);
+						escaped += nextChar;
+						index += slashCount;
+						continue;
+					}
+
+					const escapedSlashCount = slashCount % 2 === 1 ? slashCount + 1 : slashCount;
+					escaped += "\\".repeat(escapedSlashCount);
+					changed ||= escapedSlashCount !== slashCount;
+					index += slashCount - 1;
+					continue;
+				}
+
+				if (char === quote) {
+					escaped += char;
+					quote = undefined;
+					continue;
+				}
+
+				escaped += char;
+				continue;
+			}
+
+			if (char === "'" || char === '"') {
+				escaped += char;
+				quote = char;
+				continue;
+			}
+
+			escaped += char;
+		}
+
+		return changed ? escaped : undefined;
 	}
 
 	private normalizeDefinitionOfDone(definitionOfDone: unknown): string[] | undefined {
