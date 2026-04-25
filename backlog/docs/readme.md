@@ -2,8 +2,9 @@
 
 This directory contains the project's documentation files, including guides, specifications, and other relevant information.
 
-Use `backlog doc create <title>` to add a new document. By default, files are saved here, but you can specify a subfolder with `-p <path>`.
+Use `backlog doc create <title>` to add a new document. By default, files are saved here, but you can specify a docs-relative subfolder with `-p <path>`.
 List all documents with `backlog doc list`.
+Document paths are always relative to this directory; absolute paths and `..` traversal segments are rejected.
 
 ## Configuration Options
 

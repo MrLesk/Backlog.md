@@ -9,6 +9,7 @@ import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
@@ -763,12 +764,9 @@ export class FileSystem {
 		const canonicalId = normalizeDocumentId(document.id);
 		document.id = canonicalId;
 		const filename = `${canonicalId} - ${this.sanitizeFilename(document.title)}.md`;
-		const subPathSegments = subPath
-			.split(/[\\/]+/)
-			.map((segment) => segment.trim())
-			.filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
-		const relativePath = subPathSegments.length > 0 ? join(...subPathSegments, filename) : filename;
-		const filepath = join(docsDir, relativePath);
+		const normalizedSubPath = normalizeDocumentSubPath(subPath);
+		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
+		const filepath = join(docsDir, ...relativePath.split("/"));
 		const content = serializeDocument(document);
 
 		await this.ensureDirectoryExists(dirname(filepath));
@@ -782,13 +780,13 @@ export class FileSystem {
 			return documentIdsEqual(canonicalId, candidateId);
 		});
 
-		let sourceRelativePath = document.path;
+		let sourceRelativePath = document.path ? normalizeDocumentRelativePath(document.path) : undefined;
 		if (!sourceRelativePath && matchesForId.length > 0) {
-			sourceRelativePath = matchesForId[0];
+			sourceRelativePath = normalizeDocumentRelativePath(matchesForId[0] ?? "");
 		}
 
 		if (sourceRelativePath && sourceRelativePath !== relativePath) {
-			const sourcePath = join(docsDir, sourceRelativePath);
+			const sourcePath = join(docsDir, ...sourceRelativePath.split("/"));
 			try {
 				await this.ensureDirectoryExists(dirname(filepath));
 				await rename(sourcePath, filepath);
@@ -801,7 +799,7 @@ export class FileSystem {
 		}
 
 		for (const match of matchesForId) {
-			const matchPath = join(docsDir, match);
+			const matchPath = join(docsDir, ...normalizeDocumentRelativePath(match).split("/"));
 			if (matchPath === filepath) {
 				continue;
 			}
@@ -848,14 +846,15 @@ export class FileSystem {
 			const docFiles = await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }));
 			const docs: Document[] = [];
 			for (const file of docFiles) {
-				const base = file.split("/").pop() || file;
+				const relativePath = normalizeDocumentRelativePath(file);
+				const base = relativePath.split("/").pop() || relativePath;
 				if (base.toLowerCase() === "readme.md") continue;
-				const filepath = join(docsDir, file);
+				const filepath = join(docsDir, ...relativePath.split("/"));
 				const content = await Bun.file(filepath).text();
 				const parsed = parseDocument(content);
 				docs.push({
 					...parsed,
-					path: file,
+					path: relativePath,
 				});
 			}
 

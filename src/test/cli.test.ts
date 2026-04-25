@@ -1353,6 +1353,24 @@ describe("CLI Integration", () => {
 			expect(docs[0]?.title).toBe("Guide");
 		});
 
+		it("should create documents in a subpath and print the persisted path", async () => {
+			const result = await $`bun ${CLI_PATH} doc create "Setup Guide" -p guides/setup`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+			const stdout = result.stdout.toString();
+			expect(stdout).toContain("Created document doc-1");
+			expect(stdout).toContain("Path: backlog/docs/guides/setup/doc-1 - Setup-Guide.md");
+
+			const core = new Core(TEST_DIR);
+			const docs = await core.filesystem.listDocuments();
+			expect(docs[0]?.path).toBe("guides/setup/doc-1 - Setup-Guide.md");
+		});
+
+		it("should reject unsafe document paths", async () => {
+			const result = await $`bun ${CLI_PATH} doc create "Unsafe" -p ../outside`.cwd(TEST_DIR).quiet().nothrow();
+			expect(result.exitCode).not.toBe(0);
+			expect(result.stderr.toString()).toContain("Document path cannot include traversal segments.");
+		});
+
 		it("should create and list decisions", async () => {
 			const core = new Core(TEST_DIR);
 			const decision: Decision = {

@@ -391,6 +391,51 @@ describe("Core", () => {
 			expect(updatedDocs[0]?.title).toBe("Operations Guide Updated");
 		});
 
+		it("creates and moves documents through core input methods", async () => {
+			const created = await core.createDocumentFromInput({
+				title: "Setup Guide",
+				content: "# Setup",
+				type: "guide",
+				path: "guides/setup",
+				tags: ["setup", "guide"],
+			});
+
+			expect(created.id).toBe("doc-1");
+			expect(created.path).toBe("guides/setup/doc-1 - Setup-Guide.md");
+
+			const updated = await core.updateDocumentFromInput({
+				id: created.id,
+				title: "Install Guide",
+				content: "# Install",
+				path: "runbooks",
+			});
+
+			expect(updated.title).toBe("Install Guide");
+			expect(updated.path).toBe("runbooks/doc-1 - Install-Guide.md");
+			expect(updated.rawContent).toBe("# Install");
+
+			const docFiles = await Array.fromAsync(
+				new Bun.Glob("**/doc-*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }),
+			);
+			expect(docFiles).toEqual(["runbooks/doc-1 - Install-Guide.md"]);
+		});
+
+		it("preserves document path when updating without an explicit path", async () => {
+			const created = await core.createDocumentFromInput({
+				title: "Nested",
+				content: "Initial",
+				path: "guides",
+			});
+
+			const updated = await core.updateDocumentFromInput({
+				id: created.id,
+				content: "Updated",
+				title: "Nested Updated",
+			});
+
+			expect(updated.path).toBe("guides/doc-1 - Nested-Updated.md");
+		});
+
 		it("shows a git rename when the document title changes", async () => {
 			await core.createDocument(baseDocument, true);
 

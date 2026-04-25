@@ -15,12 +15,18 @@ export type DocumentViewArgs = {
 export type DocumentCreateArgs = {
 	title: string;
 	content: string;
+	type?: Document["type"];
+	path?: string;
+	tags?: string[];
 };
 
 export type DocumentUpdateArgs = {
 	id: string;
 	title?: string;
 	content: string;
+	type?: Document["type"];
+	path?: string;
+	tags?: string[];
 };
 
 export type DocumentSearchArgs = {
@@ -32,7 +38,11 @@ export class DocumentHandlers {
 	constructor(private readonly core: McpServer) {}
 
 	private formatDocumentSummaryLine(document: Document): string {
-		const metadata: string[] = [`type: ${document.type}`, `created: ${document.createdDate}`];
+		const metadata: string[] = [
+			`type: ${document.type}`,
+			`path: ${document.path ?? "(unknown)"}`,
+			`created: ${document.createdDate}`,
+		];
 		if (document.updatedDate) {
 			metadata.push(`updated: ${document.updatedDate}`);
 		}
@@ -105,7 +115,13 @@ export class DocumentHandlers {
 
 	async createDocument(args: DocumentCreateArgs): Promise<CallToolResult> {
 		try {
-			const document = await this.core.createDocumentWithId(args.title, args.content);
+			const document = await this.core.createDocumentFromInput({
+				title: args.title,
+				content: args.content,
+				type: args.type,
+				path: args.path,
+				tags: args.tags,
+			});
 			return await formatDocumentCallResult(document, {
 				summaryLines: ["Document created successfully."],
 			});
@@ -118,16 +134,18 @@ export class DocumentHandlers {
 	}
 
 	async updateDocument(args: DocumentUpdateArgs): Promise<CallToolResult> {
-		const existing = await this.loadDocumentOrThrow(args.id);
-		const nextDocument = args.title ? { ...existing, title: args.title } : existing;
+		await this.loadDocumentOrThrow(args.id);
 
 		try {
-			await this.core.updateDocument(nextDocument, args.content);
-			const refreshed = await this.core.getDocument(existing.id);
-			if (!refreshed) {
-				throw new BacklogToolError(`Document not found: ${args.id}`, "DOCUMENT_NOT_FOUND");
-			}
-			return await formatDocumentCallResult(refreshed, {
+			const document = await this.core.updateDocumentFromInput({
+				id: args.id,
+				content: args.content,
+				title: args.title,
+				type: args.type,
+				path: args.path,
+				tags: args.tags,
+			});
+			return await formatDocumentCallResult(document, {
 				summaryLines: ["Document updated successfully."],
 			});
 		} catch (error) {
@@ -162,7 +180,7 @@ export class DocumentHandlers {
 		for (const result of documents) {
 			const { document } = result;
 			const scoreText = this.formatScore(result.score);
-			lines.push(`  ${document.id} - ${document.title}${scoreText}`);
+			lines.push(`  ${document.id} - ${document.title} (${document.path ?? "(unknown)"})${scoreText}`);
 		}
 
 		return {

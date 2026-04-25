@@ -558,7 +558,29 @@ Invalid content`,
 
 			const docs = await filesystem.listDocuments();
 			const nested = docs.find((doc) => doc.id === "doc-3");
-			expect(nested?.path).toBe(join("guides", "doc-3 - Nested-Guide.md"));
+			expect(nested?.path).toBe("guides/doc-3 - Nested-Guide.md");
+		});
+
+		it("rejects unsafe document paths", async () => {
+			await expect(
+				filesystem.saveDocument(
+					{
+						...sampleDocument,
+						id: "doc-4",
+					},
+					"../outside",
+				),
+			).rejects.toThrow("Document path cannot include traversal segments.");
+
+			await expect(
+				filesystem.saveDocument(
+					{
+						...sampleDocument,
+						id: "doc-5",
+					},
+					"/tmp/docs",
+				),
+			).rejects.toThrow("Document path must be relative");
 		});
 
 		it("should load documents using flexible ID formats", async () => {

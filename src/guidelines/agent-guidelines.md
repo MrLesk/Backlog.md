@@ -66,6 +66,8 @@ remains fully synchronized and up-to-date.
 - **All task operations MUST use the Backlog.md CLI tool**
 - This ensures metadata is correctly updated and the project stays in sync
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output
+- Create project docs through Backlog.md APIs so frontmatter and paths stay valid. For CLI users, run `backlog doc create "Title" -p guides/setup`; MCP users should use `document_create` with `path: "guides/setup"`.
+- Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
 
 ---
 

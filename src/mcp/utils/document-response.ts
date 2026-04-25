@@ -12,6 +12,7 @@ function buildDocumentText(document: Document, options?: { includeContent?: bool
 	const lines: string[] = [
 		`Document ${document.id} - ${document.title}`,
 		`Type: ${document.type}`,
+		`Path: ${document.path ?? "(unknown)"}`,
 		`Created: ${document.createdDate}`,
 	];
 

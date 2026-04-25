@@ -59,10 +59,17 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_view` — read full task context (description, plan, notes, final summary, acceptance criteria, Definition of Done)
 - `definition_of_done_defaults_get` — read project-level Definition of Done defaults from config
 - `definition_of_done_defaults_upsert` — replace project-level Definition of Done defaults in config
+- `document_list` — list documents, including type, path, timestamps, and tags
+- `document_view` — view document metadata and markdown content
+- `document_create` — create a document with title, content, optional type/tags, and optional docs-directory-relative path
+- `document_update` — update document content, optional title/type/tags, and optional docs-directory-relative path
+- `document_search` — search documents using the shared fuzzy index
 - `task_create` — create new tasks with description and acceptance criteria; DoD fields are for **exceptional** task-level overrides only (`definitionOfDoneAdd`, `disableDefinitionOfDoneDefaults`)
 - `task_edit` — update task metadata, status, plan, notes, final summary, acceptance criteria, task-level Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`) for **exceptional** per-task updates, and dependencies
 - DoD is not acceptance criteria: acceptance criteria define scope/behavior, while DoD tracks completion hygiene
 - `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
 - `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Note: archived task IDs can be reused by new tasks (soft delete behavior).
+
+**Document path rules:** document paths are relative to the docs directory. Use `path` values like `guides/setup`; absolute paths and `..` traversal are rejected.
 
 **Always operate through MCP tools. Never edit markdown files directly so relationships, metadata, and history stay consistent.**

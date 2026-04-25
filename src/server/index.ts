@@ -1009,10 +1009,11 @@ export class BacklogServer {
 			const store = await this.getContentStoreInstance();
 			const docs = store.getDocuments();
 			const docFiles = docs.map((doc) => ({
-				name: `${doc.title}.md`,
+				name: doc.path?.split(/[\\/]+/).pop() ?? `${doc.title}.md`,
 				id: doc.id,
 				title: doc.title,
 				type: doc.type,
+				path: doc.path,
 				createdDate: doc.createdDate,
 				updatedDate: doc.updatedDate,
 				lastModified: doc.updatedDate || doc.createdDate,
@@ -1039,13 +1040,29 @@ export class BacklogServer {
 	}
 
 	private async handleCreateDoc(req: Request): Promise<Response> {
-		const { filename, content } = await req.json();
-
 		try {
-			const title = filename.replace(".md", "");
-			const document = await this.core.createDocumentWithId(title, content);
-			return Response.json({ success: true, id: document.id }, { status: 201 });
+			const body = await req.json();
+			const filename = typeof body?.filename === "string" ? body.filename : undefined;
+			const title = typeof body?.title === "string" ? body.title : filename?.replace(/\.md$/i, "");
+			if (!title || title.trim().length === 0) {
+				return Response.json({ error: "Document title is required" }, { status: 400 });
+			}
+
+			const document = await this.core.createDocumentFromInput({
+				title,
+				content: typeof body?.content === "string" ? body.content : "",
+				type: body?.type,
+				path: typeof body?.path === "string" ? body.path : undefined,
+				tags: Array.isArray(body?.tags) ? body.tags.map(String) : undefined,
+			});
+			return Response.json({ success: true, ...document }, { status: 201 });
 		} catch (error) {
+			if (error instanceof SyntaxError) {
+				return Response.json({ error: "Invalid request payload" }, { status: 400 });
+			}
+			if (error instanceof Error) {
+				return Response.json({ error: error.message }, { status: 400 });
+			}
 			console.error("Error creating document:", error);
 			return Response.json({ error: "Failed to create document" }, { status: 500 });
 		}
@@ -1056,6 +1073,7 @@ export class BacklogServer {
 			const body = await req.json();
 			const content = typeof body?.content === "string" ? body.content : undefined;
 			const title = typeof body?.title === "string" ? body.title : undefined;
+			const path = typeof body?.path === "string" || body?.path === null ? body.path : undefined;
 
 			if (typeof content !== "string") {
 				return Response.json({ error: "Document content is required" }, { status: 400 });
@@ -1070,20 +1088,24 @@ export class BacklogServer {
 				}
 			}
 
-			const existingDoc = await this.core.getDocument(docId);
-			if (!existingDoc) {
-				return Response.json({ error: "Document not found" }, { status: 404 });
-			}
-
-			const nextDoc = normalizedTitle ? { ...existingDoc, title: normalizedTitle } : { ...existingDoc };
-
-			await this.core.updateDocument(nextDoc, content);
-			return Response.json({ success: true });
+			const document = await this.core.updateDocumentFromInput({
+				id: docId,
+				content,
+				...(normalizedTitle && { title: normalizedTitle }),
+				...(path !== undefined && { path }),
+				...(typeof body?.type === "string" && { type: body.type }),
+				...(Array.isArray(body?.tags) && { tags: body.tags.map(String) }),
+			});
+			return Response.json({ success: true, ...document });
 		} catch (error) {
-			console.error("Error updating document:", error);
 			if (error instanceof SyntaxError) {
 				return Response.json({ error: "Invalid request payload" }, { status: 400 });
 			}
+			if (error instanceof Error) {
+				const status = error.message.startsWith("Document not found") ? 404 : 400;
+				return Response.json({ error: error.message }, { status });
+			}
+			console.error("Error updating document:", error);
 			return Response.json({ error: "Failed to update document" }, { status: 500 });
 		}
 	}

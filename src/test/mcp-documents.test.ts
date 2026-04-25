@@ -52,6 +52,8 @@ describe("MCP document tools", () => {
 				arguments: {
 					title: "Engineering Guidelines",
 					content: "# Overview\n\nFollow the documented practices.",
+					path: "guides",
+					tags: ["engineering"],
 				},
 			},
 		});
@@ -59,6 +61,8 @@ describe("MCP document tools", () => {
 		const createText = getText(createResult.content);
 		expect(createText).toContain("Document created successfully.");
 		expect(createText).toContain("Document doc-1 - Engineering Guidelines");
+		expect(createText).toContain("Path: guides/doc-1 - Engineering-Guidelines.md");
+		expect(createText).toContain("Tags: engineering");
 		expect(createText).toContain("# Overview");
 
 		const listResult = await mcpServer.testInterface.callTool({
@@ -68,7 +72,8 @@ describe("MCP document tools", () => {
 		const listText = getText(listResult.content);
 		expect(listText).toContain("Documents:");
 		expect(listText).toContain("doc-1 - Engineering Guidelines");
-		expect(listText).toContain("tags: (none)");
+		expect(listText).toContain("path: guides/doc-1 - Engineering-Guidelines.md");
+		expect(listText).toContain("tags: engineering");
 	});
 
 	it("filters documents using substring search", async () => {
@@ -155,6 +160,7 @@ describe("MCP document tools", () => {
 					id: "DOC-0001",
 					title: "Incident Response Handbook",
 					content: "Updated procedures",
+					path: "runbooks",
 				},
 			},
 		});
@@ -162,6 +168,7 @@ describe("MCP document tools", () => {
 		const updateText = getText(updateResult.content);
 		expect(updateText).toContain("Document updated successfully.");
 		expect(updateText).toContain("Document doc-1 - Incident Response Handbook");
+		expect(updateText).toContain("Path: runbooks/doc-1 - Incident-Response-Handbook.md");
 		expect(updateText).toContain("Updated procedures");
 
 		const viewResult = await mcpServer.testInterface.callTool({
@@ -169,7 +176,24 @@ describe("MCP document tools", () => {
 		});
 		const viewText = getText(viewResult.content);
 		expect(viewText).toContain("Incident Response Handbook");
+		expect(viewText).toContain("Path: runbooks/doc-1 - Incident-Response-Handbook.md");
 		expect(viewText).toContain("Updated procedures");
+	});
+
+	it("rejects unsafe document paths", async () => {
+		const result = await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_create",
+				arguments: {
+					title: "Unsafe",
+					content: "Content",
+					path: "../outside",
+				},
+			},
+		});
+
+		expect(result.isError).toBe(true);
+		expect(getText(result.content)).toContain("Document path cannot include traversal segments.");
 	});
 
 	it("searches documents and includes formatted scores", async () => {
@@ -195,6 +219,7 @@ describe("MCP document tools", () => {
 		const searchText = getText(searchResult.content);
 		expect(searchText).toContain("Documents:");
 		expect(searchText).toMatch(/Architecture Overview/);
+		expect(searchText).toContain("doc-1 - Architecture Overview (doc-1 - Architecture-Overview.md)");
 		expect(searchText).toMatch(/\[score [0-1]\.\d{3}]/);
 	});
 });

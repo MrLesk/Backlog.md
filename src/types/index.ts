@@ -193,6 +193,23 @@ export interface Document {
 	lastModified?: string;
 }
 
+export interface DocumentCreateInput {
+	title: string;
+	content?: string;
+	type?: Document["type"];
+	path?: string;
+	tags?: string[];
+}
+
+export interface DocumentUpdateInput {
+	id: string;
+	content: string;
+	title?: string;
+	type?: Document["type"];
+	path?: string | null;
+	tags?: string[];
+}
+
 export type SearchResultType = "task" | "document" | "decision";
 
 export type SearchPriorityFilter = "high" | "medium" | "low";
