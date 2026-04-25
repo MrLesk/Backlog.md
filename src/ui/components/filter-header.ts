@@ -5,6 +5,7 @@
 
 import type { BoxInterface, ScreenInterface, TextboxInterface } from "neo-neo-bblessed";
 import { box, textbox } from "neo-neo-bblessed";
+import { formatLabelSummary } from "../../utils/label-filter.ts";
 
 export type FilterControlId = "search" | "status" | "priority" | "labels" | "milestone";
 
@@ -531,7 +532,6 @@ export class FilterHeader {
 			left: x,
 			width,
 			height: 1,
-			tags: true,
 			mouse: true,
 			keys: true,
 			style: {
@@ -607,8 +607,8 @@ export class FilterHeader {
 			case "milestone":
 				return this.state.milestone ? `${this.state.milestone} ▼` : "All ▼";
 			case "labels": {
-				const count = this.state.labels.length;
-				return count === 0 ? "All ▼" : `(${count}) ▼`;
+				const summary = formatLabelSummary(this.state.labels).replace(/^Labels:\s*/, "");
+				return `${summary} ▼`;
 			}
 		}
 	}
