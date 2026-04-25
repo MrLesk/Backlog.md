@@ -154,7 +154,7 @@ Manage task dependencies to create execution sequences and prevent circular rela
 | Web interface | `backlog browser` (launches web UI on port 6420) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
 
-To keep the Web UI running in the background with auto-start on boot (systemd / launchd / Windows), see [Running as a Service](README.md#running-as-a-service).
+To keep the Web UI running in the background with auto-start on boot, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 
 ## Documentation
 
