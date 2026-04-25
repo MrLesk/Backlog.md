@@ -35,9 +35,6 @@ describe("MCP Server Fallback Mode", () => {
 	test("should provide backlog://init-required resource in fallback mode", async () => {
 		const server = await createMcpServer(tempDir, { debug: false });
 
-		// Simulate client init to unblock the readiness gate (roots discovery)
-		server.getServer().oninitialized?.();
-
 		const resources = await server.testInterface.listResources();
 
 		expect(resources.resources).toHaveLength(1);
@@ -47,9 +44,6 @@ describe("MCP Server Fallback Mode", () => {
 
 	test("should be able to read backlog://init-required resource", async () => {
 		const server = await createMcpServer(tempDir, { debug: false });
-
-		// Simulate client init to unblock the readiness gate
-		server.getServer().oninitialized?.();
 
 		const result = await server.testInterface.readResource({
 			params: { uri: "backlog://init-required" },
@@ -62,9 +56,6 @@ describe("MCP Server Fallback Mode", () => {
 
 	test("should not provide task tools in fallback mode", async () => {
 		const server = await createMcpServer(tempDir, { debug: false });
-
-		// Simulate client init to unblock the readiness gate
-		server.getServer().oninitialized?.();
 
 		const tools = await server.testInterface.listTools();
 
