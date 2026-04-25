@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import MilestonesPage from "../web/components/MilestonesPage.tsx";
+import { apiClient } from "../web/lib/api.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -40,6 +41,8 @@ const baseTasks: Task[] = [
 ];
 
 let activeRoot: Root | null = null;
+const originalUpdateMilestone = apiClient.updateMilestone.bind(apiClient);
+const originalRemoveMilestone = apiClient.removeMilestone.bind(apiClient);
 
 const setupDom = () => {
 	const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost" });
@@ -75,7 +78,12 @@ const setupDom = () => {
 	}
 };
 
-const renderPage = (tasks: Task[] = baseTasks): HTMLElement => {
+const renderPage = (
+	tasks: Task[] = baseTasks,
+	options: {
+		onRefreshData?: () => Promise<void>;
+	} = {},
+): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
@@ -89,6 +97,7 @@ const renderPage = (tasks: Task[] = baseTasks): HTMLElement => {
 					milestoneEntities={milestoneEntities}
 					archivedMilestones={[]}
 					onEditTask={() => {}}
+					onRefreshData={options.onRefreshData}
 				/>
 			</MemoryRouter>,
 		);
@@ -116,6 +125,29 @@ const clickElement = (element: Element) => {
 	});
 };
 
+const setInputValue = (input: HTMLInputElement, value: string) => {
+	act(() => {
+		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+		valueSetter?.call(input, value);
+		input.dispatchEvent(new window.Event("input", { bubbles: true }));
+		input.dispatchEvent(new window.Event("change", { bubbles: true }));
+	});
+};
+
+const submitForm = async (form: HTMLFormElement) => {
+	await act(async () => {
+		form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+		await Promise.resolve();
+	});
+};
+
+const clickElementAsync = async (element: Element) => {
+	await act(async () => {
+		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		await Promise.resolve();
+	});
+};
+
 afterEach(() => {
 	if (activeRoot) {
 		act(() => {
@@ -123,6 +155,8 @@ afterEach(() => {
 		});
 		activeRoot = null;
 	}
+	apiClient.updateMilestone = originalUpdateMilestone;
+	apiClient.removeMilestone = originalRemoveMilestone;
 });
 
 describe("Web milestones page search", () => {
@@ -185,5 +219,118 @@ describe("Web milestones page search", () => {
 		expect(noMatchText).toContain("Release 1");
 		expect(noMatchText).toContain("Release 2");
 		expect(noMatchText).toContain("Unassigned tasks");
+	});
+
+	it("opens an edit modal from each milestone card", () => {
+		const container = renderPage();
+		const editButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+			button.textContent?.includes("Edit"),
+		);
+		expect(editButtons.length).toBeGreaterThanOrEqual(2);
+
+		clickElement(editButtons[0] as HTMLButtonElement);
+
+		expect(container.textContent).toContain("Edit milestone");
+		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
+		expect(input).toBeTruthy();
+		expect(input?.value).toBe("Release 2");
+	});
+
+	it("opens a remove confirmation with clear and reassign choices", () => {
+		const container = renderPage();
+		const removeButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+			button.textContent?.includes("Remove"),
+		);
+		expect(removeButtons.length).toBeGreaterThanOrEqual(2);
+
+		clickElement(removeButtons[0] as HTMLButtonElement);
+
+		const text = container.textContent ?? "";
+		expect(text).toContain("Remove milestone");
+		expect(text).toContain("Leave tasks unassigned");
+		expect(text).toContain("Reassign tasks");
+
+		const select = container.querySelector("select") as HTMLSelectElement | null;
+		expect(select).toBeTruthy();
+		expect(Array.from(select?.options ?? []).map((option) => option.value)).toContain("m-1");
+	});
+
+	it("submits milestone edits through the API and refreshes data", async () => {
+		let updateArgs: [string, string] | undefined;
+		let refreshCount = 0;
+		apiClient.updateMilestone = async (id: string, title: string) => {
+			updateArgs = [id, title];
+			return { success: true, milestone: { ...milestoneEntities[1]!, title } };
+		};
+
+		const container = renderPage(baseTasks, {
+			onRefreshData: async () => {
+				refreshCount += 1;
+			},
+		});
+		const editButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+			button.textContent?.includes("Edit"),
+		);
+		clickElement(editButtons[0] as HTMLButtonElement);
+
+		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
+		expect(input).toBeTruthy();
+		setInputValue(input as HTMLInputElement, "Release 2.1");
+		await submitForm(input?.closest("form") as HTMLFormElement);
+
+		expect(updateArgs?.[0]).toBe("m-2");
+		expect(updateArgs?.[1]).toBe("Release 2.1");
+		expect(refreshCount).toBe(1);
+	});
+
+	it("submits milestone removal with reassign options through the API", async () => {
+		let removeArgs: [
+			string,
+			{ taskHandling?: "clear" | "keep" | "reassign"; reassignTo?: string } | undefined,
+		] | undefined;
+		let refreshCount = 0;
+		apiClient.removeMilestone = async (id, options) => {
+			removeArgs = [id, options];
+			return { success: true };
+		};
+
+		const container = renderPage(baseTasks, {
+			onRefreshData: async () => {
+				refreshCount += 1;
+			},
+		});
+		const removeButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+			button.textContent?.includes("Remove"),
+		);
+		clickElement(removeButtons[0] as HTMLButtonElement);
+
+		const reassignRadio = container.querySelector("input[value='reassign']") as HTMLInputElement | null;
+		expect(reassignRadio).toBeTruthy();
+		clickElement(reassignRadio as HTMLInputElement);
+		const select = container.querySelector("select") as HTMLSelectElement | null;
+		expect(select).toBeTruthy();
+		act(() => {
+			if (select) {
+				select.value = "m-1";
+				select.dispatchEvent(new window.Event("change", { bubbles: true }));
+			}
+		});
+		const submitButton = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent === "Remove milestone",
+		);
+		expect(submitButton).toBeTruthy();
+		await clickElementAsync(submitButton as HTMLButtonElement);
+
+		expect(removeArgs?.[0]).toBe("m-2");
+		expect(removeArgs?.[1]).toEqual({ taskHandling: "reassign", reassignTo: "m-1" });
+		expect(refreshCount).toBe(1);
+	});
+
+	it("keeps milestone archive available as a separate action", () => {
+		const container = renderPage();
+		const archiveButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+			button.textContent?.includes("Archive"),
+		);
+		expect(archiveButtons.length).toBeGreaterThanOrEqual(2);
 	});
 });

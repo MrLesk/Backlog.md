@@ -376,7 +376,7 @@ function parseOldChecklistFormat(content: string, definition: ChecklistSectionDe
 	const src = content.replace(/\r\n/g, "\n");
 	const criteriaRegex = new RegExp(`${escapeForRegex(definition.sectionHeader)}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
 	const match = src.match(criteriaRegex);
-	if (!match || !match[1]) {
+	if (!match?.[1]) {
 		return [];
 	}
 	const lines = match[1].split("\n").filter((line) => line.trim());

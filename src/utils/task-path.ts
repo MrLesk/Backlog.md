@@ -91,7 +91,7 @@ function extractTaskBody(value: string, prefix: string = DEFAULT_TASK_PREFIX): s
 function extractTaskIdFromFilename(filename: string, prefix: string = DEFAULT_TASK_PREFIX): string | null {
 	const regex = buildFilenameIdRegex(prefix);
 	const match = filename.match(regex);
-	if (!match || !match[1]) return null;
+	if (!match?.[1]) return null;
 	return normalizeTaskId(`${prefix}-${match[1]}`, prefix);
 }
 
@@ -268,7 +268,7 @@ function draftIdsMatchLoosely(inputId: string, filename: string): boolean {
 function extractDraftIdFromFilename(filename: string): string | null {
 	const regex = buildFilenameIdRegex(DEFAULT_DRAFT_PREFIX);
 	const match = filename.match(regex);
-	if (!match || !match[1]) return null;
+	if (!match?.[1]) return null;
 	return normalizeDraftId(`${DEFAULT_DRAFT_PREFIX}-${match[1]}`);
 }
 

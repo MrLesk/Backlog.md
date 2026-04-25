@@ -1,7 +1,7 @@
 import { rename as moveFile } from "node:fs/promises";
+import type { Core } from "../../../core/backlog.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
-import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 import {
 	buildMilestoneMatchKeys,
@@ -212,7 +212,7 @@ function resolveMilestoneValueForReporting(
 }
 
 export class MilestoneHandlers {
-	constructor(private readonly core: McpServer) {}
+	constructor(private readonly core: Core) {}
 
 	private async listLocalTasks(): Promise<Task[]> {
 		return await this.core.queryTasks({ includeCrossBranch: false });

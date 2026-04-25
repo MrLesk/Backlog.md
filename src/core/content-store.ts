@@ -385,7 +385,7 @@ export class ContentStore {
 		const decisionsDir = this.filesystem.decisionsDir;
 		const watcher: FSWatcher = watch(decisionsDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
-			if (!file || !file.startsWith("decision-") || !file.endsWith(".md")) {
+			if (!file?.startsWith("decision-") || !file.endsWith(".md")) {
 				this.enqueue(async () => {
 					await this.refreshDecisionsFromDisk();
 				});

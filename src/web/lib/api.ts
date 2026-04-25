@@ -461,6 +461,42 @@ export class ApiClient {
 		return response.json();
 	}
 
+	async updateMilestone(
+		id: string,
+		title: string,
+	): Promise<{ success: boolean; milestone?: Milestone | null; message?: string }> {
+		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ title }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to update milestone");
+		}
+		return response.json();
+	}
+
+	async removeMilestone(
+		id: string,
+		options: { taskHandling?: "clear" | "keep" | "reassign"; reassignTo?: string } = {},
+	): Promise<{ success: boolean; message?: string }> {
+		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
+			method: "DELETE",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(options),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to remove milestone");
+		}
+		return response.json();
+	}
+
 	async archiveMilestone(id: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
 		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
 			method: "POST",

@@ -146,7 +146,7 @@ Project: ${projectName}
 	for (let taskIdx = 0; taskIdx < maxTasks; taskIdx++) {
 		const row = orderedStatuses.map((_, cIdx) => {
 			const task = columns[cIdx]?.[taskIdx];
-			if (!task || !task.id || !task.title) return "";
+			if (!task?.id || !task.title) return "";
 
 			// Check if this is a subtask
 			const isSubtask = task.parentTaskId;

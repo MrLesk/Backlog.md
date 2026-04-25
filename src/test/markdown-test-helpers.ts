@@ -100,7 +100,7 @@ export function parseSequenceCreateMarkdown(markdown: string) {
 				}
 			}
 		}
-		if (inUnsequenced && line && line.startsWith("## ") && line !== "## Unsequenced Tasks") {
+		if (inUnsequenced && line?.startsWith("## ") && line !== "## Unsequenced Tasks") {
 			inUnsequenced = false;
 		}
 	}
@@ -203,7 +203,7 @@ export function parseSequencePlanMarkdown(markdown: string) {
 		}
 
 		// Match task lines like "- **task-1** - Foundation Task (To Do)"
-		if (currentPhase && inPhaseTasks && line && line.match(/^- \*\*(.+?)\*\* - (.+?) \((.+?)\)(.*)$/)) {
+		if (currentPhase && inPhaseTasks && line?.match(/^- \*\*(.+?)\*\* - (.+?) \((.+?)\)(.*)$/)) {
 			const taskMatch = line.match(/^- \*\*(.+?)\*\* - (.+?) \((.+?)\)(.*)$/);
 			if (taskMatch) {
 				const [, id, title, status, extra] = taskMatch;
@@ -227,7 +227,7 @@ export function parseSequencePlanMarkdown(markdown: string) {
 		}
 
 		// Check for dependency lines
-		if (currentPhase && inPhaseTasks && line && line.match(/^\s+- Dependencies: (.+)$/)) {
+		if (currentPhase && inPhaseTasks && line?.match(/^\s+- Dependencies: (.+)$/)) {
 			const depMatch = line.match(/^\s+- Dependencies: (.+)$/);
 			if (depMatch?.[1] && currentPhase.tasks.length > 0) {
 				const lastTask = currentPhase.tasks[currentPhase.tasks.length - 1];
@@ -270,7 +270,7 @@ export function parseSequencePlanMarkdown(markdown: string) {
 				unsequenced.push({ id, title, status, reason });
 			}
 		}
-		if (inUnsequenced && line && line.startsWith("## ") && line !== "## Unsequenced Tasks") {
+		if (inUnsequenced && line?.startsWith("## ") && line !== "## Unsequenced Tasks") {
 			inUnsequenced = false;
 		}
 	}

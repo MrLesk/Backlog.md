@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Fuse from "fuse.js";
 import { apiClient } from "../lib/api";
-import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus } from "../utils/milestones";
+import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, milestoneKey } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
@@ -11,6 +11,8 @@ interface MilestoneSearchEntry {
 	id: string;
 	title: string;
 }
+
+type RemoveTaskHandling = "clear" | "reassign";
 
 const rebuildFilteredBucket = (
 	bucket: MilestoneBucket,
@@ -67,6 +69,14 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [showAllUnassigned, setShowAllUnassigned] = useState(false);
 	const [showCompleted, setShowCompleted] = useState(false);
 	const [archivingMilestoneKey, setArchivingMilestoneKey] = useState<string | null>(null);
+	const [savingMilestoneKey, setSavingMilestoneKey] = useState<string | null>(null);
+	const [removingMilestoneKey, setRemovingMilestoneKey] = useState<string | null>(null);
+	const [editingBucket, setEditingBucket] = useState<MilestoneBucket | null>(null);
+	const [editMilestoneName, setEditMilestoneName] = useState("");
+	const [removingBucket, setRemovingBucket] = useState<MilestoneBucket | null>(null);
+	const [removeTaskHandling, setRemoveTaskHandling] = useState<RemoveTaskHandling>("clear");
+	const [removeReassignTo, setRemoveReassignTo] = useState("");
+	const [modalError, setModalError] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState("");
 
 	const archivedMilestoneIds = useMemo(
@@ -154,6 +164,12 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			completedMilestones: sortedCompleted,
 		};
 	}, [visibleBuckets]);
+	const removeReassignOptions = useMemo(() => {
+		const currentMilestoneId = removingBucket?.milestone;
+		return milestoneEntities.filter(
+			(milestone) => !currentMilestoneId || milestoneKey(milestone.id) !== milestoneKey(currentMilestoneId),
+		);
+	}, [milestoneEntities, removingBucket]);
 
 	// Drag and drop handlers
 	const handleDragStart = useCallback((e: React.DragEvent, task: Task) => {
@@ -279,6 +295,135 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		[onRefreshData],
 	);
 
+	const findDuplicateMilestone = (title: string, currentMilestoneId?: string): Milestone | undefined => {
+		const titleKey = milestoneKey(title);
+		if (!titleKey) return undefined;
+		return milestoneEntities.find((milestone) => {
+			if (currentMilestoneId && milestoneKey(milestone.id) === milestoneKey(currentMilestoneId)) {
+				return false;
+			}
+			return milestoneKey(milestone.title) === titleKey || milestoneKey(milestone.id) === titleKey;
+		});
+	};
+
+	const openEditModal = (bucket: MilestoneBucket) => {
+		if (!bucket.milestone) return;
+		setEditingBucket(bucket);
+		setEditMilestoneName(bucket.label || bucket.milestone);
+		setModalError(null);
+		setError(null);
+		setSuccess(null);
+	};
+
+	const closeEditModal = () => {
+		setEditingBucket(null);
+		setEditMilestoneName("");
+		setModalError(null);
+	};
+
+	const handleEditMilestoneNameChange = (value: string) => {
+		setEditMilestoneName(value);
+		if (modalError) setModalError(null);
+		if (error) setError(null);
+		if (success) setSuccess(null);
+	};
+
+	const handleUpdateMilestone = async (event?: React.FormEvent<HTMLFormElement>) => {
+		event?.preventDefault();
+		const bucket = editingBucket;
+		if (!bucket?.milestone) return;
+
+		const value = editMilestoneName.trim();
+		if (!value) {
+			setModalError("Milestone name cannot be empty.");
+			return;
+		}
+
+		const duplicate = findDuplicateMilestone(value, bucket.milestone);
+		if (duplicate) {
+			setModalError(`Milestone "${duplicate.title}" already exists.`);
+			return;
+		}
+
+		const previousLabel = bucket.label || bucket.milestone;
+		setSavingMilestoneKey(bucket.key);
+		setModalError(null);
+		setError(null);
+		setSuccess(null);
+		try {
+			await apiClient.updateMilestone(bucket.milestone, value);
+			closeEditModal();
+			setSuccess(`Renamed milestone "${previousLabel}" to "${value}"`);
+			if (onRefreshData) {
+				await onRefreshData();
+			}
+			setTimeout(() => setSuccess(null), 3000);
+		} catch (err) {
+			console.error("Failed to update milestone:", err);
+			setModalError(err instanceof Error ? err.message : "Failed to update milestone.");
+		} finally {
+			setSavingMilestoneKey(null);
+		}
+	};
+
+	const openRemoveModal = (bucket: MilestoneBucket) => {
+		if (!bucket.milestone) return;
+		const fallbackMilestone = milestoneEntities.find(
+			(milestone) => milestoneKey(milestone.id) !== milestoneKey(bucket.milestone),
+		);
+		setRemovingBucket(bucket);
+		setRemoveTaskHandling("clear");
+		setRemoveReassignTo(fallbackMilestone?.id ?? "");
+		setModalError(null);
+		setError(null);
+		setSuccess(null);
+	};
+
+	const closeRemoveModal = () => {
+		setRemovingBucket(null);
+		setRemoveTaskHandling("clear");
+		setRemoveReassignTo("");
+		setModalError(null);
+	};
+
+	const handleRemoveMilestone = async () => {
+		const bucket = removingBucket;
+		if (!bucket?.milestone) return;
+		const selectedTaskHandling = removeTaskHandling;
+		const selectedReassignTo = removeReassignTo.trim();
+		if (selectedTaskHandling === "reassign" && !selectedReassignTo) {
+			setModalError("Choose a milestone to reassign tasks to.");
+			return;
+		}
+
+		const label = bucket.label || bucket.milestone;
+		setRemovingMilestoneKey(bucket.key);
+		setModalError(null);
+		setError(null);
+		setSuccess(null);
+		try {
+			await apiClient.removeMilestone(bucket.milestone, {
+				taskHandling: selectedTaskHandling,
+				reassignTo: selectedTaskHandling === "reassign" ? selectedReassignTo : undefined,
+			});
+			closeRemoveModal();
+			setSuccess(
+				selectedTaskHandling === "reassign"
+					? `Removed milestone "${label}" and reassigned its tasks`
+					: `Removed milestone "${label}" and left its tasks unassigned`,
+			);
+			if (onRefreshData) {
+				await onRefreshData();
+			}
+			setTimeout(() => setSuccess(null), 3000);
+		} catch (err) {
+			console.error("Failed to remove milestone:", err);
+			setModalError(err instanceof Error ? err.message : "Failed to remove milestone.");
+		} finally {
+			setRemovingMilestoneKey(null);
+		}
+	};
+
 	const getStatusBadgeClass = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
 		if (normalized.includes("done") || normalized.includes("complete")) {
@@ -342,6 +487,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const isDropTarget = dropTargetKey === bucket.key;
 		const isDragging = draggedTask !== null;
 		const isArchiving = archivingMilestoneKey === bucket.key;
+		const isSavingMilestone = savingMilestoneKey === bucket.key;
+		const isRemoving = removingMilestoneKey === bucket.key;
 
 		return (
 			<div
@@ -425,9 +572,31 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							</Link>
 							<button
 								type="button"
-								onClick={() => handleArchiveMilestone(bucket)}
-								disabled={isArchiving}
+								onClick={() => openEditModal(bucket)}
+								disabled={isArchiving || isSavingMilestone || isRemoving}
+								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+								</svg>
+								{isSavingMilestone ? "Saving..." : "Edit"}
+							</button>
+							<button
+								type="button"
+								onClick={() => openRemoveModal(bucket)}
+								disabled={isArchiving || isSavingMilestone || isRemoving}
 								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-60"
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0H7m3 0V5a2 2 0 012-2h0a2 2 0 012 2v2" />
+								</svg>
+								{isRemoving ? "Removing..." : "Remove"}
+							</button>
+							<button
+								type="button"
+								onClick={() => handleArchiveMilestone(bucket)}
+								disabled={isArchiving || isSavingMilestone || isRemoving}
+								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-60"
 							>
 								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
@@ -589,6 +758,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const hasSearchMatches = visibleBuckets.some((bucket) => bucket.total > 0);
 	const showSearchNoMatchHint = isSearchActive && !hasSearchMatches;
 	const noMilestones = !isSearchActive && activeMilestones.length === 0 && completedMilestones.length === 0;
+	const canReassignRemovedMilestone = removeReassignOptions.length > 0;
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
@@ -757,6 +927,128 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						</button>
 					</div>
 				</form>
+			</Modal>
+
+			{/* Edit modal */}
+			<Modal isOpen={editingBucket !== null} onClose={closeEditModal} title="Edit milestone" maxWidthClass="max-w-md">
+				<form onSubmit={handleUpdateMilestone} className="space-y-4">
+					<div className="space-y-2">
+						<label htmlFor="edit-milestone-name" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+							Milestone name
+						</label>
+						<input
+							id="edit-milestone-name"
+							type="text"
+							value={editMilestoneName}
+							onInput={(event) => handleEditMilestoneNameChange((event.target as HTMLInputElement).value)}
+							autoFocus
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+						/>
+						<p className="text-xs text-gray-500 dark:text-gray-400">
+							Renaming updates local tasks that reference this milestone.
+						</p>
+						{modalError && <p className="text-xs text-red-600 dark:text-red-400">{modalError}</p>}
+					</div>
+					<div className="flex justify-end gap-2">
+						<button
+							type="button"
+							onClick={closeEditModal}
+							className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							disabled={savingMilestoneKey !== null || !editMilestoneName.trim()}
+							className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors"
+						>
+							{savingMilestoneKey ? "Saving..." : "Save"}
+						</button>
+					</div>
+				</form>
+			</Modal>
+
+			{/* Remove modal */}
+			<Modal isOpen={removingBucket !== null} onClose={closeRemoveModal} title="Remove milestone" maxWidthClass="max-w-md">
+				<div className="space-y-4">
+					<p className="text-sm text-gray-600 dark:text-gray-300">
+						Remove milestone &quot;{removingBucket?.label ?? ""}&quot; and choose what happens to its tasks.
+					</p>
+					<div className="space-y-3">
+						<label className="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 dark:border-gray-700 px-3 py-3 text-sm text-gray-700 dark:text-gray-200">
+							<input
+								type="radio"
+								name="remove-milestone-task-handling"
+								value="clear"
+								checked={removeTaskHandling === "clear"}
+								onChange={() => {
+									setRemoveTaskHandling("clear");
+									setModalError(null);
+								}}
+								className="mt-0.5"
+							/>
+							<span>
+								<span className="block font-medium text-gray-900 dark:text-gray-100">Leave tasks unassigned</span>
+								<span className="block text-xs text-gray-500 dark:text-gray-400">
+									Clear this milestone from matching local tasks.
+								</span>
+							</span>
+						</label>
+						<label className="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 dark:border-gray-700 px-3 py-3 text-sm text-gray-700 dark:text-gray-200">
+							<input
+								type="radio"
+								name="remove-milestone-task-handling"
+								value="reassign"
+								checked={removeTaskHandling === "reassign"}
+								disabled={!canReassignRemovedMilestone}
+								onChange={() => {
+									setRemoveTaskHandling("reassign");
+									setModalError(null);
+								}}
+								className="mt-0.5"
+							/>
+							<span className="flex-1">
+								<span className="block font-medium text-gray-900 dark:text-gray-100">Reassign tasks</span>
+								<span className="block text-xs text-gray-500 dark:text-gray-400">
+									Move matching local tasks to another milestone.
+								</span>
+								<select
+									value={removeReassignTo}
+									onChange={(event) => {
+										setRemoveReassignTo(event.target.value);
+										setModalError(null);
+									}}
+									disabled={removeTaskHandling !== "reassign" || !canReassignRemovedMilestone}
+									className="mt-2 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 disabled:opacity-60"
+								>
+									{removeReassignOptions.map((milestone) => (
+										<option key={milestone.id} value={milestone.id}>
+											{milestone.title}
+										</option>
+									))}
+								</select>
+							</span>
+						</label>
+					</div>
+					{modalError && <p className="text-xs text-red-600 dark:text-red-400">{modalError}</p>}
+					<div className="flex justify-end gap-2">
+						<button
+							type="button"
+							onClick={closeRemoveModal}
+							className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							onClick={handleRemoveMilestone}
+							disabled={removingMilestoneKey !== null || (removeTaskHandling === "reassign" && !removeReassignTo)}
+							className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition-colors"
+						>
+							{removingMilestoneKey ? "Removing..." : "Remove milestone"}
+						</button>
+					</div>
+				</div>
 			</Modal>
 		</div>
 	);
