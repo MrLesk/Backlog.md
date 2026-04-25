@@ -45,8 +45,9 @@ export async function ensureMermaid(): Promise<MermaidModule> {
 
 	if (mermaidModule) return mermaidModule;
 
-	// Dynamic import so client bundles can tree-shake and server doesn't need it
-	mermaidModule = (await import("mermaid")) as unknown as MermaidModule;
+	// Import Mermaid's prebuilt browser bundle so the single-file CLI build
+	// keeps Mermaid embedded without traversing the parser dependency graph.
+	mermaidModule = (await import("mermaid/dist/mermaid.esm.mjs")) as unknown as MermaidModule;
 	return mermaidModule;
 }
 
