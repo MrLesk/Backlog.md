@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-25 21:01'
-updated_date: '2026-04-25 21:36'
+updated_date: '2026-04-25 22:02'
 labels:
   - docs
   - core
@@ -72,6 +72,8 @@ Keep the public surface explicit: external agents may rely on CLI help, MCP tool
 2026-04-25: Updated public guidance/resources for CLI, MCP, agent instructions, and docs readme so agents can rely on shipped CLI/MCP/Web behavior instead of direct file writes or source-only conventions.
 
 2026-04-25: Validation: `bunx tsc --noEmit` passed; `bun run check .` passed; scoped docs/interface tests passed with 150 pass / 0 fail; `src/test/remote-id-conflict.test.ts` passes after aligning its stale lowercase expectation with normalized uppercase task output; `src/test/server-search-endpoint.test.ts` passes in isolation. A full `bun test` rerun hit order/load-sensitive server-search hook timeouts/socket failures after the remote-id expectation was fixed, while the same server-search file passed separately.
+
+2026-04-25: CI follow-up for PR #610: macOS `lint-and-unit-test` failed in `ContentStore > removes decisions when files are deleted` because the file watcher deletion path only treated missing files as removals for `rename` events. The fix broadens cached removal handling to any watcher event where the watched path no longer exists, keeping task/document/decision watcher behavior consistent.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -89,6 +91,8 @@ Validation:
 - `bun test src/test/remote-id-conflict.test.ts` passed after correcting the stale task-ID casing expectation.
 - `bun test src/test/server-search-endpoint.test.ts` passed in isolation.
 - Full `bun test` was attempted after the casing fix; it no longer fails at `remote-id-conflict`, but one long-run attempt hit server-search hook timeouts/socket failures that passed when isolated.
+
+CI follow-up: Updated content-store watcher deletion handling so missing watched task/document/decision files remove cached entries regardless of whether the platform reports the event as `rename` or `change`. Verified with `bun test src/test/content-store.test.ts`, `bun test src/test/server-search-endpoint.test.ts`, `bunx tsc --noEmit`, and `bun run check .`.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

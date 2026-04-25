@@ -326,7 +326,7 @@ export class ContentStore {
 				const fullPath = join(tasksDir, file);
 				const exists = await Bun.file(fullPath).exists();
 
-				if (!exists && eventType === "rename") {
+				if (!exists) {
 					if (this.tasks.delete(normalizedTaskId)) {
 						this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 						this.notify("tasks");
@@ -399,7 +399,7 @@ export class ContentStore {
 				const fullPath = join(decisionsDir, file);
 				const exists = await Bun.file(fullPath).exists();
 
-				if (!exists && eventType === "rename") {
+				if (!exists) {
 					if (this.decisions.delete(idPart)) {
 						this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 						this.notify("decisions");
@@ -477,7 +477,7 @@ export class ContentStore {
 
 			const exists = await Bun.file(absolutePath).exists();
 
-			if (!exists && eventType === "rename") {
+			if (!exists) {
 				if (this.documents.delete(idPart)) {
 					this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 					this.notify("documents");
