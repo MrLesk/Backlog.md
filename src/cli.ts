@@ -32,6 +32,7 @@ import {
 	type BacklogConfig,
 	type Decision,
 	type DecisionSearchResult,
+	DOCUMENT_TYPE_VALUES,
 	type Document as DocType,
 	type DocumentSearchResult,
 	isLocalEditableTask,
@@ -2990,7 +2991,7 @@ const docCmd = program.command("doc");
 docCmd
 	.command("create <title>")
 	.option("-p, --path <path>")
-	.option("-t, --type <type>")
+	.option("-t, --type <type>", `document type (${DOCUMENT_TYPE_VALUES.join(", ")})`)
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-25 21:01'
-updated_date: '2026-04-25 22:47'
+updated_date: '2026-04-25 22:53'
 labels:
   - docs
   - core
@@ -88,6 +88,10 @@ Review follow-up: PR #610 has five unresolved Codex review threads covering docu
 Review follow-up complete: addressed all five unresolved Codex review threads on PR #610. Document subpath normalization now trims each path segment before traversal checks; server document create/update handlers reject invalid type/tags/path metadata instead of coercing malformed values; unexpected operational failures from core document create/update now remain HTTP 500 while explicit validation errors stay 400 and missing documents stay 404. Validation passed with focused document interface tests, typecheck, Biome, and the full local suite using the CI timeout.
 
 Validation correction for review follow-up: after the last server metadata test addition, focused server document tests, typecheck, Biome, the document interface suite, and `src/test/server-search-endpoint.test.ts` in isolation pass. A full-suite rerun hit two pre-existing/order-sensitive `server-search-endpoint` hook timeouts; the same file passed in isolation immediately afterward.
+
+Additional review follow-up: after pushing the first review-fix commit, GitHub reported a newer unresolved Codex thread on `src/mcp/tools/documents/schemas.ts` asking to constrain MCP document `type` values to the supported enum. Reopened the task to address that remaining MCP schema parity issue.
+
+Addressed the remaining active Codex review thread by sharing the document type enum across types/core/server/MCP schema, constraining MCP `document_create`/`document_update` type inputs, and adding MCP/core regression tests. Verified with focused MCP/core tests, TypeScript, Biome, and the broader document suite.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -117,6 +121,8 @@ Stabilized the server asset tests by switching readiness checks from `/` to boun
 Review follow-up: resolved Codex feedback by trimming document path segments, validating server document metadata payloads, and preserving HTTP 500 for unexpected document create/update failures. Verified with `bun test src/test/filesystem.test.ts src/test/core.test.ts src/test/cli.test.ts src/test/mcp-documents.test.ts src/test/server-documents-endpoint.test.ts --timeout=15000`, `bunx tsc --noEmit`, `bun run check .`, and full `bun test --timeout=10000` (1159 pass, 2 skip, 0 fail).
 
 Validation note: after the final metadata test addition, focused document tests, typecheck, Biome, and the document interface suite passed. A full-suite rerun hit the known `server-search-endpoint` hook timeout flake; `bun test src/test/server-search-endpoint.test.ts --timeout=15000` passed in isolation immediately afterward.
+
+Additional review follow-up: constrained `document_create` and `document_update` MCP schemas to the shared supported document type enum, exposed the same enum in CLI help, and added core/runtime validation so invalid document types are not persisted through domain methods. Validation passed with `bun test src/test/mcp-documents.test.ts src/test/core.test.ts --timeout=15000`, `bunx tsc --noEmit`, `bun run check .`, and `bun test src/test/filesystem.test.ts src/test/core.test.ts src/test/cli.test.ts src/test/mcp-documents.test.ts src/test/server-documents-endpoint.test.ts --timeout=15000`.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

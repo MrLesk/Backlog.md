@@ -6,8 +6,10 @@ import { GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
 	type Decision,
+	DOCUMENT_TYPE_VALUES,
 	type Document,
 	type DocumentCreateInput,
+	type DocumentType,
 	type DocumentUpdateInput,
 	EntityType,
 	isLocalEditableTask,
@@ -141,6 +143,16 @@ function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, Bra
 		if (!latest) return true;
 		return latest.type === "task";
 	});
+}
+
+function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
+	if (type === undefined) {
+		return undefined;
+	}
+	if (typeof type === "string" && (DOCUMENT_TYPE_VALUES as readonly string[]).includes(type)) {
+		return type as DocumentType;
+	}
+	throw new Error(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
 }
 
 /**
@@ -2349,12 +2361,13 @@ export class Core {
 
 		const subPath = normalizeDocumentSubPath(input.path);
 		const tags = normalizeStringList(input.tags);
+		const type = normalizeDocumentTypeInput(input.type) ?? "other";
 		const document = await this.withCreateLock(async () => {
 			const id = normalizeDocumentId(await generateNextDocId(this));
 			const document: Document = {
 				id,
 				title,
-				type: input.type ?? "other",
+				type,
 				createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 				rawContent: input.content ?? "",
 				...(tags && tags.length > 0 && { tags }),
@@ -2379,6 +2392,7 @@ export class Core {
 		}
 
 		const tags = input.tags !== undefined ? normalizeStringList(input.tags) : existingDoc.tags;
+		const type = normalizeDocumentTypeInput(input.type) ?? existingDoc.type;
 		const subPath =
 			input.path === undefined
 				? getDocumentSubPathFromRelativePath(existingDoc.path)
@@ -2387,7 +2401,7 @@ export class Core {
 			...existingDoc,
 			id: normalizeDocumentId(existingDoc.id),
 			title: normalizedTitle ?? existingDoc.title,
-			type: input.type ?? existingDoc.type,
+			type,
 			rawContent: input.content,
 			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
 			tags: tags && tags.length > 0 ? tags : undefined,

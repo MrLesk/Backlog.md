@@ -9,14 +9,21 @@ import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
-import type { Document, SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
+import {
+	DOCUMENT_TYPE_VALUES,
+	type Document,
+	type SearchPriorityFilter,
+	type SearchResultType,
+	type Task,
+	type TaskUpdateInput,
+} from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
 const DEFAULT_PREFIX = "task-";
-const DOCUMENT_TYPES = new Set<Document["type"]>(["readme", "guide", "specification", "other"]);
+const DOCUMENT_TYPES = new Set<Document["type"]>(DOCUMENT_TYPE_VALUES);
 
 class DocumentPayloadValidationError extends Error {
 	constructor(message: string) {
@@ -33,7 +40,7 @@ function parseDocumentType(value: unknown): Document["type"] | undefined {
 		throw new DocumentPayloadValidationError("Document type must be a string.");
 	}
 	if (!DOCUMENT_TYPES.has(value as Document["type"])) {
-		throw new DocumentPayloadValidationError("Document type must be one of: readme, guide, specification, other.");
+		throw new DocumentPayloadValidationError(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
 	}
 	return value as Document["type"];
 }
@@ -74,6 +81,7 @@ function parseUpdateDocumentPath(value: unknown): string | null | undefined {
 function isDocumentValidationError(error: Error): boolean {
 	return (
 		error instanceof DocumentPayloadValidationError ||
+		error.message.startsWith("Document type ") ||
 		error.message.startsWith("Document path ") ||
 		error.message === "Title is required to create a document." ||
 		error.message === "Document title cannot be empty."

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
+import type { JsonSchema } from "../mcp/validation/validators.ts";
+import { DOCUMENT_TYPE_VALUES } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 // Helper to extract text from MCP content (handles union types)
@@ -74,6 +76,62 @@ describe("MCP document tools", () => {
 		expect(listText).toContain("doc-1 - Engineering Guidelines");
 		expect(listText).toContain("path: guides/doc-1 - Engineering-Guidelines.md");
 		expect(listText).toContain("tags: engineering");
+	});
+
+	it("exposes supported document type enums", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+
+		const createSchema = toolByName.get("document_create")?.inputSchema as JsonSchema | undefined;
+		const updateSchema = toolByName.get("document_update")?.inputSchema as JsonSchema | undefined;
+
+		expect(createSchema?.properties?.type?.enum).toEqual([...DOCUMENT_TYPE_VALUES]);
+		expect(updateSchema?.properties?.type?.enum).toEqual([...DOCUMENT_TYPE_VALUES]);
+	});
+
+	it("rejects unsupported document types", async () => {
+		const invalidCreate = await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_create",
+				arguments: {
+					title: "Invalid Type",
+					content: "Content",
+					type: "unexpected",
+				},
+			},
+		});
+
+		expect(invalidCreate.isError).toBe(true);
+		expect(getText(invalidCreate.content)).toContain(
+			"Field 'type' must be one of: readme, guide, specification, other",
+		);
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_create",
+				arguments: {
+					title: "Valid Type",
+					content: "Content",
+					type: "guide",
+				},
+			},
+		});
+
+		const invalidUpdate = await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_update",
+				arguments: {
+					id: "doc-1",
+					content: "Updated",
+					type: "unexpected",
+				},
+			},
+		});
+
+		expect(invalidUpdate.isError).toBe(true);
+		expect(getText(invalidUpdate.content)).toContain(
+			"Field 'type' must be one of: readme, guide, specification, other",
+		);
 	});
 
 	it("filters documents using substring search", async () => {

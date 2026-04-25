@@ -438,6 +438,30 @@ describe("Core", () => {
 			expect(updated.path).toBe("guides/doc-1 - Nested-Updated.md");
 		});
 
+		it("rejects unsupported document types in core input methods", async () => {
+			await expect(
+				core.createDocumentFromInput({
+					title: "Invalid",
+					content: "Content",
+					type: "unexpected",
+				} as unknown as Parameters<typeof core.createDocumentFromInput>[0]),
+			).rejects.toThrow("Document type must be one of");
+
+			const created = await core.createDocumentFromInput({
+				title: "Valid",
+				content: "Content",
+				type: "guide",
+			});
+
+			await expect(
+				core.updateDocumentFromInput({
+					id: created.id,
+					content: "Updated",
+					type: "unexpected",
+				} as unknown as Parameters<typeof core.updateDocumentFromInput>[0]),
+			).rejects.toThrow("Document type must be one of");
+		});
+
 		it("shows a git rename when the document title changes", async () => {
 			await core.createDocument(baseDocument, true);
 
