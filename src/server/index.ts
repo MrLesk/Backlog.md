@@ -7,6 +7,8 @@ import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
+import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
+import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
@@ -373,6 +375,10 @@ export class BacklogServer {
 					},
 					"/api/milestones/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) =>
+							await this.handleUpdateMilestone(req, req.params.id),
+						DELETE: async (req: Request & { params: { id: string } }) =>
+							await this.handleRemoveMilestone(req, req.params.id),
 					},
 					"/api/milestones/:id/archive": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
@@ -1225,6 +1231,52 @@ export class BacklogServer {
 	}
 
 	// Milestone handlers
+	private async readOptionalJsonBody(req: Request): Promise<Record<string, unknown>> {
+		const text = await req.text();
+		if (!text.trim()) {
+			return {};
+		}
+
+		let body: unknown;
+		try {
+			body = JSON.parse(text);
+		} catch {
+			throw new BacklogToolError("Request body must be valid JSON.", "VALIDATION_ERROR");
+		}
+
+		if (!body || typeof body !== "object" || Array.isArray(body)) {
+			throw new BacklogToolError("Request body must be a JSON object.", "VALIDATION_ERROR");
+		}
+
+		return body as Record<string, unknown>;
+	}
+
+	private getMilestoneMutationMessage(result: { content: Array<{ type: string; text?: string }> }): string {
+		return result.content
+			.filter((item) => item.type === "text" && typeof item.text === "string")
+			.map((item) => item.text)
+			.join("\n");
+	}
+
+	private milestoneMutationErrorResponse(error: unknown, context: string): Response {
+		const status =
+			error instanceof BacklogToolError
+				? error.code === "NOT_FOUND"
+					? 404
+					: error.code === "VALIDATION_ERROR"
+						? 400
+						: 500
+				: 500;
+		const message = error instanceof Error ? error.message : context;
+		if (status === 500) {
+			console.error(context, error);
+		}
+		return Response.json(
+			{ error: message, code: error instanceof BacklogToolError ? error.code : "INTERNAL_ERROR" },
+			{ status },
+		);
+	}
+
 	private async handleListMilestones(): Promise<Response> {
 		try {
 			const milestones = await this.core.filesystem.listMilestones();
@@ -1309,6 +1361,67 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error creating milestone:", error);
 			return Response.json({ error: "Failed to create milestone" }, { status: 500 });
+		}
+	}
+
+	private async handleUpdateMilestone(req: Request, milestoneId: string): Promise<Response> {
+		try {
+			const body = await this.readOptionalJsonBody(req);
+			const title = typeof body.title === "string" ? body.title.trim() : "";
+			const updateTasks = typeof body.updateTasks === "boolean" ? body.updateTasks : true;
+
+			if (!title) {
+				return Response.json({ error: "Milestone title is required" }, { status: 400 });
+			}
+
+			const sourceMilestone = await this.core.filesystem.loadMilestone(milestoneId);
+			const result = await new MilestoneHandlers(this.core).renameMilestone({
+				from: milestoneId,
+				to: title,
+				updateTasks,
+			});
+			const milestone =
+				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??
+				(await this.core.filesystem.loadMilestone(title));
+			this.broadcastTasksUpdated();
+			return Response.json({
+				success: true,
+				milestone: milestone ?? null,
+				message: this.getMilestoneMutationMessage(result),
+			});
+		} catch (error) {
+			return this.milestoneMutationErrorResponse(error, "Error updating milestone");
+		}
+	}
+
+	private async handleRemoveMilestone(req: Request, milestoneId: string): Promise<Response> {
+		try {
+			const body = await this.readOptionalJsonBody(req);
+			const rawTaskHandling = body.taskHandling;
+			const taskHandling =
+				rawTaskHandling === undefined
+					? "clear"
+					: rawTaskHandling === "clear" || rawTaskHandling === "keep" || rawTaskHandling === "reassign"
+						? rawTaskHandling
+						: null;
+			const reassignTo = typeof body.reassignTo === "string" ? body.reassignTo : undefined;
+
+			if (!taskHandling) {
+				return Response.json({ error: "taskHandling must be clear, keep, or reassign" }, { status: 400 });
+			}
+
+			const result = await new MilestoneHandlers(this.core).removeMilestone({
+				name: milestoneId,
+				taskHandling,
+				reassignTo,
+			});
+			this.broadcastTasksUpdated();
+			return Response.json({
+				success: true,
+				message: this.getMilestoneMutationMessage(result),
+			});
+		} catch (error) {
+			return this.milestoneMutationErrorResponse(error, "Error removing milestone");
 		}
 	}
 

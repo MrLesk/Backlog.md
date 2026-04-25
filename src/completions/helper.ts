@@ -57,7 +57,7 @@ export function parseCompletionContext(line: string, point: number): CompletionC
 		} else {
 			// Count positional arguments
 			const prevWord = completedWords[i - 1];
-			if (!prevWord || !prevWord.startsWith("-")) {
+			if (!prevWord?.startsWith("-")) {
 				argPosition++;
 			}
 		}

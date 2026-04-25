@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
-import type { Decision, Document, Task } from "../types/index.ts";
+import type { Decision, Document, Milestone, Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -422,6 +422,175 @@ Milestone: m-0
 		expect(numericAliasConflict.status).toBe(400);
 	});
 
+	it("renames milestones via the Web API and keeps tasks on the canonical milestone ID", async () => {
+		const sourceCreate = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Release Source" }),
+		});
+		expect(sourceCreate.status).toBe(201);
+		const source = (await sourceCreate.json()) as Milestone;
+
+		const targetCreate = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Release Target" }),
+		});
+		expect(targetCreate.status).toBe(201);
+		const target = (await targetCreate.json()) as Milestone;
+
+		const taskCreate = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Rename milestone task",
+				status: "To Do",
+				milestone: source.title,
+			}),
+		});
+		expect(taskCreate.status).toBe(201);
+		const task = (await taskCreate.json()) as Task;
+		expect(task.milestone).toBe(source.id);
+
+		const renameResponse = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Release Source Prime" }),
+		});
+		expect(renameResponse.status).toBe(200);
+		const renamed = (await renameResponse.json()) as { milestone?: Milestone | null; message?: string };
+		expect(renamed.milestone?.id).toBe(source.id);
+		expect(renamed.milestone?.title).toBe("Release Source Prime");
+		expect(renamed.message).toContain("Renamed milestone");
+
+		const fetchedTask = await fetchJson<Task>(`/api/task/${task.id}`);
+		expect(fetchedTask.milestone).toBe(source.id);
+
+		const titleAliasRenameResponse = await fetch(
+			`http://127.0.0.1:${serverPort}/api/milestones/${encodeURIComponent("Release Source Prime")}`,
+			{
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Release Source Final" }),
+			},
+		);
+		expect(titleAliasRenameResponse.status).toBe(200);
+		const titleAliasRenamed = (await titleAliasRenameResponse.json()) as { milestone?: Milestone | null };
+		expect(titleAliasRenamed.milestone?.id).toBe(source.id);
+		expect(titleAliasRenamed.milestone?.title).toBe("Release Source Final");
+
+		const duplicateRename = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: target.id }),
+		});
+		expect(duplicateRename.status).toBe(400);
+	});
+
+	it("removes milestones via the Web API and clears or reassigns matching tasks", async () => {
+		const createMilestone = async (title: string): Promise<Milestone> => {
+			const response = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title }),
+			});
+			expect(response.status).toBe(201);
+			return (await response.json()) as Milestone;
+		};
+		const createTaskWithMilestone = async (title: string, milestone: string): Promise<Task> => {
+			const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title, status: "To Do", milestone }),
+			});
+			expect(response.status).toBe(201);
+			return (await response.json()) as Task;
+		};
+
+		const clearSource = await createMilestone("Clear Source");
+		const clearTask = await createTaskWithMilestone("Clear milestone task", clearSource.id);
+		const clearResponse = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${clearSource.id}`, {
+			method: "DELETE",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ taskHandling: "clear" }),
+		});
+		expect(clearResponse.status).toBe(200);
+		const clearedTask = await fetchJson<Task>(`/api/task/${clearTask.id}`);
+		expect(clearedTask.milestone).toBeUndefined();
+
+		const reassignSource = await createMilestone("Reassign Source");
+		const reassignTarget = await createMilestone("Reassign Target");
+		const reassignTask = await createTaskWithMilestone("Reassign milestone task", reassignSource.id);
+		const reassignResponse = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${reassignSource.id}`, {
+			method: "DELETE",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ taskHandling: "reassign", reassignTo: reassignTarget.id }),
+		});
+		expect(reassignResponse.status).toBe(200);
+		const reassignedTask = await fetchJson<Task>(`/api/task/${reassignTask.id}`);
+		expect(reassignedTask.milestone).toBe(reassignTarget.id);
+
+		const removedMilestone = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${reassignSource.id}`);
+		expect(removedMilestone.status).toBe(404);
+	});
+
+	it("rejects malformed and non-object milestone DELETE bodies without changing tasks", async () => {
+		const source = await createMilestoneViaApi("Invalid Delete Source");
+		const task = await createTaskWithMilestoneViaApi("Invalid delete task", source.id);
+
+		const malformedResponse = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`, {
+			method: "DELETE",
+			headers: { "Content-Type": "application/json" },
+			body: "{",
+		});
+		expect(malformedResponse.status).toBe(400);
+		const malformedPayload = (await malformedResponse.json()) as { error?: string; code?: string };
+		expect(malformedPayload.code).toBe("VALIDATION_ERROR");
+		expect(malformedPayload.error).toContain("valid JSON");
+
+		const afterMalformedMilestone = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`);
+		expect(afterMalformedMilestone.status).toBe(200);
+		const afterMalformedTask = await fetchJson<Task>(`/api/task/${task.id}`);
+		expect(afterMalformedTask.milestone).toBe(source.id);
+
+		const arrayResponse = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`, {
+			method: "DELETE",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify([]),
+		});
+		expect(arrayResponse.status).toBe(400);
+		const arrayPayload = (await arrayResponse.json()) as { error?: string; code?: string };
+		expect(arrayPayload.code).toBe("VALIDATION_ERROR");
+		expect(arrayPayload.error).toContain("JSON object");
+
+		const afterArrayMilestone = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`);
+		expect(afterArrayMilestone.status).toBe(200);
+		const afterArrayTask = await fetchJson<Task>(`/api/task/${task.id}`);
+		expect(afterArrayTask.milestone).toBe(source.id);
+	});
+
+	it("returns not found for missing milestone mutation targets", async () => {
+		const renameMissing = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/m-999`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Missing Rename Target" }),
+		});
+		expect(renameMissing.status).toBe(404);
+		const renamePayload = (await renameMissing.json()) as { error?: string; code?: string };
+		expect(renamePayload.code).toBe("NOT_FOUND");
+		expect(renamePayload.error).toContain("Milestone not found");
+
+		const removeMissing = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/m-999`, {
+			method: "DELETE",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ taskHandling: "clear" }),
+		});
+		expect(removeMissing.status).toBe(404);
+		const removePayload = (await removeMissing.json()) as { error?: string; code?: string };
+		expect(removePayload.code).toBe("NOT_FOUND");
+		expect(removePayload.error).toContain("Milestone not found");
+	});
+
 	it("rebuilds the Fuse index when markdown content changes", async () => {
 		await filesystem.saveDocument({
 			...baseDoc,
@@ -448,4 +617,24 @@ async function fetchJson<T>(path: string): Promise<T> {
 		throw new Error(`Request failed: ${response.status}`);
 	}
 	return response.json();
+}
+
+async function createMilestoneViaApi(title: string): Promise<Milestone> {
+	const response = await fetch(`http://127.0.0.1:${serverPort}/api/milestones`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ title }),
+	});
+	expect(response.status).toBe(201);
+	return (await response.json()) as Milestone;
+}
+
+async function createTaskWithMilestoneViaApi(title: string, milestone: string): Promise<Task> {
+	const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ title, status: "To Do", milestone }),
+	});
+	expect(response.status).toBe(201);
+	return (await response.json()) as Task;
 }

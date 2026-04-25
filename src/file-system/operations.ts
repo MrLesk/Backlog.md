@@ -562,7 +562,7 @@ export class FileSystem {
 			return await this.withCreateLock(async () => {
 				// Load the draft
 				const draft = await this.loadDraft(draftId);
-				if (!draft || !draft.filePath) return false;
+				if (!draft?.filePath) return false;
 
 				// Get task prefix from config (default: "task")
 				const config = await this.loadConfig();
@@ -604,7 +604,7 @@ export class FileSystem {
 			return await this.withCreateLock(async () => {
 				// Load the task
 				const task = await this.loadTask(taskId);
-				if (!task || !task.filePath) return false;
+				if (!task?.filePath) return false;
 
 				// Get existing draft IDs to generate next ID
 				// Draft prefix is always "draft" (not configurable like task prefix)

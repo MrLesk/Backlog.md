@@ -2040,7 +2040,11 @@ export class Core {
 			} catch (error) {
 				await this.git.resetPaths(commitPaths, repoRoot);
 				const rollbackTitle = result.previousTitle ?? title;
-				await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
+				try {
+					await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
+				} catch {
+					// Ignore rollback failure and propagate original commit error.
+				}
 				throw error;
 			}
 		}
