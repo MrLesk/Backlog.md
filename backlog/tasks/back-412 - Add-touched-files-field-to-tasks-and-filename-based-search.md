@@ -1,11 +1,11 @@
 ---
 id: BACK-412
 title: Add touched-files field to tasks and filename-based search
-status: In Progress
+status: Done
 assignee:
-  - '@codex'
+  - '@alex-agent'
 created_date: '2026-04-13 16:02'
-updated_date: '2026-04-25 15:42'
+updated_date: '2026-04-25 18:38'
 labels: []
 dependencies: []
 ---
@@ -39,12 +39,29 @@ This should cover task data model updates, persistence and indexing updates, and
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented `modifiedFiles` storage and search across task parsing/serialization, Core create/edit, CLI/server/MCP inputs, shared search indexes, plain/TUI display, and shipped guidance. Verification: focused feature tests passed; full `bun test` passed; `bunx tsc --noEmit` passed; touched source/docs passed `bunx biome check ...`. Repo-wide `bun run check .` is still blocked by an untouched pre-existing `package.json` formatting issue, so DoD item #2 remains unchecked.
+Implemented `modifiedFiles` storage and search across task parsing/serialization, Core create/edit, CLI/server/MCP inputs, shared search indexes, plain/TUI display, and shipped guidance. Addressed Codex review feedback by ensuring `backlog search --modified-file ...` seeds the interactive unified view with the already-filtered task results instead of opening an unfiltered all-task list; no-result modified-file searches now print the empty search result instead of selecting an unrelated task.
+
+Verification: focused modified-file/search tests passed, full bun test passed before the original PR checks, bunx tsc --noEmit passed, and bun run check . passes on the rebased current-main branch with existing optional-chain warnings only.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Summary:
+- Added `modifiedFiles` task metadata persisted as `modified_files` frontmatter and threaded it through Core, CLI, MCP, server, and web API surfaces.
+- Indexed modified file paths in shared search so tasks can be found by filename/path query and filtered through CLI/MCP/server search paths.
+- Updated task display and shipped guidance to document setting and searching modified files.
+- Fixed interactive CLI search so `--modified-file` opens only matching tasks instead of falling back to an unfiltered all-task list.
+
+Validation:
+- bun test src/test/cli-search-command.test.ts src/test/search-service.test.ts src/test/task-search-label-filter.test.ts src/test/mcp-tasks.test.ts src/test/server-search-endpoint.test.ts
+- bunx tsc --noEmit
+- bun run check .
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
+- [x] #2 bun run check . passes when formatting/linting touched
 - [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

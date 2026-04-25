@@ -1639,8 +1639,16 @@ program
 			return;
 		}
 
+		const hasModifiedFileFilter = Boolean(modifiedFileFilters?.length);
+		const interactiveTasks = hasModifiedFileFilter ? searchResultTasks : allTasks;
+		if (interactiveTasks.length === 0) {
+			printSearchResults(searchResults);
+			cleanup();
+			return;
+		}
+
 		// Use the first search result as the selected task, or first available task if no results
-		const firstTask = searchResultTasks[0] || allTasks[0];
+		const firstTask = searchResultTasks[0] || interactiveTasks[0];
 		const priorityFilter = filters.priority ? filters.priority : undefined;
 		const statusFilter = filters.status;
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
@@ -1649,13 +1657,14 @@ program
 			core,
 			initialView: "task-list",
 			selectedTask: firstTask,
-			tasks: allTasks, // Pass ALL tasks, not just search results
+			tasks: interactiveTasks,
 			filter: {
 				title: query ? `Search: ${query}` : "Search",
 				filterDescription: buildSearchFilterDescription({
 					status: statusFilter,
 					priority: priorityFilter,
 					query: query ?? "",
+					modifiedFiles: modifiedFileFilters ?? [],
 				}),
 				status: statusFilter,
 				priority: priorityFilter,
@@ -1669,6 +1678,7 @@ function buildSearchFilterDescription(filters: {
 	status?: string;
 	priority?: SearchPriorityFilter;
 	query?: string;
+	modifiedFiles?: string[];
 }): string {
 	const parts: string[] = [];
 	if (filters.query) {
@@ -1679,6 +1689,9 @@ function buildSearchFilterDescription(filters: {
 	}
 	if (filters.priority) {
 		parts.push(`Priority: ${filters.priority}`);
+	}
+	if (filters.modifiedFiles?.length) {
+		parts.push(`Modified files: ${filters.modifiedFiles.join(", ")}`);
 	}
 	return parts.join(" • ");
 }
