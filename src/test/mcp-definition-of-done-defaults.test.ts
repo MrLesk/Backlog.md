@@ -133,7 +133,7 @@ describe("MCP Definition of Done default tools", () => {
 		expect(withoutDefaultsText).not.toContain("Run tests");
 	});
 
-	it("rejects delimiter-sensitive DoD defaults (commas) to prevent config corruption", async () => {
+	it("round-trips comma-bearing DoD defaults", async () => {
 		await server.testInterface.callTool({
 			params: {
 				name: "definition_of_done_defaults_upsert",
@@ -152,10 +152,10 @@ describe("MCP Definition of Done default tools", () => {
 			},
 		});
 
-		expect(result.isError).toBe(true);
-		expect(getText(result.content)).toContain("cannot contain commas");
+		expect(result.isError).toBeUndefined();
+		expect(getText(result.content)).toContain("1. Run unit, integration, and e2e tests");
 
 		const reloaded = await loadConfigOrThrow(server);
-		expect(reloaded.definitionOfDone).toEqual(["Run tests", "Update docs"]);
+		expect(reloaded.definitionOfDone).toEqual(["Run unit, integration, and e2e tests"]);
 	});
 });
