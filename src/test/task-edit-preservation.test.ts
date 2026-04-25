@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -31,6 +31,53 @@ describe("Task edit section preservation", () => {
 		} catch {
 			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
+	});
+
+	it("preserves legacy task file identity and body when editing only labels", async () => {
+		const tasksDir = join(TEST_DIR, "backlog", "tasks");
+		const taskPath = join(tasksDir, "task-1 - hello world.md");
+		await Bun.write(
+			taskPath,
+			`---
+id: task-1
+title: hello world
+status: To Do
+assignee: []
+created_date: '2026-01-01'
+labels: []
+dependencies: []
+---
+
+## Description
+
+Test description.
+
+## Extra Notes
+
+Keep me exactly.
+`,
+		);
+
+		await $`bun ${cliPath} task edit 1 --label foo`.cwd(TEST_DIR).quiet();
+
+		const files = await readdir(tasksDir);
+		expect(files).toContain("task-1 - hello world.md");
+		expect(files).not.toContain("task-1 - hello-world.md");
+
+		const content = await Bun.file(taskPath).text();
+		expect(content).toContain("id: task-1");
+		expect(content).not.toContain("id: TASK-1");
+		expect(content).toContain("title: hello world");
+		expect(content).toContain("status: To Do");
+		expect(content).toContain("created_date:");
+		expect(content).toContain("2026-01-01");
+		expect(content).toContain("dependencies: []");
+		expect(content).toContain("labels:\n  - foo");
+		expect(content).toContain("## Description\n\nTest description.");
+		expect(content).toContain("## Extra Notes\n\nKeep me exactly.");
+		expect(content).not.toContain("<!-- SECTION:");
+		expect(content).not.toContain("<!-- AC:");
+		expect(content).not.toContain("## Acceptance Criteria");
 	});
 
 	it("should preserve all sections when updating description", async () => {

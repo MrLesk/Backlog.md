@@ -15,7 +15,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskIdentity } from "../utils/task-path.ts";
+import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 // Interface for task path resolution context
@@ -294,26 +294,46 @@ export class FileSystem {
 		const taskId = normalizeId(task.id, prefix);
 		const filename = `${idForFilename(taskId)} - ${this.sanitizeFilename(task.title)}.md`;
 		const tasksDir = await this.getTasksDir();
-		const filepath = join(tasksDir, filename);
-		// Normalize task ID and parentTaskId to uppercase before serialization
+		const shouldPreservePath = typeof task.filePath === "string" && task.filePath.trim().length > 0;
+		const filepath = shouldPreservePath ? (task.filePath as string) : join(tasksDir, filename);
+		let existingTask: Task | null = null;
+
+		if (shouldPreservePath) {
+			try {
+				existingTask = parseTask(await Bun.file(filepath).text());
+			} catch {
+				existingTask = null;
+			}
+		}
+
+		const persistedTaskId = existingTask?.id && taskIdsEqual(existingTask.id, task.id) ? existingTask.id : taskId;
+		const normalizedParentTaskId = task.parentTaskId
+			? normalizeId(task.parentTaskId, extractAnyPrefix(task.parentTaskId) ?? prefix)
+			: undefined;
+		const persistedParentTaskId =
+			existingTask?.parentTaskId && task.parentTaskId && taskIdsEqual(existingTask.parentTaskId, task.parentTaskId)
+				? existingTask.parentTaskId
+				: normalizedParentTaskId;
+
+		// Normalize new task IDs before serialization, but preserve existing file identity on updates.
 		const normalizedTask = {
 			...task,
-			id: taskId,
-			parentTaskId: task.parentTaskId
-				? normalizeId(task.parentTaskId, extractAnyPrefix(task.parentTaskId) ?? prefix)
-				: undefined,
+			id: persistedTaskId,
+			parentTaskId: persistedParentTaskId,
 		};
 		const content = serializeTask(normalizedTask);
 
-		// Delete any existing task files with the same ID but different filenames
-		try {
-			const core = { filesystem: { tasksDir } };
-			const existingPath = await getTaskPath(taskId, core as TaskPathContext);
-			if (existingPath && !existingPath.endsWith(filename)) {
-				await unlink(existingPath);
+		if (!shouldPreservePath) {
+			// Delete any existing task files with the same ID but different filenames
+			try {
+				const core = { filesystem: { tasksDir } };
+				const existingPath = await getTaskPath(taskId, core as TaskPathContext);
+				if (existingPath && !existingPath.endsWith(filename)) {
+					await unlink(existingPath);
+				}
+			} catch {
+				// Ignore errors if no existing files found
 			}
-		} catch {
-			// Ignore errors if no existing files found
 		}
 
 		await this.ensureDirectoryExists(dirname(filepath));
