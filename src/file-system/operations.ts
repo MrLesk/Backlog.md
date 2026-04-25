@@ -1,5 +1,6 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
@@ -1301,6 +1302,7 @@ ${description || `Milestone: ${title}`}`,
 
 	private parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
+		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
 		const lines = content.split("\n");
 
 		for (const line of lines) {
@@ -1337,12 +1339,8 @@ ${description || `Milestone: ${title}`}`,
 					}
 					break;
 				case "definition_of_done":
-					if (value.startsWith("[") && value.endsWith("]")) {
-						const arrayContent = value.slice(1, -1);
-						config.definitionOfDone = arrayContent
-							.split(",")
-							.map((item) => item.trim().replace(/['"]/g, ""))
-							.filter(Boolean);
+					if (parsedDefinitionOfDone !== undefined) {
+						config.definitionOfDone = parsedDefinitionOfDone;
 					}
 					break;
 				case "date_format":
@@ -1428,7 +1426,7 @@ ${description || `Milestone: ${title}`}`,
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			...(Array.isArray(normalizedDefinitionOfDone)
-				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => `"${item}"`).join(", ")}]`]
+				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
 				: []),
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
@@ -1449,6 +1447,65 @@ ${description || `Milestone: ${title}`}`,
 		];
 
 		return `${lines.join("\n")}\n`;
+	}
+
+	private parseDefinitionOfDone(content: string): string[] | undefined {
+		const parsedFromDocument = this.parseDefinitionOfDoneFromYaml(content);
+		if (parsedFromDocument !== undefined) {
+			return parsedFromDocument;
+		}
+
+		// Some legacy config values are accepted by the line parser but are not valid YAML.
+		const definitionOfDoneYaml = this.extractDefinitionOfDoneYaml(content);
+		return definitionOfDoneYaml ? this.parseDefinitionOfDoneFromYaml(definitionOfDoneYaml) : undefined;
+	}
+
+	private parseDefinitionOfDoneFromYaml(content: string): string[] | undefined {
+		try {
+			const data = matter(`---\n${content.trimEnd()}\n---\n`).data as Record<string, unknown>;
+			if (!Object.hasOwn(data, "definition_of_done")) {
+				return undefined;
+			}
+
+			const definitionOfDone = data.definition_of_done;
+			if (definitionOfDone === null) {
+				return [];
+			}
+
+			return this.normalizeDefinitionOfDone(definitionOfDone);
+		} catch {
+			return undefined;
+		}
+	}
+
+	private extractDefinitionOfDoneYaml(content: string): string | undefined {
+		const lines = content.split(/\r?\n/);
+		const keyPattern = /^(\s*)definition_of_done\s*:/;
+		const topLevelKeyPattern = /^\s*[A-Za-z_][A-Za-z0-9_]*\s*:/;
+		const startIndex = lines.findIndex((line) => keyPattern.test(line));
+		if (startIndex === -1) {
+			return undefined;
+		}
+
+		const startLine = lines[startIndex];
+		const startIndent = startLine?.match(keyPattern)?.[1]?.length ?? 0;
+		const collected: string[] = [];
+
+		for (let index = startIndex; index < lines.length; index++) {
+			const line = lines[index] ?? "";
+			const trimmed = line.trim();
+			const indent = line.length - line.trimStart().length;
+			const isNextTopLevelKey =
+				index > startIndex && trimmed.length > 0 && indent <= startIndent && topLevelKeyPattern.test(line);
+
+			if (isNextTopLevelKey) {
+				break;
+			}
+
+			collected.push(line);
+		}
+
+		return collected.join("\n");
 	}
 
 	private normalizeDefinitionOfDone(definitionOfDone: unknown): string[] | undefined {

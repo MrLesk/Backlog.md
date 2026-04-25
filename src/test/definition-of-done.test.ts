@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -10,6 +10,11 @@ let TEST_DIR: string;
 const readConfigFile = async (root: string): Promise<string> => {
 	const configPath = join(root, "backlog", "config.yml");
 	return await readFile(configPath, "utf8");
+};
+
+const writeConfigFile = async (root: string, content: string): Promise<void> => {
+	const configPath = join(root, "backlog", "config.yml");
+	await writeFile(configPath, content);
 };
 
 describe("Definition of Done", () => {
@@ -83,6 +88,77 @@ describe("Definition of Done", () => {
 
 		const rawConfig = await readConfigFile(TEST_DIR);
 		expect(rawConfig).toContain('definition_of_done: ["First item", "Second item"]');
+	});
+
+	it("preserves quoted commas in flow-style definition_of_done entries", async () => {
+		await writeConfigFile(
+			TEST_DIR,
+			[
+				'project_name: "DoD Test Project"',
+				'definition_of_done: ["simple item", "item with, a comma, inside"]',
+				'statuses: ["To Do", "In Progress", "Done"]',
+				"labels: []",
+				"date_format: yyyy-mm-dd",
+				"",
+			].join("\n"),
+		);
+
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		expect(config?.definitionOfDone).toEqual(["simple item", "item with, a comma, inside"]);
+
+		const { task } = await core.createTaskFromInput({ title: "Flow DoD task" });
+		const saved = await core.filesystem.loadTask(task.id);
+		const body = saved?.rawContent ?? "";
+		expect(body).toContain("- [ ] #1 simple item");
+		expect(body).toContain("- [ ] #2 item with, a comma, inside");
+	});
+
+	it("parses block-style definition_of_done entries with adjacent blank lines", async () => {
+		await writeConfigFile(
+			TEST_DIR,
+			[
+				'project_name: "DoD Test Project"',
+				"definition_of_done:",
+				"",
+				"  - Tests pass",
+				"",
+				"  - Documentation updated",
+				'statuses: ["To Do", "In Progress", "Done"]',
+				"labels: []",
+				"date_format: yyyy-mm-dd",
+				"",
+			].join("\n"),
+		);
+
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		expect(config?.definitionOfDone).toEqual(["Tests pass", "Documentation updated"]);
+
+		const { task } = await core.createTaskFromInput({ title: "Block DoD task" });
+		const saved = await core.filesystem.loadTask(task.id);
+		const body = saved?.rawContent ?? "";
+		expect(body).toContain("- [ ] #1 Tests pass");
+		expect(body).toContain("- [ ] #2 Documentation updated");
+	});
+
+	it("treats an empty block-style definition_of_done key as an empty defaults list", async () => {
+		await writeConfigFile(
+			TEST_DIR,
+			[
+				'project_name: "DoD Test Project"',
+				"definition_of_done:",
+				"",
+				'statuses: ["To Do", "In Progress", "Done"]',
+				"labels: []",
+				"date_format: yyyy-mm-dd",
+				"",
+			].join("\n"),
+		);
+
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		expect(config?.definitionOfDone).toEqual([]);
 	});
 
 	it("applies Definition of Done defaults on create", async () => {
