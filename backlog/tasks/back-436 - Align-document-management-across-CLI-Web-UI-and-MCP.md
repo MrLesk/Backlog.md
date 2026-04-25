@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-25 21:01'
-updated_date: '2026-04-25 22:32'
+updated_date: '2026-04-25 22:47'
 labels:
   - docs
   - core
@@ -58,6 +58,8 @@ Keep the public surface explicit: external agents may rely on CLI help, MCP tool
 5. Update MCP document schemas, handlers, descriptions, and formatted responses to accept/return the same metadata and path behavior as CLI/Web.
 6. Update shipped guidance/resources so docs path rules are public and consistent, and PR #598 can be revised against stable public APIs.
 7. Add focused regression coverage for core/filesystem path validation, CLI output, server API create/update behavior, and MCP document path metadata; run scoped tests plus typecheck/check as appropriate.
+
+Review follow-up plan for unresolved Codex comments on PR #610: fix docs subpath normalization to trim individual path segments, add Web/server document metadata validation for create/update payloads, preserve HTTP 500 for unexpected create/update failures while keeping explicit validation errors as 400, and add regression coverage in the focused document tests before pushing.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -80,6 +82,12 @@ CI follow-up: after the watcher fix, macOS and Ubuntu passed; Windows still fail
 CI follow-up: Bun 1.3.11 removed the Windows segfault and exposed Windows portability failures in the full suite. Fixed docs path assertions/cleanup to normalize recursive glob separators, preserved document path metadata when ContentStore handles document watcher events directly, normalized MCP roots fixture paths with `join`, and quoted POSIX-style callback output paths while disabling unrelated branch scanning in status-callback fixtures.
 
 CI follow-up: Ubuntu full-suite failure on PR #610 was isolated to `src/test/server-assets.test.ts` beforeEach/afterEach hook timeouts. The asset server readiness probe now uses bounded `/api/status` requests, and asset fetches are timeout-wrapped so failures stay within the CI hook timeout. Local validation now passes with `bun test --timeout=10000` using the same timeout as Ubuntu CI.
+
+Review follow-up: PR #610 has five unresolved Codex review threads covering document subpath segment trimming, document metadata validation on server create/update, and preserving 500 responses for unexpected document create/update failures. Reopened the task while addressing these PR comments.
+
+Review follow-up complete: addressed all five unresolved Codex review threads on PR #610. Document subpath normalization now trims each path segment before traversal checks; server document create/update handlers reject invalid type/tags/path metadata instead of coercing malformed values; unexpected operational failures from core document create/update now remain HTTP 500 while explicit validation errors stay 400 and missing documents stay 404. Validation passed with focused document interface tests, typecheck, Biome, and the full local suite using the CI timeout.
+
+Validation correction for review follow-up: after the last server metadata test addition, focused server document tests, typecheck, Biome, the document interface suite, and `src/test/server-search-endpoint.test.ts` in isolation pass. A full-suite rerun hit two pre-existing/order-sensitive `server-search-endpoint` hook timeouts; the same file passed in isolation immediately afterward.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -105,6 +113,10 @@ CI follow-up: fixed the remaining Windows CI runtime crash by moving GitHub work
 CI follow-up: addressed the Windows-only portability failures revealed after the Bun bump. Targeted core/server docs, MCP roots, status-callback, content-store, filesystem, and MCP document tests pass locally with typecheck and Biome.
 
 Stabilized the server asset tests by switching readiness checks from `/` to bounded `/api/status` probes and timeout-wrapping asset fetches; verified the full suite with `bun test --timeout=10000` passes locally.
+
+Review follow-up: resolved Codex feedback by trimming document path segments, validating server document metadata payloads, and preserving HTTP 500 for unexpected document create/update failures. Verified with `bun test src/test/filesystem.test.ts src/test/core.test.ts src/test/cli.test.ts src/test/mcp-documents.test.ts src/test/server-documents-endpoint.test.ts --timeout=15000`, `bunx tsc --noEmit`, `bun run check .`, and full `bun test --timeout=10000` (1159 pass, 2 skip, 0 fail).
+
+Validation note: after the final metadata test addition, focused document tests, typecheck, Biome, and the document interface suite passed. A full-suite rerun hit the known `server-search-endpoint` hook timeout flake; `bun test src/test/server-search-endpoint.test.ts --timeout=15000` passed in isolation immediately afterward.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

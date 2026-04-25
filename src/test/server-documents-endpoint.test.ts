@@ -57,7 +57,7 @@ describe("BacklogServer document endpoints", () => {
 				title: "Setup Guide",
 				content: "# Setup",
 				type: "guide",
-				path: "guides/setup",
+				path: "guides / setup",
 				tags: ["setup"],
 			}),
 		});
@@ -102,5 +102,120 @@ describe("BacklogServer document endpoints", () => {
 
 		expect(response.status).toBe(400);
 		expect(await response.text()).toContain("Document path cannot include traversal segments.");
+	});
+
+	it("rejects invalid document metadata", async () => {
+		const invalidCreateTypeShape = await fetch(`http://127.0.0.1:${serverPort}/api/docs`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Invalid Type",
+				content: "Content",
+				type: { name: "guide" },
+			}),
+		});
+		expect(invalidCreateTypeShape.status).toBe(400);
+		expect(await invalidCreateTypeShape.text()).toContain("Document type must be a string.");
+
+		const invalidCreateType = await fetch(`http://127.0.0.1:${serverPort}/api/docs`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Unsupported Type",
+				content: "Content",
+				type: "unexpected",
+			}),
+		});
+		expect(invalidCreateType.status).toBe(400);
+		expect(await invalidCreateType.text()).toContain("Document type must be one of");
+
+		const invalidCreateTags = await fetch(`http://127.0.0.1:${serverPort}/api/docs`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Invalid Tags",
+				content: "Content",
+				type: "guide",
+				tags: [{ label: "setup" }],
+			}),
+		});
+		expect(invalidCreateTags.status).toBe(400);
+		expect(await invalidCreateTags.text()).toContain("Document tags must be an array of strings.");
+
+		const created = await fetchJson<Document & { success: boolean }>("/api/docs", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Valid Metadata",
+				content: "Content",
+				type: "guide",
+				tags: ["setup"],
+			}),
+		});
+
+		const invalidUpdateType = await fetch(`http://127.0.0.1:${serverPort}/api/docs/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				content: "Updated",
+				type: "unexpected",
+			}),
+		});
+		expect(invalidUpdateType.status).toBe(400);
+		expect(await invalidUpdateType.text()).toContain("Document type must be one of");
+
+		const invalidUpdateTags = await fetch(`http://127.0.0.1:${serverPort}/api/docs/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				content: "Updated",
+				tags: [{ label: "setup" }],
+			}),
+		});
+		expect(invalidUpdateTags.status).toBe(400);
+		expect(await invalidUpdateTags.text()).toContain("Document tags must be an array of strings.");
+	});
+
+	it("preserves 500 status for unexpected document create and update failures", async () => {
+		if (!server) {
+			throw new Error("Expected server to be started");
+		}
+		const core = (
+			server as unknown as {
+				core: {
+					createDocumentFromInput: (...args: unknown[]) => Promise<Document>;
+					updateDocumentFromInput: (...args: unknown[]) => Promise<Document>;
+				};
+			}
+		).core;
+
+		core.createDocumentFromInput = async () => {
+			throw new Error("disk full");
+		};
+		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/docs`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Create Failure",
+				content: "Content",
+				type: "guide",
+			}),
+		});
+		expect(createResponse.status).toBe(500);
+		expect(await createResponse.text()).toContain("Failed to create document");
+
+		core.updateDocumentFromInput = async () => {
+			throw new Error("rename failed");
+		};
+		const updateResponse = await fetch(`http://127.0.0.1:${serverPort}/api/docs/doc-1`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				content: "Updated",
+				type: "guide",
+			}),
+		});
+		expect(updateResponse.status).toBe(500);
+		expect(await updateResponse.text()).toContain("Failed to update document");
 	});
 });

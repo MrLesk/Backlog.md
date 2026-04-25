@@ -14,7 +14,10 @@ export function normalizeDocumentSubPath(path?: string | null): string {
 		throw new Error("Document path must be relative to the docs directory.");
 	}
 
-	const segments = trimmed.split(/[\\/]+/).filter((segment) => segment.length > 0 && segment !== ".");
+	const segments = trimmed
+		.split(/[\\/]+/)
+		.map((segment) => segment.trim())
+		.filter((segment) => segment.length > 0 && segment !== ".");
 	if (segments.some((segment) => segment === "..")) {
 		throw new Error("Document path cannot include traversal segments.");
 	}

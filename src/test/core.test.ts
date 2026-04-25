@@ -398,7 +398,7 @@ describe("Core", () => {
 				title: "Setup Guide",
 				content: "# Setup",
 				type: "guide",
-				path: "guides/setup",
+				path: "guides / setup",
 				tags: ["setup", "guide"],
 			});
 
