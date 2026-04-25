@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-25 21:01'
-updated_date: '2026-04-25 22:02'
+updated_date: '2026-04-25 22:14'
 labels:
   - docs
   - core
@@ -74,6 +74,8 @@ Keep the public surface explicit: external agents may rely on CLI help, MCP tool
 2026-04-25: Validation: `bunx tsc --noEmit` passed; `bun run check .` passed; scoped docs/interface tests passed with 150 pass / 0 fail; `src/test/remote-id-conflict.test.ts` passes after aligning its stale lowercase expectation with normalized uppercase task output; `src/test/server-search-endpoint.test.ts` passes in isolation. A full `bun test` rerun hit order/load-sensitive server-search hook timeouts/socket failures after the remote-id expectation was fixed, while the same server-search file passed separately.
 
 2026-04-25: CI follow-up for PR #610: macOS `lint-and-unit-test` failed in `ContentStore > removes decisions when files are deleted` because the file watcher deletion path only treated missing files as removals for `rename` events. The fix broadens cached removal handling to any watcher event where the watched path no longer exists, keeping task/document/decision watcher behavior consistent.
+
+CI follow-up: after the watcher fix, macOS and Ubuntu passed; Windows still failed in the full unit suite with a Bun 1.3.9 segmentation fault near `src/test/mcp-milestones.test.ts` and no test assertion failure. Bumped the GitHub workflow Bun pin to 1.3.11 and centralized the workflow cache version so CI uses the same patch level validated locally.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -93,6 +95,8 @@ Validation:
 - Full `bun test` was attempted after the casing fix; it no longer fails at `remote-id-conflict`, but one long-run attempt hit server-search hook timeouts/socket failures that passed when isolated.
 
 CI follow-up: Updated content-store watcher deletion handling so missing watched task/document/decision files remove cached entries regardless of whether the platform reports the event as `rename` or `change`. Verified with `bun test src/test/content-store.test.ts`, `bun test src/test/server-search-endpoint.test.ts`, `bunx tsc --noEmit`, and `bun run check .`.
+
+CI follow-up: fixed the remaining Windows CI runtime crash by moving GitHub workflows from Bun 1.3.9 to 1.3.11 and keeping cache keys tied to the workflow Bun version.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
