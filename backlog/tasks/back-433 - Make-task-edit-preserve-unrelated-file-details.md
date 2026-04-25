@@ -1,11 +1,11 @@
 ---
 id: BACK-433
 title: Make task edit preserve unrelated file details
-status: In Progress
+status: Done
 assignee:
-  - '@codex'
+  - '@alex-agent'
 created_date: '2026-04-25 12:15'
-updated_date: '2026-04-25 12:24'
+updated_date: '2026-04-25 17:31'
 labels:
   - cli
   - core
@@ -41,12 +41,28 @@ Track GitHub issue #603: editing one field should not rename, recase, or otherwi
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented preservation in saveTask and serializeTask, then added a regression fixture matching GitHub issue #603. Targeted tests, TypeScript, changed-file Biome, affected suites, and full bun test pass. Full bun run check . is blocked by existing package.json formatting on origin/main, so the formatting DoD remains unchecked.
+Implemented preservation in saveTask and serializeTask, then added a regression fixture matching GitHub issue #603. Targeted tests, TypeScript, changed-file Biome, affected suites, and full bun test passed before merge. After later package formatting cleanup landed on main, project-wide bun run check . now exits successfully with existing optional-chain warnings only.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Summary:
+- Preserved existing task file paths and on-disk task ID casing during task updates.
+- Avoided rewriting unrelated task metadata/content when editing a single field.
+- Added regression coverage for the issue #603 label-only edit case.
+
+Validation:
+- Targeted regression tests
+- Affected suites
+- bun test
+- bunx tsc --noEmit
+- bun run check . on current main
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
+- [x] #2 bun run check . passes when formatting/linting touched
 - [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

@@ -1,11 +1,11 @@
 ---
 id: BACK-432
 title: Parse definition_of_done with standard YAML semantics
-status: In Progress
+status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-04-25 12:23'
+updated_date: '2026-04-25 17:31'
 labels:
   - config
   - bug
@@ -47,12 +47,27 @@ Implementation plan:
 <!-- SECTION:NOTES:BEGIN -->
 Discovery: issue #599 reproduces in FileSystem.parseConfig, which manually splits flow arrays by comma and ignores block-style definition_of_done. CLI, MCP, and Web read config through FileSystem.loadConfig(), so the fix belongs there. MCP had a comma rejection added as a corruption guard; that should be removed once YAML parsing is fixed.
 
-Verification: focused DoD regression tests pass, full bun test passes, and bunx tsc --noEmit passes. Targeted Biome check on changed TypeScript files passes. Project-wide bun run check . currently fails on pre-existing package.json formatting from origin/main, so DoD #2 remains unchecked and unrelated package formatting was intentionally left out of this PR.
+Verification: focused DoD regression tests passed, full bun test passed, and bunx tsc --noEmit passed before merge. After later package formatting cleanup landed on main, project-wide bun run check . now exits successfully with existing optional-chain warnings only.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Summary:
+- Fixed definition_of_done config parsing to use standard YAML semantics for comma-bearing flow arrays and block-style lists.
+- Kept CLI, MCP, and Web settings on the shared config loader behavior.
+- Covered the issue #599 repro cases with regression tests.
+
+Validation:
+- Focused DoD regression tests
+- bun test
+- bunx tsc --noEmit
+- bun run check . on current main
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
+- [x] #2 bun run check . passes when formatting/linting touched
 - [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
