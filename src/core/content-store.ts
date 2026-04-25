@@ -4,6 +4,7 @@ import { basename, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -495,7 +496,8 @@ export class ContentStore {
 				async () => {
 					try {
 						const content = await Bun.file(absolutePath).text();
-						return parseDocument(content);
+						const documentPath = normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath));
+						return { ...parseDocument(content), path: documentPath };
 					} catch {
 						return null;
 					}

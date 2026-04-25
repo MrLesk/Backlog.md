@@ -7,6 +7,8 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 
 let TEST_DIR: string;
 
+const toPosixPath = (path: string): string => path.replace(/\\/g, "/");
+
 describe("Core", () => {
 	let core: Core;
 
@@ -417,7 +419,7 @@ describe("Core", () => {
 			const docFiles = await Array.fromAsync(
 				new Bun.Glob("**/doc-*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }),
 			);
-			expect(docFiles).toEqual(["runbooks/doc-1 - Install-Guide.md"]);
+			expect(docFiles.map(toPosixPath)).toEqual(["runbooks/doc-1 - Install-Guide.md"]);
 		});
 
 		it("preserves document path when updating without an explicit path", async () => {

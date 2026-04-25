@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-25 21:01'
-updated_date: '2026-04-25 22:14'
+updated_date: '2026-04-25 22:22'
 labels:
   - docs
   - core
@@ -76,6 +76,8 @@ Keep the public surface explicit: external agents may rely on CLI help, MCP tool
 2026-04-25: CI follow-up for PR #610: macOS `lint-and-unit-test` failed in `ContentStore > removes decisions when files are deleted` because the file watcher deletion path only treated missing files as removals for `rename` events. The fix broadens cached removal handling to any watcher event where the watched path no longer exists, keeping task/document/decision watcher behavior consistent.
 
 CI follow-up: after the watcher fix, macOS and Ubuntu passed; Windows still failed in the full unit suite with a Bun 1.3.9 segmentation fault near `src/test/mcp-milestones.test.ts` and no test assertion failure. Bumped the GitHub workflow Bun pin to 1.3.11 and centralized the workflow cache version so CI uses the same patch level validated locally.
+
+CI follow-up: Bun 1.3.11 removed the Windows segfault and exposed Windows portability failures in the full suite. Fixed docs path assertions/cleanup to normalize recursive glob separators, preserved document path metadata when ContentStore handles document watcher events directly, normalized MCP roots fixture paths with `join`, and quoted POSIX-style callback output paths while disabling unrelated branch scanning in status-callback fixtures.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -97,6 +99,8 @@ Validation:
 CI follow-up: Updated content-store watcher deletion handling so missing watched task/document/decision files remove cached entries regardless of whether the platform reports the event as `rename` or `change`. Verified with `bun test src/test/content-store.test.ts`, `bun test src/test/server-search-endpoint.test.ts`, `bunx tsc --noEmit`, and `bun run check .`.
 
 CI follow-up: fixed the remaining Windows CI runtime crash by moving GitHub workflows from Bun 1.3.9 to 1.3.11 and keeping cache keys tied to the workflow Bun version.
+
+CI follow-up: addressed the Windows-only portability failures revealed after the Bun bump. Targeted core/server docs, MCP roots, status-callback, content-store, filesystem, and MCP document tests pass locally with typecheck and Biome.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

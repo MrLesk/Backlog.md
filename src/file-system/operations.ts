@@ -772,7 +772,9 @@ export class FileSystem {
 		await this.ensureDirectoryExists(dirname(filepath));
 
 		const glob = new Bun.Glob("**/doc-*.md");
-		const existingMatches = await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }));
+		const existingMatches = (await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }))).map((relative) =>
+			normalizeDocumentRelativePath(relative),
+		);
 		const matchesForId = existingMatches.filter((relative) => {
 			const base = relative.split("/").pop() || relative;
 			const [candidateId] = base.split(" - ");
