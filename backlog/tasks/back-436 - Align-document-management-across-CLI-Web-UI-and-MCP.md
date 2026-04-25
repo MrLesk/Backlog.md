@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-25 21:01'
-updated_date: '2026-04-25 22:22'
+updated_date: '2026-04-25 22:32'
 labels:
   - docs
   - core
@@ -78,6 +78,8 @@ Keep the public surface explicit: external agents may rely on CLI help, MCP tool
 CI follow-up: after the watcher fix, macOS and Ubuntu passed; Windows still failed in the full unit suite with a Bun 1.3.9 segmentation fault near `src/test/mcp-milestones.test.ts` and no test assertion failure. Bumped the GitHub workflow Bun pin to 1.3.11 and centralized the workflow cache version so CI uses the same patch level validated locally.
 
 CI follow-up: Bun 1.3.11 removed the Windows segfault and exposed Windows portability failures in the full suite. Fixed docs path assertions/cleanup to normalize recursive glob separators, preserved document path metadata when ContentStore handles document watcher events directly, normalized MCP roots fixture paths with `join`, and quoted POSIX-style callback output paths while disabling unrelated branch scanning in status-callback fixtures.
+
+CI follow-up: Ubuntu full-suite failure on PR #610 was isolated to `src/test/server-assets.test.ts` beforeEach/afterEach hook timeouts. The asset server readiness probe now uses bounded `/api/status` requests, and asset fetches are timeout-wrapped so failures stay within the CI hook timeout. Local validation now passes with `bun test --timeout=10000` using the same timeout as Ubuntu CI.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -101,6 +103,8 @@ CI follow-up: Updated content-store watcher deletion handling so missing watched
 CI follow-up: fixed the remaining Windows CI runtime crash by moving GitHub workflows from Bun 1.3.9 to 1.3.11 and keeping cache keys tied to the workflow Bun version.
 
 CI follow-up: addressed the Windows-only portability failures revealed after the Bun bump. Targeted core/server docs, MCP roots, status-callback, content-store, filesystem, and MCP document tests pass locally with typecheck and Biome.
+
+Stabilized the server asset tests by switching readiness checks from `/` to bounded `/api/status` probes and timeout-wrapping asset fetches; verified the full suite with `bun test --timeout=10000` passes locally.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

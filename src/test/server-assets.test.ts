@@ -10,6 +10,16 @@ let filesystem: FileSystem;
 let server: BacklogServer | null = null;
 let serverPort = 0;
 
+async function fetchWithTimeout(path: string, timeoutMs = 1000): Promise<Response> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(`http://127.0.0.1:${serverPort}${path}`, { signal: controller.signal });
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
 describe("BacklogServer asset serving", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("server-assets");
@@ -45,7 +55,7 @@ describe("BacklogServer asset serving", () => {
 		// wait for server to be reachable
 		await retry(
 			async () => {
-				const res = await fetch(`http://127.0.0.1:${serverPort}/`);
+				const res = await fetchWithTimeout("/api/status", 500);
 				if (!res.ok) throw new Error("server not ready");
 				return true;
 			},
@@ -63,7 +73,7 @@ describe("BacklogServer asset serving", () => {
 	});
 
 	it("serves existing image assets with appropriate Content-Type and body", async () => {
-		const res = await fetch(`http://127.0.0.1:${serverPort}/assets/images/test.png`);
+		const res = await fetchWithTimeout("/assets/images/test.png");
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toBe("image/png");
 		const body = await res.text();
@@ -71,7 +81,7 @@ describe("BacklogServer asset serving", () => {
 	});
 
 	it("serves text files with text/plain Content-Type", async () => {
-		const res = await fetch(`http://127.0.0.1:${serverPort}/assets/docs/readme.txt`);
+		const res = await fetchWithTimeout("/assets/docs/readme.txt");
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toBe("text/plain");
 		const body = await res.text();
@@ -79,17 +89,17 @@ describe("BacklogServer asset serving", () => {
 	});
 
 	it("returns 404 for missing files", async () => {
-		const res = await fetch(`http://127.0.0.1:${serverPort}/assets/images/missing.png`);
+		const res = await fetchWithTimeout("/assets/images/missing.png");
 		expect(res.status).toBe(404);
 	});
 
 	it("rejects path traversal attempts with 404", async () => {
 		// attempt to escape assets via ..
-		const res = await fetch(`http://127.0.0.1:${serverPort}/assets/../config.yml`);
+		const res = await fetchWithTimeout("/assets/../config.yml");
 		expect(res.status).toBe(404);
 
 		// encoded traversal
-		const res2 = await fetch(`http://127.0.0.1:${serverPort}/assets/%2e%2e/config.yml`);
+		const res2 = await fetchWithTimeout("/assets/%2e%2e/config.yml");
 		expect(res2.status).toBe(404);
 	});
 });
