@@ -1,6 +1,9 @@
+import { stat } from "node:fs/promises";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
 	CallToolRequestSchema,
 	ErrorCode,
@@ -8,10 +11,13 @@ import {
 	ListPromptsRequestSchema,
 	ListResourcesRequestSchema,
 	ListResourceTemplatesRequestSchema,
+	ListRootsResultSchema,
 	ListToolsRequestSchema,
 	McpError,
 	ReadResourceRequestSchema,
 	RootsListChangedNotificationSchema,
+	type ServerNotification,
+	type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
@@ -53,13 +59,12 @@ type ServerInitOptions = {
 	debug?: boolean;
 };
 
+type ServerRequestExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
 export class McpServer extends Core {
 	private readonly server: Server;
 	private transport?: StdioServerTransport;
 	private stopping = false;
-
-	/** Resolved once roots discovery completes (or immediately in normal mode). */
-	private _ready: Promise<void> = Promise.resolve();
 
 	/** Debug log lines collected during roots discovery (exposed to init-required resource). */
 	public readonly debugLog: string[] = [];
@@ -67,6 +72,8 @@ export class McpServer extends Core {
 	/** Whether roots discovery is enabled (and options for re-runs on roots change). */
 	private rootsDiscoveryEnabled = false;
 	private rootsDiscoveryOptions: { debug?: boolean } = {};
+	private rootsResolutionDirty = false;
+	private rootsResolutionInFlight?: Promise<void>;
 
 	/** The projectRoot passed to createMcpServer, used to revert on downgrade. */
 	private readonly initialProjectRoot: string;
@@ -104,25 +111,15 @@ export class McpServer extends Core {
 	/**
 	 * Enable roots-based project discovery for fallback mode.
 	 *
-	 * After the client completes initialization, the server queries MCP roots
-	 * and looks for a valid backlog project. If found, it reinitializes the
-	 * Core, registers the full toolset, and notifies the client.
-	 *
-	 * A readiness gate ensures all handlers wait until discovery completes
-	 * so clients see the correct tool/resource list from the first request.
+	 * The first request-scoped handler invocation can query MCP roots to look
+	 * for a valid backlog project. If found, the server reinitializes the Core,
+	 * registers the full toolset, and notifies the client. Subsequent requests
+	 * reuse the cached resolution until the client reports roots changes.
 	 */
 	enableRootsDiscovery(options?: { debug?: boolean }): void {
 		this.rootsDiscoveryEnabled = true;
 		this.rootsDiscoveryOptions = options ?? {};
-
-		let resolveReady!: () => void;
-		this._ready = new Promise<void>((r) => {
-			resolveReady = r;
-		});
-
-		this.server.oninitialized = () => {
-			this.resolveFromRoots(options).finally(resolveReady);
-		};
+		this.rootsResolutionDirty = true;
 	}
 
 	private log(message: string, options?: { debug?: boolean }): void {
@@ -134,7 +131,26 @@ export class McpServer extends Core {
 		this.server.sendLoggingMessage({ level: "info", logger: "backlog", data: message }).catch(() => {});
 	}
 
-	private async resolveFromRoots(options?: { debug?: boolean }): Promise<void> {
+	private async ensureRootsResolved(extra?: ServerRequestExtra): Promise<void> {
+		if (!this.rootsDiscoveryEnabled || !this.rootsResolutionDirty || !extra) {
+			return;
+		}
+
+		if (!this.rootsResolutionInFlight) {
+			const resolutionPromise = this.resolveFromRoots(extra, this.rootsDiscoveryOptions).finally(() => {
+				if (this.rootsResolutionInFlight === resolutionPromise) {
+					this.rootsResolutionInFlight = undefined;
+				}
+			});
+			this.rootsResolutionInFlight = resolutionPromise;
+		}
+
+		await this.rootsResolutionInFlight;
+	}
+
+	private async resolveFromRoots(extra: ServerRequestExtra, options?: { debug?: boolean }): Promise<void> {
+		this.rootsResolutionDirty = false;
+
 		const caps = this.server.getClientCapabilities();
 		if (!caps?.roots) {
 			this.log("Client does not support MCP roots capability, staying in fallback mode.", options);
@@ -142,15 +158,14 @@ export class McpServer extends Core {
 		}
 
 		try {
-			const { roots } = await this.server.listRoots();
+			const { roots } = await extra.sendRequest({ method: "roots/list" }, ListRootsResultSchema);
 			this.log(`Received ${roots.length} root(s) from client.`, options);
 
-			const checkedPaths: string[] = [];
+			const checkedPaths = new Set<string>();
 			for (const root of roots) {
-				if (!root.uri.startsWith("file://")) continue;
-
-				const rootPath = fileURLToPath(root.uri);
-				checkedPaths.push(rootPath);
+				const rootPath = await this.resolveRootSearchPath(root.uri);
+				if (!rootPath) continue;
+				checkedPaths.add(rootPath);
 
 				// Only check the root itself — don't walk up the tree, as that
 				// could match an unrelated ancestor project outside the workspace.
@@ -166,14 +181,38 @@ export class McpServer extends Core {
 				await this.downgradeToFallback(options);
 			}
 
-			this.log(
-				`No valid backlog project found in MCP roots: ${checkedPaths.map((p) => `\`${p}\``).join(", ")}`,
-				options,
-			);
+			const checkedRoots =
+				checkedPaths.size > 0
+					? Array.from(checkedPaths)
+							.map((path) => `\`${path}\``)
+							.join(", ")
+					: "no usable file roots";
+			this.log(`No valid backlog project found in MCP roots: ${checkedRoots}`, options);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.log(`Roots discovery failed: ${message}`, options);
 		}
+	}
+
+	private async resolveRootSearchPath(rootUri: string): Promise<string | null> {
+		if (!rootUri.startsWith("file://")) {
+			return null;
+		}
+
+		try {
+			const rootPath = fileURLToPath(rootUri);
+			const rootStat = await stat(rootPath);
+			if (rootStat.isDirectory()) {
+				return rootPath;
+			}
+			if (rootStat.isFile()) {
+				return dirname(rootPath);
+			}
+		} catch {
+			return null;
+		}
+
+		return null;
 	}
 
 	/**
@@ -181,11 +220,18 @@ export class McpServer extends Core {
 	 * toolset, replacing fallback-mode registrations.
 	 */
 	private async upgradeToProject(projectRoot: string, options?: { debug?: boolean }): Promise<boolean> {
+		if (this.upgraded && this.filesystem.rootDir === projectRoot) {
+			this.log(`MCP roots still resolve to current project: ${projectRoot}`, options);
+			return true;
+		}
+
+		const previousProjectRoot = this.filesystem.rootDir;
 		this.reinitializeProjectRoot(projectRoot);
 		await this.ensureConfigLoaded();
 		const config = await this.filesystem.loadConfig();
 
 		if (!config) {
+			this.reinitializeProjectRoot(previousProjectRoot);
 			this.log(`Skipping root ${projectRoot} (no valid config).`, options);
 			return false;
 		}
@@ -234,18 +280,22 @@ export class McpServer extends Core {
 	}
 
 	private setupHandlers(): void {
-		this.server.setRequestHandler(ListToolsRequestSchema, async () => this.listTools());
-		this.server.setRequestHandler(CallToolRequestSchema, async (request) => this.callTool(request));
-		this.server.setRequestHandler(ListResourcesRequestSchema, async () => this.listResources());
-		this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => this.listResourceTemplates());
-		this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => this.readResource(request));
-		this.server.setRequestHandler(ListPromptsRequestSchema, async () => this.listPrompts());
-		this.server.setRequestHandler(GetPromptRequestSchema, async (request) => this.getPrompt(request));
+		this.server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => this.listTools(extra));
+		this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => this.callTool(request, extra));
+		this.server.setRequestHandler(ListResourcesRequestSchema, async (_request, extra) => this.listResources(extra));
+		this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async (_request, extra) =>
+			this.listResourceTemplates(extra),
+		);
+		this.server.setRequestHandler(ReadResourceRequestSchema, async (request, extra) =>
+			this.readResource(request, extra),
+		);
+		this.server.setRequestHandler(ListPromptsRequestSchema, async (_request, extra) => this.listPrompts(extra));
+		this.server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => this.getPrompt(request, extra));
 
-		// Re-run roots discovery when client workspace changes
-		this.server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
+		// Mark cached roots resolution dirty when client workspace changes.
+		this.server.setNotificationHandler(RootsListChangedNotificationSchema, () => {
 			if (this.rootsDiscoveryEnabled) {
-				await this.resolveFromRoots(this.rootsDiscoveryOptions);
+				this.rootsResolutionDirty = true;
 			}
 		});
 	}
@@ -317,8 +367,8 @@ export class McpServer extends Core {
 
 	// -- Internal handlers --------------------------------------------------
 
-	protected async listTools(): Promise<ListToolsResult> {
-		await this._ready;
+	protected async listTools(extra?: ServerRequestExtra): Promise<ListToolsResult> {
+		await this.ensureRootsResolved(extra);
 		return {
 			tools: Array.from(this.tools.values()).map((tool) => ({
 				name: tool.name,
@@ -332,10 +382,13 @@ export class McpServer extends Core {
 		};
 	}
 
-	protected async callTool(request: {
-		params: { name: string; arguments?: Record<string, unknown> };
-	}): Promise<CallToolResult> {
-		await this._ready;
+	protected async callTool(
+		request: {
+			params: { name: string; arguments?: Record<string, unknown> };
+		},
+		extra?: ServerRequestExtra,
+	): Promise<CallToolResult> {
+		await this.ensureRootsResolved(extra);
 		const { name, arguments: args = {} } = request.params;
 		const tool = this.tools.get(name);
 
@@ -346,8 +399,8 @@ export class McpServer extends Core {
 		return await tool.handler(args);
 	}
 
-	protected async listResources(): Promise<ListResourcesResult> {
-		await this._ready;
+	protected async listResources(extra?: ServerRequestExtra): Promise<ListResourcesResult> {
+		await this.ensureRootsResolved(extra);
 		return {
 			resources: Array.from(this.resources.values()).map((resource) => ({
 				uri: resource.uri,
@@ -358,15 +411,18 @@ export class McpServer extends Core {
 		};
 	}
 
-	protected async listResourceTemplates(): Promise<ListResourceTemplatesResult> {
-		await this._ready;
+	protected async listResourceTemplates(extra?: ServerRequestExtra): Promise<ListResourceTemplatesResult> {
+		await this.ensureRootsResolved(extra);
 		return {
 			resourceTemplates: [],
 		};
 	}
 
-	protected async readResource(request: { params: { uri: string } }): Promise<ReadResourceResult> {
-		await this._ready;
+	protected async readResource(
+		request: { params: { uri: string } },
+		extra?: ServerRequestExtra,
+	): Promise<ReadResourceResult> {
+		await this.ensureRootsResolved(extra);
 		const { uri } = request.params;
 
 		// Exact match first
@@ -385,8 +441,8 @@ export class McpServer extends Core {
 		return await resource.handler(uri);
 	}
 
-	protected async listPrompts(): Promise<ListPromptsResult> {
-		await this._ready;
+	protected async listPrompts(extra?: ServerRequestExtra): Promise<ListPromptsResult> {
+		await this.ensureRootsResolved(extra);
 		return {
 			prompts: Array.from(this.prompts.values()).map((prompt) => ({
 				name: prompt.name,
@@ -396,10 +452,13 @@ export class McpServer extends Core {
 		};
 	}
 
-	protected async getPrompt(request: {
-		params: { name: string; arguments?: Record<string, unknown> };
-	}): Promise<GetPromptResult> {
-		await this._ready;
+	protected async getPrompt(
+		request: {
+			params: { name: string; arguments?: Record<string, unknown> };
+		},
+		extra?: ServerRequestExtra,
+	): Promise<GetPromptResult> {
+		await this.ensureRootsResolved(extra);
 		const { name, arguments: args = {} } = request.params;
 		const prompt = this.prompts.get(name);
 
@@ -431,8 +490,8 @@ export class McpServer extends Core {
  * Factory that bootstraps a fully configured MCP server instance.
  *
  * If backlog is not initialized in the project directory, the server will start
- * in fallback mode with roots discovery enabled — after the client completes
- * initialization, the server queries MCP roots to find the correct project.
+ * in fallback mode with roots discovery enabled — the first request-scoped MCP
+ * handler can then query client roots to find the correct project.
  */
 export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
 	// We need to check config first to determine which instructions to use
