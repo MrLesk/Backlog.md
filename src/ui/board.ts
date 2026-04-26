@@ -9,6 +9,7 @@ import {
 import { Core } from "../core/backlog.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
+import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
@@ -566,7 +567,11 @@ export async function renderBoardTui(
 					screen,
 					title: "Milestone Filter",
 					selectedValue: sharedFilters.milestoneFilter,
-					choices: [{ label: "All", value: "" }, ...availableMilestones.map((value) => ({ label: value, value }))],
+					choices: [
+						{ label: "All", value: "" },
+						{ label: NO_MILESTONE_FILTER_LABEL, value: NO_MILESTONE_FILTER_VALUE },
+						...availableMilestones.map((value) => ({ label: value, value })),
+					],
 				});
 				if (selected !== null) {
 					sharedFilters.milestoneFilter = selected;

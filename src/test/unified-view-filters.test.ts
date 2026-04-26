@@ -7,6 +7,7 @@ import {
 	mergeUnifiedViewFilters,
 	type UnifiedViewFilters,
 } from "../ui/unified-view.ts";
+import { NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 
 describe("unified view filter state", () => {
@@ -135,5 +136,64 @@ describe("unified view filter state", () => {
 		expect(kanbanResults).toEqual(["task-1", "task-2"]);
 		expect(listSharedResults).toEqual(["task-1", "task-2"]);
 		expect(listStatusResults).toEqual(["task-1"]);
+	});
+
+	it("filters unassigned milestone tasks with the shared No milestone value", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Unassigned release task",
+				status: "To Do",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-01",
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Empty milestone task",
+				status: "To Do",
+				labels: [],
+				milestone: "  ",
+				assignee: [],
+				createdDate: "2026-01-02",
+				dependencies: [],
+			},
+			{
+				id: "task-3",
+				title: "Assigned release task",
+				status: "To Do",
+				labels: [],
+				milestone: "m-1",
+				assignee: [],
+				createdDate: "2026-01-03",
+				dependencies: [],
+			},
+			{
+				id: "task-4",
+				title: "Literal sentinel title task",
+				status: "To Do",
+				labels: [],
+				milestone: "__none",
+				assignee: [],
+				createdDate: "2026-01-04",
+				dependencies: [],
+			},
+		];
+
+		const sharedFilters = {
+			searchQuery: "",
+			priorityFilter: "",
+			labelFilter: [],
+			milestoneFilter: NO_MILESTONE_FILTER_VALUE,
+		};
+
+		const kanbanResults = filterTasksForKanban(tasks, sharedFilters).map((task) => task.id);
+		const listResults = applyTaskFilters(tasks, { milestone: NO_MILESTONE_FILTER_VALUE }).map((task) => task.id);
+		const literalMilestoneResults = applyTaskFilters(tasks, { milestone: "__none" }).map((task) => task.id);
+
+		expect(kanbanResults).toEqual(["task-1", "task-2"]);
+		expect(listResults).toEqual(["task-1", "task-2"]);
+		expect(literalMilestoneResults).toEqual(["task-4"]);
 	});
 });

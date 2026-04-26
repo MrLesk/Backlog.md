@@ -1,6 +1,9 @@
 import Fuse from "fuse.js";
 import type { Milestone } from "../types/index.ts";
 
+export const NO_MILESTONE_FILTER_VALUE = "\u0000no-milestone";
+export const NO_MILESTONE_FILTER_LABEL = "No milestone";
+
 interface MilestoneCandidate {
 	value: string;
 	compact: string;
