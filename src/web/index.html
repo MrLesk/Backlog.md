@@ -7,6 +7,86 @@
     <title>Backlog.md - Task Management</title>
     <link rel="icon" type="image/png" href="./favicon.png">
     <link rel="stylesheet" href="./styles/style.css">
+    <script data-backlog-shell-refresh>
+        (function() {
+            var reloadParam = "__backlog_reload";
+            var storagePrefix = "backlog.md:shell-refresh:";
+
+            function ready() {
+                if (document.readyState !== "loading") {
+                    return Promise.resolve();
+                }
+
+                return new Promise(function(resolve) {
+                    document.addEventListener("DOMContentLoaded", resolve, { once: true });
+                });
+            }
+
+            function assetSignatureFromDocument(doc) {
+                return Array.from(doc.querySelectorAll('link[rel="stylesheet"][href],script[src]'))
+                    .map(function(element) {
+                        var attribute = element.tagName === "LINK" ? "href" : "src";
+                        var value = element.getAttribute(attribute);
+                        if (!value) return "";
+                        try {
+                            var url = new URL(value, window.location.href);
+                            return url.pathname + url.search;
+                        } catch {
+                            return value;
+                        }
+                    })
+                    .filter(Boolean)
+                    .sort()
+                    .join("|");
+            }
+
+            async function refreshIfStale() {
+                var currentUrl = new URL(window.location.href);
+                var alreadyReloadedFromUrl = currentUrl.searchParams.has(reloadParam);
+
+                var checkUrl = new URL(window.location.href);
+                checkUrl.searchParams.delete(reloadParam);
+
+                var response = await fetch(checkUrl, {
+                    cache: "no-store",
+                    credentials: "same-origin",
+                    headers: { Accept: "text/html" },
+                });
+                if (!response.ok) return;
+
+                var html = await response.text();
+                var freshDoc = new DOMParser().parseFromString(html, "text/html");
+                await ready();
+
+                var currentSignature = assetSignatureFromDocument(document);
+                var freshSignature = assetSignatureFromDocument(freshDoc);
+                if (!currentSignature || !freshSignature || currentSignature === freshSignature) {
+                    if (currentUrl.searchParams.has(reloadParam) && window.history.replaceState) {
+                        currentUrl.searchParams.delete(reloadParam);
+                        window.history.replaceState(null, "", currentUrl);
+                    }
+                    return;
+                }
+
+                var storageKey = storagePrefix + currentUrl.pathname + ":" + currentSignature;
+                var alreadyReloaded = alreadyReloadedFromUrl;
+                try {
+                    alreadyReloaded = alreadyReloaded || window.sessionStorage.getItem(storageKey) === "1";
+                } catch {}
+
+                if (alreadyReloaded) return;
+
+                try {
+                    window.sessionStorage.setItem(storageKey, "1");
+                } catch {}
+
+                currentUrl.searchParams.set(reloadParam, Date.now().toString(36));
+                window.location.replace(currentUrl.toString());
+            }
+
+            refreshIfStale().catch(function() {});
+        })();
+    </script>
     <script>
         // Prevent flash of wrong theme by applying theme before page renders
         (function() {

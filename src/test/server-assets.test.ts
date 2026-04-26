@@ -66,6 +66,7 @@ describe("BacklogServer asset serving", () => {
 		const res = await fetch(`http://127.0.0.1:${serverPort}/assets/images/test.png`);
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toBe("image/png");
+		expect(res.headers.get("cache-control")).toBeNull();
 		const body = await res.text();
 		expect(body).toBe("PNGTEST");
 	});
