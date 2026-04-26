@@ -46,7 +46,8 @@ export function registerDocumentTools(server: McpServer, _config: BacklogConfig)
 	const createDocumentTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "document_create",
-			description: "Create a Backlog.md document using the shared ID generator",
+			description:
+				"Create a Backlog.md document using the shared core document pipeline, with optional docs subdirectory path",
 			inputSchema: documentCreateSchema,
 			annotations: { title: "Create Document", destructiveHint: false },
 		},
@@ -57,7 +58,8 @@ export function registerDocumentTools(server: McpServer, _config: BacklogConfig)
 	const updateDocumentTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "document_update",
-			description: "Update an existing Backlog.md document's content and optional title",
+			description:
+				"Update an existing Backlog.md document's content, optional title, metadata, and optional docs subdirectory path",
 			inputSchema: documentUpdateSchema,
 			annotations: { title: "Update Document", destructiveHint: false },
 		},

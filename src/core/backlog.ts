@@ -6,7 +6,11 @@ import { GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
 	type Decision,
+	DOCUMENT_TYPE_VALUES,
 	type Document,
+	type DocumentCreateInput,
+	type DocumentType,
+	type DocumentUpdateInput,
 	EntityType,
 	isLocalEditableTask,
 	type Milestone,
@@ -18,8 +22,14 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { documentIdsEqual } from "../utils/document-id.ts";
+import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import {
+	getDocumentSubPathFromRelativePath,
+	normalizeDocumentRelativePath,
+	normalizeDocumentSubPath,
+} from "../utils/document-path.ts";
 import { openInEditor } from "../utils/editor.ts";
+import { generateNextDocId } from "../utils/id-generators.ts";
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
@@ -133,6 +143,16 @@ function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, Bra
 		if (!latest) return true;
 		return latest.type === "task";
 	});
+}
+
+function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
+	if (type === undefined) {
+		return undefined;
+	}
+	if (typeof type === "string" && (DOCUMENT_TYPE_VALUES as readonly string[]).includes(type)) {
+		return type as DocumentType;
+	}
+	throw new Error(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
 }
 
 /**
@@ -446,8 +466,8 @@ export class Core {
 		const document = await this.getDocument(documentId);
 		if (!document) return null;
 
-		const relativePath = document.path ?? `${document.id}.md`;
-		const filePath = join(this.fs.docsDir, relativePath);
+		const relativePath = normalizeDocumentRelativePath(document.path ?? `${document.id}.md`);
+		const filePath = join(this.fs.docsDir, ...relativePath.split("/"));
 		try {
 			return await Bun.file(filePath).text();
 		} catch {
@@ -2311,7 +2331,7 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
-		const relativePath = await this.fs.saveDocument(doc, subPath);
+		const relativePath = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
 		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -2322,38 +2342,79 @@ export class Core {
 	}
 
 	async updateDocument(existingDoc: Document, content: string, autoCommit?: boolean): Promise<void> {
-		const updatedDoc = {
-			...existingDoc,
-			rawContent: content,
-			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-		};
-
-		let normalizedSubPath = "";
-		if (existingDoc.path) {
-			const segments = existingDoc.path.split(/[\\/]/).slice(0, -1);
-			if (segments.length > 0) {
-				normalizedSubPath = segments.join("/");
-			}
-		}
-
-		await this.createDocument(updatedDoc, autoCommit, normalizedSubPath);
+		await this.updateDocumentFromInput(
+			{
+				id: existingDoc.id,
+				title: existingDoc.title,
+				type: existingDoc.type,
+				tags: existingDoc.tags,
+				content,
+				...(existingDoc.path !== undefined && { path: getDocumentSubPathFromRelativePath(existingDoc.path) }),
+			},
+			autoCommit,
+		);
 	}
 
 	async createDocumentWithId(title: string, content: string, autoCommit?: boolean): Promise<Document> {
-		// Import the generateNextDocId function from CLI
-		const { generateNextDocId } = await import("../cli.js");
-		const id = await generateNextDocId(this);
+		return await this.createDocumentFromInput({ title, content }, autoCommit);
+	}
 
-		const document: Document = {
-			id,
-			title,
-			type: "other" as const,
-			createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-			rawContent: content,
+	async createDocumentFromInput(input: DocumentCreateInput, autoCommit?: boolean): Promise<Document> {
+		const title = input.title.trim();
+		if (!title) {
+			throw new Error("Title is required to create a document.");
+		}
+
+		const subPath = normalizeDocumentSubPath(input.path);
+		const tags = normalizeStringList(input.tags);
+		const type = normalizeDocumentTypeInput(input.type) ?? "other";
+		const document = await this.withCreateLock(async () => {
+			const id = normalizeDocumentId(await generateNextDocId(this));
+			const document: Document = {
+				id,
+				title,
+				type,
+				createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+				rawContent: input.content ?? "",
+				...(tags && tags.length > 0 && { tags }),
+			};
+
+			await this.createDocument(document, autoCommit, subPath);
+			return document;
+		});
+
+		return (await this.getDocument(document.id)) ?? document;
+	}
+
+	async updateDocumentFromInput(input: DocumentUpdateInput, autoCommit?: boolean): Promise<Document> {
+		const existingDoc = await this.getDocument(input.id);
+		if (!existingDoc) {
+			throw new Error(`Document not found: ${input.id}`);
+		}
+
+		const normalizedTitle = input.title?.trim();
+		if (input.title !== undefined && !normalizedTitle) {
+			throw new Error("Document title cannot be empty.");
+		}
+
+		const tags = input.tags !== undefined ? normalizeStringList(input.tags) : existingDoc.tags;
+		const type = normalizeDocumentTypeInput(input.type) ?? existingDoc.type;
+		const subPath =
+			input.path === undefined
+				? getDocumentSubPathFromRelativePath(existingDoc.path)
+				: normalizeDocumentSubPath(input.path);
+		const updatedDoc: Document = {
+			...existingDoc,
+			id: normalizeDocumentId(existingDoc.id),
+			title: normalizedTitle ?? existingDoc.title,
+			type,
+			rawContent: input.content,
+			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+			tags: tags && tags.length > 0 ? tags : undefined,
 		};
 
-		await this.createDocument(document, autoCommit);
-		return document;
+		await this.createDocument(updatedDoc, autoCommit, subPath);
+		return (await this.getDocument(existingDoc.id)) ?? updatedDoc;
 	}
 
 	async listTasksWithMetadata(

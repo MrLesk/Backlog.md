@@ -7,6 +7,8 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 
 let TEST_DIR: string;
 
+const toPosixPath = (path: string): string => path.replace(/\\/g, "/");
+
 describe("Core", () => {
 	let core: Core;
 
@@ -389,6 +391,75 @@ describe("Core", () => {
 
 			const updatedDocs = await core.filesystem.listDocuments();
 			expect(updatedDocs[0]?.title).toBe("Operations Guide Updated");
+		});
+
+		it("creates and moves documents through core input methods", async () => {
+			const created = await core.createDocumentFromInput({
+				title: "Setup Guide",
+				content: "# Setup",
+				type: "guide",
+				path: "guides / setup",
+				tags: ["setup", "guide"],
+			});
+
+			expect(created.id).toBe("doc-1");
+			expect(created.path).toBe("guides/setup/doc-1 - Setup-Guide.md");
+
+			const updated = await core.updateDocumentFromInput({
+				id: created.id,
+				title: "Install Guide",
+				content: "# Install",
+				path: "runbooks",
+			});
+
+			expect(updated.title).toBe("Install Guide");
+			expect(updated.path).toBe("runbooks/doc-1 - Install-Guide.md");
+			expect(updated.rawContent).toBe("# Install");
+
+			const docFiles = await Array.fromAsync(
+				new Bun.Glob("**/doc-*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }),
+			);
+			expect(docFiles.map(toPosixPath)).toEqual(["runbooks/doc-1 - Install-Guide.md"]);
+		});
+
+		it("preserves document path when updating without an explicit path", async () => {
+			const created = await core.createDocumentFromInput({
+				title: "Nested",
+				content: "Initial",
+				path: "guides",
+			});
+
+			const updated = await core.updateDocumentFromInput({
+				id: created.id,
+				content: "Updated",
+				title: "Nested Updated",
+			});
+
+			expect(updated.path).toBe("guides/doc-1 - Nested-Updated.md");
+		});
+
+		it("rejects unsupported document types in core input methods", async () => {
+			await expect(
+				core.createDocumentFromInput({
+					title: "Invalid",
+					content: "Content",
+					type: "unexpected",
+				} as unknown as Parameters<typeof core.createDocumentFromInput>[0]),
+			).rejects.toThrow("Document type must be one of");
+
+			const created = await core.createDocumentFromInput({
+				title: "Valid",
+				content: "Content",
+				type: "guide",
+			});
+
+			await expect(
+				core.updateDocumentFromInput({
+					id: created.id,
+					content: "Updated",
+					type: "unexpected",
+				} as unknown as Parameters<typeof core.updateDocumentFromInput>[0]),
+			).rejects.toThrow("Document type must be one of");
 		});
 
 		it("shows a git rename when the document title changes", async () => {

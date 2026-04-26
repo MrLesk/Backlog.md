@@ -24,7 +24,9 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 
 ## Documentation
 
-- Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree. Example: `backlog doc create -p guides "New Guide"`.
+- Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree.
+- Use `backlog doc create "New Guide" -p guides` to create a document in a docs subdirectory. The created output includes the persisted docs-relative file path, such as `backlog/docs/guides/doc-1 - New-Guide.md`.
+- Document paths are always relative to the docs directory. Absolute paths and traversal segments such as `..` are rejected.
 
 ## Task Management
 
@@ -160,7 +162,7 @@ Manage task dependencies to create execution sequences and prevent circular rela
 |-------------|------------------------------------------------------|
 | Create doc | `backlog doc create "API Guidelines"` |
 | Create with path | `backlog doc create "Setup Guide" -p guides/setup` |
-| Create with type | `backlog doc create "Architecture" -t technical` |
+| Create with type | `backlog doc create "Architecture" -t guide` |
 | List docs | `backlog doc list` |
 | View doc | `backlog doc view doc-1` |
 

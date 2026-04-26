@@ -87,6 +87,7 @@ describe("Status Change Callbacks", () => {
 		let testDir: string;
 		let core: Core;
 		let callbackOutputFile: string;
+		let callbackOutputPath: string;
 
 		beforeEach(async () => {
 			testDir = join(tmpdir(), `backlog-callback-test-${Date.now()}`);
@@ -94,6 +95,7 @@ describe("Status Change Callbacks", () => {
 			await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
 
 			callbackOutputFile = join(testDir, "callback-output.txt");
+			callbackOutputPath = callbackOutputFile.replace(/\\/g, "/");
 
 			core = new Core(testDir);
 		});
@@ -116,7 +118,8 @@ statuses:
 labels: []
 milestones: []
 dateFormat: yyyy-mm-dd
-onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" > ${callbackOutputFile}'
+checkActiveBranches: false
+onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" > "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
 
@@ -154,7 +157,8 @@ statuses:
 labels: []
 milestones: []
 dateFormat: yyyy-mm-dd
-onStatusChange: 'echo "global" > ${callbackOutputFile}'
+checkActiveBranches: false
+onStatusChange: 'echo "global" > "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
 
@@ -167,7 +171,7 @@ assignee: []
 created_date: 2025-01-01
 labels: []
 dependencies: []
-onStatusChange: 'echo "per-task:$NEW_STATUS" > ${callbackOutputFile}'
+onStatusChange: 'echo "per-task:$NEW_STATUS" > "${callbackOutputPath}"'
 ---
 `;
 			await writeFile(join(testDir, "backlog", "tasks", "task-1 - Task with custom callback.md"), taskContent);
@@ -193,7 +197,8 @@ statuses:
 labels: []
 milestones: []
 dateFormat: yyyy-mm-dd
-onStatusChange: 'echo "callback-ran" > ${callbackOutputFile}'
+checkActiveBranches: false
+onStatusChange: 'echo "callback-ran" > "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
 
@@ -224,6 +229,7 @@ statuses:
 labels: []
 milestones: []
 dateFormat: yyyy-mm-dd
+checkActiveBranches: false
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
 
@@ -248,6 +254,7 @@ statuses:
 labels: []
 milestones: []
 dateFormat: yyyy-mm-dd
+checkActiveBranches: false
 onStatusChange: 'exit 1'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
@@ -273,7 +280,8 @@ statuses:
 labels: []
 milestones: []
 dateFormat: yyyy-mm-dd
-onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" >> ${callbackOutputFile}'
+checkActiveBranches: false
+onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" >> "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
 

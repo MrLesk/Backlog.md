@@ -9,13 +9,84 @@ import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
-import type { SearchPriorityFilter, SearchResultType, Task, TaskUpdateInput } from "../types/index.ts";
+import {
+	DOCUMENT_TYPE_VALUES,
+	type Document,
+	type SearchPriorityFilter,
+	type SearchResultType,
+	type Task,
+	type TaskUpdateInput,
+} from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
 const DEFAULT_PREFIX = "task-";
+const DOCUMENT_TYPES = new Set<Document["type"]>(DOCUMENT_TYPE_VALUES);
+
+class DocumentPayloadValidationError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "DocumentPayloadValidationError";
+	}
+}
+
+function parseDocumentType(value: unknown): Document["type"] | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (typeof value !== "string") {
+		throw new DocumentPayloadValidationError("Document type must be a string.");
+	}
+	if (!DOCUMENT_TYPES.has(value as Document["type"])) {
+		throw new DocumentPayloadValidationError(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
+	}
+	return value as Document["type"];
+}
+
+function parseDocumentTags(value: unknown): string[] | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (!Array.isArray(value)) {
+		throw new DocumentPayloadValidationError("Document tags must be an array of strings.");
+	}
+	if (value.some((tag) => typeof tag !== "string")) {
+		throw new DocumentPayloadValidationError("Document tags must be an array of strings.");
+	}
+	return Array.from(new Set(value.map((tag) => tag.trim()).filter((tag) => tag.length > 0)));
+}
+
+function parseCreateDocumentPath(value: unknown): string | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (typeof value !== "string") {
+		throw new DocumentPayloadValidationError("Document path must be a string.");
+	}
+	return value;
+}
+
+function parseUpdateDocumentPath(value: unknown): string | null | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (value === null || typeof value === "string") {
+		return value;
+	}
+	throw new DocumentPayloadValidationError("Document path must be a string or null.");
+}
+
+function isDocumentValidationError(error: Error): boolean {
+	return (
+		error instanceof DocumentPayloadValidationError ||
+		error.message.startsWith("Document type ") ||
+		error.message.startsWith("Document path ") ||
+		error.message === "Title is required to create a document." ||
+		error.message === "Document title cannot be empty."
+	);
+}
 
 /**
  * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
@@ -1034,10 +1105,11 @@ export class BacklogServer {
 			const store = await this.getContentStoreInstance();
 			const docs = store.getDocuments();
 			const docFiles = docs.map((doc) => ({
-				name: `${doc.title}.md`,
+				name: doc.path?.split(/[\\/]+/).pop() ?? `${doc.title}.md`,
 				id: doc.id,
 				title: doc.title,
 				type: doc.type,
+				path: doc.path,
 				createdDate: doc.createdDate,
 				updatedDate: doc.updatedDate,
 				lastModified: doc.updatedDate || doc.createdDate,
@@ -1064,13 +1136,32 @@ export class BacklogServer {
 	}
 
 	private async handleCreateDoc(req: Request): Promise<Response> {
-		const { filename, content } = await req.json();
-
 		try {
-			const title = filename.replace(".md", "");
-			const document = await this.core.createDocumentWithId(title, content);
-			return Response.json({ success: true, id: document.id }, { status: 201 });
+			const body = await req.json();
+			const filename = typeof body?.filename === "string" ? body.filename : undefined;
+			const title = typeof body?.title === "string" ? body.title : filename?.replace(/\.md$/i, "");
+			if (!title || title.trim().length === 0) {
+				return Response.json({ error: "Document title is required" }, { status: 400 });
+			}
+			const type = parseDocumentType(body?.type);
+			const path = parseCreateDocumentPath(body?.path);
+			const tags = parseDocumentTags(body?.tags);
+
+			const document = await this.core.createDocumentFromInput({
+				title,
+				content: typeof body?.content === "string" ? body.content : "",
+				type,
+				path,
+				tags,
+			});
+			return Response.json({ success: true, ...document }, { status: 201 });
 		} catch (error) {
+			if (error instanceof SyntaxError) {
+				return Response.json({ error: "Invalid request payload" }, { status: 400 });
+			}
+			if (error instanceof Error && isDocumentValidationError(error)) {
+				return Response.json({ error: error.message }, { status: 400 });
+			}
 			console.error("Error creating document:", error);
 			return Response.json({ error: "Failed to create document" }, { status: 500 });
 		}
@@ -1081,6 +1172,9 @@ export class BacklogServer {
 			const body = await req.json();
 			const content = typeof body?.content === "string" ? body.content : undefined;
 			const title = typeof body?.title === "string" ? body.title : undefined;
+			const path = parseUpdateDocumentPath(body?.path);
+			const type = parseDocumentType(body?.type);
+			const tags = parseDocumentTags(body?.tags);
 
 			if (typeof content !== "string") {
 				return Response.json({ error: "Document content is required" }, { status: 400 });
@@ -1095,20 +1189,28 @@ export class BacklogServer {
 				}
 			}
 
-			const existingDoc = await this.core.getDocument(docId);
-			if (!existingDoc) {
-				return Response.json({ error: "Document not found" }, { status: 404 });
-			}
-
-			const nextDoc = normalizedTitle ? { ...existingDoc, title: normalizedTitle } : { ...existingDoc };
-
-			await this.core.updateDocument(nextDoc, content);
-			return Response.json({ success: true });
+			const document = await this.core.updateDocumentFromInput({
+				id: docId,
+				content,
+				...(normalizedTitle && { title: normalizedTitle }),
+				...(path !== undefined && { path }),
+				...(type !== undefined && { type }),
+				...(tags !== undefined && { tags }),
+			});
+			return Response.json({ success: true, ...document });
 		} catch (error) {
-			console.error("Error updating document:", error);
 			if (error instanceof SyntaxError) {
 				return Response.json({ error: "Invalid request payload" }, { status: 400 });
 			}
+			if (error instanceof Error) {
+				if (error.message.startsWith("Document not found")) {
+					return Response.json({ error: error.message }, { status: 404 });
+				}
+				if (isDocumentValidationError(error)) {
+					return Response.json({ error: error.message }, { status: 400 });
+				}
+			}
+			console.error("Error updating document:", error);
 			return Response.json({ error: "Failed to update document" }, { status: 500 });
 		}
 	}

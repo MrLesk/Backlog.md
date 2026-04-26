@@ -61,6 +61,11 @@ const addDocPrefix = (id: string): string => {
     return id.startsWith('doc-') ? id : `doc-${id}`;
 };
 
+const getDocumentDirectory = (path?: string): string => {
+    if (!path) return '';
+    return path.split(/[\\/]+/).slice(0, -1).join('/');
+};
+
 interface DocumentationDetailProps {
     docs: Document[];
     onRefreshData: () => Promise<void>;
@@ -75,6 +80,8 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
     const [originalContent, setOriginalContent] = useState<string>('');
     const [docTitle, setDocTitle] = useState<string>('');
     const [originalDocTitle, setOriginalDocTitle] = useState<string>('');
+    const [docPath, setDocPath] = useState<string>('');
+    const [originalDocPath, setOriginalDocPath] = useState<string>('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -91,6 +98,8 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             setIsLoading(false);
             setDocTitle('');
             setOriginalDocTitle('');
+            setDocPath('');
+            setOriginalDocPath('');
             setContent('');
             setOriginalContent('');
         } else if (id) {
@@ -130,6 +139,8 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 setOriginalContent(fullDoc.rawContent || '');
                 setDocTitle(fullDoc.title || '');
                 setOriginalDocTitle(fullDoc.title || '');
+                setDocPath(getDocumentDirectory(fullDoc.path));
+                setOriginalDocPath(getDocumentDirectory(fullDoc.path));
                 // Update document state with full data
                 setDocument(fullDoc);
             } catch (fetchError) {
@@ -142,6 +153,8 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                     setDocument(doc);
                     setDocTitle(doc.title || '');
                     setOriginalDocTitle(doc.title || '');
+                    setDocPath(getDocumentDirectory(doc.path));
+                    setOriginalDocPath(getDocumentDirectory(doc.path));
                 }
             }
         } catch (err) {
@@ -163,10 +176,11 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             setIsSaving(true);
             setSaveError(null);
             const normalizedTitle = docTitle.trim();
+            const normalizedPath = docPath.trim();
 
             if (isNewDocument) {
                 // Create new document
-                const result = await apiClient.createDoc(normalizedTitle, content);
+                const result = await apiClient.createDoc(normalizedTitle, content, normalizedPath);
                 // Refresh data and navigate to the new document
                 await onRefreshData();
                 // Show success toast
@@ -177,6 +191,8 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 setIsNewDocument(false);
                 setDocTitle(normalizedTitle);
                 setOriginalDocTitle(normalizedTitle);
+                setDocPath(getDocumentDirectory(result.path) || normalizedPath);
+                setOriginalDocPath(getDocumentDirectory(result.path) || normalizedPath);
                 // Use the returned document ID for navigation
                 const documentId = result.id.replace('doc-', ''); // Remove prefix for URL
                 navigate(`/documentation/${documentId}/${sanitizeUrlTitle(normalizedTitle)}`);
@@ -186,18 +202,25 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
 
                 // Check if title has changed
                 const titleChanged = normalizedTitle !== originalDocTitle;
+                const pathChanged = normalizedPath !== originalDocPath;
 
                 // Pass title only if it has changed
-                await apiClient.updateDoc(
+                const updatedDocument = await apiClient.updateDoc(
                     addDocPrefix(id),
                     content,
-                    titleChanged ? normalizedTitle : undefined
+                    titleChanged ? normalizedTitle : undefined,
+                    pathChanged ? normalizedPath : undefined
                 );
 
                 // Update original title to the new value
                 if (titleChanged) {
                     setDocTitle(normalizedTitle);
                     setOriginalDocTitle(normalizedTitle);
+                }
+                if (pathChanged) {
+                    const updatedPath = getDocumentDirectory(updatedDocument.path) || normalizedPath;
+                    setDocPath(updatedPath);
+                    setOriginalDocPath(updatedPath);
                 }
 
                 // Refresh data from parent
@@ -216,7 +239,7 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
         } finally {
             setIsSaving(false);
         }
-    }, [id, docTitle, content, isNewDocument, onRefreshData, navigate, loadDocContent]);
+    }, [id, docTitle, docPath, originalDocPath, content, isNewDocument, onRefreshData, navigate, loadDocContent]);
 
     const handleEdit = () => {
         setIsEditing(true);
@@ -230,11 +253,12 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             // Revert changes for existing documents
             setContent(originalContent);
             setDocTitle(originalDocTitle);
+            setDocPath(originalDocPath);
             setIsEditing(false);
         }
     };
 
-    const hasChanges = content !== originalContent || docTitle !== originalDocTitle;
+    const hasChanges = content !== originalContent || docTitle !== originalDocTitle || docPath !== originalDocPath;
 
     if (!id) {
         return (
@@ -270,13 +294,22 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                         <div className="flex items-start justify-between mb-6">
                             <div className="flex-1">
                                 {isEditing ? (
-                                    <input
-                                        type="text"
-                                        value={docTitle}
-                                        onChange={(e) => setDocTitle(e.target.value)}
-                                        className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
-                                        placeholder="Document title"
-                                    />
+                                    <div className="space-y-3 mb-2">
+                                        <input
+                                            type="text"
+                                            value={docTitle}
+                                            onChange={(e) => setDocTitle(e.target.value)}
+                                            className="text-3xl font-bold text-gray-900 dark:text-gray-100 w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+                                            placeholder="Document title"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={docPath}
+                                            onChange={(e) => setDocPath(e.target.value)}
+                                            className="w-full max-w-md bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+                                            placeholder="guides/setup"
+                                        />
+                                    </div>
                                 ) : (
                                     <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors duration-200">
                                         {docTitle || document?.title || (title ? decodeURIComponent(title) : `Document ${id}`)}
@@ -297,6 +330,15 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                                         </svg>
                                         <span>Documentation</span>
                                     </div>
+                                    {document?.path && (
+                                        <div className="flex items-center space-x-2">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                      d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+                                            </svg>
+                                            <span>{document.path}</span>
+                                        </div>
+                                    )}
                                     {document?.createdDate && (
                                         <div className="flex items-center space-x-2">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor"

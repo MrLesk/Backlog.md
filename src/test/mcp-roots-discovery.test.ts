@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -39,9 +40,9 @@ async function setupDirs(): Promise<{
 }> {
 	TEST_DIR = createUniqueTestDir("mcp-roots");
 
-	const uninitializedDir = `${TEST_DIR}/no-backlog`;
-	const projectRoot = `${TEST_DIR}/real-project`;
-	const secondProjectRoot = `${TEST_DIR}/second-project`;
+	const uninitializedDir = join(TEST_DIR, "no-backlog");
+	const projectRoot = join(TEST_DIR, "real-project");
+	const secondProjectRoot = join(TEST_DIR, "second-project");
 
 	await $`mkdir -p ${uninitializedDir}`.quiet();
 	await createProject(projectRoot, "Roots Test Project");
@@ -168,7 +169,7 @@ describe("MCP roots discovery", () => {
 
 	it("normalizes file roots to their parent directory", async () => {
 		const { uninitializedDir, projectRoot } = await setupDirs();
-		const readmePath = `${projectRoot}/README.md`;
+		const readmePath = join(projectRoot, "README.md");
 		await $`touch ${readmePath}`.quiet();
 
 		const server = await createMcpServer(uninitializedDir);
@@ -193,7 +194,7 @@ describe("MCP roots discovery", () => {
 		const rootsRef = {
 			current: [
 				"file://not-a-local-host/path",
-				pathToFileURL(`${TEST_DIR}/missing-root`).toString(),
+				pathToFileURL(join(TEST_DIR, "missing-root")).toString(),
 				pathToFileURL(projectRoot).toString(),
 			],
 		};

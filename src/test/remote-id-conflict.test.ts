@@ -61,7 +61,7 @@ describe("next id across remote branches", () => {
 
 	it("uses id after highest remote task", async () => {
 		const result = await $`bun run ${CLI_PATH} task create "Local Task"`.cwd(LOCAL_DIR).quiet();
-		expect(result.stdout.toString()).toContain("Created task task-2");
+		expect(result.stdout.toString()).toContain("Created task TASK-2");
 		const core = new Core(LOCAL_DIR);
 		const task = await core.filesystem.loadTask("task-2");
 		expect(task).not.toBeNull();
