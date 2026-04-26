@@ -5,6 +5,7 @@
 
 import Fuse from "fuse.js";
 import type { Task } from "../types/index.ts";
+import { NO_MILESTONE_FILTER_VALUE } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
 
 export interface TaskSearchOptions {
@@ -203,6 +204,9 @@ function applyMilestoneFilter(
 	const normalizedMilestone = milestone.trim().toLowerCase();
 	if (!normalizedMilestone) {
 		return tasks;
+	}
+	if (normalizedMilestone === NO_MILESTONE_FILTER_VALUE) {
+		return tasks.filter((task) => !task.milestone?.trim());
 	}
 
 	return tasks.filter((task) => {

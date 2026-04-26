@@ -12,6 +12,7 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
+import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
@@ -361,6 +362,7 @@ export async function viewTaskEnhanced(
 				selectedValue: milestoneFilter,
 				choices: [
 					{ label: "All", value: "" },
+					{ label: NO_MILESTONE_FILTER_LABEL, value: NO_MILESTONE_FILTER_VALUE },
 					...availableMilestoneTitles.map((milestone) => ({ label: milestone, value: milestone })),
 				],
 			});
@@ -591,6 +593,9 @@ export async function viewTaskEnhanced(
 			filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
 			if (milestoneFilter) {
 				filteredTasks = filteredTasks.filter((task) => {
+					if (milestoneFilter === NO_MILESTONE_FILTER_VALUE) {
+						return !task.milestone?.trim();
+					}
 					if (!task.milestone) return false;
 					const taskMilestoneTitle = resolveMilestoneLabel(task.milestone);
 					return taskMilestoneTitle.toLowerCase() === milestoneFilter.toLowerCase();
@@ -625,7 +630,9 @@ export async function viewTaskEnhanced(
 				activeFilters.push(`Labels: {yellow-fg}${labelFilter.join(", ")}{/}`);
 			}
 			if (milestoneFilter) {
-				activeFilters.push(`Milestone: {magenta-fg}${milestoneFilter}{/}`);
+				const milestoneFilterLabel =
+					milestoneFilter === NO_MILESTONE_FILTER_VALUE ? NO_MILESTONE_FILTER_LABEL : milestoneFilter;
+				activeFilters.push(`Milestone: {magenta-fg}${milestoneFilterLabel}{/}`);
 			}
 			let listPaneMessage: string;
 			if (activeFilters.length > 0) {
