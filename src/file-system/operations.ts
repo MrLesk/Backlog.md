@@ -1384,6 +1384,10 @@ ${description || `Milestone: ${title}`}`,
 				case "auto_commit":
 					config.autoCommit = value.toLowerCase() === "true";
 					break;
+				case "filesystem_only":
+				case "filesystemOnly":
+					config.filesystemOnly = value.toLowerCase() === "true";
+					break;
 				case "zero_padded_ids":
 					config.zeroPaddedIds = Number.parseInt(value, 10);
 					break;
@@ -1426,6 +1430,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
+			filesystemOnly: config.filesystemOnly,
 			zeroPaddedIds: config.zeroPaddedIds,
 			bypassGitHooks: config.bypassGitHooks,
 			checkActiveBranches: config.checkActiveBranches,
@@ -1455,6 +1460,7 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
+			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
 			...(typeof config.checkActiveBranches === "boolean"

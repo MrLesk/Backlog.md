@@ -529,6 +529,7 @@ export class ApiClient {
 		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "guide")[];
 		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];
 		installClaudeAgent?: boolean;
+		filesystemOnly?: boolean;
 		advancedConfig?: {
 			checkActiveBranches?: boolean;
 			remoteOperations?: boolean;

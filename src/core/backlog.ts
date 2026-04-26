@@ -158,7 +158,7 @@ export class Core {
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
-		this.git = new GitOperations(projectRoot);
+		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
@@ -399,6 +399,8 @@ export class Core {
 
 		// Check config for remote operations
 		const config = await this.fs.loadConfig();
+		if (config?.checkActiveBranches === false) return null;
+
 		const sinceDays = config?.activeBranchDays ?? 30;
 		const taskPrefix = config?.prefixes?.task ?? "task";
 
@@ -461,7 +463,7 @@ export class Core {
 		this.disposeSearchService();
 		this.disposeContentStore();
 		this.fs = new FileSystem(projectRoot);
-		this.git = new GitOperations(projectRoot);
+		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
 	}
 
 	disposeSearchService(): void {
@@ -504,12 +506,16 @@ export class Core {
 	}
 
 	async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
+		const config = await this.fs.loadConfig();
+		this.git.setConfig(config);
+		if (config?.filesystemOnly) {
+			return false;
+		}
 		// If override is explicitly provided, use it
 		if (overrideValue !== undefined) {
 			return overrideValue;
 		}
 		// Otherwise, check config (default to false for safety)
-		const config = await this.fs.loadConfig();
 		return config?.autoCommit ?? false;
 	}
 

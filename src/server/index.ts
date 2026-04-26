@@ -71,6 +71,18 @@ function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
 	});
 }
 
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+	if (typeof value === "boolean") {
+		return value;
+	}
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (normalized === "true") return true;
+		if (normalized === "false") return false;
+	}
+	return undefined;
+}
+
 // @ts-expect-error
 import favicon from "../web/favicon.png" with { type: "file" };
 import indexHtml from "../web/index.html";
@@ -1675,7 +1687,8 @@ export class BacklogServer {
 			const integrationMode = body.integrationMode as "mcp" | "cli" | "none" | undefined;
 			const mcpClients = Array.isArray(body.mcpClients) ? body.mcpClients : [];
 			const agentInstructions = Array.isArray(body.agentInstructions) ? body.agentInstructions : [];
-			const installClaudeAgentFlag = Boolean(body.installClaudeAgent);
+			const installClaudeAgentFlag = parseOptionalBoolean(body.installClaudeAgent) ?? false;
+			const filesystemOnly = parseOptionalBoolean(body.filesystemOnly) ?? false;
 			const advancedConfig = body.advancedConfig || {};
 
 			// Input validation (browser layer responsibility)
@@ -1699,6 +1712,7 @@ export class BacklogServer {
 				mcpClients,
 				agentInstructions,
 				installClaudeAgent: installClaudeAgentFlag,
+				filesystemOnly,
 				advancedConfig,
 				existingConfig: null,
 			});
