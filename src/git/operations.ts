@@ -8,23 +8,49 @@ type GitPathContext = {
 	relativePath: string;
 };
 
+type GitConfigLoader = () => Promise<BacklogConfig | null>;
+
 export class GitOperations {
 	private projectRoot: string;
 	private config: BacklogConfig | null = null;
+	private readonly configLoader?: GitConfigLoader;
 
-	constructor(projectRoot: string, config: BacklogConfig | null = null) {
+	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
 		this.projectRoot = projectRoot;
 		this.config = config;
+		this.configLoader = configLoader;
 	}
 
 	setConfig(config: BacklogConfig | null): void {
 		this.config = config;
 	}
 
+	private async loadConfigIfNeeded(): Promise<void> {
+		if (this.config || !this.configLoader) {
+			return;
+		}
+		try {
+			this.config = await this.configLoader();
+		} catch {
+			this.config = null;
+		}
+	}
+
+	async isRepository(cwd = this.projectRoot): Promise<boolean> {
+		await this.loadConfigIfNeeded();
+		if (this.config?.filesystemOnly) {
+			return false;
+		}
+		return await isGitRepository(cwd);
+	}
+
 	async addFile(filePath: string): Promise<void> {
 		const context = await this.getPathContext(filePath);
 		if (context) {
 			await this.execGit(["add", context.relativePath], { cwd: context.repoRoot });
+			return;
+		}
+		if (!(await this.isRepository())) {
 			return;
 		}
 
@@ -34,6 +60,9 @@ export class GitOperations {
 	}
 
 	async addFiles(filePaths: string[]): Promise<void> {
+		if (filePaths.length === 0 || !(await this.isRepository())) {
+			return;
+		}
 		// Convert absolute paths to relative paths from project root to avoid Windows encoding issues
 		const relativePaths = filePaths.map((filePath) => relative(this.projectRoot, filePath).replace(/\\/g, "/"));
 		await this.execGit(["add", ...relativePaths]);
@@ -46,10 +75,16 @@ export class GitOperations {
 			args.push("--no-verify");
 		}
 		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
+		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+			return;
+		}
 		await this.execGit(args, { cwd: repoRoot });
 	}
 
 	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
+		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+			return;
+		}
 		const args = ["commit", "-m", message];
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
@@ -65,6 +100,9 @@ export class GitOperations {
 
 		const resolvedRepoRoot =
 			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+		if (!(await this.isRepository(resolvedRepoRoot))) {
+			return;
+		}
 		const relativePaths: string[] = [];
 		for (const filePath of uniqueFilePaths) {
 			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
@@ -95,6 +133,9 @@ export class GitOperations {
 	}
 
 	async resetIndex(repoRoot?: string | null): Promise<void> {
+		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+			return;
+		}
 		// Reset the staging area without affecting working directory
 		await this.execGit(["reset", "HEAD"], { cwd: repoRoot ?? undefined });
 	}
@@ -107,6 +148,9 @@ export class GitOperations {
 
 		const resolvedRepoRoot =
 			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+		if (!(await this.isRepository(resolvedRepoRoot))) {
+			return;
+		}
 		const relativePaths: string[] = [];
 		for (const filePath of uniqueFilePaths) {
 			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
@@ -121,6 +165,9 @@ export class GitOperations {
 	}
 
 	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
+		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+			return;
+		}
 		// Check if there are any staged changes before committing
 		const { stdout: status } = await this.execGit(["status", "--porcelain"], { cwd: repoRoot ?? undefined });
 		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
@@ -166,6 +213,9 @@ export class GitOperations {
 	}
 
 	async getStatus(): Promise<string> {
+		if (!(await this.isRepository())) {
+			return "";
+		}
 		const { stdout } = await this.execGit(["status", "--porcelain"], { readOnly: true });
 		return stdout;
 	}
@@ -176,6 +226,9 @@ export class GitOperations {
 	}
 
 	async getCurrentBranch(): Promise<string> {
+		if (!(await this.isRepository())) {
+			return "";
+		}
 		const { stdout } = await this.execGit(["branch", "--show-current"], { readOnly: true });
 		return stdout.trim();
 	}
@@ -185,6 +238,9 @@ export class GitOperations {
 	}
 
 	async getLastCommitMessage(): Promise<string> {
+		if (!(await this.isRepository())) {
+			return "";
+		}
 		const { stdout } = await this.execGit(["log", "-1", "--pretty=format:%s"], { readOnly: true });
 		return stdout.trim();
 	}
@@ -256,6 +312,9 @@ export class GitOperations {
 
 		const context = await this.getPathContext(filePath);
 		const repoRoot = context?.repoRoot ?? this.projectRoot;
+		if (!(await this.isRepository(repoRoot))) {
+			return;
+		}
 		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
 
 		// Retry git operations to handle transient failures
@@ -278,28 +337,34 @@ export class GitOperations {
 			await this.execGit(["add", pathForAdd], { cwd: context.repoRoot });
 			return context.repoRoot;
 		}
+		if (!(await this.isRepository())) {
+			return null;
+		}
 
 		await this.execGit(["add", `${backlogDir}/`]);
 		return null;
 	}
 	async stageFileMove(fromPath: string, toPath: string): Promise<string | null> {
 		const toContext = await this.getPathContext(toPath);
-		const repoRoot = toContext?.repoRoot;
-		const relativeFrom = repoRoot ? await this.getRelativePathForRepo(fromPath, repoRoot) : null;
-		const relativeTo = toContext?.relativePath ?? null;
+		const repoRoot = toContext?.repoRoot ?? this.projectRoot;
+		if (!(await this.isRepository(repoRoot))) {
+			return null;
+		}
+		const relativeFrom = await this.getRelativePathForRepo(fromPath, repoRoot);
+		const relativeTo = toContext?.relativePath ?? (await this.getRelativePathForRepo(toPath, repoRoot));
 
 		// Stage the deletion of the old file and addition of the new file
 		// Git will automatically detect this as a rename if the content is similar enough
 		try {
 			// First try to stage the removal of the old file (if it still exists)
-			await this.execGit(["add", "--all", relativeFrom ?? fromPath], { cwd: repoRoot ?? undefined });
+			await this.execGit(["add", "--all", relativeFrom ?? fromPath], { cwd: repoRoot });
 		} catch {
 			// If the old file doesn't exist, that's okay - it was already moved
 		}
 
 		// Always stage the new file location
-		await this.execGit(["add", relativeTo ?? toPath], { cwd: repoRoot ?? undefined });
-		return repoRoot ?? null;
+		await this.execGit(["add", relativeTo ?? toPath], { cwd: repoRoot });
+		return repoRoot === this.projectRoot ? null : repoRoot;
 	}
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
@@ -353,6 +418,9 @@ export class GitOperations {
 	}
 
 	async listRecentBranches(daysAgo: number): Promise<string[]> {
+		if (!(await this.isRepository())) {
+			return [];
+		}
 		try {
 			// Get all branches with their last commit date
 			// Using for-each-ref which is more efficient than multiple branch commands
@@ -396,6 +464,9 @@ export class GitOperations {
 	}
 
 	async listLocalBranches(): Promise<string[]> {
+		if (!(await this.isRepository())) {
+			return [];
+		}
 		try {
 			const { stdout } = await this.execGit(["branch", "--format=%(refname:short)"], { readOnly: true });
 			return stdout
@@ -408,6 +479,9 @@ export class GitOperations {
 	}
 
 	async listAllBranches(_remote = "origin"): Promise<string[]> {
+		if (!(await this.isRepository())) {
+			return [];
+		}
 		try {
 			// Use -a flag only if remote operations are enabled
 			const branchArgs =
@@ -430,6 +504,9 @@ export class GitOperations {
 	 * Returns true if the current repository has any remotes configured
 	 */
 	async hasAnyRemote(): Promise<boolean> {
+		if (!(await this.isRepository())) {
+			return false;
+		}
 		try {
 			const { stdout } = await this.execGit(["remote"], { readOnly: true });
 			return (
@@ -447,6 +524,9 @@ export class GitOperations {
 	 * Returns true if a specific remote exists (default: origin)
 	 */
 	async hasRemote(remote = "origin"): Promise<boolean> {
+		if (!(await this.isRepository())) {
+			return false;
+		}
 		try {
 			const { stdout } = await this.execGit(["remote"], { readOnly: true });
 			return stdout.split("\n").some((r) => r.trim() === remote);
@@ -456,10 +536,16 @@ export class GitOperations {
 	}
 
 	async listFilesInTree(ref: string, path: string): Promise<string[]> {
+		if (!(await this.isRepository())) {
+			return [];
+		}
 		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", "-z", ref, "--", path], { readOnly: true });
 		return stdout.split("\0").filter(Boolean);
 	}
 	async showFile(ref: string, filePath: string): Promise<string> {
+		if (!(await this.isRepository())) {
+			return "";
+		}
 		const { stdout } = await this.execGit(["show", `${ref}:${filePath}`], { readOnly: true });
 		return stdout;
 	}
@@ -470,6 +556,9 @@ export class GitOperations {
 	 */
 	async getBranchLastModifiedMap(ref: string, dir: string, sinceDays?: number): Promise<Map<string, Date>> {
 		const out = new Map<string, Date>();
+		if (!(await this.isRepository())) {
+			return out;
+		}
 
 		try {
 			// Build args with optional --since filter
@@ -526,6 +615,9 @@ export class GitOperations {
 	}
 
 	async getFileLastModifiedBranch(filePath: string): Promise<string | null> {
+		if (!(await this.isRepository())) {
+			return null;
+		}
 		try {
 			// Get the hash of the last commit that touched the file
 			const { stdout: commitHash } = await this.execGit(["log", "-1", "--format=%H", "--", filePath], {
@@ -613,6 +705,10 @@ export class GitOperations {
 	}
 
 	private async resolveRepoRoot(startDir: string): Promise<string | null> {
+		await this.loadConfigIfNeeded();
+		if (this.config?.filesystemOnly) {
+			return null;
+		}
 		try {
 			const { stdout } = await this.execGit(["rev-parse", "--show-toplevel"], { readOnly: true, cwd: startDir });
 			const root = stdout.trim();

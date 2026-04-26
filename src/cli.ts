@@ -413,7 +413,7 @@ program
 
 program
 	.command("init [projectName]")
-	.description("initialize backlog project in the current repository")
+	.description("initialize backlog project in the current directory")
 	.option(
 		"--agent-instructions <instructions>",
 		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (alias of agents), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
@@ -431,6 +431,7 @@ program
 	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
 	.option("--config-location <location>", "config location for init: folder or root")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
+	.option("--no-git", "initialize without Git integration")
 	.option("--defaults", "use default values for all prompts")
 	.action(
 		async (
@@ -450,6 +451,7 @@ program
 				backlogDir?: string;
 				configLocation?: string;
 				taskPrefix?: string;
+				git?: boolean;
 				defaults?: boolean;
 			},
 		) => {
@@ -457,22 +459,34 @@ program
 				// init command uses process.cwd() directly - it initializes in the current directory
 				const cwd = process.cwd();
 				const isRepo = await isGitRepository(cwd);
+				let filesystemOnly = options.git === false;
 
-				if (!isRepo) {
-					const initializeRepo = await clack.confirm({
-						message: "No git repository found. Initialize one here?",
-						initialValue: false,
+				if (!isRepo && !filesystemOnly) {
+					const repositoryMode = await clack.select({
+						message: "No git repository found. How should Backlog.md initialize this project?",
+						initialValue: "git",
+						options: [
+							{
+								label: "Initialize a Git repository",
+								value: "git",
+								hint: "Use the standard Git-backed workflow",
+							},
+							{
+								label: "Continue without Git",
+								value: "filesystem",
+								hint: "Use local Markdown files only",
+							},
+						],
 					});
-					if (clack.isCancel(initializeRepo)) {
+					if (clack.isCancel(repositoryMode)) {
 						abortInitialization();
 						return;
 					}
 
-					if (initializeRepo) {
+					if (repositoryMode === "git") {
 						await initializeGitRepository(cwd);
 					} else {
-						abortInitialization();
-						return;
+						filesystemOnly = true;
 					}
 				}
 
@@ -536,7 +550,8 @@ program
 					options.integrationMode ||
 					options.backlogDir ||
 					options.configLocation ||
-					options.taskPrefix
+					options.taskPrefix ||
+					options.git === false
 				);
 
 				// Get project name
@@ -1079,6 +1094,15 @@ program
 						advancedConfigured = true;
 					}
 				}
+				if (filesystemOnly) {
+					advancedConfig = {
+						...advancedConfig,
+						checkActiveBranches: false,
+						remoteOperations: false,
+						bypassGitHooks: false,
+						autoCommit: false,
+					};
+				}
 				// Call shared core init function
 				const initResult = await initializeProject(core, {
 					projectName: name,
@@ -1103,9 +1127,11 @@ program
 						taskPrefix: taskPrefix || undefined,
 					},
 					existingConfig,
+					filesystemOnly,
 				});
 
 				const config = initResult.config;
+				const gitIntegrationDisabled = Boolean(config.filesystemOnly);
 
 				// Show configuration summary
 				const supportsColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
@@ -1142,6 +1168,9 @@ program
 				summaryLines.push(
 					`${label("Config location:")} ${configLocation === "root" ? DEFAULT_FILES.ROOT_CONFIG : "folder config.yml"}`,
 				);
+				summaryLines.push(
+					`${label("Git integration:")} ${gitIntegrationDisabled ? muted("disabled (filesystem-only)") : good("enabled")}`,
+				);
 				if (integrationMode === "cli") {
 					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
 					if (agentFiles.length > 0) {
@@ -1172,7 +1201,7 @@ program
 					completionSummary = muted("not configured");
 				}
 				summaryLines.push(`${label("Shell completions:")} ${completionSummary}`);
-				if (advancedConfigured) {
+				if (advancedConfigured || gitIntegrationDisabled) {
 					summaryLines.push(label("Advanced settings:"));
 					summaryLines.push(`  ${label("Check active branches:")} ${boolValue(Boolean(config.checkActiveBranches))}`);
 					summaryLines.push(`  ${label("Remote operations:")} ${boolValue(Boolean(config.remoteOperations))}`);
@@ -3333,6 +3362,9 @@ configCmd
 				case "autoCommit":
 					console.log(config.autoCommit?.toString() || "");
 					break;
+				case "filesystemOnly":
+					console.log(config.filesystemOnly?.toString() || "false");
+					break;
 				case "bypassGitHooks":
 					console.log(config.bypassGitHooks?.toString() || "");
 					break;
@@ -3348,7 +3380,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -3449,6 +3481,22 @@ configCmd
 					}
 					break;
 				}
+				case "filesystemOnly": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.filesystemOnly = true;
+						config.checkActiveBranches = false;
+						config.remoteOperations = false;
+						config.autoCommit = false;
+						config.bypassGitHooks = false;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.filesystemOnly = false;
+					} else {
+						console.error("filesystemOnly must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "bypassGitHooks": {
 					const boolValue = value.toLowerCase();
 					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
@@ -3523,7 +3571,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -3565,6 +3613,7 @@ configCmd
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
+			console.log(`  filesystemOnly: ${config.filesystemOnly ?? "false"}`);
 			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
 			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
@@ -3591,6 +3640,7 @@ program
 				console.error("No backlog project found. Initialize one first with: backlog init");
 				process.exit(1);
 			}
+			core.gitOps.setConfig(config);
 
 			// Get all Done tasks
 			const tasks = await core.queryTasks();
@@ -3682,7 +3732,8 @@ program
 			}
 
 			// If autoCommit is disabled, stage the moves so Git recognizes them
-			if (successCount > 0 && !shouldAutoCommit) {
+			const hasGitRepository = await core.gitOps.isRepository();
+			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
 				console.log("Staging file moves for Git...");
 				for (const { fromPath, toPath } of movedTasks) {
 					try {
@@ -3694,7 +3745,7 @@ program
 			}
 
 			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-			if (successCount > 0 && !shouldAutoCommit) {
+			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
 				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
 			}
 		} catch (err) {

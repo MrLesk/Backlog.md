@@ -48,8 +48,11 @@ bun i -g backlog.md
 # or: npm i -g backlog.md
 # or: brew install backlog-md
 
-# Initialize in any git repo
+# Initialize in any Git repo
 backlog init "My Awesome Project"
+
+# Or initialize without Git for local/non-code projects
+backlog init "Personal Planning" --no-git
 ```
 
 The init wizard will ask how you want to connect AI tools:
@@ -57,7 +60,7 @@ The init wizard will ask how you want to connect AI tools:
 - **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.
 - **Skip** — no AI setup; use Backlog.md purely as a task manager.
 
-Backlog data is stored in a project-local backlog folder such as `backlog/`, `.backlog/`, or a custom project-relative path configured through `backlog.config.yml`. Tasks remain human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`).
+Backlog data is stored in a project-local backlog folder such as `backlog/`, `.backlog/`, or a custom project-relative path configured through `backlog.config.yml`. Tasks remain human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`). Git is optional: `backlog init --no-git` creates a filesystem-only project and disables cross-branch checks, remote operations, and auto-commit.
 
 ---
 
@@ -256,6 +259,8 @@ Skipping the wizard (answering "No" during init) applies the safe defaults that 
 - `zeroPaddedIds` disabled.
 - `defaultEditor` unset (falls back to your environment).
 - `defaultPort=6420`, `autoOpenBrowser=true`.
+
+For filesystem-only projects, run `backlog init --no-git`. Backlog.md will not run `git init`, and the saved config forces `checkActiveBranches=false`, `remoteOperations=false`, and `autoCommit=false` so CLI, Web, and MCP local-file workflows do not depend on a Git repository.
 
 Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
 

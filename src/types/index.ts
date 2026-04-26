@@ -276,6 +276,8 @@ export interface BacklogConfig {
 	defaultPort?: number;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
+	/** Disable all Git integration for filesystem-only projects. */
+	filesystemOnly?: boolean;
 	zeroPaddedIds?: number;
 	includeDateTimeInDates?: boolean; // Whether to include time in new dates
 	bypassGitHooks?: boolean;

@@ -65,6 +65,7 @@ export const DEFAULT_INIT_CONFIG = {
 	activeBranchDays: 30,
 	bypassGitHooks: false,
 	autoCommit: false,
+	filesystemOnly: false,
 	zeroPaddedIds: undefined as number | undefined,
 	defaultEditor: undefined as string | undefined,
 	defaultPort: 6420,
