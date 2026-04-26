@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-22 12:32'
-updated_date: '2026-04-26 08:36'
+updated_date: '2026-04-26 10:10'
 labels: []
 dependencies: []
 references:
@@ -14,6 +14,7 @@ references:
   - 'https://github.com/MrLesk/Backlog.md/issues/611'
 modified_files:
   - src/server/index.ts
+  - src/web/index.html
   - src/test/server-cache.test.ts
   - src/test/server-assets.test.ts
 priority: high
@@ -37,41 +38,38 @@ Browser view can serve stale frontend assets after updates because the SPA shell
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Reproduced the stale-cache surface locally by starting `BacklogServer` from source and fetching SPA routes: exact Bun HTML-import routes returned `cache-control=null`, confirming the existing fallback `fetch` no-cache headers do not apply to matched routes.
-2. Kept Bun's HTML import serving model intact. Based on Bun docs and generated bundle inspection, production HTML imports become an `HTMLBundle` manifest with per-file headers, so the fix mutates only the HTML entry file headers in that manifest to add no-store directives.
+2. Kept Bun's HTML import serving model intact. Based on Bun docs and generated bundle inspection, production HTML imports become an `HTMLBundle` manifest with per-file headers, so the server fix mutates only the HTML entry file headers in that manifest to add no-store directives.
 3. Added one shared no-store header helper and reused it for existing fallback GET/HEAD responses.
-4. Added a narrow stale hashed frontend script fallback for obsolete `/chunk-*.js` and `/index-*.js` requests. This returns a tiny one-shot module that reloads the current page with `__backlog_reload=<timestamp>`, allowing already-cached old app shells to recover instead of staying stuck on 404 chunk URLs.
-5. Added focused tests for the stale script recovery path, compiled HTML manifest header mutation, and unchanged `/assets/*` cache behavior.
-6. Verified with targeted tests, typecheck, Biome, full test suite, `bun run build`, and a manual compiled-binary check against `backlog browser`.
+4. Added the steady-state stale-shell recovery in `src/web/index.html`: an inline head script fetches the current page with `cache: "no-store"`, parses the fresh HTML, compares stylesheet/module asset references against the currently loaded shell, and reloads once with `__backlog_reload=<timestamp>` when they differ.
+5. Left obsolete hashed chunk URLs as normal missing assets; recovery is intentionally owned by the cached HTML shell once this version has shipped.
+6. Added focused tests for the index-shell guard, compiled HTML manifest header mutation, and unchanged `/assets/*` cache behavior.
+7. Verified with targeted tests, typecheck, Biome, full test suite, `bun run build`, and a manual compiled-binary check against `backlog browser`.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-GitHub issue #611 reports the same stale SPA shell/chunk problem after upgrading backlog.md 1.44.0: Chrome kept an old index/app shell that requested obsolete hashed chunk filenames. Work will continue under this existing task rather than duplicate BACK-446.
-
-Context brief for implementation: L1 bounded server behavior fix. Bun docs reviewed: `Bun.serve` HTML imports are intended to be mounted directly in `routes`; production/runtime bundling enables cache/ETag headers, and route responses can carry explicit custom headers. Current `src/server/index.ts` sets no-cache headers only in the fallback `fetch` handler, which exact SPA routes bypass. Planned fix is a narrow server-side wrapper for SPA HTML route responses, not a rewrite of asset serving.
-
-Reproduction evidence: before the fix, a source `BacklogServer` fetch of `/`, `/tasks`, and `/documentation/example` returned 200 with `cache-control=null`, showing exact SPA routes bypassed the existing fallback no-cache header logic. Compiled binary verification after the fix: `GET /` returned `Cache-Control: no-store, max-age=0, must-revalidate`, `Pragma: no-cache`, and `Expires: 0`; `GET /chunk-t1h94j9b.js` returned 200 JavaScript reload recovery with the same no-store headers. The first full-suite run exposed an unrelated/order-sensitive milestone expectation in `server-search-endpoint.test.ts`; that file passed alone, and a second full-suite run exited 0.
+Revised per user architecture feedback: moved stale frontend recovery into `src/web/index.html` rather than serving a recovery module for stale hashed chunk URLs. This means the first upgrade to the fixed version relies on the no-store server header, and the client-side asset-signature self-check protects subsequent upgrades once users have an HTML shell containing the guard.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented stale browser UI recovery for Bun-served frontend assets without replacing the serving stack.
+Implemented stale browser UI recovery using Bun's serving model plus an index-shell self-check.
 
 Changes:
-- Mutate Bun's production `HTMLBundle` manifest so the SPA HTML entry is served with `Cache-Control: no-store, max-age=0, must-revalidate`, `Pragma: no-cache`, and `Expires: 0` while preserving hashed JS/CSS asset caching behavior.
+- Mutate Bun's production `HTMLBundle` manifest so the SPA HTML entry is served with `Cache-Control: no-store, max-age=0, must-revalidate`, `Pragma: no-cache`, and `Expires: 0` while preserving hashed JS/CSS asset behavior.
 - Reuse a shared no-store helper for fallback GET/HEAD responses.
-- Add a narrow recovery response for obsolete hashed frontend script URLs (`/chunk-*.js`, `/index-*.js`) so an already-cached stale app shell can execute a one-shot reload with a cache-busting query instead of remaining stuck on a 404 chunk.
-- Added regression coverage for stale script recovery, production manifest header mutation, and unchanged `/assets/*` cache headers.
+- Added an inline head script in `src/web/index.html` that fetches the current route with `cache: "no-store"`, compares frontend asset references, and reloads once with `__backlog_reload` if the loaded shell points at stale assets.
+- Added regression coverage for the shipped index-shell guard, production manifest header mutation, and unchanged `/assets/*` cache headers.
 
 Verification:
 - `bun test src/test/server-cache.test.ts src/test/server-assets.test.ts`
 - `bunx tsc --noEmit`
 - `bun run check .`
 - `bun run build`
-- Manual compiled binary check: `GET /` returns no-store headers; `GET /chunk-t1h94j9b.js` returns the reload module with no-store headers.
-- `bun test` passed on rerun after an unrelated/order-sensitive milestone test failure passed in isolation.
+- Manual compiled binary check: `GET /` returns no-store headers and includes the shell-refresh guard; obsolete chunk URLs remain normal 404 fallback responses.
+- `bun test` passed.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
