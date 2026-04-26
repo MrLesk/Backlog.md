@@ -7,6 +7,7 @@ import {
 	type Document,
 	type DocumentSearchResult,
 	type SearchResult,
+	type SearchResultType,
 	type Task,
 	type TaskSearchResult,
 } from '../../types';
@@ -15,11 +16,22 @@ import { SidebarSkeleton } from './LoadingSpinner';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
+import { parseSearchCommandQuery } from '../utils/search-command-query';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
 	// Remove any prefix pattern: letters followed by dash (task-, doc-, decision-, JIRA-, etc.)
 	return id.replace(/^[a-zA-Z]+-/, '');
+};
+
+const hasTaskSearchFilters = (parsedQuery: ReturnType<typeof parseSearchCommandQuery>): boolean => {
+	return Boolean(
+		parsedQuery.status ||
+			parsedQuery.priority ||
+			parsedQuery.assignee ||
+			(parsedQuery.labels && parsedQuery.labels.length > 0) ||
+			(parsedQuery.modifiedFiles && parsedQuery.modifiedFiles.length > 0),
+	);
 };
 
 // Icon components for better semantics and performance
@@ -282,7 +294,10 @@ const SideNavigation = memo(function SideNavigation({
 		setSearchError(null);
 		const timeout = setTimeout(async () => {
 			try {
-				const results = await apiClient.search({ query, limit: 15 });
+				const parsedQuery = parseSearchCommandQuery(query);
+				const types: SearchResultType[] | undefined =
+					parsedQuery.types ?? (hasTaskSearchFilters(parsedQuery) ? ['task'] : undefined);
+				const results = await apiClient.search({ ...parsedQuery, types, limit: 15 });
 				if (!cancelled) {
 					setSearchResults(results);
 				}
