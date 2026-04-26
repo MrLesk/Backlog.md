@@ -132,6 +132,14 @@ describe("BacklogServer search endpoint", () => {
 		expect(results[0]?.task?.id).toBe(baseTask.id);
 	});
 
+	it("filters search results by assignee and labels", async () => {
+		const url = "/api/search?type=task&query=Alpha&status=In%20Progress&priority=high&label=search&assignee=%40codex";
+		const results = await fetchJson<Array<{ type: string; task?: Task }>>(url);
+		expect(results).toHaveLength(1);
+		expect(results[0]?.type).toBe("task");
+		expect(results[0]?.task?.id).toBe(baseTask.id);
+	});
+
 	it("filters task listings by priority via the content store", async () => {
 		const tasks = await fetchJson<Task[]>("/api/tasks?priority=high");
 		expect(tasks).toHaveLength(1);

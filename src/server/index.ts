@@ -709,11 +709,16 @@ export class BacklogServer {
 			const typeParams = [...url.searchParams.getAll("type"), ...url.searchParams.getAll("types")];
 			const statusParams = url.searchParams.getAll("status");
 			const priorityParamsRaw = url.searchParams.getAll("priority");
+			const assigneeParamsRaw = [...url.searchParams.getAll("assignee"), ...url.searchParams.getAll("assignees")];
 			const labelParamsRaw = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
 			const modifiedFileParamsRaw = [
 				...url.searchParams.getAll("modifiedFile"),
 				...url.searchParams.getAll("modifiedFiles"),
 			];
+			const assigneesCsv = url.searchParams.get("assignees");
+			if (assigneesCsv) {
+				assigneeParamsRaw.push(...assigneesCsv.split(","));
+			}
 			const labelsCsv = url.searchParams.get("labels");
 			if (labelsCsv) {
 				labelParamsRaw.push(...labelsCsv.split(","));
@@ -749,6 +754,7 @@ export class BacklogServer {
 			const filters: {
 				status?: string | string[];
 				priority?: SearchPriorityFilter | SearchPriorityFilter[];
+				assignee?: string | string[];
 				labels?: string | string[];
 				modifiedFiles?: string | string[];
 			} = {};
@@ -773,6 +779,13 @@ export class BacklogServer {
 				}
 				const casted = normalizedPriorities as SearchPriorityFilter[];
 				filters.priority = casted.length === 1 ? casted[0] : casted;
+			}
+
+			if (assigneeParamsRaw.length > 0) {
+				const normalizedAssignees = assigneeParamsRaw.map((value) => value.trim()).filter((value) => value.length > 0);
+				if (normalizedAssignees.length > 0) {
+					filters.assignee = normalizedAssignees.length === 1 ? normalizedAssignees[0] : normalizedAssignees;
+				}
 			}
 
 			if (labelParamsRaw.length > 0) {

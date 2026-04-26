@@ -25,6 +25,7 @@ interface TaskSearchEntity extends BaseSearchEntity {
 	readonly task: Task;
 	readonly statusLower: string;
 	readonly priorityLower?: SearchPriorityFilter;
+	readonly assigneesLower: string[];
 	readonly labelsLower: string[];
 	readonly idVariants: string[];
 	readonly dependencyIds: string[];
@@ -46,6 +47,7 @@ type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEnti
 type NormalizedFilters = {
 	statuses?: string[];
 	priorities?: SearchPriorityFilter[];
+	assignees?: string[];
 	labels?: string[];
 	modifiedFiles?: string[];
 };
@@ -225,6 +227,7 @@ export class SearchService {
 			task,
 			statusLower: task.status.toLowerCase(),
 			priorityLower: task.priority ? (task.priority.toLowerCase() as SearchPriorityFilter) : undefined,
+			assigneesLower: (task.assignee ?? []).map((assignee) => assignee.toLowerCase()),
 			labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 			idVariants: createTaskIdVariants(task.id),
 			dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
@@ -327,6 +330,15 @@ export class SearchService {
 				return allowedPriorities.has(task.priorityLower);
 			});
 		}
+		if (filters.assignees && filters.assignees.length > 0) {
+			const requiredAssignees = new Set(filters.assignees);
+			filtered = filtered.filter((task) => {
+				if (!task.assigneesLower || task.assigneesLower.length === 0) {
+					return false;
+				}
+				return task.assigneesLower.some((assignee) => requiredAssignees.has(assignee));
+			});
+		}
 		if (filters.labels && filters.labels.length > 0) {
 			const requiredLabels = new Set(filters.labels);
 			filtered = filtered.filter((task) => {
@@ -351,6 +363,17 @@ export class SearchService {
 
 		if (filters.priorities && filters.priorities.length > 0) {
 			if (!task.priorityLower || !filters.priorities.includes(task.priorityLower)) {
+				return false;
+			}
+		}
+
+		if (filters.assignees && filters.assignees.length > 0) {
+			if (!task.assigneesLower || task.assigneesLower.length === 0) {
+				return false;
+			}
+			const assigneeSet = new Set(task.assigneesLower);
+			const anyMatch = filters.assignees.some((assignee) => assigneeSet.has(assignee));
+			if (!anyMatch) {
 				return false;
 			}
 		}
@@ -380,12 +403,14 @@ export class SearchService {
 
 		const statuses = this.normalizeStringArray(filters.status);
 		const priorities = this.normalizePriorityArray(filters.priority);
+		const assignees = this.normalizeStringArray(filters.assignee);
 		const labels = this.normalizeLabelsArray(filters.labels);
 		const modifiedFiles = normalizeModifiedFileFilters(filters.modifiedFiles);
 
 		return {
 			statuses,
 			priorities,
+			assignees,
 			labels,
 			modifiedFiles,
 		};

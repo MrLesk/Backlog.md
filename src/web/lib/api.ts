@@ -168,6 +168,7 @@ export class ApiClient {
 			types?: SearchResultType[];
 			status?: string | string[];
 			priority?: SearchPriorityFilter | SearchPriorityFilter[];
+			assignee?: string | string[];
 			labels?: string[];
 			modifiedFiles?: string[];
 			limit?: number;
@@ -192,6 +193,14 @@ export class ApiClient {
 			const priorities = Array.isArray(options.priority) ? options.priority : [options.priority];
 			for (const priority of priorities) {
 				params.append("priority", priority);
+			}
+		}
+		if (options.assignee) {
+			const assignees = Array.isArray(options.assignee) ? options.assignee : [options.assignee];
+			for (const assignee of assignees) {
+				if (assignee && assignee.trim().length > 0) {
+					params.append("assignee", assignee.trim());
+				}
 			}
 		}
 		if (options.labels) {
