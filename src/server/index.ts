@@ -158,6 +158,34 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
 import favicon from "../web/favicon.png" with { type: "file" };
 import indexHtml from "../web/index.html";
 
+const NO_STORE_HEADERS = {
+	"Cache-Control": "no-store, max-age=0, must-revalidate",
+	Pragma: "no-cache",
+	Expires: "0",
+} as const;
+
+function applyNoStoreHeaders(headers: Headers): void {
+	for (const [name, value] of Object.entries(NO_STORE_HEADERS)) {
+		headers.set(name, value);
+	}
+}
+
+export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
+	if (!bundle.files) {
+		return bundle;
+	}
+
+	for (const file of bundle.files) {
+		if (file.loader === "html" && file.isEntry) {
+			Object.assign(file.headers, NO_STORE_HEADERS);
+		}
+	}
+
+	return bundle;
+}
+
+const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
+
 export class BacklogServer {
 	private core: Core;
 	private server: Server<unknown> | null = null;
@@ -386,16 +414,16 @@ export class BacklogServer {
 				port: finalPort,
 				development: process.env.NODE_ENV === "development",
 				routes: {
-					"/": indexHtml,
-					"/tasks": indexHtml,
-					"/milestones": indexHtml,
-					"/drafts": indexHtml,
-					"/documentation": indexHtml,
-					"/documentation/*": indexHtml,
-					"/decisions": indexHtml,
-					"/decisions/*": indexHtml,
-					"/statistics": indexHtml,
-					"/settings": indexHtml,
+					"/": spaIndexHtml,
+					"/tasks": spaIndexHtml,
+					"/milestones": spaIndexHtml,
+					"/drafts": spaIndexHtml,
+					"/documentation": spaIndexHtml,
+					"/documentation/*": spaIndexHtml,
+					"/decisions": spaIndexHtml,
+					"/decisions/*": spaIndexHtml,
+					"/statistics": spaIndexHtml,
+					"/settings": spaIndexHtml,
 
 					// API Routes using Bun's native route syntax
 					"/api/tasks": {
@@ -512,9 +540,7 @@ export class BacklogServer {
 
 					// Disable caching for GET/HEAD so browser always fetches latest content
 					if (req.method === "GET" || req.method === "HEAD") {
-						res.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
-						res.headers.set("Pragma", "no-cache");
-						res.headers.set("Expires", "0");
+						applyNoStoreHeaders(res.headers);
 					}
 
 					return res;
