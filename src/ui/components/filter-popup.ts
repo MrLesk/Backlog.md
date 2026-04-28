@@ -7,7 +7,7 @@ export interface FilterPopupChoice {
 	value: string;
 }
 
-interface PopupChromeOptions {
+export interface PopupChromeOptions {
 	screen: ScreenInterface;
 	title: string;
 	helpText: string;
@@ -46,7 +46,7 @@ function resolvePosition(value: string | number, total: number, size: number): n
 	return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function createPopupChrome(options: PopupChromeOptions): {
+export function createPopupChrome(options: PopupChromeOptions): {
 	popup: BoxInterface;
 	close: () => void;
 } {
