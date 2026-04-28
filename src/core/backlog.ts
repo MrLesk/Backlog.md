@@ -2580,13 +2580,19 @@ export class Core {
 		]);
 
 		// Load remote tasks and local branch tasks in parallel
-		const branchStateEntries: BranchTaskStateEntry[] | undefined =
-			config?.checkActiveBranches === false ? undefined : [];
-		const backlogDir = await this.getBacklogDirectoryName();
-		const [remoteTasks, localBranchTasks] = await Promise.all([
-			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
-			loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
-		]);
+		// Skip entirely when cross-branch scanning is disabled
+		let remoteTasks: Task[] = [];
+		let localBranchTasks: Task[] = [];
+		let branchStateEntries: BranchTaskStateEntry[] | undefined;
+
+		if (config?.checkActiveBranches !== false) {
+			const backlogDir = await this.getBacklogDirectoryName();
+			branchStateEntries = [];
+			[remoteTasks, localBranchTasks] = await Promise.all([
+				loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
+				loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
+			]);
+		}
 		progressCallback?.("Loaded tasks");
 
 		// Create map with local tasks
@@ -2671,23 +2677,36 @@ export class Core {
 		}
 
 		// Load tasks from remote branches and other local branches in parallel
-		progressCallback?.(getTaskLoadingMessage(config));
+		// Skip entirely when cross-branch scanning is disabled
+		let remoteTasks: Task[] = [];
+		let localBranchTasks: Task[] = [];
+		let branchStateEntries: BranchTaskStateEntry[] | undefined;
 
-		const branchStateEntries: BranchTaskStateEntry[] | undefined =
-			config?.checkActiveBranches === false ? undefined : [];
-		const backlogDir = await this.getBacklogDirectoryName();
-		const [remoteTasks, localBranchTasks] = await Promise.all([
-			loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, includeCompleted, backlogDir),
-			loadLocalBranchTasks(
-				this.git,
-				config,
-				progressCallback,
-				localTasks,
-				branchStateEntries,
-				includeCompleted,
-				backlogDir,
-			),
-		]);
+		if (config?.checkActiveBranches !== false) {
+			progressCallback?.(getTaskLoadingMessage(config));
+			branchStateEntries = [];
+			const backlogDir = await this.getBacklogDirectoryName();
+			[remoteTasks, localBranchTasks] = await Promise.all([
+				loadRemoteTasks(
+					this.git,
+					config,
+					progressCallback,
+					localTasks,
+					branchStateEntries,
+					includeCompleted,
+					backlogDir,
+				),
+				loadLocalBranchTasks(
+					this.git,
+					config,
+					progressCallback,
+					localTasks,
+					branchStateEntries,
+					includeCompleted,
+					backlogDir,
+				),
+			]);
+		}
 
 		// Check for cancellation after loading
 		if (abortSignal?.aborted) {
