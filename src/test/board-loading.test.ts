@@ -31,18 +31,18 @@ describe("Board Loading with checkActiveBranches", () => {
 		}
 	});
 
-	describe("Core.loadTasks()", () => {
-		const createTestTask = (id: string, status = "To Do"): Task => ({
-			id,
-			title: `Test Task ${id}`,
-			status,
-			assignee: [],
-			createdDate: "2025-01-08",
-			labels: ["test"],
-			dependencies: [],
-			description: `This is test task ${id}`,
-		});
+	const createTestTask = (id: string, status = "To Do"): Task => ({
+		id,
+		title: `Test Task ${id}`,
+		status,
+		assignee: [],
+		createdDate: "2025-01-08",
+		labels: ["test"],
+		dependencies: [],
+		description: `This is test task ${id}`,
+	});
 
+	describe("Core.loadTasks()", () => {
 		beforeEach(async () => {
 			// Create some test tasks
 			await core.createTask(createTestTask("task-1", "To Do"), false);
@@ -258,6 +258,39 @@ describe("Board Loading with checkActiveBranches", () => {
 				msg.includes("Applying latest task states from branch scans..."),
 			);
 			expect(applySnapshotsMessage).toBeUndefined();
+		});
+
+		it("should not load tasks from other branches when checkActiveBranches is false", async () => {
+			// 0. Ensure main has at least one commit so it exists
+			await core.createTask(createTestTask("task-main"), false);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Initial commit on main"`.cwd(TEST_DIR).quiet();
+
+			// 1. Create a task on a different branch
+			await $`git checkout -b other-branch`.cwd(TEST_DIR).quiet();
+			const otherTask = createTestTask("task-other", "To Do");
+			await core.createTask(otherTask, false);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add task on other branch"`.cwd(TEST_DIR).quiet();
+
+			// 2. Go back to main
+			await $`git checkout main`.cwd(TEST_DIR).quiet();
+
+			// 3. Disable checkActiveBranches
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Config not loaded");
+			await core.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: false,
+			});
+
+			// 4. Load tasks
+			const tasks = await core.loadTasks();
+
+			// 5. Verify task from other branch is NOT loaded
+			expect(tasks.find((t) => t.id === "TASK-OTHER")).toBeUndefined();
+			// Only the 1 task from main should be there
+			expect(tasks).toHaveLength(1);
 		});
 	});
 });
