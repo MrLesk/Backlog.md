@@ -1,7 +1,7 @@
 ---
 id: BACK-453
 title: Stabilize Windows CI test suite
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-29 17:49'
@@ -17,14 +17,14 @@ Windows lint/unit CI is failing intermittently on main with test timeouts and EM
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Windows CI lint-and-unit-test completes reliably
-- [ ] #2 The fix avoids broad unrelated test rewrites
-- [ ] #3 Local targeted validation covers the changed CI/test behavior
+- [x] #1 Windows CI lint-and-unit-test completes reliably
+- [x] #2 The fix avoids broad unrelated test rewrites
+- [x] #3 Local targeted validation covers the changed CI/test behavior
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched (not applicable; TypeScript was not touched)
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
