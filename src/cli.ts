@@ -173,6 +173,7 @@ function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
 			options.status !== undefined ||
 			options.labels !== undefined ||
 			options.priority !== undefined ||
+			options.ordinal !== undefined ||
 			options.plain ||
 			options.ac !== undefined ||
 			options.acceptanceCriteria !== undefined ||
@@ -1455,6 +1456,7 @@ taskCmd
 	.option("--plan <text>", "add implementation plan")
 	.option("--notes <text>", "add implementation notes")
 	.option("--final-summary <text>", "add final summary")
+	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
@@ -1522,6 +1524,17 @@ taskCmd
 
 		const createAsDraft = Boolean(options.draft);
 		const usePlainOutput = isPlainRequested(options);
+		let ordinalValue: number | undefined;
+
+		if (options.ordinal !== undefined) {
+			const parsed = Number(options.ordinal);
+			if (!Number.isFinite(parsed) || parsed < 0) {
+				console.error(`Invalid ordinal: ${options.ordinal}. Must be a non-negative number.`);
+				process.exitCode = 1;
+				return;
+			}
+			ordinalValue = parsed;
+		}
 
 		try {
 			const criteria = processAcceptanceCriteriaOptions(options);
@@ -1543,6 +1556,7 @@ taskCmd
 				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
 				parentTaskId: options.parent ? String(options.parent) : undefined,
 				priority: options.priority ? (String(options.priority).toLowerCase() as "high" | "medium" | "low") : undefined,
+				...(ordinalValue !== undefined ? { ordinal: ordinalValue } : {}),
 				implementationPlan: options.plan ? String(options.plan) : undefined,
 				implementationNotes: options.notes ? String(options.notes) : undefined,
 				finalSummary: options.finalSummary ? String(options.finalSummary) : undefined,
