@@ -215,7 +215,7 @@ export class MilestoneHandlers {
 	constructor(private readonly core: Core) {}
 
 	private async listLocalTasks(): Promise<Task[]> {
-		return await this.core.queryTasks({ includeCrossBranch: false });
+		return await this.core.filesystem.listTasks();
 	}
 
 	private async rollbackTaskMilestones(previousMilestones: Map<string, string | undefined>): Promise<string[]> {
