@@ -968,18 +968,19 @@ export class BacklogServer {
 
 	private async handleGetTask(taskId: string): Promise<Response> {
 		const store = await this.getContentStoreInstance();
-		const tasks = store.getTasks();
-		const task = findTaskByLooseId(tasks, taskId);
-		if (!task) {
-			const fallbackId = ensurePrefix(taskId);
-			const fallback = await this.core.filesystem.loadTask(fallbackId);
-			if (fallback) {
-				store.upsertTask(fallback);
-				return Response.json(fallback);
-			}
-			return Response.json({ error: "Task not found" }, { status: 404 });
+
+		const localTask = await this.core.filesystem.loadTask(taskId);
+		if (localTask) {
+			store.upsertTask(localTask);
+			return Response.json(localTask);
 		}
-		return Response.json(task);
+
+		const task = findTaskByLooseId(store.getTasks(), taskId);
+		if (task) {
+			return Response.json(task);
+		}
+
+		return Response.json({ error: "Task not found" }, { status: 404 });
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
