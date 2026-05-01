@@ -549,23 +549,50 @@ backlog search --modified-file src/server/api.ts --plain
 
 ### Multi‑line Input (Description/Plan/Notes/Final Summary)
 
-The CLI preserves input literally. Shells do not convert `\n` inside normal quotes. Use one of the following to insert real newlines:
+The CLI preserves input literally — shells do not convert `\n` inside normal quotes. Use one of the following forms, listed in order of preference for AI agents:
+
+**1. Repeat `--append-*` for each line (works in every shell, including sandboxes that block other forms):**
+
+```bash
+backlog task edit 42 --notes "First line"
+backlog task edit 42 --append-notes "Second line"
+backlog task edit 42 --append-notes "Third line"
+```
+
+**2. Real newlines inside double quotes (single command — pass an actual line break inside the string):**
+
+```bash
+backlog task edit 42 --notes "First line
+Second line
+
+Final paragraph"
+```
+
+The same shape works for `--desc`, `--plan`, `--final-summary`, and the `--append-*` variants.
+
+**3. Shell-specific shorthand (interactive shells only — some AI agent sandboxes reject these):**
 
 - Bash/Zsh (ANSI‑C quoting):
-  - Description: `backlog task edit 42 --desc $'Line1\nLine2\n\nFinal'`
-  - Plan: `backlog task edit 42 --plan $'1. A\n2. B'`
-  - Notes: `backlog task edit 42 --notes $'Done A\nDoing B'`
-  - Append notes: `backlog task edit 42 --append-notes $'Progress update line 1\nLine 2'`
-  - Final summary: `backlog task edit 42 --final-summary $'Shipped A\nAdded B'`
-  - Append final summary: `backlog task edit 42 --append-final-summary $'Added X\nAdded Y'`
-- POSIX portable (printf):
-  - `backlog task edit 42 --notes "$(printf 'Line1\nLine2')"`
-- PowerShell (backtick n):
-  - `backlog task edit 42 --notes "Line1`nLine2"`
 
-Do not expect `"...\n..."` to become a newline. That passes the literal backslash + n to the CLI by design.
+  ```bash
+  backlog task edit 42 --notes $'Line1\nLine2'
+  ```
 
-Descriptions support literal newlines; shell examples may show escaped `\\n`, but enter a single `\n` to create a newline.
+- POSIX sh (command substitution + printf):
+
+  ```bash
+  backlog task edit 42 --notes "$(printf 'Line1\nLine2')"
+  ```
+
+- PowerShell (backtick‑n):
+
+  ```powershell
+  backlog task edit 42 --notes "Line1`nLine2"
+  ```
+
+Prefer forms **1** and **2** when running under Claude Code, Codex, or any agent harness that screens commands through a tree‑sitter AST walker — those harnesses reject ANSI‑C strings, command substitutions, and heredoc forms (see issue [#595](https://github.com/MrLesk/Backlog.md/issues/595)).
+
+Do not expect the literal sequence `\n` inside double quotes to become a newline. The CLI stores the backslash and `n` as written.
 
 ### Implementation Notes Formatting
 
@@ -573,10 +600,20 @@ Descriptions support literal newlines; shell examples may show escaped `\\n`, bu
 - Use short paragraphs or bullet lists instead of a single long line.
 - Use Markdown bullets (`-` for unordered, `1.` for ordered) for readability.
 - When using CLI flags like `--append-notes`, remember to include explicit
-  newlines. Example:
+  newlines. Either repeat the flag once per line:
 
   ```bash
-  backlog task edit 42 --append-notes $'- Added new API endpoint\n- Updated tests\n- TODO: monitor staging deploy'
+  backlog task edit 42 --append-notes "- Added new API endpoint" \
+    --append-notes "- Updated tests" \
+    --append-notes "- TODO: monitor staging deploy"
+  ```
+
+  Or pass real newlines inside the quoted argument:
+
+  ```bash
+  backlog task edit 42 --append-notes "- Added new API endpoint
+  - Updated tests
+  - TODO: monitor staging deploy"
   ```
 
 ### Final Summary Formatting
