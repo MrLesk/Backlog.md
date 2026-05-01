@@ -218,6 +218,46 @@ describe("atomic task creation", () => {
 		expect(drafts.map((draft) => draft.title)).toEqual(["Task A", "Task B"]);
 	});
 
+	it("assigns unique ids when two milestone creations race", async () => {
+		const first = new Core(testDir);
+		const second = new Core(testDir);
+		const firstEnteredWrite = createDeferred<void>();
+		const releaseFirstWrite = createDeferred<void>();
+		let writeEntries = 0;
+		const originalWrite = Bun.write;
+		const milestonePathPrefix = `${testDir}/backlog/milestones/`.replace(/\\/g, "/");
+
+		Bun.write = (async (...args: Parameters<typeof Bun.write>) => {
+			const targetPath = String(args[0]).replace(/\\/g, "/");
+			if (targetPath.includes(milestonePathPrefix)) {
+				writeEntries += 1;
+				if (targetPath.includes("alpha-milestone")) {
+					firstEnteredWrite.resolve();
+					await releaseFirstWrite.promise;
+				}
+			}
+			return await originalWrite(...args);
+		}) as typeof Bun.write;
+
+		try {
+			const firstCreate = first.fs.createMilestone("Alpha Milestone");
+			await expectResolvesWithin(firstEnteredWrite.promise, 250, "first milestone create should reach Bun.write");
+
+			const secondCreate = second.fs.createMilestone("Beta Milestone");
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(writeEntries).toBe(1);
+
+			releaseFirstWrite.resolve();
+			const [createdA, createdB] = await Promise.all([firstCreate, secondCreate]);
+
+			expect(new Set([createdA.id, createdB.id]).size).toBe(2);
+			expect([createdA.id, createdB.id].sort()).toEqual(["m-0", "m-1"]);
+		} finally {
+			Bun.write = originalWrite;
+		}
+	});
+
 	it("returns a user-facing error when the create lock times out", async () => {
 		const core = new Core(testDir);
 		const lockEntered = createDeferred<void>();
