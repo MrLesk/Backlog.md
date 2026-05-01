@@ -57,6 +57,32 @@ describe("CLI --plain for task create/edit", () => {
 		expect(out).not.toContain("\x1b");
 	});
 
+	it("assigns default tail ordinals and preserves explicit ordinals on CLI create", async () => {
+		const first = await $`bun ${cliPath} task create "First ordinal CLI task" --plain`.cwd(TEST_DIR).quiet();
+		expect(first.exitCode).toBe(0);
+		expect(first.stdout.toString()).toContain("Ordinal: 1000");
+
+		const second = await $`bun ${cliPath} task create "Second ordinal CLI task" --plain`.cwd(TEST_DIR).quiet();
+		expect(second.exitCode).toBe(0);
+		expect(second.stdout.toString()).toContain("Ordinal: 2000");
+
+		const explicit = await $`bun ${cliPath} task create "Explicit ordinal CLI task" --ordinal 7500 --plain`
+			.cwd(TEST_DIR)
+			.quiet();
+		expect(explicit.exitCode).toBe(0);
+		expect(explicit.stdout.toString()).toContain("Ordinal: 7500");
+	});
+
+	it("rejects non-finite ordinals on CLI create", async () => {
+		const result = await $`bun ${cliPath} task create "Invalid ordinal CLI task" --ordinal Infinity`
+			.cwd(TEST_DIR)
+			.quiet()
+			.nothrow();
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr.toString()).toContain("Invalid ordinal: Infinity. Must be a non-negative number.");
+	});
+
 	it("prints plain details after task edit --plain", async () => {
 		// Create base task first (without plain)
 		await $`bun ${cliPath} task create "Edit Me" --desc "First"`.cwd(TEST_DIR).quiet();

@@ -1,10 +1,11 @@
 ---
 id: BACK-454
 title: Default ordinals for created tasks
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-05-01 13:28'
+updated_date: '2026-05-01 13:33'
 labels: []
 dependencies: []
 references:
@@ -26,14 +27,20 @@ PR #617 adds default ordinal assignment for newly created tasks and preserves ex
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 New tasks created without an explicit ordinal receive a tail ordinal based on existing tasks
-- [ ] #2 Explicit ordinal values remain preserved through CLI/core/MCP create paths
-- [ ] #3 PR #617 title follows the BACK task title format and includes this task
+- [x] #1 New tasks created without an explicit ordinal receive a tail ordinal based on existing tasks
+- [x] #2 Explicit ordinal values remain preserved through CLI/core/MCP create paths
+- [x] #3 PR #617 title follows the BACK task title format and includes this task
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Linked PR #617 to BACK-454, tightened ordinal validation to reject non-finite values, and verified CLI/core/MCP ordinal coverage plus typecheck and lint.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

@@ -189,6 +189,26 @@ export class Core {
 		return await this.fs.withCreateLock(fn);
 	}
 
+	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
+		if (typeof inputOrdinal === "number") {
+			return inputOrdinal;
+		}
+		if (isDraft) {
+			return undefined;
+		}
+
+		const tasks = await this.fs.listTasks();
+		const ordinals = tasks
+			.map((task) => task.ordinal)
+			.filter((ordinal): ordinal is number => typeof ordinal === "number" && Number.isFinite(ordinal));
+
+		if (ordinals.length === 0) {
+			return tasks.length === 0 ? DEFAULT_ORDINAL_STEP : undefined;
+		}
+
+		return Math.max(...ordinals) + DEFAULT_ORDINAL_STEP;
+	}
+
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
 			// Use loadTasks as the task loader to include cross-branch tasks
@@ -981,7 +1001,7 @@ export class Core {
 		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 		if (
 			input.ordinal !== undefined &&
-			(typeof input.ordinal !== "number" || Number.isNaN(input.ordinal) || input.ordinal < 0)
+			(typeof input.ordinal !== "number" || !Number.isFinite(input.ordinal) || input.ordinal < 0)
 		) {
 			throw new Error("Ordinal must be a non-negative number.");
 		}
@@ -1005,6 +1025,7 @@ export class Core {
 
 		const { task, filePath } = await this.withCreateLock(async () => {
 			const id = await this.generateNextId(entityType, isDraft ? undefined : input.parentTaskId);
+			const ordinal = await this.resolveCreateOrdinal(input.ordinal, isDraft);
 			const task: Task = {
 				id,
 				title: input.title.trim(),
@@ -1019,7 +1040,7 @@ export class Core {
 				createdDate,
 				...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
 				...(priority && { priority }),
-				...(typeof input.ordinal === "number" && { ordinal: input.ordinal }),
+				...(typeof ordinal === "number" && { ordinal }),
 				...(typeof input.milestone === "string" &&
 					input.milestone.trim().length > 0 && {
 						milestone: input.milestone.trim(),
@@ -1152,7 +1173,7 @@ export class Core {
 		}
 
 		if (input.ordinal !== undefined) {
-			if (Number.isNaN(input.ordinal) || input.ordinal < 0) {
+			if (typeof input.ordinal !== "number" || !Number.isFinite(input.ordinal) || input.ordinal < 0) {
 				throw new Error("Ordinal must be a non-negative number.");
 			}
 			if (task.ordinal !== input.ordinal) {

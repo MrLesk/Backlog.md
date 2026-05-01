@@ -85,6 +85,39 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("assigns default tail ordinals for task_create and preserves explicit ordinals", async () => {
+		const first = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "First MCP ordinal task",
+				},
+			},
+		});
+		expect(getText(first.content)).toContain("Ordinal: 1000");
+
+		const second = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Second MCP ordinal task",
+				},
+			},
+		});
+		expect(getText(second.content)).toContain("Ordinal: 2000");
+
+		const explicit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Explicit MCP ordinal task",
+					ordinal: 9000,
+				},
+			},
+		});
+		expect(getText(explicit.content)).toContain("Ordinal: 9000");
+	});
+
 	it("searches tasks with a separate modifiedFiles filter", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
@@ -522,6 +555,7 @@ describe("MCP task tools (MVP)", () => {
 				arguments: {
 					title: "Limited ordinal later id",
 					status: "To Do",
+					ordinal: 2000,
 				},
 			},
 		});

@@ -190,6 +190,88 @@ describe("Core", () => {
 			expect(byLowercase?.id).toBe("BACK-358");
 		});
 
+		it("assigns ordinal 1000 to the first created task when none exist", async () => {
+			const { task } = await core.createTaskFromInput({ title: "First ordinal task" });
+			expect(task.ordinal).toBe(1000);
+
+			const loadedTask = await core.filesystem.loadTask(task.id);
+			expect(loadedTask?.ordinal).toBe(1000);
+		});
+
+		it("assigns the next tail ordinal when existing tasks already have ordinals", async () => {
+			await core.createTask({
+				...sampleTask,
+				id: "task-10",
+				title: "Seed 1000",
+				ordinal: 1000,
+			});
+			await core.createTask({
+				...sampleTask,
+				id: "task-11",
+				title: "Seed 4000",
+				ordinal: 4000,
+			});
+
+			const { task } = await core.createTaskFromInput({ title: "Appended ordinal task" });
+			expect(task.ordinal).toBe(5000);
+		});
+
+		it("preserves explicit ordinals on create input", async () => {
+			const { task } = await core.createTaskFromInput({
+				title: "Explicit ordinal task",
+				ordinal: 2750,
+			});
+			expect(task.ordinal).toBe(2750);
+		});
+
+		it("rejects non-finite ordinals on create input", async () => {
+			await expect(
+				core.createTaskFromInput({
+					title: "Invalid ordinal task",
+					ordinal: Number.POSITIVE_INFINITY,
+				}),
+			).rejects.toThrow("Ordinal must be a non-negative number.");
+		});
+
+		it("ignores tasks without ordinals when computing the next tail ordinal", async () => {
+			await core.createTask({
+				...sampleTask,
+				id: "task-20",
+				title: "No ordinal seed",
+			});
+			await core.createTask({
+				...sampleTask,
+				id: "task-21",
+				title: "Ordinal seed",
+				ordinal: 3000,
+			});
+
+			const { task } = await core.createTaskFromInput({ title: "Mixed ordinal task" });
+			expect(task.ordinal).toBe(4000);
+		});
+
+		it("preserves legacy no-ordinal ordering when no existing tasks have ordinals", async () => {
+			await core.createTask({
+				...sampleTask,
+				id: "task-20",
+				title: "Legacy no ordinal seed",
+			});
+
+			const { task } = await core.createTaskFromInput({ title: "Legacy appended task" });
+			expect(task.ordinal).toBeUndefined();
+
+			const loadedTask = await core.filesystem.loadTask(task.id);
+			expect(loadedTask?.ordinal).toBeUndefined();
+		});
+
+		it("rejects non-finite ordinals on update input", async () => {
+			const { task } = await core.createTaskFromInput({ title: "Ordinal update target" });
+
+			await expect(core.updateTaskFromInput(task.id, { ordinal: Number.POSITIVE_INFINITY })).rejects.toThrow(
+				"Ordinal must be a non-negative number.",
+			);
+		});
+
 		it("should NOT match numeric ID with typos when using custom prefix (BACK-364)", async () => {
 			// Configure custom prefix
 			const config = await core.filesystem.loadConfig();
