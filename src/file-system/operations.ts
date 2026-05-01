@@ -1084,67 +1084,69 @@ ${rawContent.trim()}
 	}
 
 	async createMilestone(title: string, description?: string): Promise<Milestone> {
-		const milestonesDir = await this.getMilestonesDir();
+		return await this.withCreateLock(async () => {
+			const milestonesDir = await this.getMilestonesDir();
 
-		// Ensure milestones directory exists
-		await mkdir(milestonesDir, { recursive: true });
+			// Ensure milestones directory exists
+			await mkdir(milestonesDir, { recursive: true });
 
-		// Find next available milestone ID
-		const archiveMilestonesDir = await this.getArchiveMilestonesDir();
-		await mkdir(archiveMilestonesDir, { recursive: true });
-		const [existingFiles, archivedFiles] = await Promise.all([
-			Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true })),
-			Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: archiveMilestonesDir, followSymlinks: true })),
-		]);
-		const parseMilestoneId = async (dir: string, file: string): Promise<number | null> => {
-			if (file.toLowerCase() === "readme.md") {
-				return null;
-			}
-			const filepath = join(dir, file);
-			try {
-				const content = await Bun.file(filepath).text();
-				const parsed = parseMilestone(content);
-				const parsedIdMatch = parsed.id.match(/^m-(\d+)$/i);
-				if (parsedIdMatch?.[1]) {
-					return Number.parseInt(parsedIdMatch[1], 10);
+			// Find next available milestone ID
+			const archiveMilestonesDir = await this.getArchiveMilestonesDir();
+			await mkdir(archiveMilestonesDir, { recursive: true });
+			const [existingFiles, archivedFiles] = await Promise.all([
+				Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true })),
+				Array.fromAsync(new Bun.Glob("m-*.md").scan({ cwd: archiveMilestonesDir, followSymlinks: true })),
+			]);
+			const parseMilestoneId = async (dir: string, file: string): Promise<number | null> => {
+				if (file.toLowerCase() === "readme.md") {
+					return null;
 				}
-			} catch {
-				// Fall through to filename-based fallback.
-			}
-			const filenameIdMatch = file.match(/^m-(\d+)/i);
-			if (filenameIdMatch?.[1]) {
-				return Number.parseInt(filenameIdMatch[1], 10);
-			}
-			return null;
-		};
-		const existingIds = (
-			await Promise.all([
-				...existingFiles.map((file) => parseMilestoneId(milestonesDir, file)),
-				...archivedFiles.map((file) => parseMilestoneId(archiveMilestonesDir, file)),
-			])
-		).filter((id): id is number => typeof id === "number" && id >= 0);
+				const filepath = join(dir, file);
+				try {
+					const content = await Bun.file(filepath).text();
+					const parsed = parseMilestone(content);
+					const parsedIdMatch = parsed.id.match(/^m-(\d+)$/i);
+					if (parsedIdMatch?.[1]) {
+						return Number.parseInt(parsedIdMatch[1], 10);
+					}
+				} catch {
+					// Fall through to filename-based fallback.
+				}
+				const filenameIdMatch = file.match(/^m-(\d+)/i);
+				if (filenameIdMatch?.[1]) {
+					return Number.parseInt(filenameIdMatch[1], 10);
+				}
+				return null;
+			};
+			const existingIds = (
+				await Promise.all([
+					...existingFiles.map((file) => parseMilestoneId(milestonesDir, file)),
+					...archivedFiles.map((file) => parseMilestoneId(archiveMilestonesDir, file)),
+				])
+			).filter((id): id is number => typeof id === "number" && id >= 0);
 
-		const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 0;
-		const id = `m-${nextId}`;
+			const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 0;
+			const id = `m-${nextId}`;
 
-		const filename = this.buildMilestoneFilename(id, title);
-		const content = this.serializeMilestoneContent(
-			id,
-			title,
-			`## Description
+			const filename = this.buildMilestoneFilename(id, title);
+			const content = this.serializeMilestoneContent(
+				id,
+				title,
+				`## Description
 
 ${description || `Milestone: ${title}`}`,
-		);
+			);
 
-		const filepath = join(milestonesDir, filename);
-		await Bun.write(filepath, content);
+			const filepath = join(milestonesDir, filename);
+			await Bun.write(filepath, content);
 
-		return {
-			id,
-			title,
-			description: description || `Milestone: ${title}`,
-			rawContent: parseMilestone(content).rawContent,
-		};
+			return {
+				id,
+				title,
+				description: description || `Milestone: ${title}`,
+				rawContent: parseMilestone(content).rawContent,
+			};
+		});
 	}
 
 	async renameMilestone(
