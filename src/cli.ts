@@ -53,6 +53,7 @@ import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-s
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
+import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
@@ -174,6 +175,7 @@ function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
 			options.labels !== undefined ||
 			options.priority !== undefined ||
 			options.ordinal !== undefined ||
+			options.milestone !== undefined ||
 			options.plain ||
 			options.ac !== undefined ||
 			options.acceptanceCriteria !== undefined ||
@@ -202,6 +204,8 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.label !== undefined ||
 			options.priority !== undefined ||
 			options.ordinal !== undefined ||
+			options.milestone !== undefined ||
+			options.clearMilestone ||
 			options.plain ||
 			options.addLabel !== undefined ||
 			options.removeLabel !== undefined ||
@@ -226,6 +230,14 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.doc !== undefined ||
 			options.modifiedFile !== undefined,
 	);
+}
+
+async function resolveCliMilestoneInput(core: Core, milestone: string): Promise<string> {
+	const [activeMilestones, archivedMilestones] = await Promise.all([
+		core.filesystem.listMilestones(),
+		core.filesystem.listArchivedMilestones(),
+	]);
+	return resolveMilestoneInputForStorage(milestone, activeMilestones, archivedMilestones);
 }
 
 // Helper function to process multiple AC operations
@@ -1457,6 +1469,7 @@ taskCmd
 	.option("--notes <text>", "add implementation notes")
 	.option("--final-summary <text>", "add final summary")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
+	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
@@ -1538,6 +1551,8 @@ taskCmd
 
 		try {
 			const criteria = processAcceptanceCriteriaOptions(options);
+			const milestone =
+				typeof options.milestone === "string" ? await resolveCliMilestoneInput(core, options.milestone) : undefined;
 			const { task, filePath } = await core.createTaskFromInput({
 				title: title ?? "",
 				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
@@ -1557,6 +1572,7 @@ taskCmd
 				parentTaskId: options.parent ? String(options.parent) : undefined,
 				priority: options.priority ? (String(options.priority).toLowerCase() as "high" | "medium" | "low") : undefined,
 				...(ordinalValue !== undefined ? { ordinal: ordinalValue } : {}),
+				milestone,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
 				implementationNotes: options.notes ? String(options.notes) : undefined,
 				finalSummary: options.finalSummary ? String(options.finalSummary) : undefined,
@@ -2109,6 +2125,8 @@ taskCmd
 	.option("-l, --label <labels>")
 	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
+	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
+	.option("--clear-milestone", "clear task milestone assignment")
 	.option("--plain", "use plain text output after editing")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
@@ -2286,6 +2304,19 @@ taskCmd
 			ordinalValue = parsed;
 		}
 
+		if (options.milestone !== undefined && options.clearMilestone) {
+			console.error("Cannot use --milestone and --clear-milestone together.");
+			process.exitCode = 1;
+			return;
+		}
+
+		let milestoneValue: string | null | undefined;
+		if (typeof options.milestone === "string") {
+			milestoneValue = await resolveCliMilestoneInput(core, options.milestone);
+		} else if (options.clearMilestone) {
+			milestoneValue = null;
+		}
+
 		let removeCriteria: number[] | undefined;
 		let checkCriteria: number[] | undefined;
 		let uncheckCriteria: number[] | undefined;
@@ -2359,6 +2390,9 @@ taskCmd
 		}
 		if (ordinalValue !== undefined) {
 			editArgs.ordinal = ordinalValue;
+		}
+		if (milestoneValue !== undefined) {
+			editArgs.milestone = milestoneValue;
 		}
 		if (labelValues.length > 0) {
 			editArgs.labels = labelValues;
