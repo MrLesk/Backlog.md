@@ -35,6 +35,60 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
+  const [showMenu, setShowMenu] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSortByPriority = () => {
+    if (!onTaskReorder || tasks.length <= 1) {
+      setShowMenu(false);
+      return;
+    }
+
+    const priorityRank: Record<string, number> = {
+      high: 3,
+      medium: 2,
+      low: 1,
+    };
+
+    const sortedTasks = [...tasks].sort((a, b) => {
+      const rankA = priorityRank[a.priority || ''] || 0;
+      const rankB = priorityRank[b.priority || ''] || 0;
+      if (rankA !== rankB) {
+        return rankB - rankA; // High first
+      }
+      // If same priority, maintain existing relative order via ordinal
+      return (a.ordinal || 0) - (b.ordinal || 0) || a.id.localeCompare(b.id);
+    });
+
+    const orderedTaskIds = sortedTasks.map(t => t.id);
+    
+    // Check if order actually changed
+    const currentIds = tasks.map(t => t.id);
+    const hasChanged = orderedTaskIds.some((id, index) => id !== currentIds[index]);
+    const leadTaskId = orderedTaskIds[0];
+
+    if (hasChanged && leadTaskId) {
+      onTaskReorder({
+        taskId: leadTaskId, // Use first task as lead
+        targetStatus: title,
+        orderedTaskIds,
+        ...(targetMilestone !== undefined ? { targetMilestone } : {}),
+      });
+    }
+
+    setShowMenu(false);
+  };
+
   const getStatusBadgeClass = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower.includes('done') || statusLower.includes('complete')) {
@@ -148,6 +202,34 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             {tasks.length}
           </span>
         </div>
+        
+        {tasks.length > 1 && (
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 focus:outline-none"
+              title="Column actions"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+              </svg>
+            </button>
+            
+            {showMenu && (
+              <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1 ring-1 ring-black ring-opacity-5">
+                <button
+                  onClick={handleSortByPriority}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
+                >
+                  <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                  </svg>
+                  Sort by Priority
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="space-y-3">
