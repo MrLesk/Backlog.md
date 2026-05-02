@@ -1,5 +1,6 @@
 import React from 'react';
 import { type Task } from '../../types';
+import { sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
 import TaskCard from './TaskCard';
 
@@ -35,6 +36,48 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
+  const [showMenu, setShowMenu] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const columnActionsId = React.useId();
+  const canSortByPriority = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
+
+  React.useEffect(() => {
+    if (!showMenu) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
+
+  const handleSortByPriority = () => {
+    if (!onTaskReorder || !canSortByPriority) {
+      setShowMenu(false);
+      return;
+    }
+
+    const sortedTasks = sortByPriority(tasks);
+    const orderedTaskIds = sortedTasks.map(t => t.id);
+
+    const currentIds = tasks.map(t => t.id);
+    const hasChanged = orderedTaskIds.some((id, index) => id !== currentIds[index]);
+    const leadTaskId = orderedTaskIds[0];
+
+    if (hasChanged && leadTaskId) {
+      onTaskReorder({
+        taskId: leadTaskId,
+        targetStatus: title,
+        orderedTaskIds,
+        ...(targetMilestone !== undefined ? { targetMilestone } : {}),
+      });
+    }
+
+    setShowMenu(false);
+  };
+
   const getStatusBadgeClass = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower.includes('done') || statusLower.includes('complete')) {
@@ -148,6 +191,45 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             {tasks.length}
           </span>
         </div>
+        
+        {canSortByPriority && (
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setShowMenu(!showMenu)}
+              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 focus:outline-none"
+              title="Column actions"
+              aria-label="Column actions"
+              aria-haspopup="menu"
+              aria-expanded={showMenu}
+              aria-controls={columnActionsId}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+              </svg>
+            </button>
+            
+            {showMenu && (
+              <div
+                id={columnActionsId}
+                role="menu"
+                className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1 ring-1 ring-black ring-opacity-5"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleSortByPriority}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
+                >
+                  <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                  </svg>
+                  Sort by Priority
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="space-y-3">
