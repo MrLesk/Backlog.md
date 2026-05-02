@@ -1,0 +1,122 @@
+# Bug: `check_active_branches: false` does not prevent read-only task UI
+
+## Summary
+
+Setting `check_active_branches: false` in `.backlog/config.yml` is supposed to disable
+cross-branch task scanning. However, tasks still appear as read-only in the web UI and
+TUI with the message:
+
+  "Read-only: This task exists in the <branch> branch. Switch to that branch to edit it."
+
+Restarting the server does not help. The config change has no effect on the read-only
+behavior.
+
+## Root Cause
+
+The bug is in two parallel code paths in `src/core/backlog.ts` — `loadTasks()` (line 2647)
+and `loadTasksForKanban()` (line 2565). Both contain equivalent logic:
+
+```typescript
+// backlog.ts ~line 2676 (loadTasks) and ~line 2583 (loadTasksForKanban)
+const branchStateEntries: BranchTaskStateEntry[] | undefined =
+    config?.checkActiveBranches === false ? undefined : [];
+
+const [remoteTasks, localBranchTasks] = await Promise.all([
+    loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, ...),
+    loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, ...),
+]);
+```
+
+When `checkActiveBranches === false`, the code correctly sets `branchStateEntries` to
+`undefined` (disabling state collection). But it still unconditionally calls
+`loadRemoteTasks()` and `loadLocalBranchTasks()`.
+
+`loadRemoteTasks()` (src/core/task-loader.ts, line 474) has no guard for
+`checkActiveBranches` — its only early-exit is `remoteOperations === false` (line 485).
+`loadLocalBranchTasks()` (line 604) similarly has no check for `checkActiveBranches`.
+
+Both functions scan other branches, find task files there, and return Task objects with
+the `.branch` property set to the branch name they were found on.
+
+These branch tasks then flow into the merge loops (backlog.ts ~line 2707):
+
+```typescript
+for (const branchTask of localBranchTasks) {
+    const existing = tasksById.get(branchTask.id);
+    if (!existing) {
+        tasksById.set(branchTask.id, branchTask);         // .branch is set
+    } else {
+        const resolved = resolveTaskConflict(...);
+        tasksById.set(branchTask.id, resolved);            // may inherit .branch
+    }
+}
+```
+
+`resolveTaskConflict` may select the branch version, overwriting the local task entry
+with one that has `.branch` set.
+
+Finally, the filter guard (backlog.ts ~line 2752):
+
+```typescript
+if (config?.checkActiveBranches === false) {
+    filteredTasks = tasks;  // skips state filtering, but .branch is already set on tasks
+}
+```
+
+correctly skips `filterTasksByStateSnapshots()`, but by this point tasks already carry
+`.branch` from the loading step above.
+
+The read-only enforcement is based solely on `.branch` being set:
+
+```typescript
+// backlog.ts line 2461
+if (!isLocalEditableTask(resolvedTask) || resolvedTask.branch) {
+    return { changed: false, task: resolvedTask, reason: "read_only" };
+}
+```
+
+```tsx
+// src/web/components/TaskDetailsModal.tsx line 641
+<span>Read-only:</span> This task exists in the <span>{task?.branch}</span> branch.
+```
+
+So: cross-branch loading runs, tasks get `.branch` set, and the UI marks them read-only
+— all regardless of `checkActiveBranches: false`.
+
+## Affected Files
+
+- `src/core/backlog.ts` — `loadTasks()` (~line 2676) and `loadTasksForKanban()` (~line 2583)
+- `src/core/task-loader.ts` — `loadRemoteTasks()` (line 474), `loadLocalBranchTasks()` (line 604)
+
+## Reproduction Steps
+
+1. Set `check_active_branches: false` in `.backlog/config.yml`
+2. Have a remote with any branches other than the current one (e.g. old feature branches)
+3. Start the Backlog browser (`backlog browser`)
+4. Open any task — it shows "Read-only: This task exists in the <branch> branch"
+5. Restarting the server does not fix it
+6. Deleting the stale remote branches resolves it (confirming the cause)
+
+## Additional Manifestation: Stale `origin/main`
+
+The same bug produces a second common symptom even without extra branches and even with
+`check_active_branches: true` (the default):
+
+- User has unpushed commits on local `main` that moved tasks to `completed/`
+- `loadRemoteTasks()` fetches and scans `origin/main`, which is behind local `main`
+- On `origin/main` those tasks still exist in `tasks/` (e.g. status "To Do")
+- Backlog.md surfaces them as "From main branch" in the To Do column alongside their
+  already-completed local versions
+- Workaround: push to origin so `origin/main` is up to date
+- Root cause: same — `loadRemoteTasks` runs unconditionally and treats `origin/main` as
+  a foreign branch even when it is the tracking branch for the current branch
+
+The fix described below eliminates both manifestations when `check_active_branches: false`.
+For the default (`true`) case, an additional improvement would be to skip scanning the
+remote tracking branch of the current local branch (i.e. skip `origin/main` when on
+`main`), since its state is always a subset of local — but that is a separate issue.
+
+## Severity
+
+High — the config knob advertised to turn off cross-branch scanning silently does nothing,
+making tasks appear permanently read-only with no actionable error.
