@@ -1447,10 +1447,7 @@ const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
 	.command("create [title]")
-	.option(
-		"-d, --description <text>",
-		"task description (multi-line: bash $'Line1\\nLine2', POSIX printf, PowerShell \"Line1`nLine2\")",
-	)
+	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
 	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
@@ -2115,10 +2112,7 @@ taskCmd
 	.command("edit [taskId]")
 	.description("edit an existing task")
 	.option("-t, --title <title>")
-	.option(
-		"-d, --description <text>",
-		"task description (multi-line: bash $'Line1\\nLine2', POSIX printf, PowerShell \"Line1`nLine2\")",
-	)
+	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
 	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
@@ -2658,10 +2652,7 @@ draftCmd
 
 draftCmd
 	.command("create <title>")
-	.option(
-		"-d, --description <text>",
-		"task description (multi-line: bash $'Line1\\nLine2', POSIX printf, PowerShell \"Line1`nLine2\")",
-	)
+	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
 	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")

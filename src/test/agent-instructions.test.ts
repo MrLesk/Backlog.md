@@ -159,6 +159,45 @@ describe("addAgentInstructions", () => {
 		expect(updated).toContain("Footer line");
 	});
 
+	// BACK-431 / issue #595: multi-line input guidance must lead with forms that pass
+	// the tree-sitter AST walkers used by Claude Code, Codex, and similar agent sandboxes.
+	// ANSI-C strings ($'...'), command substitutions ($(...)), and heredocs are rejected
+	// outright; the section must lead with safe alternatives so headless agent runs do
+	// not waste tokens cycling through rejections before falling back.
+	it("agent guidelines lead multi-line input with sandbox-safe forms (BACK-431/#595)", async () => {
+		const guideline = await _loadAgentGuideline(AGENT_GUIDELINES);
+		const sectionMatch = guideline.match(/### Multi[‑-]line Input[\s\S]*?(?=\n### |\n## |$)/);
+		expect(sectionMatch).not.toBeNull();
+		const section = sectionMatch?.[0] ?? "";
+		// Must mention --append-* as a primary safe approach.
+		expect(section).toMatch(/--append-/);
+		// Must mention real-newlines-in-quotes as a primary safe approach.
+		expect(section).toMatch(/[Rr]eal newlines/);
+		// Must call out that ANSI-C / command-substitution forms are sandbox-rejected.
+		expect(section).toMatch(/sandbox|tree[\s-]sitter|reject/i);
+		// Issue #595 must be linked so future readers can find the rationale.
+		expect(section).toMatch(/#595|issues\/595/);
+		// The safe alternatives must appear before the shell-specific shorthand list.
+		const appendIdx = section.search(/--append-/);
+		const ansiCIdx = section.search(/\$'/);
+		expect(appendIdx).toBeGreaterThan(-1);
+		expect(ansiCIdx).toBeGreaterThan(appendIdx);
+	});
+
+	// BACK-431 / issue #595: option help text must not advertise shell forms that AI
+	// agent sandboxes reject. Help text is what `--help` surfaces and what agents echo
+	// when reasoning about how to call the CLI.
+	it("CLI option help does not advertise sandbox-rejected shell forms (BACK-431/#595)", async () => {
+		const cliPath = join(__dirname, "../cli.ts");
+		const cliText = await Bun.file(cliPath).text();
+		const helpLines = cliText.split("\n").filter((line) => line.includes("multi-line"));
+		expect(helpLines.length).toBeGreaterThan(0);
+		for (const line of helpLines) {
+			expect(line).not.toMatch(/\$'/); // no ANSI-C quoting in help strings
+			expect(line).not.toMatch(/\$\(printf/); // no command-substitution-with-printf in help strings
+		}
+	});
+
 	it("replaces MCP nudge with CLI guidelines when switching modes", async () => {
 		const agentsPath = join(TEST_DIR, "AGENTS.md");
 		const mcpBlock = [

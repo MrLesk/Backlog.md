@@ -76,21 +76,46 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 
 ### Multi-line input (description/plan/notes/final summary)
 
-The CLI preserves input literally; `\n` sequences are not auto-converted. Use one of the following to insert real newlines:
+The CLI preserves input literally — `\n` sequences are not auto-converted. Use one of the following forms (recommended order for AI agents):
+
+**1. Repeat `--append-*` for each line (works in every shell, including Claude Code / Codex / agent sandboxes):**
+
+```bash
+backlog task edit 7 --notes "First line"
+backlog task edit 7 --append-notes "Second line"
+backlog task edit 7 --append-notes "Third line"
+```
+
+**2. Real newlines inside double quotes (single command):**
+
+```bash
+backlog task create "Feature" --desc "Line1
+Line2
+
+Final paragraph"
+```
+
+The same shape works for `--plan`, `--notes`, `--final-summary`, and the `--append-*` variants.
+
+**3. Shell-specific shorthand (interactive shells only — rejected by tree-sitter-based agent sandboxes, see [#595](https://github.com/MrLesk/Backlog.md/issues/595)):**
 
 - **Bash/Zsh (ANSI-C quoting)**
-  - Description: `backlog task create "Feature" --desc $'Line1\nLine2\n\nFinal paragraph'`
-  - Plan: `backlog task edit 7 --plan $'1. Research\n2. Implement'`
-  - Notes: `backlog task edit 7 --notes $'Completed A\nWorking on B'`
-  - Append notes: `backlog task edit 7 --append-notes $'Added X\nAdded Y'`
-  - Final summary: `backlog task edit 7 --final-summary $'Shipped A\nAdded B'`
-  - Append final summary: `backlog task edit 7 --append-final-summary $'Added X\nAdded Y'`
-- **POSIX sh (printf)**
-  - `backlog task create "Feature" --desc "$(printf 'Line1\nLine2\n\nFinal paragraph')"`
-- **PowerShell (backtick)**
-  - `backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"`
 
-Tip: Help text shows Bash examples with escaped `\\n` for readability; when typing, `$'\n'` expands to a newline.
+  ```bash
+  backlog task edit 7 --notes $'Line1\nLine2'
+  ```
+
+- **POSIX sh (printf substitution)**
+
+  ```bash
+  backlog task create "Feature" --desc "$(printf 'Line1\nLine2\n\nFinal paragraph')"
+  ```
+
+- **PowerShell (backtick-n)**
+
+  ```powershell
+  backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"
+  ```
 
 ## Search
 
