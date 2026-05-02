@@ -578,11 +578,16 @@ export class FileSystem {
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
 
-				// Promoted drafts should enter the normal task workflow.
+				const promotedStatus =
+					!draft.status || draft.status.trim().toLowerCase() === "draft"
+						? config?.defaultStatus || FALLBACK_STATUS
+						: draft.status;
+
+				// Draft-only statuses should enter the normal task workflow.
 				const promotedTask: Task = {
 					...draft,
 					id: newTaskId,
-					status: config?.defaultStatus || FALLBACK_STATUS,
+					status: promotedStatus,
 					filePath: undefined, // Will be set by saveTask
 				};
 

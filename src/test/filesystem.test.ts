@@ -279,6 +279,28 @@ Invalid content`,
 			expect(promotedTask?.status).toBe("Ready");
 		});
 
+		it("should preserve a non-draft status when promoting a demoted task", async () => {
+			await filesystem.saveTask({
+				...sampleDraft,
+				id: "task-1",
+				title: "Demoted Task",
+				status: "In Progress",
+			});
+
+			const demoted = await filesystem.demoteTask("task-1");
+			expect(demoted).toBe(true);
+
+			const draft = await filesystem.loadDraft("draft-1");
+			expect(draft?.status).toBe("In Progress");
+
+			const promoted = await filesystem.promoteDraft("draft-1");
+			expect(promoted).toBe(true);
+
+			const promotedTask = await filesystem.loadTask("task-1");
+			expect(promotedTask?.id).toBe("TASK-1");
+			expect(promotedTask?.status).toBe("In Progress");
+		});
+
 		it("should promote draft with custom task prefix", async () => {
 			// Configure custom task prefix
 			const customConfig: BacklogConfig = {

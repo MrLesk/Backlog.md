@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-05-02 15:28'
-updated_date: '2026-05-02 15:30'
+updated_date: '2026-05-02 19:17'
 labels:
   - bug
 dependencies: []
@@ -44,23 +44,14 @@ Promoting a draft currently leaves the promoted task with status `Draft`, which 
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented draft promotion status normalization in `FileSystem.promoteDraft` using configured `defaultStatus` with `FALLBACK_STATUS` fallback. Added filesystem regression coverage for both the no-config fallback (`To Do`) and an explicit configured default (`Ready`).
+
+Addressed Codex P1 review feedback by preserving non-draft statuses during demote/promote round trips while still defaulting draft-only statuses.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-## Summary
-- Promoted drafts now leave the draft-only `Draft` status and become regular workflow tasks using `defaultStatus` or the built-in fallback status.
-- Added regression tests for both fallback behavior and configured default status behavior in draft promotion.
-
-## Validation
-- `bun test src/test/filesystem.test.ts`
-- `bunx tsc --noEmit`
-- `bun run check .`
-- `git diff --check`
-
-## Related GitHub
-- Fixes the behavior reported in issue #624.
+Promoted draft-only tasks now enter the default workflow status, while demoted tasks with an existing non-draft status keep that status when promoted again. Added regression coverage for both paths.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
