@@ -2,7 +2,7 @@ import { mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
@@ -578,10 +578,13 @@ export class FileSystem {
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
 
-				// Update draft with new task ID and save as task
+				// Update draft with new task ID and save as task. The status is "Draft"
+				// while in the drafts dir; on promotion fall back to defaultStatus so the
+				// task lands in a column visible on the kanban board (#624).
 				const promotedTask: Task = {
 					...draft,
 					id: newTaskId,
+					status: config?.defaultStatus || FALLBACK_STATUS,
 					filePath: undefined, // Will be set by saveTask
 				};
 
