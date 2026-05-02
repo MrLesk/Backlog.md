@@ -256,6 +256,27 @@ Invalid content`,
 			const promotedTask = await filesystem.loadTask("task-1");
 			expect(promotedTask?.id).toBe("TASK-1");
 			expect(promotedTask?.title).toBe(sampleDraft.title);
+			expect(promotedTask?.status).toBe("To Do");
+		});
+
+		it("should promote a draft to the configured default status", async () => {
+			const customConfig: BacklogConfig = {
+				projectName: "Custom Default Status Project",
+				defaultStatus: "Ready",
+				statuses: ["Ready", "In Progress", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "yyyy-MM-dd",
+			};
+			await filesystem.saveConfig(customConfig);
+			await filesystem.saveDraft(sampleDraft);
+
+			const promoted = await filesystem.promoteDraft("draft-1");
+			expect(promoted).toBe(true);
+
+			const promotedTask = await filesystem.loadTask("task-1");
+			expect(promotedTask?.id).toBe("TASK-1");
+			expect(promotedTask?.status).toBe("Ready");
 		});
 
 		it("should promote draft with custom task prefix", async () => {

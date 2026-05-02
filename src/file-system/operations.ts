@@ -578,9 +578,7 @@ export class FileSystem {
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
 
-				// Update draft with new task ID and save as task. The status is "Draft"
-				// while in the drafts dir; on promotion fall back to defaultStatus so the
-				// task lands in a column visible on the kanban board (#624).
+				// Promoted drafts should enter the normal task workflow.
 				const promotedTask: Task = {
 					...draft,
 					id: newTaskId,
