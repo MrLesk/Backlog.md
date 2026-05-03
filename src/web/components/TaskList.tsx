@@ -90,7 +90,6 @@ const TaskList: React.FC<TaskListProps> = ({
 	onRefreshData,
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
-	const [searchValue, setSearchValue] = useState(() => searchParams.get("query") ?? "");
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
 	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
 		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
@@ -258,14 +257,12 @@ const TaskList: React.FC<TaskListProps> = ({
 		const uniqueMilestones = Array.from(new Set([...availableMilestones.map((m) => m.trim()).filter(Boolean)]));
 		return uniqueMilestones;
 	}, [availableMilestones]);
-	const normalizedSearch = searchValue.trim();
 	const hasActiveFilters = Boolean(
-		normalizedSearch || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
 	);
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
-		const paramQuery = searchParams.get("query") ?? "";
 		const paramStatus = searchParams.get("status") ?? "";
 		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
 		const paramMilestone = searchParams.get("milestone") ?? "";
@@ -276,9 +273,6 @@ const TaskList: React.FC<TaskListProps> = ({
 		}
 		const normalizedLabels = paramLabels.map((label) => label.trim()).filter((label) => label.length > 0);
 
-		if (paramQuery !== searchValue) {
-			setSearchValue(paramQuery);
-		}
 		if (paramStatus !== statusFilter) {
 			setStatusFilter(paramStatus);
 		}
@@ -316,7 +310,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 
 		const shouldUseApi =
-			Boolean(normalizedSearch) || Boolean(statusFilter) || Boolean(priorityFilter) || labelFilter.length > 0;
+			Boolean(statusFilter) || Boolean(priorityFilter) || labelFilter.length > 0;
 
 		if (!hasActiveFilters) {
 			return;
@@ -333,7 +327,6 @@ const TaskList: React.FC<TaskListProps> = ({
 			}
 			try {
 				const results = await apiClient.search({
-					query: normalizedSearch || undefined,
 					types: ["task"],
 					status: statusFilter || undefined,
 					priority: (priorityFilter || undefined) as SearchPriorityFilter | undefined,
@@ -361,29 +354,23 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 	}, [
 		hasActiveFilters,
-		normalizedSearch,
 		priorityFilter,
 		statusFilter,
 		labelFilter,
-			tasks,
-			milestoneFilter,
-			sortedBaseTasks,
-			milestoneAliasToCanonical,
-			archivedMilestoneKeys,
-		]);
+		tasks,
+		milestoneFilter,
+		sortedBaseTasks,
+		milestoneAliasToCanonical,
+		archivedMilestoneKeys,
+	]);
 
 	const syncUrl = (
-		nextQuery: string,
 		nextStatus: string,
 		nextPriority: "" | SearchPriorityFilter,
 		nextLabels: string[],
 		nextMilestone: string,
 	) => {
 		const params = new URLSearchParams();
-		const trimmedQuery = nextQuery.trim();
-		if (trimmedQuery) {
-			params.set("query", trimmedQuery);
-		}
 		if (nextStatus) {
 			params.set("status", nextStatus);
 		}
@@ -401,39 +388,33 @@ const TaskList: React.FC<TaskListProps> = ({
 		setSearchParams(params, { replace: true });
 	};
 
-	const handleSearchChange = (value: string) => {
-		setSearchValue(value);
-		syncUrl(value, statusFilter, priorityFilter, labelFilter, milestoneFilter);
-	};
-
 	const handleStatusChange = (value: string) => {
 		setStatusFilter(value);
-		syncUrl(searchValue, value, priorityFilter, labelFilter, milestoneFilter);
+		syncUrl(value, priorityFilter, labelFilter, milestoneFilter);
 	};
 
 	const handlePriorityChange = (value: "" | SearchPriorityFilter) => {
 		setPriorityFilter(value);
-		syncUrl(searchValue, statusFilter, value, labelFilter, milestoneFilter);
+		syncUrl(statusFilter, value, labelFilter, milestoneFilter);
 	};
 
 	const handleLabelChange = (next: string[]) => {
 		const normalized = next.map((label) => label.trim()).filter((label) => label.length > 0);
 		setLabelFilter(normalized);
-		syncUrl(searchValue, statusFilter, priorityFilter, normalized, milestoneFilter);
+		syncUrl(statusFilter, priorityFilter, normalized, milestoneFilter);
 	};
 
 	const handleMilestoneChange = (value: string) => {
 		setMilestoneFilter(value);
-		syncUrl(searchValue, statusFilter, priorityFilter, labelFilter, value);
+		syncUrl(statusFilter, priorityFilter, labelFilter, value);
 	};
 
 	const handleClearFilters = () => {
-		setSearchValue("");
 		setStatusFilter("");
 		setPriorityFilter("");
 		setLabelFilter([]);
 		setMilestoneFilter("");
-		syncUrl("", "", "", [], "");
+		syncUrl("", "", [], "");
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
@@ -648,70 +629,44 @@ const TaskList: React.FC<TaskListProps> = ({
 
 				<div className="flex flex-wrap items-center gap-3 justify-between">
 					<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
-						<div className="relative flex-1 basis-[200px] min-w-[180px] max-w-[280px]">
-							<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
-								<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-								</svg>
-							</span>
-						<input
-							type="text"
-							value={searchValue}
-							onChange={(event) => handleSearchChange(event.target.value)}
-							placeholder="Search tasks"
-							className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
-						/>
-						{searchValue && (
-								<button
-									type="button"
-									onClick={() => handleSearchChange("")}
-									className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-								>
-									<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-								</svg>
-							</button>
-						)}
-						</div>
+						<select
+							value={statusFilter}
+							onChange={(event) => handleStatusChange(event.target.value)}
+							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+						>
+							<option value="">All statuses</option>
+							{availableStatuses.map((status) => (
+								<option key={status} value={status}>
+									{status}
+								</option>
+							))}
+						</select>
 
-					<select
-						value={statusFilter}
-						onChange={(event) => handleStatusChange(event.target.value)}
-						className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-					>
-						<option value="">All statuses</option>
-						{availableStatuses.map((status) => (
-							<option key={status} value={status}>
-								{status}
-							</option>
-						))}
-					</select>
+						<select
+							value={priorityFilter}
+							onChange={(event) => handlePriorityChange(event.target.value as "" | SearchPriorityFilter)}
+							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+						>
+							{PRIORITY_OPTIONS.map((option) => (
+								<option key={option.value || "all"} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</select>
 
-					<select
-						value={priorityFilter}
-						onChange={(event) => handlePriorityChange(event.target.value as "" | SearchPriorityFilter)}
-						className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-					>
-						{PRIORITY_OPTIONS.map((option) => (
-							<option key={option.value || "all"} value={option.value}>
-								{option.label}
-							</option>
-						))}
-					</select>
-
-					<select
-						value={milestoneFilter}
-						onChange={(event) => handleMilestoneChange(event.target.value)}
-						className="min-w-[160px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-					>
-						<option value="">All milestones</option>
-						<option value="__none">No milestone</option>
-						{milestoneOptions.map((milestone) => (
-							<option key={milestone} value={milestone}>
-								{getMilestoneLabel(milestone, milestoneEntities)}
-							</option>
-						))}
-					</select>
+						<select
+							value={milestoneFilter}
+							onChange={(event) => handleMilestoneChange(event.target.value)}
+							className="min-w-[160px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+						>
+							<option value="">All milestones</option>
+							<option value="__none">No milestone</option>
+							{milestoneOptions.map((milestone) => (
+								<option key={milestone} value={milestone}>
+									{getMilestoneLabel(milestone, milestoneEntities)}
+								</option>
+							))}
+						</select>
 
 					<div className="relative">
 						<button

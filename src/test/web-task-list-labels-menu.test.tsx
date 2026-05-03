@@ -146,6 +146,12 @@ afterEach(() => {
 });
 
 describe("TaskList labels filter menu", () => {
+	it("does not render a duplicate local task search input", () => {
+		const container = renderTaskList(["/?query=docs"]);
+
+		expect(container.querySelector("input[placeholder='Search tasks']")).toBeNull();
+	});
+
 	it("renders the labels menu above the sticky table header", async () => {
 		const container = renderTaskList();
 		const labelsButton = getLabelsButton(container);
