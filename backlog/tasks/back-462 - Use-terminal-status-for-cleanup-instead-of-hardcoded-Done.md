@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-05-03 18:18'
-updated_date: '2026-05-03 18:25'
+updated_date: '2026-05-03 18:41'
 labels:
   - bug
   - web
@@ -24,6 +24,7 @@ modified_files:
   - src/test/web-board-filters.test.tsx
   - src/test/web-task-column-sort.test.tsx
   - src/test/web-task-list-labels-menu.test.tsx
+  - src/test/terminal-status.test.ts
 priority: high
 ---
 
@@ -56,6 +57,8 @@ Cleanup must apply to the terminal Kanban status defined by the configured statu
 
 <!-- SECTION:NOTES:BEGIN -->
 Verification completed: targeted cleanup/web tests passed (20 tests), `bunx tsc --noEmit` passed, and `bun run check .` passed.
+
+Addressed Codex review feedback: terminal-status comparisons now normalize case/spacing so bookmarked URLs such as `?status=closed` still show the cleanup affordance for configured `Closed`. Added focused helper coverage for that behavior.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
