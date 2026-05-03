@@ -12,6 +12,7 @@ import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
 import { formatStoredUtcDateForCompactDisplay, parseStoredUtcDate } from "../utils/date-display";
 import CleanupModal from "./CleanupModal";
+import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
 
 interface TaskListProps {
@@ -106,11 +107,8 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [error, setError] = useState<string | null>(null);
 	const [showCleanupModal, setShowCleanupModal] = useState(false);
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
-	const [showLabelsMenu, setShowLabelsMenu] = useState(false);
 	const [sortColumn, setSortColumn] = useState<TaskSortColumn>("id");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-	const labelsButtonRef = useRef<HTMLButtonElement | null>(null);
-	const labelsMenuRef = useRef<HTMLDivElement | null>(null);
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
@@ -419,23 +417,6 @@ const TaskList: React.FC<TaskListProps> = ({
 		setError(null);
 	};
 
-	useEffect(() => {
-		if (!showLabelsMenu) return;
-		const handleClickOutside = (event: MouseEvent) => {
-			const target = event.target as Node;
-			if (
-				labelsButtonRef.current &&
-				labelsMenuRef.current &&
-				!labelsButtonRef.current.contains(target) &&
-				!labelsMenuRef.current.contains(target)
-			) {
-				setShowLabelsMenu(false);
-			}
-		};
-		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, [showLabelsMenu]);
-
 	const handleCleanupSuccess = async (movedCount: number) => {
 		setShowCleanupModal(false);
 		setCleanupSuccessMessage(`Successfully moved ${movedCount} task${movedCount !== 1 ? 's' : ''} to completed folder`);
@@ -668,73 +649,12 @@ const TaskList: React.FC<TaskListProps> = ({
 							))}
 						</select>
 
-					<div className="relative">
-						<button
-							type="button"
-							ref={labelsButtonRef}
-							onClick={() => setShowLabelsMenu((open) => !open)}
-							aria-expanded={showLabelsMenu}
-							aria-controls="task-list-labels-menu"
-							className="min-w-[200px] py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200 text-left"
-						>
-							<div className="flex items-center justify-between gap-2">
-								<span>Labels</span>
-								<span className="text-xs text-gray-500 dark:text-gray-400">
-									{labelFilter.length === 0
-										? "All"
-										: labelFilter.length === 1
-											? labelFilter[0]
-											: `${labelFilter.length} selected`}
-								</span>
-							</div>
-						</button>
-						{showLabelsMenu && (
-							<div
-								id="task-list-labels-menu"
-								ref={labelsMenuRef}
-								className="absolute z-50 mt-2 w-[220px] max-h-56 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
-							>
-								{mergedAvailableLabels.length === 0 ? (
-									<div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No labels</div>
-								) : (
-									mergedAvailableLabels.map((label) => {
-										const isSelected = labelFilter.includes(label);
-										return (
-											<label
-												key={label}
-												className="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-											>
-												<input
-													type="checkbox"
-													checked={isSelected}
-													onChange={() => {
-														const next = isSelected
-															? labelFilter.filter((item) => item !== label)
-															: [...labelFilter, label];
-														handleLabelChange(next);
-													}}
-													className="h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
-												/>
-												<span className="truncate">{label}</span>
-											</label>
-										);
-									})
-								)}
-								{labelFilter.length > 0 && (
-									<button
-										type="button"
-										className="w-full text-left px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 border-t border-gray-200 dark:border-gray-700"
-										onClick={() => {
-											handleLabelChange([]);
-											setShowLabelsMenu(false);
-										}}
-									>
-										Clear label filter
-									</button>
-								)}
-							</div>
-						)}
-					</div>
+						<LabelFilterDropdown
+							availableLabels={mergedAvailableLabels}
+							selectedLabels={labelFilter}
+							onChange={handleLabelChange}
+							menuId="task-list-labels-menu"
+						/>
 
 					</div>
 

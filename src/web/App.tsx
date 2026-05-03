@@ -498,6 +498,7 @@ function App() {
                 onRefreshData={refreshData}
                 statuses={statuses}
                 milestones={milestones}
+                availableLabels={availableLabels}
                 milestoneEntities={milestoneEntities}
                 archivedMilestones={archivedMilestones}
                 isLoading={isLoading}
