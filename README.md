@@ -146,6 +146,8 @@ backlog browser --no-open
 
 ![Web Interface Screenshot](./.github/web.jpeg)
 
+To keep the Web UI running as an auto-starting local service, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
+
 ---
 
 ## 🔧 MCP Integration (Model Context Protocol)
