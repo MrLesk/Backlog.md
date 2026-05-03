@@ -3,9 +3,9 @@ id: BACK-452
 title: 'Add TUI keyboard shortcuts: Yank, Complete, Archive, and Help Menu'
 status: Done
 assignee:
-  - '@codex'
+  - '@alex-agent'
 created_date: '2026-04-28 12:53'
-updated_date: '2026-05-03 11:06'
+updated_date: '2026-05-03 11:38'
 labels: []
 dependencies: []
 priority: medium
@@ -29,12 +29,7 @@ Implement 'y' to yank task ID, 'c' to complete task, 'a' to archive task with co
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented 'y' to yank task ID, 'c' to complete task, 'a' to archive task with confirmation, and '?' to show a help popup in the TUI board.
-- Created `src/utils/clipboard.ts` for cross-platform clipboard support.
-- Created `src/ui/components/confirm-popup.ts` for reusable confirmation dialogs.
-- Created `src/ui/components/help-popup.ts` for displaying keyboard shortcuts.
-- Updated `src/ui/board.ts` and `src/ui/task-viewer-with-search.ts` to include new shortcuts and Help menu.
-- Refactored `src/ui/components/filter-popup.ts` to export `createPopupChrome` for reuse.
+Merged PR #615 after repairing the contributor branch to a scoped BACK-452 diff, fixing the task-list shortcut state issue, removing an unrelated .gitignore update, and addressing Codex feedback by making the shared help popup show task-list-specific shortcuts when opened from the task viewer. Validation included bunx tsc --noEmit, bun run check ., focused TUI tests, full bun test from the worker pass, green GitHub CI across macOS/Ubuntu/Windows, and Codex no-major-issues approval.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
