@@ -152,6 +152,31 @@ const expectVisibleTasks = (container: HTMLElement, expected: string[]) => {
 	}
 };
 
+const expectBoardFiltersInHeader = (container: HTMLElement) => {
+	const toolbar = container.querySelector("[aria-label='Board view controls']");
+	expect(toolbar).toBeTruthy();
+	expect(toolbar?.textContent).toContain("All Tasks");
+	expect(toolbar?.textContent).toContain("Milestone");
+
+	const boardFilters = toolbar?.querySelector("[aria-label='Board filters']");
+	expect(boardFilters).toBeTruthy();
+
+	for (const ariaLabel of [
+		"Filter board by assignee",
+		"Filter board by label",
+		"Filter board by priority",
+	]) {
+		const select = container.querySelector(`select[aria-label='${ariaLabel}']`) as HTMLSelectElement | null;
+		expect(select).toBeTruthy();
+		expect(toolbar?.contains(select)).toBe(true);
+		expect(select?.className).toContain("min-w-[140px]");
+		expect(select?.className).toContain("h-10");
+		expect(select?.className).toContain("rounded-lg");
+		expect(select?.className).toContain("border-gray-300");
+		expect(select?.className).toContain("focus:ring-stone-500");
+	}
+};
+
 afterEach(() => {
 	if (activeRoot) {
 		act(() => {
@@ -165,6 +190,7 @@ describe("Web board filters", () => {
 	it("filters board cards by assignee, label, and priority while updating URL params", async () => {
 		const container = renderBoardPage();
 
+		expectBoardFiltersInHeader(container);
 		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
 
 		await setSelectValue(getSelectByFirstOption(container, "All assignees"), "alice");
