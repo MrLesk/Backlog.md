@@ -3,6 +3,7 @@ import {
 	type PendingSearchWrap,
 	resolveFilterExitPane,
 	resolveSearchExitTargetIndex,
+	resolveTaskListSelection,
 	shouldMoveFromDetailBoundaryToSearch,
 	shouldMoveFromListBoundaryToSearch,
 } from "../ui/task-viewer-with-search.ts";
@@ -53,5 +54,18 @@ describe("task viewer boundary navigation", () => {
 		expect(resolveFilterExitPane("detail", true, false)).toBe("list");
 		expect(resolveFilterExitPane("list", false, true)).toBe("detail");
 		expect(resolveFilterExitPane("list", false, false)).toBeNull();
+	});
+
+	it("resolves the selected task from a list index", () => {
+		const tasks = [{ id: "TASK-1" }, { id: "TASK-2" }];
+		expect(resolveTaskListSelection(tasks, 1)?.id).toBe("TASK-2");
+		expect(resolveTaskListSelection(tasks, [0])?.id).toBe("TASK-1");
+	});
+
+	it("falls back when the selected list index is unavailable", () => {
+		const fallback = { id: "TASK-1" };
+		expect(resolveTaskListSelection([], undefined, fallback)).toBe(fallback);
+		expect(resolveTaskListSelection([], 0, fallback)).toBe(fallback);
+		expect(resolveTaskListSelection([{ id: "TASK-2" }], -1, fallback)).toBe(fallback);
 	});
 });

@@ -11,6 +11,7 @@ import {
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
 import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
+import { copyToClipboard } from "../utils/clipboard.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
@@ -18,6 +19,7 @@ import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
+import { openConfirmPopup } from "./components/confirm-popup.ts";
 import {
 	createFilterHeader,
 	type FilterControlId,
@@ -26,6 +28,7 @@ import {
 } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { createGenericList, type GenericList } from "./components/generic-list.ts";
+import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -139,6 +142,18 @@ export function resolveFilterExitPane(
 		return "detail";
 	}
 	return null;
+}
+
+export function resolveTaskListSelection<T>(
+	items: readonly T[],
+	selectedIndex: number | number[] | undefined,
+	fallback: T | null = null,
+): T | null {
+	const index = Array.isArray(selectedIndex) ? selectedIndex[0] : selectedIndex;
+	if (typeof index !== "number") {
+		return fallback;
+	}
+	return items[index] ?? fallback;
 }
 
 /**
@@ -271,6 +286,7 @@ export async function viewTaskEnhanced(
 	// State for tracking focus
 	let currentFocus: "filters" | "list" | "detail" = "list";
 	let filterPopupOpen = false;
+	let modalOpen = false;
 	let pendingSearchWrap: PendingSearchWrap = null;
 	let filterExitPane: PaneFocus = "list";
 
@@ -664,6 +680,11 @@ export async function viewTaskEnhanced(
 			if (forceFirst || desiredIndex < 0) {
 				desiredIndex = 0;
 			}
+			const desiredTask = filteredTasks[desiredIndex];
+			if (desiredTask && desiredTask.id !== currentSelectedTask.id) {
+				currentSelectedTask = enrichTask(desiredTask) ?? desiredTask;
+				options.onTaskChange?.(currentSelectedTask);
+			}
 			const currentIndexRaw = listController.getSelectedIndex();
 			const currentIndex = Array.isArray(currentIndexRaw) ? (currentIndexRaw[0] ?? 0) : currentIndexRaw;
 			if (forceFirst || currentIndex !== desiredIndex) {
@@ -995,11 +1016,11 @@ export async function viewTaskEnhanced(
 			}
 		} else if (currentFocus === "detail") {
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←]{/} Task List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		} else {
 			// Task list help
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[i]{/} Milestone | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[s/p/i/l]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		}
 
 		setHelpBarContent(content);
@@ -1052,6 +1073,82 @@ export async function viewTaskEnhanced(
 		}
 	};
 
+	const getCurrentShortcutTask = (): Task | null => {
+		if (noResultsMessage) {
+			return null;
+		}
+		return resolveTaskListSelection(filteredTasks, taskList?.getSelectedIndex(), currentSelectedTask);
+	};
+
+	const removeTaskFromCurrentView = (taskId: string) => {
+		const currentIndex = filteredTasks.findIndex((taskItem) => taskItem.id === taskId);
+		const remainingFilteredTasks = filteredTasks.filter((taskItem) => taskItem.id !== taskId);
+		const nextIndex = Math.min(Math.max(currentIndex, 0), remainingFilteredTasks.length - 1);
+		const nextTask = remainingFilteredTasks[nextIndex] ?? null;
+
+		allTasks = allTasks.filter((taskItem) => taskItem.id !== taskId);
+		if (taskSearchIndex) {
+			taskSearchIndex = createTaskSearchIndex(allTasks);
+		}
+		if (nextTask) {
+			currentSelectedTask = enrichTask(nextTask) ?? nextTask;
+			options.onTaskChange?.(currentSelectedTask);
+		}
+		applyFilters();
+	};
+
+	const runWithModalGuard = async <T>(operation: () => Promise<T>): Promise<T> => {
+		modalOpen = true;
+		try {
+			return await operation();
+		} finally {
+			modalOpen = false;
+		}
+	};
+
+	const applyTaskLifecycleShortcut = async (task: Task, action: "complete" | "archive") => {
+		if (task.branch) {
+			const verb = action === "complete" ? "complete" : "archive";
+			showTransientHelp(` {red-fg}Cannot ${verb} task from branch "${task.branch}".{/}`);
+			return;
+		}
+
+		const confirmed = await runWithModalGuard(() =>
+			openConfirmPopup({
+				screen,
+				title: action === "complete" ? "Complete Task" : "Archive Task",
+				message:
+					action === "complete"
+						? `Mark task {bold}${task.id}{/bold} as completed?\n{gray-fg}${task.title}{/}`
+						: `Archive task {bold}${task.id}{/bold}?\n{gray-fg}${task.title}{/}`,
+			}),
+		);
+
+		if (!confirmed) {
+			return;
+		}
+
+		try {
+			const config = await core.fs.loadConfig();
+			const success =
+				action === "complete"
+					? await core.completeTask(task.id, config?.autoCommit ?? false)
+					: await core.archiveTask(task.id, config?.autoCommit ?? false);
+
+			if (success) {
+				removeTaskFromCurrentView(task.id);
+				const label = action === "complete" ? "Completed" : "Archived";
+				showTransientHelp(` {green-fg}${label} ${task.id}{/}`);
+			} else {
+				const verb = action === "complete" ? "complete" : "archive";
+				showTransientHelp(` {red-fg}Failed to ${verb} ${task.id}{/}`);
+			}
+		} catch (error) {
+			const verb = action === "complete" ? "completing" : "archiving";
+			showTransientHelp(` {red-fg}Error ${verb} task: ${error instanceof Error ? error.message : "Unknown error"}{/}`);
+		}
+	};
+
 	// Handle resize
 	screen.on("resize", () => {
 		filterHeader.rebuild();
@@ -1060,37 +1157,75 @@ export async function viewTaskEnhanced(
 
 	// Keyboard shortcuts
 	screen.key(["/"], () => {
+		if (modalOpen) return;
 		pendingSearchWrap = null;
 		filterHeader.focusSearch();
 	});
 
 	screen.key(["C-f"], () => {
+		if (modalOpen) return;
 		pendingSearchWrap = null;
 		filterHeader.focusSearch();
 	});
 
 	screen.key(["s", "S"], () => {
+		if (modalOpen) return;
 		void openFilterPicker("status");
 	});
 
 	screen.key(["p", "P"], () => {
+		if (modalOpen) return;
 		void openFilterPicker("priority");
 	});
 
 	screen.key(["l", "L"], () => {
+		if (modalOpen) return;
 		void openFilterPicker("labels");
 	});
 
 	screen.key(["i", "I"], () => {
+		if (modalOpen) return;
 		void openFilterPicker("milestone");
 	});
 
 	screen.key(["e", "E", "S-e"], () => {
+		if (modalOpen) return;
 		void openCurrentTaskInEditor();
 	});
 
+	screen.key(["y", "Y"], async () => {
+		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
+		const task = getCurrentShortcutTask();
+		if (!task) return;
+		const success = await copyToClipboard(task.id);
+		if (success) {
+			showTransientHelp(` {green-fg}Copied ${task.id} to clipboard{/}`);
+		} else {
+			showTransientHelp(" {red-fg}Failed to copy to clipboard{/}");
+		}
+	});
+
+	screen.key(["c", "C"], async () => {
+		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
+		const task = getCurrentShortcutTask();
+		if (!task) return;
+		await applyTaskLifecycleShortcut(task, "complete");
+	});
+
+	screen.key(["a", "A"], async () => {
+		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
+		const task = getCurrentShortcutTask();
+		if (!task) return;
+		await applyTaskLifecycleShortcut(task, "archive");
+	});
+
+	screen.key(["?"], async () => {
+		if (modalOpen || filterPopupOpen) return;
+		await runWithModalGuard(() => openHelpPopup(screen, "task-list"));
+	});
+
 	screen.key(["escape"], () => {
-		if (filterPopupOpen) {
+		if (modalOpen || filterPopupOpen) {
 			return;
 		}
 		if (currentFocus === "filters") {
@@ -1119,7 +1254,7 @@ export async function viewTaskEnhanced(
 	if (options.onTabPress) {
 		screen.key(["tab"], async () => {
 			// Keep tab as filter-navigation while filters are focused.
-			if (filterPopupOpen || currentFocus === "filters") {
+			if (modalOpen || filterPopupOpen || currentFocus === "filters") {
 				return;
 			}
 			if (currentFocus === "list" || currentFocus === "detail") {
@@ -1135,7 +1270,7 @@ export async function viewTaskEnhanced(
 
 	// Quit handlers
 	screen.key(["q", "C-c"], () => {
-		if (filterPopupOpen) {
+		if (modalOpen || filterPopupOpen) {
 			return;
 		}
 		searchService?.dispose();

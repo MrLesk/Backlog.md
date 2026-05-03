@@ -8,12 +8,15 @@ import {
 } from "../board.ts";
 import { Core } from "../core/backlog.ts";
 import type { Milestone, Task } from "../types/index.ts";
+import { copyToClipboard } from "../utils/clipboard.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
+import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
+import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import {
@@ -141,7 +144,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[I]{/} Milestone | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Tasks | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[M]{/} Move | {cyan-fg}[q/Esc]{/} Quit";
+	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
@@ -239,6 +242,7 @@ export async function renderBoardTui(
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
+		let modalOpen = false;
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
 		let programmaticColumnSelection = false;
 		const sharedFilters = {
@@ -246,6 +250,14 @@ export async function renderBoardTui(
 			priorityFilter: options?.filters?.priorityFilter ?? "",
 			labelFilter: [...(options?.filters?.labelFilter ?? [])],
 			milestoneFilter: options?.filters?.milestoneFilter ?? "",
+		};
+		const runWithModalGuard = async <T>(operation: () => Promise<T>): Promise<T> => {
+			modalOpen = true;
+			try {
+				return await operation();
+			} finally {
+				modalOpen = false;
+			}
 		};
 		let configuredLabels = collectAvailableLabels(initialTasks, options?.availableLabels ?? []);
 		let availableMilestones = [...(options?.availableMilestones ?? [])];
@@ -443,7 +455,7 @@ export async function renderBoardTui(
 				});
 
 				taskList.on("select item", (_item: unknown, selected: unknown) => {
-					if (programmaticColumnSelection || popupOpen || filterPopupOpen) return;
+					if (programmaticColumnSelection || popupOpen || filterPopupOpen || modalOpen) return;
 					const column = columns[idx];
 					if (!column) return;
 					if (currentCol !== idx) {
@@ -459,7 +471,7 @@ export async function renderBoardTui(
 				});
 
 				taskList.on("focus", () => {
-					if (popupOpen || filterPopupOpen) return;
+					if (popupOpen || filterPopupOpen || modalOpen) return;
 					if (currentCol !== idx) {
 						setColumnActiveState(columns[currentCol], false);
 						currentCol = idx;
@@ -491,7 +503,7 @@ export async function renderBoardTui(
 		};
 
 		const focusColumn = (idx: number, preferredRow?: number, activate = true) => {
-			if (popupOpen) return;
+			if (popupOpen || modalOpen) return;
 			if (idx < 0 || idx >= columns.length) return;
 			const previous = columns[currentCol];
 			setColumnActiveState(previous, false);
@@ -609,7 +621,7 @@ export async function renderBoardTui(
 		};
 
 		const openFilterPicker = async (filterId: "priority" | "milestone" | "labels") => {
-			if (filterPopupOpen || moveOp || !filterHeader) {
+			if (filterPopupOpen || modalOpen || moveOp || !filterHeader) {
 				return;
 			}
 			filterPopupOpen = true;
@@ -841,29 +853,29 @@ export async function renderBoardTui(
 		};
 
 		screen.key(["/", "C-f"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
 			pendingSearchWrap = null;
 			focusFilterControl("search");
 			updateFooter();
 		});
 
 		screen.key(["p", "P"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
 			void openFilterPicker("priority");
 		});
 
 		screen.key(["f", "F"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
 			void openFilterPicker("labels");
 		});
 
 		screen.key(["i", "I"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
 			void openFilterPicker("milestone");
 		});
 
 		screen.key(["left", "h"], () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (moveOp) {
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex > 0) {
@@ -882,7 +894,7 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["right", "l"], () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (moveOp) {
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex < currentStatuses.length - 1) {
@@ -901,7 +913,7 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["up", "k"], () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 
 			if (moveOp) {
 				if (moveOp.targetIndex > 0) {
@@ -935,7 +947,7 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["down", "j"], () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 
 			if (moveOp) {
 				const column = columns[currentCol];
@@ -1009,7 +1021,7 @@ export async function renderBoardTui(
 		};
 
 		screen.key(["enter"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 
 			// In move mode, Enter confirms the move
 			if (moveOp) {
@@ -1042,11 +1054,94 @@ export async function renderBoardTui(
 				await openTaskEditor(task);
 			});
 
+			contentArea.key(["y", "Y"], async () => {
+				const success = await copyToClipboard(task.id);
+				if (success) {
+					showTransientFooter(` {green-fg}Copied ${task.id} to clipboard{/}`);
+				} else {
+					showTransientFooter(" {red-fg}Failed to copy to clipboard{/}");
+				}
+			});
+
+			contentArea.key(["c", "C"], async () => {
+				if (task.branch) {
+					showTransientFooter(` {red-fg}Cannot complete task from branch "${task.branch}".{/}`);
+					return;
+				}
+
+				const confirmed = await runWithModalGuard(() =>
+					openConfirmPopup({
+						screen,
+						title: "Complete Task",
+						message: `Mark task {bold}${task.id}{/bold} as completed?\n{gray-fg}${task.title}{/}`,
+					}),
+				);
+
+				if (confirmed) {
+					try {
+						const core = new Core(process.cwd(), { enableWatchers: true });
+						const config = await core.fs.loadConfig();
+						const success = await core.completeTask(task.id, config?.autoCommit ?? false);
+
+						if (success) {
+							currentTasks = currentTasks.filter((t) => t.id !== task.id);
+							showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
+							close();
+							popupOpen = false;
+							renderView();
+						} else {
+							showTransientFooter(` {red-fg}Failed to complete ${task.id}{/}`);
+						}
+					} catch (error) {
+						showTransientFooter(
+							` {red-fg}Error completing task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
+						);
+					}
+				}
+			});
+
+			contentArea.key(["a", "A"], async () => {
+				if (task.branch) {
+					showTransientFooter(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
+					return;
+				}
+
+				const confirmed = await runWithModalGuard(() =>
+					openConfirmPopup({
+						screen,
+						title: "Archive Task",
+						message: `Archive task {bold}${task.id}{/bold}?\n{gray-fg}${task.title}{/}`,
+					}),
+				);
+
+				if (confirmed) {
+					try {
+						const core = new Core(process.cwd(), { enableWatchers: true });
+						const config = await core.fs.loadConfig();
+						const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+
+						if (success) {
+							currentTasks = currentTasks.filter((t) => t.id !== task.id);
+							showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
+							close();
+							popupOpen = false;
+							renderView();
+						} else {
+							showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);
+						}
+					} catch (error) {
+						showTransientFooter(
+							` {red-fg}Error archiving task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
+						);
+					}
+				}
+			});
+
 			screen.render();
 		});
 
 		screen.key(["e", "E", "S-e"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			const column = columns[currentCol];
 			if (!column) return;
 			const idx = column.list.selected ?? 0;
@@ -1122,7 +1217,7 @@ export async function renderBoardTui(
 		};
 
 		screen.key(["m", "M", "S-m"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (hasActiveSharedFilters()) {
 				showTransientFooter(" {yellow-fg}Clear filters before moving tasks.{/}");
 				return;
@@ -1158,7 +1253,7 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["tab"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			const column = columns[currentCol];
 			if (column) {
 				const idx = column.list.selected ?? 0;
@@ -1184,15 +1279,120 @@ export async function renderBoardTui(
 			}
 		});
 
+		screen.key(["?"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
+			await runWithModalGuard(() => openHelpPopup(screen));
+		});
+
+		screen.key(["y", "Y"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const idx = column.list.selected ?? 0;
+			const task = column.tasks[idx];
+			if (!task) return;
+
+			const success = await copyToClipboard(task.id);
+			if (success) {
+				showTransientFooter(` {green-fg}Copied ${task.id} to clipboard{/}`);
+			} else {
+				showTransientFooter(" {red-fg}Failed to copy to clipboard{/}");
+			}
+		});
+
+		screen.key(["c", "C"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const idx = column.list.selected ?? 0;
+			const task = column.tasks[idx];
+			if (!task) return;
+
+			if (task.branch) {
+				showTransientFooter(` {red-fg}Cannot complete task from branch "${task.branch}".{/}`);
+				return;
+			}
+
+			const confirmed = await runWithModalGuard(() =>
+				openConfirmPopup({
+					screen,
+					title: "Complete Task",
+					message: `Mark task {bold}${task.id}{/bold} as completed?\n{gray-fg}${task.title}{/}`,
+				}),
+			);
+
+			if (confirmed) {
+				try {
+					const core = new Core(process.cwd(), { enableWatchers: true });
+					const config = await core.fs.loadConfig();
+					const success = await core.completeTask(task.id, config?.autoCommit ?? false);
+
+					if (success) {
+						currentTasks = currentTasks.filter((t) => t.id !== task.id);
+						showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
+						renderView();
+					} else {
+						showTransientFooter(` {red-fg}Failed to complete ${task.id}{/}`);
+					}
+				} catch (error) {
+					showTransientFooter(
+						` {red-fg}Error completing task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
+					);
+				}
+			}
+		});
+
+		screen.key(["a", "A"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const idx = column.list.selected ?? 0;
+			const task = column.tasks[idx];
+			if (!task) return;
+
+			if (task.branch) {
+				showTransientFooter(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
+				return;
+			}
+
+			const confirmed = await runWithModalGuard(() =>
+				openConfirmPopup({
+					screen,
+					title: "Archive Task",
+					message: `Archive task {bold}${task.id}{/bold}?\n{gray-fg}${task.title}{/}`,
+				}),
+			);
+
+			if (confirmed) {
+				try {
+					const core = new Core(process.cwd(), { enableWatchers: true });
+					const config = await core.fs.loadConfig();
+					const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+
+					if (success) {
+						currentTasks = currentTasks.filter((t) => t.id !== task.id);
+						showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
+						renderView();
+					} else {
+						showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);
+					}
+				} catch (error) {
+					showTransientFooter(
+						` {red-fg}Error archiving task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
+					);
+				}
+			}
+		});
+
 		screen.key(["q", "C-c"], () => {
-			if (popupOpen || filterPopupOpen) return;
+			if (popupOpen || filterPopupOpen || modalOpen) return;
 			clearFooterTimer();
 			screen.destroy();
 			resolve();
 		});
 
 		screen.key(["escape"], () => {
-			if (popupOpen || filterPopupOpen) return;
+			if (popupOpen || filterPopupOpen || modalOpen) return;
 			if (currentFocus === "filters") {
 				focusColumn(currentCol);
 				updateFooter();
