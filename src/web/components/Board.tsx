@@ -476,49 +476,60 @@ const Board: React.FC<BoardProps> = ({
 
       {/* Filter bar */}
       {onFiltersChange && (
-        <div className="flex items-center gap-3 mb-6 flex-wrap">
-          <select
-            value={filterAssignee}
-            onChange={e => onFiltersChange({ assignee: e.target.value, label: filterLabel, priority: filterPriority })}
-            className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
-          >
-            <option value="">All assignees</option>
-            <option value="__unassigned__">Unassigned</option>
-            {uniqueAssignees.map(a => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
-
-          <select
-            value={filterLabel}
-            onChange={e => onFiltersChange({ assignee: filterAssignee, label: e.target.value, priority: filterPriority })}
-            className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
-          >
-            <option value="">All labels</option>
-            {uniqueLabels.map(l => (
-              <option key={l} value={l}>{l}</option>
-            ))}
-          </select>
-
-          <select
-            value={filterPriority}
-            onChange={e => onFiltersChange({ assignee: filterAssignee, label: filterLabel, priority: e.target.value })}
-            className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
-          >
-            {PRIORITY_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={() => onFiltersChange({ assignee: '', label: '', priority: '' })}
-              className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-md hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800 transition-colors duration-200"
+        <div className="mb-6 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-3 transition-colors duration-200">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+              <svg className="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M6 12h12M10 19h4" />
+              </svg>
+              <span>Filters</span>
+            </div>
+            <select
+              aria-label="Filter board by assignee"
+              value={filterAssignee}
+              onChange={e => onFiltersChange({ assignee: e.target.value, label: filterLabel, priority: filterPriority })}
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
             >
-              Clear filters
-            </button>
-          )}
+              <option value="">All assignees</option>
+              <option value="__unassigned__">Unassigned</option>
+              {uniqueAssignees.map(a => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter board by label"
+              value={filterLabel}
+              onChange={e => onFiltersChange({ assignee: filterAssignee, label: e.target.value, priority: filterPriority })}
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+            >
+              <option value="">All labels</option>
+              {uniqueLabels.map(l => (
+                <option key={l} value={l}>{l}</option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter board by priority"
+              value={filterPriority}
+              onChange={e => onFiltersChange({ assignee: filterAssignee, label: filterLabel, priority: e.target.value })}
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+            >
+              {PRIORITY_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => onFiltersChange({ assignee: '', label: '', priority: '' })}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-md hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800 transition-colors duration-200"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
         </div>
       )}
 

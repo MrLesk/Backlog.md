@@ -165,6 +165,10 @@ describe("Web board filters", () => {
 	it("filters board cards by assignee, label, and priority while updating URL params", async () => {
 		const container = renderBoardPage();
 
+		expect(container.textContent).toContain("Filters");
+		expect(container.querySelector("select[aria-label='Filter board by assignee']")).toBeTruthy();
+		expect(container.querySelector("select[aria-label='Filter board by label']")).toBeTruthy();
+		expect(container.querySelector("select[aria-label='Filter board by priority']")).toBeTruthy();
 		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
 
 		await setSelectValue(getSelectByFirstOption(container, "All assignees"), "alice");
