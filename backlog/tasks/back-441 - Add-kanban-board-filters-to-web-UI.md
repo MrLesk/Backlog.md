@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 22:13'
-updated_date: '2026-04-25 22:30'
+updated_date: '2026-05-03 12:45'
 labels:
   - feature
   - web
@@ -37,7 +37,7 @@ Add focused filtering controls to the Web UI kanban board so users can narrow vi
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Prepared PR #574 for merge readiness: created and linked BACK-441, aligned the PR title/body, rebased the contributor branch onto current main, removed stale bun.lock churn, regenerated Tailwind CSS, added focused board-filter tests, and verified the behavior in a real Chrome browser against the compiled CLI. PR #574 is clean and all GitHub checks are green; merge is pending the repository's Codex AI review approval signal.
+Merged PR #574: added board-level assignee, label, and priority filters to the Web UI with URL persistence and a clear action. Rebased the contributor branch onto current main, regenerated Tailwind CSS, added focused board-filter tests including filtered milestone lane metadata, addressed Codex review feedback, verified the behavior in a real Chrome browser, and confirmed all GitHub checks and Codex review passed before merge.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
