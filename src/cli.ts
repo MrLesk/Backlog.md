@@ -3076,6 +3076,37 @@ docCmd
 	});
 
 docCmd
+	.command("update <docId>")
+	.description("update a document")
+	.option("--title <title>", "update document title")
+	.option("--content <content>", "replace document markdown content")
+	.option("-p, --path <path>", "move document under a docs-relative path (absolute paths and .. are rejected)")
+	.option("-t, --type <type>", `document type (${DOCUMENT_TYPE_VALUES.join(", ")})`)
+	.option("--tags <tags>", "set tags (comma-separated or use multiple times)", createMultiValueAccumulator())
+	.action(async (docId: string, options) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const existingDocument = await core.getDocument(docId);
+		if (!existingDocument) {
+			throw new Error(`Document not found: ${docId}`);
+		}
+
+		const document = await core.updateDocumentFromInput({
+			id: docId,
+			title: options.title,
+			content: options.content ?? existingDocument.rawContent,
+			type: options.type,
+			path: options.path,
+			...(options.tags !== undefined && { tags: parseDelimitedStringList(options.tags) ?? [] }),
+		});
+
+		console.log(`Updated document ${document.id}`);
+		if (document.path) {
+			console.log(`Path: ${core.filesystem.backlogDirName}/docs/${document.path}`);
+		}
+	});
+
+docCmd
 	.command("list")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
