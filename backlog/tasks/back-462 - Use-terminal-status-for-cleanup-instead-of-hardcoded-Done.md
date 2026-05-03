@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-05-03 18:18'
-updated_date: '2026-05-03 18:41'
+updated_date: '2026-05-03 18:52'
 labels:
   - bug
   - web
@@ -58,13 +58,17 @@ Cleanup must apply to the terminal Kanban status defined by the configured statu
 <!-- SECTION:NOTES:BEGIN -->
 Verification completed: targeted cleanup/web tests passed (20 tests), `bunx tsc --noEmit` passed, and `bun run check .` passed.
 
-Addressed Codex review feedback: terminal-status comparisons now normalize case/spacing so bookmarked URLs such as `?status=closed` still show the cleanup affordance for configured `Closed`. Added focused helper coverage for that behavior.
+Addressed first Codex review feedback: terminal-status comparisons now normalize case and surrounding whitespace so bookmarked URLs such as `?status=closed` still show the cleanup affordance for configured `Closed`. Added focused helper coverage for that behavior.
+
+Addressed follow-up Codex review feedback: terminal-status normalization preserves internal whitespace, so `In Progress` and `InProgress` remain distinct for cleanup selection.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Implemented cleanup around the configured terminal status, defined as the last entry in the `statuses` array. The core cleanup selector, web/server endpoints, CLI cleanup preflight, board cleanup affordance, task column rendering, and task-list cleanup affordance now use the same terminal-status rule. Added regression coverage for `Closed` as the final status across core cleanup, server cleanup endpoints, Board, TaskColumn, and TaskList.
+
+Follow-up review fixes: bookmarked/shared URL status filters now match the terminal status case-insensitively while preserving internal whitespace, with helper/core cleanup regression coverage for similarly named statuses such as `In Progress` versus `InProgress`.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

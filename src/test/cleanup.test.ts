@@ -199,6 +199,48 @@ describe("Cleanup functionality", () => {
 			expect(allTerminalTasks.map((task) => task.id).sort()).toEqual(["TASK-1", "TASK-2"]);
 		});
 
+		it("does not collapse internal spaces when matching the cleanup status", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected test project config to exist");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				statuses: ["To Do", "In Progress", "InProgress"],
+				defaultStatus: "To Do",
+			});
+
+			const oldDate = new Date();
+			oldDate.setDate(oldDate.getDate() - 7);
+			const oldDateValue = oldDate.toISOString().split("T")[0] as string;
+
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-1",
+					title: "Old Terminal Task",
+					status: "InProgress",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-2",
+					title: "Old Non-Terminal Task",
+					status: "In Progress",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+
+			const oldTasks = await core.getTerminalStatusTasksByAge(3);
+			expect(oldTasks.map((task) => task.id)).toEqual(["TASK-1"]);
+		});
+
 		it("should handle tasks without dates", async () => {
 			const task: Task = {
 				...sampleTask,

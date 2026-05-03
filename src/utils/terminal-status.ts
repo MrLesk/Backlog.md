@@ -5,7 +5,7 @@ export function getTerminalStatus(statuses: readonly string[]): string | null {
 }
 
 function normalizeStatusForComparison(status: string | null | undefined): string {
-	return (status ?? "").trim().toLowerCase().replace(/\s+/g, "");
+	return (status ?? "").trim().toLowerCase();
 }
 
 export function isTerminalStatus(status: string | null | undefined, statuses: readonly string[]): boolean {

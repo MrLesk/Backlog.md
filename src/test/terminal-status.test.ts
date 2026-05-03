@@ -11,4 +11,9 @@ describe("terminal status helpers", () => {
 		expect(isTerminalStatus("CLOSED", ["To Do", "Review", "Closed"])).toBe(true);
 		expect(isTerminalStatus("review", ["To Do", "Review", "Closed"])).toBe(false);
 	});
+
+	it("preserves internal spaces when comparing status names", () => {
+		expect(isTerminalStatus("InProgress", ["To Do", "In Progress", "InProgress"])).toBe(true);
+		expect(isTerminalStatus("In Progress", ["To Do", "In Progress", "InProgress"])).toBe(false);
+	});
 });
