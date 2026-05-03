@@ -1221,7 +1221,7 @@ export async function viewTaskEnhanced(
 
 	screen.key(["?"], async () => {
 		if (modalOpen || filterPopupOpen) return;
-		await runWithModalGuard(() => openHelpPopup(screen));
+		await runWithModalGuard(() => openHelpPopup(screen, "task-list"));
 	});
 
 	screen.key(["escape"], () => {
