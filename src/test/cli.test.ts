@@ -1371,6 +1371,99 @@ describe("CLI Integration", () => {
 			expect(result.stderr.toString()).toContain("Document path cannot include traversal segments.");
 		});
 
+		it("should update document content and metadata", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createDocument(
+				{
+					id: "doc-1",
+					title: "Setup Guide",
+					type: "guide",
+					createdDate: "2025-06-08",
+					rawContent: "Old content",
+					tags: ["setup"],
+				},
+				false,
+				"guides/setup",
+			);
+
+			const updatedContent = "# Updated\n\nRun install steps.";
+			const result =
+				await $`bun ${CLI_PATH} doc update doc-1 --title "Install Runbook" --content ${updatedContent} -t specification --tags ops,runbook -p runbooks`
+					.cwd(TEST_DIR)
+					.quiet();
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.toString()).toContain("Updated document doc-1");
+			expect(result.stdout.toString()).toContain("Path: backlog/docs/runbooks/doc-1 - Install-Runbook.md");
+
+			const docs = await core.filesystem.listDocuments();
+			const updated = docs.find((doc) => doc.id === "doc-1");
+			expect(updated?.title).toBe("Install Runbook");
+			expect(updated?.type).toBe("specification");
+			expect(updated?.tags).toEqual(["ops", "runbook"]);
+			expect(updated?.path).toBe("runbooks/doc-1 - Install-Runbook.md");
+			expect(updated?.rawContent).toBe(updatedContent);
+		});
+
+		it("should preserve omitted document fields when updating", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createDocument(
+				{
+					id: "doc-1",
+					title: "Setup Guide",
+					type: "guide",
+					createdDate: "2025-06-08",
+					rawContent: "Keep this content",
+					tags: ["setup", "guide"],
+				},
+				false,
+				"guides",
+			);
+
+			await $`bun ${CLI_PATH} doc update doc-1 --title "Setup Handbook"`.cwd(TEST_DIR).quiet();
+
+			const docs = await core.filesystem.listDocuments();
+			const updated = docs.find((doc) => doc.id === "doc-1");
+			expect(updated?.title).toBe("Setup Handbook");
+			expect(updated?.type).toBe("guide");
+			expect(updated?.tags).toEqual(["setup", "guide"]);
+			expect(updated?.path).toBe("guides/doc-1 - Setup-Handbook.md");
+			expect(updated?.rawContent).toBe("Keep this content");
+		});
+
+		it("should reject invalid document update inputs", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createDocument(
+				{
+					id: "doc-1",
+					title: "Setup Guide",
+					type: "guide",
+					createdDate: "2025-06-08",
+					rawContent: "Content",
+				},
+				false,
+			);
+
+			const missing = await $`bun ${CLI_PATH} doc update doc-404 --content "Nope"`.cwd(TEST_DIR).quiet().nothrow();
+			expect(missing.exitCode).not.toBe(0);
+			expect(missing.stderr.toString()).toContain("Document not found: doc-404");
+
+			const invalidType = await $`bun ${CLI_PATH} doc update doc-1 --content "Nope" -t invalid`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(invalidType.exitCode).not.toBe(0);
+			expect(invalidType.stderr.toString()).toContain(
+				"Document type must be one of: readme, guide, specification, other.",
+			);
+
+			const unsafePath = await $`bun ${CLI_PATH} doc update doc-1 --content "Nope" -p ../outside`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(unsafePath.exitCode).not.toBe(0);
+			expect(unsafePath.stderr.toString()).toContain("Document path cannot include traversal segments.");
+		});
+
 		it("should create and list decisions", async () => {
 			const core = new Core(TEST_DIR);
 			const decision: Decision = {

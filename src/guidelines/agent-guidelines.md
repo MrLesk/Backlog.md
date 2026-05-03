@@ -66,7 +66,7 @@ remains fully synchronized and up-to-date.
 - **All task operations MUST use the Backlog.md CLI tool**
 - This ensures metadata is correctly updated and the project stays in sync
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output
-- Create project docs through Backlog.md APIs so frontmatter and paths stay valid. For CLI users, run `backlog doc create "Title" -p guides/setup`; MCP users should use `document_create` with `path: "guides/setup"`.
+- Create and update project docs through Backlog.md APIs so frontmatter and paths stay valid. For CLI users, run `backlog doc create "Title" -p guides/setup` or `backlog doc update doc-1 --content "Updated markdown"`; MCP users should use `document_create` / `document_update`.
 - Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
 
 ---
@@ -669,7 +669,7 @@ Use Backlog.md public interfaces for document creation and updates so IDs, front
 
 #### CLI Usage
 
-The CLI currently supports creating, listing, and viewing documents. Use MCP or the Web UI for document updates.
+The CLI supports creating, updating, listing, and viewing documents.
 
 ```bash
 # Create a new doc (saved under backlog/docs/ by default)
@@ -680,6 +680,12 @@ backlog doc create "Setup Guide" -p guides/setup
 
 # Specify type at creation time
 backlog doc create "Architecture" -t guide
+
+# Update content while preserving omitted metadata
+backlog doc update doc-1 --content "Updated markdown"
+
+# Update metadata or move a doc within backlog/docs/
+backlog doc update doc-1 --title "Setup Handbook" -t guide --tags setup,runbook -p guides
 
 # List all docs (searched globally across subdirectories)
 backlog doc list

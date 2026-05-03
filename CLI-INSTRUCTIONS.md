@@ -26,6 +26,7 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 
 - Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree.
 - Use `backlog doc create "New Guide" -p guides` to create a document in a docs subdirectory. The created output includes the persisted docs-relative file path, such as `backlog/docs/guides/doc-1 - New-Guide.md`.
+- Use `backlog doc update doc-1 --content "Updated markdown"` to update document content. Add `--title`, `-t/--type`, `--tags`, or `-p/--path` to update metadata or move the document while preserving omitted fields.
 - Document paths are always relative to the docs directory. Absolute paths and traversal segments such as `..` are rejected.
 
 ## Task Management
@@ -190,6 +191,8 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 | Create doc | `backlog doc create "API Guidelines"` |
 | Create with path | `backlog doc create "Setup Guide" -p guides/setup` |
 | Create with type | `backlog doc create "Architecture" -t guide` |
+| Update content | `backlog doc update doc-1 --content "Updated markdown"` |
+| Update metadata/path | `backlog doc update doc-1 --title "Setup Handbook" -t guide --tags setup,runbook -p guides` |
 | List docs | `backlog doc list` |
 | View doc | `backlog doc view doc-1` |
 
