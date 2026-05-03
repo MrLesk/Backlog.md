@@ -10,6 +10,7 @@ import type {
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
+import type { DuplicateGroup } from "../../utils/duplicate-detection.ts";
 
 const API_BASE = "/api";
 
@@ -292,6 +293,14 @@ export class ApiClient {
 
 	async updateTaskStatus(id: string, status: TaskStatus): Promise<Task> {
 		return this.updateTask(id, { status });
+	}
+
+	async fetchDuplicateTasks(): Promise<DuplicateGroup[]> {
+		try {
+			return await this.fetchJson<DuplicateGroup[]>(`${API_BASE}/tasks/duplicates`);
+		} catch {
+			return [];
+		}
 	}
 
 	async fetchStatuses(): Promise<string[]> {

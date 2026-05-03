@@ -202,6 +202,7 @@ export async function renderBoardTui(
 		}) => void;
 		milestoneMode?: boolean;
 		milestoneEntities?: Milestone[];
+		startupWarning?: string;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -810,6 +811,10 @@ export async function renderBoardTui(
 			}
 			setColumnActiveState(firstColumn, true);
 			firstColumn.list.focus();
+		}
+
+		if (options?.startupWarning) {
+			showTransientFooter(` {yellow-fg}${options.startupWarning}{/}`, 15000);
 		}
 
 		const updateBoard = (nextTasks: Task[], nextStatuses: string[]) => {
