@@ -11,6 +11,7 @@ interface BoardPageProps {
 	onRefreshData?: () => Promise<void>;
 	statuses: string[];
 	milestones: string[];
+	availableLabels: string[];
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	isLoading: boolean;
@@ -23,6 +24,7 @@ export default function BoardPage({
 	onRefreshData,
 	statuses,
 	milestones,
+	availableLabels,
 	milestoneEntities,
 	archivedMilestones,
 	isLoading,
@@ -85,17 +87,20 @@ export default function BoardPage({
 		}, { replace: true });
 	};
 
-	const handleFiltersChange = (filters: { assignee: string; label: string; priority: string }) => {
+	const handleFiltersChange = (filters: { assignee: string; labels: string[]; priority: string }) => {
 		setSearchParams(params => {
 			if (filters.assignee) {
 				params.set('assignee', filters.assignee);
 			} else {
 				params.delete('assignee');
 			}
-			if (filters.label) {
-				params.set('label', filters.label);
-			} else {
-				params.delete('label');
+			params.delete('label');
+			params.delete('labels');
+			for (const label of filters.labels) {
+				const normalized = label.trim();
+				if (normalized) {
+					params.append('label', normalized);
+				}
 			}
 			if (filters.priority) {
 				params.set('priority', filters.priority);
@@ -107,7 +112,10 @@ export default function BoardPage({
 	};
 
 	const filterAssignee = searchParams.get('assignee') ?? '';
-	const filterLabel = searchParams.get('label') ?? '';
+	const filterLabels = [
+		...searchParams.getAll('label'),
+		...searchParams.getAll('labels').flatMap((value) => value.split(',')),
+	].map((label) => label.trim()).filter((label) => label.length > 0);
 	const filterPriority = searchParams.get('priority') ?? '';
 
 	return (
@@ -123,11 +131,12 @@ export default function BoardPage({
 				milestoneEntities={milestoneEntities}
 				archivedMilestones={archivedMilestones}
 				isLoading={isLoading}
+				availableLabels={availableLabels}
 				laneMode={laneMode}
 				onLaneChange={handleLaneChange}
 				milestoneFilter={milestoneFilter}
 				filterAssignee={filterAssignee}
-				filterLabel={filterLabel}
+				filterLabels={filterLabels}
 				filterPriority={filterPriority}
 				onFiltersChange={handleFiltersChange}
 			/>

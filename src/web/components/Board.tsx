@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
+import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter';
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
+import LabelFilterDropdown from './LabelFilterDropdown';
 import { SuccessToast } from './SuccessToast';
 
 interface BoardProps {
@@ -17,15 +19,16 @@ interface BoardProps {
   statuses: string[];
   isLoading: boolean;
   milestones: string[];
+  availableLabels: string[];
   milestoneEntities: Milestone[];
   archivedMilestones: Milestone[];
   laneMode: LaneMode;
   onLaneChange: (mode: LaneMode) => void;
   milestoneFilter?: string | null;
   filterAssignee?: string;
-  filterLabel?: string;
+  filterLabels?: string[];
   filterPriority?: string;
-  onFiltersChange?: (filters: { assignee: string; label: string; priority: string }) => void;
+  onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
 }
 
 const PRIORITY_OPTIONS = [
@@ -49,13 +52,14 @@ const Board: React.FC<BoardProps> = ({
   onRefreshData,
   statuses,
   isLoading,
+  availableLabels,
   milestoneEntities,
   archivedMilestones,
   laneMode,
   onLaneChange,
   milestoneFilter,
   filterAssignee = '',
-  filterLabel = '',
+  filterLabels = [],
   filterPriority = '',
   onFiltersChange,
 }) => {
@@ -213,17 +217,17 @@ const Board: React.FC<BoardProps> = ({
     return Array.from(seen).sort((a, b) => a.localeCompare(b));
   }, [tasks]);
 
-  const uniqueLabels = useMemo(() => {
-    const seen = new Set<string>();
-    for (const task of tasks) {
-      for (const l of task.labels) {
-        if (l.trim()) seen.add(l.trim());
-      }
-    }
-    return Array.from(seen).sort((a, b) => a.localeCompare(b));
-  }, [tasks]);
+  const uniqueLabels = useMemo(
+    () => collectAvailableLabels(tasks, availableLabels),
+    [tasks, availableLabels]
+  );
 
-  const hasActiveFilters = filterAssignee !== '' || filterLabel !== '' || filterPriority !== '';
+  const normalizedFilterLabels = useMemo(
+    () => filterLabels.map(label => label.trim()).filter(label => label.length > 0),
+    [filterLabels]
+  );
+
+  const hasActiveFilters = filterAssignee !== '' || normalizedFilterLabels.length > 0 || filterPriority !== '';
 
   // Filter tasks by milestone when milestoneFilter is set, then apply assignee/label/priority filters
   const filteredTasks = useMemo(() => {
@@ -236,14 +240,15 @@ const Board: React.FC<BoardProps> = ({
     } else if (filterAssignee) {
       result = result.filter(task => task.assignee.some(a => a.trim() === filterAssignee));
     }
-    if (filterLabel) {
-      result = result.filter(task => task.labels.some(l => l.trim() === filterLabel));
+    if (normalizedFilterLabels.length > 0) {
+      const selectedLabels = new Set(labelsToLower(normalizedFilterLabels));
+      result = result.filter(task => labelsToLower(task.labels).some(label => selectedLabels.has(label)));
     }
     if (filterPriority) {
       result = result.filter(task => task.priority === filterPriority);
     }
     return result;
-  }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, filterLabel, filterPriority]);
+  }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, normalizedFilterLabels, filterPriority]);
 
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
@@ -477,7 +482,7 @@ const Board: React.FC<BoardProps> = ({
                 <select
                   aria-label="Filter board by assignee"
                   value={filterAssignee}
-                  onChange={e => onFiltersChange({ assignee: e.target.value, label: filterLabel, priority: filterPriority })}
+                  onChange={e => onFiltersChange({ assignee: e.target.value, labels: normalizedFilterLabels, priority: filterPriority })}
                   className={BOARD_FILTER_SELECT_CLASS}
                 >
                   <option value="">All assignees</option>
@@ -487,22 +492,18 @@ const Board: React.FC<BoardProps> = ({
                   ))}
                 </select>
 
-                <select
-                  aria-label="Filter board by label"
-                  value={filterLabel}
-                  onChange={e => onFiltersChange({ assignee: filterAssignee, label: e.target.value, priority: filterPriority })}
-                  className={BOARD_FILTER_SELECT_CLASS}
-                >
-                  <option value="">All labels</option>
-                  {uniqueLabels.map(l => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
+                <LabelFilterDropdown
+                  availableLabels={uniqueLabels}
+                  selectedLabels={normalizedFilterLabels}
+                  onChange={labels => onFiltersChange({ assignee: filterAssignee, labels, priority: filterPriority })}
+                  menuId="board-labels-filter-menu"
+                  className="min-w-[200px]"
+                />
 
                 <select
                   aria-label="Filter board by priority"
                   value={filterPriority}
-                  onChange={e => onFiltersChange({ assignee: filterAssignee, label: filterLabel, priority: e.target.value })}
+                  onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: e.target.value })}
                   className={BOARD_FILTER_SELECT_CLASS}
                 >
                   {PRIORITY_OPTIONS.map(opt => (
@@ -513,7 +514,7 @@ const Board: React.FC<BoardProps> = ({
                 {hasActiveFilters && (
                   <button
                     type="button"
-                    onClick={() => onFiltersChange({ assignee: '', label: '', priority: '' })}
+                    onClick={() => onFiltersChange({ assignee: '', labels: [], priority: '' })}
                     className={BOARD_FILTER_BUTTON_CLASS}
                   >
                     Clear filters
