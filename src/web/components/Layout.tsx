@@ -2,7 +2,9 @@ import { Outlet } from 'react-router-dom';
 import SideNavigation from './SideNavigation';
 import Navigation from './Navigation';
 import { HealthIndicator, HealthSuccessToast } from './HealthIndicator';
+import { DuplicateIdWarning } from './DuplicateIdWarning';
 import { type Task, type Document, type Decision } from '../../types';
+import type { DuplicateGroup } from '../../utils/duplicate-detection';
 
 interface LayoutProps {
 	projectName: string;
@@ -13,21 +15,24 @@ interface LayoutProps {
 	decisions: Decision[];
 	isLoading: boolean;
 	onRefreshData: () => Promise<void>;
+	duplicateGroups?: DuplicateGroup[];
 }
 
-export default function Layout({ 
-	projectName, 
-	showSuccessToast, 
-	onDismissToast, 
-	tasks, 
-	docs, 
-	decisions, 
-	isLoading, 
-	onRefreshData 
+export default function Layout({
+	projectName,
+	showSuccessToast,
+	onDismissToast,
+	tasks,
+	docs,
+	decisions,
+	isLoading,
+	onRefreshData,
+	duplicateGroups = [],
 }: LayoutProps) {
 	return (
 		<div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden transition-colors duration-200">
 			<HealthIndicator />
+			<DuplicateIdWarning groups={duplicateGroups} />
 			<SideNavigation 
 				tasks={tasks}
 				docs={docs}

@@ -7,6 +7,7 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
+import { buildDuplicateCleanupPrompt, detectDuplicateTaskIds } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
@@ -296,6 +297,23 @@ export class TaskHandlers {
 				type: "text",
 				text: "No tasks found.",
 			});
+		}
+
+		try {
+			const allLocalTasks = await this.core.filesystem.listTasks();
+			const duplicateGroups = detectDuplicateTaskIds(allLocalTasks);
+			if (duplicateGroups.length > 0) {
+				const warningLines = [
+					"⚠️  WARNING: Duplicate task IDs detected. One task per duplicate ID is hidden.",
+					buildDuplicateCleanupPrompt(duplicateGroups),
+				];
+				contentItems.unshift({
+					type: "text",
+					text: warningLines.join("\n\n"),
+				});
+			}
+		} catch {
+			// Duplicate detection is best-effort; skip if filesystem is unavailable
 		}
 
 		return {

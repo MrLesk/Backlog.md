@@ -18,6 +18,7 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
+import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { getVersion } from "../utils/version.ts";
 
@@ -386,6 +387,9 @@ export class BacklogServer {
 					},
 					"/api/tasks/cleanup": {
 						GET: async (req: Request) => await this.handleCleanupPreview(req),
+					},
+					"/api/tasks/duplicates": {
+						GET: async () => await this.handleGetDuplicateTasks(),
 					},
 					"/api/tasks/cleanup/execute": {
 						POST: async (req: Request) => await this.handleCleanupExecute(req),
@@ -1530,6 +1534,16 @@ export class BacklogServer {
 				console.error("Error reordering task:", error);
 			}
 			return Response.json({ error: message }, { status });
+		}
+	}
+
+	private async handleGetDuplicateTasks(): Promise<Response> {
+		try {
+			const tasks = await this.core.filesystem.listTasks();
+			const groups = detectDuplicateTaskIds(tasks);
+			return Response.json(groups);
+		} catch (error) {
+			return Response.json({ error: String(error) }, { status: 500 });
 		}
 	}
 
