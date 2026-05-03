@@ -59,17 +59,22 @@ const setupDom = () => {
 	}
 };
 
-const renderTaskList = (initialEntries?: string[]): HTMLElement => {
+const renderTaskList = (
+	initialEntries?: string[],
+	options: { tasks?: Task[]; availableStatuses?: string[] } = {},
+): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
+	const renderedTasks = options.tasks ?? tasks;
+	const renderedStatuses = options.availableStatuses ?? ["To Do", "In Progress", "Done"];
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
 			<MemoryRouter initialEntries={initialEntries}>
 				<TaskList
-					tasks={tasks}
-					availableStatuses={["To Do", "In Progress", "Done"]}
+					tasks={renderedTasks}
+					availableStatuses={renderedStatuses}
 					availableLabels={["bug", "docs"]}
 					availableMilestones={[]}
 					milestoneEntities={[]}
@@ -86,6 +91,23 @@ const renderTaskList = (initialEntries?: string[]): HTMLElement => {
 const clickElement = async (element: Element) => {
 	await act(async () => {
 		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		await Promise.resolve();
+	});
+};
+
+const getSelectByFirstOption = (container: HTMLElement, firstOptionText: string): HTMLSelectElement => {
+	const select = Array.from(container.querySelectorAll("select")).find(
+		(element) => element.options[0]?.textContent === firstOptionText,
+	);
+	expect(select).toBeTruthy();
+	return select as HTMLSelectElement;
+};
+
+const setSelectValue = async (select: HTMLSelectElement, value: string) => {
+	await act(async () => {
+		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+		valueSetter?.call(select, value);
+		select.dispatchEvent(new window.Event("change", { bubbles: true }));
 		await Promise.resolve();
 	});
 };
@@ -173,5 +195,57 @@ describe("TaskList labels filter menu", () => {
 
 		expect(labelsButton.textContent).toContain("All");
 		expect(container.querySelector("#task-list-labels-menu")).toBeNull();
+	});
+
+	it("shows cleanup when filtering by the final configured status", async () => {
+		const closedTask = createTask({ id: "task-201", title: "Closed task", status: "Closed" });
+		const fetchCalls: string[] = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+			fetchCalls.push(url);
+			expect(url).toContain("/api/search");
+			expect(url).toContain("status=Closed");
+			return {
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				json: async () => [{ type: "task", score: 0, task: closedTask }],
+			} as Response;
+		}) as typeof fetch;
+
+		const container = renderTaskList(undefined, {
+			tasks: [closedTask],
+			availableStatuses: ["To Do", "Review", "Closed"],
+		});
+		await setSelectValue(getSelectByFirstOption(container, "All statuses"), "Closed");
+		await waitFor(() => fetchCalls.length === 1 && (container.textContent ?? "").includes("Clean Up"));
+
+		expect(container.textContent).toContain("Clean Up");
+	});
+
+	it("does not show cleanup when filtering by a non-terminal status", async () => {
+		const reviewTask = createTask({ id: "task-202", title: "Review task", status: "Review" });
+		const fetchCalls: string[] = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+			fetchCalls.push(url);
+			expect(url).toContain("/api/search");
+			expect(url).toContain("status=Review");
+			return {
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				json: async () => [{ type: "task", score: 0, task: reviewTask }],
+			} as Response;
+		}) as typeof fetch;
+
+		const container = renderTaskList(undefined, {
+			tasks: [reviewTask],
+			availableStatuses: ["To Do", "Review", "Closed"],
+		});
+		await setSelectValue(getSelectByFirstOption(container, "All statuses"), "Review");
+		await waitFor(() => fetchCalls.length === 1 && (container.textContent ?? "").includes("Review task"));
+
+		expect(container.textContent).not.toContain("Clean Up");
 	});
 });

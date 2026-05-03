@@ -11,7 +11,7 @@ import { type CompletionInstallResult, installCompletion, registerCompletionComm
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "./constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { computeSequences } from "./core/sequences.ts";
@@ -67,6 +67,7 @@ import {
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
+import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -3713,16 +3714,22 @@ program
 			}
 			core.gitOps.setConfig(config);
 
-			// Get all Done tasks
-			const tasks = await core.queryTasks();
-			const doneTasks = tasks.filter((task) => task.status === "Done");
-
-			if (doneTasks.length === 0) {
-				console.log("No completed tasks found to clean up.");
+			const statuses = config.statuses ?? [...DEFAULT_STATUSES];
+			const terminalStatus = getTerminalStatus(statuses);
+			if (!terminalStatus) {
+				console.log("No terminal status configured for cleanup.");
 				return;
 			}
 
-			console.log(`Found ${doneTasks.length} tasks marked as Done.`);
+			const tasks = await core.queryTasks();
+			const terminalStatusTasks = tasks.filter((task) => isTerminalStatus(task.status, statuses));
+
+			if (terminalStatusTasks.length === 0) {
+				console.log(`No ${terminalStatus} tasks found to clean up.`);
+				return;
+			}
+
+			console.log(`Found ${terminalStatusTasks.length} tasks marked as ${terminalStatus}.`);
 
 			const ageOptions = [
 				{ title: "1 day", value: 1 },
@@ -3746,7 +3753,7 @@ program
 			}
 
 			// Get tasks older than selected period
-			const tasksToMove = await core.getDoneTasksByAge(selectedAge);
+			const tasksToMove = await core.getTerminalStatusTasksByAge(selectedAge);
 
 			if (tasksToMove.length === 0) {
 				console.log(`No tasks found that are older than ${ageOptions.find((o) => o.value === selectedAge)?.title}.`);

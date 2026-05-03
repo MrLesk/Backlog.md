@@ -87,17 +87,22 @@ const setupDom = (url = "http://localhost/board") => {
 	}
 };
 
-const renderBoardPage = (url?: string): HTMLElement => {
+const renderBoardPage = (
+	url?: string,
+	options: { tasks?: Task[]; statuses?: string[] } = {},
+): HTMLElement => {
 	setupDom(url);
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
+	const renderedTasks = options.tasks ?? tasks;
+	const renderedStatuses = options.statuses ?? ["To Do", "In Progress", "Done"];
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
 			<BrowserRouter>
 				<BoardPage
-					tasks={tasks}
-					statuses={["To Do", "In Progress", "Done"]}
+					tasks={renderedTasks}
+					statuses={renderedStatuses}
 					milestones={[]}
 					milestoneEntities={[]}
 					archivedMilestones={[]}
@@ -209,5 +214,17 @@ describe("Web board filters", () => {
 		expect(text).toContain("Improve board");
 		expect(text).not.toContain("m-2");
 		expect(text).not.toContain("Write docs");
+	});
+
+	it("shows cleanup on the final configured status column when it is not named Done", () => {
+		const container = renderBoardPage(undefined, {
+			statuses: ["To Do", "Review", "Closed"],
+			tasks: [createTask({ id: "task-200", title: "Closed task", status: "Closed" })],
+		});
+
+		const cleanupButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+			button.textContent?.includes("Clean Up Old Tasks"),
+		);
+		expect(cleanupButtons).toHaveLength(1);
 	});
 });

@@ -27,7 +27,11 @@ const setupDom = () => {
 	globalThis.navigator = dom.window.navigator as unknown as Navigator;
 };
 
-const renderTaskColumn = (tasks: Task[], onTaskReorder: (payload: ReorderTaskPayload) => void): HTMLElement => {
+const renderTaskColumn = (
+	tasks: Task[],
+	onTaskReorder: (payload: ReorderTaskPayload) => void,
+	options: { title?: string; onCleanup?: () => void } = {},
+): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
@@ -35,11 +39,12 @@ const renderTaskColumn = (tasks: Task[], onTaskReorder: (payload: ReorderTaskPay
 	act(() => {
 		activeRoot?.render(
 			<TaskColumn
-				title="To Do"
+				title={options.title ?? "To Do"}
 				tasks={tasks}
 				onTaskUpdate={() => {}}
 				onEditTask={() => {}}
 				onTaskReorder={onTaskReorder}
+				onCleanup={options.onCleanup}
 			/>,
 		);
 	});
@@ -117,5 +122,25 @@ describe("TaskColumn priority sorting", () => {
 		await clickElement(sortButton as Element);
 
 		expect(payloads).toEqual([]);
+	});
+});
+
+describe("TaskColumn cleanup affordance", () => {
+	it("renders cleanup when supplied for a non-Done terminal column", async () => {
+		let cleanupCalls = 0;
+		const container = renderTaskColumn([createTask({ status: "Closed" })], () => {}, {
+			title: "Closed",
+			onCleanup: () => {
+				cleanupCalls += 1;
+			},
+		});
+
+		const cleanupButton = Array.from(container.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Clean Up Old Tasks"),
+		);
+		expect(cleanupButton).toBeTruthy();
+
+		await clickElement(cleanupButton as Element);
+		expect(cleanupCalls).toBe(1);
 	});
 });

@@ -51,6 +51,7 @@ import {
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
@@ -2121,13 +2122,15 @@ export class Core {
 		return success;
 	}
 
-	async getDoneTasksByAge(olderThanDays: number): Promise<Task[]> {
+	async getTerminalStatusTasksByAge(olderThanDays: number): Promise<Task[]> {
 		const tasks = await this.fs.listTasks();
+		const config = await this.fs.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
 		return tasks.filter((task) => {
-			if (task.status !== "Done") return false;
+			if (!isTerminalStatus(task.status, statuses)) return false;
 
 			// Check updatedDate first, then createdDate as fallback
 			const taskDate = task.updatedDate || task.createdDate;
