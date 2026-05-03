@@ -66,3 +66,7 @@ tmp/
 test-benchmark-report.json
 
 .conductor
+
+# Local helper scripts
+scripts/switch-to-local.sh
+scripts/revert-to-brew.sh
