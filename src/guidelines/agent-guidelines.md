@@ -637,6 +637,70 @@ Tests:
 - bun test src/test/cli-final-summary.test.ts
 ```
 
+### Task Images (Local Assets)
+
+Tasks may include images for screenshots, diagrams, or visual references. Local images are served automatically when using `backlog browser`.
+
+**Storage location:**
+- Place image files under the `assets/` folder inside your backlog directory (e.g., `backlog/assets/images/screenshot.png`)
+
+**Supported formats:**
+- png, jpg, jpeg, gif, svg, webp, avif (served with correct Content-Type)
+
+**Markdown syntax in tasks:**
+```markdown
+![example](assets/images/screenshot.png)
+```
+
+**Workflow when adding images to tasks:**
+1. Move or copy the image file into the `assets/` folder inside your backlog directory (e.g., `backlog/assets/images/screenshot.png`)
+2. Then add or edit the task content via CLI, referencing the image using the `assets/<relative-path>` path
+
+**Key points:**
+- The path in Markdown starts with `assets/` and maps to the backlog directory's `assets/` folder; do **not** include the backlog directory name itself
+- When `backlog browser` is running, these files are automatically available at `assets/<relative-path>`
+- You can add images to descriptions, implementation notes, or final summaries using the standard CLI commands
+
+### Document Management
+
+> Docs are used for long-term project reference information, such as development standards, configuration guides, architecture documentation, etc. They differ from `tasks/` (specific tasks), `decisions/` (decision records), and `drafts/` (drafts).
+
+Use Backlog.md public interfaces for document creation and updates so IDs, frontmatter, paths, and search metadata stay consistent.
+
+#### CLI Usage
+
+The CLI currently supports creating, listing, and viewing documents. Use MCP or the Web UI for document updates.
+
+```bash
+# Create a new doc (saved under backlog/docs/ by default)
+backlog doc create "API Guidelines"
+
+# Create in a subdirectory (nested paths supported)
+backlog doc create "Setup Guide" -p guides/setup
+
+# Specify type at creation time
+backlog doc create "Architecture" -t guide
+
+# List all docs (searched globally across subdirectories)
+backlog doc list
+
+# View a specific doc
+backlog doc view doc-1
+```
+
+#### MCP / API Usage
+
+- Use `document_create` to create documents with title, content, optional type/tags, and optional docs-directory-relative path.
+- Use `document_update` to update document content, title, type, tags, or path while preserving document metadata.
+- Document responses include the persisted docs-relative file path so agents can reference the created file without scanning source internals.
+
+#### Key Rules
+
+- Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
+- Supported document types are `readme`, `guide`, `specification`, and `other`.
+- Document IDs are global across the entire docs tree, including nested subfolders.
+- Prefer CLI, MCP, or Web document APIs over ad-hoc file writes so frontmatter and metadata remain valid.
+
 ### Task Operations
 
 | Action             | Command                                      |
