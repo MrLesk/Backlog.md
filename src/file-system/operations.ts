@@ -2,7 +2,7 @@ import { mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
@@ -578,10 +578,16 @@ export class FileSystem {
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
 
-				// Update draft with new task ID and save as task
+				const promotedStatus =
+					!draft.status || draft.status.trim().toLowerCase() === "draft"
+						? config?.defaultStatus || FALLBACK_STATUS
+						: draft.status;
+
+				// Draft-only statuses should enter the normal task workflow.
 				const promotedTask: Task = {
 					...draft,
 					id: newTaskId,
+					status: promotedStatus,
 					filePath: undefined, // Will be set by saveTask
 				};
 
