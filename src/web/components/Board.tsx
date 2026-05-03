@@ -3,6 +3,7 @@ import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
+import { getTerminalStatus } from '../../utils/terminal-status';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
 import { SuccessToast } from './SuccessToast';
@@ -58,6 +59,7 @@ const Board: React.FC<BoardProps> = ({
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
+  const terminalStatus = getTerminalStatus(statuses);
   const archivedMilestoneIds = useMemo(
     () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
     [archivedMilestones, milestoneEntities]
@@ -592,7 +594,7 @@ const Board: React.FC<BoardProps> = ({
                               setDragSourceStatus(null);
                               setDragSourceLane(null);
                             }}
-                            onCleanup={status.toLowerCase() === 'done' ? () => setShowCleanupModal(true) : undefined}
+                            onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                           />
                         </div>
                       ))}
@@ -625,7 +627,7 @@ const Board: React.FC<BoardProps> = ({
                     setDragSourceStatus(null);
                     setDragSourceLane(null);
                   }}
-                  onCleanup={status.toLowerCase() === 'done' ? () => setShowCleanupModal(true) : undefined}
+                  onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                 />
               </div>
             ))}

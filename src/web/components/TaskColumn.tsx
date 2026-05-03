@@ -299,8 +299,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           </div>
         )}
 
-        {/* Cleanup button for Done column */}
-        {onCleanup && title.toLowerCase() === 'done' && tasks.length > 0 && (
+        {/* Cleanup button for the configured terminal column */}
+        {onCleanup && tasks.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
 	            <button
 	              onClick={onCleanup}

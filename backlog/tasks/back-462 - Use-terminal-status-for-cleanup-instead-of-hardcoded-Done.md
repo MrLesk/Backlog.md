@@ -1,11 +1,11 @@
 ---
 id: BACK-462
 title: Use terminal status for cleanup instead of hardcoded Done
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-05-03 18:18'
-updated_date: '2026-05-03 18:23'
+updated_date: '2026-05-03 18:25'
 labels:
   - bug
   - web
@@ -35,11 +35,11 @@ Cleanup must apply to the terminal Kanban status defined by the configured statu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When the final configured status is renamed, the board cleanup affordance appears on that final column and not on earlier columns.
-- [ ] #2 The cleanup preview and execute endpoints select tasks in the final configured status rather than requiring `Done`.
-- [ ] #3 The task list cleanup affordance follows the same terminal-status rule when filtering by status.
-- [ ] #4 Existing default `To Do`, `In Progress`, `Done` projects keep the current cleanup behavior.
-- [ ] #5 Targeted tests cover a non-`Done` terminal status.
+- [x] #1 When the final configured status is renamed, the board cleanup affordance appears on that final column and not on earlier columns.
+- [x] #2 The cleanup preview and execute endpoints select tasks in the final configured status rather than requiring `Done`.
+- [x] #3 The task list cleanup affordance follows the same terminal-status rule when filtering by status.
+- [x] #4 Existing default `To Do`, `In Progress`, `Done` projects keep the current cleanup behavior.
+- [x] #5 Targeted tests cover a non-`Done` terminal status.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -52,9 +52,21 @@ Cleanup must apply to the terminal Kanban status defined by the configured statu
 5. Run targeted tests, typecheck, and Biome.
 <!-- SECTION:PLAN:END -->
 
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Verification completed: targeted cleanup/web tests passed (20 tests), `bunx tsc --noEmit` passed, and `bun run check .` passed.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented cleanup around the configured terminal status, defined as the last entry in the `statuses` array. The core cleanup selector, web/server endpoints, CLI cleanup preflight, board cleanup affordance, task column rendering, and task-list cleanup affordance now use the same terminal-status rule. Added regression coverage for `Closed` as the final status across core cleanup, server cleanup endpoints, Board, TaskColumn, and TaskList.
+<!-- SECTION:FINAL_SUMMARY:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

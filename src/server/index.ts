@@ -1547,8 +1547,7 @@ export class BacklogServer {
 				return Response.json({ error: "Invalid age parameter" }, { status: 400 });
 			}
 
-			// Get Done tasks older than specified days
-			const tasksToCleanup = await this.core.getDoneTasksByAge(age);
+			const tasksToCleanup = await this.core.getTerminalStatusTasksByAge(age);
 
 			// Return preview of tasks to be cleaned up
 			const preview = tasksToCleanup.map((task) => ({
@@ -1581,8 +1580,7 @@ export class BacklogServer {
 				return Response.json({ error: "Invalid age parameter" }, { status: 400 });
 			}
 
-			// Get Done tasks older than specified days
-			const tasksToCleanup = await this.core.getDoneTasksByAge(ageInDays);
+			const tasksToCleanup = await this.core.getTerminalStatusTasksByAge(ageInDays);
 
 			if (tasksToCleanup.length === 0) {
 				return Response.json({
