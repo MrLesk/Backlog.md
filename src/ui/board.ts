@@ -22,10 +22,16 @@ import {
 	shouldMoveFromListBoundaryToSearch,
 } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
+import { stripBlessedFgTags } from "./utils/strip-tags.ts";
 
 export type ColumnData = {
 	status: string;
 	tasks: Task[];
+};
+
+type MutableList = ListInterface & {
+	selected?: number;
+	setItem?: (index: number, content: string) => void;
 };
 
 type ColumnView = {
@@ -33,6 +39,9 @@ type ColumnView = {
 	tasks: Task[];
 	list: ListInterface;
 	box: BoxInterface;
+	richItems: string[];
+	plainItems: string[];
+	highlightedIndex?: number;
 };
 
 function isDoneStatus(status: string): boolean {
@@ -100,7 +109,7 @@ function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
 	});
 }
 
-function formatTaskListItem(task: Task, isMoving = false): string {
+export function formatTaskListItem(task: Task, isMoving = false): string {
 	const assignee = task.assignee?.[0]
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
@@ -117,6 +126,14 @@ function formatTaskListItem(task: Task, isMoving = false): string {
 		return `{gray-fg}${content}{/}`;
 	}
 	return content;
+}
+
+function buildRenderedTaskListItems(tasks: Task[], movingTaskId?: string): { rich: string[]; plain: string[] } {
+	const rich = tasks.map((task) => formatTaskListItem(task, movingTaskId === task.id));
+	return {
+		rich,
+		plain: rich.map((item) => stripBlessedFgTags(item)),
+	};
 }
 
 function formatColumnLabel(status: string, count: number): string {
@@ -223,6 +240,7 @@ export async function renderBoardTui(
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
+		let programmaticColumnSelection = false;
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
 			priorityFilter: options?.filters?.priorityFilter ?? "",
@@ -338,8 +356,48 @@ export async function renderBoardTui(
 
 		const columnWidthFor = (count: number) => Math.max(1, Math.floor(100 / Math.max(1, count)));
 
+		const getSelectedRowIndex = (column: ColumnView): number => {
+			const selected = (column.list as MutableList).selected ?? 0;
+			return Math.max(0, Math.min(selected, Math.max(0, column.tasks.length - 1)));
+		};
+
+		const setColumnItemContent = (column: ColumnView, index: number, usePlain: boolean) => {
+			if (index < 0 || index >= column.tasks.length) return;
+			const content = usePlain ? column.plainItems[index] : column.richItems[index];
+			if (!content) return;
+			(column.list as MutableList).setItem?.(index, content);
+		};
+
+		const syncColumnSelectionDisplay = (column: ColumnView | undefined, active: boolean) => {
+			if (!column) return;
+			const nextHighlightedIndex = active && column.tasks.length > 0 ? getSelectedRowIndex(column) : undefined;
+			if (column.highlightedIndex !== undefined && column.highlightedIndex !== nextHighlightedIndex) {
+				setColumnItemContent(column, column.highlightedIndex, false);
+			}
+			if (nextHighlightedIndex !== undefined) {
+				setColumnItemContent(column, nextHighlightedIndex, true);
+			}
+			column.highlightedIndex = nextHighlightedIndex;
+		};
+
+		const selectColumnRow = (column: ColumnView, index: number, active: boolean) => {
+			if (column.tasks.length === 0) {
+				syncColumnSelectionDisplay(column, false);
+				return;
+			}
+			const nextIndex = Math.max(0, Math.min(index, column.tasks.length - 1));
+			programmaticColumnSelection = true;
+			try {
+				column.list.select(nextIndex);
+			} finally {
+				programmaticColumnSelection = false;
+			}
+			(column.list as MutableList).selected = nextIndex;
+			syncColumnSelectionDisplay(column, active);
+		};
+
 		const getFormattedItems = (tasks: Task[]) => {
-			return tasks.map((task) => formatTaskListItem(task, moveOp?.taskId === task.id));
+			return buildRenderedTaskListItems(tasks, moveOp?.taskId);
 		};
 
 		const createColumnViews = (data: ColumnData[]) => {
@@ -373,8 +431,32 @@ export async function renderBoardTui(
 					style: { selected: { fg: "white" } },
 				});
 
-				taskList.setItems(getFormattedItems(columnData.tasks));
-				columns.push({ status: columnData.status, tasks: columnData.tasks, list: taskList, box: columnBox });
+				const renderedItems = getFormattedItems(columnData.tasks);
+				taskList.setItems(renderedItems.rich);
+				columns.push({
+					status: columnData.status,
+					tasks: columnData.tasks,
+					list: taskList,
+					box: columnBox,
+					richItems: renderedItems.rich,
+					plainItems: renderedItems.plain,
+				});
+
+				taskList.on("select item", (_item: unknown, selected: unknown) => {
+					if (programmaticColumnSelection || popupOpen || filterPopupOpen) return;
+					const column = columns[idx];
+					if (!column) return;
+					if (currentCol !== idx) {
+						setColumnActiveState(columns[currentCol], false);
+						currentCol = idx;
+					}
+					(column.list as MutableList).selected = typeof selected === "number" ? selected : getSelectedRowIndex(column);
+					currentFocus = "board";
+					setColumnActiveState(column, true);
+					filterHeader?.setBorderColor("cyan");
+					updateFooter();
+					screen.render();
+				});
 
 				taskList.on("focus", () => {
 					if (popupOpen || filterPopupOpen) return;
@@ -398,6 +480,7 @@ export async function renderBoardTui(
 			if (listStyle.selected) listStyle.selected.bg = moveOp && active ? "green" : active ? "blue" : undefined;
 			const boxStyle = column.box.style as { border?: { fg?: string } };
 			if (boxStyle.border) boxStyle.border.fg = active ? "yellow" : "gray";
+			syncColumnSelectionDisplay(column, active);
 		};
 
 		const getSelectedTaskId = (): string | undefined => {
@@ -421,7 +504,7 @@ export async function renderBoardTui(
 			if (total > 0) {
 				const previousSelected = typeof previous?.list.selected === "number" ? previous.list.selected : 0;
 				const target = preferredRow !== undefined ? preferredRow : Math.min(previousSelected, total - 1);
-				current.list.select(Math.max(0, target));
+				selectColumnRow(current, target, activate);
 			}
 
 			if (activate) {
@@ -459,7 +542,11 @@ export async function renderBoardTui(
 				if (!column) return;
 				column.status = columnData.status;
 				column.tasks = columnData.tasks;
-				column.list.setItems(getFormattedItems(columnData.tasks));
+				const renderedItems = getFormattedItems(columnData.tasks);
+				column.richItems = renderedItems.rich;
+				column.plainItems = renderedItems.plain;
+				column.highlightedIndex = undefined;
+				column.list.setItems(renderedItems.rich);
 				column.box.setLabel?.(formatColumnLabel(columnData.status, columnData.tasks.length));
 			});
 			restoreSelection(selectedTaskId);
@@ -706,10 +793,10 @@ export async function renderBoardTui(
 		const firstColumn = columns[0];
 		if (firstColumn) {
 			currentCol = 0;
-			setColumnActiveState(firstColumn, true);
 			if (firstColumn.tasks.length > 0) {
-				firstColumn.list.select(0);
+				selectColumnRow(firstColumn, 0, true);
 			}
+			setColumnActiveState(firstColumn, true);
 			firstColumn.list.focus();
 		}
 
@@ -842,7 +929,7 @@ export async function renderBoardTui(
 					return;
 				}
 				const nextIndex = selected - 1;
-				listWidget.select(nextIndex);
+				selectColumnRow(column, nextIndex, true);
 				screen.render();
 			}
 		});
@@ -879,7 +966,7 @@ export async function renderBoardTui(
 					return;
 				}
 				const nextIndex = selected + 1;
-				listWidget.select(nextIndex);
+				selectColumnRow(column, nextIndex, true);
 				screen.render();
 			}
 		});
