@@ -170,6 +170,8 @@ export interface Decision {
 	consequences: string;
 	alternatives?: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
+	tags?: string[];
+	path?: string;
 }
 
 export interface Milestone {

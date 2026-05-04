@@ -109,7 +109,12 @@ export function serializeDecision(decision: Decision): string {
 		title: decision.title,
 		date: decision.date,
 		status: decision.status,
+		...(decision.tags && decision.tags.length > 0 && { tags: decision.tags }),
 	};
+
+	if (decision.rawContent.trim().length > 0) {
+		return matter.stringify(decision.rawContent, frontmatter);
+	}
 
 	let content = `## Context\n\n${decision.context}\n\n`;
 	content += `## Decision\n\n${decision.decision}\n\n`;

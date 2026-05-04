@@ -8,12 +8,16 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
+import { DEFAULT_FILE_PREFIXES } from '../../constants';
 
 // Utility function for ID transformations
-const stripIdPrefix = (id: string): string => {
-	if (id.startsWith('decision-')) return id.replace('decision-', '');
-	return id;
-};
+const stripDecisionIdPrefix = (id: string): string =>
+	id.startsWith(DEFAULT_FILE_PREFIXES.DECISION) ? id.replace(DEFAULT_FILE_PREFIXES.DECISION, '') : id;
+
+// Utility function to add decision prefix for API calls
+const ensureDecisionPrefix = (id: string): string =>
+	id.startsWith(DEFAULT_FILE_PREFIXES.DECISION) ? id : `${DEFAULT_FILE_PREFIXES.DECISION}${id}`;
+
 
 // Custom MDEditor wrapper for proper height handling
 const MarkdownEditor = memo(function MarkdownEditor({ 
@@ -60,10 +64,6 @@ const MarkdownEditor = memo(function MarkdownEditor({
 	);
 });
 
-// Utility function to add decision prefix for API calls
-const addDecisionPrefix = (id: string): string => {
-	return id.startsWith('decision-') ? id : `decision-${id}`;
-};
 
 interface DecisionDetailProps {
 	decisions: Decision[];
@@ -122,7 +122,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 		try {
 			setIsLoading(true);
 			// Find decision from props
-			const prefixedId = addDecisionPrefix(id);
+			const prefixedId = ensureDecisionPrefix(id);
 			const decision = decisions.find(d => d.id === prefixedId);
 			
 			// Always try to fetch the decision from API, whether we found it in decisions or not
@@ -164,7 +164,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 			
 			if (isNewDecision) {
 				// Create new decision
-				const decision = await apiClient.createDecision(decisionTitle);
+				const decision = await apiClient.createDecision(decisionTitle, content);
 				// Refresh data and navigate to the new decision
 				await onRefreshData();
 				// Show success toast
@@ -173,12 +173,12 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 				// Exit edit mode and navigate to the new decision
 				setIsEditing(false);
 				setIsNewDecision(false);
-				const newId = stripIdPrefix(decision.id);
+				const newId = stripDecisionIdPrefix(decision.id);
 				navigate(`/decisions/${newId}/${sanitizeUrlTitle(decisionTitle)}`);
 			} else {
 				// Update existing decision
 				if (!id) return;
-				await apiClient.updateDecision(addDecisionPrefix(id), content);
+				await apiClient.updateDecision(ensureDecisionPrefix(id), content);
 				// Refresh data from parent
 				await onRefreshData();
 				// Show success toast

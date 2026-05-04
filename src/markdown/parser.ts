@@ -195,7 +195,7 @@ export function parseTask(content: string): Task {
 	};
 }
 
-export function parseDecision(content: string): Decision {
+export function parseDecision(content: string, path?: string): Decision {
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
 	return {
@@ -208,10 +208,12 @@ export function parseDecision(content: string): Decision {
 		consequences: extractSection(rawContent, "Consequences") || "",
 		alternatives: extractSection(rawContent, "Alternatives"),
 		rawContent, // Raw markdown content without frontmatter
+		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+		path,
 	};
 }
 
-export function parseDocument(content: string): Document {
+export function parseDocument(content: string, path?: string): Document {
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
 	return {
@@ -222,6 +224,7 @@ export function parseDocument(content: string): Document {
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
 		rawContent,
 		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+		path,
 	};
 }
 

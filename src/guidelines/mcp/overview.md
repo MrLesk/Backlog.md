@@ -48,7 +48,7 @@ These guides contain critical workflows you need to follow for proper task manag
 
 Backlog tracks **commitments** (what will be built). Use your judgment to distinguish between "help me understand X" (no tracking) vs "add feature Y" (track in Backlog).
 
-**Execution Model:** Tasks are executed by independent AI agents in separate sessions. Each agent only sees its assigned task, not prior conversation history, so tasks must include enough context for a developer with no prior knowledge to start immediately.
+**Execution Model:** Tasks are executed by independent AI agents in separate sessions. Each agent only sees its assigned task, not prior conversation history, so tasks must include enough context for a developer with no prior knowledge to start immediately. Some tasks require knowledge of architectural and previous design decisions. List decisions as dependencies in the task, and link to the decision files in the description. This way, the executing agent can read the relevant decisions to understand the context and rationale behind the work.
 
 ### MCP Tools Quick Reference
 
@@ -64,6 +64,11 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `document_create` — create a document with title, content, optional type/tags, and optional docs-directory-relative path
 - `document_update` — update document content, optional title/type/tags, and optional docs-directory-relative path
 - `document_search` — search documents using the shared fuzzy index
+- `decision_list` — list decisions, including status, creation date, and tags
+- `decision_view` — view decision metadata and markdown content
+- `decision_create` — create a decision with title and content
+- `decision_update` — update decision content and optional title
+- `decision_search` — search decisions using the shared fuzzy index
 - `task_create` — create new tasks with description and acceptance criteria; DoD fields are for **exceptional** task-level overrides only (`definitionOfDoneAdd`, `disableDefinitionOfDoneDefaults`)
 - `task_edit` — update task metadata, status, plan, notes, final summary, acceptance criteria, task-level Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`) for **exceptional** per-task updates, and dependencies
 - DoD is not acceptance criteria: acceptance criteria define scope/behavior, while DoD tracks completion hygiene

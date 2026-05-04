@@ -11,7 +11,13 @@ import { type CompletionInstallResult, installCompletion, registerCompletionComm
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
+import {
+	DECISION_ID_PREFIX_RE,
+	DEFAULT_DIRECTORIES,
+	DEFAULT_FILE_PREFIXES,
+	DEFAULT_FILES,
+	DEFAULT_STATUSES,
+} from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { computeSequences } from "./core/sequences.ts";
@@ -1401,8 +1407,10 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/decisions`);
 			return files
 				.map((file) => {
-					const match = file.match(/decision-(\d+)/);
-					return match ? `decision-${match[1]}` : null;
+					const base = file.split("/").pop() || file;
+					const candidateId = (base.split(" - ")[0] || base).replace(/\.md$/i, "");
+					const match = candidateId.match(DECISION_ID_PREFIX_RE);
+					return match ? `${DEFAULT_FILE_PREFIXES.DECISION}${match[1]}` : null;
 				})
 				.filter((id): id is string => id !== null);
 		});
@@ -1424,24 +1432,21 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	}
 
 	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^decision-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
+	const max = allIds
+		.map((id) => id.match(DECISION_ID_PREFIX_RE))
+		.filter((match): match is RegExpMatchArray => match !== null)
+		.map((match) => Number.parseInt(match[1] || "0", 10))
+		.reduce((a, b) => Math.max(a, b), 0);
 
 	const nextIdNumber = max + 1;
 	const padding = config?.zeroPaddedIds;
 
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `decision-${paddedId}`;
-	}
+	const paddedId =
+		padding && typeof padding === "number" && padding > 0
+			? String(nextIdNumber).padStart(padding, "0")
+			: String(nextIdNumber);
 
-	return `decision-${nextIdNumber}`;
+	return `${DEFAULT_FILE_PREFIXES.DECISION}${paddedId}`;
 }
 
 const taskCmd = program.command("task").aliases(["tasks"]);
@@ -2091,7 +2096,7 @@ taskCmd
 						...archivedMilestones,
 					]);
 					const resolvedMilestone = resolveClosestMilestoneFilterValue(
-						options.milestone,
+						resolveMilestoneFilterValue(options.milestone),
 						filtered.map((task) => resolveMilestoneFilterValue(task.milestone ?? "")),
 					);
 					if (resolvedMilestone) {
@@ -3165,7 +3170,7 @@ docCmd
 		}
 	});
 
-const decisionCmd = program.command("decision");
+const decisionCmd = program.command("decision").aliases(["decisions"]);
 
 decisionCmd
 	.command("create <title>")
@@ -3186,6 +3191,63 @@ decisionCmd
 		};
 		await core.createDecision(decision);
 		console.log(`Created decision ${id}`);
+	});
+
+decisionCmd
+	.command("list")
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (options) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const docs = await core.filesystem.listDecisions();
+		if (docs.length === 0) {
+			console.log("No decisions found.");
+			return;
+		}
+
+		// Plain text output for non-interactive environments
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
+			for (const d of docs) {
+				console.log(`${d.id} - ${d.title}`);
+			}
+			return;
+		}
+
+		// Interactive UI
+		const selected = await genericSelectList("Select a decision", docs);
+		if (selected) {
+			// Show decision details (recursive search)
+			const files = await Array.fromAsync(
+				new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.decisionsDir, followSymlinks: true }),
+			);
+			const docFile = files.find(
+				(f) => f.startsWith(`${selected.id} -`) || f.endsWith(`/${selected.id}.md`) || f === `${selected.id}.md`,
+			);
+			if (docFile) {
+				const filePath = join(core.filesystem.decisionsDir, docFile);
+				const content = await Bun.file(filePath).text();
+				await scrollableViewer(content);
+			}
+		}
+	});
+
+decisionCmd
+	.command("view <decisionId>")
+	.description("view a decision")
+	.action(async (decisionId: string) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		try {
+			const content = await core.getDecisionContent(decisionId);
+			if (content === null) {
+				console.error(`Decision ${decisionId} not found.`);
+				return;
+			}
+			await scrollableViewer(content);
+		} catch {
+			console.error(`Decision ${decisionId} not found.`);
+		}
 	});
 
 // Agents command group

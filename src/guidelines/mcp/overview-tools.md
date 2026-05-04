@@ -41,6 +41,7 @@ The tool returns the same content that resource-capable clients read via `backlo
 ### Core Principle
 
 Backlog tracks **commitments** (what will be built). Use your judgment to distinguish between "help me understand X" (no task) vs "add feature Y" (create tasks).
+Decisions capture the rationale and constraints behind commitments. Link them as dependencies in tasks so executing agents can read the relevant decisions for context.
 
 ### MCP Tools Quick Reference
 
@@ -48,6 +49,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_complete`, `task_archive`
 - `task_search` accepts `modifiedFiles` for case-insensitive substring filtering against project-root-relative modified file paths
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`
+- `decision_list`, `decision_view`, `decision_create`, `decision_update`, `decision_search`
 - `document_create` and `document_update` support docs-directory-relative `path` values such as `guides/setup`; absolute paths and `..` traversal are rejected
 - `definition_of_done_defaults_get`, `definition_of_done_defaults_upsert`
 

@@ -27,7 +27,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	const listTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_list",
-			description: "List Backlog.md tasks from with optional filtering",
+			description: "List Backlog.md tasks with optional filtering",
 			inputSchema: taskListSchema,
 			annotations: { title: "List Tasks", readOnlyHint: true, destructiveHint: false },
 		},

@@ -1,6 +1,7 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
+import { DEFAULT_FILE_PREFIXES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
@@ -386,7 +387,7 @@ export class ContentStore {
 		const decisionsDir = this.filesystem.decisionsDir;
 		const watcher: FSWatcher = watch(decisionsDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
-			if (!file?.startsWith("decision-") || !file.endsWith(".md")) {
+			if (!file?.startsWith(DEFAULT_FILE_PREFIXES.DECISION) || !file.endsWith(".md")) {
 				this.enqueue(async () => {
 					await this.refreshDecisionsFromDisk();
 				});
@@ -418,7 +419,7 @@ export class ContentStore {
 					async () => {
 						try {
 							const content = await Bun.file(fullPath).text();
-							return parseDecision(content);
+							return parseDecision(content, file);
 						} catch {
 							return null;
 						}
@@ -497,7 +498,7 @@ export class ContentStore {
 					try {
 						const content = await Bun.file(absolutePath).text();
 						const documentPath = normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath));
-						return { ...parseDocument(content), path: documentPath };
+						return parseDocument(content, documentPath);
 					} catch {
 						return null;
 					}

@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
+import { DEFAULT_FILE_PREFIXES } from "../constants/index.ts";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -1154,7 +1155,9 @@ export class BacklogServer {
 	private async handleGetDecision(decisionId: string): Promise<Response> {
 		try {
 			const store = await this.getContentStoreInstance();
-			const normalizedId = decisionId.startsWith("decision-") ? decisionId : `decision-${decisionId}`;
+			const normalizedId = decisionId.startsWith(DEFAULT_FILE_PREFIXES.DECISION)
+				? decisionId
+				: `${DEFAULT_FILE_PREFIXES.DECISION}${decisionId}`;
 			const decision = store.getDecisions().find((item) => item.id === normalizedId || item.id === decisionId);
 
 			if (!decision) {
@@ -1169,10 +1172,10 @@ export class BacklogServer {
 	}
 
 	private async handleCreateDecision(req: Request): Promise<Response> {
-		const { title } = await req.json();
+		const { title, content } = await req.json();
 
 		try {
-			const decision = await this.core.createDecisionWithTitle(title);
+			const decision = await this.core.createDecisionWithTitle(title, content);
 			return Response.json(decision, { status: 201 });
 		} catch (error) {
 			console.error("Error creating decision:", error);

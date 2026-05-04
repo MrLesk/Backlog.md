@@ -22,7 +22,7 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { decisionIdsEqual, documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import {
 	getDocumentSubPathFromRelativePath,
 	normalizeDocumentRelativePath,
@@ -250,8 +250,9 @@ export class Core {
 			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
 		}
 		if (filters.milestone) {
+			const resolvedFilterInput = resolveMilestoneFilterValue?.(filters.milestone) ?? filters.milestone;
 			const milestoneFilter = resolveClosestMilestoneFilterValue(
-				filters.milestone,
+				resolvedFilterInput,
 				result.map((task) => resolveMilestoneFilterValue?.(task.milestone ?? "") ?? task.milestone ?? ""),
 			);
 			result = result.filter(
@@ -492,7 +493,26 @@ export class Core {
 		try {
 			return await Bun.file(filePath).text();
 		} catch {
-			return null;
+			return document.rawContent;
+		}
+	}
+
+	async getDecision(decisionId: string): Promise<Decision | null> {
+		const decisions = await this.fs.listDecisions();
+		const match = decisions.find((decision) => decisionIdsEqual(decisionId, decision.id));
+		return match ?? null;
+	}
+
+	async getDecisionContent(decisionId: string): Promise<string | null> {
+		const decision = await this.getDecision(decisionId);
+		if (!decision) return null;
+
+		const relativePath = decision.path ?? `${decision.id}.md`;
+		const filePath = join(this.fs.decisionsDir, ...relativePath.split("/"));
+		try {
+			return await Bun.file(filePath).text();
+		} catch {
+			return decision.rawContent;
 		}
 	}
 
@@ -2304,7 +2324,12 @@ export class Core {
 		}
 	}
 
-	async updateDecisionFromContent(decisionId: string, content: string, autoCommit?: boolean): Promise<void> {
+	async updateDecisionFromContent(
+		decisionId: string,
+		content: string,
+		title?: string,
+		autoCommit?: boolean,
+	): Promise<void> {
 		const existingDecision = await this.fs.loadDecision(decisionId);
 		if (!existingDecision) {
 			throw new Error(`Decision ${decisionId} not found`);
@@ -2312,7 +2337,7 @@ export class Core {
 
 		// Parse the markdown content to extract the decision data
 		const matter = await import("gray-matter");
-		const { data } = matter.default(content);
+		const { data, content: markdownContent } = matter.default(content);
 
 		const extractSection = (content: string, sectionName: string): string | undefined => {
 			const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
@@ -2322,19 +2347,20 @@ export class Core {
 
 		const updatedDecision = {
 			...existingDecision,
-			title: data.title || existingDecision.title,
+			title: data.title || title || existingDecision.title,
 			status: data.status || existingDecision.status,
 			date: data.date || existingDecision.date,
-			context: extractSection(content, "Context") || existingDecision.context,
-			decision: extractSection(content, "Decision") || existingDecision.decision,
-			consequences: extractSection(content, "Consequences") || existingDecision.consequences,
-			alternatives: extractSection(content, "Alternatives") || existingDecision.alternatives,
+			context: extractSection(markdownContent, "Context") || existingDecision.context,
+			decision: extractSection(markdownContent, "Decision") || existingDecision.decision,
+			consequences: extractSection(markdownContent, "Consequences") || existingDecision.consequences,
+			alternatives: extractSection(markdownContent, "Alternatives") || existingDecision.alternatives,
+			rawContent: markdownContent,
 		};
 
 		await this.createDecision(updatedDecision, autoCommit);
 	}
 
-	async createDecisionWithTitle(title: string, autoCommit?: boolean): Promise<Decision> {
+	async createDecisionWithTitle(title: string, content?: string, autoCommit?: boolean): Promise<Decision> {
 		// Import the generateNextDecisionId function from CLI
 		const { generateNextDecisionId } = await import("../cli.js");
 		const id = await generateNextDecisionId(this);
@@ -2347,7 +2373,7 @@ export class Core {
 			context: "[Describe the context and problem that needs to be addressed]",
 			decision: "[Describe the decision that was made]",
 			consequences: "[Describe the consequences of this decision]",
-			rawContent: "",
+			rawContent: content || "",
 		};
 
 		await this.createDecision(decision, autoCommit);

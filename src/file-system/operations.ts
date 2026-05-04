@@ -2,13 +2,19 @@ import { mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import {
+	DEFAULT_DIRECTORIES,
+	DEFAULT_FILE_PREFIXES,
+	DEFAULT_FILES,
+	DEFAULT_STATUSES,
+	FALLBACK_STATUS,
+} from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { decisionIdsEqual, documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
 	buildGlobPattern,
@@ -721,17 +727,17 @@ export class FileSystem {
 	async saveDecision(decision: Decision): Promise<void> {
 		// Normalize ID - remove "decision-" prefix if present
 		const normalizedId = decision.id.replace(/^decision-/, "");
-		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
+		const filename = `${DEFAULT_FILE_PREFIXES.DECISION}${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
 
 		const matches = await Array.fromAsync(
-			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
+			new Bun.Glob(`${DEFAULT_FILE_PREFIXES.DECISION}*.md`).scan({ cwd: decisionsDir, followSymlinks: true }),
 		);
 		for (const match of matches) {
 			if (match === filename) continue;
-			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
+			if (!match.startsWith(`${DEFAULT_FILE_PREFIXES.DECISION}${normalizedId} -`)) continue;
 			try {
 				await unlink(join(decisionsDir, match));
 			} catch {
@@ -746,19 +752,19 @@ export class FileSystem {
 	async loadDecision(decisionId: string): Promise<Decision | null> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
-			const files = await Array.fromAsync(
-				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
-			);
+			const files = await Array.fromAsync(new Bun.Glob("**/*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
 
-			// Normalize ID - remove "decision-" prefix if present
-			const normalizedId = decisionId.replace(/^decision-/, "");
-			const decisionFile = files.find((file) => file.startsWith(`decision-${normalizedId} -`));
+			const decisionFile = files.find((file) => {
+				const base = file.split("/").pop() || file;
+				const [candidateId] = base.split(" - ");
+				return candidateId ? decisionIdsEqual(decisionId, candidateId) : false;
+			});
 
 			if (!decisionFile) return null;
 
-			const filepath = join(decisionsDir, decisionFile);
+			const filepath = join(decisionsDir, ...decisionFile.split("/"));
 			const content = await Bun.file(filepath).text();
-			return parseDecision(content);
+			return parseDecision(content, decisionFile);
 		} catch (_error) {
 			return null;
 		}
@@ -828,17 +834,18 @@ export class FileSystem {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
 			const decisionFiles = await Array.fromAsync(
-				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
+				new Bun.Glob("**/*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
 			);
 			const decisions: Decision[] = [];
 			for (const file of decisionFiles) {
 				// Filter out README files as they're just instruction files
-				if (file.toLowerCase().match(/^readme\.md$/i)) {
+				const base = file.split("/").pop() || file;
+				if (base.toLowerCase() === "readme.md") {
 					continue;
 				}
-				const filepath = join(decisionsDir, file);
+				const filepath = join(decisionsDir, ...file.split("/"));
 				const content = await Bun.file(filepath).text();
-				decisions.push(parseDecision(content));
+				decisions.push(parseDecision(content, file));
 			}
 			return sortByTaskId(decisions);
 		} catch {
@@ -859,11 +866,7 @@ export class FileSystem {
 				if (base.toLowerCase() === "readme.md") continue;
 				const filepath = join(docsDir, ...relativePath.split("/"));
 				const content = await Bun.file(filepath).text();
-				const parsed = parseDocument(content);
-				docs.push({
-					...parsed,
-					path: relativePath,
-				});
+				docs.push(parseDocument(content, relativePath));
 			}
 
 			// Stable sort by title for UI/CLI listing

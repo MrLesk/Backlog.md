@@ -29,6 +29,22 @@ export const DEFAULT_DIRECTORIES = {
 } as const;
 
 /**
+ * Default file naming prefixes for persisted backlog items.
+ */
+export const DEFAULT_FILE_PREFIXES = {
+	/** Task file prefix (e.g., task-1.md) */
+	TASK: "task-",
+	/** Draft file prefix (e.g., draft-1.md) */
+	DRAFT: "draft-",
+	/** Milestone file prefix (e.g., m-1 - Milestone-slug.md) */
+	MILESTONE: "m-",
+	/** Decision file prefix (e.g., decision-1 - Decision-slug.md) */
+	DECISION: "decision-",
+	/** Document file prefix (e.g., doc-1 - Some-Document.md) */
+	DOC: "doc-",
+} as const;
+
+/**
  * Default configuration file names
  */
 export const DEFAULT_FILES = {
@@ -71,5 +87,8 @@ export const DEFAULT_INIT_CONFIG = {
 	defaultPort: 6420,
 	autoOpenBrowser: true,
 } as const;
+
+export const DECISION_ID_PREFIX_RE = new RegExp(`^${DEFAULT_FILE_PREFIXES.DECISION}(\\d+)$`);
+export const DOC_ID_PREFIX_RE = new RegExp(`^${DEFAULT_FILE_PREFIXES.DOC}(\\d+)$`);
 
 export * from "../guidelines/index.ts";

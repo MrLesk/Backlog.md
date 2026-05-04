@@ -1,3 +1,5 @@
+import { DEFAULT_FILE_PREFIXES } from "../../constants";
+
 /**
  * Sanitizes a string to be URL-friendly
  * - Converts to lowercase
@@ -28,6 +30,7 @@ export function sanitizeUrlTitle(title: string): string {
 export function createUrlPath(basePath: string, id: string, title: string): string {
 	const sanitizedTitle = sanitizeUrlTitle(title);
 	// Remove prefix from ID for cleaner URLs
-	const cleanId = id.replace(/^(doc-|decision-)/, "");
+	const prefixPattern = new RegExp(`^(${DEFAULT_FILE_PREFIXES.DOC}|${DEFAULT_FILE_PREFIXES.DECISION})`);
+	const cleanId = id.replace(prefixPattern, "");
 	return `${basePath}/${cleanId}/${sanitizedTitle}`;
 }

@@ -1,4 +1,5 @@
-import type { Core } from "../index.ts";
+import { DECISION_ID_PREFIX_RE, DEFAULT_FILE_PREFIXES, DOC_ID_PREFIX_RE } from "../constants/index.ts";
+import type { Core } from "../core/backlog.ts";
 
 /**
  * Generate the next available document ID by checking all branches and local documents
@@ -30,8 +31,10 @@ export async function generateNextDocId(core: Core): Promise<string> {
 			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/docs`);
 			return files
 				.map((file) => {
-					const match = file.match(/doc-(\d+)/);
-					return match ? `doc-${match[1]}` : null;
+					const base = file.split("/").pop() || file;
+					const candidateId = (base.split(" - ")[0] || base).replace(/\.md$/i, "");
+					const match = candidateId.match(DOC_ID_PREFIX_RE);
+					return match ? `${DEFAULT_FILE_PREFIXES.DOC}${match[1]}` : null;
 				})
 				.filter((id): id is string => id !== null);
 		});
@@ -55,10 +58,9 @@ export async function generateNextDocId(core: Core): Promise<string> {
 	// Find the highest numeric ID
 	let max = 0;
 	for (const id of allIds) {
-		const match = id.match(/^doc-(\d+)$/);
+		const match = id.match(DOC_ID_PREFIX_RE);
 		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
+			max = Math.max(max, Number.parseInt(match[1] || "0", 10));
 		}
 	}
 
@@ -67,10 +69,10 @@ export async function generateNextDocId(core: Core): Promise<string> {
 
 	if (padding && typeof padding === "number" && padding > 0) {
 		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `doc-${paddedId}`;
+		return `${DEFAULT_FILE_PREFIXES.DOC}${paddedId}`;
 	}
 
-	return `doc-${nextIdNumber}`;
+	return `${DEFAULT_FILE_PREFIXES.DOC}${nextIdNumber}`;
 }
 
 /**
@@ -103,8 +105,10 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/decisions`);
 			return files
 				.map((file) => {
-					const match = file.match(/decision-(\d+)/);
-					return match ? `decision-${match[1]}` : null;
+					const base = file.split("/").pop() || file;
+					const candidateId = (base.split(" - ")[0] || base).replace(/\.md$/i, "");
+					const match = candidateId.match(DECISION_ID_PREFIX_RE);
+					return match ? `${DEFAULT_FILE_PREFIXES.DECISION}${match[1]}` : null;
 				})
 				.filter((id): id is string => id !== null);
 		});
@@ -126,22 +130,19 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	}
 
 	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^decision-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
+	const max = allIds
+		.map((id) => id.match(DECISION_ID_PREFIX_RE))
+		.filter((match): match is RegExpMatchArray => match !== null)
+		.map((match) => Number.parseInt(match[1] || "0", 10))
+		.reduce((a, b) => Math.max(a, b), 0);
 
 	const nextIdNumber = max + 1;
 	const padding = config?.zeroPaddedIds;
 
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `decision-${paddedId}`;
-	}
+	const paddedId =
+		padding && typeof padding === "number" && padding > 0
+			? String(nextIdNumber).padStart(padding, "0")
+			: String(nextIdNumber);
 
-	return `decision-${nextIdNumber}`;
+	return `${DEFAULT_FILE_PREFIXES.DECISION}${paddedId}`;
 }

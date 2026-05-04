@@ -9,6 +9,7 @@ let TEST_DIR: string;
 
 describe("CLI milestone filtering", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
+	let newMilestoneId: string;
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-milestone-filter");
@@ -26,6 +27,7 @@ describe("CLI milestone filtering", () => {
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Milestone Filter Test Project");
 		const newMilestone = await core.filesystem.createMilestone("New Milestones UI");
+		newMilestoneId = newMilestone.id;
 
 		await core.createTask(
 			{
@@ -187,6 +189,32 @@ describe("CLI milestone filtering", () => {
 		expect(output).not.toContain("TASK-3 - Other milestone task");
 		expect(output).not.toContain("TASK-4 - No milestone task");
 		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+	});
+
+	it("matches tasks by milestone ID when filter is the ID itself", async () => {
+		const result = await $`bun ${cliPath} task list -m ${newMilestoneId} --plain`.cwd(TEST_DIR).quiet();
+
+		expect(result.exitCode).toBe(0);
+		const output = result.stdout.toString();
+
+		expect(output).toContain("TASK-6 - ID milestone task");
+		expect(output).not.toContain("TASK-1 - Milestone task one");
+		expect(output).not.toContain("TASK-2 - Milestone task two");
+		expect(output).not.toContain("TASK-3 - Other milestone task");
+		expect(output).not.toContain("TASK-4 - No milestone task");
+		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+	});
+
+	it("queryTasks filters by milestone ID", async () => {
+		const core = new Core(TEST_DIR);
+
+		const byId = await core.queryTasks({ filters: { milestone: newMilestoneId } });
+		const idsForId = byId.map((task) => task.id).sort();
+		expect(idsForId).toEqual(["TASK-6"]);
+
+		const byTitle = await core.queryTasks({ filters: { milestone: "Release-1" } });
+		const idsForTitle = byTitle.map((task) => task.id).sort();
+		expect(idsForTitle).toEqual(["TASK-1", "TASK-2"]);
 	});
 
 	it("preserves existing listing behavior when milestone filter is omitted", async () => {
