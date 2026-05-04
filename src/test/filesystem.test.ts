@@ -464,6 +464,80 @@ Invalid content`,
 			expect(decision).toBeNull();
 		});
 
+		it("should list nested decision logs with relative paths", async () => {
+			await mkdir(join(filesystem.decisionsDir, "architecture"), { recursive: true });
+			await Bun.write(
+				join(filesystem.decisionsDir, "architecture", "decision-2 - Nested.md"),
+				`---
+id: decision-2
+title: Nested
+date: 2025-06-08
+status: proposed
+---
+
+## Context
+
+Nested context
+`,
+			);
+
+			const list = await filesystem.listDecisions();
+
+			expect(list).toHaveLength(1);
+			expect(list[0]?.id).toBe("decision-2");
+			expect(list[0]?.path).toBe("architecture/decision-2 - Nested.md");
+		});
+
+		it("should load nested decision logs regardless of ID casing or padding", async () => {
+			await mkdir(join(filesystem.decisionsDir, "architecture"), { recursive: true });
+			await Bun.write(
+				join(filesystem.decisionsDir, "architecture", "decision-2 - Nested.md"),
+				`---
+id: decision-2
+title: Nested
+date: 2025-06-08
+status: proposed
+---
+
+## Decision
+
+Use nested decisions
+`,
+			);
+
+			expect((await filesystem.loadDecision("2"))?.title).toBe("Nested");
+			expect((await filesystem.loadDecision("decision-2"))?.title).toBe("Nested");
+			expect((await filesystem.loadDecision("DECISION-0002"))?.title).toBe("Nested");
+		});
+
+		it("should preserve a nested decision path when saving updates", async () => {
+			await mkdir(join(filesystem.decisionsDir, "architecture"), { recursive: true });
+			await Bun.write(
+				join(filesystem.decisionsDir, "architecture", "decision-2 - Nested.md"),
+				`---
+id: decision-2
+title: Nested
+date: 2025-06-08
+status: proposed
+---
+
+## Decision
+
+Initial decision
+`,
+			);
+
+			const loaded = await filesystem.loadDecision("decision-2");
+			expect(loaded).not.toBeNull();
+			await filesystem.saveDecision({ ...(loaded as Decision), title: "Nested Updated", decision: "Updated decision" });
+
+			const rootFiles = await readdir(filesystem.decisionsDir);
+			const nestedFiles = await readdir(join(filesystem.decisionsDir, "architecture"));
+			expect(rootFiles).toEqual(["architecture"]);
+			expect(nestedFiles).toEqual(["decision-2 - Nested-Updated.md"]);
+			expect((await filesystem.loadDecision("decision-2"))?.path).toBe("architecture/decision-2 - Nested-Updated.md");
+		});
+
 		it("should sanitize decision filenames", async () => {
 			await filesystem.saveDecision({
 				...sampleDecision,

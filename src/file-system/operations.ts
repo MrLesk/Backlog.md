@@ -14,7 +14,7 @@ import { serializeDecision, serializeDocument, serializeTask } from "../markdown
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import { decisionIdsEqual, documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { decisionIdsEqual, documentIdsEqual, normalizeDecisionId, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
 	buildGlobPattern,
@@ -725,49 +725,37 @@ export class FileSystem {
 
 	// Decision log operations
 	async saveDecision(decision: Decision): Promise<void> {
-		// Normalize ID - remove "decision-" prefix if present
-		const normalizedId = decision.id.replace(/^decision-/, "");
-		const filename = `${DEFAULT_FILE_PREFIXES.DECISION}${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
+		const canonicalId = normalizeDecisionId(decision.id);
+		const filename = `${canonicalId} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
-		const filepath = join(decisionsDir, filename);
+		const currentDir = decision.path ? dirname(decision.path) : ".";
+		const relativePath = currentDir === "." ? filename : `${currentDir.replace(/\\/g, "/")}/${filename}`;
+		const filepath = join(decisionsDir, ...relativePath.split("/"));
 		const content = serializeDecision(decision);
+		await this.ensureDirectoryExists(dirname(filepath));
 
 		const matches = await Array.fromAsync(
-			new Bun.Glob(`${DEFAULT_FILE_PREFIXES.DECISION}*.md`).scan({ cwd: decisionsDir, followSymlinks: true }),
+			new Bun.Glob(`**/${DEFAULT_FILE_PREFIXES.DECISION}*.md`).scan({ cwd: decisionsDir, followSymlinks: true }),
 		);
 		for (const match of matches) {
-			if (match === filename) continue;
-			if (!match.startsWith(`${DEFAULT_FILE_PREFIXES.DECISION}${normalizedId} -`)) continue;
+			if (match === relativePath) continue;
+			const base = match.split("/").pop() || match;
+			const [candidateId] = base.split(" - ");
+			if (!candidateId || !decisionIdsEqual(canonicalId, candidateId)) continue;
 			try {
-				await unlink(join(decisionsDir, match));
+				await unlink(join(decisionsDir, ...match.split("/")));
 			} catch {
 				// Ignore cleanup errors
 			}
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
+		decision.path = relativePath;
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
-		try {
-			const decisionsDir = await this.getDecisionsDir();
-			const files = await Array.fromAsync(new Bun.Glob("**/*.md").scan({ cwd: decisionsDir, followSymlinks: true }));
-
-			const decisionFile = files.find((file) => {
-				const base = file.split("/").pop() || file;
-				const [candidateId] = base.split(" - ");
-				return candidateId ? decisionIdsEqual(decisionId, candidateId) : false;
-			});
-
-			if (!decisionFile) return null;
-
-			const filepath = join(decisionsDir, ...decisionFile.split("/"));
-			const content = await Bun.file(filepath).text();
-			return parseDecision(content, decisionFile);
-		} catch (_error) {
-			return null;
-		}
+		const decisions = await this.listDecisions();
+		return decisions.find((decision) => decisionIdsEqual(decisionId, decision.id)) ?? null;
 	}
 
 	// Document operations

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
+import { parseDecision, parseMarkdown } from "../markdown/parser.ts";
 import {
 	type AcceptanceCriterion,
 	type Decision,
@@ -29,7 +30,7 @@ import {
 	normalizeDocumentSubPath,
 } from "../utils/document-path.ts";
 import { openInEditor } from "../utils/editor.ts";
-import { generateNextDocId } from "../utils/id-generators.ts";
+import { generateNextDecisionId, generateNextDocId } from "../utils/id-generators.ts";
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
@@ -2335,45 +2336,40 @@ export class Core {
 			throw new Error(`Decision ${decisionId} not found`);
 		}
 
-		// Parse the markdown content to extract the decision data
-		const matter = await import("gray-matter");
-		const { data, content: markdownContent } = matter.default(content);
-
-		const extractSection = (content: string, sectionName: string): string | undefined => {
-			const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
-			const match = content.match(regex);
-			return match ? match[1]?.trim() : undefined;
-		};
+		const { frontmatter } = parseMarkdown(content);
+		const parsedDecision = parseDecision(content, existingDecision.path);
 
 		const updatedDecision = {
 			...existingDecision,
-			title: data.title || title || existingDecision.title,
-			status: data.status || existingDecision.status,
-			date: data.date || existingDecision.date,
-			context: extractSection(markdownContent, "Context") || existingDecision.context,
-			decision: extractSection(markdownContent, "Decision") || existingDecision.decision,
-			consequences: extractSection(markdownContent, "Consequences") || existingDecision.consequences,
-			alternatives: extractSection(markdownContent, "Alternatives") || existingDecision.alternatives,
-			rawContent: markdownContent,
+			title: parsedDecision.title || title || existingDecision.title,
+			status: frontmatter.status ? parsedDecision.status : existingDecision.status,
+			date: frontmatter.date ? parsedDecision.date : existingDecision.date,
+			context: parsedDecision.context || existingDecision.context,
+			decision: parsedDecision.decision || existingDecision.decision,
+			consequences: parsedDecision.consequences || existingDecision.consequences,
+			alternatives: parsedDecision.alternatives || existingDecision.alternatives,
+			rawContent: parsedDecision.rawContent,
+			tags: Array.isArray(frontmatter.tags) ? parsedDecision.tags : existingDecision.tags,
 		};
 
 		await this.createDecision(updatedDecision, autoCommit);
 	}
 
 	async createDecisionWithTitle(title: string, content?: string, autoCommit?: boolean): Promise<Decision> {
-		// Import the generateNextDecisionId function from CLI
-		const { generateNextDecisionId } = await import("../cli.js");
 		const id = await generateNextDecisionId(this);
+		const parsedContent = content ? parseDecision(content) : null;
 
 		const decision: Decision = {
 			id,
 			title,
-			date: new Date().toISOString().slice(0, 16).replace("T", " "),
-			status: "proposed",
-			context: "[Describe the context and problem that needs to be addressed]",
-			decision: "[Describe the decision that was made]",
-			consequences: "[Describe the consequences of this decision]",
-			rawContent: content || "",
+			date: parsedContent?.date || new Date().toISOString().slice(0, 16).replace("T", " "),
+			status: parsedContent?.status || "proposed",
+			context: parsedContent?.context || "[Describe the context and problem that needs to be addressed]",
+			decision: parsedContent?.decision || "[Describe the decision that was made]",
+			consequences: parsedContent?.consequences || "[Describe the consequences of this decision]",
+			alternatives: parsedContent?.alternatives,
+			rawContent: parsedContent?.rawContent || "",
+			tags: parsedContent?.tags,
 		};
 
 		await this.createDecision(decision, autoCommit);

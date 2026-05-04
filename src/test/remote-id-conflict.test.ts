@@ -47,6 +47,19 @@ describe("next id across remote branches", () => {
 			},
 			true,
 		);
+		await core.createDecision(
+			{
+				id: "decision-7",
+				title: "Remote Decision",
+				date: "2025-06-08",
+				status: "proposed",
+				context: "Remote branch context",
+				decision: "Reserve decision ID",
+				consequences: "Local branches must skip it",
+				rawContent: "",
+			},
+			true,
+		);
 		await $`git push -u origin feature`.cwd(LOCAL_DIR).quiet();
 		await $`git checkout main`.cwd(LOCAL_DIR).quiet();
 	});
@@ -65,5 +78,13 @@ describe("next id across remote branches", () => {
 		const core = new Core(LOCAL_DIR);
 		const task = await core.filesystem.loadTask("task-2");
 		expect(task).not.toBeNull();
+	});
+
+	it("uses id after highest remote decision", async () => {
+		const result = await $`bun run ${CLI_PATH} decision create "Local Decision"`.cwd(LOCAL_DIR).quiet();
+		expect(result.stdout.toString()).toContain("Created decision decision-8");
+		const core = new Core(LOCAL_DIR);
+		const decision = await core.filesystem.loadDecision("decision-8");
+		expect(decision).not.toBeNull();
 	});
 });

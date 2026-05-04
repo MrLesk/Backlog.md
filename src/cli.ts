@@ -1407,9 +1407,7 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/decisions`);
 			return files
 				.map((file) => {
-					const base = file.split("/").pop() || file;
-					const candidateId = (base.split(" - ")[0] || base).replace(/\.md$/i, "");
-					const match = candidateId.match(DECISION_ID_PREFIX_RE);
+					const match = file.match(/decision-(\d+)/i);
 					return match ? `${DEFAULT_FILE_PREFIXES.DECISION}${match[1]}` : null;
 				})
 				.filter((id): id is string => id !== null);
