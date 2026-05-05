@@ -117,9 +117,11 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("case insensitive priority filtering", async () => {
-		const upperResult = await $`bun run cli task list --priority HIGH --plain`.quiet();
-		const lowerResult = await $`bun run cli task list --priority high --plain`.quiet();
-		const mixedResult = await $`bun run cli task list --priority High --plain`.quiet();
+		const [upperResult, lowerResult, mixedResult] = await Promise.all([
+			$`bun run cli task list --priority HIGH --plain`.quiet(),
+			$`bun run cli task list --priority high --plain`.quiet(),
+			$`bun run cli task list --priority High --plain`.quiet(),
+		]);
 
 		expect(upperResult.exitCode).toBe(0);
 		expect(lowerResult.exitCode).toBe(0);
