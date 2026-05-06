@@ -2591,7 +2591,7 @@ export class Core {
 	 */
 	async loadAllTasksForStatistics(
 		progressCallback?: (msg: string) => void,
-	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[] }> {
+	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[]; terminalStatuses?: string[] }> {
 		const config = await this.fs.loadConfig();
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
@@ -2667,7 +2667,7 @@ export class Core {
 		progressCallback?.("Loading drafts...");
 		const drafts = await this.fs.listDrafts();
 
-		return { tasks: activeTasks, drafts, statuses: statuses as string[] };
+		return { tasks: activeTasks, drafts, statuses: statuses as string[], terminalStatuses: config?.terminalStatuses };
 	}
 
 	/**
