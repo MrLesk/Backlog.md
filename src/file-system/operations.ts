@@ -1297,6 +1297,7 @@ ${description || `Milestone: ${title}`}`,
 			...config,
 			...(this.configSource === "root" ? { backlogDirectory: this.resolvedBacklogDirName } : {}),
 			definitionOfDone: this.normalizeDefinitionOfDone(config.definitionOfDone),
+			terminalStatuses: config.terminalStatuses?.length ? config.terminalStatuses : undefined,
 		};
 		if (this.configSource === "folder") {
 			delete normalizedConfig.backlogDirectory;
@@ -1468,6 +1469,9 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
+			...(Array.isArray(config.terminalStatuses) && config.terminalStatuses.length > 0
+				? [`terminal_statuses: [${config.terminalStatuses.map((s) => `"${s}"`).join(", ")}]`]
+				: []),
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]

@@ -241,4 +241,54 @@ describe("Config commands", () => {
 		expect(config?.projectName).toBe(originalProjectName ?? "");
 		expect(config?.statuses).toEqual(originalStatuses);
 	});
+
+	it("config set terminalStatuses saves comma-separated list and config get reads it back", async () => {
+		await $`bun ${CLI_PATH} config set terminalStatuses "Abgeschlossen,Abgebrochen"`.cwd(TEST_DIR).quiet();
+
+		const output = await $`bun ${CLI_PATH} config get terminalStatuses`.cwd(TEST_DIR).text();
+		expect(output.trim()).toBe("Abgeschlossen, Abgebrochen");
+
+		// Fresh core avoids cached config from before CLI set
+		const freshCore = new Core(TEST_DIR);
+		const config = await freshCore.filesystem.loadConfig();
+		expect(config?.terminalStatuses).toEqual(["Abgeschlossen", "Abgebrochen"]);
+	});
+
+	it("config get terminalStatuses returns empty string when key is not set", async () => {
+		const output = await $`bun ${CLI_PATH} config get terminalStatuses`.cwd(TEST_DIR).text();
+		expect(output.trim()).toBe("");
+
+		const config = await core.filesystem.loadConfig();
+		expect(config?.terminalStatuses).toBeUndefined();
+	});
+
+	it("saveConfig with terminalStatuses round-trips correctly and empty array omits the key", async () => {
+		const config = await core.filesystem.loadConfig();
+
+		// Set multiple terminal statuses
+		if (config) {
+			config.terminalStatuses = ["Done", "Closed", "Cancelled"];
+			await core.filesystem.saveConfig(config);
+		}
+
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.terminalStatuses).toEqual(["Done", "Closed", "Cancelled"]);
+
+		// Clear to empty array — must be treated as undefined (no key in YAML)
+		if (reloaded) {
+			reloaded.terminalStatuses = [];
+			await core.filesystem.saveConfig(reloaded);
+		}
+
+		const cleared = await core.filesystem.loadConfig();
+		expect(cleared?.terminalStatuses).toBeUndefined();
+	});
+
+	it("config get returns error for unknown key", async () => {
+		const result = await $`bun ${CLI_PATH} config get unknownKey`.cwd(TEST_DIR).nothrow();
+		expect(result.exitCode).not.toBe(0);
+		const stderr = result.stderr.toString();
+		expect(stderr).toContain("Unknown config key");
+		expect(stderr).toContain("terminalStatuses");
+	});
 });
