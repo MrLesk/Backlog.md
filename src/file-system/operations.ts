@@ -1367,6 +1367,15 @@ ${description || `Milestone: ${title}`}`,
 							.filter(Boolean);
 					}
 					break;
+				case "terminal_statuses":
+					if (value.startsWith("[") && value.endsWith("]")) {
+						const arrayContent = value.slice(1, -1);
+						config.terminalStatuses = arrayContent
+							.split(",")
+							.map((item) => item.trim().replace(/['"]/g, ""))
+							.filter(Boolean);
+					}
+					break;
 				case "definition_of_done":
 					if (parsedDefinitionOfDone !== undefined) {
 						config.definitionOfDone = parsedDefinitionOfDone;
@@ -1429,6 +1438,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultAssignee: config.defaultAssignee,
 			defaultReporter: config.defaultReporter,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
+			terminalStatuses: config.terminalStatuses,
 			labels: config.labels || [],
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
