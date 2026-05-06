@@ -1952,7 +1952,9 @@ export class Core {
 	// Sequences operations (business logic lives in core, not server)
 	async listActiveSequences(): Promise<{ unsequenced: Task[]; sequences: Sequence[] }> {
 		const all = await this.fs.listTasks();
-		const active = all.filter((t) => (t.status || "").toLowerCase() !== "done");
+		const config = await this.fs.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const active = all.filter((t) => !isTerminalStatus(t.status, statuses, config?.terminalStatuses));
 		return computeSequences(active);
 	}
 
@@ -1968,7 +1970,9 @@ export class Core {
 		const exists = allTasks.some((t) => t.id === taskId);
 		if (!exists) throw new Error(`Task ${taskId} not found`);
 
-		const active = allTasks.filter((t) => (t.status || "").toLowerCase() !== "done");
+		const config = await this.fs.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const active = allTasks.filter((t) => !isTerminalStatus(t.status, statuses, config?.terminalStatuses));
 		const { sequences } = computeSequences(active);
 
 		if (params.unsequenced) {
@@ -1987,7 +1991,7 @@ export class Core {
 
 		// Return updated sequences
 		const afterAll = await this.fs.listTasks();
-		const afterActive = afterAll.filter((t) => (t.status || "").toLowerCase() !== "done");
+		const afterActive = afterAll.filter((t) => !isTerminalStatus(t.status, statuses, config?.terminalStatuses));
 		return computeSequences(afterActive);
 	}
 
