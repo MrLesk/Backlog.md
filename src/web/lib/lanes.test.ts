@@ -174,7 +174,7 @@ describe("sortTasksForStatus", () => {
 			makeTask({ id: "task-3", status: "Done", updatedDate: "2024-01-03", createdDate: "2024-01-01" }),
 		];
 
-		const sorted = sortTasksForStatus(tasks, "Done").map((t) => t.id);
+		const sorted = sortTasksForStatus(tasks, "Done", ["To Do", "In Progress", "Done"]).map((t) => t.id);
 		expect(sorted).toEqual(["task-2", "task-3", "task-1"]);
 	});
 });

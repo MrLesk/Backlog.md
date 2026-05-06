@@ -1,4 +1,5 @@
 import type { Milestone, Task } from "../../types";
+import { isTerminalStatus } from "../../utils/terminal-status";
 import { getMilestoneLabel, milestoneKey, normalizeMilestoneName } from "../utils/milestones";
 
 export type LaneMode = "none" | "milestone";
@@ -202,8 +203,13 @@ export function buildLanes(
 	];
 }
 
-export function sortTasksForStatus(tasks: Task[], status: string): Task[] {
-	const isDoneStatus = status.toLowerCase().includes("done") || status.toLowerCase().includes("complete");
+export function sortTasksForStatus(
+	tasks: Task[],
+	status: string,
+	statuses?: readonly string[],
+	terminalStatuses?: readonly string[] | null,
+): Task[] {
+	const isDoneStatus = isTerminalStatus(status, statuses ?? [], terminalStatuses);
 
 	return tasks.slice().sort((a, b) => {
 		// Tasks with ordinal come before tasks without
@@ -241,6 +247,8 @@ export function buildGlobalOrderedTaskIdsForMilestoneLaneReorder(params: {
 	targetStatus: string;
 	targetMilestone: string | null;
 	laneOrderedTaskIds: string[];
+	statuses?: readonly string[];
+	terminalStatuses?: readonly string[] | null;
 }): string[] {
 	const targetMilestoneValue = normalizeMilestoneValue(params.targetMilestone);
 	const taskId = String(params.taskId || "").trim();
@@ -260,7 +268,9 @@ export function buildGlobalOrderedTaskIdsForMilestoneLaneReorder(params: {
 	});
 
 	const statusTasks = nextTasks.filter((task) => (task.status ?? "") === targetStatus);
-	const templateIds = sortTasksForStatus(statusTasks, targetStatus).map((task) => task.id);
+	const templateIds = sortTasksForStatus(statusTasks, targetStatus, params.statuses, params.terminalStatuses).map(
+		(task) => task.id,
+	);
 
 	if (templateIds.length === 0) {
 		return params.laneOrderedTaskIds;
@@ -330,7 +340,12 @@ export function groupTasksByLaneAndStatus(
 	lanes: LaneDefinition[],
 	statuses: string[],
 	tasks: Task[],
-	options?: { archivedMilestoneIds?: string[]; milestoneEntities?: Milestone[]; archivedMilestones?: Milestone[] },
+	options?: {
+		archivedMilestoneIds?: string[];
+		milestoneEntities?: Milestone[];
+		archivedMilestones?: Milestone[];
+		terminalStatuses?: string[];
+	},
 ): Map<string, Map<string, Task[]>> {
 	const result = new Map<string, Map<string, Task[]>>();
 	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
@@ -380,7 +395,7 @@ export function groupTasksByLaneAndStatus(
 
 	for (const [, statusMap] of result) {
 		for (const [status, list] of statusMap) {
-			statusMap.set(status, sortTasksForStatus(list, status));
+			statusMap.set(status, sortTasksForStatus(list, status, statuses, options?.terminalStatuses));
 		}
 	}
 

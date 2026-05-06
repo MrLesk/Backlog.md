@@ -3348,8 +3348,9 @@ sequenceCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const tasks = await core.queryTasks();
-		// Exclude tasks marked as Done from sequences (case-insensitive)
-		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
+		const config = await core.fs.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const activeTasks = tasks.filter((t) => !isTerminalStatus(t.status, statuses, config?.terminalStatuses));
 		const { unsequenced, sequences } = computeSequences(activeTasks);
 
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;

@@ -17,6 +17,7 @@ interface BoardProps {
   tasks: Task[];
   onRefreshData?: () => Promise<void>;
   statuses: string[];
+  terminalStatuses?: string[];
   isLoading: boolean;
   milestones: string[];
   availableLabels: string[];
@@ -51,6 +52,7 @@ const Board: React.FC<BoardProps> = ({
   tasks,
   onRefreshData,
   statuses,
+  terminalStatuses,
   isLoading,
   availableLabels,
   milestoneEntities,
@@ -331,8 +333,9 @@ const Board: React.FC<BoardProps> = ({
       archivedMilestoneIds,
       milestoneEntities,
       archivedMilestones,
+      terminalStatuses,
     }),
-    [laneMode, lanes, statuses, tasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
+    [laneMode, lanes, statuses, tasks, archivedMilestoneIds, milestoneEntities, archivedMilestones, terminalStatuses]
   );
 
   // Separate grouping for filtered display in columns
@@ -342,8 +345,9 @@ const Board: React.FC<BoardProps> = ({
         archivedMilestoneIds,
         milestoneEntities,
         archivedMilestones,
+        terminalStatuses,
       }),
-    [laneMode, lanes, statuses, filteredTasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
+    [laneMode, lanes, statuses, filteredTasks, archivedMilestoneIds, milestoneEntities, archivedMilestones, terminalStatuses]
   );
 
   const displayTasksByLane = (milestoneFilter || hasActiveFilters) ? filteredTasksByLane : tasksByLane;

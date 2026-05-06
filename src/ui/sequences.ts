@@ -1,8 +1,10 @@
 import { stdout as output } from "node:process";
 import type { BoxInterface } from "neo-neo-bblessed";
 import { box, scrollablebox } from "neo-neo-bblessed";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { Core } from "../index.ts";
 import type { Sequence, Task } from "../types/index.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { createTaskPopup } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 
@@ -417,7 +419,9 @@ export async function runSequencesView(
 		}
 		// Reload and rerender
 		const tasksNew = await core.queryTasks();
-		const active = tasksNew.filter((t) => (t.status || "").toLowerCase() !== "done");
+		const cfg = await core.fs.loadConfig();
+		const seqStatuses = cfg?.statuses ?? [...DEFAULT_STATUSES];
+		const active = tasksNew.filter((t) => !isTerminalStatus(t.status, seqStatuses, cfg?.terminalStatuses));
 		const { computeSequences: recompute } = await import("../core/sequences.ts");
 		const next = recompute(active);
 		screen.destroy();

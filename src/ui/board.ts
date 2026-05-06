@@ -13,6 +13,7 @@ import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -47,12 +48,13 @@ type ColumnView = {
 	highlightedIndex?: number;
 };
 
-function isDoneStatus(status: string): boolean {
-	const normalized = status.trim().toLowerCase();
-	return normalized === "done" || normalized === "completed" || normalized === "complete";
-}
-
-function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>): Task[] {
+function buildColumnTasks(
+	status: string,
+	items: Task[],
+	byId: Map<string, Task>,
+	statuses: readonly string[],
+	terminalStatuses?: readonly string[] | null,
+): Task[] {
 	const topLevel: Task[] = [];
 	const childrenByParent = new Map<string, Task[]>();
 	const sorted = items.slice().sort((a, b) => {
@@ -71,7 +73,7 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 			return 1;
 		}
 
-		const columnIsDone = isDoneStatus(status);
+		const columnIsDone = isTerminalStatus(status, statuses, terminalStatuses);
 		if (columnIsDone) {
 			return compareTaskIds(b.id, a.id);
 		}
@@ -101,13 +103,17 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 	return ordered;
 }
 
-function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
+function prepareBoardColumns(
+	tasks: Task[],
+	statuses: string[],
+	terminalStatuses?: readonly string[] | null,
+): ColumnData[] {
 	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
 	const byId = new Map<string, Task>(tasks.map((task) => [task.id, task]));
 
 	return orderedStatuses.map((status) => {
 		const items = groupedTasks.get(status) ?? [];
-		const orderedTasks = buildColumnTasks(status, items, byId);
+		const orderedTasks = buildColumnTasks(status, items, byId, statuses, terminalStatuses);
 		return { status, tasks: orderedTasks };
 	});
 }
@@ -202,6 +208,7 @@ export async function renderBoardTui(
 		}) => void;
 		milestoneMode?: boolean;
 		milestoneEntities?: Milestone[];
+		terminalStatuses?: readonly string[] | null;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -213,7 +220,7 @@ export async function renderBoardTui(
 		return;
 	}
 
-	const initialColumns = prepareBoardColumns(initialTasks, statuses);
+	const initialColumns = prepareBoardColumns(initialTasks, statuses, options?.terminalStatuses);
 	if (initialColumns.length === 0) {
 		console.log("No tasks available for the Kanban board.");
 		return;
@@ -238,6 +245,7 @@ export async function renderBoardTui(
 		let columns: ColumnView[] = [];
 		let currentColumnsData = initialColumns;
 		let currentStatuses = currentColumnsData.map((column) => column.status);
+		const currentTerminalStatuses = options?.terminalStatuses;
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
@@ -574,7 +582,7 @@ export async function renderBoardTui(
 		// Pure function to calculate the projected board state
 		const getProjectedColumns = (allTasks: Task[], operation: MoveOperation | null): ColumnData[] => {
 			if (!operation) {
-				return prepareBoardColumns(allTasks, currentStatuses);
+				return prepareBoardColumns(allTasks, currentStatuses, currentTerminalStatuses);
 			}
 
 			// 1. Filter out the moving task from the source
@@ -582,11 +590,11 @@ export async function renderBoardTui(
 			const movingTask = allTasks.find((t) => t.id === operation.taskId);
 
 			if (!movingTask) {
-				return prepareBoardColumns(allTasks, currentStatuses);
+				return prepareBoardColumns(allTasks, currentStatuses, currentTerminalStatuses);
 			}
 
 			// 2. Prepare columns without the moving task
-			const columns = prepareBoardColumns(tasksWithoutMoving, currentStatuses);
+			const columns = prepareBoardColumns(tasksWithoutMoving, currentStatuses, currentTerminalStatuses);
 
 			// 3. Insert the moving task into the target column at the target index
 			const targetColumn = columns.find((c) => c.status === operation.targetStatus);
