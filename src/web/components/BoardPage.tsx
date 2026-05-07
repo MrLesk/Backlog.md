@@ -11,6 +11,7 @@ interface BoardPageProps {
 	onRefreshData?: () => Promise<void>;
 	statuses: string[];
 	terminalStatuses?: string[];
+	blockedStatuses?: string[];
 	milestones: string[];
 	availableLabels: string[];
 	milestoneEntities: Milestone[];
@@ -25,6 +26,7 @@ export default function BoardPage({
 	onRefreshData,
 	statuses,
 	terminalStatuses,
+	blockedStatuses,
 	milestones,
 	availableLabels,
 	milestoneEntities,
@@ -130,6 +132,7 @@ export default function BoardPage({
 				onRefreshData={onRefreshData}
 				statuses={statuses}
 				terminalStatuses={terminalStatuses}
+				blockedStatuses={blockedStatuses}
 				milestones={milestones}
 				milestoneEntities={milestoneEntities}
 				archivedMilestones={archivedMilestones}

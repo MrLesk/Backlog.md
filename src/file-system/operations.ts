@@ -1377,6 +1377,15 @@ ${description || `Milestone: ${title}`}`,
 							.filter(Boolean);
 					}
 					break;
+				case "blocked_statuses":
+					if (value.startsWith("[") && value.endsWith("]")) {
+						const arrayContent = value.slice(1, -1);
+						config.blockedStatuses = arrayContent
+							.split(",")
+							.map((item) => item.trim().replace(/['"]/g, ""))
+							.filter(Boolean);
+					}
+					break;
 				case "definition_of_done":
 					if (parsedDefinitionOfDone !== undefined) {
 						config.definitionOfDone = parsedDefinitionOfDone;
@@ -1440,6 +1449,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultReporter: config.defaultReporter,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
 			terminalStatuses: config.terminalStatuses,
+			blockedStatuses: config.blockedStatuses,
 			labels: config.labels || [],
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
@@ -1471,6 +1481,9 @@ ${description || `Milestone: ${title}`}`,
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			...(Array.isArray(config.terminalStatuses) && config.terminalStatuses.length > 0
 				? [`terminal_statuses: [${config.terminalStatuses.map((s) => `"${s}"`).join(", ")}]`]
+				: []),
+			...(Array.isArray(config.blockedStatuses) && config.blockedStatuses.length > 0
+				? [`blocked_statuses: [${config.blockedStatuses.map((s) => `"${s}"`).join(", ")}]`]
 				: []),
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			...(Array.isArray(normalizedDefinitionOfDone)

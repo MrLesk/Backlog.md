@@ -498,6 +498,7 @@ function App() {
                 onRefreshData={refreshData}
                 statuses={statuses}
                 terminalStatuses={config?.terminalStatuses}
+                blockedStatuses={config?.blockedStatuses}
                 milestones={milestones}
                 availableLabels={availableLabels}
                 milestoneEntities={milestoneEntities}

@@ -284,6 +284,7 @@ export interface BacklogConfig {
 	defaultReporter?: string;
 	statuses: string[];
 	terminalStatuses?: string[];
+	blockedStatuses?: string[];
 	labels: string[];
 	/** @deprecated Milestones are sourced from milestone files, not config. */
 	milestones?: string[];

@@ -18,6 +18,7 @@ interface BoardProps {
   onRefreshData?: () => Promise<void>;
   statuses: string[];
   terminalStatuses?: string[];
+  blockedStatuses?: string[];
   isLoading: boolean;
   milestones: string[];
   availableLabels: string[];
@@ -53,6 +54,7 @@ const Board: React.FC<BoardProps> = ({
   onRefreshData,
   statuses,
   terminalStatuses,
+  blockedStatuses,
   isLoading,
   availableLabels,
   milestoneEntities,
@@ -600,6 +602,7 @@ const Board: React.FC<BoardProps> = ({
                             dragSourceLane={dragSourceLane}
                             laneId={lane.key}
                             targetMilestone={lane.milestone ?? null}
+                            blockedStatuses={blockedStatuses}
                             onDragStart={({ status: draggedStatus, laneId }) => {
                               setDragSourceStatus(draggedStatus);
                               setDragSourceLane(laneId ?? null);
@@ -633,6 +636,7 @@ const Board: React.FC<BoardProps> = ({
                   dragSourceStatus={dragSourceStatus}
                   dragSourceLane={dragSourceLane}
                   laneId={DEFAULT_LANE_KEY}
+                  blockedStatuses={blockedStatuses}
                   onDragStart={({ status: draggedStatus, laneId }) => {
                     setDragSourceStatus(draggedStatus);
                     setDragSourceLane(laneId ?? null);
