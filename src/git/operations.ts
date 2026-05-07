@@ -749,12 +749,14 @@ export class GitOperations {
 }
 
 export async function isGitRepository(projectRoot: string): Promise<boolean> {
-	try {
-		await $`git rev-parse --git-dir`.cwd(projectRoot).quiet();
-		return true;
-	} catch {
-		return false;
-	}
+	const subprocess = Bun.spawn(["git", "rev-parse", "--git-dir"], {
+		cwd: projectRoot,
+		stdin: "ignore",
+		stdout: "ignore",
+		stderr: "ignore",
+	});
+
+	return (await subprocess.exited) === 0;
 }
 
 export async function initializeGitRepository(projectRoot: string): Promise<void> {
