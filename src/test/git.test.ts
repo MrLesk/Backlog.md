@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { GitOperations, isGitRepository } from "../git/operations.ts";
 
 describe("Git Operations", () => {
@@ -10,6 +11,11 @@ describe("Git Operations", () => {
 
 		it("should return false for /tmp directory", async () => {
 			const result = await isGitRepository("/tmp");
+			expect(result).toBe(false);
+		});
+
+		it("should return false when the working directory cannot be spawned", async () => {
+			const result = await isGitRepository(join(process.cwd(), "tmp", "missing-git-cwd"));
 			expect(result).toBe(false);
 		});
 	});
