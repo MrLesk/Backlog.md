@@ -3344,8 +3344,9 @@ sequenceCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const tasks = await core.queryTasks();
-		// Exclude tasks marked as Done from sequences (case-insensitive)
-		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
+		const config = await core.fs.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const activeTasks = tasks.filter((t) => !isTerminalStatus(t.status, statuses, config?.terminalStatuses));
 		const { unsequenced, sequences } = computeSequences(activeTasks);
 
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
@@ -3449,10 +3450,13 @@ configCmd
 				case "activeBranchDays":
 					console.log(config.activeBranchDays?.toString() || "30");
 					break;
+				case "terminalStatuses":
+					console.log(config.terminalStatuses?.join(", ") || "");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays, terminalStatuses",
 					);
 					process.exit(1);
 			}
@@ -3612,6 +3616,14 @@ configCmd
 					config.activeBranchDays = days;
 					break;
 				}
+				case "terminalStatuses": {
+					const parsed = value
+						.split(",")
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0);
+					config.terminalStatuses = parsed.length > 0 ? parsed : undefined;
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -3643,7 +3655,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays, terminalStatuses",
 					);
 					process.exit(1);
 			}

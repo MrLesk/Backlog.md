@@ -9,7 +9,7 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
 async function getCommitCountInTest(dir: string): Promise<number> {
-	const result = await $`git rev-list --all --count`.cwd(dir).quiet();
+	const result = await $`git rev-list --count HEAD`.cwd(dir).quiet();
 	return Number.parseInt(result.stdout.toString().trim(), 10);
 }
 

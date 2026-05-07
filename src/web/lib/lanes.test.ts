@@ -174,7 +174,39 @@ describe("sortTasksForStatus", () => {
 			makeTask({ id: "task-3", status: "Done", updatedDate: "2024-01-03", createdDate: "2024-01-01" }),
 		];
 
-		const sorted = sortTasksForStatus(tasks, "Done").map((t) => t.id);
+		const sorted = sortTasksForStatus(tasks, "Done", ["To Do", "In Progress", "Done"]).map((t) => t.id);
 		expect(sorted).toEqual(["task-2", "task-3", "task-1"]);
+	});
+
+	it("treats custom terminal status as done-sorted even when not the last configured status", () => {
+		const tasks = [
+			makeTask({ id: "task-1", status: "Fertig", updatedDate: "2024-01-01", createdDate: "2024-01-01" }),
+			makeTask({ id: "task-2", status: "Fertig", updatedDate: "2024-01-03", createdDate: "2024-01-01" }),
+		];
+		// "Fertig" is NOT the last status — without terminalStatuses it would be treated as active
+		const statuses = ["Offen", "Fertig", "Archiviert"];
+		const sorted = sortTasksForStatus(tasks, "Fertig", statuses, ["Fertig"]).map((t) => t.id);
+		// Done behavior: sort by updatedDate descending → task-2 first
+		expect(sorted).toEqual(["task-2", "task-1"]);
+	});
+
+	it("falls back to last-element convention when terminalStatuses is empty", () => {
+		const tasks = [
+			makeTask({ id: "task-1", status: "Done", updatedDate: "2024-01-01", createdDate: "2024-01-01" }),
+			makeTask({ id: "task-2", status: "Done", updatedDate: "2024-01-03", createdDate: "2024-01-01" }),
+		];
+		// Empty array → fallback: "Done" is last in statuses → terminal → date-sorted descending
+		const sorted = sortTasksForStatus(tasks, "Done", ["To Do", "Done"], []).map((t) => t.id);
+		expect(sorted).toEqual(["task-2", "task-1"]);
+	});
+
+	it("does not apply done-sorting to active statuses when terminalStatuses is configured", () => {
+		const tasks = [
+			makeTask({ id: "task-1", status: "Offen", createdDate: "2024-01-03" }),
+			makeTask({ id: "task-2", status: "Offen", createdDate: "2024-01-01" }),
+		];
+		// "Fertig" is terminal, "Offen" is not → active sort: createdDate ascending
+		const sorted = sortTasksForStatus(tasks, "Offen", ["Offen", "Fertig"], ["Fertig"]).map((t) => t.id);
+		expect(sorted).toEqual(["task-2", "task-1"]);
 	});
 });
