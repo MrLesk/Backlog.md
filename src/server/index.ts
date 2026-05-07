@@ -405,6 +405,9 @@ export class BacklogServer {
 					"/api/search": {
 						GET: async (req: Request) => await this.handleSearch(req),
 					},
+					"/api/file-content": {
+						GET: async (req: Request) => await this.handleGetFileContent(req),
+					},
 					"/sequences": {
 						GET: async () => await this.handleGetSequences(),
 					},
@@ -1683,6 +1686,32 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error getting statistics:", error);
 			return Response.json({ error: "Failed to get statistics" }, { status: 500 });
+		}
+	}
+
+	private async handleGetFileContent(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const rawPath = url.searchParams.get("path") || "";
+			if (!rawPath) {
+				return Response.json({ error: "path parameter is required" }, { status: 400 });
+			}
+
+			const result = await this.core.filesystem.readProjectFile(rawPath);
+			return Response.json(result);
+		} catch (error) {
+			console.error("Error reading file:", error);
+			const message = error instanceof Error ? error.message : "Failed to read file";
+			if (message === "Access denied") {
+				return Response.json({ error: message }, { status: 403 });
+			}
+			if (message === "File not found" || message === "Path is a directory") {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			if (message === "Invalid line range" || message === "File too large") {
+				return Response.json({ error: message }, { status: 400 });
+			}
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 

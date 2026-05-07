@@ -541,6 +541,24 @@ export class ApiClient {
 		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
 	}
 
+	async fetchFileContent(path: string): Promise<{
+		content: string;
+		path: string;
+		lineStart?: number;
+		lineEnd?: number;
+		totalLines: number;
+		isMarkdown: boolean;
+	}> {
+		return this.fetchJson<{
+			content: string;
+			path: string;
+			lineStart?: number;
+			lineEnd?: number;
+			totalLines: number;
+			isMarkdown: boolean;
+		}>(`${API_BASE}/file-content?path=${encodeURIComponent(path)}`);
+	}
+
 	async initializeProject(options: {
 		projectName: string;
 		backlogDirectory?: string;

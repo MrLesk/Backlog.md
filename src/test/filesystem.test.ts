@@ -907,4 +907,54 @@ Invalid content`,
 			expect(filename?.includes("--")).toBe(false);
 		});
 	});
+
+	describe("readProjectFile", () => {
+		it("reads a valid file within project root", async () => {
+			const testFile = join(TEST_DIR, "src", "test.ts");
+			await mkdir(join(TEST_DIR, "src"), { recursive: true });
+			await Bun.write(testFile, "line 1\nline 2\nline 3");
+			const result = await filesystem.readProjectFile("src/test.ts");
+			expect(result.content).toBe("line 1\nline 2\nline 3");
+			expect(result.totalLines).toBe(3);
+			expect(result.isMarkdown).toBe(false);
+		});
+
+		it("rejects sibling-prefix traversal", async () => {
+			await mkdir(join(TEST_DIR, "project-secret"), { recursive: true });
+			await Bun.write(join(TEST_DIR, "project-secret", "secret.txt"), "secret");
+			await expect(filesystem.readProjectFile("../project-secret/secret.txt")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects absolute paths", async () => {
+			await expect(filesystem.readProjectFile("/etc/passwd")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects .. traversal", async () => {
+			await expect(filesystem.readProjectFile("../../../etc/passwd")).rejects.toThrow("Access denied");
+		});
+
+		it("supports line ranges", async () => {
+			const testFile = join(TEST_DIR, "file.ts");
+			await Bun.write(testFile, "a\nb\nc\nd\ne\n");
+			const result = await filesystem.readProjectFile("file.ts:2-4");
+			expect(result.content).toBe("b\nc\nd");
+			expect(result.lineStart).toBe(2);
+			expect(result.lineEnd).toBe(4);
+		});
+
+		it("rejects non-existent files", async () => {
+			await expect(filesystem.readProjectFile("missing.txt")).rejects.toThrow("File not found");
+		});
+
+		it("rejects directories", async () => {
+			await mkdir(join(TEST_DIR, "subdir"), { recursive: true });
+			await expect(filesystem.readProjectFile("subdir")).rejects.toThrow("Path is a directory");
+		});
+
+		it("rejects oversized files", async () => {
+			const bigFile = join(TEST_DIR, "big.txt");
+			await Bun.write(bigFile, "x".repeat(6 * 1024 * 1024));
+			await expect(filesystem.readProjectFile("big.txt")).rejects.toThrow("File too large");
+		});
+	});
 });

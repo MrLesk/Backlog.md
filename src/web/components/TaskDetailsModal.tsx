@@ -6,6 +6,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
+import FilePreviewModal from "./FilePreviewModal";
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
@@ -240,6 +241,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
@@ -640,6 +642,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const documentation = task?.documentation ?? [];
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={() => {
@@ -742,7 +745,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
             {mode === "preview" ? (
               description ? (
                 <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={description} />
+                  <MermaidMarkdown source={description} onFileClick={(path) => setPreviewFilePath(path)} />
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No description</div>
@@ -779,9 +782,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
                             {ref}
                           </a>
                         ) : (
-                          <code className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all">
+                          <button
+                            onClick={() => setPreviewFilePath(ref)}
+                            className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-left"
+                            title="Click to preview"
+                          >
                             {ref}
-                          </code>
+                          </button>
                         )}
                       </span>
                       {!isFromOtherBranch && (
@@ -853,9 +860,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
                             {doc}
                           </a>
                         ) : (
-                          <code className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all">
+                          <button
+                            onClick={() => setPreviewFilePath(doc)}
+                            className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-left"
+                            title="Click to preview"
+                          >
                             {doc}
-                          </code>
+                          </button>
                         )}
                       </span>
                     </li>
@@ -937,7 +948,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
             {mode === "preview" ? (
               plan ? (
                 <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={plan} />
+                  <MermaidMarkdown source={plan} onFileClick={(path) => setPreviewFilePath(path)} />
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No plan</div>
@@ -961,7 +972,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
             {mode === "preview" ? (
               notes ? (
                 <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={notes} />
+                  <MermaidMarkdown source={notes} onFileClick={(path) => setPreviewFilePath(path)} />
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No notes</div>
@@ -1038,7 +1049,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               <SectionHeader title="Final Summary" right="Completion summary" />
               {mode === "preview" ? (
                 <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={finalSummary} />
+                  <MermaidMarkdown source={finalSummary} onFileClick={(path) => setPreviewFilePath(path)} />
                 </div>
               ) : (
                 <div className="border border-gray-200 dark:border-gray-700 rounded-md">
@@ -1198,6 +1209,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
         </div>
       </div>
     </Modal>
+    {previewFilePath && (
+      <FilePreviewModal
+        path={previewFilePath}
+        onClose={() => setPreviewFilePath(null)}
+      />
+    )}
+    </>
   );
 };
 

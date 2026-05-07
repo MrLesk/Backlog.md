@@ -1,5 +1,5 @@
-import { mkdir, rename, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
@@ -1603,6 +1603,76 @@ ${description || `Milestone: ${title}`}`,
 		}
 
 		return changed ? escaped : undefined;
+	}
+
+	async readProjectFile(rawPath: string): Promise<{
+		content: string;
+		path: string;
+		lineStart?: number;
+		lineEnd?: number;
+		totalLines: number;
+		isMarkdown: boolean;
+	}> {
+		const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+		const lineRangeMatch = rawPath.match(/^(.+?)(?::(\d+)(?:-(\d+))?)?$/);
+		const filePath = lineRangeMatch?.[1] ?? rawPath;
+		const lineStart = lineRangeMatch?.[2] ? Number.parseInt(lineRangeMatch[2], 10) : undefined;
+		const lineEnd = lineRangeMatch?.[3] ? Number.parseInt(lineRangeMatch[3], 10) : lineStart;
+
+		const rootDir = resolve(this.projectRoot);
+		const targetPath = resolve(join(rootDir, filePath));
+
+		// Robust containment check: reject traversal, absolute paths, and root itself
+		const rel = relative(rootDir, targetPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside || isAbsolute(filePath)) {
+			throw new Error("Access denied");
+		}
+
+		let fileStats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
+		try {
+			fileStats = await stat(targetPath);
+		} catch {
+			throw new Error("File not found");
+		}
+		if (fileStats.isDirectory()) {
+			throw new Error("Path is a directory");
+		}
+		if (fileStats.size > MAX_FILE_SIZE) {
+			throw new Error("File too large");
+		}
+
+		const file = Bun.file(targetPath);
+		const fullContent = await file.text();
+		const allLines = fullContent.split(/\r?\n/);
+		const totalLines = allLines.length;
+
+		let content: string;
+		let start: number | undefined;
+		let end: number | undefined;
+
+		if (lineStart !== undefined && lineEnd !== undefined) {
+			start = Math.max(1, lineStart);
+			end = Math.min(totalLines, lineEnd);
+			if (start > end) {
+				throw new Error("Invalid line range");
+			}
+			content = allLines.slice(start - 1, end).join("\n");
+		} else {
+			content = fullContent;
+		}
+
+		const isMarkdown = targetPath.toLowerCase().endsWith(".md");
+
+		return {
+			content,
+			path: filePath,
+			lineStart: start,
+			lineEnd: end,
+			totalLines,
+			isMarkdown,
+		};
 	}
 
 	private normalizeDefinitionOfDone(definitionOfDone: unknown): string[] | undefined {
