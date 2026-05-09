@@ -297,6 +297,7 @@ export class BacklogServer {
 
 		try {
 			await this.ensureServicesReady();
+			void this.cleanupTempAssets();
 			const serveOptions = {
 				port: finalPort,
 				development: process.env.NODE_ENV === "development",
@@ -407,6 +408,12 @@ export class BacklogServer {
 					},
 					"/api/file-content": {
 						GET: async (req: Request) => await this.handleGetFileContent(req),
+					},
+					"/api/upload": {
+						POST: async (req: Request) => await this.handleUpload(req),
+					},
+					"/api/assets/promote": {
+						POST: async (req: Request) => await this.handlePromoteAssets(req),
 					},
 					"/sequences": {
 						GET: async () => await this.handleGetSequences(),
@@ -1790,6 +1797,68 @@ export class BacklogServer {
 			console.error("Error initializing project:", error);
 			const message = error instanceof Error ? error.message : "Failed to initialize project";
 			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleUpload(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const isTemp = url.searchParams.get("temp") === "1";
+			const contentType = req.headers.get("content-type") || "";
+
+			if (contentType.startsWith("multipart/form-data")) {
+				const formData = await req.formData();
+				const file = formData.get("file");
+				if (!(file instanceof File)) {
+					return Response.json({ error: "No file provided" }, { status: 400 });
+				}
+				const result = await this.core.assets.uploadFile(file, isTemp);
+				return Response.json(result);
+			}
+
+			if (contentType.startsWith("application/json")) {
+				const body = await req.json();
+				if (typeof body.dataUri === "string") {
+					const result = await this.core.assets.uploadFromDataUri(body.dataUri, isTemp);
+					return Response.json(result);
+				}
+				if (typeof body.url === "string") {
+					const result = await this.core.assets.uploadFromUrl(body.url, isTemp);
+					return Response.json(result);
+				}
+				return Response.json({ error: "Expected file, url, or dataUri" }, { status: 400 });
+			}
+
+			return Response.json({ error: "Unsupported content type" }, { status: 400 });
+		} catch (error) {
+			console.error("Error uploading file:", error);
+			const message = error instanceof Error ? error.message : "Upload failed";
+			const isClientError = error instanceof Error && error.name === "ClientError";
+			return Response.json({ error: message }, { status: isClientError ? 400 : 500 });
+		}
+	}
+
+	private async handlePromoteAssets(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const urls = Array.isArray(body.urls) ? body.urls : [];
+			const result = await this.core.assets.promote(urls);
+			return Response.json(result);
+		} catch (error) {
+			console.error("Error promoting assets:", error);
+			const message = error instanceof Error ? error.message : "Promote failed";
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async cleanupTempAssets(): Promise<void> {
+		try {
+			const { removed } = await this.core.assets.cleanup();
+			if (removed > 0) {
+				console.log(`🧹 Cleaned up ${removed} temporary asset(s) older than 30 min`);
+			}
+		} catch {
+			// ignore cleanup errors — don't block server start
 		}
 	}
 }
