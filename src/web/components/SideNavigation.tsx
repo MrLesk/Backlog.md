@@ -10,6 +10,7 @@ import {
 	type SearchResultType,
 	type Task,
 	type TaskSearchResult,
+	type WikiTreeNode,
 } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import { SidebarSkeleton } from './LoadingSpinner';
@@ -122,6 +123,16 @@ const Icons = {
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6" />
 		</svg>
 	),
+	Folder: () => (
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+		</svg>
+	),
+	File: () => (
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+		</svg>
+	),
 	Search: () => (
 		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -155,6 +166,63 @@ const Icons = {
 		</svg>
 	),
 };
+
+const countWikiFiles = (nodes: WikiTreeNode[]): number => {
+	let count = 0;
+	for (const node of nodes) {
+		if (node.type === 'file' && node.name.endsWith('.md')) {
+			count++;
+		}
+		if (node.children) {
+			count += countWikiFiles(node.children);
+		}
+	}
+	return count;
+};
+
+const WikiTreeItem = memo(function WikiTreeItem({ node }: { node: WikiTreeNode }) {
+	const [isExpanded, setIsExpanded] = useState(false);
+
+	if (node.type === 'directory') {
+		return (
+			<div>
+				<button
+					onClick={() => setIsExpanded(!isExpanded)}
+					className="flex items-center space-x-2 w-full px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200"
+				>
+					<span className="text-gray-400 dark:text-gray-500">
+						{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+					</span>
+					<span className="text-gray-400 dark:text-gray-500"><Icons.Folder /></span>
+					<span className="truncate">{node.name}</span>
+				</button>
+				{isExpanded && node.children && (
+					<div className="ml-4 space-y-1">
+						{node.children.map((child) => (
+							<WikiTreeItem key={child.path} node={child} />
+						))}
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	return (
+		<NavLink
+			to={`/wiki/${encodeURIComponent(node.path)}`}
+			className={({ isActive }) =>
+				`flex items-center space-x-3 px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 ${
+					isActive
+						? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+						: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+				}`
+			}
+		>
+			<span className="text-gray-400 dark:text-gray-500"><Icons.File /></span>
+			<span className="truncate">{node.name.replace(/\.md$/i, '')}</span>
+		</NavLink>
+	);
+});
 
 interface SideNavigationProps {
 	tasks: Task[];
@@ -199,6 +267,15 @@ const SideNavigation = memo(function SideNavigation({
 		// Auto-collapse if more than 6 decisions
 		return decisions.length > 6;
 	});
+	const [isWikiCollapsed, setIsWikiCollapsed] = useState(() => {
+		const saved = localStorage.getItem('wikiCollapsed');
+		if (saved !== null) {
+			return JSON.parse(saved);
+		}
+		return false;
+	});
+	const [wikiTree, setWikiTree] = useState<WikiTreeNode[]>([]);
+	const [wikiTreeLoading, setWikiTreeLoading] = useState(false);
 	const [version, setVersion] = useState<string>('');
 	const location = useLocation();
 	const navigate = useNavigate();
@@ -231,6 +308,32 @@ const SideNavigation = memo(function SideNavigation({
 		localStorage.setItem('decisionsCollapsed', JSON.stringify(isDecisionsCollapsed));
 	}, [isDecisionsCollapsed]);
 
+	// Save wiki collapse state to localStorage
+	useEffect(() => {
+		localStorage.setItem('wikiCollapsed', JSON.stringify(isWikiCollapsed));
+	}, [isWikiCollapsed]);
+
+	// Fetch wiki tree on mount
+	useEffect(() => {
+		const loadWikiTree = async () => {
+			try {
+				setWikiTreeLoading(true);
+				const tree = await apiClient.fetchWikiTree();
+				setWikiTree(tree);
+				// Auto-collapse if more than 6 top-level items and no saved preference
+				const savedWikiCollapsed = localStorage.getItem('wikiCollapsed');
+				if (savedWikiCollapsed === null && tree.length > 6) {
+					setIsWikiCollapsed(true);
+				}
+			} catch (err) {
+				console.error('Failed to fetch wiki tree:', err);
+			} finally {
+				setWikiTreeLoading(false);
+			}
+		};
+		loadWikiTree();
+	}, []);
+
 	// Auto-collapse when data loads/changes if no saved preference exists
 	useEffect(() => {
 		const savedDocsCollapsed = localStorage.getItem('docsCollapsed');
@@ -245,6 +348,13 @@ const SideNavigation = memo(function SideNavigation({
 			setIsDecisionsCollapsed(true);
 		}
 	}, [decisions.length]);
+
+	useEffect(() => {
+		const savedWikiCollapsed = localStorage.getItem('wikiCollapsed');
+		if (savedWikiCollapsed === null && wikiTree.length > 6) {
+			setIsWikiCollapsed(true);
+		}
+	}, [wikiTree.length]);
 
 	// Add keyboard shortcut for search
 	useEffect(() => {
@@ -698,6 +808,41 @@ const SideNavigation = memo(function SideNavigation({
 								</div>
 							)}
 						</div>
+
+						{/* Divider between Decisions and Wiki */}
+						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
+
+						{/* Wiki Section */}
+						<div className="px-4 py-4">
+							<div className="flex items-center justify-between mb-4">
+								<div className="flex items-center space-x-3">
+									<button
+										onClick={() => setIsWikiCollapsed(!isWikiCollapsed)}
+										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
+										title={isWikiCollapsed ? 'Expand wiki' : 'Collapse wiki'}
+									>
+										{isWikiCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
+									</button>
+									<span className="text-gray-500 dark:text-gray-400"><Icons.DocumentBook /></span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Wiki ({countWikiFiles(wikiTree)})</span>
+								</div>
+							</div>
+
+							{/* Wiki Tree */}
+							{!isWikiCollapsed && (
+								<div className="space-y-1">
+									{wikiTreeLoading ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+									) : wikiTree.length === 0 ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No wiki pages</p>
+									) : (
+										wikiTree.map((node) => (
+											<WikiTreeItem key={node.path} node={node} />
+										))
+									)}
+								</div>
+							)}
+						</div>
 					</>
 				)}
 
@@ -818,6 +963,23 @@ const SideNavigation = memo(function SideNavigation({
 						>
 							<div className="w-6 h-6 flex items-center justify-center">
 								<Icons.Decision />
+							</div>
+						</button>
+						<button
+							onClick={() => {
+								setIsCollapsed(false);
+								setIsWikiCollapsed(false);
+							}}
+								data-tooltip-id="sidebar-tooltip"
+								data-tooltip-content="Wiki"
+								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
+									location.pathname.startsWith('/wiki')
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+								}`}
+						>
+							<div className="w-6 h-6 flex items-center justify-center">
+								<Icons.DocumentBook />
 							</div>
 						</button>
 					</div>

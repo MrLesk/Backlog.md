@@ -1,11 +1,20 @@
-import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
+import { parseDecision, parseDocument, parseMarkdown, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import type {
+	BacklogConfig,
+	Decision,
+	Document,
+	Milestone,
+	Task,
+	TaskListFilter,
+	WikiPage,
+	WikiTreeNode,
+} from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
@@ -1672,6 +1681,60 @@ ${description || `Milestone: ${title}`}`,
 			lineEnd: end,
 			totalLines,
 			isMarkdown,
+		};
+	}
+
+	async getWikiTree(): Promise<WikiTreeNode[]> {
+		const wikiRoot = join(this.resolvedBacklogDir, "wiki");
+		return this.buildWikiTreeRecursive(wikiRoot, "");
+	}
+
+	private async buildWikiTreeRecursive(dirPath: string, relPath: string): Promise<WikiTreeNode[]> {
+		const entries = await readdir(dirPath, { withFileTypes: true });
+		const nodes: WikiTreeNode[] = [];
+		for (const entry of entries) {
+			const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				if (entry.name === "wiki_output") continue;
+				const children = await this.buildWikiTreeRecursive(join(dirPath, entry.name), entryRelPath);
+				nodes.push({ name: entry.name, path: entryRelPath, type: "directory", children });
+			} else if (entry.isFile() && entry.name.endsWith(".md")) {
+				nodes.push({ name: entry.name, path: entryRelPath, type: "file" });
+			}
+		}
+		return nodes;
+	}
+
+	async readWikiPage(pagePath: string): Promise<WikiPage> {
+		const normalizedPath = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const filePath = resolve(join(wikiRoot, normalizedPath));
+
+		// Robust containment check
+		const rel = relative(wikiRoot, filePath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Page not found");
+		}
+
+		let fileStats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
+		try {
+			fileStats = await stat(filePath);
+		} catch {
+			throw new Error("Page not found");
+		}
+		if (fileStats.isDirectory()) {
+			throw new Error("Page not found");
+		}
+
+		const file = Bun.file(filePath);
+		const content = await file.text();
+		const parsed = parseMarkdown(content);
+
+		return {
+			content: parsed.content,
+			frontmatter: parsed.frontmatter,
+			path: normalizedPath,
 		};
 	}
 

@@ -957,4 +957,35 @@ Invalid content`,
 			await expect(filesystem.readProjectFile("big.txt")).rejects.toThrow("File too large");
 		});
 	});
+
+	describe("wiki operations", () => {
+		beforeEach(async () => {
+			const wikiDir = join(TEST_DIR, "backlog", "wiki");
+			await mkdir(join(wikiDir, "guides"), { recursive: true });
+			await Bun.write(join(wikiDir, "index.md"), "---\ntitle: Index\n---\n# Welcome");
+			await Bun.write(join(wikiDir, "guides", "setup.md"), "---\ntitle: Setup\n---\n# Setup Guide");
+		});
+
+		it("builds wiki tree", async () => {
+			const tree = await filesystem.getWikiTree();
+			const names = tree.map((n) => n.name).sort();
+			expect(names).toContain("guides");
+			expect(names).toContain("index.md");
+
+			const guidesDir = tree.find((n) => n.name === "guides" && n.type === "directory");
+			expect(guidesDir).toBeDefined();
+			expect(guidesDir?.children?.some((c) => c.name === "setup.md")).toBe(true);
+		});
+
+		it("reads a wiki page", async () => {
+			const page = await filesystem.readWikiPage("guides/setup");
+			expect(page.path).toBe("guides/setup.md");
+			expect(page.content).toContain("# Setup Guide");
+			expect(page.frontmatter.title).toBe("Setup");
+		});
+
+		it("rejects wiki page traversal", async () => {
+			await expect(filesystem.readWikiPage("../secret")).rejects.toThrow("Page not found");
+		});
+	});
 });
