@@ -11,6 +11,7 @@ import { type CompletionInstallResult, installCompletion, registerCompletionComm
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
+import { formatInstallResult, installWikiSkill } from "./commands/wiki-install.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -3344,6 +3345,30 @@ const configCmd = program
 		} catch (err) {
 			console.error("Failed to update configuration", err);
 			process.exitCode = 1;
+		}
+	});
+
+// Wiki command group
+const wikiCmd = program.command("wiki");
+
+wikiCmd
+	.description("manage backlog wiki skills")
+	.command("install <agent>")
+	.description("install the llm-wiki-for-backlog skill into the specified agent's skills directory")
+	.option("--force", "overwrite existing skill or replace existing directory with symlink")
+	.option("--dry-run", "preview operations without writing")
+	.action(async (agent: string, options: { force?: boolean; dryRun?: boolean }) => {
+		try {
+			const cwd = await requireProjectRoot();
+			const result = await installWikiSkill(cwd, agent, {
+				force: options.force,
+				dryRun: options.dryRun,
+			});
+			console.log(formatInstallResult(result, !!options.dryRun));
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`Error: ${message}`);
+			process.exit(1);
 		}
 	});
 
