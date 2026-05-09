@@ -559,6 +559,59 @@ export class ApiClient {
 		}>(`${API_BASE}/file-content?path=${encodeURIComponent(path)}`);
 	}
 
+	async uploadTempAsset(file: File): Promise<{ url: string }> {
+		const formData = new FormData();
+		formData.append("file", file);
+		const response = await fetch(`${API_BASE}/upload?temp=1`, {
+			method: "POST",
+			body: formData,
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to upload asset");
+		}
+		return response.json();
+	}
+
+	async uploadTempAssetFromUrl(imageUrl: string): Promise<{ url: string }> {
+		const response = await fetch(`${API_BASE}/upload?temp=1`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ url: imageUrl }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to upload asset from URL");
+		}
+		return response.json();
+	}
+
+	async uploadTempAssetFromDataUri(dataUri: string): Promise<{ url: string }> {
+		const response = await fetch(`${API_BASE}/upload?temp=1`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ dataUri }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to upload asset from data URI");
+		}
+		return response.json();
+	}
+
+	async promoteAssets(urls: string[]): Promise<Record<string, string>> {
+		const response = await fetch(`${API_BASE}/assets/promote`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ urls }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to promote assets");
+		}
+		return response.json();
+	}
+
 	async initializeProject(options: {
 		projectName: string;
 		backlogDirectory?: string;

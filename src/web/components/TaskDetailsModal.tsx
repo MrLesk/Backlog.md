@@ -3,7 +3,7 @@ import type { AcceptanceCriterion, Milestone, Task, TaskComment } from "../../ty
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
-import MDEditor from "@uiw/react-md-editor";
+import { PasteAwareMDEditor } from "./PasteAwareMDEditor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
 import FilePreviewModal from "./FilePreviewModal";
@@ -460,6 +460,19 @@ export const TaskDetailsModal: React.FC<Props> = ({
     return payload;
   };
 
+  const extractTempImageUrls = (text: string): string[] => {
+    const matches = text.match(/\/assets\/\.temp\/[^)\s\\"']+/g);
+    return matches ? [...new Set(matches)] : [];
+  };
+
+  const replaceTempImageUrls = (text: string, mapping: Record<string, string>): string => {
+    let result = text;
+    for (const [oldUrl, newUrl] of Object.entries(mapping)) {
+      result = result.replaceAll(oldUrl, newUrl);
+    }
+    return result;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -472,12 +485,37 @@ export const TaskDetailsModal: React.FC<Props> = ({
     }
 
     try {
+      // Promote temporary pasted images before saving.
+      let saveDescription = description;
+      let savePlan = plan;
+      let saveNotes = notes;
+      let saveFinalSummary = finalSummary;
+
+      const tempUrls = [
+        ...extractTempImageUrls(description),
+        ...extractTempImageUrls(plan),
+        ...extractTempImageUrls(notes),
+        ...extractTempImageUrls(finalSummary),
+      ];
+      const uniqueTempUrls = [...new Set(tempUrls)];
+      if (uniqueTempUrls.length > 0) {
+        const mapping = await apiClient.promoteAssets(uniqueTempUrls);
+        saveDescription = replaceTempImageUrls(saveDescription, mapping);
+        savePlan = replaceTempImageUrls(savePlan, mapping);
+        saveNotes = replaceTempImageUrls(saveNotes, mapping);
+        saveFinalSummary = replaceTempImageUrls(saveFinalSummary, mapping);
+        setDescription(saveDescription);
+        setPlan(savePlan);
+        setNotes(saveNotes);
+        setFinalSummary(saveFinalSummary);
+      }
+
       const taskData: TaskUpdatePayload = {
         title: title.trim(),
-        description,
-        implementationPlan: plan,
-        implementationNotes: notes,
-        finalSummary,
+        description: saveDescription,
+        implementationPlan: savePlan,
+        implementationNotes: saveNotes,
+        finalSummary: saveFinalSummary,
         acceptanceCriteriaItems: criteria,
         status,
         assignee,
@@ -752,7 +790,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               )
             ) : (
               <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
+                <PasteAwareMDEditor
                   value={description}
                   onChange={(val) => setDescription(val || "")}
                   preview="edit"
@@ -955,7 +993,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               )
             ) : (
               <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
+                <PasteAwareMDEditor
                   value={plan}
                   onChange={(val) => setPlan(val || "")}
                   preview="edit"
@@ -979,7 +1017,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               )
             ) : (
               <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
+                <PasteAwareMDEditor
                   value={notes}
                   onChange={(val) => setNotes(val || "")}
                   preview="edit"
@@ -1053,7 +1091,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 </div>
               ) : (
                 <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                  <MDEditor
+                  <PasteAwareMDEditor
                     value={finalSummary}
                     onChange={(val) => setFinalSummary(val || "")}
                     preview="edit"

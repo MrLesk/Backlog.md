@@ -1,7 +1,7 @@
 import {useState, useEffect, memo, useCallback} from 'react';
 import {useParams, useNavigate, useSearchParams} from 'react-router-dom';
 import {apiClient} from '../lib/api';
-import MDEditor from '@uiw/react-md-editor';
+import { PasteAwareMDEditor } from './PasteAwareMDEditor';
 import MermaidMarkdown from './MermaidMarkdown';
 import {type Document} from '../../types';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -36,7 +36,7 @@ const MarkdownEditor = memo(function MarkdownEditor({
     return (
         <div className="h-full w-full flex flex-col">
             <div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800">
-                <MDEditor
+                <PasteAwareMDEditor
                     value={value}
                     onChange={onChange}
                     preview="edit"
@@ -166,6 +166,19 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
         }
     }, [id, docs]);
 
+    const extractTempImageUrls = (text: string): string[] => {
+        const matches = text.match(/\/assets\/\.temp\/[^)\s\\"']+/g);
+        return matches ? [...new Set(matches)] : [];
+    };
+
+    const replaceTempImageUrls = (text: string, mapping: Record<string, string>): string => {
+        let result = text;
+        for (const [oldUrl, newUrl] of Object.entries(mapping)) {
+            result = result.replaceAll(oldUrl, newUrl);
+        }
+        return result;
+    };
+
     const handleSave = useCallback(async () => {
         if (!docTitle.trim()) {
             setSaveError(new Error('Document title is required'));
@@ -178,9 +191,18 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             const normalizedTitle = docTitle.trim();
             const normalizedPath = docPath.trim();
 
+            // Promote temporary pasted images before saving.
+            let saveContent = content;
+            const tempUrls = extractTempImageUrls(content);
+            if (tempUrls.length > 0) {
+                const mapping = await apiClient.promoteAssets(tempUrls);
+                saveContent = replaceTempImageUrls(saveContent, mapping);
+                setContent(saveContent);
+            }
+
             if (isNewDocument) {
                 // Create new document
-                const result = await apiClient.createDoc(normalizedTitle, content, normalizedPath);
+                const result = await apiClient.createDoc(normalizedTitle, saveContent, normalizedPath);
                 // Refresh data and navigate to the new document
                 await onRefreshData();
                 // Show success toast
@@ -207,7 +229,7 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                 // Pass title only if it has changed
                 const updatedDocument = await apiClient.updateDoc(
                     addDocPrefix(id),
-                    content,
+                    saveContent,
                     titleChanged ? normalizedTitle : undefined,
                     pathChanged ? normalizedPath : undefined
                 );
