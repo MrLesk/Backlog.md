@@ -1844,7 +1844,7 @@ taskCmd
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
-	.option("--sort <field>", "sort tasks by field (priority, id)")
+	.option("--sort <field>", "sort tasks by field (priority, id, ordinal)")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
@@ -1883,10 +1883,10 @@ taskCmd
 		}
 
 		if (options.sort) {
-			const validSortFields = ["priority", "id"];
+			const validSortFields = ["priority", "id", "ordinal"];
 			const sortField = options.sort.toLowerCase();
 			if (!validSortFields.includes(sortField)) {
-				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id, ordinal`);
 				process.exitCode = 1;
 				cleanup();
 				return;
@@ -1912,10 +1912,10 @@ taskCmd
 
 			let sortedTasks = tasks;
 			if (options.sort) {
-				const validSortFields = ["priority", "id"];
+				const validSortFields = ["priority", "id", "ordinal"];
 				const sortField = options.sort.toLowerCase();
 				if (!validSortFields.includes(sortField)) {
-					console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+					console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id, ordinal`);
 					process.exitCode = 1;
 					cleanup();
 					return;
@@ -2066,10 +2066,10 @@ taskCmd
 
 				let sortedTasks = tasks;
 				if (options.sort) {
-					const validSortFields = ["priority", "id"];
+					const validSortFields = ["priority", "id", "ordinal"];
 					const sortField = options.sort.toLowerCase();
 					if (!validSortFields.includes(sortField)) {
-						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: priority, id, ordinal`);
 					}
 					sortedTasks = sortTasks(tasks, sortField);
 				} else {
@@ -2593,7 +2593,7 @@ const draftCmd = program.command("draft");
 draftCmd
 	.command("list")
 	.description("list all drafts")
-	.option("--sort <field>", "sort drafts by field (priority, id)")
+	.option("--sort <field>", "sort drafts by field (priority, id, ordinal)")
 	.option("--plain", "use plain text output")
 	.action(async (options: { plain?: boolean; sort?: string }) => {
 		const cwd = await requireProjectRoot();
@@ -2611,10 +2611,10 @@ draftCmd
 		let sortedDrafts = drafts;
 
 		if (options.sort) {
-			const validSortFields = ["priority", "id"];
+			const validSortFields = ["priority", "id", "ordinal"];
 			const sortField = options.sort.toLowerCase();
 			if (!validSortFields.includes(sortField)) {
-				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id, ordinal`);
 				process.exitCode = 1;
 				return;
 			}
