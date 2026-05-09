@@ -348,6 +348,18 @@ export class BacklogServer {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
 					},
+					"/api/wiki/tree": {
+						GET: async () => await this.handleGetWikiTree(),
+					},
+					"/api/wiki/*": {
+						GET: async (req: Request) => {
+							const url = new URL(req.url);
+							const pathname = decodeURIComponent(url.pathname || "");
+							const prefix = "/api/wiki/";
+							const path = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
+							return await this.handleGetWikiPage(path);
+						},
+					},
 					"/api/decisions": {
 						GET: async () => await this.handleListDecisions(),
 						POST: async (req: Request) => await this.handleCreateDecision(req),
@@ -1060,6 +1072,30 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error loading document:", error);
 			return Response.json({ error: "Document not found" }, { status: 404 });
+		}
+	}
+
+	private async handleGetWikiTree(): Promise<Response> {
+		try {
+			const tree = await this.core.filesystem.getWikiTree();
+			return Response.json(tree);
+		} catch (error) {
+			console.error("Error building wiki tree:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleGetWikiPage(pagePath: string): Promise<Response> {
+		try {
+			const page = await this.core.filesystem.readWikiPage(pagePath);
+			return Response.json(page);
+		} catch (error) {
+			console.error("Error loading wiki page:", error);
+			const message = error instanceof Error ? error.message : "Page not found";
+			if (message === "Page not found") {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 

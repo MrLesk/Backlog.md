@@ -9,6 +9,8 @@ import type {
 	SearchResultType,
 	Task,
 	TaskStatus,
+	WikiPage,
+	WikiTreeNode,
 } from "../../types/index.ts";
 
 const API_BASE = "/api";
@@ -527,6 +529,22 @@ export class ApiClient {
 		return this.fetchJson<
 			TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
 		>(`${API_BASE}/statistics`);
+	}
+
+	async fetchWikiTree(): Promise<WikiTreeNode[]> {
+		const response = await fetch(`${API_BASE}/wiki/tree`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch wiki tree");
+		}
+		return response.json();
+	}
+
+	async fetchWikiPage(path: string): Promise<WikiPage> {
+		const response = await fetch(`${API_BASE}/wiki/${encodeURIComponent(path)}`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch wiki page");
+		}
+		return response.json();
 	}
 
 	async checkStatus(): Promise<InitializationStatus> {

@@ -334,3 +334,16 @@ export interface ParsedMarkdown {
 	frontmatter: Record<string, unknown>;
 	content: string;
 }
+
+export interface WikiTreeNode {
+	name: string;
+	path: string;
+	type: "file" | "directory";
+	children?: WikiTreeNode[];
+}
+
+export interface WikiPage {
+	content: string;
+	frontmatter: Record<string, unknown>;
+	path: string;
+}
