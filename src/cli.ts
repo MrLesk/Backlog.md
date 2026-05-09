@@ -170,6 +170,8 @@ const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
 
 const DOCUMENT_SEARCH_QUERY_MAX_LENGTH = 200;
 const DOCUMENT_SEARCH_LIMIT_MAX = 100;
+const TASK_SORT_FIELDS = ["priority", "id", "ordinal"];
+const TASK_SORT_FIELD_LIST = TASK_SORT_FIELDS.join(", ");
 
 async function openUrlInBrowser(url: string): Promise<void> {
 	let cmd: string[];
@@ -2029,7 +2031,7 @@ addHelpSchema(taskCmd.command("list"), {
 		},
 		{ name: "search", type: "String", description: "Search task title, description, notes, comments, and metadata" },
 		{ name: "limit", type: "Positive integer", description: "Maximum tasks to display after sorting" },
-		{ name: "sort", type: choiceType(["priority", "id"]), description: "Task ordering before applying limit" },
+		{ name: "sort", type: choiceType(TASK_SORT_FIELDS), description: "Task ordering before applying limit" },
 	],
 	output: "Interactive task list or plain text with --plain",
 	examples: [
@@ -2052,7 +2054,7 @@ addHelpSchema(taskCmd.command("list"), {
 	)
 	.option("--search <query>", "search task title, description, notes, comments, and metadata")
 	.option("--limit <number>", "limit tasks displayed after sorting")
-	.option("--sort <field>", "sort tasks by field (priority, id)")
+	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST})`)
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
@@ -2112,10 +2114,9 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		if (options.sort) {
-			const validSortFields = ["priority", "id"];
 			const sortField = options.sort.toLowerCase();
-			if (!validSortFields.includes(sortField)) {
-				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+			if (!TASK_SORT_FIELDS.includes(sortField)) {
+				console.error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
 				process.exitCode = 1;
 				cleanup();
 				return;
@@ -2145,10 +2146,9 @@ addHelpSchema(taskCmd.command("list"), {
 
 			let sortedTasks = tasks;
 			if (options.sort) {
-				const validSortFields = ["priority", "id"];
 				const sortField = options.sort.toLowerCase();
-				if (!validSortFields.includes(sortField)) {
-					console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+				if (!TASK_SORT_FIELDS.includes(sortField)) {
+					console.error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
 					process.exitCode = 1;
 					cleanup();
 					return;
@@ -2317,10 +2317,9 @@ addHelpSchema(taskCmd.command("list"), {
 
 				let sortedTasks = tasks;
 				if (options.sort) {
-					const validSortFields = ["priority", "id"];
 					const sortField = options.sort.toLowerCase();
-					if (!validSortFields.includes(sortField)) {
-						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+					if (!TASK_SORT_FIELDS.includes(sortField)) {
+						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
 					}
 					sortedTasks = sortTasks(tasks, sortField);
 				} else {
@@ -3026,7 +3025,7 @@ const draftCmd = program.command("draft");
 draftCmd
 	.command("list")
 	.description("list all drafts")
-	.option("--sort <field>", "sort drafts by field (priority, id)")
+	.option("--sort <field>", `sort drafts by field (${TASK_SORT_FIELD_LIST})`)
 	.option("--plain", "use plain text output")
 	.action(async (options: { plain?: boolean; sort?: string }) => {
 		const cwd = await requireProjectRoot();
@@ -3044,10 +3043,9 @@ draftCmd
 		let sortedDrafts = drafts;
 
 		if (options.sort) {
-			const validSortFields = ["priority", "id"];
 			const sortField = options.sort.toLowerCase();
-			if (!validSortFields.includes(sortField)) {
-				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+			if (!TASK_SORT_FIELDS.includes(sortField)) {
+				console.error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
 				process.exitCode = 1;
 				return;
 			}

@@ -76,7 +76,7 @@ describe("CLI Priority Filtering", () => {
 		const result = await $`bun run cli task list --sort invalid --plain`.nothrow().quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid sort field: invalid");
-		expect(result.stderr.toString()).toContain("Valid values are: priority, id");
+		expect(result.stderr.toString()).toContain("Valid values are: priority, id, ordinal");
 	});
 
 	test("task list combines priority filter with status filter", async () => {

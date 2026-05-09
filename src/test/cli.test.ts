@@ -275,7 +275,7 @@ describe("CLI Integration", () => {
 			expect(listHelp).toContain("labels: Comma-separated strings");
 			expect(listHelp).toContain("search: String");
 			expect(listHelp).toContain("limit: Positive integer");
-			expect(listHelp).toContain("sort: one of: priority, id");
+			expect(listHelp).toContain("sort: one of: priority, id, ordinal");
 			expect(listHelp).toContain('backlog task list --labels frontend,bug --search "login" --limit 10 --plain');
 			expect(editHelp).toContain("taskId: Task ID");
 			expect(editHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");

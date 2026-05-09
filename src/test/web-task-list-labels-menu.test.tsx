@@ -135,6 +135,9 @@ const getZIndexClass = (element: Element): number | null => {
 	return value ? Number.parseInt(value, 10) : null;
 };
 
+const getRenderedTaskIds = (container: HTMLElement): string[] =>
+	Array.from(container.querySelectorAll("tbody tr td:first-child")).map((cell) => cell.textContent?.trim() ?? "");
+
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 	if (activeRoot) {
@@ -150,6 +153,34 @@ describe("TaskList labels filter menu", () => {
 		const container = renderTaskList(["/?query=docs"]);
 
 		expect(container.querySelector("input[placeholder='Search tasks']")).toBeNull();
+	});
+
+	it("renders and sorts by ordinal with task ID as the tie-breaker", async () => {
+		const container = renderTaskList(undefined, {
+			tasks: [
+				createTask({ id: "task-1", title: "No ordinal" }),
+				createTask({ id: "task-2", title: "Tied ordinal A", ordinal: 20 }),
+				createTask({ id: "task-3", title: "First ordinal", ordinal: 10 }),
+				createTask({ id: "task-4", title: "Tied ordinal B", ordinal: 20 }),
+			],
+		});
+
+		const ordinalButton = Array.from(container.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Ordinal"),
+		);
+		expect(ordinalButton).toBeTruthy();
+
+		await clickElement(ordinalButton as HTMLButtonElement);
+		await waitFor(() => getRenderedTaskIds(container)[0] === "task-3");
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-3", "task-2", "task-4", "task-1"]);
+		expect(container.querySelector("th[aria-sort='ascending']")?.textContent).toContain("Ordinal");
+
+		await clickElement(ordinalButton as HTMLButtonElement);
+		await waitFor(() => getRenderedTaskIds(container)[0] === "task-2");
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-2", "task-4", "task-3", "task-1"]);
+		expect(container.querySelector("th[aria-sort='descending']")?.textContent).toContain("Ordinal");
 	});
 
 	it("renders the labels menu above the sticky table header", async () => {
