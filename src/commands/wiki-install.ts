@@ -1,6 +1,6 @@
 import { existsSync, lstatSync } from "node:fs";
 import { mkdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import matter from "gray-matter";
 import { LLM_WIKI_FOR_BACKLOG_SKILL } from "../skills/embedded/llm-wiki-for-backlog.ts";
 
@@ -120,9 +120,10 @@ async function resolveSkillTargetDir(
 		}
 		if (stat.isSymbolicLink()) {
 			const target = await readlink(agentSkillsPath).catch(() => "");
-			const resolvedTarget = target.trim().replace(/\\/g, "/");
-			const relativeCentral = relative(dirname(agentSkillsPath), centralPath).replace(/\\/g, "/");
-			if (resolvedTarget === relativeCentral || resolvedTarget === CENTRAL_SKILLS_DIR) {
+			const resolvedTarget = resolve(dirname(agentSkillsPath), target.trim());
+			const expectedTarget = resolve(centralPath);
+			const normalizedTarget = target.trim().replace(/\\/g, "/");
+			if (resolvedTarget === expectedTarget || normalizedTarget === CENTRAL_SKILLS_DIR) {
 				return {
 					skillTargetDir: centralSkillDir,
 					symlinkCreated: false,
@@ -196,9 +197,7 @@ export async function installWikiSkill(
 
 	// Check if skill already exists
 	if (existsSync(skillTargetDir) && !force && !dryRun) {
-		throw new Error(
-			`Skill "${SKILL_NAME}" already exists at "${skillTargetDir}". Use --force to overwrite.`,
-		);
+		throw new Error(`Skill "${SKILL_NAME}" already exists at "${skillTargetDir}". Use --force to overwrite.`);
 	}
 
 	const { filesWritten, skillMeta } = await writeSkillFiles(skillTargetDir, dryRun);

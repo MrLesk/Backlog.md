@@ -122,8 +122,10 @@ describe("wiki-install", () => {
 			if (process.platform === "win32") return;
 
 			const agentsSkills = join(TEST_PROJECT, ".agents", "skills");
-			const claudeSkills = join(TEST_PROJECT, ".claude", "skills");
+			const claudeDir = join(TEST_PROJECT, ".claude");
+			const claudeSkills = join(claudeDir, "skills");
 			await mkdir(agentsSkills, { recursive: true });
+			await mkdir(claudeDir, { recursive: true });
 			await symlink("../.agents/skills", claudeSkills, "dir");
 
 			const result = await installWikiSkill(TEST_PROJECT, "claude");
