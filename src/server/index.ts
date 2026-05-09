@@ -311,6 +311,8 @@ export class BacklogServer {
 					"/documentation/*": spaIndexHtml,
 					"/decisions": spaIndexHtml,
 					"/decisions/*": spaIndexHtml,
+					"/wiki": spaIndexHtml,
+					"/wiki/*": spaIndexHtml,
 					"/statistics": spaIndexHtml,
 					"/settings": spaIndexHtml,
 
