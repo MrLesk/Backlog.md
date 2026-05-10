@@ -100,3 +100,54 @@ are found, the commit will be blocked until fixed.
 - **Committing**: Use the following format: `BACK-123 - Title of the task`
 - **PR titles**: Use `{taskId} - {taskTitle}` (e.g. `BACK-123 - Title of the task`)
 - **Github CLI**: Use `gh` whenever possible for PRs and issues
+
+<!-- WIKI GUIDELINES START -->
+
+## Wiki Knowledge Base
+
+This project maintains an LLM-managed wiki inside the backlog directory for cross-referencing and compounding knowledge from tasks, docs, and decisions.
+
+### Location
+- `backlog/wiki/` — LLM-maintained knowledge base (do not edit manually)
+- `backlog/wiki_output/` — Query products and generated artifacts
+
+### Raw Sources (Human Input Layer)
+The LLM reads from the following backlog folders as raw input. These are immutable for wiki purposes:
+- `tasks/` — Requirements, acceptance criteria, implementation notes
+- `docs/` — Documentation, guides, API references
+- `decisions/` — ADRs, design choices, rationale
+- `drafts/` — Draft ideas, brainstorming notes
+- `milestones/` — Milestone definitions, roadmap items
+- `archive/` — Archived tasks and records
+- `completed/` — Completed task records with final summaries
+- `assets/` — Images, diagrams, attachments
+- `src/` (or other project source directories) — Project source code, implementation files (optional, when backlog is inside a project repo)
+
+### Wiki Structure (LLM-Maintained Layer)
+- `wiki/index.md` — Content catalog; read this FIRST on any operation
+- `wiki/log.md` — Append-only chronological log (`## [YYYY-MM-DD HH:mm:ss] {op} | {title}`). The detailed timestamp enables git-aware incremental ingestion.
+- `wiki/overview.md` — High-level synthesis of the entire knowledge base
+- `wiki/sources/` — One summary per backlog source
+- `wiki/concepts/` — Extracted concept articles
+- `wiki/entities/` — People, tools, projects, organizations
+- `wiki/comparisons/` — Cross-cutting analyses
+- `wiki/usermanual/` — Structured user manual (SUMMARY.md-based, mergeable into `manual.md`)
+
+### Rules
+- **NEVER** write to `tasks/`, `docs/`, `decisions/`, or other backlog source folders during wiki operations
+- **NEVER** recursively ingest `wiki/` or `wiki_output/`
+- Use `[[wikilinks]]` for all cross-references within the wiki
+  - **CRITICAL:** In `index.md` tables, use `[[path/to/file]]` (without `.md`) as the cell value, not standard Markdown links like `[text](path.md)`
+  - Example: `| [[sources/task-1-feature]] | Task | Description |` — NOT `| [task-1](sources/task-1.md) | Task | Description |`
+- Append-only for `wiki/log.md`
+- YAML frontmatter on every wiki page: `type`, `title`, `updated`
+- Filenames: lowercase-with-hyphens
+
+### Operations
+- **Ingest** — Read backlog sources, extract concepts/entities, create source summaries, update index/overview/log
+  - **Git-aware incremental ingestion**: If the project is a git repo, use `git status --porcelain` and `git log --since="{last_ingest}"` to detect changed files since the last ingestion. Skip files that were already ingested and have not changed. Fall back to full scan if git is unavailable.
+- **Query** — Read index, synthesize from compiled wiki, produce chat responses / reports / slides / charts
+- **Lint** — Scan for contradictions, orphans, stale claims, missing cross-references
+- **Flowback** — Save valuable query results back into the wiki for compounding
+
+<!-- WIKI GUIDELINES END -->

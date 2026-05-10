@@ -851,12 +851,39 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 ## Conventions
 
 ### Essential Rules
-- **\`[[Wikilinks]]\`** for ALL cross-references
+- **\`[[Wikilinks]]\`** for ALL cross-references within the wiki — including \`index.md\` tables
 - **YAML frontmatter** on every page: \`type\`, \`title\`, \`updated\` at minimum
 - **Backlog source folders are immutable** — the LLM never writes to \`tasks/\`, \`docs/\`, \`decisions/\`, etc.
 - **Filenames:** lowercase-with-hyphens
 - **Exclude \`wiki/\` and \`wiki_output/\` from ingestion** — absolute rule to prevent recursion
 - **The wiki is part of the git repo** — commit after significant operations
+
+#### Wikilink Format (CRITICAL)
+
+**Always** use \`[[path/to/file]]\` (without \`.md\` extension) for links between wiki pages. This is the only format that works consistently across Obsidian, GitLab, and other wikilink-aware tools.
+
+**In \`index.md\` tables, use wikilinks in the first column:**
+
+\`\`\`markdown
+| File | Title | Type | Desc |
+|------|-------|------|------|
+| [[sources/task-1-offline-encryption]] | TASK-1: Offline Encryption | Epic | Offline local encryption mechanism |
+| [[concepts/keyvault]] | KeyVault | Concept | Core encryption key management |
+\`\`\`
+
+**❌ NEVER use standard Markdown links for internal wiki pages:**
+\`\`\`markdown
+| Source | Type | Summary |
+|--------|------|---------|
+| [source-security-module](sources/source-security-module.md) | source | Security module summary |
+\`\`\`
+
+**✅ ALWAYS use wikilinks:**
+\`\`\`markdown
+| Source | Type | Summary |
+|--------|------|---------|
+| [[sources/source-security-module]] | source | Security module summary |
+\`\`\`
 
 ---
 
@@ -929,6 +956,8 @@ Key behaviors:
 - **NEVER** write to \`tasks/\`, \`docs/\`, \`decisions/\`, or other backlog source folders during wiki operations
 - **NEVER** recursively ingest \`wiki/\` or \`wiki_output/\`
 - Use \`[[wikilinks]]\` for all cross-references within the wiki
+  - **CRITICAL:** In \`index.md\` tables, use \`[[path/to/file]]\` (without \`.md\`) as the cell value, not standard Markdown links like \`[text](path.md)\`
+  - Example: \`| [[sources/task-1-feature]] | Task | Description |\` — NOT \`| [task-1](sources/task-1.md) | Task | Description |\`
 - Append-only for \`wiki/log.md\`
 - YAML frontmatter on every wiki page: \`type\`, \`title\`, \`updated\`
 - Filenames: lowercase-with-hyphens
