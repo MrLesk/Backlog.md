@@ -49,7 +49,8 @@
     "react-tooltip": "5.30.1",
     "tailwindcss": "4.2.2",
     "turndown": "7.2.4",
-    "turndown-plugin-gfm": "1.0.2"
+    "turndown-plugin-gfm": "1.0.2",
+    "mammoth": "1.12.0"
   },
   "scripts": {
     "test": "bun test",

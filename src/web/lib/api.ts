@@ -599,6 +599,22 @@ export class ApiClient {
 		return response.json();
 	}
 
+	async convertDocx(
+		file: File,
+	): Promise<{ html: string; images: { tempUrl: string; alt: string }[]; messages: string[] }> {
+		const formData = new FormData();
+		formData.append("file", file);
+		const response = await fetch(`${API_BASE}/docx/convert`, {
+			method: "POST",
+			body: formData,
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to convert Word document");
+		}
+		return response.json();
+	}
+
 	async promoteAssets(urls: string[]): Promise<Record<string, string>> {
 		const response = await fetch(`${API_BASE}/assets/promote`, {
 			method: "POST",

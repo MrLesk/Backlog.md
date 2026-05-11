@@ -24,113 +24,17 @@ turndownService.addRule("keepBr", {
 });
 
 /**
- * Convert rich-text HTML on the clipboard to Markdown.
+ * Clean and normalise HTML (especially from Word / docx sources) so that
+ * Turndown produces clean Markdown.
  *
- * @returns the Markdown string when conversion succeeded and differs from
- *          plain text; `null` when there is no rich-text benefit.
+ * Handles:
+ * - Word mso-list paragraphs → <ul><li>
+ * - Inline style → semantic tag conversion (bold, italic, underline)
+ * - Table cell flattening (unwraps <p>, <div> inside <td>/<th>)
+ * - First table row promoted to <th> for GFM table support
+ * - Removal of noise tags, classes, and empty elements
  */
-export type ImageUploader = (source: Blob | string) => Promise<string | null>;
-
-export async function handlePasteAsMarkdown(
-	e: React.ClipboardEvent<HTMLTextAreaElement>,
-	uploadImage?: ImageUploader,
-): Promise<string | null> {
-	const html = e.clipboardData.getData("text/html");
-	const plainText = e.clipboardData.getData("text/plain");
-
-	// No HTML on the clipboard → no rich-text benefit.
-	if (!html || html.trim().length === 0) {
-		return null;
-	}
-
-	const cleanedHtml = cleanHtml(html);
-	if (!cleanedHtml || cleanedHtml.trim().length === 0) {
-		return null;
-	}
-
-	let processedHtml = cleanedHtml;
-
-	// Process images in the HTML before converting to Markdown.
-	if (uploadImage) {
-		const parser = new DOMParser();
-		const doc = parser.parseFromString(cleanedHtml, "text/html");
-		const images = Array.from(doc.querySelectorAll("img"));
-		if (images.length > 0) {
-			await Promise.all(
-				images.map(async (img) => {
-					const src = img.getAttribute("src") || "";
-					if (!src) {
-						img.remove();
-						return;
-					}
-					// Reject file:// and relative paths that aren't data URIs or HTTP(S)
-					if (!src.startsWith("data:") && !src.startsWith("http://") && !src.startsWith("https://")) {
-						img.remove();
-						return;
-					}
-					try {
-						const newUrl = await uploadImage(src);
-						if (newUrl) {
-							img.setAttribute("src", newUrl);
-						} else {
-							img.remove();
-						}
-					} catch {
-						img.remove();
-					}
-				}),
-			);
-			processedHtml = doc.body.innerHTML.trim();
-		}
-	}
-
-	let markdown: string;
-	try {
-		markdown = turndownService.turndown(processedHtml);
-	} catch {
-		return null;
-	}
-
-	// Move whitespace that sits *inside* bold/italic markers to the
-	// outside so the markers hug the actual text.
-	// "**  text **"  → " **text** "
-	// "**text **"    → "**text** "
-	// "** text**"    → " **text**"
-	let prev: string;
-	do {
-		prev = markdown;
-		markdown = markdown.replace(/\*\*(\s*)([^\n]*?)(\s*)\*\*/g, "$1**$2**$3");
-	} while (markdown !== prev);
-
-	// Same for italic (single asterisk) — be careful not to touch list bullets.
-	// We only match when both opening and closing * are present around content.
-	do {
-		prev = markdown;
-		markdown = markdown.replace(/(?<!\*)\*(\s*)([^\s*][^\n]*?[^\s*])(\s*)\*(?!\*)/g, "$1*$2*$3");
-	} while (markdown !== prev);
-
-	// Ensure a space after bold/italic closers when they touch plain text.
-	// "**text**word" → "**text** word"
-	// "*text*word"   → "*text* word"
-	markdown = markdown.replace(/\*\*([^\s][^\n]*?)\*\*([^\s*<|\n\r])/g, "**$1** $2");
-	markdown = markdown.replace(/(?<!\*)\*([^\s*][^\n]*?)\*([^\s*<|\n\r])(?!\*)/g, "*$1* $2");
-
-	// Ensure ordered-list markers are followed by a space so parsers recognise
-	// them correctly (e.g. Word sometimes produces "1.•item").
-	markdown = markdown.replace(/(^|\s)(\d+\.)([^\s\d])/g, "$1$2 $3");
-
-	// If the converted Markdown is structurally identical to the plain-text
-	// version there is no rich-text benefit; fall back to the native paste.
-	const normalizedMd = markdown.trim().replace(/\s+/g, " ");
-	const normalizedPlain = plainText.trim().replace(/\s+/g, " ");
-	if (normalizedMd === normalizedPlain) {
-		return null;
-	}
-
-	return markdown;
-}
-
-function cleanHtml(html: string): string {
+export async function cleanHtml(html: string, options?: { keepMedia?: boolean }): Promise<string> {
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(html, "text/html");
 
@@ -142,14 +46,11 @@ function cleanHtml(html: string): string {
 	}
 
 	// Word encodes bullet lists as <p style="mso-list:..."> with a conditional
-	// comment wrapper <![if !supportLists]><span style="mso-list:Ignore">&#108;
-	// </span><![endif]>.  We must process these *before* we wipe inline styles
-	// (below), otherwise the mso-list marker is lost.
+	// comment wrapper. Process these before wiping inline styles.
 	const msoListParas = Array.from(
 		doc.querySelectorAll('p[style*="mso-list"], div[style*="mso-list"]'),
 	) as HTMLElement[];
 	if (msoListParas.length > 0) {
-		// Group adjacent mso-list paragraphs into clusters.
 		const clusters: HTMLElement[][] = [];
 		let current: HTMLElement[] = [];
 		for (const el of msoListParas) {
@@ -179,22 +80,17 @@ function cleanHtml(html: string): string {
 		}
 		if (current.length > 0) clusters.push(current);
 
-		// Replace each cluster with <ul><li>...</li>...</ul>
 		for (const cluster of clusters) {
 			const ul = doc.createElement("ul");
 			const first = cluster[0]!;
 			for (const el of cluster) {
-				// Strip Word's list-marker spans (conditional-comment wrappers).
 				for (const ignore of Array.from(el.querySelectorAll('[style*="mso-list:Ignore"]'))) {
 					ignore.remove();
 				}
-				// Also drop any <o:p> left inside.
 				for (const child of Array.from(el.querySelectorAll("o\\:p, o\\:P"))) {
 					child.remove();
 				}
 				const li = doc.createElement("li");
-				// Move the paragraph's remaining children into <li> so inline
-				// formatting (<strong>, <em>, <font> …) is preserved.
 				while (el.firstChild) {
 					li.appendChild(el.firstChild);
 				}
@@ -216,10 +112,6 @@ function cleanHtml(html: string): string {
 	}
 
 	// Convert inline styles that carry semantic meaning to actual tags
-	// before wiping the rest. Word often uses <span style="font-weight:bold">
-	// instead of <b>, so stripping styles blindly loses bold/italic/underline.
-	// We also guard against double-wrapping when the element already carries
-	// the equivalent semantic tag.
 	for (const el of Array.from(doc.querySelectorAll("[style]"))) {
 		const raw = el.getAttribute("style") || "";
 		const rules = new Map<string, string>();
@@ -278,10 +170,13 @@ function cleanHtml(html: string): string {
 		el.remove();
 	}
 
-	// Remove empty block/inline elements that Word loves to generate
+	// Remove empty block/inline elements that Word loves to generate.
+	// In docx-upload mode (keepMedia=true) we preserve elements that contain
+	// media so server-side extracted images aren't stripped.
 	for (const selector of ["p", "span", "font", "div"]) {
 		for (const el of Array.from(doc.querySelectorAll(selector))) {
-			if (!el.textContent?.trim()) {
+			const hasMedia = !!el.querySelector("img, video, audio, iframe, canvas, svg");
+			if (!el.textContent?.trim() && !(options?.keepMedia && hasMedia)) {
 				el.remove();
 			}
 		}
@@ -388,24 +283,17 @@ function cleanHtml(html: string): string {
 	for (const table of Array.from(doc.querySelectorAll("table"))) {
 		for (const cell of Array.from(table.querySelectorAll("td, th"))) {
 			// Flatten lists inside table cells into prefixed paragraphs.
-			// Markdown tables cannot host multi-line list syntax, so we turn
-			// each <li> into a "- text" / "1. text" paragraph which later
-			// gets unwrapped into <br>-separated inline text.
 			for (const list of Array.from(cell.querySelectorAll("ul, ol"))) {
 				const isOrdered = list.tagName === "OL";
 				let index = 1;
 				const fragment = doc.createDocumentFragment();
 				for (const item of Array.from(list.querySelectorAll("li"))) {
-					// Unwrap any <p> inside <li> so the prefix hugs the content
 					for (const p of Array.from(item.querySelectorAll("p"))) {
 						const pFrag = doc.createDocumentFragment();
 						while (p.firstChild) pFrag.appendChild(p.firstChild);
 						p.replaceWith(pFrag);
 					}
 					const p = doc.createElement("p");
-					// Ordered lists keep their number; unordered lists lose the dash
-					// prefix so plain multi-line text in a table cell does not look
-					// like a bulleted list.
 					const prefix = isOrdered ? `${index}. ` : "";
 					p.innerHTML = prefix + item.innerHTML.trim();
 					fragment.appendChild(p);
@@ -416,8 +304,6 @@ function cleanHtml(html: string): string {
 
 			// Recursively unwrap non-inline elements until only inline
 			// tags and text nodes remain.
-			// Paragraphs get a trailing <br> so paragraph breaks are preserved
-			// inside the Markdown table cell.
 			let changed = true;
 			while (changed) {
 				changed = false;
@@ -427,20 +313,17 @@ function cleanHtml(html: string): string {
 						while (el.firstChild) {
 							fragment.appendChild(el.firstChild);
 						}
-						// Preserve paragraph breaks as <br>
 						if (el.tagName === "P") {
 							fragment.appendChild(doc.createElement("br"));
 						}
 						el.replaceWith(fragment);
 						changed = true;
-						break; // DOM mutated — restart query
+						break;
 					}
 				}
 			}
-			// Collapse formatting whitespace while keeping <br> tags intact.
 			let html = cell.innerHTML;
 			html = html.trim().replace(/\s+/g, " ");
-			// Drop trailing <br>s left by the last unwrapped paragraph
 			html = html.replace(/(\s*<br>)+\s*$/i, "");
 			cell.innerHTML = html;
 		}
@@ -459,4 +342,111 @@ function cleanHtml(html: string): string {
 	}
 
 	return doc.body.innerHTML.trim();
+}
+
+/**
+ * Convert rich-text HTML on the clipboard to Markdown.
+ *
+ * @returns the Markdown string when conversion succeeded and differs from
+ *          plain text; `null` when there is no rich-text benefit.
+ */
+export type ImageUploader = (source: Blob | string) => Promise<string | null>;
+
+export async function handlePasteAsMarkdown(
+	e: React.ClipboardEvent<HTMLTextAreaElement>,
+	uploadImage?: ImageUploader,
+): Promise<string | null> {
+	const html = e.clipboardData.getData("text/html");
+	const plainText = e.clipboardData.getData("text/plain");
+
+	// No HTML on the clipboard → no rich-text benefit.
+	if (!html || html.trim().length === 0) {
+		return null;
+	}
+
+	const cleanedHtml = await cleanHtml(html);
+	if (!cleanedHtml || cleanedHtml.trim().length === 0) {
+		return null;
+	}
+
+	let processedHtml = cleanedHtml;
+
+	// Process images in the HTML before converting to Markdown.
+	if (uploadImage) {
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(cleanedHtml, "text/html");
+		const images = Array.from(doc.querySelectorAll("img"));
+		if (images.length > 0) {
+			await Promise.all(
+				images.map(async (img) => {
+					const src = img.getAttribute("src") || "";
+					if (!src) {
+						img.remove();
+						return;
+					}
+					// Reject file:// and relative paths that aren't data URIs or HTTP(S)
+					if (!src.startsWith("data:") && !src.startsWith("http://") && !src.startsWith("https://")) {
+						img.remove();
+						return;
+					}
+					try {
+						const newUrl = await uploadImage(src);
+						if (newUrl) {
+							img.setAttribute("src", newUrl);
+						} else {
+							img.remove();
+						}
+					} catch {
+						img.remove();
+					}
+				}),
+			);
+			processedHtml = doc.body.innerHTML.trim();
+		}
+	}
+
+	let markdown: string;
+	try {
+		markdown = turndownService.turndown(processedHtml);
+	} catch {
+		return null;
+	}
+
+	// Move whitespace that sits *inside* bold/italic markers to the
+	// outside so the markers hug the actual text.
+	// "**  text **"  → " **text** "
+	// "**text **"    → "**text** "
+	// "** text**"    → " **text**"
+	let prev: string;
+	do {
+		prev = markdown;
+		markdown = markdown.replace(/\*\*(\s*)([^\n]*?)(\s*)\*\*/g, "$1**$2**$3");
+	} while (markdown !== prev);
+
+	// Same for italic (single asterisk) — be careful not to touch list bullets.
+	// We only match when both opening and closing * are present around content.
+	do {
+		prev = markdown;
+		markdown = markdown.replace(/(?<!\*)\*(\s*)([^\s*][^\n]*?[^\s*])(\s*)\*(?!\*)/g, "$1*$2*$3");
+	} while (markdown !== prev);
+
+	// Ensure a space after bold/italic closers when they touch plain text.
+	// "**text**word" → "**text** word"
+	// "*text*word"   → "*text* word"
+	markdown = markdown.replace(/\*\*([^\s][^\n]*?)\*\*([^\s*<|\n\r])/g, "**$1** $2");
+	markdown = markdown.replace(/(?<!\*)\*([^\s*][^\n]*?)\*([^\s*<|\n\r])(?!\*)/g, "*$1* $2");
+
+	// Ensure ordered-list markers are followed by a space so parsers recognise
+	// them correctly (e.g. Word sometimes produces "1.•item").
+	markdown = markdown.replace(/(^|\s)(\d+\.)([^\s\d])/g, "$1$2 $3");
+
+	// If the converted Markdown is structurally identical to the plain-text
+	// version there is no rich-text benefit; fall back to the native paste.
+	const normalizedMd = markdown.trim().replace(/\s+/g, " ");
+	const normalizedPlain = plainText.trim().replace(/\s+/g, " ");
+	if (normalizedMd === normalizedPlain) {
+		return null;
+	}
+
+	return markdown;
 }
