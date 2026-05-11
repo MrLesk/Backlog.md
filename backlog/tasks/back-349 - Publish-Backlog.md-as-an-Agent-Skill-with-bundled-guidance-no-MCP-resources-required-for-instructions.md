@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-12-18 21:59'
-updated_date: '2025-12-18 22:03'
+updated_date: '2026-05-11 14:01'
 labels:
   - agent-skills
   - mcp
@@ -15,6 +15,7 @@ labels:
   - distribution
 dependencies: []
 priority: medium
+ordinal: 123000
 ---
 
 ## Description

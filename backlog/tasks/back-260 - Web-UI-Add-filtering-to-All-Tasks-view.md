@@ -5,12 +5,14 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-09-07 19:42'
+updated_date: '2026-05-11 14:01'
 labels:
   - web-ui
   - filters
   - ui
 dependencies: []
 priority: medium
+ordinal: 122000
 ---
 
 ## Description

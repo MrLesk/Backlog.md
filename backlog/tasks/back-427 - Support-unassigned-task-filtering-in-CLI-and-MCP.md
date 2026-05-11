@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
+updated_date: '2026-05-11 14:01'
 labels:
   - cli
   - mcp
@@ -14,6 +15,7 @@ dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/557'
 priority: medium
+ordinal: 142000
 ---
 
 ## Description

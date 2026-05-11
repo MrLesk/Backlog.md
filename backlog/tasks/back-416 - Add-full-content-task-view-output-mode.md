@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
+updated_date: '2026-05-11 14:01'
 labels:
   - cli
   - task-view
@@ -13,6 +14,7 @@ dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/289'
 priority: medium
+ordinal: 134000
 ---
 
 ## Description

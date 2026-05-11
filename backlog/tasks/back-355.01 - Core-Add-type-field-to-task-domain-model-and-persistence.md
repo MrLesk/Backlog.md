@@ -4,11 +4,13 @@ title: 'Core: Add type field to task domain model and persistence'
 status: To Do
 assignee: []
 created_date: '2026-01-01 23:37'
+updated_date: '2026-05-11 14:01'
 labels:
   - core
 dependencies: []
 parent_task_id: BACK-355
 priority: medium
+ordinal: 125000
 ---
 
 ## Description

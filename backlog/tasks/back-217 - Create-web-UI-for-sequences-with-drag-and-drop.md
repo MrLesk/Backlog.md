@@ -4,13 +4,14 @@ title: Create web UI for sequences with drag-and-drop
 status: To Do
 assignee: []
 created_date: '2025-07-27'
-updated_date: '2025-08-26 16:46'
+updated_date: '2026-05-11 14:01'
 labels:
   - sequences
   - web-ui
   - frontend
 dependencies:
   - task-213
+ordinal: 154000
 ---
 
 ## Description

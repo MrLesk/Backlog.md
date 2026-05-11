@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2026-01-19 21:32'
+updated_date: '2026-05-11 14:01'
 labels:
   - tui
   - ux
@@ -16,6 +17,7 @@ documentation:
   - src/ui/sequences.ts
   - src/ui/task-viewer-with-search.ts#L1118
 priority: medium
+ordinal: 131000
 ---
 
 ## Description

@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
+updated_date: '2026-05-11 14:01'
 labels:
   - web-ui
   - state
@@ -13,6 +14,7 @@ dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/578'
 priority: high
+ordinal: 2000
 ---
 
 ## Description

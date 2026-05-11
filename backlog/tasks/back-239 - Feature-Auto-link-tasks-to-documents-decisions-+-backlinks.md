@@ -5,12 +5,14 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-08-17 16:54'
+updated_date: '2026-05-11 14:01'
 labels:
   - web
   - enhancement
   - docs
 dependencies: []
 priority: medium
+ordinal: 120000
 ---
 
 ## Description

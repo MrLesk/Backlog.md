@@ -4,11 +4,12 @@ title: 'Sequences web UI: tests'
 status: To Do
 assignee: []
 created_date: '2025-08-23 19:13'
-updated_date: '2025-08-26 16:47'
+updated_date: '2026-05-11 14:01'
 labels:
   - sequences
 dependencies: []
 parent_task_id: BACK-217
+ordinal: 157000
 ---
 
 ## Description

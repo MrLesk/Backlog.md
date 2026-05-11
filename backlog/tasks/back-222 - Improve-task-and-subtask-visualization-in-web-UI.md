@@ -4,8 +4,10 @@ title: Improve task and subtask visualization in web UI
 status: To Do
 assignee: []
 created_date: '2025-08-03'
+updated_date: '2026-05-11 14:01'
 labels: []
 dependencies: []
+ordinal: 159000
 ---
 
 ## Description

@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 21:37'
+updated_date: '2026-05-11 14:01'
 labels:
   - feature
   - core
@@ -18,6 +19,7 @@ references:
     backlog/tasks/back-412 -
     Add-touched-files-field-to-tasks-and-filename-based-search.md
 priority: medium
+ordinal: 144000
 ---
 
 ## Description

@@ -4,12 +4,14 @@ title: Add task list filters for Status and Priority
 status: To Do
 assignee: []
 created_date: '2025-09-06 23:39'
+updated_date: '2026-05-11 14:01'
 labels:
   - tui
   - filters
   - ui
 dependencies: []
 priority: medium
+ordinal: 121000
 ---
 
 ## Description

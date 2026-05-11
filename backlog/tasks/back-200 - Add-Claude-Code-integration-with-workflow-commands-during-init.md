@@ -4,7 +4,7 @@ title: Add Claude Code integration with workflow commands during init
 status: To Do
 assignee: []
 created_date: '2025-07-23'
-updated_date: '2025-09-06 21:22'
+updated_date: '2026-05-11 14:01'
 labels:
   - enhancement
   - developer-experience
@@ -12,6 +12,7 @@ dependencies:
   - task-24.1
   - task-208
 priority: medium
+ordinal: 118000
 ---
 
 ## Description

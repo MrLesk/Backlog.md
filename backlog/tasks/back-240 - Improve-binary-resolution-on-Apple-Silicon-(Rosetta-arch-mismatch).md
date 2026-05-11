@@ -5,12 +5,14 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-08-17 17:00'
+updated_date: '2026-05-11 14:01'
 labels:
   - packaging
   - bug
   - macos
 dependencies: []
 priority: high
+ordinal: 1000
 ---
 
 ## Description

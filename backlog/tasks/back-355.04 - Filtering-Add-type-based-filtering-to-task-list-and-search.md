@@ -4,6 +4,7 @@ title: 'Filtering: Add type-based filtering to task list and search'
 status: To Do
 assignee: []
 created_date: '2026-01-01 23:37'
+updated_date: '2026-05-11 14:01'
 labels:
   - core
   - cli
@@ -12,6 +13,7 @@ dependencies:
   - task-355.01
 parent_task_id: BACK-355
 priority: medium
+ordinal: 128000
 ---
 
 ## Description

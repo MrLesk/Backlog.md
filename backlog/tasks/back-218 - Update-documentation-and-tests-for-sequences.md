@@ -4,7 +4,7 @@ title: Update documentation and tests for sequences
 status: To Do
 assignee: []
 created_date: '2025-07-27'
-updated_date: '2025-08-26 16:47'
+updated_date: '2026-05-11 14:01'
 labels:
   - sequences
   - documentation
@@ -14,6 +14,7 @@ dependencies:
   - task-214
   - task-215
   - task-217
+ordinal: 158000
 ---
 
 ## Description
