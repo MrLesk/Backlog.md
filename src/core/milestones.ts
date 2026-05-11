@@ -1,4 +1,5 @@
 import type { Milestone, MilestoneBucket, MilestoneSummary, Task } from "../types/index.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 
 const NO_MILESTONE_KEY = "__none";
 
@@ -260,7 +261,10 @@ export function getMilestoneLabel(milestoneId: string | undefined, milestoneEnti
 /**
  * Check if a status represents a "done" state
  */
-export function isDoneStatus(status?: string | null): boolean {
+export function isDoneStatus(status?: string | null, statuses?: string[], terminalStatuses?: string[]): boolean {
+	if (statuses) {
+		return isTerminalStatus(status, statuses, terminalStatuses);
+	}
 	const normalized = (status ?? "").toLowerCase();
 	return normalized.includes("done") || normalized.includes("complete");
 }
@@ -274,6 +278,7 @@ function createBucket(
 	statuses: string[],
 	milestoneEntities: Milestone[],
 	isNoMilestone: boolean,
+	terminalStatuses?: string[],
 ): MilestoneBucket {
 	const bucketMilestoneKey = milestoneKey(milestoneId);
 	const bucketTasks = tasks.filter((task) => {
@@ -290,7 +295,7 @@ function createBucket(
 		counts[status] = (counts[status] ?? 0) + 1;
 	}
 
-	const doneCount = bucketTasks.filter((t) => isDoneStatus(t.status)).length;
+	const doneCount = bucketTasks.filter((t) => isDoneStatus(t.status, statuses, terminalStatuses)).length;
 	const progress = bucketTasks.length > 0 ? Math.round((doneCount / bucketTasks.length) * 100) : 0;
 	const isCompleted = bucketTasks.length > 0 && doneCount === bucketTasks.length;
 
@@ -318,7 +323,7 @@ export function buildMilestoneBuckets(
 	tasks: Task[],
 	milestoneEntities: Milestone[],
 	statuses: string[],
-	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[] },
+	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[]; terminalStatuses?: string[] },
 ): MilestoneBucket[] {
 	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
 	const canonicalTasks = canonicalizeTaskMilestones(tasks, milestoneEntities, options?.archivedMilestones ?? []);
@@ -339,9 +344,12 @@ export function buildMilestoneBuckets(
 
 	const allMilestoneIds = collectMilestoneIds(normalizedTasks, filteredMilestones);
 
+	const { terminalStatuses } = options ?? {};
 	const buckets: MilestoneBucket[] = [
-		createBucket(undefined, normalizedTasks, statuses, filteredMilestones, true),
-		...allMilestoneIds.map((m) => createBucket(m, normalizedTasks, statuses, filteredMilestones, false)),
+		createBucket(undefined, normalizedTasks, statuses, filteredMilestones, true, terminalStatuses),
+		...allMilestoneIds.map((m) =>
+			createBucket(m, normalizedTasks, statuses, filteredMilestones, false, terminalStatuses),
+		),
 	];
 
 	return buckets;
@@ -354,7 +362,7 @@ export function buildMilestoneSummary(
 	tasks: Task[],
 	milestoneEntities: Milestone[],
 	statuses: string[],
-	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[] },
+	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[]; terminalStatuses?: string[] },
 ): MilestoneSummary {
 	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
 	const canonicalTasks = canonicalizeTaskMilestones(tasks, milestoneEntities, options?.archivedMilestones ?? []);

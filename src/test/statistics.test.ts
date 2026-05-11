@@ -249,3 +249,69 @@ describe("getTaskStatistics", () => {
 		expect(stats.totalTasks).toBe(3);
 	});
 });
+
+describe("getTaskStatistics with custom terminalStatuses", () => {
+	const germanStatuses = ["Offen", "In Arbeit", "Fertig"];
+	const terminalStatuses = ["Fertig"];
+
+	const createTask = (partial: Partial<Task>): Task => ({
+		id: "task-1",
+		title: "Test Task",
+		status: "Offen",
+		assignee: [],
+		labels: [],
+		dependencies: [],
+		createdDate: "2024-01-01",
+		rawContent: "",
+		...partial,
+	});
+
+	test("counts 'Fertig' task as completed when terminalStatuses=['Fertig']", () => {
+		const tasks: Task[] = [
+			createTask({ id: "task-1", status: "Offen" }),
+			createTask({ id: "task-2", status: "In Arbeit" }),
+			createTask({ id: "task-3", status: "Fertig" }),
+			createTask({ id: "task-4", status: "Fertig" }),
+		];
+
+		const stats = getTaskStatistics(tasks, [], germanStatuses, terminalStatuses);
+
+		expect(stats.completedTasks).toBe(2);
+		expect(stats.completionPercentage).toBe(50);
+	});
+
+	test("does not count 'Offen' or 'In Arbeit' as completed", () => {
+		const tasks: Task[] = [
+			createTask({ id: "task-1", status: "Offen" }),
+			createTask({ id: "task-2", status: "In Arbeit" }),
+		];
+
+		const stats = getTaskStatistics(tasks, [], germanStatuses, terminalStatuses);
+
+		expect(stats.completedTasks).toBe(0);
+		expect(stats.completionPercentage).toBe(0);
+	});
+
+	test("'Fertig' dependency does not block a task", () => {
+		const tasks: Task[] = [
+			createTask({ id: "task-1", status: "Fertig" }),
+			createTask({ id: "task-2", status: "Offen", dependencies: ["task-1"] }),
+		];
+
+		const stats = getTaskStatistics(tasks, [], germanStatuses, terminalStatuses);
+
+		expect(stats.projectHealth.blockedTasks.length).toBe(0);
+	});
+
+	test("'In Arbeit' dependency blocks a task", () => {
+		const tasks: Task[] = [
+			createTask({ id: "task-1", status: "In Arbeit" }),
+			createTask({ id: "task-2", status: "Offen", dependencies: ["task-1"] }),
+		];
+
+		const stats = getTaskStatistics(tasks, [], germanStatuses, terminalStatuses);
+
+		expect(stats.projectHealth.blockedTasks.length).toBe(1);
+		expect(stats.projectHealth.blockedTasks[0]?.id).toBe("task-2");
+	});
+});

@@ -1,4 +1,5 @@
 import type { Task } from "../types/index.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 
 export interface TaskStatistics {
 	statusCounts: Map<string, number>;
@@ -21,7 +22,12 @@ export interface TaskStatistics {
 /**
  * Calculate comprehensive task statistics for the overview
  */
-export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: string[]): TaskStatistics {
+export function getTaskStatistics(
+	tasks: Task[],
+	drafts: Task[],
+	statuses: string[],
+	terminalStatuses?: string[],
+): TaskStatistics {
 	const statusCounts = new Map<string, number>();
 	const priorityCounts = new Map<string, number>();
 
@@ -60,7 +66,7 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		statusCounts.set(task.status, currentCount + 1);
 
 		// Count completed tasks
-		if (task.status === "Done") {
+		if (isTerminalStatus(task.status, statuses, terminalStatuses)) {
 			completedTasks++;
 		}
 
@@ -80,7 +86,7 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 			// For completed tasks, use the time from creation to completion
 			// For active tasks, use the time from creation to now
 			let ageInDays: number;
-			if (task.status === "Done" && task.updatedDate) {
+			if (isTerminalStatus(task.status, statuses, terminalStatuses) && task.updatedDate) {
 				const updatedDate = new Date(task.updatedDate);
 				ageInDays = Math.floor((updatedDate.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
 			} else {
@@ -98,7 +104,7 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		}
 
 		// Identify stale tasks (not updated in 30 days and not done)
-		if (task.status !== "Done") {
+		if (!isTerminalStatus(task.status, statuses, terminalStatuses)) {
 			const lastDate = task.updatedDate || task.createdDate;
 			if (lastDate) {
 				const date = new Date(lastDate);
@@ -109,11 +115,15 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		}
 
 		// Identify blocked tasks (has dependencies that are not done)
-		if (task.dependencies && task.dependencies.length > 0 && task.status !== "Done") {
+		if (
+			task.dependencies &&
+			task.dependencies.length > 0 &&
+			!isTerminalStatus(task.status, statuses, terminalStatuses)
+		) {
 			// Check if any dependency is not done
 			const hasBlockingDependency = task.dependencies.some((depId) => {
 				const dep = tasks.find((t) => t.id === depId);
-				return dep && dep.status !== "Done";
+				return dep && !isTerminalStatus(dep.status, statuses, terminalStatuses);
 			});
 
 			if (hasBlockingDependency) {

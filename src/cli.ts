@@ -2805,7 +2805,11 @@ milestoneCmd
 
 		const statuses = config?.statuses ?? ["To Do", "In Progress", "Done"];
 		const archivedMilestoneIds = collectArchivedMilestoneKeys(archivedMilestones, milestones);
-		const buckets = buildMilestoneBuckets(tasks, milestones, statuses, { archivedMilestoneIds, archivedMilestones });
+		const buckets = buildMilestoneBuckets(tasks, milestones, statuses, {
+			archivedMilestoneIds,
+			archivedMilestones,
+			terminalStatuses: config?.terminalStatuses,
+		});
 		const active = buckets.filter((bucket) => !bucket.isNoMilestone && !bucket.isCompleted);
 		const completed = buckets.filter((bucket) => !bucket.isNoMilestone && bucket.isCompleted);
 
