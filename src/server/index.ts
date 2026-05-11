@@ -3,6 +3,7 @@ import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
+import { convertDocxToMarkdown } from "../core/docx-converter.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
@@ -414,6 +415,9 @@ export class BacklogServer {
 					},
 					"/api/assets/promote": {
 						POST: async (req: Request) => await this.handlePromoteAssets(req),
+					},
+					"/api/docx/convert": {
+						POST: async (req: Request) => await this.handleConvertDocx(req),
 					},
 					"/sequences": {
 						GET: async () => await this.handleGetSequences(),
@@ -1847,6 +1851,33 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error promoting assets:", error);
 			const message = error instanceof Error ? error.message : "Promote failed";
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleConvertDocx(req: Request): Promise<Response> {
+		try {
+			const contentType = req.headers.get("content-type") || "";
+			if (!contentType.startsWith("multipart/form-data")) {
+				return Response.json({ error: "Expected multipart/form-data" }, { status: 400 });
+			}
+
+			const formData = await req.formData();
+			const file = formData.get("file");
+			if (!(file instanceof File)) {
+				return Response.json({ error: "No file provided" }, { status: 400 });
+			}
+
+			if (!file.name.toLowerCase().endsWith(".docx")) {
+				return Response.json({ error: "Only .docx files are supported" }, { status: 400 });
+			}
+
+			const buffer = Buffer.from(await file.arrayBuffer());
+			const result = await convertDocxToMarkdown(buffer, this.core.assets);
+			return Response.json(result);
+		} catch (error) {
+			console.error("Error converting docx:", error);
+			const message = error instanceof Error ? error.message : "Conversion failed";
 			return Response.json({ error: message }, { status: 500 });
 		}
 	}
