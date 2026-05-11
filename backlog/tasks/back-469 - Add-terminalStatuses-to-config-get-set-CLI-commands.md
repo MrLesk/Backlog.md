@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-06 22:14'
-updated_date: '2026-05-06 22:34'
+updated_date: '2026-05-11 20:25'
 labels:
   - bugfix
 dependencies:
@@ -31,19 +31,19 @@ The terminalStatuses config key was introduced in BACK-465 but not registered in
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-3 Dateien geändert, 2 Bugs entdeckt:
+3 files changed, 2 bugs discovered:
 
-| Datei | Änderung |
-|-------|----------|
-| src/cli.ts | config get + config set: Case terminalStatuses, beide Available-keys-Meldungen |
-| src/file-system/operations.ts | serializeConfig: terminal_statuses-Zeile fehlte; saveConfig: [] → undefined Normalisierung |
-| src/test/config-commands.test.ts | 4 neue Tests (set+get, leerer Default, Array-Roundtrip, Fehlerfall) |
+| File | Change |
+|------|--------|
+| src/cli.ts | config get + config set: case terminalStatuses, both available-keys messages |
+| src/file-system/operations.ts | serializeConfig: terminal_statuses line was missing; saveConfig: [] → undefined normalization |
+| src/test/config-commands.test.ts | 4 new tests (set+get, empty default, array roundtrip, error case) |
 
-Bugs entdeckt während Implementierung:
-- serializeConfig schrieb terminal_statuses nicht in YAML zurück (fehlende Zeile im lines-Array)
-- saveConfig cached leeres Array [] statt es zu undefined zu normalisieren → Roundtrip lieferte [] statt undefined
+Bugs discovered during implementation:
+- serializeConfig did not write terminal_statuses back to YAML (missing line in lines array)
+- saveConfig cached empty array [] instead of normalizing to undefined → roundtrip returned [] instead of undefined
 
-Bekannte Einschränkung: config set terminalStatuses "" nicht möglich (CLI verlangt pflicht-Argument) — zum Löschen Config-Datei direkt editieren.
+Known limitation: config set terminalStatuses "" not possible (CLI requires mandatory argument) — to clear, edit config file directly.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
