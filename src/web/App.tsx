@@ -514,6 +514,7 @@ function App() {
 	                  onNewTask={handleNewTask}
 	                  tasks={tasks}
 	                  availableStatuses={statuses}
+	                  terminalStatuses={config?.terminalStatuses}
 	                  availableLabels={availableLabels}
 	                  availableMilestones={milestones}
 	                  milestoneEntities={milestoneEntities}

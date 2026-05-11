@@ -284,6 +284,17 @@ describe("Config commands", () => {
 		expect(cleared?.terminalStatuses).toBeUndefined();
 	});
 
+	it("config list includes terminalStatuses line even when unset", async () => {
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("terminalStatuses:");
+	});
+
+	it("config list shows terminalStatuses values when configured", async () => {
+		await $`bun ${CLI_PATH} config set terminalStatuses "Done,Cancelled"`.cwd(TEST_DIR).quiet();
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("terminalStatuses: [Done, Cancelled]");
+	});
+
 	it("config get returns error for unknown key", async () => {
 		const result = await $`bun ${CLI_PATH} config get unknownKey`.cwd(TEST_DIR).nothrow();
 		expect(result.exitCode).not.toBe(0);

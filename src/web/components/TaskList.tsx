@@ -20,6 +20,7 @@ interface TaskListProps {
 	onNewTask: () => void;
 	tasks: Task[];
 	availableStatuses: string[];
+	terminalStatuses?: string[];
 	availableLabels: string[];
 	availableMilestones: string[];
 	milestoneEntities: Milestone[];
@@ -84,6 +85,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	onNewTask,
 	tasks,
 	availableStatuses,
+	terminalStatuses,
 	availableLabels,
 	availableMilestones,
 	milestoneEntities,
@@ -112,7 +114,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
-	const isFilteringTerminalStatus = isTerminalStatus(statusFilter, availableStatuses);
+	const isFilteringTerminalStatus = isTerminalStatus(statusFilter, availableStatuses, terminalStatuses);
 	const milestoneAliasToCanonical = useMemo(() => {
 		const aliasMap = new Map<string, string>();
 		const collectIdAliasKeys = (value: string): string[] => {

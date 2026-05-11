@@ -3707,6 +3707,9 @@ configCmd
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
+			console.log(
+				`  terminalStatuses: ${config.terminalStatuses?.length ? `[${config.terminalStatuses.join(", ")}]` : "(not set)"}`,
+			);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;
@@ -3731,14 +3734,16 @@ program
 			core.gitOps.setConfig(config);
 
 			const statuses = config.statuses ?? [...DEFAULT_STATUSES];
-			const terminalStatus = getTerminalStatus(statuses);
+			const terminalStatus = getTerminalStatus(statuses, config.terminalStatuses);
 			if (!terminalStatus) {
 				console.log("No terminal status configured for cleanup.");
 				return;
 			}
 
 			const tasks = await core.queryTasks();
-			const terminalStatusTasks = tasks.filter((task) => isTerminalStatus(task.status, statuses));
+			const terminalStatusTasks = tasks.filter((task) =>
+				isTerminalStatus(task.status, statuses, config.terminalStatuses),
+			);
 
 			if (terminalStatusTasks.length === 0) {
 				console.log(`No ${terminalStatus} tasks found to clean up.`);

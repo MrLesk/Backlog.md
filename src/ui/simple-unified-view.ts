@@ -114,6 +114,7 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 
 		// Show kanban board with simple view switching
 		await renderBoardTui(kanbanTasks, statuses, layout, maxColumnWidth, {
+			terminalStatuses: config?.terminalStatuses,
 			onTaskSelect: (task) => {
 				selectedTask = task;
 			},

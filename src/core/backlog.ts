@@ -2134,7 +2134,7 @@ export class Core {
 		cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
 		return tasks.filter((task) => {
-			if (!isTerminalStatus(task.status, statuses)) return false;
+			if (!isTerminalStatus(task.status, statuses, config?.terminalStatuses)) return false;
 
 			// Check updatedDate first, then createdDate as fallback
 			const taskDate = task.updatedDate || task.createdDate;

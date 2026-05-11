@@ -282,6 +282,153 @@ describe("Cleanup functionality", () => {
 		});
 	});
 
+	describe("getTerminalStatusTasksByAge with terminalStatuses config", () => {
+		it("respects config.terminalStatuses — treats only listed statuses as terminal", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected test project config to exist");
+			await core.filesystem.saveConfig({
+				...config,
+				statuses: ["To Do", "In Progress", "Done"],
+				terminalStatuses: ["Cancelled"],
+				defaultStatus: "To Do",
+			});
+
+			const oldDate = new Date();
+			oldDate.setDate(oldDate.getDate() - 7);
+			const oldDateValue = oldDate.toISOString().split("T")[0] as string;
+
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-1",
+					title: "Old Cancelled",
+					status: "Cancelled",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-2",
+					title: "Old Done",
+					status: "Done",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-3",
+					title: "Old Active",
+					status: "In Progress",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+
+			const result = await core.getTerminalStatusTasksByAge(3);
+			expect(result.map((t) => t.id)).toEqual(["TASK-1"]);
+		});
+
+		it("multi-value terminalStatuses: both configured statuses count as terminal", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected test project config to exist");
+			await core.filesystem.saveConfig({
+				...config,
+				statuses: ["To Do", "In Progress", "Done"],
+				terminalStatuses: ["Done", "Cancelled"],
+				defaultStatus: "To Do",
+			});
+
+			const oldDate = new Date();
+			oldDate.setDate(oldDate.getDate() - 7);
+			const oldDateValue = oldDate.toISOString().split("T")[0] as string;
+
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-1",
+					title: "Old Done",
+					status: "Done",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-2",
+					title: "Old Cancelled",
+					status: "Cancelled",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-3",
+					title: "Old Active",
+					status: "In Progress",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+
+			const result = await core.getTerminalStatusTasksByAge(3);
+			expect(result.map((t) => t.id).sort()).toEqual(["TASK-1", "TASK-2"]);
+		});
+
+		it("falls back to last-element convention when terminalStatuses is absent", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected test project config to exist");
+			await core.filesystem.saveConfig({
+				...config,
+				statuses: ["To Do", "In Progress", "Finished"],
+				terminalStatuses: undefined,
+				defaultStatus: "To Do",
+			});
+
+			const oldDate = new Date();
+			oldDate.setDate(oldDate.getDate() - 7);
+			const oldDateValue = oldDate.toISOString().split("T")[0] as string;
+
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-1",
+					title: "Old Finished",
+					status: "Finished",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-2",
+					title: "Old In Progress",
+					status: "In Progress",
+					createdDate: oldDateValue,
+					updatedDate: oldDateValue,
+				},
+				false,
+			);
+
+			const result = await core.getTerminalStatusTasksByAge(3);
+			expect(result.map((t) => t.id)).toEqual(["TASK-1"]);
+		});
+	});
+
 	describe("Error handling", () => {
 		it("should handle non-existent task gracefully", async () => {
 			const success = await core.completeTask("non-existent", false);

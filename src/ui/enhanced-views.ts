@@ -184,7 +184,7 @@ async function renderBoardTuiWithSwitching(
 
 	// For now, use the original function but we'll need to modify it to support Tab switching
 	// This is a placeholder - we'll need to modify the actual board.ts
-	return renderBoardTui(tasks, statuses, layout, maxColumnWidth);
+	return renderBoardTui(tasks, statuses, layout, maxColumnWidth, { terminalStatuses: config?.terminalStatuses });
 }
 
 // Re-export for convenience
