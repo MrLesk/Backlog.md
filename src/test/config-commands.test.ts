@@ -174,6 +174,53 @@ describe("Config commands", () => {
 		expect(listOutput).toContain("milestones: [m-0]");
 	});
 
+	it("config set/get/list blockedStatuses round-trips correctly", async () => {
+		await $`bun ${CLI_PATH} config set blockedStatuses "Gesperrt,Blockiert"`.cwd(TEST_DIR).quiet();
+
+		const getOutput = await $`bun ${CLI_PATH} config get blockedStatuses`.cwd(TEST_DIR).text();
+		expect(getOutput.trim()).toBe("Gesperrt, Blockiert");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("blockedStatuses");
+	});
+
+	it("blockedStatuses survives a save of another config key (round-trip no data loss)", async () => {
+		let config = await core.filesystem.loadConfig();
+		if (config) {
+			config.blockedStatuses = ["On Hold", "Gesperrt"];
+			await core.filesystem.saveConfig(config);
+		}
+
+		config = await core.filesystem.loadConfig();
+		expect(config?.blockedStatuses).toEqual(["On Hold", "Gesperrt"]);
+
+		// Save another key and reload
+		if (config) {
+			config.defaultEditor = "nano";
+			await core.filesystem.saveConfig(config);
+		}
+
+		config = await core.filesystem.loadConfig();
+		expect(config?.blockedStatuses).toEqual(["On Hold", "Gesperrt"]);
+		expect(config?.defaultEditor).toBe("nano");
+	});
+
+	it("blockedStatuses empty array normalizes to undefined (no empty brackets in YAML)", async () => {
+		let config = await core.filesystem.loadConfig();
+		if (config) {
+			config.blockedStatuses = [];
+			await core.filesystem.saveConfig(config);
+		}
+
+		config = await core.filesystem.loadConfig();
+		expect(config?.blockedStatuses).toBeUndefined();
+	});
+
+	it("config list omits blockedStatuses line when not configured", async () => {
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).not.toContain("blockedStatuses");
+	});
+
 	afterEach(async () => {
 		try {
 			await safeCleanup(TEST_DIR);

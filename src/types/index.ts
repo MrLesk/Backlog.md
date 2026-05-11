@@ -283,6 +283,7 @@ export interface BacklogConfig {
 	defaultAssignee?: string;
 	defaultReporter?: string;
 	statuses: string[];
+	blockedStatuses?: string[];
 	labels: string[];
 	/** @deprecated Milestones are sourced from milestone files, not config. */
 	milestones?: string[];

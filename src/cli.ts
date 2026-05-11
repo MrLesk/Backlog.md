@@ -3449,10 +3449,13 @@ configCmd
 				case "activeBranchDays":
 					console.log(config.activeBranchDays?.toString() || "30");
 					break;
+				case "blockedStatuses":
+					console.log(config.blockedStatuses?.join(", ") || "");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays, blockedStatuses",
 					);
 					process.exit(1);
 			}
@@ -3612,6 +3615,14 @@ configCmd
 					config.activeBranchDays = days;
 					break;
 				}
+				case "blockedStatuses": {
+					const parsed = value
+						.split(",")
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0);
+					config.blockedStatuses = parsed.length > 0 ? parsed : undefined;
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -3643,7 +3654,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays, blockedStatuses",
 					);
 					process.exit(1);
 			}
@@ -3676,6 +3687,9 @@ configCmd
 			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
+			if (config.blockedStatuses?.length) {
+				console.log(`  blockedStatuses: [${config.blockedStatuses.join(", ")}]`);
+			}
 			const milestones = await core.filesystem.listMilestones();
 			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);

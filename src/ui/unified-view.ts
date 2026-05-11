@@ -390,6 +390,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					},
 					milestoneMode: options.milestoneMode,
 					milestoneEntities,
+					blockedStatuses: config?.blockedStatuses,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

@@ -15,6 +15,7 @@ interface BoardPageProps {
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	isLoading: boolean;
+	blockedStatuses?: string[];
 }
 
 export default function BoardPage({
@@ -28,6 +29,7 @@ export default function BoardPage({
 	milestoneEntities,
 	archivedMilestones,
 	isLoading,
+	blockedStatuses,
 }: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
@@ -139,6 +141,7 @@ export default function BoardPage({
 				filterLabels={filterLabels}
 				filterPriority={filterPriority}
 				onFiltersChange={handleFiltersChange}
+			blockedStatuses={blockedStatuses}
 			/>
 		</div>
 	);

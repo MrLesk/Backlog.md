@@ -502,6 +502,7 @@ function App() {
                 milestoneEntities={milestoneEntities}
                 archivedMilestones={archivedMilestones}
                 isLoading={isLoading}
+                blockedStatuses={config?.blockedStatuses}
               />
             }
           />

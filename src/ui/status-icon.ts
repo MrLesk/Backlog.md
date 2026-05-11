@@ -10,7 +10,7 @@ export interface StatusStyle {
  * @param status - The task status
  * @returns The icon and color for the status
  */
-export function getStatusStyle(status: string): StatusStyle {
+export function getStatusStyle(status: string, blockedStatuses?: string[]): StatusStyle {
 	const statusMap: Record<string, StatusStyle> = {
 		Done: { icon: "✔", color: "green" },
 		"In Progress": { icon: "◒", color: "yellow" },
@@ -20,7 +20,16 @@ export function getStatusStyle(status: string): StatusStyle {
 		Testing: { icon: "▣", color: "cyan" },
 	};
 
-	// Return the mapped style or default for unknown statuses
+	const configMatch = blockedStatuses?.some((bs) => bs.toLowerCase() === status.toLowerCase());
+	const builtinMatch =
+		statusMap[status]?.color === "red" ||
+		status.toLowerCase().includes("blocked") ||
+		status.toLowerCase().includes("stuck");
+
+	if (configMatch || builtinMatch) {
+		return { icon: "●", color: "red" };
+	}
+
 	return statusMap[status] || { icon: "○", color: "white" };
 }
 
@@ -29,8 +38,8 @@ export function getStatusStyle(status: string): StatusStyle {
  * @param status - The task status
  * @returns The color for the status
  */
-export function getStatusColor(status: string): string {
-	return getStatusStyle(status).color;
+export function getStatusColor(status: string, blockedStatuses?: string[]): string {
+	return getStatusStyle(status, blockedStatuses).color;
 }
 
 /**
@@ -38,8 +47,8 @@ export function getStatusColor(status: string): string {
  * @param status - The task status
  * @returns The icon for the status
  */
-export function getStatusIcon(status: string): string {
-	return getStatusStyle(status).icon;
+export function getStatusIcon(status: string, blockedStatuses?: string[]): string {
+	return getStatusStyle(status, blockedStatuses).icon;
 }
 
 /**
@@ -47,7 +56,7 @@ export function getStatusIcon(status: string): string {
  * @param status - The task status
  * @returns The formatted status string with icon
  */
-export function formatStatusWithIcon(status: string): string {
-	const style = getStatusStyle(status);
+export function formatStatusWithIcon(status: string, blockedStatuses?: string[]): string {
+	const style = getStatusStyle(status, blockedStatuses);
 	return `${style.icon} ${status}`;
 }

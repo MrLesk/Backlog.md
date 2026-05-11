@@ -183,6 +183,7 @@ export async function viewTaskEnhanced(
 			labelFilter: string[];
 			milestoneFilter: string;
 		}) => void;
+		blockedStatuses?: string[];
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
@@ -765,8 +766,8 @@ export async function viewTaskEnhanced(
 			width: "100%-4",
 			height: "100%-3",
 			itemRenderer: (task: Task) => {
-				const statusIcon = formatStatusWithIcon(task.status);
-				const statusColor = getStatusColor(task.status);
+				const statusIcon = formatStatusWithIcon(task.status, options.blockedStatuses);
+				const statusColor = getStatusColor(task.status, options.blockedStatuses);
 				const assigneeText = task.assignee?.length
 					? ` {cyan-fg}${task.assignee[0]?.startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 					: "";
@@ -943,7 +944,7 @@ export async function viewTaskEnhanced(
 
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel);
+		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel, options.blockedStatuses);
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1323,9 +1324,10 @@ export async function viewTaskEnhanced(
 function generateDetailContent(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
+	blockedStatuses?: string[],
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
-		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
+		` {${getStatusColor(task.status, blockedStatuses)}-fg}${formatStatusWithIcon(task.status, blockedStatuses)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
 
 	// Add cross-branch indicator if task is from another branch
@@ -1487,6 +1489,7 @@ export async function createTaskPopup(
 	screen: ScreenInterface,
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
+	blockedStatuses?: string[],
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1523,7 +1526,7 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(task, resolveMilestoneLabel);
+	const { headerContent, bodyContent } = generateDetailContent(task, resolveMilestoneLabel, blockedStatuses);
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;

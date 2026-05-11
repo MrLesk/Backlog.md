@@ -6,6 +6,7 @@ import { sortByTaskId } from "../utils/task-sorting.ts";
 
 export type TaskPlainTextOptions = {
 	filePathOverride?: string;
+	blockedStatuses?: string[];
 };
 
 export function formatDateForDisplay(dateStr: string): string {
@@ -70,7 +71,7 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	lines.push(`Task ${task.id} - ${task.title}`);
 	lines.push("=".repeat(50));
 	lines.push("");
-	lines.push(`Status: ${formatStatusWithIcon(task.status)}`);
+	lines.push(`Status: ${formatStatusWithIcon(task.status, options.blockedStatuses)}`);
 
 	const priorityLabel = formatPriority(task.priority);
 	if (priorityLabel) {

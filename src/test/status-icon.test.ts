@@ -46,6 +46,44 @@ describe("Status Icon Component", () => {
 		});
 	});
 
+	describe("blockedStatuses config override", () => {
+		test("custom blocked status is styled as blocked when in blockedStatuses", () => {
+			const style = getStatusStyle("Gesperrt", ["Gesperrt"]);
+			expect(style.icon).toBe("●");
+			expect(style.color).toBe("red");
+		});
+
+		test("'Stuck' still renders as blocked when blockedStatuses config is set (config-PLUS-fallback)", () => {
+			const style = getStatusStyle("Stuck", ["Gesperrt"]);
+			expect(style.icon).toBe("●");
+			expect(style.color).toBe("red");
+		});
+
+		test("English 'Blocked' still styled correctly when no blockedStatuses configured", () => {
+			const style = getStatusStyle("Blocked");
+			expect(style.icon).toBe("●");
+			expect(style.color).toBe("red");
+		});
+
+		test("empty blockedStatuses falls back to substring heuristic for blocked-task", () => {
+			const style = getStatusStyle("blocked-task", []);
+			expect(style.icon).toBe("●");
+			expect(style.color).toBe("red");
+		});
+
+		test("custom blocked status via getStatusColor", () => {
+			expect(getStatusColor("Gesperrt", ["Gesperrt"])).toBe("red");
+		});
+
+		test("custom blocked status via getStatusIcon", () => {
+			expect(getStatusIcon("Gesperrt", ["Gesperrt"])).toBe("●");
+		});
+
+		test("custom blocked status via formatStatusWithIcon", () => {
+			expect(formatStatusWithIcon("Gesperrt", ["Gesperrt"])).toBe("● Gesperrt");
+		});
+	});
+
 	describe("getStatusColor", () => {
 		test("returns correct color for each status", () => {
 			expect(getStatusColor("Done")).toBe("green");

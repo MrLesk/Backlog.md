@@ -29,6 +29,7 @@ interface BoardProps {
   filterLabels?: string[];
   filterPriority?: string;
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
+  blockedStatuses?: string[];
 }
 
 const PRIORITY_OPTIONS = [
@@ -62,6 +63,7 @@ const Board: React.FC<BoardProps> = ({
   filterLabels = [],
   filterPriority = '',
   onFiltersChange,
+  blockedStatuses,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
@@ -605,6 +607,7 @@ const Board: React.FC<BoardProps> = ({
                               setDragSourceLane(null);
                             }}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                            blockedStatuses={blockedStatuses}
                           />
                         </div>
                       ))}
@@ -638,6 +641,7 @@ const Board: React.FC<BoardProps> = ({
                     setDragSourceLane(null);
                   }}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                  blockedStatuses={blockedStatuses}
                 />
               </div>
             ))}

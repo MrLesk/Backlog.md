@@ -17,6 +17,7 @@ interface TaskColumnProps {
   onCleanup?: () => void;
   laneId?: string;
   targetMilestone?: string | null;
+  blockedStatuses?: string[];
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
@@ -31,7 +32,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onDragEnd,
   onCleanup,
   laneId,
-  targetMilestone
+  targetMilestone,
+  blockedStatuses,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -86,7 +88,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     if (statusLower.includes('progress') || statusLower.includes('doing')) {
       return 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 transition-colors duration-200';
     }
-    if (statusLower.includes('blocked') || statusLower.includes('stuck')) {
+    const isBlocked =
+      (blockedStatuses && blockedStatuses.some((bs) => bs.toLowerCase() === statusLower)) ||
+      statusLower.includes('blocked') ||
+      statusLower.includes('stuck');
+    if (isBlocked) {
       return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 transition-colors duration-200';
     }
     return 'bg-stone-100 dark:bg-stone-900 text-stone-800 dark:text-stone-200 transition-colors duration-200';

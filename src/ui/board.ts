@@ -139,8 +139,8 @@ function buildRenderedTaskListItems(tasks: Task[], movingTaskId?: string): { ric
 	};
 }
 
-function formatColumnLabel(status: string, count: number): string {
-	return `\u00A0${getStatusIcon(status)} ${status || "No Status"} (${count})\u00A0`;
+function formatColumnLabel(status: string, count: number, blockedStatuses?: string[]): string {
+	return ` ${getStatusIcon(status, blockedStatuses)} ${status || "No Status"} (${count}) `;
 }
 
 const DEFAULT_FOOTER_CONTENT =
@@ -202,6 +202,7 @@ export async function renderBoardTui(
 		}) => void;
 		milestoneMode?: boolean;
 		milestoneEntities?: Milestone[];
+		blockedStatuses?: string[];
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -427,7 +428,7 @@ export async function renderBoardTui(
 					height: "100%",
 					border: { type: "line" },
 					style: { border: { fg: "gray" } },
-					label: formatColumnLabel(columnData.status, columnData.tasks.length),
+					label: formatColumnLabel(columnData.status, columnData.tasks.length, options?.blockedStatuses),
 				});
 
 				const taskList = list({
@@ -559,7 +560,7 @@ export async function renderBoardTui(
 				column.plainItems = renderedItems.plain;
 				column.highlightedIndex = undefined;
 				column.list.setItems(renderedItems.rich);
-				column.box.setLabel?.(formatColumnLabel(columnData.status, columnData.tasks.length));
+				column.box.setLabel?.(formatColumnLabel(columnData.status, columnData.tasks.length, options?.blockedStatuses));
 			});
 			restoreSelection(selectedTaskId);
 		};
@@ -1037,7 +1038,7 @@ export async function renderBoardTui(
 			if (!task) return;
 			popupOpen = true;
 
-			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel);
+			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.blockedStatuses);
 			if (!popup) {
 				popupOpen = false;
 				return;

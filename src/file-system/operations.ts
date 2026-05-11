@@ -1297,6 +1297,7 @@ ${description || `Milestone: ${title}`}`,
 			...config,
 			...(this.configSource === "root" ? { backlogDirectory: this.resolvedBacklogDirName } : {}),
 			definitionOfDone: this.normalizeDefinitionOfDone(config.definitionOfDone),
+			blockedStatuses: config.blockedStatuses?.length ? config.blockedStatuses : undefined,
 		};
 		if (this.configSource === "folder") {
 			delete normalizedConfig.backlogDirectory;
@@ -1367,6 +1368,15 @@ ${description || `Milestone: ${title}`}`,
 							.filter(Boolean);
 					}
 					break;
+				case "blocked_statuses":
+					if (value.startsWith("[") && value.endsWith("]")) {
+						const arrayContent = value.slice(1, -1);
+						config.blockedStatuses = arrayContent
+							.split(",")
+							.map((item) => item.trim().replace(/['"]/g, ""))
+							.filter(Boolean);
+					}
+					break;
 				case "definition_of_done":
 					if (parsedDefinitionOfDone !== undefined) {
 						config.definitionOfDone = parsedDefinitionOfDone;
@@ -1429,6 +1439,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultAssignee: config.defaultAssignee,
 			defaultReporter: config.defaultReporter,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
+			blockedStatuses: config.blockedStatuses?.length ? config.blockedStatuses : undefined,
 			labels: config.labels || [],
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
@@ -1458,6 +1469,9 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
+			...(Array.isArray(config.blockedStatuses) && config.blockedStatuses.length > 0
+				? [`blocked_statuses: [${config.blockedStatuses.map((s) => `"${s}"`).join(", ")}]`]
+				: []),
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
