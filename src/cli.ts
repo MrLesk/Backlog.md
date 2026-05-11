@@ -3248,6 +3248,103 @@ agentsCmd
 	});
 
 // Config command group
+// Shared descriptor map for config keys – single source of truth for `get`, `list`, and error messages.
+// When adding a new config field: add it here; `get` and `list` pick it up automatically.
+// `config set` still needs a manual case for validation logic.
+type ConfigDescriptor = {
+	getValue: (config: BacklogConfig, core: Core) => Promise<string>;
+	listEntry: (config: BacklogConfig, core: Core) => Promise<string>;
+};
+
+const CONFIG_DESCRIPTORS: Record<string, ConfigDescriptor> = {
+	projectName: {
+		getValue: async (c) => c.projectName,
+		listEntry: async (c) => `  projectName: ${c.projectName}`,
+	},
+	defaultEditor: {
+		getValue: async (c) => {
+			if (c.defaultEditor) return c.defaultEditor;
+			console.log("defaultEditor is not set");
+			process.exit(1);
+		},
+		listEntry: async (c) => `  defaultEditor: ${c.defaultEditor || "(not set)"}`,
+	},
+	defaultStatus: {
+		getValue: async (c) => c.defaultStatus || "",
+		listEntry: async (c) => `  defaultStatus: ${c.defaultStatus || "(not set)"}`,
+	},
+	statuses: {
+		getValue: async (c) => c.statuses.join(", "),
+		listEntry: async (c) => `  statuses: [${c.statuses.join(", ")}]`,
+	},
+	labels: {
+		getValue: async (c) => c.labels.join(", "),
+		listEntry: async (c) => `  labels: [${c.labels.join(", ")}]`,
+	},
+	milestones: {
+		getValue: async (_c, core) => {
+			const ms = await core.filesystem.listMilestones();
+			return ms.map((m) => m.id).join(", ");
+		},
+		listEntry: async (_c, core) => {
+			const ms = await core.filesystem.listMilestones();
+			return `  milestones: [${ms.map((m) => m.id).join(", ")}]`;
+		},
+	},
+	definitionOfDone: {
+		getValue: async (c) => c.definitionOfDone?.join(", ") || "",
+		listEntry: async (c) => `  definitionOfDone: [${(c.definitionOfDone ?? []).join(", ")}]`,
+	},
+	dateFormat: {
+		getValue: async (c) => c.dateFormat,
+		listEntry: async (c) => `  dateFormat: ${c.dateFormat}`,
+	},
+	maxColumnWidth: {
+		getValue: async (c) => c.maxColumnWidth?.toString() || "",
+		listEntry: async (c) => `  maxColumnWidth: ${c.maxColumnWidth || "(not set)"}`,
+	},
+	autoOpenBrowser: {
+		getValue: async (c) => c.autoOpenBrowser?.toString() || "",
+		listEntry: async (c) => `  autoOpenBrowser: ${c.autoOpenBrowser ?? "(not set)"}`,
+	},
+	defaultPort: {
+		getValue: async (c) => c.defaultPort?.toString() || "",
+		listEntry: async (c) => `  defaultPort: ${c.defaultPort ?? "(not set)"}`,
+	},
+	remoteOperations: {
+		getValue: async (c) => c.remoteOperations?.toString() || "",
+		listEntry: async (c) => `  remoteOperations: ${c.remoteOperations ?? "(not set)"}`,
+	},
+	autoCommit: {
+		getValue: async (c) => c.autoCommit?.toString() || "",
+		listEntry: async (c) => `  autoCommit: ${c.autoCommit ?? "(not set)"}`,
+	},
+	filesystemOnly: {
+		getValue: async (c) => c.filesystemOnly?.toString() || "false",
+		listEntry: async (c) => `  filesystemOnly: ${c.filesystemOnly ?? "false"}`,
+	},
+	bypassGitHooks: {
+		getValue: async (c) => c.bypassGitHooks?.toString() || "",
+		listEntry: async (c) => `  bypassGitHooks: ${c.bypassGitHooks ?? "(not set)"}`,
+	},
+	zeroPaddedIds: {
+		getValue: async (c) => c.zeroPaddedIds?.toString() || "(disabled)",
+		listEntry: async (c) => `  zeroPaddedIds: ${c.zeroPaddedIds ?? "(disabled)"}`,
+	},
+	taskPrefix: {
+		getValue: async (c) => c.prefixes?.task || "task",
+		listEntry: async (c) => `  taskPrefix: ${c.prefixes?.task || "task"} (read-only)`,
+	},
+	checkActiveBranches: {
+		getValue: async (c) => c.checkActiveBranches?.toString() || "true",
+		listEntry: async (c) => `  checkActiveBranches: ${c.checkActiveBranches ?? "true"}`,
+	},
+	activeBranchDays: {
+		getValue: async (c) => c.activeBranchDays?.toString() || "30",
+		listEntry: async (c) => `  activeBranchDays: ${c.activeBranchDays ?? "30"}`,
+	},
+};
+
 const configCmd = program
 	.command("config")
 	.description("manage backlog configuration")
@@ -3386,76 +3483,14 @@ configCmd
 				process.exit(1);
 			}
 
-			// Handle specific config keys
-			switch (key) {
-				case "defaultEditor":
-					if (config.defaultEditor) {
-						console.log(config.defaultEditor);
-					} else {
-						console.log("defaultEditor is not set");
-						process.exit(1);
-					}
-					break;
-				case "projectName":
-					console.log(config.projectName);
-					break;
-				case "defaultStatus":
-					console.log(config.defaultStatus || "");
-					break;
-				case "statuses":
-					console.log(config.statuses.join(", "));
-					break;
-				case "labels":
-					console.log(config.labels.join(", "));
-					break;
-				case "milestones": {
-					const milestones = await core.filesystem.listMilestones();
-					console.log(milestones.map((milestone) => milestone.id).join(", "));
-					break;
-				}
-				case "definitionOfDone":
-					console.log(config.definitionOfDone?.join(", ") || "");
-					break;
-				case "dateFormat":
-					console.log(config.dateFormat);
-					break;
-				case "maxColumnWidth":
-					console.log(config.maxColumnWidth?.toString() || "");
-					break;
-				case "defaultPort":
-					console.log(config.defaultPort?.toString() || "");
-					break;
-				case "autoOpenBrowser":
-					console.log(config.autoOpenBrowser?.toString() || "");
-					break;
-				case "remoteOperations":
-					console.log(config.remoteOperations?.toString() || "");
-					break;
-				case "autoCommit":
-					console.log(config.autoCommit?.toString() || "");
-					break;
-				case "filesystemOnly":
-					console.log(config.filesystemOnly?.toString() || "false");
-					break;
-				case "bypassGitHooks":
-					console.log(config.bypassGitHooks?.toString() || "");
-					break;
-				case "zeroPaddedIds":
-					console.log(config.zeroPaddedIds?.toString() || "(disabled)");
-					break;
-				case "checkActiveBranches":
-					console.log(config.checkActiveBranches?.toString() || "true");
-					break;
-				case "activeBranchDays":
-					console.log(config.activeBranchDays?.toString() || "30");
-					break;
-				default:
-					console.error(`Unknown config key: ${key}`);
-					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
-					);
-					process.exit(1);
+			// Dispatch via CONFIG_DESCRIPTORS – adding a new field to the map is all that's needed here
+			const descriptor = CONFIG_DESCRIPTORS[key];
+			if (!descriptor) {
+				console.error(`Unknown config key: ${key}`);
+				console.error(`Available keys: ${Object.keys(CONFIG_DESCRIPTORS).join(", ")}`);
+				process.exit(1);
 			}
+			console.log(await descriptor.getValue(config, core));
 		} catch (err) {
 			console.error("Failed to get config value", err);
 			process.exitCode = 1;
@@ -3640,12 +3675,20 @@ configCmd
 					);
 					process.exit(1);
 					break;
-				default:
+				default: {
+					const unsettable = new Set([
+						"taskPrefix",
+						"prefixes",
+						"statuses",
+						"labels",
+						"milestones",
+						"definitionOfDone",
+					]);
+					const settableKeys = Object.keys(CONFIG_DESCRIPTORS).filter((k) => !unsettable.has(k));
 					console.error(`Unknown config key: ${key}`);
-					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
-					);
+					console.error(`Available keys: ${settableKeys.join(", ")}`);
 					process.exit(1);
+				}
 			}
 
 			await core.filesystem.saveConfig(config);
@@ -3670,27 +3713,11 @@ configCmd
 				process.exit(1);
 			}
 
+			// Loop over CONFIG_DESCRIPTORS – no manual additions needed when fields are added to the map
 			console.log("Configuration:");
-			console.log(`  projectName: ${config.projectName}`);
-			console.log(`  defaultEditor: ${config.defaultEditor || "(not set)"}`);
-			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
-			console.log(`  statuses: [${config.statuses.join(", ")}]`);
-			console.log(`  labels: [${config.labels.join(", ")}]`);
-			const milestones = await core.filesystem.listMilestones();
-			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
-			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);
-			console.log(`  dateFormat: ${config.dateFormat}`);
-			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
-			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
-			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
-			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
-			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
-			console.log(`  filesystemOnly: ${config.filesystemOnly ?? "false"}`);
-			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
-			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
-			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
-			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
-			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
+			for (const desc of Object.values(CONFIG_DESCRIPTORS)) {
+				console.log(await desc.listEntry(config, core));
+			}
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;

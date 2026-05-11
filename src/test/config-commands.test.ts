@@ -174,6 +174,26 @@ describe("Config commands", () => {
 		expect(listOutput).toContain("milestones: [m-0]");
 	});
 
+	it("config get taskPrefix returns the default task prefix via CONFIG_DESCRIPTORS", async () => {
+		const output = await $`bun ${CLI_PATH} config get taskPrefix`.cwd(TEST_DIR).text();
+		expect(output.trim()).toBe("task");
+	});
+
+	it("config get unknown key error lists taskPrefix in available keys", async () => {
+		const result = await $`bun ${CLI_PATH} config get __nonexistent__`.cwd(TEST_DIR).nothrow();
+		const stderr = result.stderr.toString();
+		expect(result.exitCode).not.toBe(0);
+		expect(stderr).toContain("taskPrefix");
+	});
+
+	it("config list shows all CONFIG_DESCRIPTORS keys including optional unset ones", async () => {
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("taskPrefix:");
+		expect(listOutput).toContain("maxColumnWidth:");
+		expect(listOutput).toContain("defaultEditor:");
+		expect(listOutput).toContain("autoOpenBrowser:");
+	});
+
 	afterEach(async () => {
 		try {
 			await safeCleanup(TEST_DIR);
