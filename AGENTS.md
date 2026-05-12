@@ -139,6 +139,8 @@ The LLM reads from the following backlog folders as raw input. These are immutab
 - Use `[[wikilinks]]` for all cross-references within the wiki
   - **CRITICAL:** In `index.md` tables, use `[[path/to/file]]` (without `.md`) as the cell value, not standard Markdown links like `[text](path.md)`
   - Example: `| [[sources/task-1-feature]] | Task | Description |` — NOT `| [task-1](sources/task-1.md) | Task | Description |`
+  - **CRITICAL:** In page bodies (sources, concepts, entities), Related Concepts / Related Sources / Related Entities sections must also use `[[path/to/file]]`, not `[text](path.md)`
+  - Example: `- [[concepts/keyvault]]` — NOT `- [KeyVault](concepts/keyvault.md)`
 - Append-only for `wiki/log.md`
 - YAML frontmatter on every wiki page: `type`, `title`, `updated`
 - Filenames: lowercase-with-hyphens
