@@ -37,5 +37,11 @@
 		"formatter": {
 			"quoteStyle": "double"
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["package.json"],
+			"formatter": { "enabled": false }
+		}
+	]
 }

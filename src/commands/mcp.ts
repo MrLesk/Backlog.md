@@ -71,7 +71,10 @@ function registerStartCommand(mcpCmd: Command): void {
 
 				const handleStdioClose = () => shutdown("stdio");
 				process.stdin.once("end", handleStdioClose);
-				process.stdin.once("close", handleStdioClose);
+				if (process.platform !== "win32") {
+					// On Windows, stdin can emit "close" while the MCP stdio pipe is still usable.
+					process.stdin.once("close", handleStdioClose);
+				}
 
 				const handlePipeError = (error: unknown) => {
 					const code =
