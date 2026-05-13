@@ -3857,7 +3857,7 @@ program
 	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
-			const { BacklogServer } = await import("./server/index.ts");
+			const { BacklogServer, findNextAvailablePort, isPortAvailable } = await import("./server/index.ts");
 			const server = new BacklogServer(cwd);
 
 			// Load config to get default port
@@ -3865,10 +3865,30 @@ program
 			const config = await core.filesystem.loadConfig();
 			const defaultPort = config?.defaultPort ?? 6420;
 
-			const port = Number.parseInt(options.port || defaultPort.toString(), 10);
+			let port = Number.parseInt(options.port || defaultPort.toString(), 10);
 			if (Number.isNaN(port) || port < 1 || port > 65535) {
 				console.error("Invalid port number. Must be between 1 and 65535.");
 				process.exit(1);
+			}
+
+			// Pre-check port availability and offer interactive retry
+			if (!(await isPortAvailable(port))) {
+				const nextPort = await findNextAvailablePort(port + 1);
+				const rl = createInterface({ input, output: process.stdout });
+				const answer = (
+					await rl.question(
+						`\n⚠️  Port ${port} is already in use.\n💡 Port ${nextPort} is available. Start on port ${nextPort}? [Y/n] `,
+					)
+				)
+					.trim()
+					.toLowerCase();
+				rl.close();
+				if (answer === "" || answer === "y") {
+					port = nextPort;
+				} else {
+					console.log("Aborted.");
+					process.exit(0);
+				}
 			}
 
 			await server.start(port, options.open !== false);
