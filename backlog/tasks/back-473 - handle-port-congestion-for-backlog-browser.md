@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-08 14:29'
-updated_date: '2026-05-13 17:53'
+updated_date: '2026-05-13 18:52'
 labels:
   - webui
 dependencies: []
@@ -34,7 +34,10 @@ oh, and check if port is free before starting the backlog browser mode anyway. t
 - [x] #3 If user accepts (Y/enter), server starts on the suggested port successfully
 - [x] #4 If user declines (n/N), process exits cleanly with code 0
 - [x] #5 isPortAvailable() and findNextAvailablePort() are exported from src/server/index.ts and unit-tested (min 3 cases, ≥1 error/edge case)
+- [ ] #6 --non-interactive flag skips prompt and auto-selects next free port
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
