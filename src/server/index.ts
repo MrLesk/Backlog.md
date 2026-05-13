@@ -1,3 +1,4 @@
+import net from "node:net";
 import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
@@ -186,6 +187,21 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 }
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
+
+export async function isPortAvailable(port: number): Promise<boolean> {
+	if (port < 1 || port > 65535) return false;
+	return new Promise((resolve) => {
+		const srv = net.createServer();
+		srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
+		srv.on("error", () => resolve(false));
+	});
+}
+
+export async function findNextAvailablePort(startPort: number): Promise<number> {
+	let port = startPort;
+	while (!(await isPortAvailable(port))) port++;
+	return port;
+}
 
 export class BacklogServer {
 	private core: Core;
@@ -465,16 +481,7 @@ export class BacklogServer {
 			const errorCode = (error as { code?: string })?.code;
 			const errorMessage = (error as Error)?.message;
 			if (errorCode === "EADDRINUSE" || errorMessage?.includes("address already in use")) {
-				console.error(`\n❌ Error: Port ${finalPort} is already in use.\n`);
-				console.log("💡 Suggestions:");
-				console.log(`   1. Try a different port: backlog browser --port ${finalPort + 1}`);
-				console.log(`   2. Find what's using port ${finalPort}:`);
-				if (process.platform === "darwin" || process.platform === "linux") {
-					console.log(`      Run: lsof -i :${finalPort}`);
-				} else if (process.platform === "win32") {
-					console.log(`      Run: netstat -ano | findstr :${finalPort}`);
-				}
-				console.log("   3. Or kill the process using the port and try again\n");
+				console.error(`\n❌ Error: Port ${finalPort} is already in use. Use --port to specify a different port.\n`);
 				process.exit(1);
 			}
 
