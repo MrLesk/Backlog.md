@@ -3854,6 +3854,7 @@ program
 	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
 	.option("--no-open", "don't automatically open browser")
+	.option("--non-interactive", "automatically use next free port without asking")
 	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
@@ -3874,20 +3875,25 @@ program
 			// Pre-check port availability and offer interactive retry
 			if (!(await isPortAvailable(port))) {
 				const nextPort = await findNextAvailablePort(port + 1);
-				const rl = createInterface({ input, output: process.stdout });
-				const answer = (
-					await rl.question(
-						`\n⚠️  Port ${port} is already in use.\n💡 Port ${nextPort} is available. Start on port ${nextPort}? [Y/n] `,
-					)
-				)
-					.trim()
-					.toLowerCase();
-				rl.close();
-				if (answer === "" || answer === "y") {
+				if (options.nonInteractive) {
+					console.log(`⚠️  Port ${port} is already in use. Using port ${nextPort} instead.`);
 					port = nextPort;
 				} else {
-					console.log("Aborted.");
-					process.exit(0);
+					const rl = createInterface({ input, output: process.stdout });
+					const answer = (
+						await rl.question(
+							`\n⚠️  Port ${port} is already in use.\n💡 Port ${nextPort} is available. Start on port ${nextPort}? [Y/n] `,
+						)
+					)
+						.trim()
+						.toLowerCase();
+					rl.close();
+					if (answer === "" || answer === "y") {
+						port = nextPort;
+					} else {
+						console.log("Aborted.");
+						process.exit(0);
+					}
 				}
 			}
 
