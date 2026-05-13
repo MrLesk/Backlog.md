@@ -1,20 +1,20 @@
 ---
-id: BACK-476
-title: Dedicated view for completed tasks
+id: BACK-485
+title: Filter board by free text
 status: To Do
 assignee:
   - '@lenucksi'
-created_date: '2026-05-08 20:56'
-updated_date: '2026-05-13 09:51'
+created_date: '2026-05-13 10:11'
+updated_date: '2026-05-13 10:12'
 labels: []
 dependencies: []
-ordinal: 168000
+ordinal: 172000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-If tasks are marked as "completed" they are moved to the completed folder and disappear from the columns. there is apparently no easy way to review, search, overview, and read them again. we want such a feature, both web and tui
+The kanban board view should have another filter that is freetext across all issue titles.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Definition of Done

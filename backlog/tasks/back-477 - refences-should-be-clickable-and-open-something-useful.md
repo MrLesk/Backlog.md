@@ -2,9 +2,10 @@
 id: BACK-477
 title: refences should be clickable and open something useful
 status: To Do
-assignee: []
+assignee:
+  - '@lenucksi'
 created_date: '2026-05-08 21:21'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-13 09:50'
 labels: []
 dependencies: []
 ordinal: 169000

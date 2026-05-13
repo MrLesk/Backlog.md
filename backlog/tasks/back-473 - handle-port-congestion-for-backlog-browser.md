@@ -2,9 +2,10 @@
 id: BACK-473
 title: handle port congestion for backlog browser
 status: To Do
-assignee: []
+assignee:
+  - '@lenucksi'
 created_date: '2026-05-08 14:29'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-13 09:52'
 labels:
   - webui
 dependencies: []
