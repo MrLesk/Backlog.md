@@ -68,7 +68,7 @@ Merge the following into `hooks.PreToolUse` (append, do not replace existing ent
 
 ```json
 {
-  "matcher": "Read|Edit|Write|Bash",
+  "      "matcher": "Read|Edit|Write|Bash|Grep",",
   "hooks": [
     {
       "type": "command",

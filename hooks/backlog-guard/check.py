@@ -114,6 +114,8 @@ def extract_task_id(path_str: str) -> str | None:
 def classify_path(path_str: str) -> str:
     for part in Path(path_str).parts:
         if part == "tasks":      return "task"
+        if part == "completed":  return "task"
+        if part == "drafts":     return "task"
         if part == "docs":       return "doc"
         if part == "decisions":  return "decision"
         if part == "milestones": return "milestone"
@@ -184,6 +186,12 @@ if tool in ("Read", "Edit", "Write"):
     matched_dir = is_protected(fp)
     if matched_dir:
         block = True
+elif tool == "Grep":
+    grep_path = tool_input.get("path", "")
+    matched_dir = is_protected(grep_path)
+    if matched_dir:
+        block = True
+        blocked_path = grep_path
 elif tool == "Bash":
     first_seg = cmd.split("|")[0]
     hit = bash_targets_protected(first_seg)
@@ -210,6 +218,11 @@ def _task_suggestions(op: str, tid: str | None) -> str:
             f'MCP:  mcp__backlog__task_view(id="{id_arg}")\n'
             f"CLI:  backlog task {id_arg}"
         )
+    elif op == "Write" and tid is None:
+        return (
+            'MCP:  mcp__backlog__task_create(title="...", description="...")\n'
+            'CLI:  backlog task create "Title" -d "..."'
+        )
     else:
         return (
             f'MCP:  mcp__backlog__task_edit(id="{id_arg}", plan="...", notes="...")\n'
@@ -224,6 +237,11 @@ def _doc_suggestions(op: str) -> str:
             f'MCP:  mcp__backlog__document_view(path="{name}")\n'
             f"CLI:  backlog doc {name}"
         )
+    elif op == "Write" and not Path(blocked_path).exists():
+        return (
+            f'MCP:  mcp__backlog__document_create(title="...", content="...")\n'
+            f'CLI:  backlog doc create "Title"'
+        )
     else:
         return (
             f'MCP:  mcp__backlog__document_update(path="{name}", content="...")\n'
@@ -236,13 +254,40 @@ def _generic_suggestions() -> str:
         return "MCP:  mcp__backlog__milestone_list()\nCLI:  backlog milestones"
     if kind == "config":
         return "CLI:  backlog config list\nCLI:  backlog config get <key>"
+    if kind == "decision":
+        return (
+            'MCP:  mcp__backlog__task_search(query="<keyword>")  '
+            'or  mcp__backlog__document_view(path="<name>")\n'
+            'CLI:  backlog search "<keyword>"'
+        )
     return (
         'MCP:  mcp__backlog__task_list()  or  mcp__backlog__task_search(query="...")\n'
         'CLI:  backlog task list  or  backlog search "..."'
     )
 
 
-if kind == "task":
+def _grep_suggestions(pattern: str) -> str:
+    if kind == "doc":
+        return (
+            f'MCP:  mcp__backlog__document_search(query="{pattern}")\n'
+            f'CLI:  backlog search "{pattern}"'
+        )
+    elif kind in ("task", "other"):
+        return (
+            f'MCP:  mcp__backlog__task_search(query="{pattern}")\n'
+            f'CLI:  backlog search "{pattern}"'
+        )
+    return (
+        f'MCP:  mcp__backlog__task_search(query="{pattern}")'
+        f'  or  mcp__backlog__document_search(query="{pattern}")\n'
+        f'CLI:  backlog search "{pattern}"'
+    )
+
+
+if tool == "Grep":
+    grep_pattern = tool_input.get("pattern", "...")
+    suggestion = _grep_suggestions(grep_pattern)
+elif kind == "task":
     suggestion = _task_suggestions(op, task_id)
 elif kind == "doc":
     suggestion = _doc_suggestions(op)
@@ -251,7 +296,9 @@ else:
 
 config_src = _find_config_file() or "auto-detected"
 
-if task_id:
+if tool == "Grep":
+    header = "BACKLOG GUARD -- Grep on backlog directory is forbidden."
+elif task_id:
     header = f"BACKLOG GUARD -- {tool} on task file ({task_id}) is forbidden."
 else:
     header = f"BACKLOG GUARD -- {tool} on backlog directory is forbidden."

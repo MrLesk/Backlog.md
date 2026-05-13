@@ -182,3 +182,67 @@ def test_config_file_multiple_dirs(tmp_path: Path) -> None:
     _, parsed_b = _run_hook("Read", file_path=str(task_b), cwd=tmp_path)
     assert _is_denied(parsed_a), "backlog-a task must be blocked"
     assert _is_denied(parsed_b), "backlog-b task must be blocked"
+
+
+def test_grep_tool_on_tasks_is_blocked(backlog_tree: Path) -> None:
+    """Grep tool with path=backlog/tasks/ must be denied with task_search suggestion."""
+    tasks_dir = backlog_tree / "backlog" / "tasks"
+    payload = {
+        "tool_name": "Grep",
+        "tool_input": {"pattern": "status", "path": str(tasks_dir)},
+    }
+    env = os.environ.copy()
+    env.pop("BACKLOG_GUARD_DIRS", None)
+    result = subprocess.run(
+        ["bash", str(GUARD)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(backlog_tree),
+    )
+    parsed = json.loads(result.stdout.strip()) if result.stdout.strip() else None
+    assert _is_denied(parsed), "Grep on backlog/tasks/ must be denied"
+    assert "mcp__backlog__task_search" in _denial_context(parsed)
+
+
+def test_grep_tool_outside_backlog_is_allowed(backlog_tree: Path) -> None:
+    """Grep tool with path outside protected dir must not be blocked."""
+    src = backlog_tree / "src"
+    src.mkdir(exist_ok=True)
+    payload = {
+        "tool_name": "Grep",
+        "tool_input": {"pattern": "status", "path": str(src)},
+    }
+    env = os.environ.copy()
+    env.pop("BACKLOG_GUARD_DIRS", None)
+    result = subprocess.run(
+        ["bash", str(GUARD)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(backlog_tree),
+    )
+    parsed = json.loads(result.stdout.strip()) if result.stdout.strip() else None
+    assert not _is_denied(parsed), "Grep on src/ must NOT be denied"
+
+
+def test_write_new_task_suggests_create(backlog_tree: Path) -> None:
+    """Write to a file without back-NNN in name must suggest task_create."""
+    new_file = backlog_tree / "backlog" / "tasks" / "new-task-draft.md"
+    _, parsed = _run_hook("Write", file_path=str(new_file), cwd=backlog_tree)
+    assert _is_denied(parsed), "Write on new task file must be denied"
+    context = _denial_context(parsed)
+    assert "mcp__backlog__task_create" in context, f"task_create missing: {context}"
+
+
+def test_decision_file_is_blocked(backlog_tree: Path) -> None:
+    """Read on backlog/decisions/ must be denied with search suggestion."""
+    (backlog_tree / "backlog" / "decisions").mkdir(exist_ok=True)
+    adr = backlog_tree / "backlog" / "decisions" / "adr-001-use-markdown.md"
+    adr.write_text("# ADR 001\n")
+    _, parsed = _run_hook("Read", file_path=str(adr), cwd=backlog_tree)
+    assert _is_denied(parsed), "Read on decisions file must be denied"
+    context = _denial_context(parsed)
+    assert "backlog search" in context, f"search suggestion missing: {context}"

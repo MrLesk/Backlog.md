@@ -17,6 +17,8 @@ inferior and explicitly forbidden:
 | `Edit(backlog/tasks/back-123-....md)` | `mcp__backlog__task_edit(id="BACK-123", ...)` | Validates fields, triggers git hooks |
 | `Write(backlog/tasks/...)` | `mcp__backlog__task_create(title=...)` | Allocates ID, sets ordinal |
 | `Read(backlog/docs/arch.md)` | `mcp__backlog__document_view(path="arch.md")` | Returns structured metadata |
+| `Grep(pattern, backlog/tasks/)` | `mcp__backlog__task_search(query="...")` | Structured task results |
+| `Grep(pattern, backlog/docs/)` | `mcp__backlog__document_search(query="...")` | Structured doc results |
 | `Bash(cat backlog/tasks/...)` | `mcp__backlog__task_view(id="BACK-NNN")` | Same |
 | `Bash(grep pattern backlog/)` | `mcp__backlog__task_search(query="...")` | Structured results |
 | `Bash(find backlog/ -name "*.md")` | `mcp__backlog__task_list()` | Returns full task objects |
@@ -62,7 +64,7 @@ file, writes the hook entry into your settings file, and optionally adds
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Read|Edit|Write|Bash",
+        "            "matcher": "Read|Edit|Write|Bash|Grep",,
         "hooks": [
           {
             "type": "command",
@@ -116,6 +118,7 @@ for all contributors and agents working in the repository.
 
 **Always blocked:**
 - `Read`, `Edit`, `Write` on any file inside a configured protected directory
+- `Grep` tool where the `path` parameter resolves inside a configured protected directory
 
 **Blocked in the first pipeline segment only** (everything after `|` reads stdin
 and is never blocked):
