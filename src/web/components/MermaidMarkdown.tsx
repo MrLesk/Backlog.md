@@ -12,7 +12,25 @@ const URI_AUTOLINK_PREFIX_REGEX = /^<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\u0000-\u0
 const EMAIL_AUTOLINK_PREFIX_REGEX = /^<[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z0-9-]+>/;
 
 function sanitizeMarkdownSource(source: string): string {
+	const protectedRanges: { start: number; end: number }[] = [];
+
+	// Protect code blocks (```...```)
+	for (const match of source.matchAll(/```[\s\S]*?```/g)) {
+		protectedRanges.push({ start: match.index!, end: match.index! + match[0].length });
+	}
+
+	// Protect inline code (`...`)
+	for (const match of source.matchAll(/`[^`\n]+`/g)) {
+		protectedRanges.push({ start: match.index!, end: match.index! + match[0].length });
+	}
+
 	return source.replace(/<(?=[A-Za-z])/g, (match, offset, fullText) => {
+		// Skip replacement inside code blocks and inline code
+		for (const range of protectedRanges) {
+			if (offset >= range.start && offset < range.end) {
+				return match;
+			}
+		}
 		const remaining = fullText.slice(offset);
 		if (URI_AUTOLINK_PREFIX_REGEX.test(remaining) || EMAIL_AUTOLINK_PREFIX_REGEX.test(remaining)) {
 			return match;
