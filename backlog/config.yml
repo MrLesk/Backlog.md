@@ -1,7 +1,7 @@
 project_name: "Backlog.md"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
-labels: []
+labels: [lenucksis, upstream, test]
 milestones: []
 definition_of_done: ["bunx tsc --noEmit passes when TypeScript touched", "bun run check . passes when formatting/linting touched", "bun test (or scoped test) passes"]
 date_format: yyyy-mm-dd hh:mm
