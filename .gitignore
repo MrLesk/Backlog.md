@@ -66,3 +66,7 @@ tmp/
 test-benchmark-report.json
 
 .conductor
+
+# Python cache
+__pycache__/
+*.pyc
