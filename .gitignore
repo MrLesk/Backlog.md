@@ -32,6 +32,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 *.bun-build
 .*.bun-build
 
+# generated Tailwind CSS (rebuilt by build:css before every build/cli run)
+src/web/styles/style.css
+
 # IntelliJ based IDEs
 .idea
 
