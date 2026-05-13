@@ -184,17 +184,23 @@ const WikiTreeItem = memo(function WikiTreeItem({ node }: { node: WikiTreeNode }
 	const [isExpanded, setIsExpanded] = useState(false);
 
 	if (node.type === 'directory') {
+		const fileCount = countWikiFiles(node.children || []);
+		const hasFiles = fileCount > 0;
+
 		return (
 			<div>
 				<button
-					onClick={() => setIsExpanded(!isExpanded)}
-					className="flex items-center space-x-2 w-full px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200"
+					onClick={() => hasFiles && setIsExpanded(!isExpanded)}
+					className={`flex items-center space-x-2 w-full px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 ${!hasFiles ? 'cursor-default' : ''}`}
 				>
-					<span className="text-gray-400 dark:text-gray-500">
-						{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+					<span className="text-gray-400 dark:text-gray-500 w-4">
+						{hasFiles ? (isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />) : null}
 					</span>
 					<span className="text-gray-400 dark:text-gray-500"><Icons.Folder /></span>
 					<span className="truncate">{node.name}</span>
+					{hasFiles && (
+						<span className="ml-auto text-xs text-gray-400 dark:text-gray-500">({fileCount})</span>
+					)}
 				</button>
 				{isExpanded && node.children && (
 					<div className="ml-4 space-y-1">
