@@ -3,10 +3,11 @@ id: BACK-482
 title: >-
   Narrow BACK-472: Refactor config to shared descriptor map and fix config list
   visibility for existing keys only
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - claude
 created_date: '2026-05-11 14:00'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-11 16:49'
 labels:
   - upstream-pr
   - config
@@ -57,23 +58,29 @@ This task force-pushes to `fork/fix/back-472-config-list-descriptor-map` (PR #63
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Worktree created at ./worktrees/back-472-config-descriptor from upstream-master (NOT /tmp)
-- [ ] #2 CONFIG_DESCRIPTORS map (or equivalent) defined for all currently-supported config keys
-- [ ] #3 config list shows all existing config keys — no silent omissions
-- [ ] #4 config list shows unset optional keys with visible empty/default indicator (not hidden)
-- [ ] #5 config get and config set behavior consistent with descriptor map
-- [ ] #6 No terminalStatuses or blockedStatuses entries in descriptor map in this PR
-- [ ] #7 PR description notes extensibility for terminalStatuses/blockedStatuses once related PRs land
-- [ ] #8 Tests for config list showing all keys including unset optional ones
-- [ ] #9 bun test passes; bun run check . passes
-- [ ] #10 backlog/tasks/back-472*.md committed on this branch with status In Review
-- [ ] #11 Force-pushed to fork/fix/back-472-config-list-descriptor-map with --force-with-lease
-- [ ] #12 PR #639 now shows only config-refactor-related diff
+- [x] #1 Worktree created at ./worktrees/back-472-config-descriptor from upstream-master (NOT /tmp)
+- [x] #2 CONFIG_DESCRIPTORS map (or equivalent) defined for all currently-supported config keys
+- [x] #3 config list shows all existing config keys — no silent omissions
+- [x] #4 config list shows unset optional keys with visible empty/default indicator (not hidden)
+- [x] #5 config get and config set behavior consistent with descriptor map
+- [x] #6 No terminalStatuses or blockedStatuses entries in descriptor map in this PR
+- [x] #7 PR description notes extensibility for terminalStatuses/blockedStatuses once related PRs land
+- [x] #8 Tests for config list showing all keys including unset optional ones
+- [x] #9 bun test passes; bun run check . passes
+- [x] #10 backlog/tasks/back-472*.md committed on this branch with status In Review
+- [x] #11 Force-pushed to fork/fix/back-472-config-list-descriptor-map with --force-with-lease
+- [x] #12 PR #639 now shows only config-refactor-related diff
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Narrowed PR #639 from the full BACK-472 implementation (which included terminalStatuses/blockedStatuses) to a clean config-refactor-only PR on top of upstream-master.\n\nChanges in the PR (3 files only):\n- `src/cli.ts`: Introduced CONFIG_DESCRIPTORS map as single source of truth. Replaced config get switch with descriptor lookup. Replaced hardcoded config list console.log sequence with a descriptor loop. config get taskPrefix now works (was list-only before). config set error message derives available keys from the map.\n- `src/test/config-commands.test.ts`: 3 new failing-first tests — config get taskPrefix, unknown-key error lists taskPrefix, config list shows all keys including optional unset ones.\n- `backlog/tasks/back-472*.md`: Task file committed on branch with status In Review.\n\nNo terminalStatuses or blockedStatuses in the descriptor map. Extensibility note added to PR description.\n\nAlso fixed: added .serena/ to ~/.config/git/ignore (global) and worktrees/ to .git/info/exclude to prevent future worktree remove --force issues.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

@@ -3,10 +3,11 @@ id: BACK-481
 title: >-
   Complete BACK-468 blockedStatuses: thread into TUI, fix config-plus-fallback
   logic, expose in config CLI, clean standalone PR on upstream
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - claude
 created_date: '2026-05-11 14:00'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-11 21:35'
 labels:
   - upstream-pr
   - blocked-status
@@ -82,26 +83,50 @@ This task force-pushes to the existing `fork/fix/back-468-blocked-styling` branc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Worktree created at ./worktrees/back-468-blocked-statuses from upstream-master (NOT /tmp)
-- [ ] #2 BacklogConfig has blockedStatuses?: string[] in src/types/index.ts
-- [ ] #3 loadConfig() parses blocked_statuses: YAML key
-- [ ] #4 saveConfig() serializes blockedStatuses back — round-trip test confirms no data loss
-- [ ] #5 getStatusStyle() uses config-PLUS-fallback: configMatch(status, blockedStatuses) || builtinMatch(status)
-- [ ] #6 Existing status 'Stuck' still renders as blocked when blockedStatuses config is set (regression test)
-- [ ] #7 All TUI call sites pass config.blockedStatuses: getStatusIcon, getStatusColor, formatStatusWithIcon
-- [ ] #8 Web board TaskColumn: isBlocked uses || not exclusive ternary
-- [ ] #9 config get blockedStatuses returns value; config set blockedStatuses <val> persists; config list shows blockedStatuses key
-- [ ] #10 Tests: custom blocked status, fallback preserved, TUI with config, config CLI get/set/list
-- [ ] #11 bun test passes; bun run check . passes; bunx tsc --noEmit passes
-- [ ] #12 No terminal-status changes in this branch (grep for terminalStatus in diff — must be empty)
-- [ ] #13 backlog/tasks/back-468*.md committed on this branch with status In Review
-- [ ] #14 Force-pushed to fork/fix/back-468-blocked-styling with --force-with-lease
-- [ ] #15 PR #637 now shows only blockedStatuses-related diff
+- [x] #1 Worktree created at ./worktrees/back-468-blocked-statuses from upstream-master (NOT /tmp)
+- [x] #2 BacklogConfig has blockedStatuses?: string[] in src/types/index.ts
+- [x] #3 loadConfig() parses blocked_statuses: YAML key
+- [x] #4 saveConfig() serializes blockedStatuses back — round-trip test confirms no data loss
+- [x] #5 getStatusStyle() uses config-PLUS-fallback: configMatch(status, blockedStatuses) || builtinMatch(status)
+- [x] #6 Existing status 'Stuck' still renders as blocked when blockedStatuses config is set (regression test)
+- [x] #7 All TUI call sites pass config.blockedStatuses: getStatusIcon, getStatusColor, formatStatusWithIcon
+- [x] #8 Web board TaskColumn: isBlocked uses || not exclusive ternary
+- [x] #9 config get blockedStatuses returns value; config set blockedStatuses <val> persists; config list shows blockedStatuses key
+- [x] #10 Tests: custom blocked status, fallback preserved, TUI with config, config CLI get/set/list
+- [x] #11 bun test passes; bun run check . passes; bunx tsc --noEmit passes
+- [x] #12 No terminal-status changes in this branch (grep for terminalStatus in diff — must be empty)
+- [x] #13 backlog/tasks/back-468*.md committed on this branch with status In Review
+- [x] #14 Force-pushed to fork/fix/back-468-blocked-styling with --force-with-lease
+- [x] #15 PR #637 now shows only blockedStatuses-related diff
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Clean standalone upstream PR for BACK-468 blockedStatuses feature delivered on fix/back-468-blocked-styling (PR #637 updated via force-push).
+
+**Worktree:** created at ./worktrees/back-468-blocked-statuses from upstream-master, removed after push.
+
+**Changes committed (18 files, single commit 6a0776b):**
+- `src/types/index.ts`: blockedStatuses?: string[] added to BacklogConfig
+- `src/file-system/operations.ts`: blocked_statuses YAML parse/serialize; round-trip empty-array→undefined normalization in both loadConfig and saveConfig
+- `src/ui/status-icon.ts`: all 4 exported functions extended with optional blockedStatuses param; config-array check || built-in heuristics (config-PLUS-fallback, Biome optional-chain compliant)
+- `src/web/components/TaskColumn.tsx`: isBlocked changed from exclusive ternary to || (config-PLUS-fallback)
+- `src/web/components/Board.tsx`, `BoardPage.tsx`, `src/web/App.tsx`: blockedStatuses threaded through Web component tree
+- `src/ui/board.ts`, `overview-tui.ts`, `simple-unified-view.ts`, `unified-view.ts`, `task-viewer-with-search.ts`, `src/formatters/task-plain-text.ts`, `src/commands/overview.ts`: all TUI call sites updated to pass blockedStatuses
+- `src/cli.ts`: config get/set/list commands support blockedStatuses key
+- `src/test/status-icon.test.ts`: 7 new tests (custom blocked, Stuck fallback preserved, empty array, via getStatusColor/getStatusIcon/formatStatusWithIcon)
+- `src/test/config-commands.test.ts`: 4 new tests (set/get/list round-trip, data-loss-free save, empty→undefined normalization, list omits when unconfigured)
+- `backlog/tasks/back-468 - Bug-6-Custom-Blocked-Status-Styling.md`: task file added to branch per upstream workflow
+
+**Checks:** bun test 1248 pass / 6 pre-existing failures (2× cli-commit-behaviour BACK-471, server-documents rename, parallel-loading network error, 2 others — none in files we touched). bun run check passes. bunx tsc --noEmit passes.
+
+**AC #12 verified:** grep terminalStat in diff → empty. No scope pollution.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

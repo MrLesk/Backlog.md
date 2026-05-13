@@ -1,11 +1,11 @@
 ---
 id: BACK-466
-title: 'Kern-Fix: isTerminalStatus in statistics.ts, handlers.ts, milestones.ts'
+title: 'Core Fix: isTerminalStatus in statistics.ts, handlers.ts, milestones.ts'
 status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-06 19:57'
-updated_date: '2026-05-06 22:25'
+updated_date: '2026-05-11 20:25'
 labels: []
 dependencies:
   - BACK-465
@@ -130,23 +130,23 @@ git checkout -b fix/back-466-core-done-checks
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-8 Dateien geändert auf Branch fix/back-466-core-done-checks (commit e155687).
+8 files changed on branch fix/back-466-core-done-checks (commit e155687).
 
-Geänderte Dateien:
-- src/core/backlog.ts: loadAllTasksForStatistics gibt jetzt terminalStatuses?: string[] zurück
-- src/core/statistics.ts: isTerminalStatus importiert, getTaskStatistics um 4. param erweitert, alle 5 hardcoded 'Done'-Checks ersetzt
-- src/server/index.ts: terminalStatuses aus loadAllTasksForStatistics destrukturiert und an getTaskStatistics weitergegeben
-- src/commands/overview.ts: gleiche Änderung wie server/index.ts
-- src/core/milestones.ts: isTerminalStatus importiert, isDoneStatus() um statuses/terminalStatuses params erweitert, createBucket()/buildMilestoneBuckets()/buildMilestoneSummary() entsprechend erweitert
-- src/cli.ts: buildMilestoneBuckets-Aufruf gibt config?.terminalStatuses via options-Objekt weiter
-- src/mcp/tools/tasks/handlers.ts: private isDoneStatus() entfernt, completeTask()/archiveTask() laden config und nutzen isTerminalStatus(), Fehlermeldungen zeigen konfigurierten Terminal-Status
-- src/test/statistics.test.ts: 4 neue Tests für deutsches Board (terminalStatuses: ['Fertig'])
+Changed files:
+- src/core/backlog.ts: loadAllTasksForStatistics now returns terminalStatuses?: string[]
+- src/core/statistics.ts: isTerminalStatus imported, getTaskStatistics extended with 4th param, all 5 hardcoded 'Done' checks replaced
+- src/server/index.ts: terminalStatuses destructured from loadAllTasksForStatistics and passed to getTaskStatistics
+- src/commands/overview.ts: same change as server/index.ts
+- src/core/milestones.ts: isTerminalStatus imported, isDoneStatus() extended with statuses/terminalStatuses params, createBucket()/buildMilestoneBuckets()/buildMilestoneSummary() extended accordingly
+- src/cli.ts: buildMilestoneBuckets call passes config?.terminalStatuses via options object
+- src/mcp/tools/tasks/handlers.ts: private isDoneStatus() removed, completeTask()/archiveTask() load config and use isTerminalStatus(), error messages show configured terminal status
+- src/test/statistics.test.ts: 4 new tests for German-board scenarios (terminalStatuses: ['Fertig'])
 
-Abweichung vom Plan: milestones.ts isDoneStatus() fällt bei fehlendem statuses-param auf den alten Substring-Match zurück (backwards-compatible für Web-Callers die kein config haben).
+Deviation from plan: milestones.ts isDoneStatus() falls back to old substring-match when statuses param is absent (backwards-compatible for web callers without config).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Alle hardcoded 'Done'-Checks in statistics.ts (5x), milestones.ts und handlers.ts durch isTerminalStatus() ersetzt. terminalStatuses fließt jetzt von loadAllTasksForStatistics durch server/index.ts und overview.ts bis zu getTaskStatistics. Milestone-Bucket-Berechnung nutzt ebenfalls den konfigurierten Terminal-Status. handlers.ts-Fehlermeldungen nennen den tatsächlich konfigurierten Status. bun test: 1246 pass, 4 fail (alle pre-existend). tsc und biome check: sauber.
+All hardcoded 'Done' checks in statistics.ts (5x), milestones.ts and handlers.ts replaced with isTerminalStatus(). terminalStatuses now flows from loadAllTasksForStatistics through server/index.ts and overview.ts to getTaskStatistics. Milestone bucket calculation also uses the configured terminal status. handlers.ts error messages show the actually configured status. bun test: 1246 pass, 4 fail (all pre-existing). tsc and biome check: clean.
 <!-- SECTION:FINAL_SUMMARY:END -->

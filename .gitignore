@@ -69,3 +69,6 @@ tmp/
 test-benchmark-report.json
 
 .conductor
+
+# Local archive / reference documents
+archive/

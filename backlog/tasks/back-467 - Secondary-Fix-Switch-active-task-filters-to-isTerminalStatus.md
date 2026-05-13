@@ -1,11 +1,11 @@
 ---
 id: BACK-467
-title: 'Sekundär-Fix: Aktiv-Task-Filter auf isTerminalStatus umstellen'
+title: 'Secondary Fix: Switch active-task filters to isTerminalStatus'
 status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-06 19:59'
-updated_date: '2026-05-06 22:07'
+updated_date: '2026-05-11 20:25'
 labels: []
 dependencies:
   - BACK-465
