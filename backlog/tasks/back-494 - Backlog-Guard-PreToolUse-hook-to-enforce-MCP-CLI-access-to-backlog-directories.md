@@ -121,6 +121,30 @@ All 5 files created via Serena (serena-guard blocked direct Write on .sh/.py):
 Branch: feature/back-494-backlog-guard-hook
 Commit: 59308c6
 PR: https://github.com/MrLesk/Backlog.md/pull/649
+
+### OpenCode support (added post-initial-implementation)
+
+OpenCode does NOT have Claude Code-style declarative shell-script hooks. Verified
+against https://opencode.ai/docs. The equivalent mechanism is a JS plugin with a
+`tool.execute.before` handler that throws an Error to hard-block a tool call.
+
+Added `hooks/backlog-guard/opencode-plugin.js`:
+- Mirrors check.py logic entirely in JavaScript (no external deps — YAML parsed
+  with a targeted regex since the format is self-authored)
+- Config discovery uses the same 4-step order as check.py (git root → CWD walk →
+  auto-detect → no-op)
+- Cache (`_cache` sentinel) avoids re-running `git rev-parse` + FS walk on every
+  tool call within a long OpenCode session
+- Block method: `throw new Error(message)` vs check.py's JSON stdout protocol
+
+Updated README.md and SKILL.md to cover both tools:
+- README: global/per-project install matrix for both Claude Code and OpenCode,
+  mechanism comparison table
+- SKILL.md: added Steps 7–8 for OpenCode (global symlink to
+  `~/.config/opencode/plugins/` or per-project `plugin` array in opencode.json)
+
+Also added `opencode.json` at repo root for use when developing Backlog.md itself
+with OpenCode (MCP server + plugin wired up together).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
