@@ -4,7 +4,7 @@ context: fork
 model: haiku
 ---
 
-Run this command in the project root (/home/jo/kit/claude-code-llm-kram/Backlog.md):
+Run this command in the project root:
 
 ```bash
 bun test --only-failures 2>&1

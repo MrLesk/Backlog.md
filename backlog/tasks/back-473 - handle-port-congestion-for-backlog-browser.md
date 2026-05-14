@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-08 14:29'
-updated_date: '2026-05-13 18:52'
+updated_date: '2026-05-13 18:53'
 labels:
   - webui
 dependencies: []
@@ -34,10 +34,8 @@ oh, and check if port is free before starting the backlog browser mode anyway. t
 - [x] #3 If user accepts (Y/enter), server starts on the suggested port successfully
 - [x] #4 If user declines (n/N), process exits cleanly with code 0
 - [x] #5 isPortAvailable() and findNextAvailablePort() are exported from src/server/index.ts and unit-tested (min 3 cases, ≥1 error/edge case)
-- [ ] #6 --non-interactive flag skips prompt and auto-selects next free port
+- [x] #6 --non-interactive flag skips prompt and auto-selects next free port
 <!-- AC:END -->
-
-
 
 ## Implementation Plan
 
@@ -53,7 +51,7 @@ This keeps the server class testable without stdin mocking.
 ### Env / Tooling Constraints (non-negotiable)
 
 - **All code reads/writes via Serena MCP** — `mcp__plugin_serena_serena__read_file`, `replace_content`, `replace_symbol_body`, `insert_after_symbol`. Never use Read/Edit/Write tools or grep via Bash for source code.
-- **Backlog CLI**: `/home/jo/kit/claude-code-llm-kram/Backlog.md/dist/backlog` (absolute path only; `~/.bun/bin/backlog` is unreliable)
+- **Backlog CLI**: use `dist/backlog` (built binary) or the globally installed `backlog` binary
 - **Bash only for**: git ops, `bun test`, backlog CLI
 - **Tests**: always `bun test --only-failures 2>&1` — never bare `bun test`
 - **TDD strictly**: write failing tests (RED) before any implementation; confirm RED before writing impl code
@@ -77,12 +75,12 @@ cd ./worktrees/back-473-port-congestion && bun i --frozen-lockfile
 
 Activate Serena on the worktree **before editing any files**:
 ```
-mcp__plugin_serena_serena__activate_project({ project: "/home/jo/kit/claude-code-llm-kram/Backlog.md/worktrees/back-473-port-congestion" })
+mcp__plugin_serena_serena__activate_project({ project: "<repo-root>/worktrees/back-473-port-congestion" })
 ```
 
 Mark task In Progress:
 ```bash
-BACKLOG=/home/jo/kit/claude-code-llm-kram/Backlog.md/dist/backlog
+BACKLOG=dist/backlog
 $BACKLOG task edit BACK-473 --status "In Progress" --assignee "@claude"
 ```
 
@@ -347,13 +345,12 @@ Files changed:
 - src/server/index.ts: added isPortAvailable(), findNextAvailablePort() exports; simplified EADDRINUSE catch block
 - src/cli.ts: added pre-check + readline interactive retry loop in browser command; changed const port → let port
 - src/test/server-port.test.ts: NEW - 5 unit tests for port helpers (3 for isPortAvailable, 2 for findNextAvailablePort)
+
+Added --non-interactive flag: backlog browser --non-interactive auto-selects next free port without prompting
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented proactive port availability check and interactive retry UX for backlog browser.
-Server stays pure (throws on error); CLI handles user interaction via readline.
-Commit: 00caebb - BACK-473 - handle port congestion for backlog browser
-PR: https://github.com/MrLesk/Backlog.md/pull/651
+Implemented proactive port availability check and interactive retry UX for backlog browser. Server stays pure (throws on error); CLI handles user interaction via readline. Added --non-interactive flag for automated port fallback. Commits: 00caebb (initial), 32daf5c (include task file), 504499d (--non-interactive flag), ae99788 (AC #6). PR: https://github.com/MrLesk/Backlog.md/pull/651
 <!-- SECTION:FINAL_SUMMARY:END -->
