@@ -3,7 +3,7 @@
 	"mcp": {
 		"backlog": {
 			"type": "local",
-			"command": ["/home/jo/kit/claude-code-llm-kram/Backlog.md/dist/backlog", "mcp", "start"],
+			"command": ["./dist/backlog", "mcp", "start"],
 			"enabled": true
 		}
 	},
