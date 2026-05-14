@@ -1,5 +1,5 @@
 # the name by which the project can be referenced within Serena
-project_name: "Backlog.md"
+project_name: "backlog-guard"
 
 
 # list of languages for which language servers are started; choose from:
@@ -33,7 +33,6 @@ project_name: "Backlog.md"
 languages:
 - typescript
 - python
-- bash
 
 # the encoding used by text files in the project
 # For a list of possible encodings, see https://docs.python.org/3.11/library/codecs.html#standard-encodings

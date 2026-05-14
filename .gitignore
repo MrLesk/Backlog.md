@@ -72,3 +72,7 @@ test-benchmark-report.json
 
 # Local archive / reference documents
 archive/
+
+# Python cache
+__pycache__/
+*.pyc

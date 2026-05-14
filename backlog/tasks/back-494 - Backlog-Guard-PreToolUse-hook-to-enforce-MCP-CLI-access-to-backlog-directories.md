@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@lenucksi'
 created_date: '2026-05-13 11:12'
-updated_date: '2026-05-13 11:41'
+updated_date: '2026-05-13 11:22'
 labels:
   - tooling
   - hooks
@@ -121,16 +121,6 @@ All 5 files created via Serena (serena-guard blocked direct Write on .sh/.py):
 Branch: feature/back-494-backlog-guard-hook
 Commit: 59308c6
 PR: https://github.com/MrLesk/Backlog.md/pull/649
-
-Follow-up fixes applied in 2 additional commits (82e34f8, 74a7fa0):
-- Added backlog task file to PR branch (backlog/tasks/back-494-...md)
-- Added Grep tool handling to check.py (block when path under protected dir → task_search/document_search)
-- Write suggestion now distinguishes create (no task ID) vs edit (task ID present); same for docs
-- classify_path extended to cover completed/, drafts/, decisions/
-- Matcher updated to Read|Edit|Write|Bash|Grep in README and skill
-- 4 new tests added (12 total, all passing)
-- Global gitignore set up at ~/.gitignore_global
-- Serena activation memory written to ~/.claude/memory/feedback_serena_activation.md
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
