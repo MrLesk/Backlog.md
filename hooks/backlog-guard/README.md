@@ -1,9 +1,10 @@
 # backlog-guard
 
-A Claude Code `PreToolUse` hook that hard-blocks direct file operations on
-Backlog.md data directories and redirects the agent to the correct MCP tool or
-CLI command, with the exact replacement call pre-filled (task ID, document name,
-or path already substituted from the blocked attempt).
+A `PreToolUse` hook (Claude Code) and `tool.execute.before` plugin (OpenCode) that
+hard-blocks direct file operations on Backlog.md data directories and redirects the
+agent to the correct MCP tool or CLI command, with the exact replacement call
+pre-filled (task ID, document name, or path already substituted from the blocked
+attempt).
 
 ## Why
 
@@ -23,22 +24,25 @@ inferior and explicitly forbidden:
 | `Bash(grep pattern backlog/)` | `mcp__backlog__task_search(query="...")` | Structured results |
 | `Bash(find backlog/ -name "*.md")` | `mcp__backlog__task_list()` | Returns full task objects |
 
-The hook fires before the tool executes, returns `{"permissionDecision": "deny"}`,
-and injects a stop message naming the exact MCP tool or CLI command to use, with
-the task ID or document name already extracted from the intercepted path.
+The hook fires before the tool executes and hard-blocks it, injecting a stop message
+naming the exact MCP tool or CLI command to use, with the task ID or document name
+already extracted from the intercepted path.
 
 ## Files
 
 ```
-guard.sh         Bash wrapper — reads stdin JSON, exports env vars, calls check.py
-check.py         Python enforcement logic (blocking decision + directed stop message)
-test_check.py    Pytest tests for all block/allow/edge cases
-README.md        This file
+guard.sh              Bash wrapper for Claude Code — reads stdin JSON, calls check.py
+check.py              Python enforcement logic (Claude Code)
+opencode-plugin.js    OpenCode plugin — mirrors check.py logic via tool.execute.before
+test_check.py         Pytest tests for check.py (12 cases)
+README.md             This file
 ```
+
+---
 
 ## Installation
 
-### Quick setup (recommended)
+### Quick setup (recommended — Claude Code only)
 
 Run the setup skill in Claude Code:
 
@@ -52,23 +56,50 @@ file, writes the hook entry into your settings file, and optionally adds
 
 ### Manual setup
 
-1. Locate the `guard.sh` path (e.g. `/path/to/Backlog.md/hooks/backlog-guard/guard.sh`)
+#### Step 1 — Create `.backlog-guard` in your project git root
 
-2. Create `.backlog-guard` in your project root (see Configuration below)
+```yaml
+# .backlog-guard
+# Directories that agents must not access directly.
+# Paths are relative to this file (the git root).
+dirs:
+  - backlog/
+```
 
-3. Register the hook in `~/.claude/settings.json` (user-global) or
-   `.claude/settings.local.json` (project-local):
+Multiple roots (monorepo):
+
+```yaml
+dirs:
+  - backlog/
+  - team-backlog/
+```
+
+This file is worth committing — it documents the access policy for all contributors.
+
+#### Step 2 — Locate the hook files
+
+Find the path to `guard.sh` (Claude Code) or `opencode-plugin.js` (OpenCode):
+
+| Install method | Path |
+|---|---|
+| Source tree | `<repo-root>/hooks/backlog-guard/` |
+| npm global install | `$(npm root -g)/backlog.md/hooks/backlog-guard/` |
+| bun global install | `~/.bun/lib/node_modules/backlog.md/hooks/backlog-guard/` |
+
+#### Step 3 — Register the hook
+
+**Claude Code — global** (`~/.claude/settings.json`, applies to all projects):
 
 ```json
 {
   "hooks": {
     "PreToolUse": [
       {
-        "            "matcher": "Read|Edit|Write|Bash|Grep",,
+        "matcher": "Read|Edit|Write|Bash|Grep",
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/Backlog.md/hooks/backlog-guard/guard.sh",
+            "command": "/absolute/path/to/hooks/backlog-guard/guard.sh",
             "timeout": 10,
             "statusMessage": "Backlog Guard: checking access..."
           }
@@ -82,37 +113,60 @@ file, writes the hook entry into your settings file, and optionally adds
 `guard.sh` derives the path to `check.py` from its own `$DIR`, so the absolute
 path to `guard.sh` is the only thing you need to set.
 
-## Configuration
+**Claude Code — per project** (`.claude/settings.json` or `.claude/settings.local.json`):
 
-backlog-guard reads its protected directory list from a `.backlog-guard` YAML file.
+Same JSON structure as above, placed in the project-level settings file. Project
+settings override global settings for that project.
 
-### Discovery order
+**OpenCode — global** (`~/.config/opencode/plugins/backlog-guard.js`):
 
-1. `git rev-parse --show-toplevel` → look for `.backlog-guard` at the git root
-2. Walk CWD upward (up to 4 levels) looking for `.backlog-guard`
-3. **Auto-detect fallback**: walk CWD upward looking for `backlog/config.yml`
-   (protects the `backlog/` directory next to it)
-4. Nothing found → hook exits cleanly with no output (safe in non-backlog repos)
+Copy or symlink `opencode-plugin.js` into the global OpenCode plugins directory:
 
-### `.backlog-guard` format
+```bash
+# symlink (stays up to date when backlog.md is updated)
+ln -s /absolute/path/to/hooks/backlog-guard/opencode-plugin.js \
+      ~/.config/opencode/plugins/backlog-guard.js
 
-```yaml
-# Directories that agents must not access directly.
-# Paths are relative to this file (the git root).
-dirs:
-  - backlog/
+# or copy
+cp /absolute/path/to/hooks/backlog-guard/opencode-plugin.js \
+   ~/.config/opencode/plugins/backlog-guard.js
 ```
 
-Multiple protected roots (e.g. a monorepo with separate backlogs):
+OpenCode auto-loads all `.js` files from `~/.config/opencode/plugins/` — no config
+file changes needed.
 
-```yaml
-dirs:
-  - backlog/
-  - team-backlog/
+**OpenCode — per project** (`opencode.json`):
+
+```json
+{
+  "plugin": ["./hooks/backlog-guard/opencode-plugin.js"]
+}
 ```
 
-The `.backlog-guard` file is useful to commit — it documents the access policy
-for all contributors and agents working in the repository.
+For projects that use backlog.md from npm global install, the path resolves via
+`node_modules` lookup, or you can provide an absolute path.
+
+---
+
+## How it works per tool
+
+### Claude Code
+
+`guard.sh` is called as a `PreToolUse` hook. It reads the JSON payload from stdin,
+extracts `tool_name`, `tool_input.file_path`, and `tool_input.command` into env vars,
+then calls `check.py`. If blocked, `check.py` prints a JSON deny response and exits.
+
+### OpenCode
+
+`opencode-plugin.js` exports a `tool.execute.before` handler. OpenCode calls it
+before each tool execution with `{ tool, args }`. If the call targets a protected
+directory, the handler throws an `Error` — OpenCode treats a thrown error as a hard
+block and shows the error message to the model.
+
+Both use the same `.backlog-guard` config file and the same path-classification and
+suggestion logic.
+
+---
 
 ## What gets blocked
 
@@ -134,14 +188,50 @@ and is never blocked):
 - `git status`, `git log`, `git diff` — git operations on backlog files are fine
 - Projects with no `.backlog-guard` and no `backlog/config.yml`
 
+---
+
+## Configuration
+
+### Discovery order
+
+Both `check.py` and `opencode-plugin.js` use the same discovery order:
+
+1. `git rev-parse --show-toplevel` → look for `.backlog-guard` at the git root
+2. Walk CWD upward (up to 4 levels) looking for `.backlog-guard`
+3. **Auto-detect fallback**: walk CWD upward looking for `backlog/config.yml`
+   (protects the `backlog/` directory next to it)
+4. Nothing found → hook exits cleanly with no output (safe in non-backlog repos)
+
+### `.backlog-guard` format
+
+```yaml
+# Paths are relative to this file (the git root).
+dirs:
+  - backlog/
+```
+
+---
+
 ## Running tests
 
 ```bash
 python -m pytest hooks/backlog-guard/test_check.py -v
 ```
 
-Requires Python 3.11+ and `pyyaml` (`pip install pyyaml`).
-`pytest` is also required (`pip install pytest`).
+Requires Python 3.11+ and `pyyaml` + `pytest` (`pip install pyyaml pytest`).
+
+---
+
+## Comparison
+
+| | Claude Code | OpenCode |
+|---|---|---|
+| Hook mechanism | Shell command in `settings.json` `hooks.PreToolUse` | JS plugin `tool.execute.before` |
+| Block method | JSON `{"permissionDecision": "deny"}` to stdout | `throw new Error(...)` |
+| Config file | `.backlog-guard` YAML (shared) | `.backlog-guard` YAML (shared) |
+| Global install | Entry in `~/.claude/settings.json` | Symlink/copy to `~/.config/opencode/plugins/` |
+| Per-project install | Entry in `.claude/settings.json` | `"plugin"` array in `opencode.json` |
+| Code required | No (shell script + Python already shipped) | No (JS plugin already shipped) |
 
 ## Relationship to serena-guard
 

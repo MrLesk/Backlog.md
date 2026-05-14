@@ -1,16 +1,20 @@
 ---
 name: backlog-guard-setup
-description: Configure the backlog-guard PreToolUse hook for this project. Auto-detects
-  the backlog directory, creates the .backlog-guard config file, writes the hook entry
-  into .claude/settings.json or settings.local.json, and optionally adds mcp__backlog__*
-  permissions to the allowlist.
+description: Configure the backlog-guard hook for this project in Claude Code and/or
+  OpenCode. Auto-detects the backlog directory, creates the .backlog-guard config file,
+  writes the Claude Code hook entry into settings.json, and sets up the OpenCode plugin.
+  Optionally adds mcp__backlog__* permissions to the allowlist.
 ---
 
 # Backlog Guard Setup
 
-Install the `backlog-guard` PreToolUse hook, which hard-blocks direct
-`Read`/`Edit`/`Write`/`Bash` access to Backlog.md data directories and redirects
-agents to the correct MCP tool or CLI command.
+Install `backlog-guard`, which hard-blocks direct `Read`/`Edit`/`Write`/`Bash` access
+to Backlog.md data directories and redirects agents to the correct MCP tool or CLI
+command.
+
+Supports both **Claude Code** (PreToolUse hook via `guard.sh`) and **OpenCode**
+(plugin via `opencode-plugin.js`). Run this skill once; it handles both if both are
+in use.
 
 ## Steps
 
@@ -23,17 +27,17 @@ If no `backlog/config.yml` is found, ask the user:
 > "I couldn't find a backlog directory automatically. Please provide the path(s)
 > to the directory (or directories) that agents should not access directly."
 
-### 2. Locate the hook script (`guard.sh`)
+### 2. Locate the hook files
 
-Check these locations in order:
+Check these locations in order for both `guard.sh` and `opencode-plugin.js`:
 
-1. `<git-root>/hooks/backlog-guard/guard.sh` — running from the Backlog.md source tree
-2. `$(npm root -g 2>/dev/null)/backlog.md/hooks/backlog-guard/guard.sh` — global npm install
-3. `$(~/.bun/bin/backlog --prefix 2>/dev/null)/hooks/backlog-guard/guard.sh` — bun global install
+1. `<git-root>/hooks/backlog-guard/` — running from the Backlog.md source tree
+2. `$(npm root -g 2>/dev/null)/backlog.md/hooks/backlog-guard/` — global npm install
+3. `~/.bun/lib/node_modules/backlog.md/hooks/backlog-guard/` — bun global install
 
-If none resolves, ask the user:
-> "I couldn't locate guard.sh automatically. Please provide the absolute path to
-> the guard.sh file from the backlog-guard hook."
+If neither resolves, ask the user:
+> "I couldn't locate the backlog-guard hook files automatically. Please provide the
+> absolute path to the `hooks/backlog-guard/` directory."
 
 ### 3. Create `.backlog-guard` config file
 
@@ -51,16 +55,18 @@ Use the relative path from the git root for each directory.
 If the file already exists, read it first and merge new directories rather than
 overwriting. Confirm any changes with the user before writing.
 
-### 4. Determine the settings target
+### 4. Claude Code — determine settings target
 
 Ask:
-> "Should I add the hook to the project-local settings (`.claude/settings.local.json`)
-> or your user-global settings (`~/.claude/settings.json`)?
-> Project-local is recommended for backlog-specific repos."
+> "Should I add the Claude Code hook to the project-local settings
+> (`.claude/settings.local.json`) or your user-global settings
+> (`~/.claude/settings.json`)?
+> Project-local is recommended for backlog-specific repos; global applies to all
+> your projects."
 
 Default: project-local.
 
-### 5. Write the hook entry
+### 5. Claude Code — write the hook entry
 
 Read the target settings file. If it does not exist, start with `{}`.
 
@@ -68,7 +74,7 @@ Merge the following into `hooks.PreToolUse` (append, do not replace existing ent
 
 ```json
 {
-  "      "matcher": "Read|Edit|Write|Bash|Grep",",
+  "matcher": "Read|Edit|Write|Bash|Grep",
   "hooks": [
     {
       "type": "command",
@@ -86,7 +92,7 @@ The hook discovers `.backlog-guard` automatically at runtime via `git rev-parse
 --show-toplevel`, so no path or environment variable needs to be embedded in the
 command string.
 
-### 6. Offer to add MCP tool permissions
+### 6. Claude Code — offer to add MCP tool permissions
 
 Ask:
 > "Should I also add `mcp__backlog__*` tool permissions to the settings allowlist?
@@ -121,20 +127,57 @@ If yes, merge the following into `permissions.allow` in the same settings file:
 
 Deduplicate against any existing entries before writing.
 
-### 7. Confirm and report
+### 7. OpenCode — install the plugin
+
+Ask:
+> "Are you also using OpenCode in this project? If yes, should I install the
+> backlog-guard plugin globally (for all projects) or per-project only?"
+
+**Global install** — symlink into OpenCode's global plugins directory:
+
+```bash
+mkdir -p ~/.config/opencode/plugins
+ln -sf <absolute-path-to-opencode-plugin.js> ~/.config/opencode/plugins/backlog-guard.js
+```
+
+OpenCode auto-loads all `.js` files in `~/.config/opencode/plugins/` — no config
+file changes needed.
+
+**Per-project install** — add to `opencode.json` in the project root:
+
+Read `opencode.json` (or start with `{"$schema":"https://opencode.ai/config.json"}`
+if missing). Merge the plugin path into the `plugin` array:
+
+```json
+{
+  "plugin": ["<absolute-or-relative-path-to-opencode-plugin.js>"]
+}
+```
+
+Use a relative path (e.g. `./hooks/backlog-guard/opencode-plugin.js`) when running
+from the Backlog.md source tree; use an absolute path otherwise.
+
+The plugin discovers `.backlog-guard` automatically at runtime — no additional config
+is needed in `opencode.json`.
+
+### 8. Confirm and report
 
 Show the user a summary of what was written:
 - Path of `.backlog-guard` and its contents
-- Target settings file and the hook entry added
-- MCP permissions added (if any)
+- Claude Code: target settings file and the hook entry added; MCP permissions added (if any)
+- OpenCode: plugin path symlinked or added to `opencode.json` (if applicable)
 
 Remind the user:
-> "Reload Claude Code (or open a new session) for the hook to take effect."
+> "Reload Claude Code and/or OpenCode (or open a new session) for the changes to
+> take effect."
 
 ### Verification
 
-To confirm the hook is active, ask Claude Code to:
+**Claude Code** — ask Claude to:
 ```
 Read backlog/tasks/<any-task-file>.md
 ```
 The hook should deny the request and suggest `mcp__backlog__task_view` instead.
+
+**OpenCode** — attempt a read on a backlog file. The plugin should block it and
+display the task ID and MCP tool suggestion.
