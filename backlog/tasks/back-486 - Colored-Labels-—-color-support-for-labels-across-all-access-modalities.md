@@ -4,6 +4,7 @@ title: Colored Labels — color support for labels across all access modalities
 status: To Do
 assignee: []
 created_date: '2026-05-13 10:14'
+updated_date: '2026-05-17 20:27'
 labels:
   - labels
   - web-ui
@@ -11,7 +12,9 @@ labels:
   - cli
   - mcp
   - ux
+milestone: m-9
 dependencies: []
+priority: medium
 ordinal: 173000
 ---
 

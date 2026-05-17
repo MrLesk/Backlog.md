@@ -4,10 +4,12 @@ title: 'Web UI Kanban Board: group and indent subtasks under parent, with collap
 status: To Do
 assignee: []
 created_date: '2026-05-13 10:50'
+updated_date: '2026-05-17 20:27'
 labels:
   - web-ui
   - subtasks
   - frontend
+milestone: m-8
 dependencies:
   - BACK-493.1
   - BACK-493.3
@@ -18,6 +20,7 @@ references:
 modified_files:
   - src/web/components/TaskColumn.tsx
 parent_task_id: BACK-493
+priority: medium
 ordinal: 184000
 ---
 

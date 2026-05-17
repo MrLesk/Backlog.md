@@ -7,13 +7,21 @@ status: To Do
 assignee:
   - '@lenucksi'
 created_date: '2026-05-08 20:32'
-updated_date: '2026-05-13 10:12'
+updated_date: '2026-05-17 20:27'
 labels:
   - sequences
   - research
   - visualization
   - dependencies
+milestone: m-10
 dependencies: []
+references:
+  - BACK-217
+  - BACK-217.02
+  - BACK-217.03
+  - BACK-217.04
+  - BACK-218
+priority: medium
 ordinal: 167000
 ---
 

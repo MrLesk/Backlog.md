@@ -4,9 +4,10 @@ title: 'TUI: Display task type in board and detail views'
 status: To Do
 assignee: []
 created_date: '2026-01-01 23:37'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:10'
 labels:
   - tui
+milestone: m-9
 dependencies:
   - task-355.01
 parent_task_id: BACK-355

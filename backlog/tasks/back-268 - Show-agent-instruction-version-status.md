@@ -5,9 +5,12 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-09-17 19:19'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:27'
 labels: []
-dependencies: []
+milestone: m-11
+dependencies:
+  - BACK-267
+priority: low
 ordinal: 162000
 ---
 

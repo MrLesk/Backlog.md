@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:10'
 labels:
   - web-ui
   - state
   - bug
+milestone: m-8
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/578'
@@ -21,6 +22,9 @@ ordinal: 2000
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Track GitHub issue #578: unsaved Web UI form state should not reset when task files change while the browser UI is open.
+
+Sideproblem, probably technically related: 
+- If we have the Description or another text field open for editing and then change the label, assignee or something else at the side, the editor field resets losing the already made changes. Also needs fixing.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

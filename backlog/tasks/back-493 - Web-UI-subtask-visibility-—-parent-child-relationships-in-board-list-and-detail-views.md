@@ -6,11 +6,14 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-05-13 10:49'
+updated_date: '2026-05-17 20:27'
 labels:
   - web-ui
   - subtasks
   - frontend
+milestone: m-8
 dependencies: []
+priority: medium
 ordinal: 180000
 ---
 
@@ -34,6 +37,12 @@ The feature was designed to mirror what the TUI already does (`src/ui/task-viewe
 - [ ] #6 The overview (All Tasks) list indents subtask rows under their parent
 - [ ] #7 All subtask-related data is served correctly by the API (subtaskSummaries, parentTaskId, parentTaskTitle)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supersedes BACK-222 (Improve task and subtask visualization in web UI). BACK-222 is closed in favour of this cluster — all its ACs are covered by BACK-493.1–493.5.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->

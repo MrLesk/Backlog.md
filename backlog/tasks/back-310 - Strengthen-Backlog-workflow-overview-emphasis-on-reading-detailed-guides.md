@@ -5,9 +5,14 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-10-27 21:37'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:27'
 labels: []
+milestone: m-11
 dependencies: []
+references:
+  - BACK-349
+  - BACK-200
+priority: low
 ordinal: 164000
 ---
 
@@ -32,3 +37,9 @@ Make the overview instructions more forceful and prominent about reading the sup
 - [ ] #2 The updated language adds a brief explanation of why reviewing the detailed guides is required.
 - [ ] #3 No conflicting or redundant instructions remain after the update.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Guidance-space relationships: BACK-349 (Publish as Agent Skill) intends the Agent Skill to become the canonical guidance source. If BACK-349 ships, this ticket's scope should narrow to keeping the MCP workflow overview resource in sync with the skill rather than improving it as a standalone document. BACK-200 (Claude Code init) is also in this space for IDE-specific guidance injection.
+<!-- SECTION:NOTES:END -->

@@ -4,22 +4,28 @@ title: Update documentation and tests for sequences
 status: To Do
 assignee: []
 created_date: '2025-07-27'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:27'
 labels:
   - sequences
   - documentation
   - testing
+milestone: m-10
 dependencies:
   - task-213
   - task-214
   - task-215
   - task-217
+references:
+  - BACK-474
+priority: low
 ordinal: 158000
 ---
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 Ensure users and developers understand how sequences work across all interfaces and that the new feature is covered by tests and documentation.
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -32,3 +38,9 @@ Ensure users and developers understand how sequences work across all interfaces 
 - [ ] #7 CLI/TUI docs: --plain prints Unsequenced first; TUI move mode uses join semantics; blocked moves to Unsequenced unless isolated
 - [ ] #8 Web UI docs: endpoints shape ({ unsequenced, sequences }), join semantics, error handling; update examples/screenshots
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+BACK-474 (Sequence / Dependency Visualizer Research) may affect the scope of the documentation here — its gap analysis could recommend closing, replacing, or redirecting some of the 217.* subtasks this ticket documents. Do BACK-474 before finalising the doc scope.
+<!-- SECTION:NOTES:END -->

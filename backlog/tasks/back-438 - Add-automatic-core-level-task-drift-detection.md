@@ -5,12 +5,13 @@ status: To Do
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 21:37'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:10'
 labels:
   - feature
   - core
   - web
   - mcp
+milestone: m-9
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/556'

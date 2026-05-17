@@ -4,10 +4,12 @@ title: 'Web UI TaskList overview: indent subtask rows under their parent'
 status: To Do
 assignee: []
 created_date: '2026-05-13 10:50'
+updated_date: '2026-05-17 20:27'
 labels:
   - web-ui
   - subtasks
   - frontend
+milestone: m-8
 dependencies:
   - BACK-493.1
 references:
@@ -16,6 +18,7 @@ references:
 modified_files:
   - src/web/components/TaskList.tsx
 parent_task_id: BACK-493
+priority: low
 ordinal: 185000
 ---
 

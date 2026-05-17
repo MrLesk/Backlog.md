@@ -4,22 +4,28 @@ title: Add Claude Code integration with workflow commands during init
 status: To Do
 assignee: []
 created_date: '2025-07-23'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:20'
 labels:
   - enhancement
   - developer-experience
+milestone: m-11
 dependencies:
   - task-24.1
   - task-208
+references:
+  - BACK-349
+  - BACK-310
 priority: medium
 ordinal: 118000
 ---
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 Enable users to leverage Claude Code's custom commands feature by generating a .claude directory with pre-configured workflow prompts when running 'backlog init'. This will streamline common backlog.md workflows like parsing PRDs, planning tasks, managing branches, and conducting code reviews.
 
 Based on contribution from PR #235: https://github.com/MrLesk/Backlog.md/pull/235
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -32,3 +38,9 @@ Based on contribution from PR #235: https://github.com/MrLesk/Backlog.md/pull/23
 - [ ] #7 Init wizard asks user if they want to add Claude Code commands during setup
 - [ ] #8 If .claude/claude.yaml already exists, merge new commands intelligently (append new commands, preserve existing ones)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Guidance-space relationships: BACK-349 (Publish as Agent Skill) is the canonical agent guidance package — align the Claude Code commands injected by `backlog init` with the skill's content to avoid drift. BACK-310 (strengthen MCP workflow overview) is also in this space but targets the MCP resource surface rather than IDE-specific command files.
+<!-- SECTION:NOTES:END -->

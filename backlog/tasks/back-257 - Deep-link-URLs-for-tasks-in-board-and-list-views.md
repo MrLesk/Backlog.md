@@ -4,9 +4,11 @@ title: Deep link URLs for tasks in board and list views
 status: To Do
 assignee: []
 created_date: '2025-09-06 22:11'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:27'
 labels: []
+milestone: m-8
 dependencies: []
+priority: medium
 ordinal: 160000
 ---
 

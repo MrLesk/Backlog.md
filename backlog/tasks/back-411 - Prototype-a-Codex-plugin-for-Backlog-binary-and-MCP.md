@@ -5,12 +5,15 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-04-03 05:57'
+updated_date: '2026-05-17 20:27'
 labels: []
+milestone: m-11
 dependencies: []
 documentation:
   - README.md
   - DEVELOPMENT.md
   - /Users/alex/.codex/skills/.system/plugin-creator/SKILL.md
+priority: medium
 ---
 
 ## Description

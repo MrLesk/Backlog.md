@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2026-01-19 21:32'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:10'
 labels:
   - tui
   - ux
   - enhancement
+milestone: m-12
 dependencies: []
 documentation:
   - src/ui/board.ts

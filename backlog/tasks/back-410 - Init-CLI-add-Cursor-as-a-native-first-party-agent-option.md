@@ -4,17 +4,19 @@ title: 'Init CLI: add Cursor as a native first-party agent option'
 status: To Do
 assignee: []
 created_date: '2026-03-25 18:13'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:27'
 labels:
   - cli
   - init
   - agents
   - cursor
+milestone: m-11
 dependencies: []
 references:
   - >-
     https://cursor.com/docs (verify current rules/skills paths when
     implementing)
+priority: medium
 ordinal: 165000
 ---
 

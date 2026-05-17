@@ -5,12 +5,16 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-08-17 16:54'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:20'
 labels:
   - web
   - enhancement
   - docs
-dependencies: []
+milestone: m-9
+dependencies:
+  - BACK-477
+references:
+  - BACK-477
 priority: medium
 ordinal: 120000
 ---
@@ -44,3 +48,9 @@ Notes:
 - [ ] #5 No file mutation for backlinks; computed at render time
 - [ ] #6 Add short docs: how to reference docs/decisions from tasks (examples)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Partially overlaps with BACK-477 (references should be clickable). BACK-477 covers making the existing `references:` frontmatter field render as hyperlinks — a narrower, simpler slice. Implement BACK-477 first as the foundation; this ticket's body-text link detection and backlink generation are additive on top. Scope clarification: BACK-477 = frontmatter field → clickable link. BACK-239 = body text pattern detection (doc-N, decision-N) + computed backlink lists. No duplication in the backlink direction.
+<!-- SECTION:NOTES:END -->

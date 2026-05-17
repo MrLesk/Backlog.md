@@ -5,10 +5,11 @@ status: To Do
 assignee:
   - '@lenucksi'
 created_date: '2026-05-08 20:35'
-updated_date: '2026-05-13 09:52'
+updated_date: '2026-05-17 20:27'
 labels: []
+milestone: m-11
 dependencies: []
-priority: medium
+priority: low
 ordinal: 145000
 ---
 

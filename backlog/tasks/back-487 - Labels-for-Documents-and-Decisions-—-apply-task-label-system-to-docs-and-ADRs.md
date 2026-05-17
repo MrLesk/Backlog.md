@@ -4,6 +4,7 @@ title: Labels for Documents and Decisions — apply task label system to docs an
 status: To Do
 assignee: []
 created_date: '2026-05-13 10:14'
+updated_date: '2026-05-17 20:27'
 labels:
   - labels
   - documents
@@ -12,7 +13,10 @@ labels:
   - tui
   - cli
   - mcp
-dependencies: []
+milestone: m-9
+dependencies:
+  - BACK-486
+priority: low
 ordinal: 174000
 ---
 

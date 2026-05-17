@@ -4,13 +4,14 @@ title: 'Add task type field (bug, feature, enhancement, etc.)'
 status: To Do
 assignee: []
 created_date: '2026-01-01 23:37'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:10'
 labels:
   - enhancement
   - core
   - cli
   - mcp
   - web
+milestone: m-9
 dependencies: []
 priority: medium
 ordinal: 124000

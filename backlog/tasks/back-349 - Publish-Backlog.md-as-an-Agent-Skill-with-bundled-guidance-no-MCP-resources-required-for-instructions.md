@@ -6,14 +6,19 @@ title: >-
 status: To Do
 assignee:
   - '@codex'
+  - '@lenucksi'
 created_date: '2025-12-18 21:59'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:20'
 labels:
   - agent-skills
   - mcp
   - docs
   - distribution
+milestone: m-11
 dependencies: []
+references:
+  - BACK-200
+  - BACK-310
 priority: medium
 ordinal: 123000
 ---
@@ -34,3 +39,9 @@ Reference: https://agentskills.io/llms.txt
 - [ ] #4 `backlog init`/agent‑instruction messaging is updated to align with skill‑based guidance (no instructions that rely on `backlog://` resources).
 - [ ] #5 Skill guidance is treated as the canonical source so the MCP guidance content (if still present) remains consistent with it.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Guidance-space relationships: BACK-200 (Claude Code init integration) shares the `backlog init` guidance-injection flow — align generated Claude Code commands with this skill's content. BACK-310 (strengthen MCP workflow overview) improves the MCP resource this skill intends to supersede as canonical guidance; if BACK-349 ships first, BACK-310's scope should narrow to keeping the MCP resource in sync with the skill rather than improving it independently.
+<!-- SECTION:NOTES:END -->

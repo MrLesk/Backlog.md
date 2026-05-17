@@ -4,11 +4,12 @@ title: Add paste-as-markdown support in Web UI
 status: To Do
 assignee: []
 created_date: '2025-07-26'
-updated_date: '2026-05-11 14:01'
+updated_date: '2026-05-17 20:10'
 labels:
   - web-ui
   - enhancement
   - markdown
+milestone: m-8
 dependencies: []
 priority: medium
 ordinal: 119000

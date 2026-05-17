@@ -5,9 +5,13 @@ status: To Do
 assignee:
   - '@lenucksi'
 created_date: '2026-05-08 21:21'
-updated_date: '2026-05-13 09:50'
+updated_date: '2026-05-17 20:27'
 labels: []
+milestone: m-8
 dependencies: []
+references:
+  - BACK-239
+priority: low
 ordinal: 169000
 ---
 
@@ -24,3 +28,9 @@ not sure what would need to happen in the text ui
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Related to BACK-239 (Auto-link tasks to documents/decisions + backlinks). This ticket is the simpler foundation: make the `references:` frontmatter field render as a clickable hyperlink in the web UI. BACK-239 builds on top by adding body-text pattern detection and computed backlink lists. Implement this first; BACK-239 depends on it.
+<!-- SECTION:NOTES:END -->

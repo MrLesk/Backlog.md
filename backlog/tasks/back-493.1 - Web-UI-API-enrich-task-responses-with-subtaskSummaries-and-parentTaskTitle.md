@@ -4,10 +4,12 @@ title: 'Web UI API: enrich task responses with subtaskSummaries and parentTaskTi
 status: To Do
 assignee: []
 created_date: '2026-05-13 10:50'
+updated_date: '2026-05-17 20:27'
 labels:
   - web-ui
   - subtasks
   - api
+milestone: m-8
 dependencies: []
 references:
   - src/utils/task-subtasks.ts
@@ -15,6 +17,7 @@ references:
 modified_files:
   - src/server/index.ts
 parent_task_id: BACK-493
+priority: medium
 ordinal: 181000
 ---
 
