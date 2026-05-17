@@ -190,3 +190,88 @@ Both `handleListTasks` and `handleSearch` contain identical boilerplate for merg
 **STUB-G — Add `dependency-cruiser` architecture rules**
 Define import boundary rules: `src/web/` must not import from `src/server/`; `src/ui/` (TUI) must not import from `src/web/`; `src/core/` must not import from any UI layer. This codifies the layered architecture and prevents accidental coupling as the codebase grows.
 *Scope: New `.dependency-cruiser.cjs`, CI step, no source changes initially.*
+
+---
+
+## 7. Extended Findings
+
+> Second research pass (2026-05-17). Same methodology — Serena LSP pattern search, no code changes.
+
+### 7.1 `Core.fs` vs `Core.filesystem` — private field leaked into public surface
+
+**Files:** `src/core/backlog.ts:173` (field), `src/core/backlog.ts:524–526` (getter) + 10 call sites
+
+`Core` exposes its `FileSystem` instance two ways:
+- `Core.fs` — the raw private backing field (line 173)
+- `Core.filesystem` — a public getter wrapping it (line 524)
+
+Ten call sites bypass the getter and access `core.fs` directly:
+
+| File | Lines |
+|---|---|
+| `src/cli.ts` | 2486, 2562, 3350 |
+| `src/commands/overview.ts` | 39 |
+| `src/ui/board.ts` | 1090, 1127, 1176, 1334, 1376 |
+| `src/ui/sequences.ts` | 421 |
+| `src/ui/task-viewer-with-search.ts` | 1131 |
+
+`src/ui/task-viewer-with-search.ts` uses **both** `core.filesystem` and `core.fs` in the same file. If `fs` is ever renamed (e.g. to `_fs` to signal private intent), all 10 sites break silently at runtime. The fix is to replace all `core.fs` usages with `core.filesystem`.
+
+### 7.2 Identical `ensureInitialized` lazy-init guard duplicated in two services
+
+**Files:** `src/core/content-store.ts:80–212` and `src/core/search-service.ts:125–208`
+
+Both `ContentStore` and `SearchService` implement the same async double-guard lazy-init pattern independently:
+
+```ts
+// ContentStore
+async ensureInitialized() {
+    if (this.initialized) return snapshot;
+    if (this.initializing) return this.initializing;
+    this.initializing = ...;
+    ...
+    this.initialized = true;
+}
+
+// SearchService — identical structure, different field types
+async ensureInitialized() {
+    if (this.initialized) return;
+    if (this.initializing) return this.initializing;
+    this.initializing = ...;
+    ...
+    this.initialized = true;
+}
+```
+
+This pattern is correct but duplicated. If a third service adopts it, the same boilerplate will be copied a third time. A shared `AsyncInitializer<T>` utility class or a small helper function would centralize the guard logic.
+
+### 7.3 Error surface fragmentation across modalities
+
+**Files:** `src/mcp/errors/mcp-errors.ts`, `src/server/index.ts`, `src/cli.ts`, `src/ui/`
+
+Each entry point handles errors differently, with no shared taxonomy:
+
+| Modality | Error surface |
+|---|---|
+| **MCP** | Typed `McpError` with error codes (`src/mcp/errors/mcp-errors.ts`) — most structured |
+| **Server** | `Response.json({ error: "..." }, { status: N })` per handler; `handleError()` for uncaught |
+| **CLI** | `console.error()` + `process.exit(1)` — no typed errors, no codes |
+| **TUI** | Silent `try/catch` with `console.warn` or ignored; errors rarely surface to the user |
+
+The MCP layer has typed errors with codes; the CLI has none. A shared `AppError` type with a `code` field and per-modality formatters would allow consistent error handling while preserving each modality's output format.
+
+### 7.4 `listMilestones()` always called in parallel pairs — no shared helper
+
+**Files:** `src/cli.ts:237–238`, `src/mcp/tools/tasks/handlers.ts:66–67`, `src/server/index.ts:222–223`, `src/ui/task-viewer-with-search.ts:205`
+
+In four separate places, active and archived milestones are fetched together:
+
+```ts
+// Repeated in CLI, MCP handler, server, TUI task-viewer — same pattern every time
+const [milestones, archivedMilestones] = await Promise.all([
+    core.filesystem.listMilestones(),
+    core.filesystem.listArchivedMilestones(),
+]);
+```
+
+A single `core.listAllMilestones(): Promise<{ active, archived }>` (or `filesystem.listAllMilestones()`) would eliminate this repeated `Promise.all` construction and ensure callers don't accidentally fetch only one half.
