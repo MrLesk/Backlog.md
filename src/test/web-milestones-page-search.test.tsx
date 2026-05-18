@@ -228,7 +228,7 @@ describe("Web milestones page search", () => {
 		);
 		expect(editButtons.length).toBeGreaterThanOrEqual(2);
 
-		clickElement(editButtons[0] as HTMLButtonElement);
+		clickElement(editButtons[1] as HTMLButtonElement);
 
 		expect(container.textContent).toContain("Edit milestone");
 		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
@@ -243,7 +243,7 @@ describe("Web milestones page search", () => {
 		);
 		expect(removeButtons.length).toBeGreaterThanOrEqual(2);
 
-		clickElement(removeButtons[0] as HTMLButtonElement);
+		clickElement(removeButtons[1] as HTMLButtonElement);
 
 		const text = container.textContent ?? "";
 		expect(text).toContain("Remove milestone");
@@ -271,7 +271,7 @@ describe("Web milestones page search", () => {
 		const editButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
 			button.textContent?.includes("Edit"),
 		);
-		clickElement(editButtons[0] as HTMLButtonElement);
+		clickElement(editButtons[1] as HTMLButtonElement);
 
 		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
 		expect(input).toBeTruthy();
@@ -302,7 +302,7 @@ describe("Web milestones page search", () => {
 		const removeButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
 			button.textContent?.includes("Remove"),
 		);
-		clickElement(removeButtons[0] as HTMLButtonElement);
+		clickElement(removeButtons[1] as HTMLButtonElement);
 
 		const reassignRadio = container.querySelector("input[value='reassign']") as HTMLInputElement | null;
 		expect(reassignRadio).toBeTruthy();
