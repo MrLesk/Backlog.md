@@ -13,6 +13,8 @@ case "${1:-all}" in
     echo ":: Building JS bundles..."
     bun build "$DIR/opencode-plugin.ts" --outfile "$DIR/opencode-plugin.js" --target=node --format=esm
     bun build "$DIR/claude-hook.ts" --outfile "$DIR/claude-hook.js" --target=node --format=esm --external=yaml --external=shell-quote
+    echo ":: Copy to npm package..."
+    cp "$DIR/opencode-plugin.js" "$REPO/packages/backlog-guard/opencode-plugin.js"
     echo ":: Done. $(wc -c < "$DIR/opencode-plugin.js")B opencode-plugin.js, $(wc -c < "$DIR/claude-hook.js")B claude-hook.js"
     ;;
   check)

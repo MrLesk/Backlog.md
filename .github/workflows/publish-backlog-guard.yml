@@ -1,0 +1,67 @@
+name: Publish @lenucksi/backlog-guard
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+  push:
+    branches: [main]
+    paths:
+      - "packages/backlog-guard/package.json"
+      - "hooks/backlog-guard/guard-core.ts"
+      - "hooks/backlog-guard/opencode-plugin.ts"
+    tags:
+      - "backlog-guard-v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check formatting
+        run: bun run check .
+
+      - name: Run tests
+        run: bun test hooks/backlog-guard/guard-core.test.ts
+
+      - name: Build plugin
+        run: bun run guard:build
+
+      - name: Copy to package
+        run: cp hooks/backlog-guard/opencode-plugin.js packages/backlog-guard/
+
+      - name: Bump version (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          cd packages/backlog-guard
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+
+      - name: Configure npm for GitHub Packages
+        run: |
+          echo "@lenucksi:registry=https://npm.pkg.github.com" > ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
+
+      - name: Publish to GitHub Packages
+        run: |
+          cd packages/backlog-guard
+          npm publish

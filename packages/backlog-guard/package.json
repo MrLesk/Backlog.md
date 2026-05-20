@@ -1,0 +1,28 @@
+{
+	"name": "@lenucksi/backlog-guard",
+	"version": "1.0.0",
+	"description": "OpenCode plugin: blocks direct file access to Backlog.md data directories and redirects to MCP/CLI tools",
+	"type": "module",
+	"main": "./opencode-plugin.js",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/lenucksi/Backlog.md.git",
+		"directory": "packages/backlog-guard"
+	},
+	"homepage": "https://github.com/lenucksi/Backlog.md",
+	"keywords": [
+		"opencode",
+		"plugin",
+		"backlog",
+		"guard",
+		"mcp"
+	],
+	"license": "MIT",
+	"files": [
+		"./opencode-plugin.js"
+	],
+	"publishConfig": {
+		"registry": "https://npm.pkg.github.com",
+		"access": "public"
+	}
+}

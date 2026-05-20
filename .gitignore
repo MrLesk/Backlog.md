@@ -76,3 +76,5 @@ archive/
 # Python cache
 __pycache__/
 *.pyc
+.npmrc
+packages/backlog-guard/opencode-plugin.js
