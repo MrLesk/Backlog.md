@@ -29,7 +29,7 @@ If no `backlog/config.yml` is found, ask the user:
 
 ### 2. Locate the hook files
 
-Check these locations in order for both `guard.sh` and `opencode-plugin.js`:
+Check these locations in order for both `guard.sh` and `opencode-plugin.ts` (or its compiled `.js`):
 
 1. `<git-root>/hooks/backlog-guard/` — running from the Backlog.md source tree
 2. `$(npm root -g 2>/dev/null)/backlog.md/hooks/backlog-guard/` — global npm install
@@ -39,7 +39,17 @@ If neither resolves, ask the user:
 > "I couldn't locate the backlog-guard hook files automatically. Please provide the
 > absolute path to the `hooks/backlog-guard/` directory."
 
-### 3. Create `.backlog-guard` config file
+### 3. Run install script (recommended)
+
+If `hooks/backlog-guard/install.sh` exists, run it:
+
+```bash
+./hooks/backlog-guard/install.sh
+```
+
+It handles all remaining steps interactively. Skip to Step 8 for verification.
+
+### 3b. Manual: Create `.backlog-guard` config file
 
 Write `.backlog-guard` in the git root with the detected directories:
 
@@ -127,9 +137,24 @@ If yes, merge the following into `permissions.allow` in the same settings file:
 
 Deduplicate against any existing entries before writing.
 
-### 7. OpenCode — install the plugin
+### 7. OpenCode — compile + install the plugin
 
-Ask:
+The OpenCode plugin is written in TypeScript (`opencode-plugin.ts`). It must be
+compiled to JS before OpenCode can load it.
+
+**Build the plugin:**
+
+```bash
+# From the Backlog.md source tree:
+bun build hooks/backlog-guard/opencode-plugin.ts \
+  --outfile hooks/backlog-guard/opencode-plugin.js \
+  --target=node --format=esm
+
+# From an npm global install, the compiled .js is already shipped:
+# $(npm root -g)/backlog.md/hooks/backlog-guard/opencode-plugin.js
+```
+
+Then ask:
 > "Are you also using OpenCode in this project? If yes, should I install the
 > backlog-guard plugin globally (for all projects) or per-project only?"
 

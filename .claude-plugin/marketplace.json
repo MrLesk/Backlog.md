@@ -1,0 +1,19 @@
+{
+	"name": "backlog-marketplace",
+	"description": "Backlog.md tools: guard hook + skills for proper backlog workflows",
+	"owner": {
+		"name": "lenucksi",
+		"email": "lenucksi@users.noreply.github.com"
+	},
+	"plugins": [
+		{
+			"name": "backlog-guard",
+			"source": "./hooks/backlog-guard",
+			"description": "Blocks direct file access to backlog data directories and redirects to MCP/CLI. Includes skills for creating and managing backlog tasks.",
+			"version": "1.0.0",
+			"author": {
+				"name": "lenucksi"
+			}
+		}
+	]
+}

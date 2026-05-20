@@ -1,0 +1,13 @@
+{
+	"name": "backlog-guard",
+	"displayName": "Backlog Guard",
+	"description": "Blocks direct file access to Backlog.md data directories and redirects to MCP/CLI. Includes skills for proper backlog workflows.",
+	"version": "1.0.0",
+	"author": {
+		"name": "lenucksi"
+	},
+	"homepage": "https://github.com/lenucksi/Backlog.md",
+	"repository": "https://github.com/lenucksi/Backlog.md",
+	"license": "MIT",
+	"keywords": ["backlog", "guard", "mcp", "project-management"]
+}

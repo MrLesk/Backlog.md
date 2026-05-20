@@ -31,12 +31,16 @@ already extracted from the intercepted path.
 ## Files
 
 ```
-guard.sh              Bash wrapper for Claude Code — reads stdin JSON, calls check.py
-check.py              Python enforcement logic (Claude Code)
-opencode-plugin.js    OpenCode plugin — mirrors check.py logic via tool.execute.before
-test_check.py         Pytest tests for check.py (12 cases)
-README.md             This file
+guard-core.ts        Shared core logic: config discovery, path checking, bash analysis, suggestions
+guard-core.test.ts   Tests via `bun test`
+claude-hook.ts       Claude Code entry — reads env vars, calls guard-core, prints JSON deny
+opencode-plugin.ts   OpenCode entry — exports `tool.execute.before` handler, calls guard-core
+guard.sh             Bash wrapper — reads stdin JSON, calls claude-hook.ts via bun/npx/node
+README.md            This file
 ```
+
+All three targets (Claude Code, OpenCode) share `guard-core.ts`. The Python (`check.py`)
+and standalone JS plugin (`opencode-plugin.js`) were removed in the TypeScript refactor.
 
 ---
 
@@ -110,8 +114,9 @@ Find the path to `guard.sh` (Claude Code) or `opencode-plugin.js` (OpenCode):
 }
 ```
 
-`guard.sh` derives the path to `check.py` from its own `$DIR`, so the absolute
-path to `guard.sh` is the only thing you need to set.
+`guard.sh` derives the path to `claude-hook.ts` from its own `$DIR`, so the absolute
+path to `guard.sh` is the only thing you need to set. It prefers `bun run` when
+available, falls back to `npx tsx`, then `node claude-hook.js`.
 
 **Claude Code — per project** (`.claude/settings.json` or `.claude/settings.local.json`):
 
@@ -120,17 +125,22 @@ settings override global settings for that project.
 
 **OpenCode — global** (`~/.config/opencode/plugins/backlog-guard.js`):
 
-Copy or symlink `opencode-plugin.js` into the global OpenCode plugins directory:
+Compile the plugin first (requires Bun):
 
 ```bash
-# symlink (stays up to date when backlog.md is updated)
+bun build hooks/backlog-guard/opencode-plugin.ts \
+  --outfile hooks/backlog-guard/opencode-plugin.js \
+  --target=node --format=esm
+```
+
+Then symlink or copy:
+
+```bash
 ln -s /absolute/path/to/hooks/backlog-guard/opencode-plugin.js \
       ~/.config/opencode/plugins/backlog-guard.js
-
-# or copy
-cp /absolute/path/to/hooks/backlog-guard/opencode-plugin.js \
-   ~/.config/opencode/plugins/backlog-guard.js
 ```
+
+Or use the pre-built `opencode-plugin.js` shipped with the npm package.
 
 OpenCode auto-loads all `.js` files from `~/.config/opencode/plugins/` — no config
 file changes needed.
@@ -154,17 +164,19 @@ For projects that use backlog.md from npm global install, the path resolves via
 
 `guard.sh` is called as a `PreToolUse` hook. It reads the JSON payload from stdin,
 extracts `tool_name`, `tool_input.file_path`, and `tool_input.command` into env vars,
-then calls `check.py`. If blocked, `check.py` prints a JSON deny response and exits.
+then runs `claude-hook.ts` (via `bun run`, `npx tsx`, or `node`). If blocked,
+`claude-hook.ts` prints a JSON deny response and exits.
 
 ### OpenCode
 
-`opencode-plugin.js` exports a `tool.execute.before` handler. OpenCode calls it
-before each tool execution with `{ tool, args }`. If the call targets a protected
-directory, the handler throws an `Error` — OpenCode treats a thrown error as a hard
-block and shows the error message to the model.
+`opencode-plugin.ts` exports a `tool.execute.before` handler (compiled to
+`opencode-plugin.js`). OpenCode calls it before each tool execution with
+`{ tool, args }`. If the call targets a protected directory, the handler throws an
+`Error` — OpenCode treats a thrown error as a hard block and shows the error
+message to the model.
 
-Both use the same `.backlog-guard` config file and the same path-classification and
-suggestion logic.
+Both use the same shared core (`guard-core.ts`) and the same `.backlog-guard`
+config file.
 
 ---
 
@@ -194,7 +206,7 @@ and is never blocked):
 
 ### Discovery order
 
-Both `check.py` and `opencode-plugin.js` use the same discovery order:
+Both `claude-hook.ts` and `opencode-plugin.ts` use the same discovery order (in `guard-core.ts`):
 
 1. `git rev-parse --show-toplevel` → look for `.backlog-guard` at the git root
 2. Walk CWD upward (up to 4 levels) looking for `.backlog-guard`
@@ -212,13 +224,46 @@ dirs:
 
 ---
 
-## Running tests
+## Development
 
 ```bash
-python -m pytest hooks/backlog-guard/test_check.py -v
+# Run tests + build (one command)
+./hooks/backlog-guard/dev.sh
+
+# Or individual steps:
+./hooks/backlog-guard/dev.sh test    # run tests
+./hooks/backlog-guard/dev.sh build   # compile JS bundles
+./hooks/backlog-guard/dev.sh check   # Biome + TypeScript check
+
+# Via npm scripts:
+bun run guard:test    # bun test hooks/backlog-guard/guard-core.test.ts
+bun run guard:build   # compile TS → JS bundles
+bun run guard:dev     # test + build
 ```
 
-Requires Python 3.11+ and `pyyaml` + `pytest` (`pip install pyyaml pytest`).
+## Installation
+
+### Automated install
+
+Run the interactive install script from the target project root:
+
+```bash
+./hooks/backlog-guard/install.sh
+```
+
+It will:
+1. Create/verify `.backlog-guard` config
+2. Install the Claude Code hook (project-local or global)
+3. Optionally add MCP permissions to Claude Code settings
+4. Install the OpenCode plugin (global symlink or per-project `opencode.json`)
+
+### Manual setup
+
+See the steps below for manual installation.
+
+---
+
+#### Step 1 — Create `.backlog-guard` in your project git root
 
 ---
 
@@ -231,7 +276,8 @@ Requires Python 3.11+ and `pyyaml` + `pytest` (`pip install pyyaml pytest`).
 | Config file | `.backlog-guard` YAML (shared) | `.backlog-guard` YAML (shared) |
 | Global install | Entry in `~/.claude/settings.json` | Symlink/copy to `~/.config/opencode/plugins/` |
 | Per-project install | Entry in `.claude/settings.json` | `"plugin"` array in `opencode.json` |
-| Code required | No (shell script + Python already shipped) | No (JS plugin already shipped) |
+| Shared logic | `guard-core.ts` | `guard-core.ts` (compiled to JS) |
+| Runtime | Bun / npx / Node.js | OpenCode (Node.js) |
 
 ## Relationship to serena-guard
 

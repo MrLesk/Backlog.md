@@ -5,6 +5,9 @@
   "module": "src/cli.ts",
   "files": [
     "scripts/*.cjs",
+    "hooks/backlog-guard/*.js",
+    "hooks/backlog-guard/guard.sh",
+    "hooks/backlog-guard/README.md",
     "README.md",
     "LICENSE"
   ],
@@ -29,6 +32,7 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/react-router-dom": "5.3.3",
+    "@types/shell-quote": "^1.7.5",
     "@uiw/react-markdown-preview": "5.2.0",
     "@uiw/react-md-editor": "4.1.0",
     "commander": "14.0.3",
@@ -56,7 +60,11 @@
     "check:types": "bunx tsc --noEmit",
     "prepare": "husky",
     "build:css": "bun ./node_modules/@tailwindcss/cli/dist/index.mjs -i src/web/styles/source.css -o src/web/styles/style.css --minify",
-    "build": "bun run build:css && VER=$(bun -e 'console.log(require(\"./package.json\").version)') && bun build --production --compile --minify --define __EMBEDDED_VERSION__=\"\\\"$VER\\\"\" --outfile=dist/backlog src/cli.ts",
+    "guard:test": "bun test hooks/backlog-guard/guard-core.test.ts",
+    "guard:build": "bun build hooks/backlog-guard/opencode-plugin.ts --outfile hooks/backlog-guard/opencode-plugin.js --target=node --format=esm && bun build hooks/backlog-guard/claude-hook.ts --outfile hooks/backlog-guard/claude-hook.js --target=node --format=esm --external=yaml --external=shell-quote",
+    "guard:dev": "bun run guard:test && bun run guard:build",
+    "build:guard": "bun run guard:build",
+    "build": "bun run build:guard && bun run build:css && VER=$(bun -e 'console.log(require(\"./package.json\").version)') && bun build --production --compile --minify --define __EMBEDDED_VERSION__=\"\\\"$VER\\\"\" --outfile=dist/backlog src/cli.ts",
     "cli": "bun run build:css && bun src/cli.ts",
     "mcp": "bun src/cli.ts mcp start",
     "update-nix": "sh scripts/update-nix.sh",
@@ -95,5 +103,9 @@
   "trustedDependencies": [
     "@biomejs/biome",
     "node-pty"
-  ]
+  ],
+  "dependencies": {
+    "shell-quote": "^1.8.3",
+    "yaml": "^2.9.0"
+  }
 }

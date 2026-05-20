@@ -1,0 +1,17 @@
+{
+	"hooks": {
+		"PreToolUse": [
+			{
+				"matcher": "Read|Edit|Write|Bash|Grep",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "${CLAUDE_PLUGIN_ROOT}/guard.sh",
+						"timeout": 10,
+						"statusMessage": "Backlog Guard: checking access..."
+					}
+				]
+			}
+		]
+	}
+}

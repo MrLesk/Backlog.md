@@ -17,4 +17,10 @@ HOOK_FP=$(jq -r '.tool_input.file_path // .tool_input.path // ""' <<< "$input")
 HOOK_CMD=$(jq -r '.tool_input.command // ""'                       <<< "$input")
 HOOK_INPUT=$(jq -c '.tool_input'                                   <<< "$input")
 
-python3 "$DIR/check.py"
+if command -v bun &>/dev/null; then
+  exec bun run "$DIR/claude-hook.ts"
+elif command -v npx &>/dev/null; then
+  exec npx tsx "$DIR/claude-hook.ts"
+else
+  exec node "$DIR/claude-hook.js"
+fi
