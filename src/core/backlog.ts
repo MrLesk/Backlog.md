@@ -1793,6 +1793,7 @@ export class Core {
 				newStatus,
 				taskTitle: task.title,
 				cwd: this.fs.rootDir,
+				shell: config?.shell,
 			});
 
 			if (!result.success) {

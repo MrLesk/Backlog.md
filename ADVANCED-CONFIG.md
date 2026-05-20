@@ -36,6 +36,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
 | `activeBranchDays` | How many days a branch is considered active | `30` |
 | `onStatusChange`  | Shell command to run on status change | `(disabled)` |
+| `shell`           | Shell used to execute `onStatusChange` (`auto`, `sh`, `bash`, `cmd`, `pwsh`, `powershell`, or absolute path) | `auto` |
 
 ## Detailed Notes
 
@@ -50,5 +51,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 > **Performance**: Cross-branch checking ensures accurate task tracking across all active branches but may impact performance on large repositories. You can disable it by setting `checkActiveBranches: false` for maximum speed, or adjust `activeBranchDays` to control how far back to look for branch activity (lower values = better performance).
 
 > **Status Change Callbacks**: Set `onStatusChange` to run a shell command whenever a task's status changes. Available variables: `$TASK_ID`, `$OLD_STATUS`, `$NEW_STATUS`, `$TASK_TITLE`. Per-task override via `onStatusChange` in task frontmatter. Example: `'if [ "$NEW_STATUS" = "In Progress" ]; then claude "Task $TASK_ID ($TASK_TITLE) has been assigned to you. Please implement it." & fi'`
+
+> **Shell selection (cross-platform)**: The optional `shell` config picks the interpreter used to run `onStatusChange`. Default `auto` uses `sh` on POSIX and prefers `sh.exe` on Windows (falling back to `cmd.exe` with a warning if Git for Windows isn't installed). Override with `sh`, `bash`, `cmd`, `pwsh`, `powershell`, or an absolute path to any interpreter (treated as POSIX-style `-c`). Note: variables are always passed as environment variables, so on `cmd` use `%TASK_ID%` and on PowerShell use `$env:TASK_ID` instead of `$TASK_ID`.
 
 > **Date/Time Support**: Backlog.md now supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility. Use the migration script `bun src/scripts/migrate-dates.ts` to optionally add time to existing items.

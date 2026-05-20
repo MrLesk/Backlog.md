@@ -307,6 +307,11 @@ export interface BacklogConfig {
 	backlogDirectory?: string;
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */
 	onStatusChange?: string;
+	/**
+	 * Shell used to execute onStatusChange. Accepted values: "auto" (default — sh on POSIX, sh.exe→cmd.exe fallback on Windows),
+	 * "sh", "bash", "cmd", "pwsh", "powershell", or an absolute path to an interpreter (treated as POSIX-style `-c`).
+	 */
+	shell?: string;
 	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
 	prefixes?: PrefixConfig;
 	mcp?: {
