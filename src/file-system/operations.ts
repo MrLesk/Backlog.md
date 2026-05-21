@@ -1,5 +1,5 @@
 import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
@@ -1736,6 +1736,127 @@ ${description || `Milestone: ${title}`}`,
 			frontmatter: parsed.frontmatter,
 			path: normalizedPath,
 		};
+	}
+
+	async saveWikiPage(pagePath: string, content: string, title?: string, labels?: string[]): Promise<void> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const normalizedPath = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
+		const filePath = resolve(join(wikiRoot, normalizedPath));
+
+		// Directory traversal containment check
+		const rel = relative(wikiRoot, filePath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		await this.ensureDirectoryExists(dirname(filePath));
+
+		// Preserve existing frontmatter, update title, labels, and set updated_date
+		let frontmatter: Record<string, unknown> = {};
+		if (await Bun.file(filePath).exists()) {
+			const existing = await Bun.file(filePath).text();
+			const parsed = parseMarkdown(existing);
+			frontmatter = (parsed.frontmatter as Record<string, unknown>) || {};
+		}
+		if (title !== undefined) {
+			frontmatter.title = title;
+		}
+		if (labels !== undefined) {
+			frontmatter.labels = labels;
+		}
+		const updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		frontmatter.updated_date = updatedDate;
+
+		const fileContent = Object.keys(frontmatter).length > 0 ? matter.stringify(content, frontmatter) : content;
+		await Bun.write(filePath, fileContent);
+	}
+
+	async createWikiPage(pagePath: string, content = "", labels?: string[]): Promise<string> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const normalizedPath = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
+		const filePath = resolve(join(wikiRoot, normalizedPath));
+
+		// Directory traversal containment check
+		const rel = relative(wikiRoot, filePath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		// Prevent overwriting existing files
+		if (await Bun.file(filePath).exists()) {
+			throw new Error("Wiki page already exists");
+		}
+
+		await this.ensureDirectoryExists(dirname(filePath));
+		const title = basename(normalizedPath, ".md");
+		const defaultContent = content || `# ${title}\n\n`;
+		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const frontmatter: Record<string, unknown> = { title, created_date: createdDate };
+		if (labels !== undefined && labels.length > 0) {
+			frontmatter.labels = labels;
+		}
+		const fileContent = matter.stringify(defaultContent, frontmatter);
+		await Bun.write(filePath, fileContent);
+
+		return normalizedPath;
+	}
+
+	async createWikiFolder(folderPath: string): Promise<string> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const dirPath = resolve(join(wikiRoot, folderPath));
+
+		// Directory traversal containment check
+		const rel = relative(wikiRoot, dirPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		// Prevent overwriting existing files or directories
+		if (await Bun.file(dirPath).exists()) {
+			throw new Error("Wiki folder already exists");
+		}
+
+		await mkdir(dirPath, { recursive: true });
+		return folderPath;
+	}
+
+	async renameWikiItem(oldPath: string, newPath: string): Promise<string> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const oldFullPath = resolve(join(wikiRoot, oldPath));
+		const newFullPath = resolve(join(wikiRoot, newPath));
+
+		// Directory traversal containment check for both paths
+		const oldRel = relative(wikiRoot, oldFullPath);
+		const newRel = relative(wikiRoot, newFullPath);
+		const oldIsInside = !oldRel.startsWith("..") && !isAbsolute(oldRel);
+		const newIsInside = !newRel.startsWith("..") && !isAbsolute(newRel);
+		if (!oldIsInside || !newIsInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		// Source must exist (use stat to handle both files and directories)
+		try {
+			await stat(oldFullPath);
+		} catch {
+			throw new Error("Item not found");
+		}
+
+		// Destination must not exist
+		try {
+			await stat(newFullPath);
+			throw new Error("Destination already exists");
+		} catch (err: any) {
+			if (err.message === "Destination already exists") throw err;
+			// stat threw because file doesn't exist — that's what we want
+		}
+
+		// Ensure parent directory of destination exists
+		await this.ensureDirectoryExists(dirname(newFullPath));
+		await rename(oldFullPath, newFullPath);
+		return newPath;
 	}
 
 	private normalizeDefinitionOfDone(definitionOfDone: unknown): string[] | undefined {

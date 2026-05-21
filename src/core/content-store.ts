@@ -1,6 +1,6 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { basename, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
@@ -247,6 +247,14 @@ export class ContentStore {
 		}
 
 		try {
+			this.watchers.push(this.createWikiWatcher());
+		} catch (error) {
+			if (process.env.DEBUG) {
+				console.error("Failed to initialize wiki watcher", error);
+			}
+		}
+
+		try {
 			const configWatcher = this.createConfigWatcher();
 			if (configWatcher) {
 				this.watchers.push(configWatcher);
@@ -305,6 +313,24 @@ export class ContentStore {
 			}
 			return null;
 		}
+	}
+
+	private createWikiWatcher(): WatchHandle {
+		const wikiRoot = join(dirname(this.filesystem.docsDir), "wiki");
+		const watcher: FSWatcher = watch(wikiRoot, { recursive: true }, (_eventType, filename) => {
+			const file = this.normalizeFilename(filename);
+			if (!file || file.includes("wiki_output")) return;
+			this.enqueue(async () => {
+				this.notify("tasks");
+			});
+		});
+		this.attachWatcherErrorHandler(watcher, "wiki");
+
+		return {
+			stop() {
+				watcher.close();
+			},
+		};
 	}
 
 	private createTaskWatcher(): WatchHandle {

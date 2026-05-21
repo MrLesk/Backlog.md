@@ -142,7 +142,11 @@ The LLM reads from the following backlog folders as raw input. These are immutab
   - **CRITICAL:** In page bodies (sources, concepts, entities), Related Concepts / Related Sources / Related Entities sections must also use `[[path/to/file]]`, not `[text](path.md)`
   - Example: `- [[concepts/keyvault]]` — NOT `- [KeyVault](concepts/keyvault.md)`
 - Append-only for `wiki/log.md`
-- YAML frontmatter on every wiki page: `type`, `title`, `updated`
+- YAML frontmatter on every wiki page at minimum:
+  - `title` — page title
+  - `created_date` — set on creation (`yyyy-MM-dd HH:mm`)
+  - `updated_date` — updated on every save (`yyyy-MM-dd HH:mm`)
+  - `labels` — optional array of tags for categorization (e.g. `source`, `concept`, `entity`, `comparison`)
 - Filenames: lowercase-with-hyphens
 
 ### Operations

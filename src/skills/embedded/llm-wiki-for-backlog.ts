@@ -357,13 +357,13 @@ def parse_summary(summary_path):
 		if not line:
 			continue
 
-		m = re.match(r"^##\\s+(.+)\$", line)
+		m = re.match(r"^##\\s+(.+)$", line)
 		if m:
 			current_group = {"title": m.group(1).strip(), "pages": []}
 			groups.append(current_group)
 			continue
 
-		m = re.match(r"^(\\s*)-\\s*\\[([^\\]]+)\\]\\(([^)]*)\\)\\s*\$", line)
+		m = re.match(r"^(\\s*)-\\s*\\[([^\\]]+)\\]\\(([^)]*)\\)\\s*$", line)
 		if m and current_group is not None:
 			path = m.group(3).strip()
 			if not path:
@@ -404,7 +404,7 @@ def extract_headings_from_lines(lines):
 			continue
 		if in_code:
 			continue
-		m = re.match(r"^(#{1,6})\\s+(.+)\$", line)
+		m = re.match(r"^(#{1,6})\\s+(.+)$", line)
 		if m:
 			headings[i] = {
 				"level": len(m.group(1)),
@@ -514,7 +514,7 @@ def merge_usermanual(input_dir, output_path):
 		content = strip_frontmatter(readme_path.read_text(encoding="utf-8"))
 		content = process_assets(content, input_dir, output_assets_dir, asset_map)
 		for line in content.splitlines():
-			m = re.match(r"^(#{1,6})\\s+(.+)\$", line)
+			m = re.match(r"^(#{1,6})\\s+(.+)$", line)
 			if m:
 				doc.append({
 					"kind": "heading",
@@ -551,7 +551,7 @@ def merge_usermanual(input_dir, output_path):
 			processed_lines = process_page(content, page["title"], page["offset"])
 
 			for line in processed_lines:
-				m = re.match(r"^(#{1,6})\\s+(.+)\$", line)
+				m = re.match(r"^(#{1,6})\\s+(.+)$", line)
 				if m:
 					doc.append({
 						"kind": "heading",
@@ -730,7 +730,7 @@ The wiki does not maintain a separate schema file. All wiki-related guidelines, 
 
 ### Two Navigation Files
 
-- **\`index.md\`** — Content-oriented catalog of every wiki page with one-line summaries, organized by type. The LLM reads this FIRST on any operation. Updated on every ingest.
+- **\`index.md\`** — Content-oriented catalog of every wiki page with one-line summaries, organized by labels. The LLM reads this FIRST on any operation. Updated on every ingest.
 - **\`log.md\`** — Chronological, append-only timeline. Format: \`## [YYYY-MM-DD HH:mm:ss] {op} | {title}\`. Parseable with \`grep "^## \\[" log.md\`. Shows what happened when. The detailed timestamp enables git-aware incremental ingestion.
 
 ---
@@ -777,8 +777,12 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 1. Read the source thoroughly
 2. Discuss key takeaways with user (3–5 bullets)
 3. Create summary page in \`wiki/sources/\` with frontmatter linking back to original backlog file
+   - In the page body, include a **Related Concepts** section listing linked concepts using \`[[concepts/concept-name]]\`
+   - Include a **Related Sources** section (if applicable) using \`[[sources/other-source-name]]\`
 4. For each significant concept → create or **update** page in \`wiki/concepts/\`
+   - In the concept page, include **Related Concepts** and **Related Sources** sections with \`[[wikilinks]]\`
 5. For each significant entity → create or **update** page in \`wiki/entities/\`
+   - In the entity page, include **Related Entities**, **Related Concepts**, and **Related Sources** sections with \`[[wikilinks]]\`
 6. Update \`wiki/index.md\` with all new/changed pages
 7. Update \`wiki/overview.md\` if the big picture shifts
 8. Append to \`wiki/log.md\` with full timestamp \`## [YYYY-MM-DD HH:mm:ss] {op} | {title}\`
@@ -811,7 +815,7 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 7. **Append to \`wiki/log.md\`** with full timestamp \`## [YYYY-MM-DD HH:mm:ss] batch-ingest | {summary}\`
 
 **Page conventions:**
-- Every page: YAML frontmatter with \`type\`, \`title\`, \`updated\` at minimum
+- Every page: YAML frontmatter with \`title\`, \`created_date\`, \`updated_date\` at minimum; \`labels\` as optional array of tags (e.g. \`source\`, \`concept\`, \`entity\`, \`comparison\`)
 - Source pages include \`source_path\` linking back to original backlog file
 - All cross-references: \`[[wikilinks]]\`
 - Filenames: lowercase-with-hyphens
@@ -852,7 +856,11 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 
 ### Essential Rules
 - **\`[[Wikilinks]]\`** for ALL cross-references within the wiki — including \`index.md\` tables
-- **YAML frontmatter** on every page: \`type\`, \`title\`, \`updated\` at minimum
+- **YAML frontmatter** on every wiki page at minimum:
+  - \`title\` — page title
+  - \`created_date\` — set on creation (\`yyyy-MM-dd HH:mm\`)
+  - \`updated_date\` — updated on every save (\`yyyy-MM-dd HH:mm\`)
+  - \`labels\` — optional array of tags for categorization (e.g. \`source\`, \`concept\`, \`entity\`, \`comparison\`)
 - **Backlog source folders are immutable** — the LLM never writes to \`tasks/\`, \`docs/\`, \`decisions/\`, etc.
 - **Filenames:** lowercase-with-hyphens
 - **Exclude \`wiki/\` and \`wiki_output/\` from ingestion** — absolute rule to prevent recursion
@@ -865,24 +873,42 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 **In \`index.md\` tables, use wikilinks in the first column:**
 
 \`\`\`markdown
-| File | Title | Type | Desc |
-|------|-------|------|------|
-| [[sources/task-1-offline-encryption]] | TASK-1: Offline Encryption | Epic | Offline local encryption mechanism |
-| [[concepts/keyvault]] | KeyVault | Concept | Core encryption key management |
+| File | Title | Labels | Desc |
+|------|-------|--------|------|
+| [[sources/task-1-offline-encryption]] | TASK-1: Offline Encryption | source, epic | Offline local encryption mechanism |
+| [[concepts/keyvault]] | KeyVault | concept | Core encryption key management |
+\`\`\`
+
+**In page bodies (sources, concepts, entities), use wikilinks in Related sections:**
+
+\`\`\`markdown
+## Related Concepts
+- [[concepts/keyvault]] — Core encryption key management
+- [[concepts/zero-trust]] — Zero-trust architecture principles
+
+## Related Sources
+- [[sources/task-1-offline-encryption]] — Original implementation task
+- [[sources/adr-003-security-model]] — Security ADR
 \`\`\`
 
 **❌ NEVER use standard Markdown links for internal wiki pages:**
 \`\`\`markdown
-| Source | Type | Summary |
+| Source | Labels | Summary |
 |--------|------|---------|
 | [source-security-module](sources/source-security-module.md) | source | Security module summary |
+
+## Related Concepts
+- [KeyVault](concepts/keyvault.md)
 \`\`\`
 
 **✅ ALWAYS use wikilinks:**
 \`\`\`markdown
-| Source | Type | Summary |
+| Source | Labels | Summary |
 |--------|------|---------|
 | [[sources/source-security-module]] | source | Security module summary |
+
+## Related Concepts
+- [[concepts/keyvault]]
 \`\`\`
 
 ---
@@ -958,8 +984,10 @@ Key behaviors:
 - Use \`[[wikilinks]]\` for all cross-references within the wiki
   - **CRITICAL:** In \`index.md\` tables, use \`[[path/to/file]]\` (without \`.md\`) as the cell value, not standard Markdown links like \`[text](path.md)\`
   - Example: \`| [[sources/task-1-feature]] | Task | Description |\` — NOT \`| [task-1](sources/task-1.md) | Task | Description |\`
+  - **CRITICAL:** In page bodies (sources, concepts, entities), Related Concepts / Related Sources / Related Entities sections must also use \`[[path/to/file]]\`, not \`[text](path.md)\`
+  - Example: \`- [[concepts/keyvault]]\` — NOT \`- [KeyVault](concepts/keyvault.md)\`
 - Append-only for \`wiki/log.md\`
-- YAML frontmatter on every wiki page: \`type\`, \`title\`, \`updated\`
+- YAML frontmatter on every wiki page at minimum: \`title\`, \`created_date\`, \`updated_date\`; \`labels\` as optional array of tags
 - Filenames: lowercase-with-hyphens
 
 ### Operations

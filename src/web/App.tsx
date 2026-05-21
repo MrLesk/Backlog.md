@@ -24,6 +24,7 @@ import {
 	type SearchResult,
 	type Task,
 	type TaskSearchResult,
+	type WikiTreeNode,
 } from '../types';
 import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
@@ -182,6 +183,7 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [wikiTree, setWikiTree] = useState<WikiTreeNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const { isOnline } = useHealthCheckContext();
@@ -256,15 +258,21 @@ function App() {
     return { tasks: normalizedTasks, docs: docsList, decisions: decisionsList };
   }, []);
 
+  const hasLoadedRef = useRef(false);
+
   const loadAllData = useCallback(async () => {
+    const isFirstLoad = !hasLoadedRef.current;
     try {
-      setIsLoading(true);
-      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData] = await Promise.all([
+      if (isFirstLoad) {
+        setIsLoading(true);
+      }
+      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, wikiTreeData] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
         apiClient.search(),
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
+        apiClient.fetchWikiTree(),
       ]);
 
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
@@ -282,10 +290,14 @@ function App() {
           (milestone) => !archivedKeys.has(milestoneKey(milestone)),
         ),
       );
+      setWikiTree(wikiTreeData);
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
-      setIsLoading(false);
+      if (isFirstLoad) {
+        setIsLoading(false);
+        hasLoadedRef.current = true;
+      }
     }
   }, [applySearchResults]);
 
@@ -484,6 +496,7 @@ function App() {
                 tasks={tasks}
                 docs={docs}
                 decisions={decisions}
+                wikiTree={wikiTree}
                 isLoading={isLoading}
                 onRefreshData={refreshData}
               />

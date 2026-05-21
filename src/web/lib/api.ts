@@ -555,6 +555,57 @@ export class ApiClient {
 		return response.json();
 	}
 
+	async updateWikiPage(path: string, content: string, title?: string, labels?: string[]): Promise<void> {
+		const response = await fetch(`${API_BASE}/wiki/${encodeURIComponent(path)}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ content, title, ...(labels !== undefined && { labels }) }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to update wiki page");
+		}
+	}
+
+	async createWikiPage(path: string, content?: string, labels?: string[]): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/wiki`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path, content, ...(labels !== undefined && { labels }) }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create wiki page");
+		}
+		return response.json();
+	}
+
+	async createWikiFolder(path: string): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/wiki`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path, isFolder: true }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create wiki folder");
+		}
+		return response.json();
+	}
+
+	async renameWikiItem(oldPath: string, newPath: string): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/wiki/${encodeURIComponent(oldPath)}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ newPath }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to rename wiki item");
+		}
+		return response.json();
+	}
+
 	async checkStatus(): Promise<InitializationStatus> {
 		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
 	}

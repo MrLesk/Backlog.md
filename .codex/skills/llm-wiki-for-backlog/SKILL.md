@@ -106,7 +106,7 @@ The wiki does not maintain a separate schema file. All wiki-related guidelines, 
 
 ### Two Navigation Files
 
-- **`index.md`** — Content-oriented catalog of every wiki page with one-line summaries, organized by type. The LLM reads this FIRST on any operation. Updated on every ingest.
+- **`index.md`** — Content-oriented catalog of every wiki page with one-line summaries, organized by labels. The LLM reads this FIRST on any operation. Updated on every ingest.
 - **`log.md`** — Chronological, append-only timeline. Format: `## [YYYY-MM-DD HH:mm:ss] {op} | {title}`. Parseable with `grep "^## \[" log.md`. Shows what happened when. The detailed timestamp enables git-aware incremental ingestion.
 
 ---
@@ -191,7 +191,7 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 7. **Append to `wiki/log.md`** with full timestamp `## [YYYY-MM-DD HH:mm:ss] batch-ingest | {summary}`
 
 **Page conventions:**
-- Every page: YAML frontmatter with `type`, `title`, `updated` at minimum
+- Every page: YAML frontmatter with `title`, `created_date`, `updated_date` at minimum; `labels` as optional array of tags (e.g. `source`, `concept`, `entity`, `comparison`)
 - Source pages include `source_path` linking back to original backlog file
 - All cross-references: `[[wikilinks]]`
 - Filenames: lowercase-with-hyphens
@@ -232,7 +232,11 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 
 ### Essential Rules
 - **`[[Wikilinks]]`** for ALL cross-references within the wiki — including `index.md` tables
-- **YAML frontmatter** on every page: `type`, `title`, `updated` at minimum
+- **YAML frontmatter** on every wiki page at minimum:
+  - `title` — page title
+  - `created_date` — set on creation (`yyyy-MM-dd HH:mm`)
+  - `updated_date` — updated on every save (`yyyy-MM-dd HH:mm`)
+  - `labels` — optional array of tags for categorization (e.g. `source`, `concept`, `entity`, `comparison`)
 - **Backlog source folders are immutable** — the LLM never writes to `tasks/`, `docs/`, `decisions/`, etc.
 - **Filenames:** lowercase-with-hyphens
 - **Exclude `wiki/` and `wiki_output/` from ingestion** — absolute rule to prevent recursion
@@ -245,10 +249,10 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 **In `index.md` tables, use wikilinks in the first column:**
 
 ```markdown
-| File | Title | Type | Desc |
-|------|-------|------|------|
-| [[sources/task-1-offline-encryption]] | TASK-1: Offline Encryption | Epic | Offline local encryption mechanism |
-| [[concepts/keyvault]] | KeyVault | Concept | Core encryption key management |
+| File | Title | Labels | Desc |
+|------|-------|--------|------|
+| [[sources/task-1-offline-encryption]] | TASK-1: Offline Encryption | source, epic | Offline local encryption mechanism |
+| [[concepts/keyvault]] | KeyVault | concept | Core encryption key management |
 ```
 
 **In page bodies (sources, concepts, entities), use wikilinks in Related sections:**
@@ -265,7 +269,7 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 
 **❌ NEVER use standard Markdown links for internal wiki pages:**
 ```markdown
-| Source | Type | Summary |
+| Source | Labels | Summary |
 |--------|------|---------|
 | [source-security-module](sources/source-security-module.md) | source | Security module summary |
 
@@ -275,7 +279,7 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
 
 **✅ ALWAYS use wikilinks:**
 ```markdown
-| Source | Type | Summary |
+| Source | Labels | Summary |
 |--------|------|---------|
 | [[sources/source-security-module]] | source | Security module summary |
 
@@ -359,7 +363,7 @@ Key behaviors:
   - **CRITICAL:** In page bodies (sources, concepts, entities), Related Concepts / Related Sources / Related Entities sections must also use `[[path/to/file]]`, not `[text](path.md)`
   - Example: `- [[concepts/keyvault]]` — NOT `- [KeyVault](concepts/keyvault.md)`
 - Append-only for `wiki/log.md`
-- YAML frontmatter on every wiki page: `type`, `title`, `updated`
+- YAML frontmatter on every wiki page at minimum: `title`, `created_date`, `updated_date`; `labels` as optional array of tags
 - Filenames: lowercase-with-hyphens
 
 ### Operations

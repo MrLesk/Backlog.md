@@ -4,7 +4,10 @@ import { apiClient } from "../lib/api";
 import MermaidMarkdown from "./MermaidMarkdown";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Modal from "./Modal";
+import { PasteAwareMDEditor } from "./PasteAwareMDEditor";
+import { SuccessToast } from "./SuccessToast";
 import { useTheme } from "../contexts/ThemeContext";
+import ChipInput from "./ChipInput";
 import type { WikiPage } from "../../types";
 
 function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void }) {
@@ -84,6 +87,19 @@ export default function WikiDetail() {
 	const { theme } = useTheme();
 	const contentRef = useRef<HTMLDivElement>(null);
 
+	// Editing state
+	const [isEditing, setIsEditing] = useState(false);
+	const [editContent, setEditContent] = useState("");
+	const [originalContent, setOriginalContent] = useState("");
+	const [editTitle, setEditTitle] = useState("");
+	const [originalTitle, setOriginalTitle] = useState("");
+	const [editLabels, setEditLabels] = useState<string[]>([]);
+	const [originalLabels, setOriginalLabels] = useState<string[]>([]);
+	const [isSaving, setIsSaving] = useState(false);
+	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+
+	const hasChanges = editContent !== originalContent || editTitle !== originalTitle || JSON.stringify(editLabels) !== JSON.stringify(originalLabels);
+
 	const loadWikiPage = useCallback(async () => {
 		if (!wikiPath) return;
 		try {
@@ -106,7 +122,6 @@ export default function WikiDetail() {
 		}
 	}, [wikiPath, loadWikiPage]);
 
-	// Intercept wiki link clicks to open modal instead of navigating
 	useEffect(() => {
 		if (!contentRef.current) return;
 		const container = contentRef.current;
@@ -125,6 +140,43 @@ export default function WikiDetail() {
 		container.addEventListener("click", handleClick);
 		return () => container.removeEventListener("click", handleClick);
 	}, [page?.content]);
+
+	const handleEdit = () => {
+		const currentTitle =
+			typeof page?.frontmatter?.title === "string" && page.frontmatter.title
+				? page.frontmatter.title
+				: page?.path.split("/").pop()?.replace(/\.md$/i, "") || "";
+		const currentLabels = Array.isArray(page?.frontmatter?.labels)
+			? page.frontmatter.labels.map(String)
+			: [];
+		setEditContent(page?.content || "");
+		setOriginalContent(page?.content || "");
+		setEditTitle(currentTitle);
+		setOriginalTitle(currentTitle);
+		setEditLabels(currentLabels);
+		setOriginalLabels(currentLabels);
+		setIsEditing(true);
+	};
+
+	const handleCancelEdit = () => {
+		setIsEditing(false);
+	};
+
+	const handleSave = useCallback(async () => {
+		if (!wikiPath || !hasChanges) return;
+		try {
+			setIsSaving(true);
+			await apiClient.updateWikiPage(wikiPath, editContent, editTitle, editLabels);
+			setIsEditing(false);
+			setShowSaveSuccess(true);
+			setTimeout(() => setShowSaveSuccess(false), 4000);
+			await loadWikiPage();
+		} catch (err) {
+			console.error("Failed to save wiki page:", err);
+		} finally {
+			setIsSaving(false);
+		}
+	}, [wikiPath, editContent, editTitle, editLabels, hasChanges, loadWikiPage]);
 
 	if (!wikiPath) {
 		return (
@@ -181,23 +233,98 @@ export default function WikiDetail() {
 					<div className="max-w-4xl mx-auto px-8 py-6">
 						<div className="flex items-start justify-between mb-2">
 							<div className="flex-1">
-								<h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors duration-200">
-									{title}
-								</h1>
-								<div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-200">
-									<div className="flex items-center space-x-2">
-										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-										</svg>
-										<span>Wiki</span>
+								{isEditing ? (
+									<div className="space-y-3 mb-2">
+										<input
+											type="text"
+											value={editTitle}
+											onChange={(e) => setEditTitle(e.target.value)}
+											className="text-3xl font-bold text-gray-900 dark:text-gray-100 w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+											placeholder="Page title"
+										/>
+										<ChipInput
+											name="wiki-labels"
+											label="Labels"
+											value={editLabels}
+											onChange={setEditLabels}
+											placeholder="Type label and press Enter or comma"
+										/>
+										<div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+											<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+											</svg>
+											<span>{page.path}</span>
+										</div>
 									</div>
-									<div className="flex items-center space-x-2">
-										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-										</svg>
-										<span>{page.path}</span>
-									</div>
-								</div>
+								) : (
+									<>
+										<h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors duration-200">
+											{title}
+										</h1>
+										{(() => {
+											const labels = Array.isArray(page.frontmatter?.labels) ? page.frontmatter.labels.map(String) : [];
+											return labels.length > 0 ? (
+												<div className="flex flex-wrap gap-1.5 mb-3">
+													{labels.map((label) => (
+														<span
+															key={label}
+															className="inline-block px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded transition-colors duration-200"
+														>
+															{label}
+														</span>
+													))}
+												</div>
+											) : null;
+										})()}
+										<div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-200">
+											<div className="flex items-center space-x-2">
+												<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+												</svg>
+												<span>Wiki</span>
+											</div>
+											<div className="flex items-center space-x-2">
+												<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+												</svg>
+												<span>{page.path}</span>
+											</div>
+										</div>
+									</>
+								)}
+							</div>
+							<div className="flex items-center space-x-2 ml-4">
+								{isEditing ? (
+									<>
+										<button
+											onClick={handleCancelEdit}
+											className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 dark:focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+										>
+											Cancel
+										</button>
+										<button
+											onClick={handleSave}
+											disabled={!hasChanges || isSaving}
+											className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 ${
+											hasChanges && !isSaving
+												? 'bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700 focus:ring-blue-500 dark:focus:ring-blue-400'
+												: 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+										}`}
+										>
+											<svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
+											</svg>
+											{isSaving ? 'Saving...' : 'Save'}
+										</button>
+									</>
+								) : (
+									<button
+										onClick={handleEdit}
+										className="px-4 py-2 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
+									>
+										Edit
+									</button>
+								)}
 							</div>
 						</div>
 					</div>
@@ -206,19 +333,43 @@ export default function WikiDetail() {
 				{/* Content Section */}
 				<div className="flex-1 bg-gray-50 dark:bg-gray-800 transition-colors duration-200 flex flex-col">
 					<div className="flex-1 p-8 flex flex-col min-h-0">
-						<div
-							ref={contentRef}
-							className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
-							data-color-mode={theme}
-						>
-							<MermaidMarkdown source={sanitizedContent} />
-						</div>
+						{isEditing ? (
+							<div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800">
+								<PasteAwareMDEditor
+									value={editContent}
+									onChange={(val) => setEditContent(val || "")}
+									preview="edit"
+									height="100%"
+									hideToolbar={false}
+									data-color-mode={theme}
+									textareaProps={{
+										placeholder: "Write your wiki content here...",
+										style: { fontSize: "14px", resize: "none" },
+									}}
+								/>
+							</div>
+						) : (
+							<div
+								ref={contentRef}
+								className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+								data-color-mode={theme}
+							>
+								<MermaidMarkdown source={sanitizedContent} />
+							</div>
+						)}
 					</div>
 				</div>
 			</div>
 
 			{previewPath && (
 				<WikiLinkPreview path={previewPath} onClose={() => setPreviewPath(null)} />
+			)}
+
+			{showSaveSuccess && (
+				<SuccessToast
+					message="Wiki page saved successfully!"
+					onDismiss={() => setShowSaveSuccess(false)}
+				/>
 			)}
 		</ErrorBoundary>
 	);
