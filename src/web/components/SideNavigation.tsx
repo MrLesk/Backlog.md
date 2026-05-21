@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
@@ -13,6 +13,7 @@ import {
 	type WikiTreeNode,
 } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
+import Modal from './Modal';
 import { SidebarSkeleton } from './LoadingSpinner';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
@@ -165,6 +166,11 @@ const Icons = {
 			<circle cx="12" cy="12" r="1" strokeWidth={2} />
 		</svg>
 	),
+	Plus: () => (
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+		</svg>
+	),
 };
 
 const countWikiFiles = (nodes: WikiTreeNode[]): number => {
@@ -180,32 +186,164 @@ const countWikiFiles = (nodes: WikiTreeNode[]): number => {
 	return count;
 };
 
-const WikiTreeItem = memo(function WikiTreeItem({ node }: { node: WikiTreeNode }) {
-	const [isExpanded, setIsExpanded] = useState(false);
+const WIKI_EXPANDED_PATHS_KEY = 'wikiExpandedPaths';
+
+const WikiActionDropdown = memo(function WikiActionDropdown({
+	parentPath,
+	nodeName,
+	isFile,
+	onCreateFile,
+	onCreateFolder,
+	onRename,
+}: {
+	parentPath: string;
+	nodeName: string;
+	isFile: boolean;
+	onCreateFile: (parentPath: string) => void;
+	onCreateFolder: (parentPath: string) => void;
+	onRename: (path: string, name: string) => void;
+}) {
+	const [isOpen, setIsOpen] = useState(false);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const handleClickOutside = (e: MouseEvent) => {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				setIsOpen(false);
+			}
+		};
+		document.addEventListener('mousedown', handleClickOutside);
+		return () => document.removeEventListener('mousedown', handleClickOutside);
+	}, []);
+
+	return (
+		<div className="relative" ref={menuRef}>
+			<button
+				onClick={(e) => {
+					e.stopPropagation();
+					setIsOpen(!isOpen);
+				}}
+				className="p-0.5 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+				title="Actions..."
+			>
+				<Icons.Plus />
+			</button>
+			{isOpen && (
+				<div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1">
+					{!isFile && (
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								setIsOpen(false);
+								onCreateFile(parentPath);
+							}}
+							className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+						>
+							Create file
+						</button>
+					)}
+					{!isFile && (
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								setIsOpen(false);
+								onCreateFolder(parentPath);
+							}}
+							className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+						>
+							Create folder
+						</button>
+					)}
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							setIsOpen(false);
+							onRename(parentPath, nodeName);
+						}}
+						className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+					>
+						Rename
+					</button>
+				</div>
+			)}
+		</div>
+	);
+});
+
+const WikiTreeItem = memo(function WikiTreeItem({
+	node,
+	onCreateFile,
+	onCreateFolder,
+	onRename,
+}: {
+	node: WikiTreeNode;
+	onCreateFile: (parentPath: string) => void;
+	onCreateFolder: (parentPath: string) => void;
+	onRename: (path: string, name: string) => void;
+}) {
+	const [isExpanded, setIsExpanded] = useState(() => {
+		if (typeof window === 'undefined') return false;
+		try {
+			const saved = localStorage.getItem(WIKI_EXPANDED_PATHS_KEY);
+			const paths: string[] = saved ? JSON.parse(saved) : [];
+			return paths.includes(node.path);
+		} catch {
+			return false;
+		}
+	});
+
+	const toggleExpanded = useCallback(() => {
+		setIsExpanded((prev) => {
+			const next = !prev;
+			try {
+				const saved = localStorage.getItem(WIKI_EXPANDED_PATHS_KEY);
+				const paths = new Set<string>(saved ? JSON.parse(saved) : []);
+				if (next) {
+					paths.add(node.path);
+				} else {
+					paths.delete(node.path);
+				}
+				localStorage.setItem(WIKI_EXPANDED_PATHS_KEY, JSON.stringify(Array.from(paths)));
+			} catch {
+				// Ignore localStorage errors
+			}
+			return next;
+		});
+	}, [node.path]);
 
 	if (node.type === 'directory') {
 		const fileCount = countWikiFiles(node.children || []);
-		const hasFiles = fileCount > 0;
+		const hasChildren = (node.children || []).length > 0;
 
 		return (
-			<div>
+			<div className="group/directory">
 				<button
-					onClick={() => hasFiles && setIsExpanded(!isExpanded)}
-					className={`flex items-center space-x-2 w-full px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 ${!hasFiles ? 'cursor-default' : ''}`}
+					onClick={() => hasChildren && toggleExpanded()}
+					className={`flex items-center space-x-2 w-full px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 ${!hasChildren ? 'cursor-default' : ''}`}
 				>
 					<span className="text-gray-400 dark:text-gray-500 w-4">
-						{hasFiles ? (isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />) : null}
+						{hasChildren ? (isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />) : null}
 					</span>
 					<span className="text-gray-400 dark:text-gray-500"><Icons.Folder /></span>
 					<span className="truncate">{node.name}</span>
-					{hasFiles && (
-						<span className="ml-auto text-xs text-gray-400 dark:text-gray-500">({fileCount})</span>
+					{fileCount > 0 && (
+						<span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({fileCount})</span>
 					)}
+					<div className="ml-auto opacity-0 group-hover/directory:opacity-100 group-hover/directory:pointer-events-auto pointer-events-none transition-opacity duration-150">
+						<WikiActionDropdown
+							parentPath={node.path}
+							nodeName={node.name}
+							isFile={false}
+							onCreateFile={onCreateFile}
+							onCreateFolder={onCreateFolder}
+							onRename={onRename}
+						/>
+					</div>
 				</button>
 				{isExpanded && node.children && (
 					<div className="ml-4 space-y-1">
 						{node.children.map((child) => (
-							<WikiTreeItem key={child.path} node={child} />
+							<WikiTreeItem key={child.path} node={child} onCreateFile={onCreateFile} onCreateFolder={onCreateFolder} onRename={onRename} />
 						))}
 					</div>
 				)}
@@ -214,19 +352,31 @@ const WikiTreeItem = memo(function WikiTreeItem({ node }: { node: WikiTreeNode }
 	}
 
 	return (
-		<NavLink
-			to={`/wiki/${encodeURIComponent(node.path)}`}
-			className={({ isActive }) =>
-				`flex items-center space-x-3 px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 ${
-					isActive
-						? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-						: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-				}`
-			}
-		>
-			<span className="text-gray-400 dark:text-gray-500"><Icons.File /></span>
-			<span className="truncate">{node.name.replace(/\.md$/i, '')}</span>
-		</NavLink>
+		<div className="group/file relative flex items-center rounded-lg transition-colors duration-200">
+			<NavLink
+				to={`/wiki/${encodeURIComponent(node.path)}`}
+				className={({ isActive }) =>
+					`flex-1 flex items-center space-x-3 px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 ${
+						isActive
+							? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+							: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+					}`
+				}
+			>
+				<span className="text-gray-400 dark:text-gray-500"><Icons.File /></span>
+				<span className="truncate">{node.name.replace(/\.md$/i, '')}</span>
+			</NavLink>
+			<div className="absolute right-1.5 opacity-0 group-hover/file:opacity-100 group-hover/file:pointer-events-auto pointer-events-none transition-opacity duration-150">
+				<WikiActionDropdown
+					parentPath={node.path}
+					nodeName={node.name}
+					isFile={true}
+					onCreateFile={onCreateFile}
+					onCreateFolder={onCreateFolder}
+					onRename={onRename}
+				/>
+			</div>
+		</div>
 	);
 });
 
@@ -234,19 +384,22 @@ interface SideNavigationProps {
 	tasks: Task[];
 	docs: Document[];
 	decisions: Decision[];
+	wikiTree: WikiTreeNode[];
 	isLoading: boolean;
 	error?: Error | null;
 	onRetry?: () => void;
 	onRefreshData: () => Promise<void>;
 }
 
-const SideNavigation = memo(function SideNavigation({ 
-	tasks, 
-	docs, 
-	decisions, 
-	isLoading, 
-	error, 
-	onRetry
+const SideNavigation = memo(function SideNavigation({
+	tasks,
+	docs,
+	decisions,
+	wikiTree,
+	isLoading,
+	error,
+	onRetry,
+	onRefreshData,
 }: SideNavigationProps) {
 	const [isCollapsed, setIsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('sideNavCollapsed');
@@ -280,19 +433,29 @@ const SideNavigation = memo(function SideNavigation({
 		}
 		return false;
 	});
-	const [wikiTree, setWikiTree] = useState<WikiTreeNode[]>([]);
-	const [wikiTreeLoading, setWikiTreeLoading] = useState(false);
 	const [version, setVersion] = useState<string>('');
 	const location = useLocation();
 	const navigate = useNavigate();
 
+	// Wiki create modal state
+	const [showCreateWikiModal, setShowCreateWikiModal] = useState(false);
+	const [createWikiParentPath, setCreateWikiParentPath] = useState('');
+	const [createWikiIsFolder, setCreateWikiIsFolder] = useState(false);
+	const [newWikiName, setNewWikiName] = useState('');
+	const [isCreatingWiki, setIsCreatingWiki] = useState(false);
+	const [createWikiError, setCreateWikiError] = useState<string | null>(null);
+
+	// Wiki rename modal state
+	const [showRenameWikiModal, setShowRenameWikiModal] = useState(false);
+	const [renameWikiOldPath, setRenameWikiOldPath] = useState('');
+	const [renameWikiOldName, setRenameWikiOldName] = useState('');
+	const [renameWikiNewName, setRenameWikiNewName] = useState('');
+	const [isRenamingWiki, setIsRenamingWiki] = useState(false);
+	const [renameWikiError, setRenameWikiError] = useState<string | null>(null);
+
 	// Create handlers - just navigate to new pages
 	const handleCreateDocument = useCallback(() => {
 		navigate('/documentation/new');
-	}, [navigate]);
-
-	useCallback(() => {
-		navigate('/decisions/new');
 	}, [navigate]);
 
 	useEffect(() => {
@@ -319,26 +482,84 @@ const SideNavigation = memo(function SideNavigation({
 		localStorage.setItem('wikiCollapsed', JSON.stringify(isWikiCollapsed));
 	}, [isWikiCollapsed]);
 
-	// Fetch wiki tree on mount
-	useEffect(() => {
-		const loadWikiTree = async () => {
-			try {
-				setWikiTreeLoading(true);
-				const tree = await apiClient.fetchWikiTree();
-				setWikiTree(tree);
-				// Auto-collapse if more than 6 top-level items and no saved preference
-				const savedWikiCollapsed = localStorage.getItem('wikiCollapsed');
-				if (savedWikiCollapsed === null && tree.length > 6) {
-					setIsWikiCollapsed(true);
-				}
-			} catch (err) {
-				console.error('Failed to fetch wiki tree:', err);
-			} finally {
-				setWikiTreeLoading(false);
-			}
-		};
-		loadWikiTree();
+	const handleCreateWikiFile = useCallback((parentPath: string) => {
+		setCreateWikiParentPath(parentPath);
+		setCreateWikiIsFolder(false);
+		setNewWikiName('');
+		setCreateWikiError(null);
+		setShowCreateWikiModal(true);
 	}, []);
+
+	const handleCreateWikiFolder = useCallback((parentPath: string) => {
+		setCreateWikiParentPath(parentPath);
+		setCreateWikiIsFolder(true);
+		setNewWikiName('');
+		setCreateWikiError(null);
+		setShowCreateWikiModal(true);
+	}, []);
+
+	const executeCreateWiki = useCallback(async () => {
+		if (!newWikiName.trim()) return;
+		try {
+			setIsCreatingWiki(true);
+			setCreateWikiError(null);
+
+			const name = newWikiName.trim().replace(/\.md$/i, '');
+			const fullPath = createWikiParentPath ? `${createWikiParentPath}/${name}` : name;
+
+			if (createWikiIsFolder) {
+				await apiClient.createWikiFolder(fullPath);
+			} else {
+				await apiClient.createWikiPage(fullPath);
+			}
+			setShowCreateWikiModal(false);
+			await onRefreshData();
+			if (!createWikiIsFolder) {
+				navigate(`/wiki/${encodeURIComponent(fullPath)}`);
+			}
+		} catch (err) {
+			setCreateWikiError(err instanceof Error ? err.message : 'Failed to create');
+		} finally {
+			setIsCreatingWiki(false);
+		}
+	}, [newWikiName, createWikiParentPath, createWikiIsFolder, onRefreshData, navigate]);
+
+	const handleRenameWiki = useCallback((oldPath: string, oldName: string) => {
+		setRenameWikiOldPath(oldPath);
+		setRenameWikiOldName(oldName);
+		setRenameWikiNewName(oldName.replace(/\.md$/i, ''));
+		setRenameWikiError(null);
+		setShowRenameWikiModal(true);
+	}, []);
+
+	const executeRenameWiki = useCallback(async () => {
+		if (!renameWikiNewName.trim() || renameWikiNewName.trim() === renameWikiOldName.replace(/\.md$/i, '')) {
+			setShowRenameWikiModal(false);
+			return;
+		}
+		try {
+			setIsRenamingWiki(true);
+			setRenameWikiError(null);
+
+			const parentPath = renameWikiOldPath.includes('/') ? renameWikiOldPath.slice(0, renameWikiOldPath.lastIndexOf('/')) : '';
+			const newName = renameWikiNewName.trim();
+			const isFile = renameWikiOldName.endsWith('.md');
+			const newFileName = isFile && !newName.endsWith('.md') ? `${newName}.md` : newName;
+			const newPath = parentPath ? `${parentPath}/${newFileName}` : newFileName;
+
+			await apiClient.renameWikiItem(renameWikiOldPath, newPath);
+			setShowRenameWikiModal(false);
+			await onRefreshData();
+			// If the currently viewed wiki page was renamed, navigate to the new path
+			if (location.pathname.startsWith(`/wiki/${encodeURIComponent(renameWikiOldPath)}`)) {
+				navigate(`/wiki/${encodeURIComponent(newPath)}`);
+			}
+		} catch (err) {
+			setRenameWikiError(err instanceof Error ? err.message : 'Failed to rename');
+		} finally {
+			setIsRenamingWiki(false);
+		}
+	}, [renameWikiNewName, renameWikiOldPath, renameWikiOldName, onRefreshData, navigate, location.pathname]);
 
 	// Auto-collapse when data loads/changes if no saved preference exists
 	useEffect(() => {
@@ -832,18 +1053,24 @@ const SideNavigation = memo(function SideNavigation({
 									<span className="text-gray-500 dark:text-gray-400"><Icons.DocumentBook /></span>
 									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Wiki ({countWikiFiles(wikiTree)})</span>
 								</div>
+								<WikiActionDropdown
+									nodeName=""
+									isFile={false}
+									parentPath=""
+									onCreateFile={handleCreateWikiFile}
+									onCreateFolder={handleCreateWikiFolder}
+									onRename={() => {}}
+								/>
 							</div>
 
 							{/* Wiki Tree */}
 							{!isWikiCollapsed && (
 								<div className="space-y-1">
-									{wikiTreeLoading ? (
-										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading...</p>
-									) : wikiTree.length === 0 ? (
+									{wikiTree.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No wiki pages</p>
 									) : (
 										wikiTree.map((node) => (
-											<WikiTreeItem key={node.path} node={node} />
+											<WikiTreeItem key={node.path} node={node} onCreateFile={handleCreateWikiFile} onCreateFolder={handleCreateWikiFolder} onRename={handleRenameWiki} />
 										))
 									)}
 								</div>
@@ -1031,6 +1258,99 @@ const SideNavigation = memo(function SideNavigation({
 				)}
 			</div>
 			
+				{showCreateWikiModal && (
+					<Modal
+						isOpen={true}
+						onClose={() => setShowCreateWikiModal(false)}
+						title={createWikiIsFolder ? (createWikiParentPath ? `Create folder in ${createWikiParentPath}` : 'Create folder') : (createWikiParentPath ? `Create page in ${createWikiParentPath}` : 'Create wiki page')}
+					>
+						<div className="space-y-4">
+							<div>
+								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+									{createWikiIsFolder ? 'Folder name' : 'File name'}
+								</label>
+								<input
+									type="text"
+									value={newWikiName}
+									onChange={(e) => setNewWikiName(e.target.value)}
+									onKeyDown={(e) => e.key === 'Enter' && executeCreateWiki()}
+									placeholder={createWikiIsFolder ? 'e.g. concepts' : 'e.g. architecture'}
+									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+									autoFocus
+								/>
+								{!createWikiIsFolder && (
+									<p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+										.md extension will be added automatically
+									</p>
+								)}
+							</div>
+
+							{createWikiError && (
+								<div className="text-sm text-red-600 dark:text-red-400">{createWikiError}</div>
+							)}
+
+							<div className="flex justify-end space-x-3">
+								<button
+									onClick={() => setShowCreateWikiModal(false)}
+									className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={executeCreateWiki}
+									disabled={isCreatingWiki || !newWikiName.trim()}
+									className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+								>
+									{isCreatingWiki ? 'Creating...' : 'Create'}
+								</button>
+							</div>
+						</div>
+					</Modal>
+				)}
+
+					{showRenameWikiModal && (
+						<Modal
+							isOpen={true}
+							onClose={() => setShowRenameWikiModal(false)}
+							title={`Rename ${renameWikiOldName}`}
+						>
+							<div className="space-y-4">
+								<div>
+									<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+										New name
+									</label>
+									<input
+										type="text"
+										value={renameWikiNewName}
+										onChange={(e) => setRenameWikiNewName(e.target.value)}
+										onKeyDown={(e) => e.key === 'Enter' && executeRenameWiki()}
+										className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+										autoFocus
+									/>
+								</div>
+
+								{renameWikiError && (
+									<div className="text-sm text-red-600 dark:text-red-400">{renameWikiError}</div>
+								)}
+
+								<div className="flex justify-end space-x-3">
+									<button
+										onClick={() => setShowRenameWikiModal(false)}
+										className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+									>
+										Cancel
+									</button>
+									<button
+										onClick={executeRenameWiki}
+										disabled={isRenamingWiki || !renameWikiNewName.trim()}
+										className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+									>
+										{isRenamingWiki ? 'Renaming...' : 'Rename'}
+									</button>
+								</div>
+							</div>
+						</Modal>
+					)}
 			<Tooltip id="sidebar-tooltip" place="right" />
 			</div>
 		</ErrorBoundary>

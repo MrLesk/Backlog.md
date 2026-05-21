@@ -353,6 +353,9 @@ export class BacklogServer {
 					"/api/wiki/tree": {
 						GET: async () => await this.handleGetWikiTree(),
 					},
+					"/api/wiki": {
+						POST: async (req: Request) => await this.handleCreateWiki(req),
+					},
 					"/api/wiki/*": {
 						GET: async (req: Request) => {
 							const url = new URL(req.url);
@@ -360,6 +363,20 @@ export class BacklogServer {
 							const prefix = "/api/wiki/";
 							const path = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
 							return await this.handleGetWikiPage(path);
+						},
+						PUT: async (req: Request) => {
+							const url = new URL(req.url);
+							const pathname = decodeURIComponent(url.pathname || "");
+							const prefix = "/api/wiki/";
+							const path = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
+							return await this.handleUpdateWiki(req, path);
+						},
+						PATCH: async (req: Request) => {
+							const url = new URL(req.url);
+							const pathname = decodeURIComponent(url.pathname || "");
+							const prefix = "/api/wiki/";
+							const path = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
+							return await this.handleRenameWiki(req, path);
 						},
 					},
 					"/api/decisions": {
@@ -1097,6 +1114,84 @@ export class BacklogServer {
 			if (message === "Page not found") {
 				return Response.json({ error: message }, { status: 404 });
 			}
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleUpdateWiki(req: Request, pagePath: string): Promise<Response> {
+		try {
+			const body = await req.json();
+			const content = typeof body?.content === "string" ? body.content : undefined;
+			const title = typeof body?.title === "string" ? body.title : undefined;
+			const labels = Array.isArray(body?.labels) ? body.labels.map(String) : undefined;
+			if (typeof content !== "string") {
+				return Response.json({ error: "Content is required" }, { status: 400 });
+			}
+
+			await this.core.filesystem.saveWikiPage(pagePath, content, title, labels);
+			return Response.json({ success: true });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to update wiki";
+			console.error("Error updating wiki:", error);
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleCreateWiki(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const path = typeof body?.path === "string" ? body.path.trim() : undefined;
+			const content = typeof body?.content === "string" ? body.content : undefined;
+			const isFolder = body?.isFolder === true;
+			const labels = Array.isArray(body?.labels) ? body.labels.map(String) : undefined;
+
+			if (!path) {
+				return Response.json({ error: "Path is required" }, { status: 400 });
+			}
+			if (path.includes("..") || path.startsWith("/") || path.startsWith("\\")) {
+				return Response.json({ error: "Invalid path" }, { status: 400 });
+			}
+
+			const createdPath = isFolder
+				? await this.core.filesystem.createWikiFolder(path)
+				: await this.core.filesystem.createWikiPage(path, content, labels);
+			return Response.json({ success: true, path: createdPath }, { status: 201 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to create wiki page";
+			if (message.includes("already exists")) {
+				return Response.json({ error: message }, { status: 409 });
+			}
+			console.error("Error creating wiki:", error);
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleRenameWiki(req: Request, oldPath: string): Promise<Response> {
+		try {
+			const body = await req.json();
+			const newPath = typeof body?.newPath === "string" ? body.newPath.trim() : undefined;
+
+			if (!oldPath || !newPath) {
+				return Response.json({ error: "Old path and new path are required" }, { status: 400 });
+			}
+			if (oldPath.includes("..") || oldPath.startsWith("/") || oldPath.startsWith("\\")) {
+				return Response.json({ error: "Invalid old path" }, { status: 400 });
+			}
+			if (newPath.includes("..") || newPath.startsWith("/") || newPath.startsWith("\\")) {
+				return Response.json({ error: "Invalid new path" }, { status: 400 });
+			}
+
+			const renamedPath = await this.core.filesystem.renameWikiItem(oldPath, newPath);
+			return Response.json({ success: true, path: renamedPath }, { status: 200 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to rename wiki item";
+			if (message.includes("not found")) {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			if (message.includes("already exists")) {
+				return Response.json({ error: message }, { status: 409 });
+			}
+			console.error("Error renaming wiki:", error);
 			return Response.json({ error: message }, { status: 500 });
 		}
 	}
