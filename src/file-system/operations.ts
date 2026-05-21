@@ -211,8 +211,13 @@ export class FileSystem {
 			join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS),
 		];
 
+		//		for (const dir of directories) {
+		//			await mkdir(dir, { recursive: true });
+		//		}
 		for (const dir of directories) {
-			await mkdir(dir, { recursive: true });
+			await mkdir(dir, { recursive: true }).catch((err: NodeJS.ErrnoException) => {
+				if (err.code !== "EEXIST") throw err;
+			});
 		}
 	}
 
