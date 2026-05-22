@@ -19,6 +19,7 @@ import {
 } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
+import { probeShellAvailability, resolveShellInvocation } from "../utils/status-callback.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -841,6 +842,7 @@ export class BacklogServer {
 				acceptanceCriteria,
 				definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults,
+				onStatusChange: typeof payload.onStatusChange === "string" ? payload.onStatusChange : undefined,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -933,6 +935,13 @@ export class BacklogServer {
 
 		if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
 			updateInput.finalSummary = updates.finalSummary;
+		}
+
+		if (
+			"onStatusChange" in updates &&
+			(typeof updates.onStatusChange === "string" || updates.onStatusChange === null)
+		) {
+			updateInput.onStatusChange = updates.onStatusChange;
 		}
 
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
@@ -1677,6 +1686,8 @@ export class BacklogServer {
 		try {
 			const config = await this.core.filesystem.loadConfig();
 			const backlogResolution = this.core.filesystem.resolveBacklogDirectoryInfo();
+			const shellInvocation = resolveShellInvocation(config?.shell);
+			const shellAvailability = probeShellAvailability();
 			return Response.json({
 				initialized: !!config,
 				projectPath: this.core.filesystem.rootDir,
@@ -1684,6 +1695,12 @@ export class BacklogServer {
 				backlogDirectorySource: backlogResolution.source,
 				configLocation: backlogResolution.configSource,
 				rootConfigPath: backlogResolution.rootConfigPath,
+				statusCallbackCapabilities: {
+					platform: process.platform,
+					resolvedShell: shellInvocation.cmd,
+					willFallbackToCmd: Boolean(shellInvocation.warning),
+					shellAvailability,
+				},
 			});
 		} catch (error) {
 			console.error("Error getting status:", error);

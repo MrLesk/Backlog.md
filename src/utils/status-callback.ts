@@ -53,6 +53,28 @@ function namedShellInvocation(name: string): string[] | null {
 }
 
 /**
+ * Canonical list of named shells the resolver knows how to invoke.
+ * Exported so the server-side capability probe and the UI dropdown stay in sync.
+ */
+export const PROBEABLE_SHELLS = ["sh", "bash", "cmd", "pwsh", "powershell"] as const;
+export type ProbeableShell = (typeof PROBEABLE_SHELLS)[number];
+
+/**
+ * Check which {@link PROBEABLE_SHELLS} are actually on the server's PATH.
+ * On Windows, both the bare name and the `.exe` variant are accepted because
+ * older Git for Windows installs `sh.exe` without registering `.exe` in PATHEXT
+ * for the spawn lookup.
+ */
+export function probeShellAvailability(env: ShellResolverEnv = defaultResolverEnv): Record<ProbeableShell, boolean> {
+	const result = {} as Record<ProbeableShell, boolean>;
+	for (const name of PROBEABLE_SHELLS) {
+		const found = env.which(name) !== null || (env.platform === "win32" && env.which(`${name}.exe`) !== null);
+		result[name] = found;
+	}
+	return result;
+}
+
+/**
  * Resolve which shell + args to use for executing a user-provided status-change command.
  * Exported for testing; production callers should use {@link executeStatusCallback}.
  */

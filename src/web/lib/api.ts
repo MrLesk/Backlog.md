@@ -7,6 +7,7 @@ import type {
 	SearchPriorityFilter,
 	SearchResult,
 	SearchResultType,
+	StatusCallbackCapabilities,
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
@@ -27,6 +28,7 @@ export interface InitializationStatus {
 	backlogDirectorySource?: "backlog" | ".backlog" | "custom" | null;
 	configLocation?: "folder" | "root" | null;
 	rootConfigPath?: string | null;
+	statusCallbackCapabilities?: StatusCallbackCapabilities;
 }
 
 // Enhanced error types for better error handling

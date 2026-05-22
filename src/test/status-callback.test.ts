@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { which } from "bun";
 import { Core } from "../core/backlog.ts";
-import { executeStatusCallback, resolveShellInvocation } from "../utils/status-callback.ts";
+import { executeStatusCallback, probeShellAvailability, resolveShellInvocation } from "../utils/status-callback.ts";
 
 // Several tests below execute shell commands with POSIX syntax (`$VAR`, `>`, `>&2`).
 // Skip them when no POSIX shell is available. Mirror the resolver's lookup exactly:
@@ -78,6 +78,42 @@ describe("Status Change Callbacks", () => {
 			const env = { platform: "win32" as NodeJS.Platform, which: noShell };
 			const { cmd } = resolveShellInvocation("C:/Program Files/Git/bin/bash.exe", env);
 			expect(cmd).toEqual(["C:/Program Files/Git/bin/bash.exe", "-c"]);
+		});
+	});
+
+	describe("probeShellAvailability", () => {
+		test("returns true for shells which() finds, false otherwise (POSIX)", () => {
+			const env = {
+				platform: "linux" as NodeJS.Platform,
+				which: (bin: string) => (bin === "sh" || bin === "bash" ? `/bin/${bin}` : null),
+			};
+			expect(probeShellAvailability(env)).toEqual({
+				sh: true,
+				bash: true,
+				cmd: false,
+				pwsh: false,
+				powershell: false,
+			});
+		});
+
+		test("accepts the .exe variant on Windows even if the bare name is missing", () => {
+			const env = {
+				platform: "win32" as NodeJS.Platform,
+				which: (bin: string) =>
+					bin === "powershell.exe" ? "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" : null,
+			};
+			const result = probeShellAvailability(env);
+			expect(result.powershell).toBe(true);
+			expect(result.pwsh).toBe(false);
+			expect(result.sh).toBe(false);
+		});
+
+		test("does not check .exe variants on POSIX", () => {
+			const env = {
+				platform: "linux" as NodeJS.Platform,
+				which: (bin: string) => (bin === "sh.exe" ? "/whatever/sh.exe" : null),
+			};
+			expect(probeShellAvailability(env).sh).toBe(false);
 		});
 	});
 
@@ -382,6 +418,99 @@ onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" >> "${callbackOutputPa
 			// Check callback was executed
 			const output = await Bun.file(callbackOutputFile).text();
 			expect(output.trim()).toBe(`${task.id}:To Do->In Progress`);
+		});
+	});
+
+	describe("per-task onStatusChange round-trip (Task #2 server contract)", () => {
+		let testDir: string;
+		let core: Core;
+
+		beforeEach(async () => {
+			testDir = join(tmpdir(), `backlog-onstatuschange-input-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+			await mkdir(testDir, { recursive: true });
+			await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
+
+			const configContent = `projectName: Test
+statuses:
+  - To Do
+  - In Progress
+  - Done
+labels: []
+milestones: []
+dateFormat: yyyy-mm-dd
+checkActiveBranches: false
+`;
+			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
+
+			core = new Core(testDir);
+		});
+
+		afterEach(async () => {
+			try {
+				await rm(testDir, { recursive: true, force: true });
+			} catch {
+				// Ignore cleanup errors
+			}
+		});
+
+		test("createTaskFromInput persists onStatusChange to task frontmatter", async () => {
+			const { task } = await core.createTaskFromInput({
+				title: "Hook-bearing task",
+				status: "To Do",
+				onStatusChange: 'claude "Pick up task $TASK_ID"',
+			});
+			const reloaded = await core.filesystem.loadTask(task.id);
+			expect(reloaded?.onStatusChange).toBe('claude "Pick up task $TASK_ID"');
+		});
+
+		test("createTaskFromInput ignores blank onStatusChange", async () => {
+			const { task } = await core.createTaskFromInput({
+				title: "No hook",
+				status: "To Do",
+				onStatusChange: "   ",
+			});
+			const reloaded = await core.filesystem.loadTask(task.id);
+			expect(reloaded?.onStatusChange).toBeUndefined();
+		});
+
+		test("updateTaskFromInput sets onStatusChange when given a string", async () => {
+			const { task } = await core.createTaskFromInput({ title: "Task A", status: "To Do" });
+			await core.updateTaskFromInput(task.id, { onStatusChange: 'echo "hooked"' });
+			const reloaded = await core.filesystem.loadTask(task.id);
+			expect(reloaded?.onStatusChange).toBe('echo "hooked"');
+		});
+
+		test("updateTaskFromInput clears onStatusChange when given null", async () => {
+			const { task } = await core.createTaskFromInput({
+				title: "Task B",
+				status: "To Do",
+				onStatusChange: 'echo "remove me"',
+			});
+			await core.updateTaskFromInput(task.id, { onStatusChange: null });
+			const reloaded = await core.filesystem.loadTask(task.id);
+			expect(reloaded?.onStatusChange).toBeUndefined();
+		});
+
+		test("updateTaskFromInput clears onStatusChange when given empty string", async () => {
+			const { task } = await core.createTaskFromInput({
+				title: "Task C",
+				status: "To Do",
+				onStatusChange: 'echo "remove me"',
+			});
+			await core.updateTaskFromInput(task.id, { onStatusChange: "" });
+			const reloaded = await core.filesystem.loadTask(task.id);
+			expect(reloaded?.onStatusChange).toBeUndefined();
+		});
+
+		test("undefined onStatusChange leaves the existing value intact", async () => {
+			const { task } = await core.createTaskFromInput({
+				title: "Task D",
+				status: "To Do",
+				onStatusChange: 'echo "keep me"',
+			});
+			await core.updateTaskFromInput(task.id, { title: "Renamed" });
+			const reloaded = await core.filesystem.loadTask(task.id);
+			expect(reloaded?.onStatusChange).toBe('echo "keep me"');
 		});
 	});
 });

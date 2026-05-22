@@ -226,6 +226,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
+  const [onStatusChange, setOnStatusChange] = useState<string>(task?.onStatusChange || "");
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(Boolean(task?.onStatusChange));
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
@@ -237,6 +239,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     plan: task?.implementationPlan || "",
     notes: task?.implementationNotes || "",
     finalSummary: task?.finalSummary || "",
+    onStatusChange: task?.onStatusChange || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
     definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
   }), [task, defaultDefinitionOfDone, isCreateMode]);
@@ -248,10 +251,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
       plan !== baseline.plan ||
       notes !== baseline.notes ||
       finalSummary !== baseline.finalSummary ||
+      onStatusChange !== baseline.onStatusChange ||
       JSON.stringify(criteria) !== baseline.criteria ||
       JSON.stringify(definitionOfDone) !== baseline.definitionOfDone
     );
-  }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, baseline]);
+  }, [title, description, plan, notes, finalSummary, onStatusChange, criteria, definitionOfDone, baseline]);
 
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
@@ -297,6 +301,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setDependencies(task?.dependencies || []);
     setReferences(task?.references || []);
     setMilestone(task?.milestone || "");
+    setOnStatusChange(task?.onStatusChange || "");
+    setShowAdvanced(Boolean(task?.onStatusChange));
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
     // Preload tasks for dependency picker
@@ -319,6 +325,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setFinalSummary(task?.finalSummary || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
       setDefinitionOfDone(task?.definitionOfDoneItems || []);
+      setOnStatusChange(task?.onStatusChange || "");
+      setShowAdvanced(Boolean(task?.onStatusChange));
       setMode("preview");
     }
   };
@@ -442,6 +450,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
         priority: (priority === "" ? undefined : priority) as "high" | "medium" | "low" | undefined,
         dependencies,
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
+        // Always include onStatusChange (empty string clears the per-task override on the server).
+        onStatusChange: onStatusChange.trim(),
       };
 
       if (isCreateMode && onSubmit) {
@@ -922,6 +932,47 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       placeholder: "PR-style summary of what was implemented (write when task is complete)",
                     }}
                   />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Advanced (per-task status-change hook) */}
+          {(mode !== "preview" || onStatusChange.trim().length > 0) && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="flex items-center justify-between w-full text-left"
+                aria-expanded={showAdvanced}
+              >
+                <SectionHeader title="Advanced" right="Per-task status-change hook" />
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                  {showAdvanced ? "Hide" : "Show"}
+                </span>
+              </button>
+              {showAdvanced && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Overrides the global <code>onStatusChange</code> setting for this task only. Receives{' '}
+                    <code className="text-xs">$TASK_ID</code>, <code className="text-xs">$OLD_STATUS</code>,{' '}
+                    <code className="text-xs">$NEW_STATUS</code>, <code className="text-xs">$TASK_TITLE</code> as
+                    environment variables. Leave empty to inherit the global setting.
+                  </p>
+                  {mode === "preview" ? (
+                    <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 text-gray-800 dark:text-gray-200">
+                      {onStatusChange}
+                    </pre>
+                  ) : (
+                    <textarea
+                      rows={3}
+                      value={onStatusChange}
+                      onChange={(e) => setOnStatusChange(e.target.value)}
+                      placeholder={`claude "Task $TASK_ID moved to $NEW_STATUS — please pick it up."`}
+                      disabled={isFromOtherBranch}
+                      className={`w-full px-3 py-2 font-mono text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    />
+                  )}
                 </div>
               )}
             </div>

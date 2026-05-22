@@ -107,6 +107,8 @@ export interface TaskCreateInput {
 	definitionOfDoneAdd?: string[];
 	disableDefinitionOfDoneDefaults?: boolean;
 	rawContent?: string;
+	/** Per-task status-change hook command. See BacklogConfig.onStatusChange for global default. */
+	onStatusChange?: string;
 }
 
 export interface TaskUpdateInput {
@@ -149,6 +151,8 @@ export interface TaskUpdateInput {
 	checkDefinitionOfDone?: number[];
 	uncheckDefinitionOfDone?: number[];
 	rawContent?: string;
+	/** Per-task status-change hook command. Pass `null` or an empty string to clear the override and fall back to the global setting. */
+	onStatusChange?: string | null;
 }
 
 export interface TaskListFilter {
@@ -338,4 +342,17 @@ export interface BacklogConfig {
 export interface ParsedMarkdown {
 	frontmatter: Record<string, unknown>;
 	content: string;
+}
+
+/**
+ * Server-reported capability surface for status-change callbacks.
+ * Sourced from the same resolver the runtime uses, so the browser stays
+ * consistent with actual runtime behavior (including the Windows sh.exe→cmd.exe fallback).
+ */
+export interface StatusCallbackCapabilities {
+	platform: NodeJS.Platform;
+	resolvedShell: string[];
+	willFallbackToCmd: boolean;
+	/** Map of named shell → whether it was found on the server's PATH. Lets the UI disable unavailable dropdown options. */
+	shellAvailability: Record<string, boolean>;
 }

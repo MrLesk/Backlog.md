@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import { SuccessToast } from './SuccessToast';
-import type { BacklogConfig } from '../../types';
+import type { BacklogConfig, StatusCallbackCapabilities } from '../../types';
 
 const Settings: React.FC = () => {
 	const [config, setConfig] = useState<BacklogConfig | null>(null);
@@ -12,11 +12,24 @@ const Settings: React.FC = () => {
 	const [showSuccess, setShowSuccess] = useState(false);
 	const [statuses, setStatuses] = useState<string[]>([]);
 	const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+	const [callbackCapabilities, setCallbackCapabilities] = useState<StatusCallbackCapabilities | null>(null);
 
 	useEffect(() => {
 		loadConfig();
 		loadStatuses();
+		loadCallbackCapabilities();
 	}, []);
+
+	const loadCallbackCapabilities = async () => {
+		try {
+			const status = await apiClient.checkStatus();
+			if (status.statusCallbackCapabilities) {
+				setCallbackCapabilities(status.statusCallbackCapabilities);
+			}
+		} catch {
+			// Capability surface is optional UX; missing it is not a blocker for saving.
+		}
+	};
 
 	const loadConfig = async () => {
 		try {
@@ -265,6 +278,105 @@ const Settings: React.FC = () => {
 									Editor command to use for editing tasks (overrides EDITOR environment variable)
 								</p>
 							</div>
+						</div>
+					</div>
+
+					{/* Status Change Callback */}
+					<div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+						<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Status Change Callback</h2>
+						<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+							Shell command run whenever a task's status changes. Receives <code className="text-xs">$TASK_ID</code>,{' '}
+							<code className="text-xs">$OLD_STATUS</code>, <code className="text-xs">$NEW_STATUS</code>, and{' '}
+							<code className="text-xs">$TASK_TITLE</code> as environment variables. Per-task overrides live on each
+							task's "Advanced" panel.
+						</p>
+						<div className="space-y-4">
+							<div>
+								<label
+									htmlFor="onStatusChange"
+									className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+								>
+									Command
+								</label>
+								<textarea
+									id="onStatusChange"
+									rows={3}
+									value={config.onStatusChange ?? ''}
+									onChange={(e) => handleInputChange('onStatusChange', e.target.value || undefined)}
+									placeholder={`if [ "$NEW_STATUS" = "In Progress" ]; then claude "Task $TASK_ID has been assigned to you. Please implement it." & fi`}
+									className="w-full px-3 py-2 font-mono text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+								/>
+								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									Leave empty to disable.
+								</p>
+							</div>
+
+							<div>
+								<label
+									htmlFor="shell"
+									className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+								>
+									Shell
+								</label>
+								<select
+									id="shell"
+									value={config.shell ?? 'auto'}
+									onChange={(e) => handleInputChange('shell', e.target.value === 'auto' ? undefined : e.target.value)}
+									className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+								>
+									<option value="auto">auto (recommended)</option>
+									{(
+										[
+											{ value: 'sh', label: 'sh' },
+											{ value: 'bash', label: 'bash' },
+											{ value: 'cmd', label: 'cmd (Windows)' },
+											{ value: 'pwsh', label: 'pwsh (PowerShell 7+)' },
+											{ value: 'powershell', label: 'powershell (Windows PowerShell)' },
+										] as const
+									).map((opt) => {
+										const availability = callbackCapabilities?.shellAvailability?.[opt.value];
+										const installed = availability !== false;
+										return (
+											<option key={opt.value} value={opt.value} disabled={!installed}>
+												{opt.label}{!installed ? ' — not installed' : ''}
+											</option>
+										);
+									})}
+								</select>
+								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									Interpreter used to execute the command. <code className="text-xs">auto</code> picks <code className="text-xs">sh</code> on POSIX and prefers <code className="text-xs">sh.exe</code> on Windows (falling back to <code className="text-xs">cmd.exe</code> if not installed). Note: env-var syntax depends on the shell —{' '}
+									<code className="text-xs">$TASK_ID</code> on sh/bash, <code className="text-xs">%TASK_ID%</code> on cmd,{' '}
+									<code className="text-xs">$env:TASK_ID</code> on PowerShell.
+								</p>
+								{config.shell &&
+									callbackCapabilities?.shellAvailability?.[config.shell] === false && (
+										<p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
+											The selected shell <code className="text-xs">{config.shell}</code> is not installed on the server. Status-change hooks will fail until you switch to one of the available shells.
+										</p>
+									)}
+							</div>
+
+							{callbackCapabilities && (
+								<div
+									className={`p-3 rounded-md text-sm border ${
+										callbackCapabilities.willFallbackToCmd
+											? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+											: 'bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300'
+									}`}
+								>
+									<div className="font-medium mb-1">Server runtime</div>
+									<div className="text-xs">
+										Platform: <code>{callbackCapabilities.platform}</code>
+										<span className="mx-2">·</span>
+										Resolved: <code>{callbackCapabilities.resolvedShell.join(' ')}</code>
+									</div>
+									{callbackCapabilities.willFallbackToCmd && (
+										<div className="text-xs mt-2">
+											No POSIX <code>sh</code> found on the server. Commands will execute through <code>cmd.exe</code>; POSIX syntax in the command above may not work. Install Git for Windows or change the shell setting.
+										</div>
+									)}
+								</div>
+							)}
 						</div>
 					</div>
 
