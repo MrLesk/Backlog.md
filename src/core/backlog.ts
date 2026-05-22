@@ -1052,6 +1052,8 @@ export class Core {
 				...(typeof input.finalSummary === "string" && { finalSummary: input.finalSummary }),
 				...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
+				...(typeof input.onStatusChange === "string" &&
+					input.onStatusChange.trim().length > 0 && { onStatusChange: input.onStatusChange.trim() }),
 			};
 
 			const filePath = await this.writePreparedTask(task, isDraft);
@@ -1102,9 +1104,15 @@ export class Core {
 			}
 		}
 
-		// Fire status change callback if status changed
+		// Fire status change callback if status changed.
+		// Fire-and-forget: shell startup (especially PowerShell on Windows) can
+		// take several seconds, and blocking the HTTP response can trip the
+		// browser client's 10s timeout + retry, which then re-fires this same
+		// transition with stale status and loops the agent dispatcher.
 		if (statusChanged) {
-			await this.executeStatusChangeCallback(task, oldStatus, newStatus);
+			void this.executeStatusChangeCallback(task, oldStatus, newStatus).catch((error) => {
+				console.error(`Status change callback crashed for ${task.id}:`, error);
+			});
 		}
 	}
 
@@ -1168,6 +1176,23 @@ export class Core {
 					delete task.milestone;
 				} else {
 					task.milestone = normalizedMilestone;
+				}
+				mutated = true;
+			}
+		}
+
+		if (input.onStatusChange !== undefined) {
+			const normalizedHook =
+				input.onStatusChange === null
+					? undefined
+					: input.onStatusChange.trim().length > 0
+						? input.onStatusChange.trim()
+						: undefined;
+			if ((task.onStatusChange ?? undefined) !== normalizedHook) {
+				if (normalizedHook === undefined) {
+					delete task.onStatusChange;
+				} else {
+					task.onStatusChange = normalizedHook;
 				}
 				mutated = true;
 			}

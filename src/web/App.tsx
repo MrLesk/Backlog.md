@@ -25,6 +25,7 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { apiClient } from './lib/api';
+import { createGenerationGate, trackSpinner } from './lib/race-guard';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
@@ -182,7 +183,14 @@ function App() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+  // Generation gate used to discard responses from stale loadAllData calls.
+  // When rapid WebSocket "tasks-updated" messages fire two refreshes in flight,
+  // the older request can resolve after the newer one and overwrite fresh
+  // state with stale data — the kanban then shows the previous status until
+  // the next refresh. Gating state-application on the latest generation
+  // prevents that. See src/web/lib/race-guard.ts for the unit-tested helper.
+  const loadGenerationRef = useRef(createGenerationGate());
+
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
@@ -255,9 +263,13 @@ function App() {
     return { tasks: normalizedTasks, docs: docsList, decisions: decisionsList };
   }, []);
 
-  const loadAllData = useCallback(async () => {
+  const loadAllData = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const { showLoading = true } = options;
+    const token = loadGenerationRef.current.next();
+    // The spinner tracker is responsible for clearing isLoading regardless of
+    // race-guard staleness — see src/web/lib/race-guard.ts for the invariant.
+    const spinner = trackSpinner({ show: showLoading, setLoading: setIsLoading });
     try {
-      setIsLoading(true);
       const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
@@ -265,6 +277,10 @@ function App() {
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
       ]);
+
+      // A newer loadAllData started after us; discard our (now stale) results
+      // rather than overwriting the fresher state.
+      if (!loadGenerationRef.current.isCurrent(token)) return;
 
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
@@ -284,7 +300,7 @@ function App() {
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
-      setIsLoading(false);
+      spinner.release();
     }
   }, [applySearchResults]);
 
@@ -295,34 +311,16 @@ function App() {
     }
   }, [loadAllData, isInitialized]);
 
-  // Reload data when connection is restored
+  // Reload data when connection is restored. Route through loadAllData so the
+  // generation guard catches stale responses, and so config/statuses/project
+  // name that changed while offline get picked up too — the previous
+  // hand-rolled partial reload bypassed the race protection and only refreshed
+  // search/milestones.
   React.useEffect(() => {
     if (isOnline && previousOnlineRef.current === false) {
-      // Connection restored, reload data
-      const loadData = async () => {
-        try {
-          const [results, milestonesData, archivedMilestonesData] = await Promise.all([
-            apiClient.search(),
-            apiClient.fetchMilestones(),
-            apiClient.fetchArchivedMilestones(),
-          ]);
-          const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
-          const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
-          const { tasks: tasksList } = applySearchResults(results, archivedKeys, milestoneAliases);
-          setMilestoneEntities(milestonesData);
-          setArchivedMilestones(archivedMilestonesData);
-          setMilestones(
-            collectMilestoneIds(tasksList, milestonesData, archivedMilestonesData).filter(
-              (milestone) => !archivedKeys.has(milestoneKey(milestone)),
-            ),
-          );
-        } catch (error) {
-          console.error('Failed to reload data:', error);
-        }
-      };
-      loadData();
+      loadAllData({ showLoading: false });
     }
-  }, [applySearchResults, isOnline]);
+  }, [loadAllData, isOnline]);
 
   // Update document title when project name changes
   React.useEffect(() => {
@@ -382,7 +380,11 @@ function App() {
   };
 
   const refreshData = useCallback(async () => {
-    await loadAllData();
+    // Background refreshes (WebSocket "tasks-updated", post-save, post-archive,
+    // child-component triggered) should update data in place. Toggling the
+    // global isLoading flips the sidebar into its skeleton state, which is
+    // jarring when the user didn't initiate a full reload.
+    await loadAllData({ showLoading: false });
   }, [loadAllData]);
 
   // Sync editingTask with refreshed tasks data to prevent stale state
@@ -397,17 +399,63 @@ function App() {
   }, [tasks, editingTask, showModal]);
 
   useEffect(() => {
+    // Auto-reconnecting WebSocket. Without reconnect logic, any transient
+    // network drop (sleep/wake, server restart, idle proxy timeout) leaves the
+    // client stale with no way to recover except a manual page reload.
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    let attempt = 0;
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
-    ws.onmessage = (event) => {
-      if (event.data === "tasks-updated") {
-        refreshData();
-      } else if (event.data === "config-updated") {
-        // Reload statuses when config changes
-        loadAllData();
-      }
+    const url = `${protocol}//${window.location.host}`;
+
+    const scheduleReconnect = () => {
+      if (cancelled || reconnectTimer) return;
+      const delay = Math.min(1000 * 2 ** Math.min(attempt, 5), 15000);
+      attempt += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delay);
     };
-    return () => ws.close();
+
+    const connect = () => {
+      if (cancelled) return;
+      ws = new WebSocket(url);
+      ws.onopen = () => {
+        // Resync after a (re)connect — we may have missed broadcasts while
+        // disconnected. First connect on mount also benefits from this if the
+        // initial load races the websocket open.
+        if (attempt > 0) {
+          refreshData();
+        }
+        attempt = 0;
+      };
+      ws.onmessage = (event) => {
+        if (event.data === "tasks-updated") {
+          refreshData();
+        } else if (event.data === "config-updated") {
+          // Reload statuses when config changes — background refresh, no skeleton.
+          loadAllData({ showLoading: false });
+        }
+      };
+      ws.onerror = () => {
+        // Errors precede close; close handler does the reconnect scheduling.
+      };
+      ws.onclose = () => {
+        ws = null;
+        scheduleReconnect();
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+    };
   }, [refreshData, loadAllData]);
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {
