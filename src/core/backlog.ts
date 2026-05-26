@@ -41,6 +41,9 @@ import {
 	getValidStatuses as resolveValidStatuses,
 } from "../utils/status.ts";
 import { executeStatusCallback } from "../utils/status-callback.ts";
+import { createTaskHookDispatcher, type TaskHookDispatcher } from "./task-hook-dispatcher.ts";
+import { createTaskWriteCoordinator, hashTaskContent, type TaskWriteCoordinator } from "./task-write-coordinator.ts";
+import { acquireWatcherLock, type WatcherLockHolder } from "./watcher-lock.ts";
 import {
 	buildDefinitionOfDoneItems,
 	normalizeDependencies,
@@ -175,19 +178,178 @@ export class Core {
 	public git: GitOperations;
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
-	private readonly enableWatchers: boolean;
+	private enableWatchers: boolean;
+	private readonly taskWriteCoordinator: TaskWriteCoordinator;
+	private readonly taskHookDispatcher: TaskHookDispatcher;
+	// Cached resolution of "is this process the authority for firing
+	// onStatusChange hooks?". The first dispatch lazily probes the watcher
+	// lock to find out; subsequent calls return the cached value.
+	private hookAuthorityResolution: Promise<boolean> | null = null;
+	// Holder for the lazy-acquired watcher lock so process-exit cleanup via
+	// proper-lockfile sees a real handle. May be null if explicit authority
+	// was set (server / watch CLI manage their own lock) or if the probe
+	// found the lock contended.
+	private hookAuthorityLockHolder: WatcherLockHolder | null = null;
+	// Monotonic generation counter. An in-flight probe captures this at
+	// start and compares on completion; any release / explicit override /
+	// project reinit bumps it. A probe that resolves with a stale generation
+	// must NOT install its holder — that would leak the old project's lock
+	// after a reinitializeProjectRoot swap.
+	private hookAuthorityGeneration = 0;
 
-	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
+	constructor(
+		projectRoot: string,
+		options?: {
+			enableWatchers?: boolean;
+			/**
+			 * Callback invoked every time the dispatcher fires an
+			 * onStatusChange hook. Used by `backlog watch` to print a visible
+			 * line per dispatch; silent otherwise.
+			 */
+			onStatusChangeDispatch?: (event: {
+				taskId: string;
+				taskTitle: string;
+				oldStatus: string;
+				newStatus: string;
+				success: boolean;
+			}) => void;
+		},
+	) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
+		// Always construct the coordinator + dispatcher so every Core can fire
+		// onStatusChange in-process even when no ContentStore / watcher is
+		// installed (CLI commands). When the ContentStore IS installed it
+		// receives the same coordinator/dispatcher and wires its saveTask
+		// wrapper + watcher through them, making the dispatcher the single
+		// point of hook firing across both paths.
+		this.taskWriteCoordinator = createTaskWriteCoordinator();
+		this.taskHookDispatcher = createTaskHookDispatcher({
+			// Function form so a `reinitializeProjectRoot` swap of `this.fs`
+			// transparently re-routes the hook's working directory to the new
+			// project without recreating the dispatcher.
+			cwd: () => this.fs.rootDir,
+			loadConfig: () => this.fs.loadConfig(),
+			exec: executeStatusCallback,
+			onDispatch: options?.onStatusChangeDispatch,
+		});
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
 	async withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
 		return await this.fs.withCreateLock(fn);
+	}
+
+	/**
+	 * Override the file-watcher policy decided at construction time. Must be
+	 * called *before* the first {@link Core.getContentStore} call (after which
+	 * the ContentStore has already captured the value). The server uses this
+	 * to flip enableWatchers off when another process holds the watcher lock.
+	 */
+	setEnableWatchers(value: boolean): void {
+		if (this.contentStore) {
+			throw new Error("setEnableWatchers must be called before the ContentStore is constructed");
+		}
+		this.enableWatchers = value;
+	}
+
+	/**
+	 * Explicitly declare whether this Core is the authority for firing
+	 * onStatusChange hooks. The browser server calls this based on its own
+	 * watcher-lock attempt; the `backlog watch` CLI calls it with `true`
+	 * after acquiring the lock itself. Other entry points (one-shot CLI
+	 * commands, MCP) skip this call and rely on the lazy probe inside
+	 * {@link Core.dispatchHookInProcess}.
+	 */
+	setHookDispatchAuthority(value: boolean): void {
+		// Bump the generation so any in-flight lazy probe knows its result
+		// is stale by the time it resolves.
+		this.hookAuthorityGeneration += 1;
+		// Pre-resolve the promise so callers that already raced into
+		// dispatchHookInProcess don't trigger their own probe.
+		this.hookAuthorityResolution = Promise.resolve(value);
+	}
+
+	/**
+	 * Resolves once and caches. Tries to acquire the watcher lock; if
+	 * successful, this process becomes the authority and holds the lock
+	 * for its lifetime (proper-lockfile auto-releases on process exit). If
+	 * another process already holds it, this process is not the authority
+	 * and in-process dispatches must suppress.
+	 *
+	 * Generation-guarded: if {@link releaseHookAuthority} or
+	 * {@link reinitializeProjectRoot} or {@link setHookDispatchAuthority}
+	 * ran while this probe was awaiting `acquireWatcherLock`, the holder we
+	 * just acquired is for a project this Core has already moved away from.
+	 * In that case we release it immediately and resolve false — never
+	 * installing it as `hookAuthorityLockHolder`. This is the only thing
+	 * that keeps an in-flight probe from leaking the old project's watcher
+	 * lock across a project-root swap.
+	 */
+	private async resolveHookAuthority(): Promise<boolean> {
+		if (this.hookAuthorityResolution) return this.hookAuthorityResolution;
+		const probeGeneration = this.hookAuthorityGeneration;
+		this.hookAuthorityResolution = (async () => {
+			try {
+				const holder = await acquireWatcherLock(this.fs.backlogDir);
+				if (probeGeneration !== this.hookAuthorityGeneration) {
+					// Stale completion. Release whatever we acquired so the
+					// project we *used* to belong to isn't locked out.
+					if (holder) {
+						try {
+							await holder.release();
+						} catch {}
+					}
+					return false;
+				}
+				if (holder) {
+					this.hookAuthorityLockHolder = holder;
+					return true;
+				}
+				return false;
+			} catch {
+				// On unexpected errors (mkdir failure etc.) default to false:
+				// better to under-fire than to double-fire across processes.
+				return false;
+			}
+		})();
+		return this.hookAuthorityResolution;
+	}
+
+	/**
+	 * Fire the hook for an in-process status change, gating on
+	 * single-authority across multiple processes. The snapshot inside the
+	 * dispatcher is updated either way so non-authority processes stay
+	 * consistent with the on-disk state.
+	 */
+	private async dispatchHookInProcess(task: Task, oldStatus: string): Promise<void> {
+		const isAuthority = await this.resolveHookAuthority();
+		await this.taskHookDispatcher.dispatchInProcess({ task, oldStatus }, { suppress: !isAuthority });
+	}
+
+	/**
+	 * Release any watcher lock acquired by the lazy authority probe. Safe to
+	 * call multiple times. Long-running processes (server, watch) manage
+	 * their own lock; short-lived CLI commands typically rely on
+	 * proper-lockfile's automatic process-exit cleanup but can call this for
+	 * deterministic teardown (e.g. tests).
+	 */
+	async releaseHookAuthority(): Promise<void> {
+		// Bump the generation BEFORE clearing fields so any concurrent
+		// in-flight probe sees the change when it later resolves and
+		// releases the lock it acquired instead of installing it.
+		this.hookAuthorityGeneration += 1;
+		const holder = this.hookAuthorityLockHolder;
+		this.hookAuthorityLockHolder = null;
+		this.hookAuthorityResolution = null;
+		if (holder) {
+			try {
+				await holder.release();
+			} catch {}
+		}
 	}
 
 	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
@@ -212,8 +374,13 @@ export class Core {
 
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
-			// Use loadTasks as the task loader to include cross-branch tasks
-			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.enableWatchers);
+			// Pass the same coordinator + dispatcher that Core already owns so
+			// the ContentStore's saveTask wrapper and watcher route through
+			// the single hook-firing point.
+			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.enableWatchers, {
+				dispatcher: this.taskHookDispatcher,
+				coordinator: this.taskWriteCoordinator,
+			});
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
@@ -503,8 +670,25 @@ export class Core {
 	reinitializeProjectRoot(projectRoot: string): void {
 		this.disposeSearchService();
 		this.disposeContentStore();
+		// Release any lazy-acquired hook-authority lock and drop the cached
+		// authority resolution before swapping the project. Without this,
+		// subsequent dispatchInProcess calls in the new project would reuse
+		// the OLD project's authority decision and keep holding its watcher
+		// lock — fire/suppress would then be wrong for the new project.
+		// Best-effort void: keep this method synchronous to match the
+		// existing public API; proper-lockfile will also clean up on
+		// process exit as a fallback.
+		void this.releaseHookAuthority();
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
+		// Clear the hook dispatcher's previous-status snapshot and the
+		// coordinator's pending writes. After a project-root swap the next
+		// observed task must not be compared against the previous project's
+		// status — that would either fire a spurious transition or suppress
+		// a real one. The dispatcher's cwd is already a thunk against
+		// `this.fs`, so it picks up the new root automatically.
+		this.taskHookDispatcher.reset();
+		this.taskWriteCoordinator.reset();
 	}
 
 	disposeSearchService(): void {
@@ -1109,8 +1293,12 @@ export class Core {
 		// take several seconds, and blocking the HTTP response can trip the
 		// browser client's 10s timeout + retry, which then re-fires this same
 		// transition with stale status and loops the agent dispatcher.
+		// Routing through the dispatcher (rather than calling
+		// executeStatusCallback directly) updates the previous-status snapshot
+		// the file watcher uses, so a watcher-delivered event for this same
+		// write does not double-fire.
 		if (statusChanged) {
-			void this.executeStatusChangeCallback(task, oldStatus, newStatus).catch((error) => {
+			void this.dispatchHookInProcess(task, oldStatus).catch((error) => {
 				console.error(`Status change callback crashed for ${task.id}:`, error);
 			});
 		}
@@ -1794,44 +1982,6 @@ export class Core {
 		}
 
 		return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
-	}
-
-	/**
-	 * Execute the onStatusChange callback if configured.
-	 * Per-task callback takes precedence over global config.
-	 * Failures are logged but don't block the status change.
-	 */
-	private async executeStatusChangeCallback(task: Task, oldStatus: string, newStatus: string): Promise<void> {
-		const config = await this.fs.loadConfig();
-
-		// Per-task callback takes precedence over global config
-		const callbackCommand = task.onStatusChange ?? config?.onStatusChange;
-		if (!callbackCommand) {
-			return;
-		}
-
-		try {
-			const result = await executeStatusCallback({
-				command: callbackCommand,
-				taskId: task.id,
-				oldStatus,
-				newStatus,
-				taskTitle: task.title,
-				cwd: this.fs.rootDir,
-				shell: config?.shell,
-			});
-
-			if (!result.success) {
-				console.error(`Status change callback failed for ${task.id}: ${result.error ?? "Unknown error"}`);
-				if (result.output) {
-					console.error(`Callback output: ${result.output}`);
-				}
-			} else if (process.env.DEBUG && result.output) {
-				console.log(`Status change callback output for ${task.id}: ${result.output}`);
-			}
-		} catch (error) {
-			console.error(`Failed to execute status change callback for ${task.id}:`, error);
-		}
 	}
 
 	async editTask(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
@@ -2546,11 +2696,37 @@ export class Core {
 
 		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
 		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
+		const oldStatus = editableTask.status;
+		// Record the content hash BEFORE the write so the file watcher's
+		// asynchronous fs.watch event for this same write — which can fire
+		// in the window between Bun.write returning and any post-write
+		// recordWrite — is still recognized as in-process. The explicit
+		// dispatchHookInProcess below is the canonical fire for this path.
+		try {
+			const writtenHash = await hashTaskContent(withUpdatedDate);
+			this.taskWriteCoordinator.recordWrite(editableTask.id, writtenHash);
+		} catch {
+			// If hashing fails we leave the watcher free to fire as a hand
+			// edit — the worst case is a single extra fire, never silent
+			// suppression.
+		}
 		await Bun.write(filePath, withUpdatedDate);
 
 		const refreshedTask = await this.fs.loadTask(editableTask.id);
-		if (refreshedTask && this.contentStore) {
-			this.contentStore.upsertTask(refreshedTask);
+		if (refreshedTask) {
+			if (this.contentStore) {
+				this.contentStore.upsertTask(refreshedTask);
+			}
+			// Fire the hook explicitly with the captured oldStatus so a
+			// status change made inside the editor is treated identically to
+			// CLI / MCP / browser updates. dispatchHookInProcess gates on
+			// hook-dispatch authority so in a multi-process deployment only
+			// the watcher-lock holder actually fires.
+			if (oldStatus !== refreshedTask.status) {
+				void this.dispatchHookInProcess(refreshedTask, oldStatus).catch((error) => {
+					console.error(`Status change callback crashed for ${refreshedTask.id}:`, error);
+				});
+			}
 		}
 
 		return {

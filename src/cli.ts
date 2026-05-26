@@ -3881,6 +3881,82 @@ program
 		}
 	});
 
+// Watch command: headless onStatusChange dispatcher
+program
+	.command("watch")
+	.description(
+		"watch task files for status changes and run the onStatusChange callback (press Ctrl+C to stop). " +
+			"At most one watcher runs per project — both `backlog browser` and `backlog watch` coordinate via a shared lockfile.",
+	)
+	.action(async () => {
+		try {
+			const cwd = await requireProjectRoot();
+			const { acquireWatcherLock } = await import("./core/watcher-lock.ts");
+
+			// Try to acquire the lock up front so we fail fast and exit
+			// cleanly when another process (typically `backlog browser`)
+			// already holds it. We don't fight for the lock — the user knows
+			// only one watcher should be active per project.
+			const filesystem = (await import("./file-system/operations.ts")).FileSystem;
+			const fs = new filesystem(cwd);
+			const lockHolder = await acquireWatcherLock(fs.backlogDir);
+			if (!lockHolder) {
+				console.error(
+					"Another Backlog.md process already holds the watcher lock for this project. " +
+						"Stop that process (or wait for the stale-lock heartbeat to elapse if it crashed) and try again.",
+				);
+				process.exitCode = 1;
+				return;
+			}
+
+			const core = new Core(cwd, {
+				enableWatchers: true,
+				onStatusChangeDispatch: ({ taskId, taskTitle, oldStatus, newStatus, success }) => {
+					const arrow = success ? "→" : "✗";
+					const ts = new Date().toISOString().slice(11, 19);
+					console.log(`[${ts}] ${taskId} (${taskTitle}): ${oldStatus} ${arrow} ${newStatus}`);
+				},
+			});
+			// We hold the watcher lock, so we ARE the hook-dispatch authority.
+			// Tell Core explicitly so its lazy probe doesn't try to re-acquire
+			// the lock we already hold and incorrectly conclude it's not the
+			// authority.
+			core.setHookDispatchAuthority(true);
+			// Touching getContentStore() initializes the ContentStore and
+			// installs the file watcher.
+			await core.getContentStore();
+
+			console.log(`📡 Watching ${fs.tasksDir} for status changes (Ctrl+C to stop)`);
+
+			let shuttingDown = false;
+			const shutdown = async (signal: string) => {
+				if (shuttingDown) return;
+				shuttingDown = true;
+				console.log(`\nReceived ${signal}. Releasing watcher lock and exiting...`);
+				try {
+					core.disposeContentStore();
+				} catch {}
+				try {
+					await lockHolder.release();
+				} catch {}
+				process.exit(0);
+			};
+
+			process.once("SIGINT", () => void shutdown("SIGINT"));
+			process.once("SIGTERM", () => void shutdown("SIGTERM"));
+			process.once("SIGQUIT", () => void shutdown("SIGQUIT"));
+
+			// Keep the process alive. The fs.watch handles + the lockfile
+			// heartbeat are enough on their own, but a no-op interval makes
+			// the intent explicit and protects against future GC-related
+			// quirks where every active handle is async-only.
+			setInterval(() => {}, 60_000).unref();
+		} catch (err) {
+			console.error("Failed to start watcher", err);
+			process.exitCode = 1;
+		}
+	});
+
 // Overview command for statistics
 program
 	.command("overview")

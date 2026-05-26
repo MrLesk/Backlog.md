@@ -1,12 +1,25 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
-import type { FileSystem } from "../file-system/operations.ts";
+import type { FileSystem, SaveTaskOptions } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
+import type { TaskHookDispatcher } from "./task-hook-dispatcher.ts";
+import { hashTaskContent, type TaskWriteCoordinator } from "./task-write-coordinator.ts";
+
+/**
+ * Optional collaborators injected by `Core` so the watcher and the saveTask
+ * wrapper can participate in the onStatusChange hook flow. Without these the
+ * store keeps its legacy behavior: a pure read-through cache with no hook
+ * dispatch.
+ */
+export interface ContentStoreHooks {
+	dispatcher?: TaskHookDispatcher;
+	coordinator?: TaskWriteCoordinator;
+}
 
 interface ContentSnapshot {
 	tasks: Task[];
@@ -60,6 +73,7 @@ export class ContentStore {
 		private readonly filesystem: FileSystem,
 		private readonly taskLoader?: () => Promise<Task[]>,
 		private readonly enableWatchers = false,
+		private readonly hooks?: ContentStoreHooks,
 	) {
 		this.patchFilesystem();
 	}
@@ -127,6 +141,11 @@ export class ContentStore {
 		this.tasks.set(task.id, task);
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 		this.notify("tasks");
+		// Hook dispatch is owned by the file-watcher path (with content-hash
+		// suppression) and by Core's explicit dispatchInProcess for paths
+		// that bypass the wrapped saveTask (e.g. editTaskInTui). Routing
+		// upsertTask through the dispatcher too would multi-fire on every
+		// API read that refreshes the cache from disk.
 	}
 
 	getDocuments(): Document[] {
@@ -209,6 +228,13 @@ export class ContentStore {
 		this.replaceTasks(tasks);
 		this.replaceDocuments(documents);
 		this.replaceDecisions(decisions);
+
+		// Seed the dispatcher's previous-status snapshot from the initial
+		// load. Without this seeding, the first watcher event after startup
+		// would treat the current on-disk status as a "new" task (no
+		// transition) and miss the very first hand-edit that happens before
+		// any other reload populates the snapshot.
+		this.hooks?.dispatcher?.seedSnapshot(tasks);
 
 		this.initialized = true;
 		if (this.enableWatchers) {
@@ -331,6 +357,10 @@ export class ContentStore {
 					if (this.tasks.delete(normalizedTaskId)) {
 						this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 						this.notify("tasks");
+						// Drop the snapshot entry so a future re-creation with
+						// the same id isn't treated as a status transition
+						// from the long-dead previous value.
+						this.hooks?.dispatcher?.forgetTask(normalizedTaskId);
 					}
 					return;
 				}
@@ -341,36 +371,53 @@ export class ContentStore {
 				}
 
 				const previous = this.tasks.get(normalizedTaskId);
-				const task = await this.retryRead(
+				const result = await this.retryRead(
 					async () => {
 						const stillExists = await Bun.file(fullPath).exists();
 						if (!stillExists) {
 							return null;
 						}
 						const content = await Bun.file(fullPath).text();
-						return normalizeTaskIdentity(parseTask(content));
+						return { task: normalizeTaskIdentity(parseTask(content)), content };
 					},
-					(result) => {
-						if (!result) {
+					(value) => {
+						if (!value) {
 							return false;
 						}
-						if (!taskIdsEqual(result.id, normalizedTaskId)) {
+						if (!taskIdsEqual(value.task.id, normalizedTaskId)) {
 							return false;
 						}
 						if (!previous) {
 							return true;
 						}
-						return this.hasTaskChanged(previous, result);
+						return this.hasTaskChanged(previous, value.task);
 					},
 				);
-				if (!task) {
+				if (!result) {
 					await this.refreshTasksFromDisk(normalizedTaskId, previous);
 					return;
 				}
 
+				const { task, content } = result;
 				this.tasks.set(task.id, task);
 				this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 				this.notify("tasks");
+				// Decide suppression deterministically: if the bytes we just
+				// read match a hash recorded by an in-process write, this
+				// event is the watcher observing our own write — suppress.
+				// Otherwise treat as a hand edit.
+				const dispatcher = this.hooks?.dispatcher;
+				if (dispatcher) {
+					try {
+						const hash = await hashTaskContent(content);
+						const isInProcess = this.hooks?.coordinator?.consumeMatchingWrite(task.id, hash) ?? false;
+						void dispatcher.onTaskWrite(task, { suppress: isInProcess });
+					} catch {
+						// Hashing should never fail in practice; if it does,
+						// fire as a hand edit to avoid silent regressions.
+						void dispatcher.onTaskWrite(task);
+					}
+				}
 			});
 		});
 		this.attachWatcherErrorHandler(watcher, "tasks");
@@ -612,10 +659,32 @@ export class ContentStore {
 		const originalSaveDocument = this.filesystem.saveDocument;
 		const originalSaveDecision = this.filesystem.saveDecision;
 
-		this.filesystem.saveTask = (async (task: Task): Promise<string> => {
-			const result = await originalSaveTask.call(this.filesystem, task);
+		this.filesystem.saveTask = (async (task: Task, opts: SaveTaskOptions = {}): Promise<string> => {
+			// Hook into saveTask's onSerialized callback so we record the
+			// content hash BEFORE Bun.write hits disk. This closes the race
+			// window where fs.watch could otherwise deliver the change event
+			// before recordWrite ran, causing the watcher to treat our own
+			// write as a hand edit and double-fire the hook.
+			const coordinator = this.hooks?.coordinator;
+			const callerOnSerialized = opts.onSerialized;
+			const filePath = await originalSaveTask.call(this.filesystem, task, {
+				...opts,
+				onSerialized: async (info) => {
+					if (coordinator) {
+						try {
+							const hash = await hashTaskContent(info.content);
+							coordinator.recordWrite(task.id, hash);
+						} catch {
+							// If hashing fails, fall back to firing as a hand
+							// edit — safer than silent suppression on a stale
+							// recordWrite.
+						}
+					}
+					if (callerOnSerialized) await callerOnSerialized(info);
+				},
+			});
 			await this.handleTaskWrite(task.id);
-			return result;
+			return filePath;
 		}) as FileSystem["saveTask"];
 
 		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<string> => {
@@ -684,6 +753,15 @@ export class ContentStore {
 		}
 		this.replaceTasks(tasks);
 		this.notify("tasks");
+		// Bulk-refresh paths (rename events, retry-exhausted fallback) also
+		// need to give the dispatcher a chance to detect status transitions.
+		// onTaskWrite is a no-op for tasks whose status matches the snapshot,
+		// so iterating the full set is cheap and self-suppressing.
+		if (this.hooks?.dispatcher) {
+			for (const task of tasks) {
+				void this.hooks.dispatcher.onTaskWrite(task);
+			}
+		}
 	}
 
 	private async refreshDocumentsFromDisk(expectedId?: string, previous?: Document): Promise<void> {

@@ -33,6 +33,17 @@ interface CreateLockOptions {
 	staleMs?: number;
 }
 
+export interface SaveTaskOptions {
+	/**
+	 * Called after the task is serialized and the destination path is known,
+	 * but BEFORE the bytes are written to disk. Used by the ContentStore
+	 * watcher-suppression wrapper to record the content hash for the exact
+	 * bytes about to be written — recording after the write would leave a
+	 * race window where fs.watch can fire before recordWrite runs.
+	 */
+	onSerialized?: (info: { filePath: string; content: string; taskId: string }) => Promise<void> | void;
+}
+
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
@@ -286,7 +297,7 @@ export class FileSystem {
 	}
 
 	// Task operations
-	async saveTask(task: Task): Promise<string> {
+	async saveTask(task: Task, opts: SaveTaskOptions = {}): Promise<string> {
 		// Extract prefix from task ID, or use configured prefix, or fall back to default "task"
 		let prefix = extractAnyPrefix(task.id);
 		if (!prefix) {
@@ -339,6 +350,14 @@ export class FileSystem {
 		}
 
 		await this.ensureDirectoryExists(dirname(filepath));
+		// Fire onSerialized BEFORE the write. This lets the ContentStore
+		// wrapper record the content hash for watcher suppression with no
+		// race window — the watcher cannot possibly observe the file change
+		// before the bytes hit disk, and we've recorded the hash for the
+		// exact bytes that are about to be written.
+		if (opts.onSerialized) {
+			await opts.onSerialized({ filePath: filepath, content, taskId: persistedTaskId });
+		}
 		await Bun.write(filepath, content);
 		return filepath;
 	}

@@ -6,6 +6,7 @@ import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
+import { acquireWatcherLock, type WatcherLockHolder } from "../core/watcher-lock.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
@@ -198,6 +199,7 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	private watcherLockHolder: WatcherLockHolder | null = null;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -288,6 +290,30 @@ export class BacklogServer {
 		// Check if browser should open (config setting or CLI override)
 		// Default to true if autoOpenBrowser is not explicitly set to false
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
+
+		// Acquire the project-scoped watcher lock so multiple concurrent
+		// Backlog.md processes for the same project don't all install their
+		// own fs.watch handlers (which would multi-dispatch the onStatusChange
+		// hook on every hand edit). If another process holds the lock, this
+		// server still starts so its UI works — it just doesn't install its
+		// own watcher; the lock holder drives hook dispatch for everyone.
+		this.watcherLockHolder = await acquireWatcherLock(this.core.filesystem.backlogDir);
+		if (this.watcherLockHolder) {
+			// We're the authority — our watcher dispatches onStatusChange.
+			this.core.setHookDispatchAuthority(true);
+		} else {
+			console.warn(
+				"⚠️  Another Backlog.md process holds the watcher lock for this project. " +
+					"File-watcher-driven onStatusChange dispatch will be handled by that process; " +
+					"this server will respond to API/MCP requests but won't install its own watcher.",
+			);
+			this.core.setEnableWatchers(false);
+			// Suppress in-process hook fires — the lock holder's watcher will
+			// observe our writes and dispatch instead. Without this gate the
+			// hook would fire twice (once here from dispatchInProcess, once
+			// from the lock holder's watcher).
+			this.core.setHookDispatchAuthority(false);
+		}
 
 		// Set up config watcher to broadcast changes
 		this.configWatcher = watchConfig(this.core, {
@@ -508,6 +534,17 @@ export class BacklogServer {
 		this.searchService = null;
 		this.contentStore = null;
 		this.storeReadyBroadcasted = false;
+
+		// Release the watcher lock so another process (e.g. a fresh `backlog
+		// browser` started right after this one) can take ownership without
+		// waiting for the stale-lock heartbeat to elapse.
+		if (this.watcherLockHolder) {
+			const holder = this.watcherLockHolder;
+			this.watcherLockHolder = null;
+			try {
+				await holder.release();
+			} catch {}
+		}
 
 		// Proactively close WebSocket connections
 		for (const ws of this.sockets) {
