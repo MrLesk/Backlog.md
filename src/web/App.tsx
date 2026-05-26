@@ -29,6 +29,7 @@ import { createGenerationGate, trackSpinner } from './lib/race-guard';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
+import { resolveBoardColumns } from '../utils/resolve-board-config';
 
 const buildMilestoneAliasMap = (milestones: Milestone[], archivedMilestones: Milestone[]): Map<string, string> => {
   const aliasMap = new Map<string, string>();
@@ -545,6 +546,7 @@ function App() {
                 tasks={tasks}
                 onRefreshData={refreshData}
                 statuses={statuses}
+                boardColumns={resolveBoardColumns(config ?? { projectName: '', statuses, labels: [], dateFormat: '' })}
                 milestones={milestones}
                 availableLabels={availableLabels}
                 milestoneEntities={milestoneEntities}

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../lib/api';
 import { SuccessToast } from './SuccessToast';
-import type { BacklogConfig, StatusCallbackCapabilities } from '../../types';
+import type { BacklogConfig, BoardConfig, StatusCallbackCapabilities } from '../../types';
+import { buildBoardEditorRows, type BoardEditorRow } from '../../utils/build-board-editor-rows';
 
 const Settings: React.FC = () => {
 	const [config, setConfig] = useState<BacklogConfig | null>(null);
@@ -198,6 +199,13 @@ const Settings: React.FC = () => {
 							</div>
 						</div>
 					</div>
+
+					{/* Board Columns */}
+					<BoardColumnsSection
+						statuses={config.statuses}
+						board={config.board}
+						onChange={(next) => handleInputChange('board', next)}
+					/>
 
 					{/* Workflow Settings */}
 					<div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -577,3 +585,208 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
+
+interface BoardColumnsSectionProps {
+	statuses: string[];
+	board?: BoardConfig;
+	onChange: (next: BoardConfig | undefined) => void;
+}
+
+/**
+ * Editor for the optional `board.columns` config. Lists every status as a
+ * row; users toggle visibility, drag to reorder, and set a color per
+ * column. When all statuses are visible in their declared order and no
+ * colors are set, the section emits `board: undefined` so the on-disk
+ * config stays clean (matches the back-compat invariant).
+ */
+const BoardColumnsSection: React.FC<BoardColumnsSectionProps> = ({ statuses, board, onChange }) => {
+	// Row derivation is extracted to a pure helper so the hide-all reload
+	// contract is unit-testable without React. See
+	// src/utils/build-board-editor-rows.ts for the documented contract.
+	const initialRows = useMemo(() => buildBoardEditorRows(statuses, board), [statuses, board]);
+
+	const [rows, setRows] = useState<BoardEditorRow[]>(initialRows);
+	const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+	// Re-derive when the upstream config changes (e.g. after Save).
+	useEffect(() => {
+		setRows(initialRows);
+	}, [initialRows]);
+
+	const emit = (next: BoardEditorRow[]) => {
+		setRows(next);
+		const visibleColumns = next.filter((row) => row.visible);
+		const allVisibleInOrder =
+			visibleColumns.length === statuses.length &&
+			visibleColumns.every((row, i) => row.status === statuses[i] && !row.color);
+		if (allVisibleInOrder) {
+			// Back to defaults — drop board: from the config entirely.
+			onChange(undefined);
+			return;
+		}
+		onChange({
+			columns: visibleColumns.map((row) => (row.color ? { status: row.status, color: row.color } : { status: row.status })),
+		});
+	};
+
+	const moveRow = (from: number, to: number) => {
+		if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return;
+		const next = rows.slice();
+		const [moved] = next.splice(from, 1);
+		if (!moved) return;
+		next.splice(to, 0, moved);
+		emit(next);
+	};
+
+	const handleDragStart = (index: number) => (event: React.DragEvent<HTMLDivElement>) => {
+		setDragIndex(index);
+		event.dataTransfer.effectAllowed = 'move';
+		// Some browsers require setData for the drag to register.
+		event.dataTransfer.setData('text/plain', String(index));
+	};
+
+	const handleDragOver = (index: number) => (event: React.DragEvent<HTMLDivElement>) => {
+		if (dragIndex === null || dragIndex === index) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'move';
+	};
+
+	const handleDrop = (index: number) => (event: React.DragEvent<HTMLDivElement>) => {
+		event.preventDefault();
+		if (dragIndex === null) return;
+		moveRow(dragIndex, index);
+		setDragIndex(null);
+	};
+
+	const handleDragEnd = () => setDragIndex(null);
+
+	const toggleVisible = (index: number) => {
+		const next = rows.slice();
+		const row = next[index];
+		if (!row) return;
+		next[index] = { ...row, visible: !row.visible };
+		emit(next);
+	};
+
+	const setColor = (index: number, color: string | undefined) => {
+		const next = rows.slice();
+		const row = next[index];
+		if (!row) return;
+		next[index] = { ...row, color: color && color.trim() ? color : undefined };
+		emit(next);
+	};
+
+	const resetToDefaults = () => onChange(undefined);
+
+	const hasCustomization =
+		rows.some((row) => !row.visible || (row.color && row.color.length > 0)) ||
+		rows.some((row, i) => row.status !== statuses[i]);
+
+	return (
+		<div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+			<div className="flex items-center justify-between mb-1">
+				<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Board Columns</h2>
+				{hasCustomization && (
+					<button
+						type="button"
+						onClick={resetToDefaults}
+						className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+					>
+						Reset to defaults
+					</button>
+				)}
+			</div>
+			<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+				Reorder kanban columns, hide statuses you don't want on the board, and pick a column color.
+				Hidden statuses stay reachable from list views — only the board hides them.
+			</p>
+			<div className="space-y-1">
+				{rows.map((row, index) => (
+					<div
+						key={row.status}
+						draggable
+						onDragStart={handleDragStart(index)}
+						onDragOver={handleDragOver(index)}
+						onDrop={handleDrop(index)}
+						onDragEnd={handleDragEnd}
+						className={`flex items-center gap-3 px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 ${
+							dragIndex === index ? 'opacity-50' : ''
+						} ${!row.visible ? 'opacity-60' : ''}`}
+					>
+						<span
+							aria-hidden="true"
+							title="Drag to reorder"
+							className="cursor-grab select-none text-gray-400 dark:text-gray-500"
+						>
+							⋮⋮
+						</span>
+						<div className="flex flex-col">
+							<button
+								type="button"
+								onClick={() => moveRow(index, index - 1)}
+								disabled={index === 0}
+								aria-label={`Move ${row.status} up`}
+								title="Move up"
+								className="px-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed leading-none"
+							>
+								▲
+							</button>
+							<button
+								type="button"
+								onClick={() => moveRow(index, index + 1)}
+								disabled={index === rows.length - 1}
+								aria-label={`Move ${row.status} down`}
+								title="Move down"
+								className="px-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed leading-none"
+							>
+								▼
+							</button>
+						</div>
+						<label className="flex items-center gap-2 cursor-pointer">
+							<input
+								type="checkbox"
+								checked={row.visible}
+								onChange={() => toggleVisible(index)}
+								className="rounded text-blue-600 focus:ring-blue-500"
+								aria-label={`Show ${row.status} column on the board`}
+							/>
+							<span className="text-sm text-gray-700 dark:text-gray-300">Show</span>
+						</label>
+						<span className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">{row.status}</span>
+						<div className="flex items-center gap-2">
+							<input
+								type="color"
+								value={row.color ?? '#9ca3af'}
+								onChange={(event) => setColor(index, event.target.value)}
+								disabled={!row.visible}
+								className="h-7 w-10 cursor-pointer rounded border border-gray-300 dark:border-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+								aria-label={`Color for ${row.status}`}
+								title={`Color for ${row.status}`}
+							/>
+							{row.color && row.visible && (
+								<button
+									type="button"
+									onClick={() => setColor(index, undefined)}
+									className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+									title="Clear color"
+								>
+									Clear
+								</button>
+							)}
+						</div>
+					</div>
+				))}
+				{rows.length === 0 && (
+					<p className="text-sm text-gray-500 dark:text-gray-400">No statuses configured yet.</p>
+				)}
+				{rows.length > 0 && rows.every((row) => !row.visible) && (
+					<p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
+						All columns are hidden — the kanban board will be empty. Tasks remain accessible from the All Tasks
+						view. Uncheck "Show" on at least one column or click "Reset to defaults" to restore the standard
+						board.
+					</p>
+				)}
+			</div>
+		</div>
+	);
+};

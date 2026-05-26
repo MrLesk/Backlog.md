@@ -17,6 +17,13 @@ interface TaskColumnProps {
   onCleanup?: () => void;
   laneId?: string;
   targetMilestone?: string | null;
+  /**
+   * Optional CSS color (hex, rgb, named) for the column heading accent.
+   * Renders a small colored dot before the title. When undefined the
+   * header is byte-identical to the historical layout — preserves the
+   * back-compat invariant for users without a board.columns config.
+   */
+  accentColor?: string;
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
@@ -31,7 +38,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onDragEnd,
   onCleanup,
   laneId,
-  targetMilestone
+  targetMilestone,
+  accentColor,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -186,6 +194,14 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
+          {accentColor && (
+            <span
+              aria-hidden="true"
+              className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: accentColor }}
+              title={`Column accent for ${title}`}
+            />
+          )}
           <h3 className="font-semibold text-gray-900 dark:text-gray-100 transition-colors duration-200">{title}</h3>
           <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getStatusBadgeClass(title)}`}>
             {tasks.length}

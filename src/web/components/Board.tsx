@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { type Milestone, type Task } from '../../types';
+import { type BoardColumnConfig, type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
 import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter';
@@ -17,6 +17,15 @@ interface BoardProps {
   tasks: Task[];
   onRefreshData?: () => Promise<void>;
   statuses: string[];
+  /**
+   * Optional resolved board-column list. When provided + non-empty it
+   * replaces the per-status fallback rendering: columns appear in this
+   * order, with their colors, and statuses absent from this list are
+   * hidden from the kanban view (tasks in hidden statuses remain
+   * accessible via list/search). When undefined, the board renders one
+   * column per entry in `statuses` (back-compat).
+   */
+  boardColumns?: BoardColumnConfig[];
   isLoading: boolean;
   milestones: string[];
   availableLabels: string[];
@@ -51,6 +60,7 @@ const Board: React.FC<BoardProps> = ({
   tasks,
   onRefreshData,
   statuses,
+  boardColumns,
   isLoading,
   availableLabels,
   milestoneEntities,
@@ -69,7 +79,24 @@ const Board: React.FC<BoardProps> = ({
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
-  const terminalStatus = getTerminalStatus(statuses);
+  // Effective column list. When boardColumns is defined (even as []),
+  // it wins — that's the user's explicit configuration. Only when the
+  // prop is undefined do we fall back to one column per status (the
+  // back-compat path that matches historical behavior byte-for-byte).
+  // The empty-array case must show zero columns, not silently re-expand
+  // to all statuses — see context.md §Task #4.
+  const visibleColumns: BoardColumnConfig[] = useMemo(() => {
+    if (boardColumns !== undefined) return boardColumns;
+    return statuses.map((status) => ({ status }));
+  }, [boardColumns, statuses]);
+  const visibleStatuses = useMemo(() => visibleColumns.map((column) => column.status), [visibleColumns]);
+  // Cleanup affordance must anchor on the workflow's real terminal
+  // status (typically "Done"), not on the user's visible board subset.
+  // If the user hides Done, the cleanup button must vanish from the
+  // board — it must NOT migrate to whatever happens to be the last
+  // visible column (e.g. "In Progress"), because the server's cleanup
+  // endpoint always operates on tasks in the real terminal status.
+  const realTerminalStatus = getTerminalStatus(statuses);
   const archivedMilestoneIds = useMemo(
     () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
     [archivedMilestones, milestoneEntities]
@@ -325,25 +352,28 @@ const Board: React.FC<BoardProps> = ({
     });
   }, [tasks, archivedMilestoneIds, milestoneAliasToCanonical]);
 
-  // Use all tasks for lane grouping (for counts and visibility)
+  // Use all tasks for lane grouping (for counts and visibility). Pass the
+  // visible status list so hidden statuses (per board.columns) don't get
+  // a column slot — tasks still live in those statuses and are reachable
+  // from list views, but the kanban won't render them.
   const tasksByLane = useMemo(
-    () => groupTasksByLaneAndStatus(laneMode, lanes, statuses, tasks, {
+    () => groupTasksByLaneAndStatus(laneMode, lanes, visibleStatuses, tasks, {
       archivedMilestoneIds,
       milestoneEntities,
       archivedMilestones,
     }),
-    [laneMode, lanes, statuses, tasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
+    [laneMode, lanes, visibleStatuses, tasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
   );
 
   // Separate grouping for filtered display in columns
   const filteredTasksByLane = useMemo(
     () =>
-      groupTasksByLaneAndStatus(laneMode, lanes, statuses, filteredTasks, {
+      groupTasksByLaneAndStatus(laneMode, lanes, visibleStatuses, filteredTasks, {
         archivedMilestoneIds,
         milestoneEntities,
         archivedMilestones,
       }),
-    [laneMode, lanes, statuses, filteredTasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
+    [laneMode, lanes, visibleStatuses, filteredTasks, archivedMilestoneIds, milestoneEntities, archivedMilestones]
   );
 
   const displayTasksByLane = (milestoneFilter || hasActiveFilters) ? filteredTasksByLane : tasksByLane;
@@ -391,6 +421,24 @@ const Board: React.FC<BoardProps> = ({
     if (laneMode !== 'milestone') return lanes;
     return lanes.filter(l => laneTaskCount(l.key) > 0);
   }, [laneMode, lanes, laneMetadataTasksByLane]);
+
+  // Cleanup is a GLOBAL action — the modal/endpoint clean every task in
+  // the terminal status across the whole project, not just one lane. In
+  // milestone mode we render the column set once per lane, so attaching
+  // onCleanup to every lane's terminal column would show N cleanup
+  // buttons for N lanes (misleading: clicking any one performs the same
+  // global action). Anchor it to the first lane that actually has
+  // terminal-status tasks so the affordance stays discoverable but
+  // unique.
+  const cleanupLaneKey = useMemo(() => {
+    if (laneMode !== 'milestone') return null;
+    if (!realTerminalStatus) return null;
+    for (const lane of visibleLanes) {
+      const terminalTasks = laneMetadataTasksByLane.get(lane.key)?.get(realTerminalStatus);
+      if (terminalTasks && terminalTasks.length > 0) return lane.key;
+    }
+    return null;
+  }, [laneMode, visibleLanes, laneMetadataTasksByLane, realTerminalStatus]);
 
   // Only show lane headers when multiple lanes exist
   const shouldShowLaneHeaders = useMemo(() => {
@@ -583,31 +631,36 @@ const Board: React.FC<BoardProps> = ({
                 {/* Lane content - columns */}
                 {!isCollapsed && (
                   <div className="p-4">
-                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${statuses.length}, minmax(0, 1fr))` }}>
-                      {statuses.map((status) => (
-                        <div key={`${lane.key}-${status}`} className="min-w-0">
-                          <TaskColumn
-                            title={status}
-                            tasks={getTasksForLane(lane.key, status)}
-                            onTaskUpdate={handleTaskUpdate}
-                            onEditTask={onEditTask}
-                            onTaskReorder={handleTaskReorder}
-                            dragSourceStatus={dragSourceStatus}
-                            dragSourceLane={dragSourceLane}
-                            laneId={lane.key}
-                            targetMilestone={lane.milestone ?? null}
-                            onDragStart={({ status: draggedStatus, laneId }) => {
-                              setDragSourceStatus(draggedStatus);
-                              setDragSourceLane(laneId ?? null);
-                            }}
-                            onDragEnd={() => {
-                              setDragSourceStatus(null);
-                              setDragSourceLane(null);
-                            }}
-                            onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
-                          />
-                        </div>
-                      ))}
+                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleColumns.length}, minmax(0, 1fr))` }}>
+                      {visibleColumns.map((column) => {
+                        const isCleanupLane = lane.key === cleanupLaneKey;
+                        const showCleanup = isCleanupLane && column.status === realTerminalStatus;
+                        return (
+                          <div key={`${lane.key}-${column.status}`} className="min-w-0">
+                            <TaskColumn
+                              title={column.status}
+                              accentColor={column.color}
+                              tasks={getTasksForLane(lane.key, column.status)}
+                              onTaskUpdate={handleTaskUpdate}
+                              onEditTask={onEditTask}
+                              onTaskReorder={handleTaskReorder}
+                              dragSourceStatus={dragSourceStatus}
+                              dragSourceLane={dragSourceLane}
+                              laneId={lane.key}
+                              targetMilestone={lane.milestone ?? null}
+                              onDragStart={({ status: draggedStatus, laneId }) => {
+                                setDragSourceStatus(draggedStatus);
+                                setDragSourceLane(laneId ?? null);
+                              }}
+                              onDragEnd={() => {
+                                setDragSourceStatus(null);
+                                setDragSourceLane(null);
+                              }}
+                              onCleanup={showCleanup ? () => setShowCleanupModal(true) : undefined}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -618,11 +671,12 @@ const Board: React.FC<BoardProps> = ({
       ) : (
         <div className="overflow-x-auto pb-2">
           <div className="flex flex-row flex-nowrap gap-4 w-full">
-            {statuses.map((status) => (
-              <div key={status} className="flex-1 min-w-[16rem]">
+            {visibleColumns.map((column) => (
+              <div key={column.status} className="flex-1 min-w-[16rem]">
                 <TaskColumn
-                  title={status}
-                  tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}
+                  title={column.status}
+                  accentColor={column.color}
+                  tasks={getTasksForLane(DEFAULT_LANE_KEY, column.status)}
                   onTaskUpdate={handleTaskUpdate}
                   onEditTask={onEditTask}
                   onTaskReorder={handleTaskReorder}
@@ -637,7 +691,7 @@ const Board: React.FC<BoardProps> = ({
                     setDragSourceStatus(null);
                     setDragSourceLane(null);
                   }}
-                  onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                  onCleanup={column.status === realTerminalStatus ? () => setShowCleanupModal(true) : undefined}
                 />
               </div>
             ))}

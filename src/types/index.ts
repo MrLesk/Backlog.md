@@ -282,6 +282,30 @@ export interface PrefixConfig {
 	task: string;
 }
 
+export interface BoardColumnConfig {
+	/** Status name (must match an entry in BacklogConfig.statuses). */
+	status: string;
+	/** Optional CSS color string (hex, rgb, or named) for the column heading accent. */
+	color?: string;
+}
+
+export interface BoardConfig {
+	/**
+	 * Ordered list of columns to render on the kanban board.
+	 *
+	 * Three distinct states:
+	 *  - `columns` absent (or `BoardConfig` itself absent): no override,
+	 *    every entry in `BacklogConfig.statuses` renders as a column.
+	 *  - `columns: []`: explicit "hide every column" — the kanban renders
+	 *    zero columns. Tasks remain reachable from list views.
+	 *  - `columns: [...]`: the listed statuses render as columns in the
+	 *    given order, with their colors. Statuses present in
+	 *    `BacklogConfig.statuses` but absent from this list are hidden
+	 *    from the board (but remain editable and visible elsewhere).
+	 */
+	columns?: BoardColumnConfig[];
+}
+
 export interface BacklogConfig {
 	projectName: string;
 	defaultAssignee?: string;
@@ -318,6 +342,13 @@ export interface BacklogConfig {
 	shell?: string;
 	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
 	prefixes?: PrefixConfig;
+	/**
+	 * Optional kanban board customization. When omitted, every entry in
+	 * {@link BacklogConfig.statuses} renders as a column with the default
+	 * color and the rendered output matches Backlog.md's historical
+	 * behavior byte-for-byte.
+	 */
+	board?: BoardConfig;
 	mcp?: {
 		http?: {
 			host?: string;

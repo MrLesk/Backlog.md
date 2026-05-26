@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Board from './Board';
-import { type Milestone, type Task } from '../../types';
+import { type BoardColumnConfig, type Milestone, type Task } from '../../types';
 import { type LaneMode } from '../lib/lanes';
 
 interface BoardPageProps {
@@ -10,6 +10,7 @@ interface BoardPageProps {
 	tasks: Task[];
 	onRefreshData?: () => Promise<void>;
 	statuses: string[];
+	boardColumns?: BoardColumnConfig[];
 	milestones: string[];
 	availableLabels: string[];
 	milestoneEntities: Milestone[];
@@ -23,6 +24,7 @@ export default function BoardPage({
 	tasks,
 	onRefreshData,
 	statuses,
+	boardColumns,
 	milestones,
 	availableLabels,
 	milestoneEntities,
@@ -127,6 +129,7 @@ export default function BoardPage({
 				tasks={tasks}
 				onRefreshData={onRefreshData}
 				statuses={statuses}
+				boardColumns={boardColumns}
 				milestones={milestones}
 				milestoneEntities={milestoneEntities}
 				archivedMilestones={archivedMilestones}

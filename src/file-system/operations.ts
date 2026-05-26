@@ -5,7 +5,16 @@ import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import type {
+	BacklogConfig,
+	BoardColumnConfig,
+	BoardConfig,
+	Decision,
+	Document,
+	Milestone,
+	Task,
+	TaskListFilter,
+} from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
@@ -1351,6 +1360,11 @@ ${description || `Milestone: ${title}`}`,
 	private parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
 		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
+		// The line-based switch below only understands flat top-level keys —
+		// it would silently drop the nested `board:` block. Parse it via the
+		// existing gray-matter dep, scoped to this section, before the line
+		// loop walks the file.
+		const parsedBoard = this.parseBoardConfig(content);
 		const lines = content.split("\n");
 
 		for (const line of lines) {
@@ -1470,7 +1484,88 @@ ${description || `Milestone: ${title}`}`,
 			shell: config.shell,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
+			board: parsedBoard,
 		};
+	}
+
+	/**
+	 * Extracts the `board:` block from a config file using gray-matter so we
+	 * get real YAML semantics (nested objects, quoted strings, etc.).
+	 *
+	 * Contract:
+	 *  - Block absent → undefined (back-compat default).
+	 *  - `board:` with no nested fields → undefined (treated as "section
+	 *    exists but no overrides", semantically equivalent to absent;
+	 *    {@link serializeBoardBlock} matches by omitting the section in
+	 *    this case).
+	 *  - `board:\n  columns: []` → { columns: [] }. The explicit empty
+	 *    array represents the user's intent to hide every column on the
+	 *    kanban (resolver/consumer must preserve this through render).
+	 *  - `board:\n  columns: [...]` → { columns: [...] } with invalid
+	 *    entries (non-object, missing status, blank status) silently
+	 *    dropped.
+	 */
+	private parseBoardConfig(content: string): BoardConfig | undefined {
+		const boardYaml = this.extractTopLevelBlock(content, "board");
+		if (!boardYaml) return undefined;
+		try {
+			const data = matter(`---\n${boardYaml.trimEnd()}\n---\n`).data as Record<string, unknown>;
+			const raw = data.board;
+			// `board: null` is what gray-matter returns for a bare `board:`
+			// line with no nested fields. Treat as equivalent to absent so
+			// that the round-trip { board: {} } → write → read collapses
+			// cleanly (the serializer also omits the section in that case).
+			if (raw === undefined || raw === null) return undefined;
+			if (typeof raw !== "object" || Array.isArray(raw)) return undefined;
+			const board: BoardConfig = {};
+			const columnsRaw = (raw as { columns?: unknown }).columns;
+			if (Array.isArray(columnsRaw)) {
+				const columns: BoardColumnConfig[] = [];
+				for (const entry of columnsRaw) {
+					if (typeof entry !== "object" || entry === null) continue;
+					const e = entry as { status?: unknown; color?: unknown };
+					if (typeof e.status !== "string" || !e.status.trim()) continue;
+					const column: BoardColumnConfig = { status: e.status };
+					if (typeof e.color === "string" && e.color.trim()) column.color = e.color;
+					columns.push(column);
+				}
+				board.columns = columns;
+			}
+			// Defensive: { board: {} } with no `columns` field is the
+			// "section but no overrides" state; collapse to undefined so the
+			// caller doesn't have to special-case it downstream.
+			if (board.columns === undefined) return undefined;
+			return board;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Slice out a top-level block by key. Used for nested YAML sections
+	 * the line-based parser can't handle. Mirrors
+	 * extractDefinitionOfDoneYaml's behavior: walks until the next
+	 * top-level key at the same or shallower indent.
+	 */
+	private extractTopLevelBlock(content: string, key: string): string | undefined {
+		const lines = content.split(/\r?\n/);
+		const keyPattern = new RegExp(`^(\\s*)${key}\\s*:`);
+		const topLevelKeyPattern = /^\s*[A-Za-z_][A-Za-z0-9_]*\s*:/;
+		const startIndex = lines.findIndex((line) => keyPattern.test(line));
+		if (startIndex === -1) return undefined;
+		const startLine = lines[startIndex];
+		const startIndent = startLine?.match(keyPattern)?.[1]?.length ?? 0;
+		const collected: string[] = [];
+		for (let index = startIndex; index < lines.length; index++) {
+			const line = lines[index] ?? "";
+			const trimmed = line.trim();
+			const indent = line.length - line.trimStart().length;
+			const isNextTopLevelKey =
+				index > startIndex && trimmed.length > 0 && indent <= startIndent && topLevelKeyPattern.test(line);
+			if (isNextTopLevelKey) break;
+			collected.push(line);
+		}
+		return collected.join("\n");
 	}
 
 	private serializeConfig(config: BacklogConfig): string {
@@ -1503,9 +1598,37 @@ ${description || `Milestone: ${title}`}`,
 			...(config.shell ? [`shell: "${config.shell}"`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...this.serializeBoardBlock(config.board),
 		];
 
 		return `${lines.join("\n")}\n`;
+	}
+
+	private serializeBoardBlock(board: BoardConfig | undefined): string[] {
+		// `board.columns === undefined` is semantically identical to "no
+		// board section" — both mean "use defaults". Don't emit anything;
+		// the parser collapses the round-trip to undefined either way.
+		if (!board || board.columns === undefined) return [];
+		if (board.columns.length === 0) {
+			// Explicit "hide every column" state. Emit as flow-style empty
+			// list so YAML keeps it as an array (not null) when we reload.
+			return ["board:", "  columns: []"];
+		}
+		const out: string[] = ["board:", "  columns:"];
+		for (const column of board.columns) {
+			out.push(`    - status: ${this.quoteYamlString(column.status)}`);
+			if (column.color && column.color.trim()) {
+				out.push(`      color: ${this.quoteYamlString(column.color)}`);
+			}
+		}
+		return out;
+	}
+
+	private quoteYamlString(value: string): string {
+		// Use double quotes and escape any embedded double quotes / backslashes.
+		// Statuses and color strings are short single-line values; this keeps
+		// them safe from YAML's flow-context surprises (commas, colons, #).
+		return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 	}
 
 	private parseDefinitionOfDone(content: string): string[] | undefined {
