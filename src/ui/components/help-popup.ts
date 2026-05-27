@@ -17,6 +17,8 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 	{ key: "I", desc: "Filter by Milestone" },
 	{ key: "←→", desc: "Navigate columns" },
 	{ key: "↑↓", desc: "Navigate tasks" },
+	{ key: "gg/G", desc: "Jump to top / bottom of column" },
+	{ key: "C-d/u", desc: "Half-page down / up" },
 	{ key: "Enter", desc: "View task details" },
 	{ key: "E", desc: "Edit task" },
 	{ key: "M", desc: "Move task (Status/Order)" },

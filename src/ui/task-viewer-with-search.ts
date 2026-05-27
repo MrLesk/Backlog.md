@@ -127,6 +127,37 @@ export function resolveSearchExitTargetIndex(
 	return currentIndex;
 }
 
+export type VimVerticalMotion = "top" | "bottom" | "halfPageDown" | "halfPageUp";
+
+/**
+ * Resolve the target index for a Vim-style vertical motion within a list/column.
+ * Pure and fully clamped, so callers (board navigation and move mode) get safe
+ * indices regardless of the current position. `visibleHeight` is the rendered
+ * row count used to size half-page jumps.
+ */
+export function resolveVimMotionIndex(
+	motion: VimVerticalMotion,
+	currentIndex: number,
+	totalItems: number,
+	visibleHeight: number,
+): number {
+	if (totalItems <= 0) {
+		return 0;
+	}
+	const last = totalItems - 1;
+	const half = Math.max(1, Math.floor(visibleHeight / 2));
+	switch (motion) {
+		case "top":
+			return 0;
+		case "bottom":
+			return last;
+		case "halfPageDown":
+			return Math.min(last, currentIndex + half);
+		case "halfPageUp":
+			return Math.max(0, currentIndex - half);
+	}
+}
+
 export function resolveFilterExitPane(
 	preferredPane: PaneFocus,
 	hasTaskList: boolean,

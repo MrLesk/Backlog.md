@@ -22,7 +22,9 @@ import { getStatusIcon } from "./status-icon.ts";
 import {
 	createTaskPopup,
 	resolveSearchExitTargetIndex,
+	resolveVimMotionIndex,
 	shouldMoveFromListBoundaryToSearch,
+	type VimVerticalMotion,
 } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 import { stripBlessedFgTags } from "./utils/strip-tags.ts";
@@ -982,6 +984,47 @@ export async function renderBoardTui(
 				screen.render();
 			}
 		});
+
+		// Vim-style vertical motions within the focused column: gg/G jump to
+		// top/bottom, Ctrl+d/Ctrl+u move by half a page. All clamp inside the
+		// column (never fall through to search) and also drive move mode.
+		const applyVimMotion = (motion: VimVerticalMotion) => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const listHeight = (column.list as { height?: number | string }).height;
+			const visibleHeight = typeof listHeight === "number" && listHeight > 0 ? listHeight : column.tasks.length;
+
+			if (moveOp) {
+				moveOp.targetIndex = resolveVimMotionIndex(motion, moveOp.targetIndex, column.tasks.length, visibleHeight);
+				renderView();
+				return;
+			}
+
+			if (column.tasks.length === 0) return;
+			const selected = column.list.selected ?? 0;
+			const nextIndex = resolveVimMotionIndex(motion, selected, column.tasks.length, visibleHeight);
+			selectColumnRow(column, nextIndex, true);
+			screen.render();
+		};
+
+		// `gg` is a two-key sequence: a second `g` within the timeout jumps to
+		// the top; a lone `g` is a no-op.
+		let lastGPress = 0;
+		const GG_TIMEOUT_MS = 400;
+		screen.key(["g"], () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+			const now = Date.now();
+			if (now - lastGPress <= GG_TIMEOUT_MS) {
+				lastGPress = 0;
+				applyVimMotion("top");
+			} else {
+				lastGPress = now;
+			}
+		});
+		screen.key(["S-g", "G"], () => applyVimMotion("bottom"));
+		screen.key(["C-d"], () => applyVimMotion("halfPageDown"));
+		screen.key(["C-u"], () => applyVimMotion("halfPageUp"));
 
 		const openTaskEditor = async (task: Task) => {
 			try {
