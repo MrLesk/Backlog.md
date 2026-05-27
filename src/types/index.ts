@@ -289,6 +289,31 @@ export interface BoardColumnConfig {
 	color?: string;
 }
 
+/**
+ * Configurable data fields that can appear on a kanban task card. The set
+ * is intentionally closed — adding a new option later is a code change,
+ * not user config. The order here is documentation only; the actual
+ * render order is pinned inside TaskCard.tsx (header-left → header-right
+ * → body-milestone → body-labels → footer-left → footer-right) and the
+ * UI exposes visibility toggles, not reordering.
+ *
+ * Always-on card chrome (title, cross-branch banner/tooltip, priority
+ * border accent, drag-state visuals) is rendered unconditionally and is
+ * NOT part of this enum — those elements aren't user-configurable.
+ */
+export const CONFIGURABLE_CARD_FIELDS = ["id", "priority", "milestone", "labels", "createdDate", "assignee"] as const;
+export type ConfigurableCardField = (typeof CONFIGURABLE_CARD_FIELDS)[number];
+
+export interface CardConfig {
+	/**
+	 * Fields to hide from every task card. An empty array (or undefined
+	 * `card`) means "show all fields"; "milestone" renders only for tasks
+	 * that actually have a milestone value. Entries not in the
+	 * {@link CONFIGURABLE_CARD_FIELDS} set are ignored on load.
+	 */
+	hide?: ConfigurableCardField[];
+}
+
 export interface BoardConfig {
 	/**
 	 * Ordered list of columns to render on the kanban board.
@@ -304,6 +329,8 @@ export interface BoardConfig {
 	 *    from the board (but remain editable and visible elsewhere).
 	 */
 	columns?: BoardColumnConfig[];
+	/** Optional per-card field visibility config. See {@link CardConfig}. */
+	card?: CardConfig;
 }
 
 export interface BacklogConfig {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { type Task } from '../../types';
+import { type ConfigurableCardField, type Task } from '../../types';
 import { sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
 import TaskCard from './TaskCard';
@@ -24,6 +24,12 @@ interface TaskColumnProps {
    * back-compat invariant for users without a board.columns config.
    */
   accentColor?: string;
+  /**
+   * Set of TaskCard fields to suppress (forwarded to each rendered
+   * TaskCard). When undefined or empty, all fields render — back-compat
+   * for users without a board.card.hide config.
+   */
+  cardHiddenFields?: ReadonlySet<ConfigurableCardField>;
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
@@ -40,6 +46,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   laneId,
   targetMilestone,
   accentColor,
+  cardHiddenFields,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -278,6 +285,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               task={task}
               onUpdate={onTaskUpdate}
               onEdit={onEditTask}
+              hiddenFields={cardHiddenFields}
               onDragStart={() => {
                 setDraggedTaskId(task.id);
                 onDragStart?.({ status: title, laneId: laneId ?? null });

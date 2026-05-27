@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { type BoardColumnConfig, type Milestone, type Task } from '../../types';
+import { type BoardColumnConfig, type ConfigurableCardField, type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
 import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter';
@@ -26,6 +26,13 @@ interface BoardProps {
    * column per entry in `statuses` (back-compat).
    */
   boardColumns?: BoardColumnConfig[];
+  /**
+   * Set of TaskCard fields to suppress (e.g. id, priority, labels,
+   * milestone, createdDate, assignee). Forwarded to every TaskColumn
+   * → TaskCard. When undefined or empty, all fields render — back-compat
+   * for users without a board.card.hide config.
+   */
+  cardHiddenFields?: ReadonlySet<ConfigurableCardField>;
   isLoading: boolean;
   milestones: string[];
   availableLabels: string[];
@@ -61,6 +68,7 @@ const Board: React.FC<BoardProps> = ({
   onRefreshData,
   statuses,
   boardColumns,
+  cardHiddenFields,
   isLoading,
   availableLabels,
   milestoneEntities,
@@ -640,6 +648,7 @@ const Board: React.FC<BoardProps> = ({
                             <TaskColumn
                               title={column.status}
                               accentColor={column.color}
+                              cardHiddenFields={cardHiddenFields}
                               tasks={getTasksForLane(lane.key, column.status)}
                               onTaskUpdate={handleTaskUpdate}
                               onEditTask={onEditTask}
@@ -676,6 +685,7 @@ const Board: React.FC<BoardProps> = ({
                 <TaskColumn
                   title={column.status}
                   accentColor={column.color}
+                  cardHiddenFields={cardHiddenFields}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, column.status)}
                   onTaskUpdate={handleTaskUpdate}
                   onEditTask={onEditTask}

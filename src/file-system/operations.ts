@@ -9,12 +9,14 @@ import type {
 	BacklogConfig,
 	BoardColumnConfig,
 	BoardConfig,
+	ConfigurableCardField,
 	Decision,
 	Document,
 	Milestone,
 	Task,
 	TaskListFilter,
 } from "../types/index.ts";
+import { CONFIGURABLE_CARD_FIELDS } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
@@ -1531,10 +1533,30 @@ ${description || `Milestone: ${title}`}`,
 				}
 				board.columns = columns;
 			}
-			// Defensive: { board: {} } with no `columns` field is the
+			const cardRaw = (raw as { card?: unknown }).card;
+			if (cardRaw !== undefined && cardRaw !== null && typeof cardRaw === "object" && !Array.isArray(cardRaw)) {
+				const hideRaw = (cardRaw as { hide?: unknown }).hide;
+				if (Array.isArray(hideRaw)) {
+					const validFields = new Set<string>(CONFIGURABLE_CARD_FIELDS);
+					const seen = new Set<string>();
+					const hide: ConfigurableCardField[] = [];
+					for (const entry of hideRaw) {
+						if (typeof entry !== "string") continue;
+						if (!validFields.has(entry)) continue;
+						if (seen.has(entry)) continue;
+						seen.add(entry);
+						hide.push(entry as ConfigurableCardField);
+					}
+					// Empty hide list is equivalent to "show all" which is the
+					// default — collapse to undefined so the round-trip stays
+					// clean and the serializer doesn't emit a no-op card key.
+					if (hide.length > 0) board.card = { hide };
+				}
+			}
+			// Defensive: { board: {} } with no overrides at all is the
 			// "section but no overrides" state; collapse to undefined so the
 			// caller doesn't have to special-case it downstream.
-			if (board.columns === undefined) return undefined;
+			if (board.columns === undefined && board.card === undefined) return undefined;
 			return board;
 		} catch {
 			return undefined;
@@ -1605,20 +1627,35 @@ ${description || `Milestone: ${title}`}`,
 	}
 
 	private serializeBoardBlock(board: BoardConfig | undefined): string[] {
-		// `board.columns === undefined` is semantically identical to "no
-		// board section" — both mean "use defaults". Don't emit anything;
-		// the parser collapses the round-trip to undefined either way.
-		if (!board || board.columns === undefined) return [];
-		if (board.columns.length === 0) {
-			// Explicit "hide every column" state. Emit as flow-style empty
-			// list so YAML keeps it as an array (not null) when we reload.
-			return ["board:", "  columns: []"];
+		// No overrides at all = no section emitted; the parser collapses
+		// the round-trip to undefined either way.
+		if (!board) return [];
+		const hasColumns = board.columns !== undefined;
+		const hasCard = board.card?.hide !== undefined && board.card.hide.length > 0;
+		if (!hasColumns && !hasCard) return [];
+		const out: string[] = ["board:"];
+		if (hasColumns) {
+			const columns = board.columns as BoardColumnConfig[];
+			if (columns.length === 0) {
+				// Explicit "hide every column" state. Emit as flow-style empty
+				// list so YAML keeps it as an array (not null) when we reload.
+				out.push("  columns: []");
+			} else {
+				out.push("  columns:");
+				for (const column of columns) {
+					out.push(`    - status: ${this.quoteYamlString(column.status)}`);
+					if (column.color && column.color.trim()) {
+						out.push(`      color: ${this.quoteYamlString(column.color)}`);
+					}
+				}
+			}
 		}
-		const out: string[] = ["board:", "  columns:"];
-		for (const column of board.columns) {
-			out.push(`    - status: ${this.quoteYamlString(column.status)}`);
-			if (column.color && column.color.trim()) {
-				out.push(`      color: ${this.quoteYamlString(column.color)}`);
+		if (hasCard) {
+			const hide = board.card?.hide as ConfigurableCardField[];
+			out.push("  card:");
+			out.push("    hide:");
+			for (const field of hide) {
+				out.push(`      - ${this.quoteYamlString(field)}`);
 			}
 		}
 		return out;

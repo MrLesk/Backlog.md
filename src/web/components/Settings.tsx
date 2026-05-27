@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../lib/api';
 import { SuccessToast } from './SuccessToast';
-import type { BacklogConfig, BoardConfig, StatusCallbackCapabilities } from '../../types';
+import type { BacklogConfig, BoardConfig, ConfigurableCardField, StatusCallbackCapabilities } from '../../types';
+import { CONFIGURABLE_CARD_FIELDS } from '../../types';
 import { buildBoardEditorRows, type BoardEditorRow } from '../../utils/build-board-editor-rows';
+import { mergeBoardWithCard, mergeBoardWithColumns } from '../../utils/board-config-merge';
 
 const Settings: React.FC = () => {
 	const [config, setConfig] = useState<BacklogConfig | null>(null);
@@ -203,6 +205,12 @@ const Settings: React.FC = () => {
 					{/* Board Columns */}
 					<BoardColumnsSection
 						statuses={config.statuses}
+						board={config.board}
+						onChange={(next) => handleInputChange('board', next)}
+					/>
+
+					{/* Card Fields */}
+					<CardFieldsSection
 						board={config.board}
 						onChange={(next) => handleInputChange('board', next)}
 					/>
@@ -619,14 +627,15 @@ const BoardColumnsSection: React.FC<BoardColumnsSectionProps> = ({ statuses, boa
 		const allVisibleInOrder =
 			visibleColumns.length === statuses.length &&
 			visibleColumns.every((row, i) => row.status === statuses[i] && !row.color);
-		if (allVisibleInOrder) {
-			// Back to defaults — drop board: from the config entirely.
-			onChange(undefined);
-			return;
-		}
-		onChange({
-			columns: visibleColumns.map((row) => (row.color ? { status: row.status, color: row.color } : { status: row.status })),
-		});
+		const nextColumns = allVisibleInOrder
+			? undefined
+			: visibleColumns.map((row) =>
+					row.color ? { status: row.status, color: row.color } : { status: row.status },
+				);
+		// Merge through the pure helper so any sibling card config is
+		// preserved verbatim and the empty-overrides case correctly
+		// collapses to undefined. See src/utils/board-config-merge.ts.
+		onChange(mergeBoardWithColumns(board, nextColumns));
 	};
 
 	const moveRow = (from: number, to: number) => {
@@ -676,7 +685,11 @@ const BoardColumnsSection: React.FC<BoardColumnsSectionProps> = ({ statuses, boa
 		emit(next);
 	};
 
-	const resetToDefaults = () => onChange(undefined);
+	const resetToDefaults = () => {
+		// Clear columns; merge helper preserves any sibling card and
+		// collapses to undefined when no overrides remain.
+		onChange(mergeBoardWithColumns(board, undefined));
+	};
 
 	const hasCustomization =
 		rows.some((row) => !row.visible || (row.color && row.color.length > 0)) ||
@@ -786,6 +799,99 @@ const BoardColumnsSection: React.FC<BoardColumnsSectionProps> = ({ statuses, boa
 						board.
 					</p>
 				)}
+			</div>
+		</div>
+	);
+};
+
+interface CardFieldsSectionProps {
+	board?: BoardConfig;
+	onChange: (next: BoardConfig | undefined) => void;
+}
+
+const CARD_FIELD_LABELS: Record<ConfigurableCardField, string> = {
+	id: 'Task ID',
+	priority: 'Priority badge',
+	milestone: 'Milestone',
+	labels: 'Labels',
+	createdDate: 'Created date',
+	assignee: 'Assignee',
+};
+
+/**
+ * Editor for board.card.hide. Renders one checkbox per ConfigurableCard-
+ * Field; all checked = default (no overrides written to disk).
+ * Unchecking a field adds it to card.hide; checking it again removes it.
+ * When the resulting hide list is empty AND board has no other overrides
+ * (i.e. no columns config), the section emits board: undefined to keep
+ * the on-disk config clean.
+ */
+const CardFieldsSection: React.FC<CardFieldsSectionProps> = ({ board, onChange }) => {
+	const hidden = useMemo(() => new Set(board?.card?.hide ?? []), [board]);
+
+	const emit = (nextHidden: Set<ConfigurableCardField>) => {
+		const hideList = CONFIGURABLE_CARD_FIELDS.filter((field) => nextHidden.has(field));
+		const nextCard = hideList.length > 0 ? { hide: hideList } : undefined;
+		// Merge through the pure helper so any sibling columns config
+		// (including the explicit empty-array hide-all state) is preserved.
+		onChange(mergeBoardWithCard(board, nextCard));
+	};
+
+	const toggle = (field: ConfigurableCardField) => {
+		const next = new Set(hidden);
+		if (next.has(field)) {
+			next.delete(field);
+		} else {
+			next.add(field);
+		}
+		emit(next);
+	};
+
+	const resetToDefaults = () => {
+		// Clear card; merge helper preserves any sibling columns and
+		// collapses to undefined when no overrides remain.
+		onChange(mergeBoardWithCard(board, undefined));
+	};
+
+	const hasCustomization = hidden.size > 0;
+
+	return (
+		<div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+			<div className="flex items-center justify-between mb-1">
+				<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Card Fields</h2>
+				{hasCustomization && (
+					<button
+						type="button"
+						onClick={resetToDefaults}
+						className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+					>
+						Reset to defaults
+					</button>
+				)}
+			</div>
+			<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+				Pick which fields appear on each task card. Title, branch banner, priority border, and drag visuals
+				are always rendered.
+			</p>
+			<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+				{CONFIGURABLE_CARD_FIELDS.map((field) => {
+					const isShown = !hidden.has(field);
+					return (
+						<label
+							key={field}
+							className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 cursor-pointer"
+						>
+							<input
+								type="checkbox"
+								checked={isShown}
+								onChange={() => toggle(field)}
+								className="rounded text-blue-600 focus:ring-blue-500"
+								aria-label={`Show ${CARD_FIELD_LABELS[field]} on task cards`}
+							/>
+							<span className="text-sm text-gray-700 dark:text-gray-300">{CARD_FIELD_LABELS[field]}</span>
+						</label>
+					);
+				})}
 			</div>
 		</div>
 	);

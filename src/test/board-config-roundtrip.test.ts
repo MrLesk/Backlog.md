@@ -37,23 +37,46 @@ const baseConfig = (overrides: Partial<BacklogConfig> = {}): BacklogConfig => ({
  * reparse from disk — that's what we need to actually exercise the
  * parser/serializer round-trip rather than the post-save cache.
  *
- * The brief retry loop absorbs Windows filesystem-flush latency that
- * occasionally leaves the file unreadable for a few milliseconds after
- * Bun.write returns.
+ * The retry loop absorbs Windows filesystem-flush latency that can leave
+ * the file unreadable or partially-flushed for tens to hundreds of ms
+ * after Bun.write returns when the test runs in parallel with other
+ * fs-heavy suites.
  */
 const writeAndLoad = async (project: string, config: BacklogConfig): Promise<BacklogConfig> => {
 	const writer = new FileSystem(project);
 	await writer.ensureBacklogStructure();
 	await writer.saveConfig(config);
+	// Capture the expected configuration's board shape so the retry loop
+	// can detect a partially-flushed read (where the file is parseable
+	// but missing the board section we just wrote) and retry rather than
+	// false-passing on a default-shaped config.
+	const expectsBoard = config.board !== undefined;
 	let loaded: BacklogConfig | null = null;
-	for (let attempt = 0; attempt < 10; attempt += 1) {
+	for (let attempt = 0; attempt < 30; attempt += 1) {
 		const reader = new FileSystem(project);
 		loaded = await reader.loadConfig();
-		if (loaded !== null) break;
-		await new Promise((r) => setTimeout(r, 25));
+		if (loaded !== null && (!expectsBoard || loaded.board !== undefined || isExplicitlyUndefinedBoard(config))) {
+			break;
+		}
+		await new Promise((r) => setTimeout(r, 50));
 	}
 	expect(loaded).not.toBeNull();
 	return loaded as BacklogConfig;
+};
+
+/**
+ * Some round-trip cases intentionally save `{ board: {} }` or
+ * `{ board: { card: { hide: [] } } }` and expect the reload to return
+ * `loaded.board === undefined` (the documented collapse-to-default
+ * contract). For those cases we must NOT retry on a missing board, or
+ * the retry loop will time out chasing a state that will never appear.
+ */
+const isExplicitlyUndefinedBoard = (config: BacklogConfig): boolean => {
+	if (!config.board) return true;
+	const { columns, card } = config.board;
+	const noColumns = columns === undefined;
+	const noCard = !card?.hide || card.hide.length === 0;
+	return noColumns && noCard;
 };
 
 describe("BacklogConfig board: round-trip", () => {
@@ -173,6 +196,58 @@ describe("BacklogConfig board: round-trip", () => {
 		const fresh = new FileSystem(fs.rootDir);
 		const loaded = await fresh.loadConfig();
 		expect(loaded?.board?.columns).toEqual([{ status: "To Do" }, { status: "Done", color: "#abc" }]);
+	});
+
+	it("round-trips board.card.hide with a non-empty list", async () => {
+		const loaded = await writeAndLoad(
+			scratchProject(),
+			baseConfig({ board: { card: { hide: ["id", "createdDate"] } } }),
+		);
+		expect(loaded.board?.card?.hide).toEqual(["id", "createdDate"]);
+	});
+
+	it("collapses board.card.hide: [] to undefined (equivalent to default)", async () => {
+		const loaded = await writeAndLoad(scratchProject(), baseConfig({ board: { card: { hide: [] } } }));
+		// Empty hide list is the default state — collapsed to undefined so
+		// the round-trip is clean.
+		expect(loaded.board).toBeUndefined();
+	});
+
+	it("ignores unknown card.hide entries silently on load", async () => {
+		const fs = new FileSystem(scratchProject());
+		await fs.ensureBacklogStructure();
+		await fs.saveConfig(baseConfig());
+		const hand = [
+			'project_name: "Test"',
+			'statuses: ["To Do", "In Progress", "Done"]',
+			"labels: []",
+			"date_format: yyyy-mm-dd",
+			"board:",
+			"  card:",
+			"    hide:",
+			'      - "id"',
+			'      - "not_a_real_field"',
+			'      - "createdDate"',
+			'      - "id"', // duplicate
+		].join("\n");
+		await Bun.write(join(fs.backlogDir, "config.yml"), hand);
+		const fresh = new FileSystem(fs.rootDir);
+		const loaded = await fresh.loadConfig();
+		expect(loaded?.board?.card?.hide).toEqual(["id", "createdDate"]);
+	});
+
+	it("round-trips columns AND card together without dropping either", async () => {
+		const loaded = await writeAndLoad(
+			scratchProject(),
+			baseConfig({
+				board: {
+					columns: [{ status: "To Do" }, { status: "Done", color: "#0f0" }],
+					card: { hide: ["assignee"] },
+				},
+			}),
+		);
+		expect(loaded.board?.columns).toEqual([{ status: "To Do" }, { status: "Done", color: "#0f0" }]);
+		expect(loaded.board?.card?.hide).toEqual(["assignee"]);
 	});
 
 	it("hide-all end-to-end: save → load → resolveBoardColumns returns []", async () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { type Task } from '../../types';
+import { type ConfigurableCardField, type Task } from '../../types';
 
 interface TaskCardProps {
   task: Task;
@@ -9,9 +9,18 @@ interface TaskCardProps {
   onDragEnd?: () => void;
   status?: string;
   laneId?: string;
+  /**
+   * Set of fields to suppress on this card. Always-on chrome (title,
+   * branch banner/tooltip, priority border, drag visuals) is rendered
+   * unconditionally and cannot be hidden via this set. See
+   * src/types/index.ts CONFIGURABLE_CARD_FIELDS.
+   */
+  hiddenFields?: ReadonlySet<ConfigurableCardField>;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId }) => {
+const EMPTY_HIDDEN: ReadonlySet<ConfigurableCardField> = new Set();
+
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, hiddenFields = EMPTY_HIDDEN }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
 
@@ -118,20 +127,30 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        {/* Header row with priority badge and task ID */}
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
-          {(() => {
-            const badge = getPriorityBadge(task.priority);
-            return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
-                {badge.label}
-              </span>
-            ) : null;
-          })()}
-        </div>
+        {/* Slot: header-left (id) + header-right (priority badge).
+            Container collapses when both slots are hidden so the title
+            doesn't shift down by a phantom mb-1.5. */}
+        {(() => {
+          const showId = !hiddenFields.has('id');
+          const priorityBadge = !hiddenFields.has('priority') ? getPriorityBadge(task.priority) : null;
+          if (!showId && !priorityBadge) return null;
+          return (
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              {showId ? (
+                <span className="text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+              ) : (
+                <span />
+              )}
+              {priorityBadge && (
+                <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${priorityBadge.bg} ${priorityBadge.text} transition-colors duration-200`}>
+                  {priorityBadge.label}
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
-        {/* Title */}
+        {/* Title (always-on chrome). */}
         <h4 className={`font-semibold text-sm line-clamp-2 transition-colors duration-200 ${
           isFromOtherBranch
             ? 'text-gray-600 dark:text-gray-400'
@@ -140,8 +159,25 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           {task.title}
         </h4>
 
-        {/* Labels - limit to 3 */}
-        {task.labels.length > 0 && (
+        {/* Slot: body-milestone — renders only when the task has a
+            milestone AND the field is not hidden. Placed above labels so
+            adding it doesn't displace any existing field's position. */}
+        {!hiddenFields.has('milestone') && task.milestone && task.milestone.trim() !== '' && (
+          <div className="mt-2">
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-stone-100 dark:bg-stone-700 text-stone-700 dark:text-stone-200 rounded transition-colors duration-200"
+              title={`Milestone: ${task.milestone}`}
+            >
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5v14l4-4h11V5H5z" />
+              </svg>
+              <span className="truncate max-w-[140px]">{task.milestone}</span>
+            </span>
+          </div>
+        )}
+
+        {/* Slot: body-labels — limited to 3, with a "+N" overflow. */}
+        {!hiddenFields.has('labels') && task.labels.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {task.labels.slice(0, 3).map(label => (
               <span
@@ -159,15 +195,24 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        {/* Footer with date */}
-        <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
-          <span>{formatRelativeDate(task.createdDate)}</span>
-          {task.assignee.length > 0 && (
-            <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
-              {task.assignee[0]}
-            </span>
-          )}
-        </div>
+        {/* Footer row: createdDate (left) + first assignee (right).
+            When both slots are hidden, the divider/footer collapses too
+            so we don't render an empty border above blank space. */}
+        {(() => {
+          const showDate = !hiddenFields.has('createdDate');
+          const showAssignee = !hiddenFields.has('assignee') && task.assignee.length > 0;
+          if (!showDate && !showAssignee) return null;
+          return (
+            <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
+              {showDate ? <span>{formatRelativeDate(task.createdDate)}</span> : <span />}
+              {showAssignee && (
+                <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
+                  {task.assignee[0]}
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
