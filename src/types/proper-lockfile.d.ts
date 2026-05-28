@@ -13,6 +13,14 @@ declare module "proper-lockfile" {
 		realpath?: boolean;
 		retries?: number | RetryOptions;
 		lockfilePath?: string;
+		/**
+		 * Called when the lock is compromised (e.g. the heartbeat fails to
+		 * refresh the mtime within the stale threshold). proper-lockfile's
+		 * DEFAULT implementation re-throws the error from inside a timer,
+		 * which becomes an uncaught exception and crashes the process —
+		 * always provide a non-throwing handler.
+		 */
+		onCompromised?: (err: Error) => void;
 	}
 
 	type ReleaseFn = () => Promise<void>;

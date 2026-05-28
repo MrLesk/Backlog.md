@@ -21,6 +21,13 @@ import lockfile from "proper-lockfile";
  */
 export interface WatcherLockHolder {
 	release(): Promise<void>;
+	/**
+	 * True once proper-lockfile has reported the lock as compromised (the
+	 * heartbeat couldn't refresh the mtime within the stale threshold).
+	 * A compromised holder no longer owns the watcher; callers may re-probe
+	 * or simply log. Crucially, a compromise no longer crashes the process.
+	 */
+	isCompromised(): boolean;
 }
 
 export interface AcquireWatcherLockOptions {
@@ -36,8 +43,13 @@ export interface AcquireWatcherLockOptions {
 	updateMs?: number;
 }
 
-const DEFAULT_STALE_MS = 10_000;
-const DEFAULT_UPDATE_MS = 2_500;
+// Generous defaults: a heavy `backlog browser` startup on a large project
+// (cross-branch task loading, git ops) can block the event loop for several
+// seconds on Windows, delaying the heartbeat timer. A tight stale window
+// would mark the lock compromised during normal startup. 30s/8s survives
+// that while still reclaiming a genuinely dead lock within ~30s.
+const DEFAULT_STALE_MS = 30_000;
+const DEFAULT_UPDATE_MS = 8_000;
 
 /**
  * Attempts to acquire the watcher lock for the given backlog directory.
@@ -57,6 +69,7 @@ export async function acquireWatcherLock(
 	const lockDir = join(locksDir, "watcher");
 	await mkdir(locksDir, { recursive: true });
 
+	let compromised = false;
 	let release: (() => Promise<void>) | undefined;
 	try {
 		release = await lockfile.lock(backlogDir, {
@@ -68,6 +81,19 @@ export async function acquireWatcherLock(
 			// holds it, the caller will pass enableWatchers: false to Core
 			// and rely on the lockholder to drive the watcher.
 			retries: 0,
+			// CRITICAL: proper-lockfile's default onCompromised re-throws the
+			// error from inside the heartbeat timer, which becomes an uncaught
+			// exception and crashes the whole process. Swallow it: a
+			// compromised watcher lock should degrade gracefully (the server
+			// keeps serving requests; it just may stop being the watcher
+			// authority) rather than take everything down.
+			onCompromised: (error: Error) => {
+				compromised = true;
+				console.warn(
+					`Watcher lock was compromised (${error.message}). The file watcher may stop firing ` +
+						"onStatusChange hooks for this project. Restart 'backlog browser' or 'backlog watch' to re-acquire.",
+				);
+			},
 		});
 	} catch (error) {
 		if (isLockHeldByAnotherProcess(error)) {
@@ -77,7 +103,14 @@ export async function acquireWatcherLock(
 	}
 
 	return {
+		isCompromised() {
+			return compromised;
+		},
 		async release() {
+			// A compromised lock is no longer ours to release — proper-lockfile
+			// would throw ERELEASED. Skip the call; the stale window will let
+			// the next acquirer reclaim it.
+			if (compromised) return;
 			try {
 				await release?.();
 			} catch {
