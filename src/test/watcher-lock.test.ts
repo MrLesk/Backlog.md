@@ -77,4 +77,38 @@ describe("acquireWatcherLock", () => {
 		expect(holder).not.toBeNull();
 		await holder?.release();
 	});
+
+	it("fresh holder reports isCompromised() === false", async () => {
+		const dir = scratchBacklogDir();
+		const holder = await acquireWatcherLock(dir);
+		expect(holder?.isCompromised()).toBe(false);
+		await holder?.release();
+	});
+
+	it("degrades gracefully when lock is removed under the holder (no crash, isCompromised flips)", async () => {
+		// Regression for the ECOMPROMISED crash: proper-lockfile's default
+		// onCompromised re-throws from inside the heartbeat timer, which became
+		// an uncaught exception that crashed the process. The new handler must
+		// swallow the error and flip the compromised flag instead.
+		const dir = scratchBacklogDir();
+		// Use tight timings so the heartbeat notices quickly.
+		// proper-lockfile enforces a 2s minimum stale window.
+		const holder = await acquireWatcherLock(dir, { staleMs: 2_000, updateMs: 1_000 });
+		expect(holder).not.toBeNull();
+		expect(holder?.isCompromised()).toBe(false);
+
+		// Delete the on-disk lock so the next heartbeat update fails.
+		rmSync(join(dir, ".locks", "watcher"), { recursive: true, force: true });
+
+		// Poll until the heartbeat detects the compromise (max ~10s).
+		let observed = false;
+		for (let i = 0; i < 40; i++) {
+			if (holder?.isCompromised()) { observed = true; break; }
+			await new Promise((r) => setTimeout(r, 250));
+		}
+		expect(observed).toBe(true);
+
+		// Release must not throw on a compromised holder.
+		await expect(holder?.release()).resolves.toBeUndefined();
+	}, 15_000);
 });
