@@ -187,6 +187,14 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
 
+/** Set when the server is rendering a remote repo's cached snapshot (via `backlog browser --repo`). */
+export interface RemoteSnapshotInfo {
+	owner: string;
+	name: string;
+	ref?: string;
+	label: string;
+}
+
 export class BacklogServer {
 	private core: Core;
 	private server: Server<unknown> | null = null;
@@ -197,9 +205,11 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	private remoteSnapshot?: RemoteSnapshotInfo;
 
-	constructor(projectPath: string) {
+	constructor(projectPath: string, options?: { remoteSnapshot?: RemoteSnapshotInfo }) {
 		this.core = new Core(projectPath, { enableWatchers: true });
+		this.remoteSnapshot = options?.remoteSnapshot;
 	}
 
 	private async resolveMilestoneInput(milestone: string): Promise<string> {
@@ -334,6 +344,9 @@ export class BacklogServer {
 					"/api/config": {
 						GET: async () => await this.handleGetConfig(),
 						PUT: async (req: Request) => await this.handleUpdateConfig(req),
+					},
+					"/api/remote-snapshot": {
+						GET: async () => Response.json(this.remoteSnapshot ?? null),
 					},
 					"/api/docs": {
 						GET: async () => await this.handleListDocs(),

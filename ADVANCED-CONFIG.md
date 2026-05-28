@@ -45,6 +45,8 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 
 > **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
 
+> **Remote repo viewing**: `backlog board --repo <owner/name>` and `backlog browser --repo <owner/name>` render another repo's `backlog/` folder. The remote is cloned into `~/.backlog/remotes/<host>/<owner>/<name>` (sparse-checkout of `backlog/` only) and refreshed on each run. Override the cache root with the `BACKLOG_REMOTE_CACHE` environment variable. These views are read-only snapshots - edits made in the web UI write to the local cache and are not pushed to the source repo.
+
 > **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
 
 > **Performance**: Cross-branch checking ensures accurate task tracking across all active branches but may impact performance on large repositories. You can disable it by setting `checkActiveBranches: false` for maximum speed, or adjust `activeBranchDays` to control how far back to look for branch activity (lower values = better performance).

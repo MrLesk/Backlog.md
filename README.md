@@ -150,6 +150,33 @@ To keep the Web UI running as an auto-starting local service, see [Running Backl
 
 ---
 
+## 📡 Viewing a remote repo's backlog
+
+Point the board or the web UI at any GitHub repo that uses Backlog.md, without cloning it yourself. Pass `--repo <owner/name>` (or a full clone URL):
+
+```bash
+# Terminal Kanban for a remote repo
+backlog board --repo apetersson/ModuleWarden
+
+# A specific branch or tag
+backlog board --repo apetersson/ModuleWarden --ref some-branch
+
+# Web UI for a remote repo
+backlog browser --repo apetersson/ModuleWarden
+
+# Full URLs and SSH remotes work too
+backlog board --repo https://github.com/owner/name
+backlog board --repo git@github.com:owner/name.git
+```
+
+How it works:
+- The repo is cloned into a local cache (`~/.backlog/remotes/<host>/<owner>/<name>`), checking out only the `backlog/` folder. Subsequent runs fetch and refresh that cache.
+- Private repos work as long as your local git credentials can access them - the clone reuses your existing git auth.
+- Use `--no-refresh` to read the cached snapshot without hitting the network.
+- This is a read-only snapshot. Edits made in the web UI write to the local cache only and are **not** pushed back to the source repo.
+
+---
+
 ## 🔧 MCP Integration (Model Context Protocol)
 
 The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, Gemini CLI and Kiro is via the MCP protocol.

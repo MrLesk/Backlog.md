@@ -28,6 +28,7 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
+import type { RemoteRepoSpec } from "./remote/remote-repo.ts";
 import {
 	type BacklogConfig,
 	type Decision,
@@ -282,6 +283,48 @@ async function requireProjectRoot(): Promise<string> {
 		process.exit(1);
 	}
 	return root;
+}
+
+type RemoteViewOptions = { repo?: string; ref?: string; refresh?: boolean };
+
+/**
+ * Resolve the project root for view commands (board/browser).
+ * When `--repo` is given, clone/refresh the remote repo into the local cache and
+ * resolve the backlog root inside it. Otherwise fall back to the local project root.
+ */
+async function resolveViewRoot(options: RemoteViewOptions): Promise<{ root: string; remote?: RemoteRepoSpec }> {
+	if (!options.repo) {
+		return { root: await requireProjectRoot() };
+	}
+
+	const { parseRemoteSpec, ensureRemoteRepo } = await import("./remote/remote-repo.ts");
+
+	const spec = ((): RemoteRepoSpec => {
+		try {
+			return parseRemoteSpec(options.repo as string, options.ref);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exit(1);
+		}
+	})();
+
+	let cacheRoot: string;
+	try {
+		console.error(`Fetching ${spec.label} ...`);
+		cacheRoot = await ensureRemoteRepo(spec, { refresh: options.refresh !== false });
+	} catch (error) {
+		console.error(
+			`Failed to fetch remote repo ${spec.label}: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		process.exit(1);
+	}
+
+	const root = await findBacklogRoot(cacheRoot);
+	if (!root) {
+		console.error(`Remote repo ${spec.label} has no backlog/ folder, so there is nothing to display.`);
+		process.exit(1);
+	}
+	return { root, remote: spec };
 }
 
 // Windows color fix
@@ -2861,11 +2904,19 @@ function addBoardOptions(cmd: Command) {
 	return cmd
 		.option("-l, --layout <layout>", "board layout (horizontal|vertical)", "horizontal")
 		.option("--vertical", "use vertical layout (shortcut for --layout vertical)")
-		.option("-m, --milestones", "group tasks by milestone");
+		.option("-m, --milestones", "group tasks by milestone")
+		.option("--repo <repo>", "view a remote repo's backlog (owner/name or clone URL), read-only")
+		.option("--ref <ref>", "branch/tag/commit of the remote repo (default: its default branch)")
+		.option("--no-refresh", "with --repo, use the cached snapshot without fetching");
 }
 
-async function handleBoardView(options: { layout?: string; vertical?: boolean; milestones?: boolean }) {
-	const cwd = await requireProjectRoot();
+async function handleBoardView(
+	options: { layout?: string; vertical?: boolean; milestones?: boolean } & RemoteViewOptions,
+) {
+	const { root: cwd, remote } = await resolveViewRoot(options);
+	if (remote) {
+		console.error(`📡 Remote snapshot of ${remote.label} (read-only view).`);
+	}
 	const core = new Core(cwd);
 	const config = await core.filesystem.loadConfig();
 
@@ -3838,11 +3889,24 @@ program
 	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
 	.option("--no-open", "don't automatically open browser")
+	.option("--repo <repo>", "view a remote repo's backlog (owner/name or clone URL)")
+	.option("--ref <ref>", "branch/tag/commit of the remote repo (default: its default branch)")
+	.option("--no-refresh", "with --repo, use the cached snapshot without fetching")
 	.action(async (options) => {
 		try {
-			const cwd = await requireProjectRoot();
+			const { root: cwd, remote } = await resolveViewRoot(options);
+			if (remote) {
+				console.error(
+					`📡 Remote snapshot of ${remote.label}. Edits in the web UI write to the local cache only and are not pushed.`,
+				);
+			}
 			const { BacklogServer } = await import("./server/index.ts");
-			const server = new BacklogServer(cwd);
+			const server = new BacklogServer(
+				cwd,
+				remote
+					? { remoteSnapshot: { owner: remote.owner, name: remote.name, ref: remote.ref, label: remote.label } }
+					: undefined,
+			);
 
 			// Load config to get default port
 			const core = new Core(cwd);

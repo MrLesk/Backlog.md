@@ -29,6 +29,13 @@ export interface InitializationStatus {
 	rootConfigPath?: string | null;
 }
 
+export interface RemoteSnapshotInfo {
+	owner: string;
+	name: string;
+	ref?: string;
+	label: string;
+}
+
 // Enhanced error types for better error handling
 export class ApiError extends Error {
 	constructor(
@@ -308,6 +315,18 @@ export class ApiClient {
 			throw new Error("Failed to fetch config");
 		}
 		return response.json();
+	}
+
+	async fetchRemoteSnapshot(): Promise<RemoteSnapshotInfo | null> {
+		try {
+			const response = await fetch(`${API_BASE}/remote-snapshot`);
+			if (!response.ok) {
+				return null;
+			}
+			return await response.json();
+		} catch {
+			return null;
+		}
 	}
 
 	async updateConfig(config: BacklogConfig): Promise<BacklogConfig> {
