@@ -85,30 +85,28 @@ describe("acquireWatcherLock", () => {
 		await holder?.release();
 	});
 
-	it("degrades gracefully when lock is removed under the holder (no crash, isCompromised flips)", async () => {
-		// Regression for the ECOMPROMISED crash: proper-lockfile's default
-		// onCompromised re-throws from inside the heartbeat timer, which became
-		// an uncaught exception that crashed the process. The new handler must
-		// swallow the error and flip the compromised flag instead.
+	it("isCompromised() is always false — PID lock has no heartbeat to compromise", async () => {
+		// The PID-based lock replaced the proper-lockfile mtime-heartbeat approach.
+		// There is no heartbeat that can fail mid-run, so isCompromised() is
+		// always false and release() is always a safe no-op.
 		const dir = scratchBacklogDir();
-		// Use tight timings so the heartbeat notices quickly.
-		// proper-lockfile enforces a 2s minimum stale window.
-		const holder = await acquireWatcherLock(dir, { staleMs: 2_000, updateMs: 1_000 });
+		const holder = await acquireWatcherLock(dir);
 		expect(holder).not.toBeNull();
 		expect(holder?.isCompromised()).toBe(false);
+		await holder?.release();
+		expect(holder?.isCompromised()).toBe(false);
+	});
 
-		// Delete the on-disk lock so the next heartbeat update fails.
-		rmSync(join(dir, ".locks", "watcher"), { recursive: true, force: true });
+	it("reclaims a PID file left by a dead process", async () => {
+		// Simulate a crashed holder by writing a PID that is not alive.
+		const dir = scratchBacklogDir();
+		const { mkdirSync, writeFileSync } = await import("node:fs");
+		mkdirSync(join(dir, ".locks"), { recursive: true });
+		// 999999999 is an effectively impossible PID on any platform.
+		writeFileSync(join(dir, ".locks", "watcher.pid"), "999999999", "utf8");
 
-		// Poll until the heartbeat detects the compromise (max ~10s).
-		let observed = false;
-		for (let i = 0; i < 40; i++) {
-			if (holder?.isCompromised()) { observed = true; break; }
-			await new Promise((r) => setTimeout(r, 250));
-		}
-		expect(observed).toBe(true);
-
-		// Release must not throw on a compromised holder.
-		await expect(holder?.release()).resolves.toBeUndefined();
-	}, 15_000);
+		const holder = await acquireWatcherLock(dir);
+		expect(holder).not.toBeNull();
+		await holder?.release();
+	});
 });

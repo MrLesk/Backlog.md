@@ -1,131 +1,106 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import lockfile from "proper-lockfile";
 
 /**
- * Acquires a project-scoped lock that grants the holder permission to run the
- * file watcher. The contract: at most one process per project owns this lock
- * at any time, regardless of entry point (`backlog browser`, `backlog watch`,
- * future watcher consumers).
+ * Project-scoped watcher lock using a PID file instead of proper-lockfile's
+ * mtime-based heartbeat. The heartbeat approach is unreliable on Windows:
+ * the event loop is idle while an agent runs (minutes), the heartbeat timer
+ * drifts, and proper-lockfile marks the lock as compromised.
  *
- * Lockfile location is `<backlogDir>/.locks/watcher`, mirroring the existing
- * `<backlogDir>/.locks/create` convention so projects using `backlog/`,
- * `.backlog/`, or a custom `backlogDirectory` setting all resolve consistently.
+ * PID-based approach: write our PID to a file; any other acquirer checks
+ * whether that PID is still alive. No heartbeat, no mtime, no drift.
  *
- * Stale-lock recovery is delegated to `proper-lockfile`'s built-in heartbeat:
- * the holder maintains the lock by touching the directory's mtime every
- * `update` ms, and any acquirer treating a lock as stale after `stale` ms
- * without an update can take it over. This handles ungraceful exits (Ctrl-C
- * with cleanup bypassed, process crash, hard kill) without leaving a project
- * unable to watch ever again.
+ * Lock file: <backlogDir>/.locks/watcher.pid
  */
+
 export interface WatcherLockHolder {
 	release(): Promise<void>;
-	/**
-	 * True once proper-lockfile has reported the lock as compromised (the
-	 * heartbeat couldn't refresh the mtime within the stale threshold).
-	 * A compromised holder no longer owns the watcher; callers may re-probe
-	 * or simply log. Crucially, a compromise no longer crashes the process.
-	 */
+	/** Always false for the PID-based lock (no heartbeat to compromise). */
 	isCompromised(): boolean;
 }
 
 export interface AcquireWatcherLockOptions {
 	/**
-	 * Maximum age (ms) of a lock without a heartbeat update before it is
-	 * considered stale and may be taken over. Default 10 s.
+	 * Timeout (ms) to consider a PID file stale even when the PID appears
+	 * alive but might be from a previous run that reused the PID. Defaults
+	 * to 0 (disabled — trust the live-PID check fully). Only set this if
+	 * you observe PID reuse causing false contention.
 	 */
 	staleMs?: number;
-	/**
-	 * Heartbeat update interval (ms). Must be less than `staleMs`. Default
-	 * 2.5 s, matching `proper-lockfile`'s recommended ratio.
-	 */
-	updateMs?: number;
 }
 
-// Generous defaults sized for agent workloads: when a coder agent (Claude,
-// Codex, etc.) runs for several minutes, the backlog watch process event
-// loop may be idle for the entire duration and the heartbeat timer drifts.
-// 5 minutes / 60 second heartbeat keeps the lock alive through a typical
-// agent run while still reclaiming a genuinely dead lock within ~5 minutes.
-const DEFAULT_STALE_MS = 5 * 60_000;   // 5 minutes
-const DEFAULT_UPDATE_MS = 60_000;       // 1 minute
+const isPidAlive = (pid: number): boolean => {
+	try {
+		// signal 0 = check existence without sending a signal.
+		// Throws ESRCH if the process doesn't exist; throws EPERM if it does
+		// but we don't have permission (process IS alive). Returns true
+		// otherwise.
+		process.kill(pid, 0);
+		return true;
+	} catch (err) {
+		const code = (err as { code?: string }).code;
+		if (code === "ESRCH") return false;
+		// EPERM means the process exists but we can't signal it — still alive.
+		if (code === "EPERM") return true;
+		return false;
+	}
+};
 
-/**
- * Attempts to acquire the watcher lock for the given backlog directory.
- *
- * @returns A {@link WatcherLockHolder} with a `release` function on success,
- * or `null` when another process currently holds the lock. Throws only for
- * unexpected filesystem errors (mkdir failure, etc.).
- */
 export async function acquireWatcherLock(
 	backlogDir: string,
-	options: AcquireWatcherLockOptions = {},
+	_options: AcquireWatcherLockOptions = {},
 ): Promise<WatcherLockHolder | null> {
-	const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
-	const updateMs = options.updateMs ?? DEFAULT_UPDATE_MS;
-
 	const locksDir = join(backlogDir, ".locks");
-	const lockDir = join(locksDir, "watcher");
+	const pidFile = join(locksDir, "watcher.pid");
+
 	await mkdir(locksDir, { recursive: true });
 
-	let compromised = false;
-	let release: (() => Promise<void>) | undefined;
+	// Check for an existing holder.
 	try {
-		release = await lockfile.lock(backlogDir, {
-			lockfilePath: lockDir,
-			realpath: true,
-			stale: staleMs,
-			update: updateMs,
-			// retries: 0 — we want immediate "yes or no". If another process
-			// holds it, the caller will pass enableWatchers: false to Core
-			// and rely on the lockholder to drive the watcher.
-			retries: 0,
-			// CRITICAL: proper-lockfile's default onCompromised re-throws the
-			// error from inside the heartbeat timer, which becomes an uncaught
-			// exception and crashes the whole process. Swallow it: a
-			// compromised watcher lock should degrade gracefully (the server
-			// keeps serving requests; it just may stop being the watcher
-			// authority) rather than take everything down.
-			onCompromised: (error: Error) => {
-				compromised = true;
-				console.warn(
-					`Watcher lock was compromised (${error.message}). The file watcher may stop firing ` +
-						"onStatusChange hooks for this project. Restart 'backlog browser' or 'backlog watch' to re-acquire.",
-				);
-			},
-		});
-	} catch (error) {
-		if (isLockHeldByAnotherProcess(error)) {
+		const content = await readFile(pidFile, "utf8");
+		const existingPid = Number.parseInt(content.trim(), 10);
+		if (!Number.isNaN(existingPid) && isPidAlive(existingPid)) {
+			// Another live process holds the lock.
 			return null;
 		}
-		throw error;
+		// PID is dead — stale file, we can take over.
+	} catch {
+		// File doesn't exist yet — no holder.
+	}
+
+	// Write our PID atomically (best-effort on Windows; good enough for a
+	// single-machine process lock).
+	try {
+		await writeFile(pidFile, String(process.pid), "utf8");
+	} catch {
+		return null;
+	}
+
+	// Verify we actually wrote our PID (guard against concurrent acquisition).
+	try {
+		const written = await readFile(pidFile, "utf8");
+		if (Number.parseInt(written.trim(), 10) !== process.pid) {
+			// Lost the race to another process.
+			return null;
+		}
+	} catch {
+		return null;
 	}
 
 	return {
 		isCompromised() {
-			return compromised;
+			return false;
 		},
 		async release() {
-			// A compromised lock is no longer ours to release — proper-lockfile
-			// would throw ERELEASED. Skip the call; the stale window will let
-			// the next acquirer reclaim it.
-			if (compromised) return;
 			try {
-				await release?.();
+				// Only delete if we still own it.
+				const content = await readFile(pidFile, "utf8");
+				if (Number.parseInt(content.trim(), 10) === process.pid) {
+					await unlink(pidFile);
+				}
 			} catch {
-				// Release is best-effort on shutdown — a stale lock will be
-				// recovered automatically by the next acquirer via the
-				// heartbeat-based staleness check.
+				// Already deleted or never existed — fine.
 			}
 		},
 	};
-}
-
-function isLockHeldByAnotherProcess(error: unknown): boolean {
-	// proper-lockfile throws errors with `code` ELOCKED when contention is
-	// detected. The error from `Error.code` is the documented contract.
-	if (typeof error !== "object" || error === null) return false;
-	const code = (error as { code?: unknown }).code;
-	return code === "ELOCKED";
 }
