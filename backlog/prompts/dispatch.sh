@@ -75,8 +75,9 @@ if [ -n "$task_file" ] && [ -f "$task_file" ]; then
     task_agent="$(grep -m1 '^agent:' "$task_file" 2>/dev/null | sed "s/^agent:[[:space:]]*//" | sed "s/[[:space:]]*$//" | tr -d "'\"")"
     task_review_agent="$(grep -m1 '^reviewAgent:' "$task_file" 2>/dev/null | sed "s/^reviewAgent:[[:space:]]*//" | sed "s/[[:space:]]*$//" | tr -d "'\"")"
     # Extract the last "Session ID: <uuid>" from the task body for --resume on rework.
-    coder_session_id="$(grep -oE 'Session ID: [a-f0-9-]{36}' "$task_file" 2>/dev/null | tail -1 | sed 's/Session ID: //')"
-    reviewer_session_id="$(grep -oE 'Reviewer Session ID: [a-f0-9-]{36}' "$task_file" 2>/dev/null | tail -1 | sed 's/Reviewer Session ID: //')"
+    # Match both UUID (claude/codex) and ses_* (opencode) session ID formats.
+    coder_session_id="$(grep -oE 'Session ID: ([a-f0-9-]{36}|ses_[A-Za-z0-9]+)' "$task_file" 2>/dev/null | tail -1 | sed 's/Session ID: //')"
+    reviewer_session_id="$(grep -oE 'Reviewer Session ID: ([a-f0-9-]{36}|ses_[A-Za-z0-9]+)' "$task_file" 2>/dev/null | tail -1 | sed 's/Reviewer Session ID: //')"
 fi
 
 # Tasks without an `agent:` field are human tasks — do not dispatch an

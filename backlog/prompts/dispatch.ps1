@@ -112,13 +112,13 @@ if ($taskFile) {
     }
     # Coder session ID — written by the coder in a "## Session" block.
     # Take the LAST match in case there were multiple rounds.
-    $coderMatches = [regex]::Matches($taskContent, '(?m)^Session ID:\s*([a-f0-9-]{36})')
+    # Coder session ID — matches both UUID (claude/codex) and ses_* (opencode).
+    $coderMatches = [regex]::Matches($taskContent, '(?m)^Session ID:\s*([a-f0-9-]{36}|ses_[A-Za-z0-9]+)')
     if ($coderMatches.Count -gt 0) {
         $coderSessionId = $coderMatches[$coderMatches.Count - 1].Groups[1].Value.Trim()
     }
-    # Reviewer session ID — written by the reviewer in the Review block
-    # as "Reviewer Session ID: <uuid>". Take the LAST match.
-    $reviewerMatches = [regex]::Matches($taskContent, '(?m)^Reviewer Session ID:\s*([a-f0-9-]{36})')
+    # Reviewer session ID — matches both UUID and ses_* formats.
+    $reviewerMatches = [regex]::Matches($taskContent, '(?m)^Reviewer Session ID:\s*([a-f0-9-]{36}|ses_[A-Za-z0-9]+)')
     if ($reviewerMatches.Count -gt 0) {
         $reviewerSessionId = $reviewerMatches[$reviewerMatches.Count - 1].Groups[1].Value.Trim()
     }
