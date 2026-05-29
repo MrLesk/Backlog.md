@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
-import { ensureRemoteRepo, getRemoteCacheDir, parseRemoteSpec } from "../remote/remote-repo.ts";
+import { authArgs, ensureRemoteRepo, getRemoteCacheDir, parseRemoteSpec } from "../remote/remote-repo.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 async function runGit(args: string[], cwd?: string): Promise<void> {
@@ -71,6 +71,47 @@ describe("getRemoteCacheDir", () => {
 		process.env.BACKLOG_REMOTE_CACHE = join("custom", "cache");
 		const spec = parseRemoteSpec("owner/name");
 		expect(getRemoteCacheDir(spec)).toBe(join("custom", "cache", "github.com", "owner", "name"));
+	});
+});
+
+describe("authArgs", () => {
+	const saved = {
+		t: process.env.BACKLOG_REMOTE_TOKEN,
+		gh: process.env.GH_TOKEN,
+		gt: process.env.GITHUB_TOKEN,
+	};
+	afterEach(() => {
+		for (const k of ["BACKLOG_REMOTE_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const) delete process.env[k];
+		if (saved.t !== undefined) process.env.BACKLOG_REMOTE_TOKEN = saved.t;
+		if (saved.gh !== undefined) process.env.GH_TOKEN = saved.gh;
+		if (saved.gt !== undefined) process.env.GITHUB_TOKEN = saved.gt;
+	});
+
+	test("no token -> no auth args", () => {
+		for (const k of ["BACKLOG_REMOTE_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const) delete process.env[k];
+		expect(authArgs(parseRemoteSpec("owner/name"))).toEqual([]);
+	});
+
+	test("token + https -> scoped extraheader with base64 of x-access-token:TOKEN", () => {
+		for (const k of ["GH_TOKEN", "GITHUB_TOKEN"] as const) delete process.env[k];
+		process.env.BACKLOG_REMOTE_TOKEN = "secret123";
+		const args = authArgs(parseRemoteSpec("owner/name"));
+		expect(args[0]).toBe("-c");
+		const expected = Buffer.from("x-access-token:secret123").toString("base64");
+		expect(args[1]).toBe(`http.https://github.com/.extraheader=AUTHORIZATION: basic ${expected}`);
+	});
+
+	test("ssh remote -> no auth args even with token set", () => {
+		process.env.BACKLOG_REMOTE_TOKEN = "secret123";
+		expect(authArgs(parseRemoteSpec("git@github.com:owner/name.git"))).toEqual([]);
+	});
+
+	test("falls back to GH_TOKEN then GITHUB_TOKEN", () => {
+		for (const k of ["BACKLOG_REMOTE_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const) delete process.env[k];
+		process.env.GH_TOKEN = "ghtok";
+		expect(authArgs(parseRemoteSpec("owner/name"))[1]).toContain(
+			Buffer.from("x-access-token:ghtok").toString("base64"),
+		);
 	});
 });
 

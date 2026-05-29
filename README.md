@@ -171,7 +171,7 @@ backlog board --repo git@github.com:owner/name.git
 
 How it works:
 - The repo is cloned into a local cache (`~/.backlog/remotes/<host>/<owner>/<name>`), checking out only the `backlog/` folder. Subsequent runs fetch and refresh that cache.
-- Private repos work as long as your local git credentials can access them - the clone reuses your existing git auth.
+- Private repos work as long as your local git credentials can access them - the clone reuses your existing git auth. If the right credentials are not the active default (e.g. you have more than one GitHub account), set `BACKLOG_REMOTE_TOKEN` (or `GH_TOKEN` / `GITHUB_TOKEN`) and the clone authenticates with that token. The token is sent as a per-host header and is never written to the cache config or remote URL.
 - Use `--no-refresh` to read the cached snapshot without hitting the network.
 - This is a read-only snapshot. Edits made in the web UI write to the local cache only and are **not** pushed back to the source repo.
 

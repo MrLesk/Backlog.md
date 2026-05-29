@@ -45,7 +45,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 
 > **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
 
-> **Remote repo viewing**: `backlog board --repo <owner/name>` and `backlog browser --repo <owner/name>` render another repo's `backlog/` folder. The remote is cloned into `~/.backlog/remotes/<host>/<owner>/<name>` (sparse-checkout of `backlog/` only) and refreshed on each run. Override the cache root with the `BACKLOG_REMOTE_CACHE` environment variable. These views are read-only snapshots - edits made in the web UI write to the local cache and are not pushed to the source repo.
+> **Remote repo viewing**: `backlog board --repo <owner/name>` and `backlog browser --repo <owner/name>` render another repo's `backlog/` folder. The remote is cloned into `~/.backlog/remotes/<host>/<owner>/<name>` (sparse-checkout of `backlog/` only) and refreshed on each run. Override the cache root with the `BACKLOG_REMOTE_CACHE` environment variable. For private repos where your default git credentials do not apply, set `BACKLOG_REMOTE_TOKEN` (or `GH_TOKEN` / `GITHUB_TOKEN`); it is sent as a per-host auth header and never persisted to the cache. These views are read-only snapshots - edits made in the web UI write to the local cache and are not pushed to the source repo.
 
 > **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
 

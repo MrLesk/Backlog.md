@@ -110,12 +110,48 @@ async function git(args: string[], cwd?: string): Promise<string> {
 	return stdout;
 }
 
+/**
+ * Auth args for private remotes. When a token is available in the environment
+ * (BACKLOG_REMOTE_TOKEN, then GH_TOKEN, then GITHUB_TOKEN) and the remote is an
+ * https URL, inject it as a scoped `http.<host>.extraheader`. This authenticates
+ * the clone/fetch without writing the token into the repo config or remote URL
+ * (the GitHub Actions pattern). SSH remotes are left to the user's ssh agent.
+ */
+export function authArgs(spec: RemoteRepoSpec): string[] {
+	if (!spec.cloneUrl.startsWith("https://")) return [];
+	const token = (process.env.BACKLOG_REMOTE_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "").trim();
+	if (!token) return [];
+	const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+	// Scope to the host so the header is only sent to that origin.
+	return ["-c", `http.https://${spec.host}/.extraheader=AUTHORIZATION: basic ${basic}`];
+}
+
 async function isDir(path: string): Promise<boolean> {
 	try {
 		return (await stat(path)).isDirectory();
 	} catch {
 		return false;
 	}
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Remove a directory, retrying a few times. On Windows a just-released handle
+ * (antivirus, indexer, a prior git process) can leave the directory in a
+ * "pending delete" state where `rm` succeeds but the entry lingers, making a
+ * subsequent `git clone` into the same path fail with "already exists". Retrying
+ * with a short backoff lets the handle close. Returns true if the path is gone.
+ */
+async function removeDirWithRetry(path: string, attempts = 5): Promise<boolean> {
+	for (let i = 0; i < attempts; i++) {
+		await rm(path, { recursive: true, force: true }).catch(() => {});
+		if (!(await isDir(path))) return true;
+		await delay(150 * (i + 1));
+	}
+	return !(await isDir(path));
 }
 
 async function isGitRepo(path: string): Promise<boolean> {
@@ -140,6 +176,8 @@ async function currentBranch(cacheDir: string): Promise<string | undefined> {
  *
  * - First time: shallow + blobless + sparse clone, then `sparse-checkout set backlog`.
  * - Subsequent runs (refresh): fetch the target ref and hard-reset to it.
+ * - Private repos: set BACKLOG_REMOTE_TOKEN (or GH_TOKEN / GITHUB_TOKEN) and the
+ *   clone/fetch authenticate as that token. SSH remotes use the ssh agent.
  * - `cacheDir` override is mainly for tests; production uses {@link getRemoteCacheDir}.
  */
 export async function ensureRemoteRepo(
@@ -148,47 +186,73 @@ export async function ensureRemoteRepo(
 ): Promise<string> {
 	const cacheDir = options?.cacheDir ?? getRemoteCacheDir(spec);
 	const refresh = options?.refresh !== false;
-	const alreadyCloned = await isGitRepo(cacheDir);
+	const auth = authArgs(spec);
 
-	if (!alreadyCloned) {
-		// A stale/partial cache dir (exists but isn't a git repo) would make `git clone` refuse.
-		// It's our own cache, so clear it and let clone recreate it cleanly.
-		if (await isDir(cacheDir)) {
-			await rm(cacheDir, { recursive: true, force: true });
-		}
-		await mkdir(dirname(cacheDir), { recursive: true });
-		const cloneArgs = ["clone", "--depth", "1", "--filter=blob:none", "--sparse"];
-		if (spec.ref) cloneArgs.push("--branch", spec.ref);
-		cloneArgs.push(spec.cloneUrl, cacheDir);
-
-		const cloneResult = await runGit(cloneArgs);
-		if (cloneResult.exitCode !== 0) {
-			// --branch only accepts a branch/tag. If a commit SHA was given (or branch resolution
-			// failed), fall back to a default-branch clone and fetch the ref explicitly.
-			if (spec.ref) {
-				await git(["clone", "--filter=blob:none", "--sparse", spec.cloneUrl, cacheDir]);
-				await git(["sparse-checkout", "set", "backlog"], cacheDir);
-				await git(["fetch", "origin", spec.ref], cacheDir);
-				await git(["checkout", spec.ref], cacheDir);
-				return cacheDir;
-			}
-			throw new Error(`Failed to clone ${spec.cloneUrl}: ${cloneResult.stderr.trim() || cloneResult.stdout.trim()}`);
-		}
-		await git(["sparse-checkout", "set", "backlog"], cacheDir);
-		return cacheDir;
+	if (!(await isGitRepo(cacheDir))) {
+		const target = await prepareCloneTarget(cacheDir);
+		await cloneInto(spec, target, auth);
+		return target;
 	}
 
 	if (refresh) {
 		const ref = spec.ref ?? (await currentBranch(cacheDir)) ?? "HEAD";
 		try {
-			await git(["fetch", "--depth", "1", "origin", ref], cacheDir);
+			await git([...auth, "fetch", "--depth", "1", "origin", ref], cacheDir);
 			await git(["reset", "--hard", "FETCH_HEAD"], cacheDir);
 			// Re-assert sparse scope (idempotent; cheap).
 			await git(["sparse-checkout", "set", "backlog"], cacheDir);
 		} catch {
-			// Network/ref hiccup: fall back to the existing cached snapshot rather than failing the view.
+			// Network/ref/auth hiccup: fall back to the existing cached snapshot rather than failing the view.
 		}
 	}
 
 	return cacheDir;
+}
+
+/**
+ * Make sure we have an empty directory to clone into. A stale/partial cache dir
+ * (exists but isn't a git repo) makes `git clone` refuse. We try to clear the
+ * canonical path; if it can't be emptied (e.g. a Windows pending-delete lock),
+ * fall back to a fresh sibling path so the user is never blocked. Returns the
+ * path that the clone should target.
+ */
+async function prepareCloneTarget(cacheDir: string): Promise<string> {
+	await mkdir(dirname(cacheDir), { recursive: true });
+	if (await isDir(cacheDir)) {
+		const cleared = await removeDirWithRetry(cacheDir);
+		if (!cleared) {
+			// Locked path: clone into a fresh sibling we can definitely create.
+			for (let i = 1; i < 50; i++) {
+				const alt = `${cacheDir}__${i}`;
+				if (!(await isDir(alt))) return alt;
+			}
+		}
+	}
+	return cacheDir;
+}
+
+async function cloneInto(spec: RemoteRepoSpec, target: string, auth: string[]): Promise<void> {
+	const baseClone = [...auth, "clone", "--depth", "1", "--filter=blob:none", "--sparse"];
+	const cloneArgs = [...baseClone];
+	if (spec.ref) cloneArgs.push("--branch", spec.ref);
+	cloneArgs.push(spec.cloneUrl, target);
+
+	const cloneResult = await runGit(cloneArgs);
+	if (cloneResult.exitCode === 0) {
+		await git(["sparse-checkout", "set", "backlog"], target);
+		return;
+	}
+
+	// `--branch` only accepts a branch/tag. If a commit SHA was given (or branch
+	// resolution failed), clone the default branch and fetch the ref explicitly.
+	if (spec.ref) {
+		await removeDirWithRetry(target);
+		await git([...baseClone, spec.cloneUrl, target]);
+		await git(["sparse-checkout", "set", "backlog"], target);
+		await git([...auth, "fetch", "origin", spec.ref], target);
+		await git(["checkout", spec.ref], target);
+		return;
+	}
+
+	throw new Error(`Failed to clone ${spec.cloneUrl}: ${cloneResult.stderr.trim() || cloneResult.stdout.trim()}`);
 }
