@@ -156,8 +156,10 @@ if (-not $agentExec) {
 #   3. A coder session ID exists in the task notes
 #   4. The task body contains at least one "CHANGES REQUESTED" review block
 #
+$resumeCapableAgents = @('claude', 'codex', 'opencode')
+
 $isCoderRework = $false
-if (($agentName.ToLower() -eq 'claude' -or $agentName.ToLower() -eq 'opencode') -and
+if ($resumeCapableAgents -contains $agentName.ToLower() -and
     $env:NEW_STATUS -eq 'In Progress' -and
     $coderSessionId -ne '' -and
     $taskContent -match 'CHANGES REQUESTED') {
@@ -165,7 +167,7 @@ if (($agentName.ToLower() -eq 'claude' -or $agentName.ToLower() -eq 'opencode') 
 }
 
 $isReviewerResume = $false
-if (($agentName.ToLower() -eq 'claude' -or $agentName.ToLower() -eq 'opencode') -and
+if ($resumeCapableAgents -contains $agentName.ToLower() -and
     $env:NEW_STATUS -eq 'In Review' -and
     $reviewerSessionId -ne '') {
     $isReviewerResume = $true
@@ -176,7 +178,18 @@ if ($isCoderRework) {
     $reworkPath = "$logFile.rework"
     [System.IO.File]::WriteAllText($reworkPath, $reworkMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: coder rework - resuming session $coderSessionId"
-    if ($agentName.ToLower() -eq 'opencode') {
+    if ($agentName.ToLower() -eq 'codex') {
+        # codex exec resume <id> - reads follow-up from stdin
+        $agentArgs = @('exec', 'resume', $coderSessionId, '-')
+        Start-Process `
+            -FilePath $agentExec `
+            -ArgumentList $agentArgs `
+            -RedirectStandardInput $reworkPath `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError "$logFile.err" `
+            -WindowStyle Hidden `
+            -WorkingDirectory $projectRoot | Out-Null
+    } elseif ($agentName.ToLower() -eq 'opencode') {
         $agentArgs = @('run', '-s', $coderSessionId, $reworkMessage)
         Start-Process `
             -FilePath $agentExec `
@@ -201,7 +214,17 @@ if ($isCoderRework) {
     $reviewResumePath = "$logFile.resume"
     [System.IO.File]::WriteAllText($reviewResumePath, $reviewResumeMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: reviewer resume - resuming session $reviewerSessionId"
-    if ($agentName.ToLower() -eq 'opencode') {
+    if ($agentName.ToLower() -eq 'codex') {
+        $agentArgs = @('exec', 'resume', $reviewerSessionId, '-')
+        Start-Process `
+            -FilePath $agentExec `
+            -ArgumentList $agentArgs `
+            -RedirectStandardInput $reviewResumePath `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError "$logFile.err" `
+            -WindowStyle Hidden `
+            -WorkingDirectory $projectRoot | Out-Null
+    } elseif ($agentName.ToLower() -eq 'opencode') {
         $agentArgs = @('run', '-s', $reviewerSessionId, $reviewResumeMessage)
         Start-Process `
             -FilePath $agentExec `
@@ -222,10 +245,11 @@ if ($isCoderRework) {
             -WorkingDirectory $projectRoot | Out-Null
     }
 } elseif ($agentName.ToLower() -eq 'codex') {
-    # codex exec reads the prompt from stdin when passed `-` as the prompt
-    # argument. --skip-git-repo-check lets it run outside a git repo root.
+    # First run: codex exec reads the prompt from stdin via `-`.
+    # --json captures thread.started so the coder can extract the session ID.
+    # --skip-git-repo-check lets it run outside a git repo root.
     # --yolo = unattended (no confirmation prompts).
-    $agentArgs = @('exec', '--skip-git-repo-check', '--yolo', '-')
+    $agentArgs = @('exec', '--json', '--skip-git-repo-check', '--yolo', '-')
     Start-Process `
         -FilePath $agentExec `
         -ArgumentList $agentArgs `

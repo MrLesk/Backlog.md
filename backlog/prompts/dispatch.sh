@@ -112,8 +112,13 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
 # Resume the coder's previous session when the task returns to In Progress
 # after a review with CHANGES REQUESTED. This preserves the full implementation
 # context in the session history; the rework message is minimal.
+is_resume_capable=0
+if [ "$agent_name" = "claude" ] || [ "$agent_name" = "codex" ] || [ "$agent_name" = "opencode" ]; then
+    is_resume_capable=1
+fi
+
 is_coder_rework=0
-if ( [ "$agent_name" = "claude" ] || [ "$agent_name" = "opencode" ] ) && \
+if [ "$is_resume_capable" = "1" ] && \
    [ "${NEW_STATUS:-}" = "In Progress" ] && \
    [ -n "$coder_session_id" ] && \
    grep -q 'CHANGES REQUESTED' "$task_file" 2>/dev/null; then
@@ -121,7 +126,7 @@ if ( [ "$agent_name" = "claude" ] || [ "$agent_name" = "opencode" ] ) && \
 fi
 
 is_reviewer_resume=0
-if ( [ "$agent_name" = "claude" ] || [ "$agent_name" = "opencode" ] ) && \
+if [ "$is_resume_capable" = "1" ] && \
    [ "${NEW_STATUS:-}" = "In Review" ] && \
    [ -n "$reviewer_session_id" ]; then
     is_reviewer_resume=1
@@ -135,7 +140,10 @@ fi
         rework_path="$log_file.rework"
         printf '%s' "$rework_msg" > "$rework_path"
         echo "dispatch.sh: coder rework - resuming session $coder_session_id"
-        if [ "$agent_name" = "opencode" ]; then
+        if [ "$agent_name" = "codex" ]; then
+            nohup codex exec resume "$coder_session_id" - \
+                < "$rework_path" > "$log_file" 2> "$log_file.err" &
+        elif [ "$agent_name" = "opencode" ]; then
             nohup opencode run -s "$coder_session_id" "$rework_msg" \
                 > "$log_file" 2> "$log_file.err" &
         else
@@ -148,7 +156,10 @@ fi
         resume_path="$log_file.resume"
         printf '%s' "$resume_msg" > "$resume_path"
         echo "dispatch.sh: reviewer resume - resuming session $reviewer_session_id"
-        if [ "$agent_name" = "opencode" ]; then
+        if [ "$agent_name" = "codex" ]; then
+            nohup codex exec resume "$reviewer_session_id" - \
+                < "$resume_path" > "$log_file" 2> "$log_file.err" &
+        elif [ "$agent_name" = "opencode" ]; then
             nohup opencode run -s "$reviewer_session_id" "$resume_msg" \
                 > "$log_file" 2> "$log_file.err" &
         else
@@ -163,8 +174,9 @@ fi
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         codex)
-            # `codex exec - ` reads the prompt from stdin.
-            nohup codex exec --skip-git-repo-check --yolo - \
+            # --json emits thread.started with thread_id so the coder can
+            # capture its session ID. `-` reads the prompt from stdin.
+            nohup codex exec --json --skip-git-repo-check --yolo - \
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         opencode)
