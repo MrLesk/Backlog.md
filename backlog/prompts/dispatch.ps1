@@ -190,7 +190,7 @@ if (-not $agentExec) {
 #   3. A coder session ID exists in the task notes
 #   4. The task body contains at least one "CHANGES REQUESTED" review block
 #
-$resumeCapableAgents = @('claude', 'codex')
+$resumeCapableAgents = @('claude', 'codex', 'opencode')
 
 $isCoderRework = $false
 if ($resumeCapableAgents -contains $agentBinary.ToLower() -and
