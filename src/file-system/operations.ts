@@ -6,6 +6,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS }
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type {
+	AgentConfig,
 	BacklogConfig,
 	BoardColumnConfig,
 	BoardConfig,
@@ -1362,11 +1363,10 @@ ${description || `Milestone: ${title}`}`,
 	private parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
 		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
-		// The line-based switch below only understands flat top-level keys —
-		// it would silently drop the nested `board:` block. Parse it via the
-		// existing gray-matter dep, scoped to this section, before the line
-		// loop walks the file.
+		// The line-based switch below only understands flat top-level keys.
+		// Parse nested blocks via gray-matter before the line loop.
 		const parsedBoard = this.parseBoardConfig(content);
+		const parsedAgents = this.parseAgentsConfig(content);
 		const lines = content.split("\n");
 
 		for (const line of lines) {
@@ -1487,6 +1487,7 @@ ${description || `Milestone: ${title}`}`,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
 			board: parsedBoard,
+			agents: parsedAgents,
 		};
 	}
 
@@ -1569,6 +1570,32 @@ ${description || `Milestone: ${title}`}`,
 	 * extractDefinitionOfDoneYaml's behavior: walks until the next
 	 * top-level key at the same or shallower indent.
 	 */
+	/**
+	 * Parses the `agents:` block. Each entry must have a non-empty `alias`
+	 * and a non-empty `binary`; invalid entries are silently skipped.
+	 * Returns undefined when the block is absent.
+	 */
+	private parseAgentsConfig(content: string): AgentConfig[] | undefined {
+		const agentsYaml = this.extractTopLevelBlock(content, "agents");
+		if (!agentsYaml) return undefined;
+		try {
+			const data = matter(`---\n${agentsYaml.trimEnd()}\n---\n`).data as Record<string, unknown>;
+			const raw = data.agents;
+			if (!Array.isArray(raw) || raw.length === 0) return undefined;
+			const agents: AgentConfig[] = [];
+			for (const entry of raw) {
+				if (typeof entry !== "object" || entry === null) continue;
+				const e = entry as { alias?: unknown; binary?: unknown };
+				if (typeof e.alias !== "string" || !e.alias.trim()) continue;
+				if (typeof e.binary !== "string" || !e.binary.trim()) continue;
+				agents.push({ alias: e.alias.trim(), binary: e.binary.trim() });
+			}
+			return agents.length > 0 ? agents : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
 	private extractTopLevelBlock(content: string, key: string): string | undefined {
 		const lines = content.split(/\r?\n/);
 		const keyPattern = new RegExp(`^(\\s*)${key}\\s*:`);
@@ -1621,9 +1648,20 @@ ${description || `Milestone: ${title}`}`,
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
 			...this.serializeBoardBlock(config.board),
+			...this.serializeAgentsBlock(config.agents),
 		];
 
 		return `${lines.join("\n")}\n`;
+	}
+
+	private serializeAgentsBlock(agents: AgentConfig[] | undefined): string[] {
+		if (!agents || agents.length === 0) return [];
+		const out: string[] = ["agents:"];
+		for (const agent of agents) {
+			out.push(`  - alias: ${this.quoteYamlString(agent.alias)}`);
+			out.push(`    binary: ${this.quoteYamlString(agent.binary)}`);
+		}
+		return out;
 	}
 
 	private serializeBoardBlock(board: BoardConfig | undefined): string[] {

@@ -611,6 +611,7 @@ function App() {
           archivedMilestoneEntities={archivedMilestones}
           isDraftMode={isDraftMode}
           definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+          configuredAgents={config?.agents ?? []}
         />
 
         {/* Task Creation Confirmation Toast */}

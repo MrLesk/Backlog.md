@@ -63,6 +63,37 @@ if ($env:BACKLOG_DISPATCH_DRY_RUN -eq '1') { exit 0 }
 
 $projectRoot = (Resolve-Path (Join-Path $scriptDir '..\..') ).Path
 $tasksDir = Join-Path $projectRoot 'backlog\tasks'
+
+# ── Alias → binary resolution ─────────────────────────────────────────────────
+# Read the agents: block from backlog/config.yml. If the task's agent value
+# matches a configured alias, use the corresponding binary; otherwise treat
+# the value as a raw binary name (back-compat with existing tasks).
+$configFile = Join-Path $projectRoot 'backlog\config.yml'
+$aliasMap = @{}
+if (Test-Path $configFile) {
+    $configContent = Get-Content $configFile -Raw
+    # Extract the agents: block line by line — simple enough without gray-matter.
+    $inAgents = $false
+    $pendingAlias = ''
+    foreach ($line in $configContent -split '\r?\n') {
+        if ($line -match '^agents:') {
+            $inAgents = $true
+            continue
+        }
+        if ($inAgents) {
+            # Stop at the next top-level key (not indented).
+            if ($line -match '^[A-Za-z_]') { $inAgents = $false; continue }
+            if ($line -match '^\s+-\s+alias:\s*[''"]?([^''"]+)[''"]?\s*$') {
+                $pendingAlias = $matches[1].Trim()
+            } elseif ($line -match '^\s+binary:\s*[''"]?([^''"]+)[''"]?\s*$') {
+                if ($pendingAlias -ne '') {
+                    $aliasMap[$pendingAlias] = $matches[1].Trim()
+                    $pendingAlias = ''
+                }
+            }
+        }
+    }
+}
 $taskFile = Get-ChildItem $tasksDir -Filter "*$env:TASK_ID*" -Recurse -ErrorAction SilentlyContinue |
     Select-Object -First 1
 
@@ -104,17 +135,19 @@ if ($env:NEW_STATUS -eq 'In Review') {
     $agentName = $taskAgentName
 }
 
-Write-Host "dispatch.ps1: task=$env:TASK_ID status=$env:NEW_STATUS agent=$agentName"
+# Resolve alias → binary if configured; otherwise use as-is.
+$agentBinary = if ($aliasMap.ContainsKey($agentName)) { $aliasMap[$agentName] } else { $agentName }
+Write-Host "dispatch.ps1: task=$env:TASK_ID status=$env:NEW_STATUS agent=$agentName binary=$agentBinary"
 
 # ── Binary lookup ─────────────────────────────────────────────────────────────
-if ($agentName.ToLower() -eq 'claude') {
+if ($agentBinary.ToLower() -eq 'claude') {
     $candidates = @('claude.cmd', 'claude.exe', 'claude')
-} elseif ($agentName.ToLower() -eq 'codex') {
+} elseif ($agentBinary.ToLower() -eq 'codex') {
     $candidates = @('codex.cmd', 'codex.exe', 'codex')
-} elseif ($agentName.ToLower() -eq 'opencode') {
+} elseif ($agentBinary.ToLower() -eq 'opencode') {
     $candidates = @('opencode.cmd', 'opencode.exe', 'opencode')
 } else {
-    $candidates = @($agentName)
+    $candidates = @($agentBinary)
 }
 
 $agentExec = $null
@@ -159,7 +192,7 @@ if (-not $agentExec) {
 $resumeCapableAgents = @('claude', 'codex', 'opencode')
 
 $isCoderRework = $false
-if ($resumeCapableAgents -contains $agentName.ToLower() -and
+if ($resumeCapableAgents -contains $agentBinary.ToLower() -and
     $env:NEW_STATUS -eq 'In Progress' -and
     $coderSessionId -ne '' -and
     $taskContent -match 'CHANGES REQUESTED') {
@@ -167,7 +200,7 @@ if ($resumeCapableAgents -contains $agentName.ToLower() -and
 }
 
 $isReviewerResume = $false
-if ($resumeCapableAgents -contains $agentName.ToLower() -and
+if ($resumeCapableAgents -contains $agentBinary.ToLower() -and
     $env:NEW_STATUS -eq 'In Review' -and
     $reviewerSessionId -ne '') {
     $isReviewerResume = $true
@@ -178,7 +211,7 @@ if ($isCoderRework) {
     $reworkPath = "$logFile.rework"
     [System.IO.File]::WriteAllText($reworkPath, $reworkMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: coder rework - resuming session $coderSessionId"
-    if ($agentName.ToLower() -eq 'codex') {
+    if ($agentBinary.ToLower() -eq 'codex') {
         # codex exec resume <id> - reads follow-up from stdin
         $agentArgs = @('exec', 'resume', $coderSessionId, '-')
         Start-Process `
@@ -189,7 +222,7 @@ if ($isCoderRework) {
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot | Out-Null
-    } elseif ($agentName.ToLower() -eq 'opencode') {
+    } elseif ($agentBinary.ToLower() -eq 'opencode') {
         $agentArgs = @('run', '-s', $coderSessionId, $reworkMessage)
         Start-Process `
             -FilePath $agentExec `
@@ -214,7 +247,7 @@ if ($isCoderRework) {
     $reviewResumePath = "$logFile.resume"
     [System.IO.File]::WriteAllText($reviewResumePath, $reviewResumeMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: reviewer resume - resuming session $reviewerSessionId"
-    if ($agentName.ToLower() -eq 'codex') {
+    if ($agentBinary.ToLower() -eq 'codex') {
         $agentArgs = @('exec', 'resume', $reviewerSessionId, '-')
         Start-Process `
             -FilePath $agentExec `
@@ -224,7 +257,7 @@ if ($isCoderRework) {
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot | Out-Null
-    } elseif ($agentName.ToLower() -eq 'opencode') {
+    } elseif ($agentBinary.ToLower() -eq 'opencode') {
         $agentArgs = @('run', '-s', $reviewerSessionId, $reviewResumeMessage)
         Start-Process `
             -FilePath $agentExec `
@@ -244,7 +277,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot | Out-Null
     }
-} elseif ($agentName.ToLower() -eq 'codex') {
+} elseif ($agentBinary.ToLower() -eq 'codex') {
     # First run: codex exec reads the prompt from stdin via `-`.
     # --json captures thread.started so the coder can extract the session ID.
     # --skip-git-repo-check lets it run outside a git repo root.
@@ -258,7 +291,7 @@ if ($isCoderRework) {
         -RedirectStandardError "$logFile.err" `
         -WindowStyle Hidden `
         -WorkingDirectory $projectRoot | Out-Null
-} elseif ($agentName.ToLower() -eq 'opencode') {
+} elseif ($agentBinary.ToLower() -eq 'opencode') {
     $agentArgs = @('-p', $fullPrompt, '--yes')
     Start-Process `
         -FilePath $agentExec `

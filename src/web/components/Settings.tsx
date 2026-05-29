@@ -5,6 +5,7 @@ import type { BacklogConfig, BoardConfig, ConfigurableCardField, StatusCallbackC
 import { CONFIGURABLE_CARD_FIELDS } from '../../types';
 import { buildBoardEditorRows, type BoardEditorRow } from '../../utils/build-board-editor-rows';
 import { mergeBoardWithCard, mergeBoardWithColumns } from '../../utils/board-config-merge';
+import AgentsSection from './AgentsSection';
 
 const Settings: React.FC = () => {
 	const [config, setConfig] = useState<BacklogConfig | null>(null);
@@ -213,6 +214,12 @@ const Settings: React.FC = () => {
 					<CardFieldsSection
 						board={config.board}
 						onChange={(next) => handleInputChange('board', next)}
+					/>
+
+					{/* Agents */}
+					<AgentsSection
+						agents={config.agents ?? []}
+						onChange={(next) => handleInputChange('agents', next.length > 0 ? next : undefined)}
 					/>
 
 					{/* Workflow Settings */}

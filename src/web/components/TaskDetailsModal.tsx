@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import type { AcceptanceCriterion, Milestone, Task } from "../../types";
+import type { AcceptanceCriterion, AgentConfig, Milestone, Task } from "../../types";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
@@ -23,6 +23,8 @@ interface Props {
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
+  /** Agents configured in backlog.config.yml. When non-empty, replaces the free-text inputs with dropdowns. */
+  configuredAgents?: AgentConfig[];
 }
 
 type Mode = "preview" | "edit" | "create";
@@ -65,6 +67,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   archivedMilestoneEntities,
   isDraftMode,
   definitionOfDoneDefaults,
+  configuredAgents = [],
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
@@ -1058,31 +1061,67 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 <label htmlFor="task-agent" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                   Coder agent
                 </label>
-                <input
-                  id="task-agent"
-                  type="text"
-                  value={agent}
-                  onChange={(e) => setAgent(e.target.value)}
-                  onBlur={(e) => handleInlineMetaUpdate({ agent: e.target.value.trim() || null })}
-                  placeholder="claude / codex / opencode"
-                  disabled={isFromOtherBranch}
-                  className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
-                />
+                {configuredAgents.length > 0 ? (
+                  <select
+                    id="task-agent"
+                    value={agent}
+                    onChange={(e) => {
+                      setAgent(e.target.value);
+                      handleInlineMetaUpdate({ agent: e.target.value || null });
+                    }}
+                    disabled={isFromOtherBranch}
+                    className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
+                  >
+                    <option value="">— none (human task) —</option>
+                    {configuredAgents.map((a) => (
+                      <option key={a.alias} value={a.alias}>{a.alias}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="task-agent"
+                    type="text"
+                    value={agent}
+                    onChange={(e) => setAgent(e.target.value)}
+                    onBlur={(e) => handleInlineMetaUpdate({ agent: e.target.value.trim() || null })}
+                    placeholder="claude / codex / opencode"
+                    disabled={isFromOtherBranch}
+                    className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
+                  />
+                )}
               </div>
               <div>
                 <label htmlFor="task-review-agent" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                   Reviewer agent <span className="text-gray-400">(defaults to coder agent)</span>
                 </label>
-                <input
-                  id="task-review-agent"
-                  type="text"
-                  value={reviewAgent}
-                  onChange={(e) => setReviewAgent(e.target.value)}
-                  onBlur={(e) => handleInlineMetaUpdate({ reviewAgent: e.target.value.trim() || null })}
-                  placeholder="claude / codex / opencode"
-                  disabled={isFromOtherBranch}
-                  className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
-                />
+                {configuredAgents.length > 0 ? (
+                  <select
+                    id="task-review-agent"
+                    value={reviewAgent}
+                    onChange={(e) => {
+                      setReviewAgent(e.target.value);
+                      handleInlineMetaUpdate({ reviewAgent: e.target.value || null });
+                    }}
+                    disabled={isFromOtherBranch}
+                    className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
+                  >
+                    <option value="">— same as coder —</option>
+                    {configuredAgents.map((a) => (
+                      <option key={a.alias} value={a.alias}>{a.alias}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="task-review-agent"
+                    type="text"
+                    value={reviewAgent}
+                    onChange={(e) => setReviewAgent(e.target.value)}
+                    onBlur={(e) => handleInlineMetaUpdate({ reviewAgent: e.target.value.trim() || null })}
+                    placeholder="claude / codex / opencode"
+                    disabled={isFromOtherBranch}
+                    className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
+                  />
+                )}
               </div>
             </div>
           </div>

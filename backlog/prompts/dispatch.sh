@@ -106,14 +106,43 @@ case "${NEW_STATUS:-}" in
         ;;
 esac
 
-echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
+# ── Alias → binary resolution ─────────────────────────────────────────────────
+config_file="$project_root/backlog/config.yml"
+agent_binary="$agent_name"
+if [ -f "$config_file" ]; then
+    in_agents=0
+    pending_alias=""
+    while IFS= read -r line || [ -n "$line" ]; do
+        if echo "$line" | grep -q '^agents:'; then
+            in_agents=1; continue
+        fi
+        if [ "$in_agents" = "1" ]; then
+            if echo "$line" | grep -qE '^[A-Za-z_]'; then
+                in_agents=0; continue
+            fi
+            if echo "$line" | grep -qE '^\s+-\s+alias:'; then
+                pending_alias="$(echo "$line" | sed "s/.*alias:[[:space:]]*//" | tr -d "'\" ")"
+            elif echo "$line" | grep -qE '^\s+binary:'; then
+                if [ -n "$pending_alias" ]; then
+                    binary_val="$(echo "$line" | sed "s/.*binary:[[:space:]]*//" | tr -d "'\" ")"
+                    if [ "$pending_alias" = "$agent_name" ]; then
+                        agent_binary="$binary_val"
+                    fi
+                    pending_alias=""
+                fi
+            fi
+        fi
+    done < "$config_file"
+fi
+
+echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name binary=$agent_binary"
 
 # ── Rework detection (claude only) ───────────────────────────────────────────
 # Resume the coder's previous session when the task returns to In Progress
 # after a review with CHANGES REQUESTED. This preserves the full implementation
 # context in the session history; the rework message is minimal.
 is_resume_capable=0
-if [ "$agent_name" = "claude" ] || [ "$agent_name" = "codex" ] || [ "$agent_name" = "opencode" ]; then
+if [ "$agent_binary" = "claude" ] || [ "$agent_binary" = "codex" ] || [ "$agent_binary" = "opencode" ]; then
     is_resume_capable=1
 fi
 
@@ -140,10 +169,10 @@ fi
         rework_path="$log_file.rework"
         printf '%s' "$rework_msg" > "$rework_path"
         echo "dispatch.sh: coder rework - resuming session $coder_session_id"
-        if [ "$agent_name" = "codex" ]; then
+        if [ "$agent_binary" = "codex" ]; then
             nohup codex exec resume "$coder_session_id" - \
                 < "$rework_path" > "$log_file" 2> "$log_file.err" &
-        elif [ "$agent_name" = "opencode" ]; then
+        elif [ "$agent_binary" = "opencode" ]; then
             nohup opencode run -s "$coder_session_id" "$rework_msg" \
                 > "$log_file" 2> "$log_file.err" &
         else
@@ -156,10 +185,10 @@ fi
         resume_path="$log_file.resume"
         printf '%s' "$resume_msg" > "$resume_path"
         echo "dispatch.sh: reviewer resume - resuming session $reviewer_session_id"
-        if [ "$agent_name" = "codex" ]; then
+        if [ "$agent_binary" = "codex" ]; then
             nohup codex exec resume "$reviewer_session_id" - \
                 < "$resume_path" > "$log_file" 2> "$log_file.err" &
-        elif [ "$agent_name" = "opencode" ]; then
+        elif [ "$agent_binary" = "opencode" ]; then
             nohup opencode run -s "$reviewer_session_id" "$resume_msg" \
                 > "$log_file" 2> "$log_file.err" &
         else
@@ -168,7 +197,7 @@ fi
         fi
         disown
     else
-    case "$agent_name" in
+    case "$agent_binary" in
         claude)
             nohup claude -p --dangerously-skip-permissions \
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
@@ -186,7 +215,7 @@ fi
             ;;
         *)
             # Treat as an absolute or relative path; assume claude-compatible stdin.
-            nohup "$agent_name" -p --dangerously-skip-permissions \
+            nohup "$agent_binary" -p --dangerously-skip-permissions \
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
     esac

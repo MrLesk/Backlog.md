@@ -294,6 +294,18 @@ export interface PrefixConfig {
 	task: string;
 }
 
+/**
+ * A named agent entry in the project config. `alias` is the friendly name
+ * shown in the UI and stored in task frontmatter; `binary` is the CLI
+ * command the dispatcher launches (claude, codex, opencode, or a path).
+ */
+export interface AgentConfig {
+	/** Friendly name shown in the UI (e.g. "Claudio", "Godex", "Chato"). */
+	alias: string;
+	/** CLI binary to launch (claude | codex | opencode | absolute path). */
+	binary: string;
+}
+
 export interface BoardColumnConfig {
 	/** Status name (must match an entry in BacklogConfig.statuses). */
 	status: string;
@@ -388,6 +400,14 @@ export interface BacklogConfig {
 	 * behavior byte-for-byte.
 	 */
 	board?: BoardConfig;
+	/**
+	 * Named agents available in this project. When configured, the UI shows
+	 * a dropdown instead of a free-text input for the `agent` and
+	 * `reviewAgent` task fields. The dispatcher resolves each alias to its
+	 * `binary` before launching. Tasks without a configured alias fall back
+	 * to treating the stored value as a raw binary name.
+	 */
+	agents?: AgentConfig[];
 	mcp?: {
 		http?: {
 			host?: string;
