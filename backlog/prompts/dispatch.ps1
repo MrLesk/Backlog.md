@@ -93,13 +93,34 @@ if ($taskFile) {
     }
 }
 
-$defaultAgent = if ($env:BACKLOG_DEFAULT_AGENT) { $env:BACKLOG_DEFAULT_AGENT } else { 'claude' }
+# If no per-task `agent:` field is set AND BACKLOG_DEFAULT_AGENT is not
+# configured, the task is assumed to be assigned to a human. In that case:
+#   - "In Progress" / "In Review" → do not dispatch (exit silently so the
+#     human does their work without an agent firing in the background).
+#   - "Human Review" → the ready.md notifier is still useful (someone needs
+#     to look at it), so we continue regardless.
+$hasExplicitAgent = [bool]$taskAgentName
+$hasDefaultAgent  = [bool]$env:BACKLOG_DEFAULT_AGENT
+
+if (-not $hasExplicitAgent -and -not $hasDefaultAgent -and $env:NEW_STATUS -ne 'Human Review') {
+    # No agent configured — human task. Skip dispatch.
+    exit 0
+}
+
+$defaultAgent = if ($env:BACKLOG_DEFAULT_AGENT) { $env:BACKLOG_DEFAULT_AGENT } else { '' }
 
 $agentName = switch ($env:NEW_STATUS) {
     'In Review' {
         if ($taskReviewAgentName) { $taskReviewAgentName }
         elseif ($taskAgentName) { $taskAgentName }
         else { $defaultAgent }
+    }
+    'Human Review' {
+        # Notifier prompt — agent field doesn't matter; use claude as the
+        # runner since it's the lightest invocation (just logs a summary).
+        if ($taskAgentName) { $taskAgentName }
+        elseif ($defaultAgent) { $defaultAgent }
+        else { 'claude' }
     }
     default {
         if ($taskAgentName) { $taskAgentName } else { $defaultAgent }

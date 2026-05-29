@@ -75,7 +75,20 @@ if [ -n "$task_file" ] && [ -f "$task_file" ]; then
     task_review_agent="$(grep -m1 '^reviewAgent:' "$task_file" 2>/dev/null | sed "s/^reviewAgent:[[:space:]]*//" | tr -d "'\"")"
 fi
 
-default_agent="${BACKLOG_DEFAULT_AGENT:-claude}"
+# If no per-task `agent:` field is set AND BACKLOG_DEFAULT_AGENT is not
+# configured, the task is assumed to be assigned to a human. In that case:
+#   - "In Progress" / "In Review" → do not dispatch (exit silently).
+#   - "Human Review" → the ready.md notifier still fires (someone needs
+#     to review the work), so we continue regardless.
+default_agent="${BACKLOG_DEFAULT_AGENT:-}"
+
+if [ -z "$task_agent" ] && [ -z "$default_agent" ] && [ "${NEW_STATUS:-}" != "Human Review" ]; then
+    # No agent configured — human task. Skip dispatch.
+    exit 0
+fi
+
+# For the notifier (Human Review), fall back to claude if nothing else is set.
+notifier_agent="${task_agent:-${default_agent:-claude}}"
 
 case "${NEW_STATUS:-}" in
     "In Review")
@@ -86,6 +99,9 @@ case "${NEW_STATUS:-}" in
         else
             agent_name="$default_agent"
         fi
+        ;;
+    "Human Review")
+        agent_name="$notifier_agent"
         ;;
     *)
         if [ -n "$task_agent" ]; then
