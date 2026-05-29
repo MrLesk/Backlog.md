@@ -113,7 +113,7 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
 # after a review with CHANGES REQUESTED. This preserves the full implementation
 # context in the session history; the rework message is minimal.
 is_coder_rework=0
-if [ "$agent_name" = "claude" ] && \
+if ( [ "$agent_name" = "claude" ] || [ "$agent_name" = "opencode" ] ) && \
    [ "${NEW_STATUS:-}" = "In Progress" ] && \
    [ -n "$coder_session_id" ] && \
    grep -q 'CHANGES REQUESTED' "$task_file" 2>/dev/null; then
@@ -121,7 +121,7 @@ if [ "$agent_name" = "claude" ] && \
 fi
 
 is_reviewer_resume=0
-if [ "$agent_name" = "claude" ] && \
+if ( [ "$agent_name" = "claude" ] || [ "$agent_name" = "opencode" ] ) && \
    [ "${NEW_STATUS:-}" = "In Review" ] && \
    [ -n "$reviewer_session_id" ]; then
     is_reviewer_resume=1
@@ -131,18 +131,30 @@ fi
 (
     cd "$project_root"
     if [ "$is_coder_rework" = "1" ]; then
+        rework_msg="The reviewer requested changes on task ${TASK_ID:-?}. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done."
         rework_path="$log_file.rework"
-        printf 'The reviewer requested changes on task %s. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done.' "${TASK_ID:-?}" > "$rework_path"
+        printf '%s' "$rework_msg" > "$rework_path"
         echo "dispatch.sh: coder rework - resuming session $coder_session_id"
-        nohup claude --resume "$coder_session_id" --dangerously-skip-permissions \
-            < "$rework_path" > "$log_file" 2> "$log_file.err" &
+        if [ "$agent_name" = "opencode" ]; then
+            nohup opencode run -s "$coder_session_id" "$rework_msg" \
+                > "$log_file" 2> "$log_file.err" &
+        else
+            nohup claude --resume "$coder_session_id" --dangerously-skip-permissions \
+                < "$rework_path" > "$log_file" 2> "$log_file.err" &
+        fi
         disown
     elif [ "$is_reviewer_resume" = "1" ]; then
+        resume_msg="The coder has addressed the findings on task ${TASK_ID:-?}. Re-read the task via the Backlog.md MCP (task_view), verify every fix, run the tests, and move to Human Review if everything passes or request more changes if issues remain."
         resume_path="$log_file.resume"
-        printf 'The coder has addressed the findings on task %s. Re-read the task via the Backlog.md MCP (task_view), verify every fix, run the tests, and move to Human Review if everything passes or request more changes if issues remain.' "${TASK_ID:-?}" > "$resume_path"
+        printf '%s' "$resume_msg" > "$resume_path"
         echo "dispatch.sh: reviewer resume - resuming session $reviewer_session_id"
-        nohup claude --resume "$reviewer_session_id" --dangerously-skip-permissions \
-            < "$resume_path" > "$log_file" 2> "$log_file.err" &
+        if [ "$agent_name" = "opencode" ]; then
+            nohup opencode run -s "$reviewer_session_id" "$resume_msg" \
+                > "$log_file" 2> "$log_file.err" &
+        else
+            nohup claude --resume "$reviewer_session_id" --dangerously-skip-permissions \
+                < "$resume_path" > "$log_file" 2> "$log_file.err" &
+        fi
         disown
     else
     case "$agent_name" in
@@ -156,8 +168,9 @@ fi
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         opencode)
-            nohup opencode -p "$full_prompt" --yes \
-                > "$log_file" 2> "$log_file.err" &
+            # opencode run reads from stdin when no prompt arg is given.
+            nohup opencode run --yes \
+                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         *)
             # Treat as an absolute or relative path; assume claude-compatible stdin.

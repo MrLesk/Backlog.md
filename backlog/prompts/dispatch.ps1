@@ -157,7 +157,7 @@ if (-not $agentExec) {
 #   4. The task body contains at least one "CHANGES REQUESTED" review block
 #
 $isCoderRework = $false
-if ($agentName.ToLower() -eq 'claude' -and
+if (($agentName.ToLower() -eq 'claude' -or $agentName.ToLower() -eq 'opencode') -and
     $env:NEW_STATUS -eq 'In Progress' -and
     $coderSessionId -ne '' -and
     $taskContent -match 'CHANGES REQUESTED') {
@@ -165,7 +165,7 @@ if ($agentName.ToLower() -eq 'claude' -and
 }
 
 $isReviewerResume = $false
-if ($agentName.ToLower() -eq 'claude' -and
+if (($agentName.ToLower() -eq 'claude' -or $agentName.ToLower() -eq 'opencode') -and
     $env:NEW_STATUS -eq 'In Review' -and
     $reviewerSessionId -ne '') {
     $isReviewerResume = $true
@@ -176,29 +176,51 @@ if ($isCoderRework) {
     $reworkPath = "$logFile.rework"
     [System.IO.File]::WriteAllText($reworkPath, $reworkMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: coder rework - resuming session $coderSessionId"
-    $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions')
-    Start-Process `
-        -FilePath $agentExec `
-        -ArgumentList $agentArgs `
-        -RedirectStandardInput $reworkPath `
-        -RedirectStandardOutput $logFile `
-        -RedirectStandardError "$logFile.err" `
-        -WindowStyle Hidden `
-        -WorkingDirectory $projectRoot | Out-Null
+    if ($agentName.ToLower() -eq 'opencode') {
+        $agentArgs = @('run', '-s', $coderSessionId, $reworkMessage)
+        Start-Process `
+            -FilePath $agentExec `
+            -ArgumentList $agentArgs `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError "$logFile.err" `
+            -WindowStyle Hidden `
+            -WorkingDirectory $projectRoot | Out-Null
+    } else {
+        $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions')
+        Start-Process `
+            -FilePath $agentExec `
+            -ArgumentList $agentArgs `
+            -RedirectStandardInput $reworkPath `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError "$logFile.err" `
+            -WindowStyle Hidden `
+            -WorkingDirectory $projectRoot | Out-Null
+    }
 } elseif ($isReviewerResume) {
     $reviewResumeMessage = "The coder has addressed the findings on task $env:TASK_ID. Re-read the task via the Backlog.md MCP (task_view), verify every fix, run the tests, and move to Human Review if everything passes or request more changes if issues remain."
     $reviewResumePath = "$logFile.resume"
     [System.IO.File]::WriteAllText($reviewResumePath, $reviewResumeMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: reviewer resume - resuming session $reviewerSessionId"
-    $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions')
-    Start-Process `
-        -FilePath $agentExec `
-        -ArgumentList $agentArgs `
-        -RedirectStandardInput $reviewResumePath `
-        -RedirectStandardOutput $logFile `
-        -RedirectStandardError "$logFile.err" `
-        -WindowStyle Hidden `
-        -WorkingDirectory $projectRoot | Out-Null
+    if ($agentName.ToLower() -eq 'opencode') {
+        $agentArgs = @('run', '-s', $reviewerSessionId, $reviewResumeMessage)
+        Start-Process `
+            -FilePath $agentExec `
+            -ArgumentList $agentArgs `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError "$logFile.err" `
+            -WindowStyle Hidden `
+            -WorkingDirectory $projectRoot | Out-Null
+    } else {
+        $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions')
+        Start-Process `
+            -FilePath $agentExec `
+            -ArgumentList $agentArgs `
+            -RedirectStandardInput $reviewResumePath `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError "$logFile.err" `
+            -WindowStyle Hidden `
+            -WorkingDirectory $projectRoot | Out-Null
+    }
 } elseif ($agentName.ToLower() -eq 'codex') {
     # codex exec reads the prompt from stdin when passed `-` as the prompt
     # argument. --skip-git-repo-check lets it run outside a git repo root.
