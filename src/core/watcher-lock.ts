@@ -43,13 +43,13 @@ export interface AcquireWatcherLockOptions {
 	updateMs?: number;
 }
 
-// Generous defaults: a heavy `backlog browser` startup on a large project
-// (cross-branch task loading, git ops) can block the event loop for several
-// seconds on Windows, delaying the heartbeat timer. A tight stale window
-// would mark the lock compromised during normal startup. 30s/8s survives
-// that while still reclaiming a genuinely dead lock within ~30s.
-const DEFAULT_STALE_MS = 30_000;
-const DEFAULT_UPDATE_MS = 8_000;
+// Generous defaults sized for agent workloads: when a coder agent (Claude,
+// Codex, etc.) runs for several minutes, the backlog watch process event
+// loop may be idle for the entire duration and the heartbeat timer drifts.
+// 5 minutes / 60 second heartbeat keeps the lock alive through a typical
+// agent run while still reclaiming a genuinely dead lock within ~5 minutes.
+const DEFAULT_STALE_MS = 5 * 60_000;   // 5 minutes
+const DEFAULT_UPDATE_MS = 60_000;       // 1 minute
 
 /**
  * Attempts to acquire the watcher lock for the given backlog directory.
