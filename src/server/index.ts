@@ -880,6 +880,8 @@ export class BacklogServer {
 				definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults,
 				onStatusChange: typeof payload.onStatusChange === "string" ? payload.onStatusChange : undefined,
+				agent: typeof payload.agent === "string" ? payload.agent : undefined,
+				reviewAgent: typeof payload.reviewAgent === "string" ? payload.reviewAgent : undefined,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -979,6 +981,12 @@ export class BacklogServer {
 			(typeof updates.onStatusChange === "string" || updates.onStatusChange === null)
 		) {
 			updateInput.onStatusChange = updates.onStatusChange;
+		}
+
+		for (const field of ["agent", "reviewAgent"] as const) {
+			if (field in updates && (typeof updates[field] === "string" || updates[field] === null)) {
+				updateInput[field] = updates[field] as string | null;
+			}
 		}
 
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {

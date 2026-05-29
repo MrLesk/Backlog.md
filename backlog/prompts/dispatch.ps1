@@ -2,11 +2,12 @@
 #
 # Set in backlog.config.yml:
 #   shell: "powershell"
-#   onStatusChange: '& "$PWD\backlog\prompts\dispatch.ps1"'
+#   onStatusChange: 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PWD\backlog\prompts\dispatch.ps1"'
 #
 # Env vars injected by Backlog.md: TASK_ID, OLD_STATUS, NEW_STATUS, TASK_TITLE.
-# This script picks the prompt file matching $NEW_STATUS, prepends task context,
-# and launches `claude -p` in the background so the hook returns immediately.
+# This script picks the prompt file matching $NEW_STATUS, reads the per-task
+# agent/reviewAgent field from the task frontmatter, and launches the right
+# CLI binary in the background so the hook returns immediately.
 
 $ErrorActionPreference = 'Stop'
 
@@ -50,42 +51,113 @@ if (-not $safeStatus) { $safeStatus = 'unknown' }
 $logFile = Join-Path $logDir "$timestamp-$PID-$safeTaskId-$safeStatus.log"
 
 # Write the prompt sidecar first, before resolving the agent binary, so the
-# artifact is available for inspection even when claude isn't on PATH (or when
-# this run is a dry-run smoke test). Pass the prompt via stdin instead of as a
-# positional arg: Start-Process on Windows PowerShell 5.1 mangles multi-line
-# arguments (the child process only sees the first word). UTF-8 without BOM
-# so claude doesn't see a leading BOM glyph.
+# artifact is available for inspection even when the agent CLI isn't on PATH
+# (or when this run is a dry-run smoke test).
 $promptPath = "$logFile.prompt"
 [System.IO.File]::WriteAllText($promptPath, $fullPrompt, (New-Object System.Text.UTF8Encoding $false))
 
-# Dry-run mode: do everything except spawn claude. Used by the dispatcher
+# Dry-run mode: do everything except spawn the agent. Used by the dispatcher
 # regression tests; harmless in production.
 if ($env:BACKLOG_DISPATCH_DRY_RUN -eq '1') { exit 0 }
 
-# Resolve the real executable. npm on Windows installs both `claude.cmd` (the
-# batch wrapper Start-Process can launch) and a bare `claude` bash shim that
-# cannot be launched as a Win32 process. Try the .cmd / .exe variants first.
-# `Select-Object -First 1` defends against PATH containing more than one match
-# (e.g. user-local npm bin shadowing a system install) — without it, .Source
-# returns an array and Start-Process refuses with "cannot convert Object[] to
-# String".
-$claudeExec = $null
-foreach ($candidate in @('claude.cmd', 'claude.exe', 'claude')) {
-    $resolved = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($resolved) { $claudeExec = $resolved.Source; break }
+# ── Agent resolution ────────────────────────────────────────────────────────
+#
+# Priority order:
+#   1. Per-task frontmatter field: `agent:` (for coder) or `reviewAgent:` (for reviewer)
+#   2. BACKLOG_DEFAULT_AGENT env var (set in the shell that runs the server)
+#   3. Hard-coded fallback: "claude"
+#
+# The "In Review" transition uses `reviewAgent:` from the task; if absent it
+# falls back to `agent:`, then to the default. This lets you set a different
+# model for review than for implementation on a per-task basis without touching
+# dispatcher code.
+#
+# Supported agent names: claude | codex | opencode
+# You can also set an absolute path to any binary that accepts:
+#   <binary> -p <prompt>  --<permission-flag>   (via stdin)
+#
+$projectRoot = (Resolve-Path "$scriptDir/../..").Path
+$tasksDir = Join-Path $projectRoot 'backlog\tasks'
+$taskFile = Get-ChildItem $tasksDir -Filter "*$env:TASK_ID*" -Recurse -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+
+$taskAgentName = ''
+$taskReviewAgentName = ''
+if ($taskFile) {
+    $taskContent = Get-Content $taskFile.FullName -Raw
+    if ($taskContent -match '(?m)^agent:\s*[''"]?([^\s''"]+)[''"]?') {
+        $taskAgentName = $matches[1].Trim()
+    }
+    if ($taskContent -match '(?m)^reviewAgent:\s*[''"]?([^\s''"]+)[''"]?') {
+        $taskReviewAgentName = $matches[1].Trim()
+    }
 }
-if (-not $claudeExec) {
-    Write-Warning "dispatch.ps1: 'claude' CLI not found on PATH"
+
+$defaultAgent = if ($env:BACKLOG_DEFAULT_AGENT) { $env:BACKLOG_DEFAULT_AGENT } else { 'claude' }
+
+$agentName = switch ($env:NEW_STATUS) {
+    'In Review' {
+        if ($taskReviewAgentName) { $taskReviewAgentName }
+        elseif ($taskAgentName) { $taskAgentName }
+        else { $defaultAgent }
+    }
+    default {
+        if ($taskAgentName) { $taskAgentName } else { $defaultAgent }
+    }
+}
+
+Write-Host "dispatch.ps1: task=$env:TASK_ID status=$env:NEW_STATUS agent=$agentName"
+
+# ── Binary lookup ────────────────────────────────────────────────────────────
+#
+# Each agent entry lists the preferred candidate names in order. On Windows,
+# npm installs a bare shim (no extension) alongside a .cmd wrapper; Start-Process
+# only works with the .cmd or .exe form, so we probe those first.
+# Select-Object -First 1 guards against PATH returning an array when multiple
+# installs exist (which crashes Start-Process with "cannot convert Object[]").
+#
+$agentCandidates = switch ($agentName.ToLower()) {
+    'claude'    { @('claude.cmd',    'claude.exe',    'claude')    }
+    'codex'     { @('codex.cmd',     'codex.exe',     'codex')     }
+    'opencode'  { @('opencode.cmd',  'opencode.exe',  'opencode')  }
+    default {
+        # Treat as an absolute or relative path to the binary directly.
+        @($agentName)
+    }
+}
+
+$agentExec = $null
+foreach ($candidate in $agentCandidates) {
+    $resolved = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($resolved) { $agentExec = $resolved.Source; break }
+}
+
+if (-not $agentExec) {
+    Write-Warning "dispatch.ps1: agent '$agentName' not found on PATH — falling back to claude"
+    $agentExec = (Get-Command 'claude.cmd' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1)?.Source
+}
+if (-not $agentExec) {
+    Write-Warning "dispatch.ps1: 'claude' fallback also not found. Cannot dispatch."
     exit 1
 }
 
-# `claude` in headless mode needs --dangerously-skip-permissions to act
-# without prompting. Adjust if your trust model differs.
+# ── Per-agent launch arguments ───────────────────────────────────────────────
+#
+# All three supported agents accept: <binary> -p <prompt> <permission-flag>
+# The prompt is passed via stdin (-RedirectStandardInput) to avoid PowerShell
+# 5.1 mangling multi-line strings in ArgumentList.
+#
+$agentArgs = switch ($agentName.ToLower()) {
+    'codex'    { @('--full-auto') }                            # codex: full-auto mode
+    'opencode' { @('-p', '--yes') }                            # opencode: -p + skip confirms
+    default    { @('-p', '--dangerously-skip-permissions') }   # claude default
+}
+
 Start-Process `
-    -FilePath $claudeExec `
-    -ArgumentList @('-p', '--dangerously-skip-permissions') `
+    -FilePath $agentExec `
+    -ArgumentList $agentArgs `
     -RedirectStandardInput $promptPath `
     -RedirectStandardOutput $logFile `
     -RedirectStandardError "$logFile.err" `
     -WindowStyle Hidden `
-    -WorkingDirectory (Resolve-Path "$scriptDir/../..").Path | Out-Null
+    -WorkingDirectory $projectRoot | Out-Null

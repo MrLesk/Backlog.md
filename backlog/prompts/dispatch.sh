@@ -6,13 +6,14 @@
 #   onStatusChange: '"$PWD/backlog/prompts/dispatch.sh"'
 #
 # Env vars injected by Backlog.md: TASK_ID, OLD_STATUS, NEW_STATUS, TASK_TITLE.
-# Picks the prompt file matching $NEW_STATUS, prepends task context, and
-# launches `claude -p` in the background so the hook returns immediately.
+# Picks the prompt file matching $NEW_STATUS, reads the per-task agent/reviewAgent
+# field from the task frontmatter, and launches the right CLI in the background.
 
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 prompts_dir="$script_dir"
+project_root="$(cd "$script_dir/../.." && pwd)"
 
 # Set BACKLOG_DISPATCH_MODE=test in the env that launches Backlog.md to pick
 # the smoke-test prompts (no-op agents that just wait and transition to the
@@ -43,8 +44,6 @@ Task: ${TASK_ID:-?} — ${TASK_TITLE:-?}
 Status: ${OLD_STATUS:-?} → ${NEW_STATUS:-?}"
 
 # Per-invocation log file so concurrent hooks don't clobber each other.
-# Millisecond timestamp + PID make collisions effectively impossible even when
-# the same task transitions twice in the same second.
 log_dir="$prompts_dir/logs"
 mkdir -p "$log_dir"
 timestamp="$(date +%Y%m%d-%H%M%S-%3N)"
@@ -52,27 +51,79 @@ sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'; }
 safe_task_id="$(sanitize "${TASK_ID:-unknown}")"
 safe_status="$(sanitize "${NEW_STATUS:-unknown}")"
 log_file="$log_dir/$timestamp-$$-$safe_task_id-$safe_status.log"
-
-# Write the prompt sidecar so the artifact is available for inspection even on
-# dry-run or when claude isn't on PATH.
 prompt_path="$log_file.prompt"
 printf '%s' "$full_prompt" > "$prompt_path"
 
-# Dry-run mode: do everything except spawn claude. Used by dispatcher regression
-# tests; harmless in production.
+# Dry-run mode: do everything except spawn the agent.
 if [ "${BACKLOG_DISPATCH_DRY_RUN:-}" = "1" ]; then
     exit 0
 fi
 
-# `claude` in headless mode needs --dangerously-skip-permissions to act
-# without prompting. Adjust if your trust model differs.
+# ── Agent resolution ─────────────────────────────────────────────────────────
 #
-# Detach so Backlog.md's hook returns immediately. nohup + & + disown handles
-# the case where Backlog.md exits before the agent finishes.
-project_root="$(cd "$script_dir/../.." && pwd)"
+# Priority: per-task frontmatter field > BACKLOG_DEFAULT_AGENT env var > "claude"
+#
+# For "In Review", prefers reviewAgent: from the task, falls back to agent:,
+# then to the default. This lets coder and reviewer be different agents per task
+# without touching dispatcher code.
+#
+task_agent=""
+task_review_agent=""
+task_file="$(find "$project_root/backlog/tasks" -name "*${TASK_ID:-}*" 2>/dev/null | head -1)"
+if [ -n "$task_file" ] && [ -f "$task_file" ]; then
+    task_agent="$(grep -m1 '^agent:' "$task_file" 2>/dev/null | sed "s/^agent:[[:space:]]*//" | tr -d "'\"")"
+    task_review_agent="$(grep -m1 '^reviewAgent:' "$task_file" 2>/dev/null | sed "s/^reviewAgent:[[:space:]]*//" | tr -d "'\"")"
+fi
+
+default_agent="${BACKLOG_DEFAULT_AGENT:-claude}"
+
+case "${NEW_STATUS:-}" in
+    "In Review")
+        if [ -n "$task_review_agent" ]; then
+            agent_name="$task_review_agent"
+        elif [ -n "$task_agent" ]; then
+            agent_name="$task_agent"
+        else
+            agent_name="$default_agent"
+        fi
+        ;;
+    *)
+        if [ -n "$task_agent" ]; then
+            agent_name="$task_agent"
+        else
+            agent_name="$default_agent"
+        fi
+        ;;
+esac
+
+echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
+
+# ── Per-agent launch ─────────────────────────────────────────────────────────
+#
+# All three supported agents accept a prompt via stdin or positional arg.
+# Detach with nohup + & + disown so the hook returns immediately.
+#
 (
     cd "$project_root"
-    nohup claude -p "$full_prompt" --dangerously-skip-permissions \
-        > "$log_file" 2> "$log_file.err" &
+    case "$agent_name" in
+        claude)
+            nohup claude -p --dangerously-skip-permissions \
+                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
+            ;;
+        codex)
+            # codex reads the prompt from stdin in full-auto mode.
+            nohup codex --full-auto \
+                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
+            ;;
+        opencode)
+            nohup opencode -p --yes \
+                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
+            ;;
+        *)
+            # Treat as an absolute or relative path; assume claude-compatible stdin.
+            nohup "$agent_name" -p --dangerously-skip-permissions \
+                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
+            ;;
+    esac
     disown
 ) > /dev/null 2>&1

@@ -33,10 +33,14 @@ type TaskUpdatePayload = Partial<Task> & {
   definitionOfDoneCheck?: number[];
   definitionOfDoneUncheck?: number[];
   disableDefinitionOfDoneDefaults?: boolean;
+  agent?: string | null;
+  reviewAgent?: string | null;
 };
 
-type InlineMetaUpdatePayload = Omit<Partial<Task>, "milestone"> & {
+type InlineMetaUpdatePayload = Omit<Partial<Task>, "milestone" | "agent" | "reviewAgent"> & {
   milestone?: string | null;
+  agent?: string | null;
+  reviewAgent?: string | null;
 };
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
@@ -228,6 +232,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [onStatusChange, setOnStatusChange] = useState<string>(task?.onStatusChange || "");
   const [showAdvanced, setShowAdvanced] = useState<boolean>(Boolean(task?.onStatusChange));
+  const [agent, setAgent] = useState<string>(task?.agent || "");
+  const [reviewAgent, setReviewAgent] = useState<string>(task?.reviewAgent || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
@@ -240,6 +246,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     notes: task?.implementationNotes || "",
     finalSummary: task?.finalSummary || "",
     onStatusChange: task?.onStatusChange || "",
+    agent: task?.agent || "",
+    reviewAgent: task?.reviewAgent || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
     definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
   }), [task, defaultDefinitionOfDone, isCreateMode]);
@@ -252,10 +260,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
       notes !== baseline.notes ||
       finalSummary !== baseline.finalSummary ||
       onStatusChange !== baseline.onStatusChange ||
+      agent !== baseline.agent ||
+      reviewAgent !== baseline.reviewAgent ||
       JSON.stringify(criteria) !== baseline.criteria ||
       JSON.stringify(definitionOfDone) !== baseline.definitionOfDone
     );
-  }, [title, description, plan, notes, finalSummary, onStatusChange, criteria, definitionOfDone, baseline]);
+  }, [title, description, plan, notes, finalSummary, onStatusChange, agent, reviewAgent, criteria, definitionOfDone, baseline]);
 
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
@@ -303,6 +313,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setMilestone(task?.milestone || "");
     setOnStatusChange(task?.onStatusChange || "");
     setShowAdvanced(Boolean(task?.onStatusChange));
+    setAgent(task?.agent || "");
+    setReviewAgent(task?.reviewAgent || "");
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
     // Preload tasks for dependency picker
@@ -452,6 +464,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
         // Always include onStatusChange (empty string clears the per-task override on the server).
         onStatusChange: onStatusChange.trim(),
+        // Empty string clears the field (server normalizes to null/delete).
+        agent: (agent.trim() || null) as string | undefined,
+        reviewAgent: (reviewAgent.trim() || null) as string | undefined,
       };
 
       if (isCreateMode && onSubmit) {
@@ -1033,6 +1048,47 @@ export const TaskDetailsModal: React.FC<Props> = ({
               placeholder="Type name and press Enter"
               disabled={isFromOtherBranch}
             />
+          </div>
+
+          {/* Agents */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <SectionHeader title="Agents" />
+            <div className="space-y-2">
+              <div>
+                <label htmlFor="task-agent" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Coder agent
+                </label>
+                <input
+                  id="task-agent"
+                  type="text"
+                  value={agent}
+                  onChange={(e) => {
+                    setAgent(e.target.value);
+                    handleInlineMetaUpdate({ agent: e.target.value || null });
+                  }}
+                  placeholder="claude / codex / opencode"
+                  disabled={isFromOtherBranch}
+                  className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
+                />
+              </div>
+              <div>
+                <label htmlFor="task-review-agent" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Reviewer agent <span className="text-gray-400">(defaults to coder agent)</span>
+                </label>
+                <input
+                  id="task-review-agent"
+                  type="text"
+                  value={reviewAgent}
+                  onChange={(e) => {
+                    setReviewAgent(e.target.value);
+                    handleInlineMetaUpdate({ reviewAgent: e.target.value || null });
+                  }}
+                  placeholder="claude / codex / opencode"
+                  disabled={isFromOtherBranch}
+                  className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Labels */}

@@ -59,6 +59,10 @@ export interface Task {
 	source?: "local" | "remote" | "completed" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
+	/** Agent CLI to use when this task moves to "In Progress" (e.g. "claude", "codex", "opencode"). Falls back to global dispatch default when absent. */
+	agent?: string;
+	/** Agent CLI to use when this task moves to "In Review". Falls back to `agent` when absent, then to global dispatch default. */
+	reviewAgent?: string;
 }
 
 export interface MilestoneBucket {
@@ -109,6 +113,10 @@ export interface TaskCreateInput {
 	rawContent?: string;
 	/** Per-task status-change hook command. See BacklogConfig.onStatusChange for global default. */
 	onStatusChange?: string;
+	/** Agent CLI to invoke as the coder (e.g. "claude", "codex", "opencode"). */
+	agent?: string;
+	/** Agent CLI to invoke as the reviewer. Defaults to `agent` when absent. */
+	reviewAgent?: string;
 }
 
 export interface TaskUpdateInput {
@@ -153,6 +161,10 @@ export interface TaskUpdateInput {
 	rawContent?: string;
 	/** Per-task status-change hook command. Pass `null` or an empty string to clear the override and fall back to the global setting. */
 	onStatusChange?: string | null;
+	/** Agent CLI to invoke as the coder. Pass `null` or empty to clear. */
+	agent?: string | null;
+	/** Agent CLI to invoke as the reviewer. Pass `null` or empty to clear. */
+	reviewAgent?: string | null;
 }
 
 export interface TaskListFilter {
@@ -301,7 +313,7 @@ export interface BoardColumnConfig {
  * border accent, drag-state visuals) is rendered unconditionally and is
  * NOT part of this enum — those elements aren't user-configurable.
  */
-export const CONFIGURABLE_CARD_FIELDS = ["id", "priority", "milestone", "labels", "createdDate", "assignee"] as const;
+export const CONFIGURABLE_CARD_FIELDS = ["id", "priority", "milestone", "labels", "createdDate", "assignee", "agent", "reviewAgent"] as const;
 export type ConfigurableCardField = (typeof CONFIGURABLE_CARD_FIELDS)[number];
 
 export interface CardConfig {

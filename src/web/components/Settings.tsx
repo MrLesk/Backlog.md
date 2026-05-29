@@ -816,6 +816,8 @@ const CARD_FIELD_LABELS: Record<ConfigurableCardField, string> = {
 	labels: 'Labels',
 	createdDate: 'Created date',
 	assignee: 'Assignee',
+	agent: 'Coder agent',
+	reviewAgent: 'Reviewer agent',
 };
 
 /**

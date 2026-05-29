@@ -1238,6 +1238,10 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 				...(typeof input.onStatusChange === "string" &&
 					input.onStatusChange.trim().length > 0 && { onStatusChange: input.onStatusChange.trim() }),
+				...(typeof input.agent === "string" &&
+					input.agent.trim().length > 0 && { agent: input.agent.trim() }),
+				...(typeof input.reviewAgent === "string" &&
+					input.reviewAgent.trim().length > 0 && { reviewAgent: input.reviewAgent.trim() }),
 			};
 
 			const filePath = await this.writePreparedTask(task, isDraft);
@@ -1383,6 +1387,20 @@ export class Core {
 					task.onStatusChange = normalizedHook;
 				}
 				mutated = true;
+			}
+		}
+
+		for (const field of ["agent", "reviewAgent"] as const) {
+			if (input[field] !== undefined) {
+				const val = input[field] === null || input[field]?.trim().length === 0 ? undefined : input[field]?.trim();
+				if ((task[field] ?? undefined) !== val) {
+					if (val === undefined) {
+						delete task[field];
+					} else {
+						task[field] = val;
+					}
+					mutated = true;
+				}
 			}
 		}
 

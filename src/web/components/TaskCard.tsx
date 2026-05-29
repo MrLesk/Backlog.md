@@ -176,6 +176,34 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
+        {/* Slot: body-agent — coder + reviewer agent chips, only when set. */}
+        {(!hiddenFields.has('agent') && task.agent) || (!hiddenFields.has('reviewAgent') && task.reviewAgent) ? (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {!hiddenFields.has('agent') && task.agent && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded transition-colors duration-200"
+                title={`Coder agent: ${task.agent}`}
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                {task.agent}
+              </span>
+            )}
+            {!hiddenFields.has('reviewAgent') && task.reviewAgent && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded transition-colors duration-200"
+                title={`Reviewer agent: ${task.reviewAgent}`}
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {task.reviewAgent}
+              </span>
+            )}
+          </div>
+        ) : null}
+
         {/* Slot: body-labels — limited to 3, with a "+N" overflow. */}
         {!hiddenFields.has('labels') && task.labels.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">

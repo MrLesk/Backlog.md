@@ -192,6 +192,8 @@ export function parseTask(content: string): Task {
 		priority: validatedPriority,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,
+		agent: frontmatter.agent ? String(frontmatter.agent) : undefined,
+		reviewAgent: frontmatter.reviewAgent ? String(frontmatter.reviewAgent) : undefined,
 	};
 }
 
