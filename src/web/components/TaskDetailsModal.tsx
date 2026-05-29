@@ -1062,10 +1062,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   id="task-agent"
                   type="text"
                   value={agent}
-                  onChange={(e) => {
-                    setAgent(e.target.value);
-                    handleInlineMetaUpdate({ agent: e.target.value || null });
-                  }}
+                  onChange={(e) => setAgent(e.target.value)}
+                  onBlur={(e) => handleInlineMetaUpdate({ agent: e.target.value.trim() || null })}
                   placeholder="claude / codex / opencode"
                   disabled={isFromOtherBranch}
                   className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
@@ -1079,10 +1077,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   id="task-review-agent"
                   type="text"
                   value={reviewAgent}
-                  onChange={(e) => {
-                    setReviewAgent(e.target.value);
-                    handleInlineMetaUpdate({ reviewAgent: e.target.value || null });
-                  }}
+                  onChange={(e) => setReviewAgent(e.target.value)}
+                  onBlur={(e) => handleInlineMetaUpdate({ reviewAgent: e.target.value.trim() || null })}
                   placeholder="claude / codex / opencode"
                   disabled={isFromOtherBranch}
                   className="w-full h-9 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 disabled:opacity-60"
