@@ -93,37 +93,26 @@ if ($taskFile) {
     }
 }
 
-# If no per-task `agent:` field is set AND BACKLOG_DEFAULT_AGENT is not
-# configured, the task is assumed to be assigned to a human. In that case:
-#   - "In Progress" / "In Review" → do not dispatch (exit silently so the
-#     human does their work without an agent firing in the background).
-#   - "Human Review" → the ready.md notifier is still useful (someone needs
-#     to look at it), so we continue regardless.
-$hasExplicitAgent = [bool]$taskAgentName
-$hasDefaultAgent  = [bool]$env:BACKLOG_DEFAULT_AGENT
-
-if (-not $hasExplicitAgent -and -not $hasDefaultAgent -and $env:NEW_STATUS -ne 'Human Review') {
-    # No agent configured — human task. Skip dispatch.
+# Tasks without an `agent:` field are human tasks — do not dispatch an
+# agent for them. The only exception is "Human Review" which fires the
+# ready.md notifier regardless (it just logs a summary; it doesn't do
+# implementation work). The notifier uses whatever agent IS on the task,
+# or falls back to claude as a lightweight runner.
+if (-not $taskAgentName -and $env:NEW_STATUS -ne 'Human Review') {
     exit 0
 }
 
-$defaultAgent = if ($env:BACKLOG_DEFAULT_AGENT) { $env:BACKLOG_DEFAULT_AGENT } else { '' }
-
 $agentName = switch ($env:NEW_STATUS) {
     'In Review' {
-        if ($taskReviewAgentName) { $taskReviewAgentName }
-        elseif ($taskAgentName) { $taskAgentName }
-        else { $defaultAgent }
+        # Prefer the dedicated reviewer agent; fall back to the coder agent.
+        if ($taskReviewAgentName) { $taskReviewAgentName } else { $taskAgentName }
     }
     'Human Review' {
-        # Notifier prompt — agent field doesn't matter; use claude as the
-        # runner since it's the lightest invocation (just logs a summary).
-        if ($taskAgentName) { $taskAgentName }
-        elseif ($defaultAgent) { $defaultAgent }
-        else { 'claude' }
+        # Notifier: use coder agent if set, otherwise claude.
+        if ($taskAgentName) { $taskAgentName } else { 'claude' }
     }
     default {
-        if ($taskAgentName) { $taskAgentName } else { $defaultAgent }
+        $taskAgentName
     }
 }
 

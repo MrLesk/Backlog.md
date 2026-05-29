@@ -75,40 +75,30 @@ if [ -n "$task_file" ] && [ -f "$task_file" ]; then
     task_review_agent="$(grep -m1 '^reviewAgent:' "$task_file" 2>/dev/null | sed "s/^reviewAgent:[[:space:]]*//" | tr -d "'\"")"
 fi
 
-# If no per-task `agent:` field is set AND BACKLOG_DEFAULT_AGENT is not
-# configured, the task is assumed to be assigned to a human. In that case:
-#   - "In Progress" / "In Review" → do not dispatch (exit silently).
-#   - "Human Review" → the ready.md notifier still fires (someone needs
-#     to review the work), so we continue regardless.
-default_agent="${BACKLOG_DEFAULT_AGENT:-}"
-
-if [ -z "$task_agent" ] && [ -z "$default_agent" ] && [ "${NEW_STATUS:-}" != "Human Review" ]; then
-    # No agent configured — human task. Skip dispatch.
+# Tasks without an `agent:` field are human tasks — do not dispatch an
+# agent for them. The only exception is "Human Review" which fires the
+# ready.md notifier regardless (it just logs a summary, not implementation
+# work). The notifier uses whatever agent IS on the task, or falls back
+# to claude as a lightweight runner.
+if [ -z "$task_agent" ] && [ "${NEW_STATUS:-}" != "Human Review" ]; then
     exit 0
 fi
 
-# For the notifier (Human Review), fall back to claude if nothing else is set.
-notifier_agent="${task_agent:-${default_agent:-claude}}"
-
 case "${NEW_STATUS:-}" in
     "In Review")
+        # Prefer the dedicated reviewer agent; fall back to the coder agent.
         if [ -n "$task_review_agent" ]; then
             agent_name="$task_review_agent"
-        elif [ -n "$task_agent" ]; then
-            agent_name="$task_agent"
         else
-            agent_name="$default_agent"
+            agent_name="$task_agent"
         fi
         ;;
     "Human Review")
-        agent_name="$notifier_agent"
+        # Notifier: use coder agent if set, otherwise claude.
+        agent_name="${task_agent:-claude}"
         ;;
     *)
-        if [ -n "$task_agent" ]; then
-            agent_name="$task_agent"
-        else
-            agent_name="$default_agent"
-        fi
+        agent_name="$task_agent"
         ;;
 esac
 
