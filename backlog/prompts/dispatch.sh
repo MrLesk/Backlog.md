@@ -141,8 +141,9 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name 
 # Resume the coder's previous session when the task returns to In Progress
 # after a review with CHANGES REQUESTED. This preserves the full implementation
 # context in the session history; the rework message is minimal.
+# opencode sessions may not persist reliably — always launch fresh.
 is_resume_capable=0
-if [ "$agent_binary" = "claude" ] || [ "$agent_binary" = "codex" ] || [ "$agent_binary" = "opencode" ]; then
+if [ "$agent_binary" = "claude" ] || [ "$agent_binary" = "codex" ]; then
     is_resume_capable=1
 fi
 
