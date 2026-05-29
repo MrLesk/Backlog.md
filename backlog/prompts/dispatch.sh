@@ -117,9 +117,9 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         codex)
-            # Codex needs the prompt as a positional arg; rejects stdin redirect.
-            nohup codex --yolo "$full_prompt" \
-                > "$log_file" 2> "$log_file.err" &
+            # `codex exec - ` reads the prompt from stdin.
+            nohup codex exec --skip-git-repo-check --yolo - \
+                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         opencode)
             nohup opencode -p "$full_prompt" --yes \

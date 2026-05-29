@@ -130,11 +130,14 @@ if (-not $agentExec) {
 # Codex and opencode require the prompt as a positional argument — they reject
 # stdin redirection with "stdin is not a terminal".
 if ($agentName.ToLower() -eq 'codex') {
-    # Codex: prompt as positional arg, --yolo for unattended mode.
-    $agentArgs = @('--yolo', $fullPrompt)
+    # codex exec reads the prompt from stdin when passed `-` as the prompt
+    # argument. --skip-git-repo-check lets it run outside a git repo root.
+    # --yolo = unattended (no confirmation prompts).
+    $agentArgs = @('exec', '--skip-git-repo-check', '--yolo', '-')
     Start-Process `
         -FilePath $agentExec `
         -ArgumentList $agentArgs `
+        -RedirectStandardInput $promptPath `
         -RedirectStandardOutput $logFile `
         -RedirectStandardError "$logFile.err" `
         -WindowStyle Hidden `
