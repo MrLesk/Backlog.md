@@ -173,7 +173,8 @@ fi
             nohup codex exec resume "$coder_session_id" - \
                 < "$rework_path" > "$log_file" 2> "$log_file.err" &
         elif [ "$agent_binary" = "opencode" ]; then
-            nohup opencode run --dangerously-skip-permissions -s "$coder_session_id" --prompt "$rework_msg" \
+            nohup opencode run --dangerously-skip-permissions -s "$coder_session_id" \
+                -f "$rework_path" 'Read and follow the attached instructions.' \
                 > "$log_file" 2> "$log_file.err" &
         else
             nohup claude --resume "$coder_session_id" --dangerously-skip-permissions \
@@ -189,7 +190,8 @@ fi
             nohup codex exec resume "$reviewer_session_id" - \
                 < "$resume_path" > "$log_file" 2> "$log_file.err" &
         elif [ "$agent_binary" = "opencode" ]; then
-            nohup opencode run --dangerously-skip-permissions -s "$reviewer_session_id" --prompt "$resume_msg" \
+            nohup opencode run --dangerously-skip-permissions -s "$reviewer_session_id" \
+                -f "$resume_path" 'Read and follow the attached instructions.' \
                 > "$log_file" 2> "$log_file.err" &
         else
             nohup claude --resume "$reviewer_session_id" --dangerously-skip-permissions \
@@ -210,7 +212,7 @@ fi
             ;;
         opencode)
             nohup opencode run --dangerously-skip-permissions \
-                --prompt "$(cat "$prompt_path")" \
+                -f "$prompt_path" 'Read and follow the attached instructions completely.' \
                 > "$log_file" 2> "$log_file.err" &
             ;;
         *)

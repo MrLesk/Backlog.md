@@ -224,7 +224,8 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot | Out-Null
     } elseif ($agentBinary.ToLower() -eq 'opencode') {
-        $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $coderSessionId, '--prompt', $reworkMessage)
+        # Rework: resume session + attach the short rework message as a file.
+        $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $coderSessionId, '-f', $reworkPath, 'Read and follow the attached instructions.')
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -259,7 +260,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot | Out-Null
     } elseif ($agentBinary.ToLower() -eq 'opencode') {
-        $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $reviewerSessionId, '--prompt', $reviewResumeMessage)
+        $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $reviewerSessionId, '-f', $reviewResumePath, 'Read and follow the attached instructions.')
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -293,9 +294,11 @@ if ($isCoderRework) {
         -WindowStyle Hidden `
         -WorkingDirectory $projectRoot | Out-Null
 } elseif ($agentBinary.ToLower() -eq 'opencode') {
-    # opencode run: pass prompt via --prompt flag.
-    # Positional args hit Windows command-line length limits for long prompts.
-    $agentArgs = @('run', '--dangerously-skip-permissions', '--prompt', $fullPrompt)
+    # opencode run: attach the prompt file with -f and use a short
+    # positional message telling it to read the attached file.
+    # --prompt flag does not exist; passing the full prompt as a positional
+    # arg hits Windows command-line length limits for large prompts.
+    $agentArgs = @('run', '--dangerously-skip-permissions', '-f', $promptPath, 'Read and follow the attached instructions completely.')
     Start-Process `
         -FilePath $agentExec `
         -ArgumentList $agentArgs `
