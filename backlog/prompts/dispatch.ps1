@@ -224,7 +224,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot | Out-Null
     } elseif ($agentBinary.ToLower() -eq 'opencode') {
-        $agentArgs = @('run', '-s', $coderSessionId, $reworkMessage)
+        $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $coderSessionId, '--prompt', $reworkMessage)
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -259,7 +259,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot | Out-Null
     } elseif ($agentBinary.ToLower() -eq 'opencode') {
-        $agentArgs = @('run', '-s', $reviewerSessionId, $reviewResumeMessage)
+        $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $reviewerSessionId, '--prompt', $reviewResumeMessage)
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -293,7 +293,9 @@ if ($isCoderRework) {
         -WindowStyle Hidden `
         -WorkingDirectory $projectRoot | Out-Null
 } elseif ($agentBinary.ToLower() -eq 'opencode') {
-    $agentArgs = @('-p', $fullPrompt, '--yes')
+    # opencode run: pass prompt via --prompt flag.
+    # Positional args hit Windows command-line length limits for long prompts.
+    $agentArgs = @('run', '--dangerously-skip-permissions', '--prompt', $fullPrompt)
     Start-Process `
         -FilePath $agentExec `
         -ArgumentList $agentArgs `
