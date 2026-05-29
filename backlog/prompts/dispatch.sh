@@ -69,10 +69,13 @@ fi
 #
 task_agent=""
 task_review_agent=""
+coder_session_id=""
 task_file="$(find "$project_root/backlog/tasks" -name "*${TASK_ID:-}*" 2>/dev/null | head -1)"
 if [ -n "$task_file" ] && [ -f "$task_file" ]; then
     task_agent="$(grep -m1 '^agent:' "$task_file" 2>/dev/null | sed "s/^agent:[[:space:]]*//" | tr -d "'\"")"
     task_review_agent="$(grep -m1 '^reviewAgent:' "$task_file" 2>/dev/null | sed "s/^reviewAgent:[[:space:]]*//" | tr -d "'\"")"
+    # Extract the last "Session ID: <uuid>" from the task body for --resume on rework.
+    coder_session_id="$(grep -oE 'Session ID: [a-f0-9-]{36}' "$task_file" 2>/dev/null | tail -1 | sed 's/Session ID: //')"
 fi
 
 # Tasks without an `agent:` field are human tasks — do not dispatch an
@@ -104,13 +107,29 @@ esac
 
 echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
 
+# ── Rework detection (claude only) ───────────────────────────────────────────
+# Resume the coder's previous session when the task returns to In Progress
+# after a review with CHANGES REQUESTED. This preserves the full implementation
+# context in the session history; the rework message is minimal.
+is_rework=0
+if [ "$agent_name" = "claude" ] && \
+   [ "${NEW_STATUS:-}" = "In Progress" ] && \
+   [ -n "$coder_session_id" ] && \
+   grep -q 'CHANGES REQUESTED' "$task_file" 2>/dev/null; then
+    is_rework=1
+fi
+
 # ── Per-agent launch ─────────────────────────────────────────────────────────
-#
-# All three supported agents accept a prompt via stdin or positional arg.
-# Detach with nohup + & + disown so the hook returns immediately.
-#
 (
     cd "$project_root"
+    if [ "$is_rework" = "1" ]; then
+        rework_path="$log_file.rework"
+        printf 'The reviewer requested changes on task %s. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done.' "${TASK_ID:-?}" > "$rework_path"
+        echo "dispatch.sh: rework mode - resuming session $coder_session_id"
+        nohup claude --resume "$coder_session_id" --dangerously-skip-permissions \
+            < "$rework_path" > "$log_file" 2> "$log_file.err" &
+        disown
+    else
     case "$agent_name" in
         claude)
             nohup claude -p --dangerously-skip-permissions \
@@ -131,5 +150,6 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
     esac
+    fi
     disown
 ) > /dev/null 2>&1

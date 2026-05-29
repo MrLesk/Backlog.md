@@ -68,6 +68,7 @@ $taskFile = Get-ChildItem $tasksDir -Filter "*$env:TASK_ID*" -Recurse -ErrorActi
 
 $taskAgentName = ''
 $taskReviewAgentName = ''
+$coderSessionId = ''
 if ($taskFile) {
     $taskContent = Get-Content $taskFile.FullName -Raw
     if ($taskContent -match '(?m)^agent:\s*[''"]?([^\s''"\r\n]+)[''"]?') {
@@ -75,6 +76,14 @@ if ($taskFile) {
     }
     if ($taskContent -match '(?m)^reviewAgent:\s*[''"]?([^\s''"\r\n]+)[''"]?') {
         $taskReviewAgentName = $matches[1].Trim()
+    }
+    # Extract the most recent coder session ID so rework runs can resume
+    # the same session rather than starting fresh. The coder writes this to
+    # the task notes in a "## Session" block: "Session ID: <uuid>".
+    # We take the LAST match in case there were multiple rounds.
+    $sessionMatches = [regex]::Matches($taskContent, '(?m)^Session ID:\s*([a-f0-9-]{36})')
+    if ($sessionMatches.Count -gt 0) {
+        $coderSessionId = $sessionMatches[$sessionMatches.Count - 1].Groups[1].Value.Trim()
     }
 }
 
@@ -129,7 +138,42 @@ if (-not $agentExec) {
 # Claude reads the prompt from stdin (multi-line safe via -RedirectStandardInput).
 # Codex and opencode require the prompt as a positional argument — they reject
 # stdin redirection with "stdin is not a terminal".
-if ($agentName.ToLower() -eq 'codex') {
+# ── Rework detection (claude only) ───────────────────────────────────────────
+# When a task returns to In Progress after a review, the coder should resume
+# its previous session (retaining full implementation context) rather than
+# starting from scratch. The rework message is minimal: just tell the agent
+# to read the task and fix the reviewer's findings — everything else lives in
+# the session history and in the task body via MCP.
+#
+# Conditions for --resume:
+#   1. Agent is claude (Codex/opencode don't support --resume)
+#   2. Status is "In Progress" (rework trigger)
+#   3. A coder session ID exists in the task notes
+#   4. The task body contains at least one "CHANGES REQUESTED" review block
+#
+$isRework = $false
+if ($agentName.ToLower() -eq 'claude' -and
+    $env:NEW_STATUS -eq 'In Progress' -and
+    $coderSessionId -ne '' -and
+    $taskContent -match 'CHANGES REQUESTED') {
+    $isRework = $true
+}
+
+if ($isRework) {
+    $reworkMessage = "The reviewer requested changes on task $env:TASK_ID. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done."
+    $reworkPath = "$logFile.rework"
+    [System.IO.File]::WriteAllText($reworkPath, $reworkMessage, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "dispatch.ps1: rework mode - resuming session $coderSessionId"
+    $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions')
+    Start-Process `
+        -FilePath $agentExec `
+        -ArgumentList $agentArgs `
+        -RedirectStandardInput $reworkPath `
+        -RedirectStandardOutput $logFile `
+        -RedirectStandardError "$logFile.err" `
+        -WindowStyle Hidden `
+        -WorkingDirectory $projectRoot | Out-Null
+} elseif ($agentName.ToLower() -eq 'codex') {
     # codex exec reads the prompt from stdin when passed `-` as the prompt
     # argument. --skip-git-repo-check lets it run outside a git repo root.
     # --yolo = unattended (no confirmation prompts).
@@ -152,7 +196,7 @@ if ($agentName.ToLower() -eq 'codex') {
         -WindowStyle Hidden `
         -WorkingDirectory $projectRoot | Out-Null
 } else {
-    # Claude: prompt via stdin (PS5.1 mangles multi-line positional args).
+    # Claude: new session, prompt via stdin.
     $agentArgs = @('-p', '--dangerously-skip-permissions')
     Start-Process `
         -FilePath $agentExec `
