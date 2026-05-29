@@ -144,7 +144,8 @@ foreach ($candidate in $agentCandidates) {
 
 if (-not $agentExec) {
     Write-Warning "dispatch.ps1: agent '$agentName' not found on PATH — falling back to claude"
-    $agentExec = (Get-Command 'claude.cmd' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1)?.Source
+    $fallback = Get-Command 'claude.cmd' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($fallback) { $agentExec = $fallback.Source }
 }
 if (-not $agentExec) {
     Write-Warning "dispatch.ps1: 'claude' fallback also not found. Cannot dispatch."
