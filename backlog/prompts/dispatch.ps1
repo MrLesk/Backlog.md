@@ -94,7 +94,8 @@ if (Test-Path $configFile) {
         }
     }
 }
-$taskFile = Get-ChildItem $tasksDir -Filter "*$env:TASK_ID*" -Recurse -ErrorAction SilentlyContinue |
+$taskFile = Get-ChildItem $tasksDir -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ilike "*$env:TASK_ID*" } |
     Select-Object -First 1
 
 $taskAgentName = ''
@@ -103,10 +104,10 @@ $coderSessionId = ''
 $reviewerSessionId = ''
 if ($taskFile) {
     $taskContent = Get-Content $taskFile.FullName -Raw
-    if ($taskContent -match '(?m)^agent:\s*[''"]?([^\s''"\r\n]+)[''"]?') {
+    if ($taskContent -match '(?m)^agent:\s*[''"]?([^''"\r\n]+?)[''"]?\s*$') {
         $taskAgentName = $matches[1].Trim()
     }
-    if ($taskContent -match '(?m)^reviewAgent:\s*[''"]?([^\s''"\r\n]+)[''"]?') {
+    if ($taskContent -match '(?m)^reviewAgent:\s*[''"]?([^''"\r\n]+?)[''"]?\s*$') {
         $taskReviewAgentName = $matches[1].Trim()
     }
     # Coder session ID — written by the coder in a "## Session" block.
