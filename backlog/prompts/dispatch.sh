@@ -76,6 +76,7 @@ if [ -n "$task_file" ] && [ -f "$task_file" ]; then
     task_review_agent="$(grep -m1 '^reviewAgent:' "$task_file" 2>/dev/null | sed "s/^reviewAgent:[[:space:]]*//" | tr -d "'\"")"
     # Extract the last "Session ID: <uuid>" from the task body for --resume on rework.
     coder_session_id="$(grep -oE 'Session ID: [a-f0-9-]{36}' "$task_file" 2>/dev/null | tail -1 | sed 's/Session ID: //')"
+    reviewer_session_id="$(grep -oE 'Reviewer Session ID: [a-f0-9-]{36}' "$task_file" 2>/dev/null | tail -1 | sed 's/Reviewer Session ID: //')"
 fi
 
 # Tasks without an `agent:` field are human tasks — do not dispatch an
@@ -111,23 +112,37 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
 # Resume the coder's previous session when the task returns to In Progress
 # after a review with CHANGES REQUESTED. This preserves the full implementation
 # context in the session history; the rework message is minimal.
-is_rework=0
+is_coder_rework=0
 if [ "$agent_name" = "claude" ] && \
    [ "${NEW_STATUS:-}" = "In Progress" ] && \
    [ -n "$coder_session_id" ] && \
    grep -q 'CHANGES REQUESTED' "$task_file" 2>/dev/null; then
-    is_rework=1
+    is_coder_rework=1
+fi
+
+is_reviewer_resume=0
+if [ "$agent_name" = "claude" ] && \
+   [ "${NEW_STATUS:-}" = "In Review" ] && \
+   [ -n "$reviewer_session_id" ]; then
+    is_reviewer_resume=1
 fi
 
 # ── Per-agent launch ─────────────────────────────────────────────────────────
 (
     cd "$project_root"
-    if [ "$is_rework" = "1" ]; then
+    if [ "$is_coder_rework" = "1" ]; then
         rework_path="$log_file.rework"
         printf 'The reviewer requested changes on task %s. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done.' "${TASK_ID:-?}" > "$rework_path"
-        echo "dispatch.sh: rework mode - resuming session $coder_session_id"
+        echo "dispatch.sh: coder rework - resuming session $coder_session_id"
         nohup claude --resume "$coder_session_id" --dangerously-skip-permissions \
             < "$rework_path" > "$log_file" 2> "$log_file.err" &
+        disown
+    elif [ "$is_reviewer_resume" = "1" ]; then
+        resume_path="$log_file.resume"
+        printf 'The coder has addressed the findings on task %s. Re-read the task via the Backlog.md MCP (task_view), verify every fix, run the tests, and move to Human Review if everything passes or request more changes if issues remain.' "${TASK_ID:-?}" > "$resume_path"
+        echo "dispatch.sh: reviewer resume - resuming session $reviewer_session_id"
+        nohup claude --resume "$reviewer_session_id" --dangerously-skip-permissions \
+            < "$resume_path" > "$log_file" 2> "$log_file.err" &
         disown
     else
     case "$agent_name" in

@@ -69,6 +69,7 @@ $taskFile = Get-ChildItem $tasksDir -Filter "*$env:TASK_ID*" -Recurse -ErrorActi
 $taskAgentName = ''
 $taskReviewAgentName = ''
 $coderSessionId = ''
+$reviewerSessionId = ''
 if ($taskFile) {
     $taskContent = Get-Content $taskFile.FullName -Raw
     if ($taskContent -match '(?m)^agent:\s*[''"]?([^\s''"\r\n]+)[''"]?') {
@@ -77,13 +78,17 @@ if ($taskFile) {
     if ($taskContent -match '(?m)^reviewAgent:\s*[''"]?([^\s''"\r\n]+)[''"]?') {
         $taskReviewAgentName = $matches[1].Trim()
     }
-    # Extract the most recent coder session ID so rework runs can resume
-    # the same session rather than starting fresh. The coder writes this to
-    # the task notes in a "## Session" block: "Session ID: <uuid>".
-    # We take the LAST match in case there were multiple rounds.
-    $sessionMatches = [regex]::Matches($taskContent, '(?m)^Session ID:\s*([a-f0-9-]{36})')
-    if ($sessionMatches.Count -gt 0) {
-        $coderSessionId = $sessionMatches[$sessionMatches.Count - 1].Groups[1].Value.Trim()
+    # Coder session ID — written by the coder in a "## Session" block.
+    # Take the LAST match in case there were multiple rounds.
+    $coderMatches = [regex]::Matches($taskContent, '(?m)^Session ID:\s*([a-f0-9-]{36})')
+    if ($coderMatches.Count -gt 0) {
+        $coderSessionId = $coderMatches[$coderMatches.Count - 1].Groups[1].Value.Trim()
+    }
+    # Reviewer session ID — written by the reviewer in the Review block
+    # as "Reviewer Session ID: <uuid>". Take the LAST match.
+    $reviewerMatches = [regex]::Matches($taskContent, '(?m)^Reviewer Session ID:\s*([a-f0-9-]{36})')
+    if ($reviewerMatches.Count -gt 0) {
+        $reviewerSessionId = $reviewerMatches[$reviewerMatches.Count - 1].Groups[1].Value.Trim()
     }
 }
 
@@ -151,24 +156,45 @@ if (-not $agentExec) {
 #   3. A coder session ID exists in the task notes
 #   4. The task body contains at least one "CHANGES REQUESTED" review block
 #
-$isRework = $false
+$isCoderRework = $false
 if ($agentName.ToLower() -eq 'claude' -and
     $env:NEW_STATUS -eq 'In Progress' -and
     $coderSessionId -ne '' -and
     $taskContent -match 'CHANGES REQUESTED') {
-    $isRework = $true
+    $isCoderRework = $true
 }
 
-if ($isRework) {
+$isReviewerResume = $false
+if ($agentName.ToLower() -eq 'claude' -and
+    $env:NEW_STATUS -eq 'In Review' -and
+    $reviewerSessionId -ne '') {
+    $isReviewerResume = $true
+}
+
+if ($isCoderRework) {
     $reworkMessage = "The reviewer requested changes on task $env:TASK_ID. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done."
     $reworkPath = "$logFile.rework"
     [System.IO.File]::WriteAllText($reworkPath, $reworkMessage, (New-Object System.Text.UTF8Encoding $false))
-    Write-Host "dispatch.ps1: rework mode - resuming session $coderSessionId"
+    Write-Host "dispatch.ps1: coder rework - resuming session $coderSessionId"
     $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions')
     Start-Process `
         -FilePath $agentExec `
         -ArgumentList $agentArgs `
         -RedirectStandardInput $reworkPath `
+        -RedirectStandardOutput $logFile `
+        -RedirectStandardError "$logFile.err" `
+        -WindowStyle Hidden `
+        -WorkingDirectory $projectRoot | Out-Null
+} elseif ($isReviewerResume) {
+    $reviewResumeMessage = "The coder has addressed the findings on task $env:TASK_ID. Re-read the task via the Backlog.md MCP (task_view), verify every fix, run the tests, and move to Human Review if everything passes or request more changes if issues remain."
+    $reviewResumePath = "$logFile.resume"
+    [System.IO.File]::WriteAllText($reviewResumePath, $reviewResumeMessage, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "dispatch.ps1: reviewer resume - resuming session $reviewerSessionId"
+    $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions')
+    Start-Process `
+        -FilePath $agentExec `
+        -ArgumentList $agentArgs `
+        -RedirectStandardInput $reviewResumePath `
         -RedirectStandardOutput $logFile `
         -RedirectStandardError "$logFile.err" `
         -WindowStyle Hidden `
