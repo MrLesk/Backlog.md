@@ -127,7 +127,7 @@ if (-not $agentExec) {
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 if ($agentName.ToLower() -eq 'codex') {
-    $agentArgs = @('--full-auto')
+    $agentArgs = @('--yolo')
 } elseif ($agentName.ToLower() -eq 'opencode') {
     $agentArgs = @('-p', '--yes')
 } else {

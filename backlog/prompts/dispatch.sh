@@ -117,8 +117,7 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         codex)
-            # codex reads the prompt from stdin in full-auto mode.
-            nohup codex --full-auto \
+            nohup codex --yolo \
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         opencode)
