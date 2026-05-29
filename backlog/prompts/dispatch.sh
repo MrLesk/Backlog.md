@@ -117,12 +117,13 @@ echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name"
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         codex)
-            nohup codex --yolo \
-                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
+            # Codex needs the prompt as a positional arg; rejects stdin redirect.
+            nohup codex --yolo "$full_prompt" \
+                > "$log_file" 2> "$log_file.err" &
             ;;
         opencode)
-            nohup opencode -p --yes \
-                < "$prompt_path" > "$log_file" 2> "$log_file.err" &
+            nohup opencode -p "$full_prompt" --yes \
+                > "$log_file" 2> "$log_file.err" &
             ;;
         *)
             # Treat as an absolute or relative path; assume claude-compatible stdin.

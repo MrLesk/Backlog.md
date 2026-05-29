@@ -126,19 +126,37 @@ if (-not $agentExec) {
 }
 
 # ── Launch ────────────────────────────────────────────────────────────────────
+# Claude reads the prompt from stdin (multi-line safe via -RedirectStandardInput).
+# Codex and opencode require the prompt as a positional argument — they reject
+# stdin redirection with "stdin is not a terminal".
 if ($agentName.ToLower() -eq 'codex') {
-    $agentArgs = @('--yolo')
+    # Codex: prompt as positional arg, --yolo for unattended mode.
+    $agentArgs = @('--yolo', $fullPrompt)
+    Start-Process `
+        -FilePath $agentExec `
+        -ArgumentList $agentArgs `
+        -RedirectStandardOutput $logFile `
+        -RedirectStandardError "$logFile.err" `
+        -WindowStyle Hidden `
+        -WorkingDirectory $projectRoot | Out-Null
 } elseif ($agentName.ToLower() -eq 'opencode') {
-    $agentArgs = @('-p', '--yes')
+    $agentArgs = @('-p', $fullPrompt, '--yes')
+    Start-Process `
+        -FilePath $agentExec `
+        -ArgumentList $agentArgs `
+        -RedirectStandardOutput $logFile `
+        -RedirectStandardError "$logFile.err" `
+        -WindowStyle Hidden `
+        -WorkingDirectory $projectRoot | Out-Null
 } else {
+    # Claude: prompt via stdin (PS5.1 mangles multi-line positional args).
     $agentArgs = @('-p', '--dangerously-skip-permissions')
+    Start-Process `
+        -FilePath $agentExec `
+        -ArgumentList $agentArgs `
+        -RedirectStandardInput $promptPath `
+        -RedirectStandardOutput $logFile `
+        -RedirectStandardError "$logFile.err" `
+        -WindowStyle Hidden `
+        -WorkingDirectory $projectRoot | Out-Null
 }
-
-Start-Process `
-    -FilePath $agentExec `
-    -ArgumentList $agentArgs `
-    -RedirectStandardInput $promptPath `
-    -RedirectStandardOutput $logFile `
-    -RedirectStandardError "$logFile.err" `
-    -WindowStyle Hidden `
-    -WorkingDirectory $projectRoot | Out-Null
