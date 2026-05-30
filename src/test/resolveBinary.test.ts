@@ -8,6 +8,10 @@ describe("getPackageName", () => {
 		expect(getPackageName("win32", "x64")).toBe("backlog.md-windows-x64");
 	});
 
+	it("maps win32 arm64 to windows-arm64 package", () => {
+		expect(getPackageName("win32", "arm64")).toBe("backlog.md-windows-arm64");
+	});
+
 	it("returns linux name unchanged", () => {
 		expect(getPackageName("linux", "arm64")).toBe("backlog.md-linux-arm64");
 	});

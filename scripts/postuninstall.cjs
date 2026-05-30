@@ -8,6 +8,7 @@ const platformPackages = [
 	"backlog.md-linux-arm64",
 	"backlog.md-darwin-x64",
 	"backlog.md-darwin-arm64",
+	"backlog.md-windows-arm64",
 	"backlog.md-windows-x64",
 ];
 

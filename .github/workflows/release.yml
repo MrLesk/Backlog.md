@@ -27,6 +27,8 @@ jobs:
             target: bun-darwin-arm64
           - os: windows-latest
             target: bun-windows-x64-baseline
+          - os: windows-latest
+            target: bun-windows-arm64
     runs-on: ${{ matrix.os }}
     env:
       BIN: backlog-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
@@ -111,7 +113,8 @@ jobs:
                 "backlog.md-linux-arm64": "'$TAG'",
                 "backlog.md-darwin-x64" : "'$TAG'",
                 "backlog.md-darwin-arm64": "'$TAG'",
-                "backlog.md-windows-x64": "'$TAG'"
+                "backlog.md-windows-x64": "'$TAG'",
+                "backlog.md-windows-arm64": "'$TAG'"
               }' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v5
@@ -157,6 +160,10 @@ jobs:
             package: backlog.md-windows-x64
             os: win32
             cpu: x64
+          - target: bun-windows-arm64
+            package: backlog.md-windows-arm64
+            os: win32
+            cpu: arm64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -282,6 +289,7 @@ jobs:
             "backlog.md-darwin-x64"
             "backlog.md-darwin-arm64"
             "backlog.md-windows-x64"
+            "backlog.md-windows-arm64"
           )
 
           for pkg in "${PACKAGES[@]}"; do
