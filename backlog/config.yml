@@ -1,8 +1,7 @@
 project_name: "Backlog.md"
 default_status: "To Do"
-statuses: ["To Do", "In Progress", "Done"]
+statuses: ["To Do", "In Progress",  "In Review", "Human Review", "Done"]
 labels: []
-milestones: []
 definition_of_done: ["bunx tsc --noEmit passes when TypeScript touched", "bun run check . passes when formatting/linting touched", "bun test (or scoped test) passes"]
 date_format: yyyy-mm-dd hh:mm
 max_column_width: 20
@@ -15,4 +14,6 @@ zero_padded_ids: 0
 bypass_git_hooks: false
 check_active_branches: true
 active_branch_days: 10
+onStatusChange:  'powershell -NoProfile -ExecutionPolicy Bypass -File "$PWD\backlog\prompts\dispatch.ps1"'
+shell: "powershell"
 task_prefix: "back"
