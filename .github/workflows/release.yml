@@ -15,6 +15,7 @@ jobs:
   build:
     name: build-${{ matrix.target }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -27,7 +28,7 @@ jobs:
             target: bun-darwin-arm64
           - os: windows-latest
             target: bun-windows-x64-baseline
-          - os: windows-latest
+          - os: ubuntu-latest
             target: bun-windows-arm64
     runs-on: ${{ matrix.os }}
     env:
