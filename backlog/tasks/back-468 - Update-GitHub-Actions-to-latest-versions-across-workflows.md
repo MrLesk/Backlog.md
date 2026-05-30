@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-30 18:32'
-updated_date: '2026-05-30 18:37'
+updated_date: '2026-05-30 18:45'
 labels: []
 dependencies: []
 references:
@@ -64,6 +64,8 @@ Caveats on the Shai-Hulud detector: (1) v2 still runs on node20 — no node24 re
 All three workflow files validated as YAML (ruby). YAML-only change — no TS/lint/test impact. release.yml ref bumps are only exercised on a tag (alongside BACK-467); ci.yml and shai-hulud-check.yml run on this PR's CI.
 
 PR #666 CI confirmed the Shai-Hulud risk — but worse than 'new findings': v2 CRASHES with 'Action failed: Cannot convert undefined or null to object' (~7s in, before scanning; a bug in the v2 action, not a security finding). All other 8 bumps passed CI (compile-and-smoke-test green with checkout@v6/setup-bun@v2/cache@v5/upload-artifact@v7). Reverted gensecaihq/Shai-Hulud-2.0-Detector to @v1 (with an inline comment); v2 offered no benefit anyway (still node20). Net result: 8 of 9 actions on latest major; the detector intentionally pinned at v1 until upstream fixes v2.
+
+Per maintainer decision, removed the Shai-Hulud security-check workflow entirely (deleted .github/workflows/shai-hulud-check.yml) rather than keeping it pinned at v1. Rationale: v2 crashes, v1 is a third-party action stuck on the deprecated node20, and CodeQL (GitHub default-setup Analyze) already provides security scanning. Remaining workflows: ci.yml, release.yml. Note for maintainer: if branch protection lists 'security-check' as a required status check, remove it there too, or PRs will wait on a check that no longer runs.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
