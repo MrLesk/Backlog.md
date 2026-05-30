@@ -39,7 +39,7 @@
     "install": "0.13.0",
     "jsdom": "29.0.2",
     "lint-staged": "16.4.0",
-    "mermaid": "11.14.0",
+    "mermaid": "11.15.0",
     "neo-neo-bblessed": "1.0.9",
     "picocolors": "1.1.1",
     "proper-lockfile": "4.1.2",
