@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-30 18:32'
-updated_date: '2026-05-30 18:35'
+updated_date: '2026-05-30 18:37'
 labels: []
 dependencies: []
 references:
@@ -62,12 +62,16 @@ Researched each action against its live GitHub Releases API/page (one agent per 
 Caveats on the Shai-Hulud detector: (1) v2 still runs on node20 — no node24 release exists, so this one does NOT clear the Node 20 deprecation warning; (2) v2 is a stronger detection engine and could surface NEW critical findings, failing the security-check on a PR that previously passed (intended security behavior, not an interface break). Revert that single ref to @v1 if it proves noisy.
 
 All three workflow files validated as YAML (ruby). YAML-only change — no TS/lint/test impact. release.yml ref bumps are only exercised on a tag (alongside BACK-467); ci.yml and shai-hulud-check.yml run on this PR's CI.
+
+PR #666 CI confirmed the Shai-Hulud risk — but worse than 'new findings': v2 CRASHES with 'Action failed: Cannot convert undefined or null to object' (~7s in, before scanning; a bug in the v2 action, not a security finding). All other 8 bumps passed CI (compile-and-smoke-test green with checkout@v6/setup-bun@v2/cache@v5/upload-artifact@v7). Reverted gensecaihq/Shai-Hulud-2.0-Detector to @v1 (with an inline comment); v2 offered no benefit anyway (still node20). Net result: 8 of 9 actions on latest major; the detector intentionally pinned at v1 until upstream fixes v2.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Updated all 9 GitHub Actions across .github/workflows/{ci,release,shai-hulud-check}.yml to their latest stable major versions, verified one-agent-per-action against the live GitHub Releases API (not from memory). checkout v4→v6, cache v4→v5, setup-node v5→v6, upload-artifact v4→v7, download-artifact v4→v8, setup-bun v1→v2, action-gh-release v1→v3, git-auto-commit-action v4→v7, Shai-Hulud-2.0-Detector v1→v2. Every bump is non-breaking for the inputs we use; most also move off the deprecated Node 20 runtime onto Node 24 (action-gh-release and git-auto-commit-action were on EOL Node 16). Exception: the Shai-Hulud detector v2 is still node20 and its stronger engine may newly fail the security-check — flagged for the maintainer to revert if noisy. 25/25 line ref-only diff; all YAML validated.
+
+Update: Shai-Hulud-2.0-Detector kept at @v1 (not v2) — PR #666 CI showed v2 crashes ('Cannot convert undefined or null to object'). The other 8 actions are on their latest major and verified green in CI.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
