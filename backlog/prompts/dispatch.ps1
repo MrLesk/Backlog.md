@@ -213,8 +213,11 @@ if ($isCoderRework) {
     [System.IO.File]::WriteAllText($reworkPath, $reworkMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: coder rework - resuming session $coderSessionId"
     if ($agentBinary.ToLower() -eq 'codex') {
-        # codex exec resume <id> - reads follow-up from stdin
-        $agentArgs = @('exec', 'resume', $coderSessionId, '-')
+        # codex exec resume <id> - reads follow-up from stdin.
+        # --json, --skip-git-repo-check, --yolo must be explicit on resume:
+        # without them Codex activates the interactive console path which
+        # fails headlessly (sandbox spawn error + MCP approval cancellation).
+        $agentArgs = @('exec', '--json', '--skip-git-repo-check', '--yolo', 'resume', $coderSessionId, '-')
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -249,7 +252,7 @@ if ($isCoderRework) {
     [System.IO.File]::WriteAllText($reviewResumePath, $reviewResumeMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: reviewer resume - resuming session $reviewerSessionId"
     if ($agentBinary.ToLower() -eq 'codex') {
-        $agentArgs = @('exec', 'resume', $reviewerSessionId, '-')
+        $agentArgs = @('exec', '--json', '--skip-git-repo-check', '--yolo', 'resume', $reviewerSessionId, '-')
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
