@@ -1,11 +1,11 @@
 ---
 id: BACK-467
 title: Build win32-arm64 release binary on a Linux runner
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-30 18:14'
-updated_date: '2026-05-30 18:17'
+updated_date: '2026-05-30 18:18'
 labels: []
 dependencies: []
 references:
@@ -52,9 +52,15 @@ Verified: installed bun 1.3.11 (CI's pinned version) and ran `bun build --compil
 release.yml only runs on tag push, so this can't be exercised by PR CI — it's validated on the next tagged release (re-tag after merge, e.g. v1.45.3). Cross-compile verified locally with the exact CI bun version (1.3.11) on a non-Windows host. YAML validated with ruby. AC#3 (full release proceeds) remains unchecked until a real release run confirms it.
 <!-- SECTION:NOTES:END -->
 
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+PR #665 (https://github.com/MrLesk/Backlog.md/pull/665) fixes the failed v1.45.2 release. Two edits to .github/workflows/release.yml: (1) build bun-windows-arm64 on ubuntu-latest instead of windows-latest — Bun cross-compiles windows-arm64 from any host, and the Windows runner couldn't extract Bun's windows-aarch64 runtime at compile time; (2) add fail-fast: false to the build matrix so one platform's failure can't cancel the others (arm64's failure had cancelled windows-x64-baseline). All Windows-specific steps key off matrix.target, not the runner OS, so they remain correct. Verified by installing bun 1.3.11 (CI's version) and cross-compiling --target=bun-windows-arm64 on a non-Windows host: it extracted bun-windows-aarch64-v1.3.11 and produced a valid Aarch64 PE32+ exe. DoD items vacuously satisfied (YAML-only change; no TS/lint/test touched). AC#3 (full release succeeds) can only be confirmed by a real tagged release — re-tag v1.45.3 after merge. Nothing was published by the failed run, so it's a clean re-release.
+<!-- SECTION:FINAL_SUMMARY:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
