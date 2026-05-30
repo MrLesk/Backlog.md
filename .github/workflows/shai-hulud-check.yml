@@ -12,7 +12,7 @@ jobs:
   security-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: gensecaihq/Shai-Hulud-2.0-Detector@v1
+      - uses: actions/checkout@v6
+      - uses: gensecaihq/Shai-Hulud-2.0-Detector@v2
         with:
           fail-on-critical: true
