@@ -248,7 +248,7 @@ if ($isCoderRework) {
             -RedirectStandardOutput $logFile `
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
-            -WorkingDirectory $projectRoot | Out-Null
+            -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } elseif ($agentBinary.ToLower() -eq 'opencode') {
         $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $coderSessionId, '-f', $reworkPath, '--', 'Read and follow the attached instructions.')
         Start-Process `
@@ -257,7 +257,7 @@ if ($isCoderRework) {
             -RedirectStandardOutput $logFile `
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
-            -WorkingDirectory $projectRoot | Out-Null
+            -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } else {
         $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions')
         Start-Process `
@@ -267,7 +267,7 @@ if ($isCoderRework) {
             -RedirectStandardOutput $logFile `
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
-            -WorkingDirectory $projectRoot | Out-Null
+            -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     }
 } elseif ($isReviewerResume) {
     $reviewResumeMessage = "The coder has addressed the findings on task $env:TASK_ID. Re-read the task via the Backlog.md MCP (task_view), verify every fix, run the tests, and move to Human Review if everything passes or request more changes if issues remain."
@@ -283,7 +283,7 @@ if ($isCoderRework) {
             -RedirectStandardOutput $logFile `
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
-            -WorkingDirectory $projectRoot | Out-Null
+            -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } elseif ($agentBinary.ToLower() -eq 'opencode') {
         $agentArgs = @('run', '--dangerously-skip-permissions', '-s', $reviewerSessionId, '-f', $reviewResumePath, '--', 'Read and follow the attached instructions.')
         Start-Process `
@@ -292,7 +292,7 @@ if ($isCoderRework) {
             -RedirectStandardOutput $logFile `
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
-            -WorkingDirectory $projectRoot | Out-Null
+            -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } else {
         $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions')
         Start-Process `
@@ -302,7 +302,7 @@ if ($isCoderRework) {
             -RedirectStandardOutput $logFile `
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden `
-            -WorkingDirectory $projectRoot | Out-Null
+            -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     }
 } elseif ($agentBinary.ToLower() -eq 'codex') {
     # First run: codex exec reads the prompt from stdin via `-`.
@@ -317,7 +317,7 @@ if ($isCoderRework) {
         -RedirectStandardOutput $logFile `
         -RedirectStandardError "$logFile.err" `
         -WindowStyle Hidden `
-        -WorkingDirectory $projectRoot | Out-Null
+        -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
 } elseif ($agentBinary.ToLower() -eq 'opencode') {
     # opencode run: attach the prompt file with -f.
     # The message positional must come AFTER -- to prevent opencode from
@@ -329,7 +329,7 @@ if ($isCoderRework) {
         -RedirectStandardOutput $logFile `
         -RedirectStandardError "$logFile.err" `
         -WindowStyle Hidden `
-        -WorkingDirectory $projectRoot | Out-Null
+        -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
 } else {
     # Claude: new session, prompt via stdin.
     $agentArgs = @('-p', '--dangerously-skip-permissions')
@@ -340,5 +340,12 @@ if ($isCoderRework) {
         -RedirectStandardOutput $logFile `
         -RedirectStandardError "$logFile.err" `
         -WindowStyle Hidden `
-        -WorkingDirectory $projectRoot | Out-Null
+        -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
+}
+
+# Write the launched agent's PID so the web UI can check whether the process is
+# still alive. The dispatch.ps1 PID ($PID in the filename) exits immediately after
+# Start-Process — the .pid file holds the actual agent process's ID.
+if ($script:agentProc) {
+    "$($script:agentProc.Id)" | Set-Content "$logFile.pid" -Encoding utf8 -NoNewline
 }

@@ -1773,41 +1773,56 @@ export class BacklogServer {
 			return Response.json([]);
 		}
 
-		// Parse log filenames: {yyyyMMdd-HHmmss-fff}-{PID}-{safeTaskId}-{safeStatus}.log
-		// Split by '-': [0]=date [1]=time [2]=ms [3]=PID [4..n-2]=taskId parts [n-1]=status
-		const parsed: Array<{ file: string; pid: number; taskId: string; status: string }> = [];
+		// .pid files are written by dispatch.ps1 after Start-Process and contain the
+		// actual agent's PID. Their stem matches the corresponding .log filename stem.
+		// Format: {yyyyMMdd-HHmmss-fff}-{dispatchPID}-{safeTaskId}-{safeStatus}.log.pid
+		// Split by '-': [0]=date [1]=time [2]=ms [3]=dispatchPID [4..n-2]=taskId [n-1]=status
+		const parsed: Array<{ stem: string; taskId: string; status: string }> = [];
 		for (const file of files) {
-			if (!file.endsWith(".log")) continue;
-			const parts = file.slice(0, -4).split("-"); // strip .log, split
+			if (!file.endsWith(".log.pid")) continue;
+			const stem = file.slice(0, -8); // strip ".log.pid"
+			const parts = stem.split("-");
 			if (parts.length < 6) continue;
-			const pid = parseInt(parts[3] ?? "", 10);
-			if (isNaN(pid) || pid <= 0) continue;
 			const status = (parts[parts.length - 1] ?? "").replace(/_/g, " ");
 			const taskId = parts.slice(4, parts.length - 1).join("-");
 			if (!taskId) continue;
-			parsed.push({ file, pid, taskId, status });
+			parsed.push({ stem, taskId, status });
 		}
 
-		// Keep most recent log per (taskId, status) pair — filenames start with timestamp,
-		// lexicographic sort gives chronological order.
+		// Keep most recent .pid per (taskId, status) — stems are timestamp-prefixed so
+		// lexicographic sort is chronological.
 		const byKey = new Map<string, (typeof parsed)[number]>();
-		for (const entry of parsed.sort((a, b) => a.file.localeCompare(b.file))) {
+		for (const entry of parsed.sort((a, b) => a.stem.localeCompare(b.stem))) {
 			byKey.set(`${entry.taskId}::${entry.status}`, entry);
 		}
 
-		const result = Array.from(byKey.values()).map(({ pid, taskId, status }) => {
-			let running = false;
-			let completed = false;
-			try {
-				process.kill(pid, 0);
-				running = true;
-			} catch (e: unknown) {
-				// ESRCH = process not found (finished); EPERM = exists but no permission (still running)
-				running = (e as NodeJS.ErrnoException).code === "EPERM";
-				completed = (e as NodeJS.ErrnoException).code === "ESRCH";
-			}
-			return { taskId, status, running, completed };
-		});
+		const result = await Promise.all(
+			Array.from(byKey.values()).map(async ({ stem, taskId, status }) => {
+				let pid = 0;
+				try {
+					const raw = await Bun.file(join(logsDir, `${stem}.log.pid`)).text();
+					pid = parseInt(raw.trim(), 10);
+				} catch {
+					// .pid file unreadable — treat as completed
+				}
+
+				let running = false;
+				let completed = false;
+				if (pid > 0) {
+					try {
+						process.kill(pid, 0);
+						running = true;
+					} catch (e: unknown) {
+						// ESRCH = not found (finished); EPERM = exists, no permission (still running)
+						running = (e as NodeJS.ErrnoException).code === "EPERM";
+						completed = (e as NodeJS.ErrnoException).code === "ESRCH";
+					}
+				} else {
+					completed = true; // .pid missing or unreadable → dispatch finished
+				}
+				return { taskId, status, running, completed };
+			}),
+		);
 
 		return Response.json(result);
 	}
