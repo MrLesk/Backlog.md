@@ -1,5 +1,6 @@
 import React from 'react';
 import { type ConfigurableCardField, type Task } from '../../types';
+import { useAgentStatus } from '../hooks/useAgentStatus';
 
 interface TaskCardProps {
   task: Task;
@@ -20,9 +21,23 @@ interface TaskCardProps {
 
 const EMPTY_HIDDEN: ReadonlySet<ConfigurableCardField> = new Set();
 
+const SpinnerIcon: React.FC<{ className?: string }> = ({ className = 'w-2.5 h-2.5' }) => (
+  <svg className={`${className} animate-spin`} viewBox="0 0 24 24" fill="none" aria-label="running">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
+
+const DoneIcon: React.FC<{ className?: string }> = ({ className = 'w-2.5 h-2.5' }) => (
+  <svg className={`${className} text-green-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="completed">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+  </svg>
+);
+
 const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, hiddenFields = EMPTY_HIDDEN }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
+  const agentStatus = useAgentStatus(task.id);
 
   // Check if task is from another branch (read-only)
   const isFromOtherBranch = Boolean(task.branch);
@@ -176,31 +191,51 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        {/* Slot: body-agent — coder + reviewer agent chips, only when set. */}
+        {/* Slot: body-agent — coder + reviewer agent chips with live run state. */}
         {(!hiddenFields.has('agent') && task.agent) || (!hiddenFields.has('reviewAgent') && task.reviewAgent) ? (
           <div className="flex flex-wrap gap-1 mt-2">
-            {!hiddenFields.has('agent') && task.agent && (
-              <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded transition-colors duration-200"
-                title={`Coder agent: ${task.agent}`}
-              >
-                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-                {task.agent}
-              </span>
-            )}
-            {!hiddenFields.has('reviewAgent') && task.reviewAgent && (
-              <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded transition-colors duration-200"
-                title={`Reviewer agent: ${task.reviewAgent}`}
-              >
-                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {task.reviewAgent}
-              </span>
-            )}
+            {!hiddenFields.has('agent') && task.agent && (() => {
+              const running = agentStatus.coder?.running;
+              const done    = agentStatus.coder?.completed;
+              return (
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors duration-200 ${
+                    running
+                      ? 'bg-blue-100 dark:bg-blue-800/50 text-blue-800 dark:text-blue-200'
+                      : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  }`}
+                  title={`Coder agent: ${task.agent}${running ? ' (running)' : done ? ' (done)' : ''}`}
+                >
+                  {running ? <SpinnerIcon /> : done ? <DoneIcon /> : (
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                  )}
+                  {task.agent}
+                </span>
+              );
+            })()}
+            {!hiddenFields.has('reviewAgent') && task.reviewAgent && (() => {
+              const running = agentStatus.reviewer?.running;
+              const done    = agentStatus.reviewer?.completed;
+              return (
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors duration-200 ${
+                    running
+                      ? 'bg-purple-100 dark:bg-purple-800/50 text-purple-800 dark:text-purple-200'
+                      : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                  }`}
+                  title={`Reviewer agent: ${task.reviewAgent}${running ? ' (running)' : done ? ' (done)' : ''}`}
+                >
+                  {running ? <SpinnerIcon /> : done ? <DoneIcon /> : (
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                  {task.reviewAgent}
+                </span>
+              );
+            })()}
           </div>
         ) : null}
 

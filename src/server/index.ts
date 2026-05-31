@@ -1,3 +1,4 @@
+import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
@@ -425,6 +426,9 @@ export class BacklogServer {
 					},
 					"/api/status": {
 						GET: async () => await this.handleGetStatus(),
+					},
+					"/api/agent-status": {
+						GET: async () => await this.handleGetAgentStatus(),
 					},
 					"/api/init": {
 						POST: async (req: Request) => await this.handleInit(req),
@@ -1758,6 +1762,54 @@ export class BacklogServer {
 				rootConfigPath: null,
 			});
 		}
+	}
+
+	private async handleGetAgentStatus(): Promise<Response> {
+		const logsDir = join(this.core.filesystem.backlogDir, "prompts", "logs");
+		let files: string[];
+		try {
+			files = await readdir(logsDir);
+		} catch {
+			return Response.json([]);
+		}
+
+		// Parse log filenames: {yyyyMMdd-HHmmss-fff}-{PID}-{safeTaskId}-{safeStatus}.log
+		// Split by '-': [0]=date [1]=time [2]=ms [3]=PID [4..n-2]=taskId parts [n-1]=status
+		const parsed: Array<{ file: string; pid: number; taskId: string; status: string }> = [];
+		for (const file of files) {
+			if (!file.endsWith(".log")) continue;
+			const parts = file.slice(0, -4).split("-"); // strip .log, split
+			if (parts.length < 6) continue;
+			const pid = parseInt(parts[3] ?? "", 10);
+			if (isNaN(pid) || pid <= 0) continue;
+			const status = (parts[parts.length - 1] ?? "").replace(/_/g, " ");
+			const taskId = parts.slice(4, parts.length - 1).join("-");
+			if (!taskId) continue;
+			parsed.push({ file, pid, taskId, status });
+		}
+
+		// Keep most recent log per (taskId, status) pair — filenames start with timestamp,
+		// lexicographic sort gives chronological order.
+		const byKey = new Map<string, (typeof parsed)[number]>();
+		for (const entry of parsed.sort((a, b) => a.file.localeCompare(b.file))) {
+			byKey.set(`${entry.taskId}::${entry.status}`, entry);
+		}
+
+		const result = Array.from(byKey.values()).map(({ pid, taskId, status }) => {
+			let running = false;
+			let completed = false;
+			try {
+				process.kill(pid, 0);
+				running = true;
+			} catch (e: unknown) {
+				// ESRCH = process not found (finished); EPERM = exists but no permission (still running)
+				running = (e as NodeJS.ErrnoException).code === "EPERM";
+				completed = (e as NodeJS.ErrnoException).code === "ESRCH";
+			}
+			return { taskId, status, running, completed };
+		});
+
+		return Response.json(result);
 	}
 
 	private async handleInit(req: Request): Promise<Response> {
