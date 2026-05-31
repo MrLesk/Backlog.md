@@ -58,6 +58,17 @@ function formatSubtaskLines(subtasks: Array<{ id: string; title: string }>): str
 	return sorted.map((subtask) => `- ${subtask.id} - ${subtask.title}`);
 }
 
+function formatCommentHeader(comment: NonNullable<Task["comments"]>[number]): string {
+	const parts = [`#${comment.index}`];
+	if (comment.author) {
+		parts.push(comment.author);
+	}
+	if (comment.createdDate) {
+		parts.push(comment.createdDate);
+	}
+	return parts.join(" - ");
+}
+
 export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = {}): string {
 	const lines: string[] = [];
 	const filePath = options.filePathOverride ?? task.filePath;
@@ -177,6 +188,17 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push("-".repeat(50));
 		lines.push(transformCodePathsPlain(implementationNotes));
 		lines.push("");
+	}
+
+	const comments = (task.comments ?? []).filter((comment) => comment.body.trim().length > 0);
+	if (comments.length > 0) {
+		lines.push("Comments:");
+		lines.push("-".repeat(50));
+		for (const comment of comments) {
+			lines.push(formatCommentHeader(comment));
+			lines.push(transformCodePathsPlain(comment.body.trim()));
+			lines.push("");
+		}
 	}
 
 	const finalSummary = task.finalSummary?.trim();

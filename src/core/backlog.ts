@@ -17,6 +17,7 @@ import {
 	type SearchFilters,
 	type Sequence,
 	type Task,
+	type TaskCommentInput,
 	type TaskCreateInput,
 	type TaskListFilter,
 	type TaskUpdateInput,
@@ -1387,6 +1388,37 @@ export class Core {
 			return { value: `${current}\n\n${additionBlock}`, changed: true };
 		};
 
+		const containsCommentMarker = (inputValue: string): boolean => /<!--\s*COMMENTS?:/i.test(inputValue);
+
+		const sanitizeCommentInput = (value: TaskCommentInput | string): TaskCommentInput | undefined => {
+			const rawBody = typeof value === "string" ? value : value.body;
+			const body = String(rawBody ?? "")
+				.replace(/\r\n/g, "\n")
+				.trim();
+			if (body.length === 0) return undefined;
+			if (containsCommentMarker(body)) {
+				throw new Error("Comment body cannot contain Backlog comment markers.");
+			}
+			const author =
+				typeof value === "string"
+					? undefined
+					: String(value.author ?? "")
+							.replace(/\s+/g, " ")
+							.trim();
+			const createdDate = typeof value === "string" ? undefined : String(value.createdDate ?? "").trim();
+			if (author && containsCommentMarker(author)) {
+				throw new Error("Comment author cannot contain Backlog comment markers.");
+			}
+			if (createdDate && containsCommentMarker(createdDate)) {
+				throw new Error("Comment created date cannot contain Backlog comment markers.");
+			}
+			return {
+				body,
+				...(author && { author }),
+				...(createdDate && { createdDate }),
+			};
+		};
+
 		if (input.clearImplementationPlan) {
 			if (task.implementationPlan !== undefined) {
 				delete task.implementationPlan;
@@ -1424,6 +1456,26 @@ export class Core {
 			if (changed) {
 				task.implementationNotes = value;
 				mutated = true;
+			}
+		}
+
+		if (input.appendComments && input.appendComments.length > 0) {
+			const currentComments = Array.isArray(task.comments) ? task.comments.map((comment) => ({ ...comment })) : [];
+			let nextIndex = currentComments.length > 0 ? Math.max(...currentComments.map((comment) => comment.index)) + 1 : 1;
+			const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+			for (const value of input.appendComments) {
+				const sanitized = sanitizeCommentInput(value);
+				if (!sanitized) continue;
+				currentComments.push({
+					index: nextIndex++,
+					body: sanitized.body,
+					createdDate: sanitized.createdDate ?? createdDate,
+					...(sanitized.author && { author: sanitized.author }),
+				});
+				mutated = true;
+			}
+			if (mutated) {
+				task.comments = currentComments;
 			}
 		}
 

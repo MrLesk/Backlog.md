@@ -2,6 +2,7 @@ import matter from "gray-matter";
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import {
 	AcceptanceCriteriaManager,
+	CommentsManager,
 	DefinitionOfDoneManager,
 	extractStructuredSection,
 	STRUCTURED_SECTION_KEYS,
@@ -155,6 +156,7 @@ export function parseTask(content: string): Task {
 	// Parse structured acceptance criteria (checked/text/index) from all sections
 	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(rawContent);
 	const structuredDefinitionOfDone: AcceptanceCriterion[] = DefinitionOfDoneManager.parseAllCriteria(rawContent);
+	const comments = CommentsManager.parseAllComments(rawContent);
 
 	// Parse other sections
 	const descriptionSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.description) || "";
@@ -186,6 +188,7 @@ export function parseTask(content: string): Task {
 		description: descriptionSection,
 		implementationPlan: planSection,
 		implementationNotes: notesSection,
+		comments,
 		finalSummary: finalSummarySection,
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,

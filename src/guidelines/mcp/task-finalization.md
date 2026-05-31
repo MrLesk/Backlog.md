@@ -42,9 +42,9 @@
 - Document subtask-specific outcomes in the subtask's notes
 - Only update parent task status when ALL subtasks are complete (or when explicitly instructed)
 
-### Implementation notes vs Final Summary
+### Comments vs Implementation Notes vs Final Summary
 
-Implementation notes are for progress logging during execution (decisions, blockers, learnings). The Final Summary is for the PR-style completion summary when the task is done.
+Comments are for task discussion, review questions, and collaboration notes. Implementation notes are for progress logging during execution (decisions, blockers, learnings). The Final Summary is for the PR-style completion summary when the task is done.
 
 Use `task_edit` (notesAppend field) to record:
 - Implementation decisions and rationale

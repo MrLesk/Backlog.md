@@ -3,6 +3,7 @@ import type { AcceptanceCriterion, Decision, Document, Task } from "../types/ind
 import { normalizeAssignee } from "../utils/assignee.ts";
 import {
 	AcceptanceCriteriaManager,
+	CommentsManager,
 	DefinitionOfDoneManager,
 	getStructuredSections,
 	updateStructuredSections,
@@ -27,6 +28,21 @@ function checklistItemsEqual(left: AcceptanceCriterion[], right: AcceptanceCrite
 	return left.every((item, index) => {
 		const other = right[index];
 		return other?.index === item.index && other.checked === item.checked && other.text === item.text;
+	});
+}
+
+function commentItemsEqual(left: Task["comments"], right: Task["comments"]): boolean {
+	const leftComments = left ?? [];
+	const rightComments = right ?? [];
+	if (leftComments.length !== rightComments.length) return false;
+	return leftComments.every((item, index) => {
+		const other = rightComments[index];
+		return (
+			other?.index === item.index &&
+			other.body === item.body &&
+			other.createdDate === item.createdDate &&
+			other.author === item.author
+		);
 	});
 }
 
@@ -93,6 +109,13 @@ export function serializeTask(task: Task): string {
 		sectionChanged(rawContent, "implementationNotes", task.implementationNotes)
 	) {
 		contentBody = updateTaskImplementationNotes(contentBody, task.implementationNotes);
+	}
+	if (Array.isArray(task.comments)) {
+		const existingComments = CommentsManager.parseAllComments(task.rawContent ?? "");
+		const hasExistingComments = existingComments.length > 0;
+		if ((task.comments.length > 0 || hasExistingComments) && !commentItemsEqual(existingComments, task.comments)) {
+			contentBody = updateTaskComments(contentBody, task.comments);
+		}
 	}
 	if (typeof task.finalSummary === "string" && sectionChanged(rawContent, "finalSummary", task.finalSummary)) {
 		contentBody = updateTaskFinalSummary(contentBody, task.finalSummary);
@@ -185,6 +208,10 @@ export function updateTaskFinalSummary(content: string, summary: string): string
 		implementationNotes: sections.implementationNotes ?? "",
 		finalSummary: summary,
 	});
+}
+
+export function updateTaskComments(content: string, comments: NonNullable<Task["comments"]>): string {
+	return CommentsManager.updateContent(content, comments);
 }
 
 export function appendTaskImplementationNotes(content: string, notesChunks: string | string[]): string {

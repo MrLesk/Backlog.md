@@ -80,7 +80,7 @@ remains fully synchronized and up-to-date.
 
 1. Open backlog/tasks/task-7 - Feature.md in editor
 2. Change "- [ ]" to "- [x]" manually
-3. Add notes or final summary directly to the file
+3. Add notes, comments, or final summary directly to the file
 4. Save the file
 ```
 
@@ -90,6 +90,7 @@ remains fully synchronized and up-to-date.
 # DO THIS INSTEAD:
 backlog task edit 7 --check-ac 1  # Mark AC #1 as complete
 backlog task edit 7 --notes "Implementation complete"  # Add notes
+backlog task edit 7 --comment "Review question" --comment-author @agent-k  # Add comment
 backlog task edit 7 --final-summary "PR-style summary"  # Add final summary
 backlog task edit 7 -s "In Progress" -a @agent-k  # Multiple commands: change status and assign the task when you start working on the task
 ```
@@ -147,6 +148,10 @@ Brief explanation of the task purpose.
 
 Progress notes captured during implementation.
 
+## Comments
+
+Task discussion, review questions, and collaboration notes.
+
 ## Final Summary
 
 PR-style summary of what was implemented.
@@ -172,6 +177,7 @@ PR-style summary of what was implemented.
 | Add Plan                | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
 | Add Notes (replace)     | `backlog task edit 42 --notes "What I did"`              |
 | Append Notes            | `backlog task edit 42 --append-notes "Another note"` |
+| Add Comment             | `backlog task edit 42 --comment "Review question" --comment-author @agent` |
 | Add Final Summary       | `backlog task edit 42 --final-summary "PR-style summary"` |
 | Append Final Summary    | `backlog task edit 42 --append-final-summary "Another detail"` |
 | Clear Final Summary     | `backlog task edit 42 --clear-final-summary` |
@@ -270,7 +276,7 @@ Good Examples:
 
 - "User can successfully log in with valid credentials"
 - "System processes 1000 requests per second without errors"
-- "CLI preserves literal newlines in description/plan/notes/final summary; `\\n` sequences are not auto‑converted"
+- "CLI preserves literal newlines in description/plan/notes/comments/final summary; `\\n` sequences are not auto-converted"
 
 Bad Example (Implementation Step):
 
@@ -487,6 +493,7 @@ backlog search --modified-file src/server/api.ts --plain
 |---------------|--------------------------------------|-----------------------------------|
 | Check AC      | `backlog task edit 42 --check-ac 1`  | Change `- [ ]` to `- [x]` in file |
 | Add notes     | `backlog task edit 42 --notes "..."` | Type notes into .md file          |
+| Add comment   | `backlog task edit 42 --comment "..." --comment-author @agent` | Type comment into .md file |
 | Add final summary | `backlog task edit 42 --final-summary "..."` | Type summary into .md file |
 | Change status | `backlog task edit 42 -s Done`       | Edit status in frontmatter        |
 | Add AC        | `backlog task edit 42 --ac "New"`    | Add `- [ ] New` to file           |
@@ -539,6 +546,7 @@ backlog search --modified-file src/server/api.ts --plain
 |------------------|----------------------------------------------------------|
 | Add plan         | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
 | Add notes        | `backlog task edit 42 --notes "Implementation details"`  |
+| Add comment      | `backlog task edit 42 --comment "Review question" --comment-author @agent` |
 | Add final summary | `backlog task edit 42 --final-summary "PR-style summary"` |
 | Append final summary | `backlog task edit 42 --append-final-summary "More details"` |
 | Clear final summary | `backlog task edit 42 --clear-final-summary` |
@@ -547,7 +555,7 @@ backlog search --modified-file src/server/api.ts --plain
 | Add documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
 | Set modified files | `backlog task edit 42 --modified-file src/api.ts --modified-file src/ui.ts` |
 
-### Multi‑line Input (Description/Plan/Notes/Final Summary)
+### Multi‑line Input (Description/Plan/Notes/Comments/Final Summary)
 
 The CLI preserves input literally — shells do not convert `\n` inside normal quotes. Use one of the following forms, listed in order of preference for AI agents:
 
@@ -568,7 +576,7 @@ Second line
 Final paragraph"
 ```
 
-The same shape works for `--desc`, `--plan`, `--final-summary`, and the `--append-*` variants.
+The same shape works for `--desc`, `--plan`, `--comment`, `--final-summary`, and the `--append-*` variants.
 
 **3. Shell-specific shorthand (interactive shells only — some AI agent sandboxes reject these):**
 
@@ -615,6 +623,12 @@ Do not expect the literal sequence `\n` inside double quotes to become a newline
   - Updated tests
   - TODO: monitor staging deploy"
   ```
+
+### Comments Formatting
+
+- Use comments for task discussion, review notes, questions, and handoff context that should remain visible to humans and agents.
+- Comments are append-only via `backlog task edit <id> --comment "..."`; include `--comment-author @name` when attribution is useful.
+- Do not use comments as the primary execution log; use Implementation Notes for progress and Final Summary for the PR description.
 
 ### Final Summary Formatting
 

@@ -20,6 +20,12 @@ export interface ReorderTaskPayload {
 	targetMilestone?: string | null;
 }
 
+export type TaskUpdateRequest = Omit<Partial<Task>, "milestone"> & {
+	milestone?: string | null;
+	commentsAppend?: string[];
+	commentAuthor?: string;
+};
+
 export interface InitializationStatus {
 	initialized: boolean;
 	projectPath: string;
@@ -236,10 +242,7 @@ export class ApiClient {
 		});
 	}
 
-	async updateTask(
-		id: string,
-		updates: Omit<Partial<Task>, "milestone"> & { milestone?: string | null },
-	): Promise<Task> {
+	async updateTask(id: string, updates: TaskUpdateRequest): Promise<Task> {
 		return this.fetchJson<Task>(`${API_BASE}/tasks/${id}`, {
 			method: "PUT",
 			body: JSON.stringify(updates),

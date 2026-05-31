@@ -287,6 +287,20 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			notesClear: {
 				type: "boolean",
 			},
+			commentsAppend: {
+				type: "array",
+				items: {
+					type: "string",
+					maxLength: 5000,
+				},
+				maxItems: 20,
+				description: "Append markdown comments to the task.",
+			},
+			commentAuthor: {
+				type: "string",
+				maxLength: 100,
+				description: "Optional author label to store with appended comments.",
+			},
 			planSet: {
 				type: "string",
 				maxLength: 20000,

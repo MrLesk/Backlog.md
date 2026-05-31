@@ -110,6 +110,9 @@ function buildSearchableTask(task: Task): SearchableTask {
 	}
 	if (task.implementationPlan) bodyParts.push(task.implementationPlan);
 	if (task.implementationNotes) bodyParts.push(task.implementationNotes);
+	if (Array.isArray(task.comments) && task.comments.length > 0) {
+		bodyParts.push(task.comments.map((comment) => comment.body).join(" "));
+	}
 	if (task.labels?.length) bodyParts.push(task.labels.join(" "));
 	if (task.assignee?.length) bodyParts.push(task.assignee.join(" "));
 	if (task.modifiedFiles?.length) bodyParts.push(task.modifiedFiles.join(" "));

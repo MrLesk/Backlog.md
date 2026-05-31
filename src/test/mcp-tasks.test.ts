@@ -147,6 +147,69 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("TASK-2 - Server search");
 	});
 
+	it("appends and renders task comments through task_edit and task_view", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Commented MCP task",
+				},
+			},
+		});
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					title: "Commented MCP task renamed",
+					commentsAppend: ["MCP comment body"],
+					commentAuthor: "@mcp",
+				},
+			},
+		});
+		const editText = getText(editResult.content);
+		expect(editText).toContain("Comments:");
+		expect(editText).toContain("#1 - @mcp");
+		expect(editText).toContain("MCP comment body");
+
+		const viewResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-1" } },
+		});
+		const viewText = getText(viewResult.content);
+		expect(viewText).toContain("Task TASK-1 - Commented MCP task renamed");
+		expect(viewText).toContain("Comments:");
+		expect(viewText).toContain("MCP comment body");
+	});
+
+	it("rejects reserved comment markers through task_edit", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Invalid comment marker task",
+				},
+			},
+		});
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					commentsAppend: ["Invalid <!-- COMMENT:END --> marker"],
+				},
+			},
+		});
+		expect(editResult.isError).toBe(true);
+		expect(getText(editResult.content)).toContain("Comment body cannot contain Backlog comment markers.");
+
+		const viewResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-1" } },
+		});
+		expect(getText(viewResult.content)).not.toContain("Comments:");
+	});
+
 	it("filters task_list by milestone using closest matching and combines with status", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

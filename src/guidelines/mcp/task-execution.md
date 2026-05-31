@@ -39,6 +39,7 @@
 - If feedback requires changes, revise the plan first via `task_edit` (planSet or planAppend fields)
 - Work in short loops: implement, run the relevant tests, and immediately check off acceptance criteria with `task_edit` (acceptanceCriteriaCheck field) when they are met
 - Log progress with `task_edit` (notesAppend field) to document decisions, blockers, or learnings
+- Use `task_edit` (`commentsAppend` with optional `commentAuthor`) for task discussion, review questions, or handoff notes that are not part of the execution log
 - Keep task status aligned with reality via `task_edit`
 
 ### Handling Scope Changes
