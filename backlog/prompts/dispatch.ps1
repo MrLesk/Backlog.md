@@ -57,6 +57,29 @@ $promptPath = "$logFile.prompt"
 
 if ($env:BACKLOG_DISPATCH_DRY_RUN -eq '1') { exit 0 }
 
+# ── Deduplication guard ───────────────────────────────────────────────────────
+# The onStatusChange hook can fire twice for the same event when the in-process
+# dispatch and the file-watcher dispatch race (both within the same millisecond).
+# File::Open with CreateNew is atomic on Windows: the first caller wins, the
+# second gets an IOException and exits — no second agent is launched.
+# The dedup key is per (taskId, status) within a 1-second window.
+$dedupeKey  = "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$safeTaskId-$safeStatus.dedup"
+$dedupeLock = Join-Path $logDir $dedupeKey
+try {
+    $s = [System.IO.File]::Open($dedupeLock,
+             [System.IO.FileMode]::CreateNew,
+             [System.IO.FileAccess]::ReadWrite,
+             [System.IO.FileShare]::None)
+    $s.Close()
+} catch {
+    Write-Host "dispatch.ps1: duplicate suppressed for $env:TASK_ID -> $env:NEW_STATUS"
+    exit 0
+}
+# Prune dedup files older than 60 s so they don't accumulate.
+Get-ChildItem $logDir -Filter '*.dedup' -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddSeconds(-60) } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
 # ── Agent resolution ─────────────────────────────────────────────────────────
 # Tasks without `agent:` in frontmatter are human tasks -- skip dispatch.
 # Exception: Human Review always fires the notifier (ready.md).
