@@ -24,6 +24,50 @@ import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { probeShellAvailability, resolveShellInvocation } from "../utils/status-callback.ts";
 import { getVersion } from "../utils/version.ts";
 
+/** Parse agent log output into readable text for the web UI log viewer. */
+function agentLogParse(raw: string, isHumanReadable: boolean): string {
+	if (!raw.trim()) return "";
+	if (isHumanReadable) return raw; // .log.err already readable (Codex human-readable format)
+
+	// Try JSON event stream (Codex --json mode or similar).
+	const lines = raw.split("\n");
+	const out: string[] = [];
+	let anyJson = false;
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		try {
+			const ev = JSON.parse(trimmed) as Record<string, unknown>;
+			anyJson = true;
+			const item = ev.item as Record<string, unknown> | undefined;
+			if (ev.type === "item.completed" && item) {
+				if (item.type === "agent_message" && typeof item.text === "string") {
+					out.push(item.text.trim());
+					out.push("");
+				} else if (item.type === "command_execution") {
+					// Strip the long powershell.exe path prefix for readability.
+					const cmd = typeof item.command === "string"
+						? item.command.replace(/^"[^"]*powershell[^"]*"\s+-\w+\s+/i, "").replace(/\\r\\n/g, "\n")
+						: String(item.command ?? "");
+					out.push(`$ ${cmd.trim()}`);
+					const agg = typeof item.aggregated_output === "string" ? item.aggregated_output.trim() : "";
+					if (agg) out.push(agg);
+					out.push("");
+				}
+			} else if (ev.type === "turn.started") {
+				// skip
+			} else if (typeof ev.type === "string" && ev.type.startsWith("mcp")) {
+				out.push(`[mcp] ${ev.type}`);
+			}
+		} catch {
+			if (!anyJson) out.push(line); // plain text — Claude -p output
+		}
+	}
+
+	return anyJson ? out.join("\n") : raw;
+}
+
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
 const DEFAULT_PREFIX = "task-";
@@ -429,6 +473,9 @@ export class BacklogServer {
 					},
 					"/api/agent-status": {
 						GET: async () => await this.handleGetAgentStatus(),
+					},
+					"/api/agent-log": {
+						GET: async (req: Request) => await this.handleGetAgentLog(req),
 					},
 					"/api/init": {
 						POST: async (req: Request) => await this.handleInit(req),
@@ -1825,6 +1872,61 @@ export class BacklogServer {
 		);
 
 		return Response.json(result);
+	}
+
+	private async handleGetAgentLog(req: Request): Promise<Response> {
+		const url = new URL(req.url);
+		const taskId = url.searchParams.get("taskId");
+		const status = url.searchParams.get("status");
+		if (!taskId || !status) return new Response("Missing taskId or status", { status: 400 });
+
+		const logsDir = join(this.core.filesystem.backlogDir, "prompts", "logs");
+		let files: string[];
+		try {
+			files = await readdir(logsDir);
+		} catch {
+			return Response.json({ content: "No log directory found.", done: true });
+		}
+
+		// Match files for this (taskId, status): filename contains both segments.
+		// safeTaskId/safeStatus use the same replacement as dispatch.ps1.
+		const safeTaskId = taskId.replace(/[<>:"/\\|?*\s]+/g, "_");
+		const safeStatus = status.replace(/[<>:"/\\|?*\s]+/g, "_");
+		const matching = files
+			.filter((f) => f.endsWith(".log") && f.includes(`-${safeTaskId}-`) && f.endsWith(`-${safeStatus}.log`))
+			.sort()
+			.at(-1); // most recent = last lexicographically (timestamp prefix)
+
+		if (!matching) return Response.json({ content: "No log found yet.", done: true, logFile: "" });
+
+		const logPath = join(logsDir, matching);
+		const errPath = `${logPath}.err`;
+		const pidPath = `${logPath}.pid`;
+
+		// Prefer .log.err (human-readable for Codex) if it has substantial content.
+		let raw = "";
+		let usedErr = false;
+		try {
+			const err = await Bun.file(errPath).text();
+			if (err.trim().length > 100) { raw = err; usedErr = true; }
+		} catch { /* no .err file */ }
+
+		if (!usedErr) {
+			try { raw = await Bun.file(logPath).text(); } catch { /* unreadable */ }
+		}
+
+		// Check if agent process is still alive.
+		let done = true;
+		try {
+			const pidStr = await Bun.file(pidPath).text();
+			const pid = parseInt(pidStr.trim(), 10);
+			if (pid > 0) {
+				try { process.kill(pid, 0); done = false; }
+				catch (e: unknown) { done = (e as NodeJS.ErrnoException).code !== "EPERM"; }
+			}
+		} catch { /* no .pid → done */ }
+
+		return Response.json({ content: agentLogParse(raw, usedErr), done, logFile: matching });
 	}
 
 	private async handleInit(req: Request): Promise<Response> {

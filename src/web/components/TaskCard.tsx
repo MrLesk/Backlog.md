@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { type ConfigurableCardField, type Task } from '../../types';
+import { AgentLogModal } from './AgentLogModal';
 import { useAgentStatus } from '../hooks/useAgentStatus';
 
 interface TaskCardProps {
@@ -37,6 +38,7 @@ const DoneIcon: React.FC<{ className?: string }> = ({ className = 'w-2.5 h-2.5' 
 const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, hiddenFields = EMPTY_HIDDEN }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
+  const [logModal, setLogModal] = useState<{ status: string; agentName: string } | null>(null);
   const agentStatus = useAgentStatus(task.id);
 
   // Check if task is from another branch (read-only)
@@ -197,14 +199,21 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             {!hiddenFields.has('agent') && task.agent && (() => {
               const running = agentStatus.coder?.running;
               const done    = agentStatus.coder?.completed;
+              const clickable = running || done;
               return (
                 <span
+                  role={clickable ? 'button' : undefined}
+                  tabIndex={clickable ? 0 : undefined}
                   className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors duration-200 ${
                     running
-                      ? 'bg-blue-100 dark:bg-blue-800/50 text-blue-800 dark:text-blue-200'
+                      ? 'bg-blue-100 dark:bg-blue-800/50 text-blue-800 dark:text-blue-200 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-700/60'
+                      : done
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800/40'
                       : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                   }`}
-                  title={`Coder agent: ${task.agent}${running ? ' (running)' : done ? ' (done)' : ''}`}
+                  title={`Coder agent: ${task.agent}${running ? ' (running — click to view log)' : done ? ' (done — click to view log)' : ''}`}
+                  onClick={clickable ? (e) => { e.stopPropagation(); setLogModal({ status: 'In Progress', agentName: task.agent! }); } : undefined}
+                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter') { e.stopPropagation(); setLogModal({ status: 'In Progress', agentName: task.agent! }); } } : undefined}
                 >
                   {running ? <SpinnerIcon /> : done ? <DoneIcon /> : (
                     <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -218,14 +227,21 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             {!hiddenFields.has('reviewAgent') && task.reviewAgent && (() => {
               const running = agentStatus.reviewer?.running;
               const done    = agentStatus.reviewer?.completed;
+              const clickable = running || done;
               return (
                 <span
+                  role={clickable ? 'button' : undefined}
+                  tabIndex={clickable ? 0 : undefined}
                   className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors duration-200 ${
                     running
-                      ? 'bg-purple-100 dark:bg-purple-800/50 text-purple-800 dark:text-purple-200'
+                      ? 'bg-purple-100 dark:bg-purple-800/50 text-purple-800 dark:text-purple-200 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-700/60'
+                      : done
+                      ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-800/40'
                       : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
                   }`}
-                  title={`Reviewer agent: ${task.reviewAgent}${running ? ' (running)' : done ? ' (done)' : ''}`}
+                  title={`Reviewer agent: ${task.reviewAgent}${running ? ' (running — click to view log)' : done ? ' (done — click to view log)' : ''}`}
+                  onClick={clickable ? (e) => { e.stopPropagation(); setLogModal({ status: 'In Review', agentName: task.reviewAgent! }); } : undefined}
+                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter') { e.stopPropagation(); setLogModal({ status: 'In Review', agentName: task.reviewAgent! }); } } : undefined}
                 >
                   {running ? <SpinnerIcon /> : done ? <DoneIcon /> : (
                     <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -277,6 +293,15 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           );
         })()}
       </div>
+      {logModal && (
+        <AgentLogModal
+          taskId={task.id}
+          taskTitle={task.title}
+          status={logModal.status}
+          agentName={logModal.agentName}
+          onClose={() => setLogModal(null)}
+        />
+      )}
     </div>
   );
 };
