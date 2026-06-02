@@ -1068,6 +1068,15 @@ export class Core {
 				...(input.actualEnd && { actualEnd: input.actualEnd }),
 			};
 
+			// Auto-populate actualStart / actualEnd when created directly in terminal / in-progress status
+			const statuses = config?.statuses ?? DEFAULT_STATUSES;
+			if (isInProgressStatus(resolvedStatus) && !task.actualStart) {
+				task.actualStart = createdDate;
+			}
+			if (isTerminalStatus(resolvedStatus, statuses) && !task.actualEnd) {
+				task.actualEnd = createdDate;
+			}
+
 			const filePath = await this.writePreparedTask(task, isDraft);
 			return { task, filePath };
 		});
