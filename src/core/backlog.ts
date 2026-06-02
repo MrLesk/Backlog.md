@@ -37,6 +37,7 @@ import {
 } from "../utils/milestone-filter.ts";
 import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
+	isInProgressStatus,
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
 } from "../utils/status.ts";
@@ -1058,6 +1059,8 @@ export class Core {
 				...(input.dueDate && { dueDate: input.dueDate }),
 				...(input.plannedStart && { plannedStart: input.plannedStart }),
 				...(input.plannedEnd && { plannedEnd: input.plannedEnd }),
+				...(input.actualStart && { actualStart: input.actualStart }),
+				...(input.actualEnd && { actualEnd: input.actualEnd }),
 			};
 
 			const filePath = await this.writePreparedTask(task, isDraft);
@@ -1091,6 +1094,20 @@ export class Core {
 
 		// Always set updatedDate when updating a task
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+
+		// Auto-populate actualStart / actualEnd on status changes
+		if (statusChanged) {
+			const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const config = await this.fs.loadConfig();
+			const statuses = config?.statuses ?? DEFAULT_STATUSES;
+
+			if (isInProgressStatus(newStatus) && !isInProgressStatus(oldStatus) && !task.actualStart) {
+				task.actualStart = now;
+			}
+			if (isTerminalStatus(newStatus, statuses) && !isTerminalStatus(oldStatus, statuses) && !task.actualEnd) {
+				task.actualEnd = now;
+			}
+		}
 
 		await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
@@ -1225,6 +1242,22 @@ export class Core {
 				delete task.plannedEnd;
 			} else {
 				task.plannedEnd = next;
+			}
+		});
+
+		applyOptionalDateField(input.actualStart, task.actualStart, (next) => {
+			if (next === undefined) {
+				delete task.actualStart;
+			} else {
+				task.actualStart = next;
+			}
+		});
+
+		applyOptionalDateField(input.actualEnd, task.actualEnd, (next) => {
+			if (next === undefined) {
+				delete task.actualEnd;
+			} else {
+				task.actualEnd = next;
 			}
 		});
 

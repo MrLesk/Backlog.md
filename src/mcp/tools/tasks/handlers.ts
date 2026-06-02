@@ -42,6 +42,8 @@ export type TaskCreateArgs = {
 	dueDate?: string;
 	plannedStart?: string;
 	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 };
 
 export type TaskListArgs = {
@@ -131,6 +133,8 @@ export class TaskHandlers {
 				definitionOfDoneAdd: args.definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
 				dueDate: args.dueDate,
+				actualStart: args.actualStart,
+				actualEnd: args.actualEnd,
 				plannedStart: args.plannedStart,
 				plannedEnd: args.plannedEnd,
 			});

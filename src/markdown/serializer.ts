@@ -54,6 +54,8 @@ export function serializeTask(task: Task): string {
 		...(task.dueDate && { due_date: task.dueDate }),
 		...(task.plannedStart && { planned_start: task.plannedStart }),
 		...(task.plannedEnd && { planned_end: task.plannedEnd }),
+		...(task.actualStart && { actual_start: task.actualStart }),
+		...(task.actualEnd && { actual_end: task.actualEnd }),
 	};
 
 	let contentBody = task.rawContent ?? "";

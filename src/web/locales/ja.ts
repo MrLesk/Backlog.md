@@ -202,6 +202,8 @@ export const ja: TranslationDict = {
 			dueDate: "期限",
 			plannedStart: "計画開始日",
 			plannedEnd: "計画終了日",
+			actualStart: "実開始日",
+			actualEnd: "実終了日",
 		},
 		clickToPreview: "クリックしてプレビュー",
 		removeReference: "参照を削除",

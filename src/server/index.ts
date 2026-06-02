@@ -914,6 +914,8 @@ export class BacklogServer {
 				dueDate: typeof payload.dueDate === "string" ? payload.dueDate.trim() : undefined,
 				plannedStart: typeof payload.plannedStart === "string" ? payload.plannedStart.trim() : undefined,
 				plannedEnd: typeof payload.plannedEnd === "string" ? payload.plannedEnd.trim() : undefined,
+				actualStart: typeof payload.actualStart === "string" ? payload.actualStart.trim() : undefined,
+				actualEnd: typeof payload.actualEnd === "string" ? payload.actualEnd.trim() : undefined,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -1017,6 +1019,12 @@ export class BacklogServer {
 		}
 		if ("plannedStart" in updates && typeof updates.plannedStart === "string") {
 			updateInput.plannedStart = updates.plannedStart.trim();
+		}
+		if ("actualStart" in updates && typeof updates.actualStart === "string") {
+			updateInput.actualStart = updates.actualStart.trim();
+		}
+		if ("actualEnd" in updates && typeof updates.actualEnd === "string") {
+			updateInput.actualEnd = updates.actualEnd.trim();
 		}
 		if ("plannedEnd" in updates && typeof updates.plannedEnd === "string") {
 			updateInput.plannedEnd = updates.plannedEnd.trim();

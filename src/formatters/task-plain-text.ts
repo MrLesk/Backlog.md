@@ -103,6 +103,12 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	if (task.plannedEnd) {
 		lines.push(`Planned End: ${formatDateForDisplay(task.plannedEnd)}`);
 	}
+	if (task.actualStart) {
+		lines.push(`Actual Start: ${formatDateForDisplay(task.actualStart)}`);
+	}
+	if (task.actualEnd) {
+		lines.push(`Actual End: ${formatDateForDisplay(task.actualEnd)}`);
+	}
 
 	if (task.labels?.length) {
 		lines.push(`Labels: ${task.labels.join(", ")}`);

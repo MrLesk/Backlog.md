@@ -113,6 +113,8 @@ labels: [backend, api]
 dueDate: 2026-06-15
 plannedStart: 2026-06-01
 plannedEnd: 2026-06-10
+actualStart: 2026-06-02 09:30
+actualEnd: 2026-06-09 17:00
 modified_files:
   - src/server/api.ts
   - src/web/components/TaskList.tsx
@@ -169,6 +171,10 @@ PR-style summary of what was implemented.
 | Clear Due Date          | `backlog task edit 42 --clear-due-date`                  |
 | Clear Planned Start     | `backlog task edit 42 --clear-planned-start`             |
 | Clear Planned End       | `backlog task edit 42 --clear-planned-end`               |
+| Actual Start            | `backlog task edit 42 --actual-start 2026-06-02 09:30`   |
+| Actual End              | `backlog task edit 42 --actual-end 2026-06-09 17:00`     |
+| Clear Actual Start      | `backlog task edit 42 --clear-actual-start`              |
+| Clear Actual End        | `backlog task edit 42 --clear-actual-end`                |
 | Description             | `backlog task edit 42 -d "New description"`              |
 | Add AC                  | `backlog task edit 42 --ac "New criterion"`              |
 | Add DoD                 | `backlog task edit 42 --dod "Ship notes"`                |
@@ -535,6 +541,10 @@ backlog search --modified-file src/server/api.ts --plain
 | Assign           | `backlog task edit 42 -a @sara`             |
 | Add labels       | `backlog task edit 42 -l backend,api`       |
 | Set priority     | `backlog task edit 42 --priority high`      |
+| Set actual start | `backlog task edit 42 --actual-start 2026-06-02 09:30` |
+| Set actual end   | `backlog task edit 42 --actual-end 2026-06-09 17:00` |
+
+> **Note on actual dates**: `actualStart` and `actualEnd` are automatically populated when you change a task's status (to "In Progress" and "Done" respectively). You do not need to set them manually unless the user explicitly requests it.
 
 ### Acceptance Criteria Management
 

@@ -214,6 +214,12 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 	if (typeof args.plannedEnd === "string") {
 		updateInput.plannedEnd = args.plannedEnd.trim();
 	}
+	if (typeof args.actualStart === "string") {
+		updateInput.actualStart = args.actualStart.trim();
+	}
+	if (typeof args.actualEnd === "string") {
+		updateInput.actualEnd = args.actualEnd.trim();
+	}
 
 	return updateInput;
 }
