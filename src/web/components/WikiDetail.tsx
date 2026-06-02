@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { apiClient } from "../lib/api";
 import MermaidMarkdown from "./MermaidMarkdown";
 import ErrorBoundary from "../components/ErrorBoundary";
@@ -11,12 +11,67 @@ import ChipInput from "./ChipInput";
 import { useI18n } from '../hooks/useI18n';
 import type { WikiPage } from "../../types";
 
+/**
+ * Resolve a wikilink path relative to the current wiki page path.
+ * The current page is considered to live under the `wiki/` subdirectory;
+ * resolved paths are relative to the backlog project root.
+ * Returns null if the resolved path would escape the project root.
+ */
+export function resolveWikiPath(currentPagePath: string, linkPath: string): string | null {
+	// Absolute paths are rejected on the frontend
+	if (linkPath.startsWith("/")) return null;
+	// No relative segments — already project-root-relative
+	if (!linkPath.startsWith(".") && !linkPath.includes("/.")) return linkPath;
+
+	// Treat the current page as residing under wiki/ for correct relative resolution
+	const actualCurrentPath = `wiki/${currentPagePath}`;
+	const currentDir = actualCurrentPath.split("/").slice(0, -1).join("/");
+	const rawPath = currentDir ? `${currentDir}/${linkPath}` : linkPath;
+
+	const parts = rawPath.split("/");
+	const resolved: string[] = [];
+	for (const part of parts) {
+		if (part === "..") {
+			if (resolved.length === 0) return null; // Would escape project root
+			resolved.pop();
+		} else if (part !== "." && part !== "") {
+			resolved.push(part);
+		}
+	}
+	return resolved.join("/");
+}
+
+/**
+ * Resolve a standard Markdown relative link against the current wiki page path.
+ * Returns null if the resolved path would escape the wiki root.
+ */
+function resolveMarkdownLink(currentPagePath: string, linkPath: string): string | null {
+	if (linkPath.startsWith("/")) return linkPath;
+
+	const currentDir = currentPagePath.split("/").slice(0, -1).join("/");
+	const rawPath = currentDir ? `${currentDir}/${linkPath}` : linkPath;
+
+	const parts = rawPath.split("/");
+	const resolved: string[] = [];
+	for (const part of parts) {
+		if (part === "..") {
+			if (resolved.length === 0) return null;
+			resolved.pop();
+		} else if (part !== "." && part !== "") {
+			resolved.push(part);
+		}
+	}
+	return resolved.join("/");
+}
+
 function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void }) {
 	const [previewPage, setPreviewPage] = useState<WikiPage | null>(null);
 	const [previewLoading, setPreviewLoading] = useState(false);
 	const [previewError, setPreviewError] = useState<Error | null>(null);
 	const { theme } = useTheme();
 	const { t } = useI18n();
+	const previewContentRef = useRef<HTMLDivElement>(null);
+	const navigate = useNavigate();
 
 	useEffect(() => {
 		let cancelled = false;
@@ -38,6 +93,54 @@ function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void 
 		return () => { cancelled = true; };
 	}, [path]);
 
+	useEffect(() => {
+		if (!previewContentRef.current) return;
+		const container = previewContentRef.current;
+
+		const handleClick = (e: MouseEvent) => {
+			const target = e.target as HTMLElement;
+			const anchor = target.closest("a") as HTMLAnchorElement | null;
+			if (!anchor) return;
+			const href = anchor.getAttribute("href");
+			if (!href) return;
+
+			if (href.startsWith("/wiki/")) {
+				e.preventDefault();
+				const rawPath = decodeURIComponent(href.slice("/wiki/".length));
+				const resolvedPath = resolveWikiPath(path, rawPath);
+				if (resolvedPath === null) {
+					console.warn("Wikilink escapes wiki root:", rawPath);
+					return;
+				}
+				navigate(`/wiki/${encodeURIComponent(resolvedPath)}`);
+				onClose();
+				return;
+			}
+
+			if (
+				path &&
+				!href.startsWith("http") &&
+				!href.startsWith("#") &&
+				!href.startsWith("/") &&
+				!href.startsWith("mailto:") &&
+				!href.startsWith("tel:")
+			) {
+				e.preventDefault();
+				const decodedHref = decodeURIComponent(href);
+				const resolvedPath = resolveMarkdownLink(path, decodedHref);
+				if (resolvedPath === null) {
+					console.warn("Markdown link escapes wiki root:", decodedHref);
+					return;
+				}
+				navigate(`/wiki/${encodeURIComponent(resolvedPath)}`);
+				onClose();
+			}
+		};
+
+		container.addEventListener("click", handleClick);
+		return () => container.removeEventListener("click", handleClick);
+	}, [previewPage?.content, path, onClose]);
+
 	const previewTitle =
 		typeof previewPage?.frontmatter?.title === "string" && previewPage.frontmatter.title
 			? previewPage.frontmatter.title
@@ -45,7 +148,9 @@ function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void 
 
 	const previewContent = previewPage?.content.replace(/\[\[([^\]]+)\]\]/g, (_match, p1) => {
 		const linkText = p1;
-		const linkPath = encodeURIComponent(p1);
+		const resolved = resolveWikiPath(path, p1);
+		if (resolved === null) return linkText;
+		const linkPath = encodeURIComponent(resolved);
 		return `[${linkText}](/wiki/${linkPath})`;
 	}) || "";
 
@@ -69,6 +174,7 @@ function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void 
 						<span>{previewPage.path}</span>
 					</div>
 					<div
+						ref={previewContentRef}
 						className="prose prose-sm !max-w-none w-full p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
 						data-color-mode={theme}
 					>
@@ -134,15 +240,43 @@ export default function WikiDetail() {
 			const anchor = target.closest("a") as HTMLAnchorElement | null;
 			if (!anchor) return;
 			const href = anchor.getAttribute("href");
-			if (!href || !href.startsWith("/wiki/")) return;
-			e.preventDefault();
-			const path = decodeURIComponent(href.slice("/wiki/".length));
-			setPreviewPath(path);
+			if (!href) return;
+
+			if (href.startsWith("/wiki/")) {
+				e.preventDefault();
+				const rawPath = decodeURIComponent(href.slice("/wiki/".length));
+				const resolvedPath = wikiPath ? resolveWikiPath(wikiPath, rawPath) : rawPath;
+				if (resolvedPath === null) {
+					console.warn("Wikilink escapes wiki root:", rawPath);
+					return;
+				}
+				setPreviewPath(resolvedPath);
+				return;
+			}
+
+			// Intercept relative Markdown links in wiki pages
+			if (
+				wikiPath &&
+				!href.startsWith("http") &&
+				!href.startsWith("#") &&
+				!href.startsWith("/") &&
+				!href.startsWith("mailto:") &&
+				!href.startsWith("tel:")
+			) {
+				e.preventDefault();
+				const decodedHref = decodeURIComponent(href);
+				const resolvedPath = resolveMarkdownLink(wikiPath, decodedHref);
+				if (resolvedPath === null) {
+					console.warn("Markdown link escapes wiki root:", decodedHref);
+					return;
+				}
+				setPreviewPath(resolvedPath);
+			}
 		};
 
 		container.addEventListener("click", handleClick);
 		return () => container.removeEventListener("click", handleClick);
-	}, [page?.content]);
+	}, [page?.content, wikiPath]);
 
 	const handleEdit = () => {
 		const currentTitle =
@@ -224,7 +358,9 @@ export default function WikiDetail() {
 
 	const sanitizedContent = page.content.replace(/\[\[([^\]]+)\]\]/g, (_match, p1) => {
 		const linkText = p1;
-		const linkPath = encodeURIComponent(p1);
+		const resolved = wikiPath ? resolveWikiPath(wikiPath, p1) : p1;
+		if (resolved === null) return `~~${linkText}~~`;
+		const linkPath = encodeURIComponent(resolved);
 		return `[${linkText}](/wiki/${linkPath})`;
 	});
 
