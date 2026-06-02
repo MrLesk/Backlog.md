@@ -56,8 +56,15 @@ interface GanttViewProps {
 
 function parseDate(dateStr?: string): Date | null {
 	if (!dateStr) return null;
-	const hasTime = dateStr.includes(" ");
-	const iso = hasTime ? dateStr.replace(" ", "T") : `${dateStr}T00:00:00`;
+	const iso = `${dateStr}T00:00:00`;
+	const d = new Date(iso);
+	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function parseDateTime(dateStr?: string): Date | null {
+	if (!dateStr) return null;
+	const hasTime = dateStr.includes(" ") || dateStr.includes("T");
+	const iso = dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z");
 	const d = new Date(iso);
 	return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -66,10 +73,10 @@ function parseTasks(tasks: Task[]): ParsedTask[] {
 	return tasks.map((task) => {
 		const plannedStart = parseDate(task.plannedStart);
 		const plannedEnd = parseDate(task.plannedEnd);
-		const actualStart = parseDate(task.actualStart);
-		const actualEnd = parseDate(task.actualEnd);
-		const created = parseDate(task.createdDate);
-		const updated = parseDate(task.updatedDate);
+		const actualStart = parseDateTime(task.actualStart);
+		const actualEnd = parseDateTime(task.actualEnd);
+		const created = parseDateTime(task.createdDate);
+		const updated = parseDateTime(task.updatedDate);
 
 		// Actual time resolution (for left table and actual bar)
 		let start: Date;
