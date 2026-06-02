@@ -1101,6 +1101,8 @@ export class FileSystem {
 		dueDate?: string,
 		plannedStart?: string,
 		plannedEnd?: string,
+		actualStart?: string,
+		actualEnd?: string,
 	): Promise<Milestone> {
 		return await this.withCreateLock(async () => {
 			const milestonesDir = await this.getMilestonesDir();
@@ -1155,6 +1157,8 @@ export class FileSystem {
 				...(dueDate !== undefined && { dueDate: dueDate.trim() || undefined }),
 				...(plannedStart !== undefined && { plannedStart: plannedStart.trim() || undefined }),
 				...(plannedEnd !== undefined && { plannedEnd: plannedEnd.trim() || undefined }),
+				...(actualStart !== undefined && { actualStart: actualStart.trim() || undefined }),
+				...(actualEnd !== undefined && { actualEnd: actualEnd.trim() || undefined }),
 			});
 
 			const filepath = join(milestonesDir, filename);
@@ -1176,6 +1180,8 @@ export class FileSystem {
 		plannedStart?: string,
 		plannedEnd?: string,
 		description?: string,
+		actualStart?: string,
+		actualEnd?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -1224,6 +1230,8 @@ export class FileSystem {
 				...(dueDate !== undefined && { dueDate: dueDate.trim() || undefined }),
 				...(plannedStart !== undefined && { plannedStart: plannedStart.trim() || undefined }),
 				...(plannedEnd !== undefined && { plannedEnd: plannedEnd.trim() || undefined }),
+				...(actualStart !== undefined && { actualStart: actualStart.trim() || undefined }),
+				...(actualEnd !== undefined && { actualEnd: actualEnd.trim() || undefined }),
 			});
 
 			if (sourcePath !== targetPath) {

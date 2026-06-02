@@ -195,6 +195,8 @@ export interface Milestone {
 	dueDate?: string;
 	plannedStart?: string;
 	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 }
 
 export const DOCUMENT_TYPE_VALUES = ["readme", "guide", "specification", "other"] as const;

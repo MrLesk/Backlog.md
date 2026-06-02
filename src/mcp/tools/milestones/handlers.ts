@@ -14,6 +14,8 @@ import {
 export type MilestoneAddArgs = {
 	name: string;
 	description?: string;
+	actualStart?: string;
+	actualEnd?: string;
 };
 
 export type MilestoneEditArgs = {
@@ -24,6 +26,8 @@ export type MilestoneEditArgs = {
 	plannedStart?: string;
 	plannedEnd?: string;
 	description?: string;
+	actualStart?: string;
+	actualEnd?: string;
 };
 
 export type MilestoneRemoveArgs = {
@@ -331,7 +335,7 @@ export class MilestoneHandlers {
 			formatListBlock(`Archived milestone values still on tasks (${archivedTaskValues.length}):`, archivedTaskValues),
 		);
 		blocks.push(
-			"Hint: use milestone_add to create milestone files, milestone_rename / milestone_remove to manage, milestone_archive to archive.",
+			"Hint: use milestone_add to create milestone files, milestone_edit / milestone_remove to manage, milestone_archive to archive.",
 		);
 
 		return {
@@ -365,7 +369,15 @@ export class MilestoneHandlers {
 		}
 
 		// Create milestone file
-		const milestone = await this.core.filesystem.createMilestone(name, args.description);
+		const milestone = await this.core.filesystem.createMilestone(
+			name,
+			args.description,
+			undefined,
+			undefined,
+			undefined,
+			args.actualStart,
+			args.actualEnd,
+		);
 
 		return {
 			content: [
@@ -395,8 +407,18 @@ export class MilestoneHandlers {
 		const isPlannedStartChanged =
 			args.plannedStart !== undefined && args.plannedStart !== (sourceMilestone.plannedStart ?? "");
 		const isPlannedEndChanged = args.plannedEnd !== undefined && args.plannedEnd !== (sourceMilestone.plannedEnd ?? "");
+		const isActualStartChanged =
+			args.actualStart !== undefined && args.actualStart !== (sourceMilestone.actualStart ?? "");
+		const isActualEndChanged = args.actualEnd !== undefined && args.actualEnd !== (sourceMilestone.actualEnd ?? "");
 
-		if (!isTitleChanged && !isDueDateChanged && !isPlannedStartChanged && !isPlannedEndChanged) {
+		if (
+			!isTitleChanged &&
+			!isDueDateChanged &&
+			!isPlannedStartChanged &&
+			!isPlannedEndChanged &&
+			!isActualStartChanged &&
+			!isActualEndChanged
+		) {
 			return {
 				content: [
 					{
@@ -442,6 +464,8 @@ export class MilestoneHandlers {
 			args.plannedStart,
 			args.plannedEnd,
 			args.description,
+			args.actualStart,
+			args.actualEnd,
 		);
 		if (!renameResult.success || !renameResult.milestone) {
 			throw new BacklogToolError(`Failed to rename milestone "${sourceMilestone.title}".`, "INTERNAL_ERROR");
@@ -471,6 +495,8 @@ export class MilestoneHandlers {
 					undefined,
 					undefined,
 					undefined,
+					undefined,
+					undefined,
 				);
 				const rollbackDetails: string[] = [];
 				if (!rollbackRenameResult.success) {
@@ -494,7 +520,17 @@ export class MilestoneHandlers {
 			});
 		} catch {
 			const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
-			const rollbackRenameResult = await this.core.updateMilestone(sourceMilestone.id, sourceMilestone.title, false);
+			const rollbackRenameResult = await this.core.updateMilestone(
+				sourceMilestone.id,
+				sourceMilestone.title,
+				false,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+			);
 			const rollbackDetails: string[] = [];
 			if (!rollbackRenameResult.success) {
 				rollbackDetails.push("failed to rollback milestone file rename");

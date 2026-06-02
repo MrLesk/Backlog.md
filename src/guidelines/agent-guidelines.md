@@ -738,18 +738,21 @@ backlog doc view doc-1
 
 Use Backlog.md public interfaces for milestone creation, listing, and archival so IDs, frontmatter, paths, and task relationships stay consistent.
 
+> **Important**: Assigning a milestone name to a task via `--milestone` only records the name on the task file; it **does not create a milestone file**. To create a milestone with an ID, dates, or other metadata, you must explicitly create it first using `milestone create` or `milestone_add`, then assign tasks to it.
+
 #### CLI Usage
 
 The CLI supports creating, listing, and archiving milestones.
 
 ```bash
-# Create a new milestone (saved under backlog/milestones/)
-backlog milestone add "Release 2.0" -d "Ship the v2.0 release"
+# Create a new milestone file explicitly (saved under backlog/milestones/)
+backlog milestone create "Release 2.0" -d "Ship the v2.0 release"
 
 # Edit a milestone (title, description, dates)
 backlog milestone edit "Release 2.0" -t "Release 2.1" -d "Updated scope"
 backlog milestone edit "Release 2.0" --due-date 2026-06-15
 backlog milestone edit "Release 2.0" --planned-start 2026-06-01 --planned-end 2026-06-10
+backlog milestone edit "Release 2.0" --actual-start "2026-06-02 09:30" --actual-end "2026-06-09 17:00"
 backlog milestone edit "Release 2.0" --clear-due-date --clear-planned-start
 
 # List active milestones (shows completion ratio)
@@ -790,8 +793,8 @@ backlog board --milestones
 
 #### MCP / API Usage
 
-- Use `milestone_add` to create milestones with title and optional description.
-- Use `milestone_rename` to rename a milestone and optionally update its date fields.
+- Use `milestone_add` to create milestones with title and optional description, actualStart, and actualEnd.
+- Use `milestone_edit` to rename a milestone and optionally update its date fields, including actualStart and actualEnd.
 - Use `milestone_archive` to archive a milestone.
 - Use `milestone_list` to list active and archived milestones.
 

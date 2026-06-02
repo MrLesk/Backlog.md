@@ -4,6 +4,7 @@ import Fuse from "fuse.js";
 import { useI18n } from "../hooks/useI18n";
 import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, milestoneKey } from "../utils/milestones";
+import { storedUtcToDateTimeLocal, dateTimeLocalToStoredUtc, formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
@@ -107,9 +108,13 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
 	const [newMilestonePlannedStart, setNewMilestonePlannedStart] = useState("");
 	const [newMilestonePlannedEnd, setNewMilestonePlannedEnd] = useState("");
+	const [newMilestoneActualStart, setNewMilestoneActualStart] = useState("");
+	const [newMilestoneActualEnd, setNewMilestoneActualEnd] = useState("");
 	const [editMilestoneDueDate, setEditMilestoneDueDate] = useState("");
 	const [editMilestonePlannedStart, setEditMilestonePlannedStart] = useState("");
 	const [editMilestonePlannedEnd, setEditMilestonePlannedEnd] = useState("");
+	const [editMilestoneActualStart, setEditMilestoneActualStart] = useState("");
+	const [editMilestoneActualEnd, setEditMilestoneActualEnd] = useState("");
 	const [removingBucket, setRemovingBucket] = useState<MilestoneBucket | null>(null);
 	const [removeTaskHandling, setRemoveTaskHandling] = useState<RemoveTaskHandling>("clear");
 	const [removeReassignTo, setRemoveReassignTo] = useState("");
@@ -279,6 +284,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setNewMilestoneDueDate("");
 		setNewMilestonePlannedStart("");
 		setNewMilestonePlannedEnd("");
+		setNewMilestoneActualStart("");
+		setNewMilestoneActualEnd("");
 		setError(null);
 	};
 
@@ -295,7 +302,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.createMilestone(value, undefined, newMilestoneDueDate, newMilestonePlannedStart, newMilestonePlannedEnd);
+			await apiClient.createMilestone(value, undefined, newMilestoneDueDate, newMilestonePlannedStart, newMilestonePlannedEnd, newMilestoneActualStart, newMilestoneActualEnd);
 			closeAddModal();
 			setSuccess(t.milestones.addSuccess(value));
 			if (onRefreshData) {
@@ -357,6 +364,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setEditMilestoneDueDate(entity?.dueDate || "");
 		setEditMilestonePlannedStart(entity?.plannedStart || "");
 		setEditMilestonePlannedEnd(entity?.plannedEnd || "");
+		setEditMilestoneActualStart(entity?.actualStart || "");
+		setEditMilestoneActualEnd(entity?.actualEnd || "");
 		setModalError(null);
 		setError(null);
 		setSuccess(null);
@@ -368,6 +377,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setEditMilestoneDueDate("");
 		setEditMilestonePlannedStart("");
 		setEditMilestonePlannedEnd("");
+		setEditMilestoneActualStart("");
+		setEditMilestoneActualEnd("");
 		setModalError(null);
 	};
 
@@ -401,7 +412,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.updateMilestone(bucket.milestone, value, editMilestoneDueDate, editMilestonePlannedStart, editMilestonePlannedEnd);
+			await apiClient.updateMilestone(bucket.milestone, value, editMilestoneDueDate, editMilestonePlannedStart, editMilestonePlannedEnd, editMilestoneActualStart, editMilestoneActualEnd);
 			closeEditModal();
 			setSuccess(t.milestones.renameSuccess(previousLabel, value));
 			if (onRefreshData) {
@@ -663,7 +674,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					{/* Milestone dates */}
 					{(() => {
 						const entity = milestoneEntities.find((m) => m.id === bucket.milestone);
-						if (!entity || (!entity.dueDate && !entity.plannedStart && !entity.plannedEnd)) return null;
+						if (!entity || (!entity.dueDate && !entity.plannedStart && !entity.plannedEnd && !entity.actualStart && !entity.actualEnd)) return null;
 						return (
 							<div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
 								{entity.dueDate && (
@@ -674,6 +685,12 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								)}
 								{entity.plannedEnd && (
 									<span>{t.taskDetails.section.plannedEnd}: {entity.plannedEnd}</span>
+								)}
+								{entity.actualStart && (
+									<span>{t.taskDetails.section.actualStart}: {formatStoredUtcDateForDisplay(entity.actualStart)}</span>
+								)}
+								{entity.actualEnd && (
+									<span>{t.taskDetails.section.actualEnd}: {formatStoredUtcDateForDisplay(entity.actualEnd)}</span>
 								)}
 							</div>
 						);
@@ -1087,6 +1104,24 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
 						/>
 					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.actualStart}</label>
+						<input
+							type="datetime-local"
+							value={storedUtcToDateTimeLocal(newMilestoneActualStart)}
+							onChange={(e) => setNewMilestoneActualStart(dateTimeLocalToStoredUtc(e.target.value))}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.actualEnd}</label>
+						<input
+							type="datetime-local"
+							value={storedUtcToDateTimeLocal(newMilestoneActualEnd)}
+							onChange={(e) => setNewMilestoneActualEnd(dateTimeLocalToStoredUtc(e.target.value))}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
 					<div className="flex justify-end gap-2">
 						<button
 							type="button"
@@ -1150,6 +1185,24 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							type="date"
 							value={editMilestonePlannedEnd}
 							onChange={(e) => setEditMilestonePlannedEnd(e.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.actualStart}</label>
+						<input
+							type="datetime-local"
+							value={storedUtcToDateTimeLocal(editMilestoneActualStart)}
+							onChange={(e) => setEditMilestoneActualStart(dateTimeLocalToStoredUtc(e.target.value))}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.actualEnd}</label>
+						<input
+							type="datetime-local"
+							value={storedUtcToDateTimeLocal(editMilestoneActualEnd)}
+							onChange={(e) => setEditMilestoneActualEnd(dateTimeLocalToStoredUtc(e.target.value))}
 							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
 						/>
 					</div>
