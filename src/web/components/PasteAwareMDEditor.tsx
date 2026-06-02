@@ -4,6 +4,7 @@ import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { apiClient } from "../lib/api";
 import { cleanHtml, handlePasteAsMarkdown } from "../utils/paste-as-markdown";
+import { useI18n } from '../hooks/useI18n';
 
 type MDEditorProps = React.ComponentProps<typeof MDEditor>;
 
@@ -69,6 +70,7 @@ export const PasteAwareMDEditor: React.FC<MDEditorProps> = ({
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [isConverting, setIsConverting] = useState(false);
+	const { t } = useI18n();
 
 	const handleDocxUpload = useCallback(
 		async (file: File) => {
@@ -125,12 +127,12 @@ export const PasteAwareMDEditor: React.FC<MDEditorProps> = ({
 				}
 			} catch (err) {
 				console.error("Word upload failed:", err);
-				alert(err instanceof Error ? err.message : "Failed to convert Word document");
+				alert(err instanceof Error ? err.message : t.pasteAwareMDEditor.convertFailed);
 			} finally {
 				setIsConverting(false);
 			}
 		},
-		[onChange],
+		[onChange, t],
 	);
 
 	const handlePaste = useCallback(
@@ -197,7 +199,7 @@ export const PasteAwareMDEditor: React.FC<MDEditorProps> = ({
 				<button
 					type="button"
 					disabled={isConverting}
-					title="Upload Word document (.docx)"
+					title={t.pasteAwareMDEditor.uploadDocx}
 					onMouseDown={(e) => e.preventDefault()}
 					onClick={() => fileInputRef.current?.click()}
 				>

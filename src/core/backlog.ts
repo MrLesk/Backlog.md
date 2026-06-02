@@ -52,12 +52,12 @@ import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { AssetManager } from "./assets.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
-import { AssetManager } from "./assets.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
 import {
 	type BranchTaskStateEntry,

@@ -18,6 +18,7 @@ import { SidebarSkeleton } from './LoadingSpinner';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
+import { useI18n } from '../hooks/useI18n';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
 
 // Utility functions for ID transformations
@@ -203,6 +204,7 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 	onCreateFolder: (parentPath: string) => void;
 	onRename: (path: string, name: string) => void;
 }) {
+	const { t } = useI18n();
 	const [isOpen, setIsOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
@@ -224,7 +226,7 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 					setIsOpen(!isOpen);
 				}}
 				className="p-0.5 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-				title="Actions..."
+				title={t.common.actions}
 			>
 				<Icons.Plus />
 			</button>
@@ -239,7 +241,7 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 							}}
 							className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
 						>
-							Create file
+							{t.nav.createFile}
 						</button>
 					)}
 					{!isFile && (
@@ -251,7 +253,7 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 							}}
 							className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
 						>
-							Create folder
+							{t.nav.createFolder}
 						</button>
 					)}
 					<button
@@ -262,7 +264,7 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 						}}
 						className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
 					>
-						Rename
+						{t.common.rename}
 					</button>
 				</div>
 			)}
@@ -401,6 +403,7 @@ const SideNavigation = memo(function SideNavigation({
 	onRetry,
 	onRefreshData,
 }: SideNavigationProps) {
+	const { t } = useI18n();
 	const [isCollapsed, setIsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('sideNavCollapsed');
 		return saved ? JSON.parse(saved) : false;
@@ -518,7 +521,7 @@ const SideNavigation = memo(function SideNavigation({
 				navigate(`/wiki/${encodeURIComponent(fullPath)}`);
 			}
 		} catch (err) {
-			setCreateWikiError(err instanceof Error ? err.message : 'Failed to create');
+			setCreateWikiError(err instanceof Error ? err.message : t.nav.failedToCreate);
 		} finally {
 			setIsCreatingWiki(false);
 		}
@@ -555,7 +558,7 @@ const SideNavigation = memo(function SideNavigation({
 				navigate(`/wiki/${encodeURIComponent(newPath)}`);
 			}
 		} catch (err) {
-			setRenameWikiError(err instanceof Error ? err.message : 'Failed to rename');
+			setRenameWikiError(err instanceof Error ? err.message : t.nav.failedToRename);
 		} finally {
 			setIsRenamingWiki(false);
 		}
@@ -642,7 +645,7 @@ const SideNavigation = memo(function SideNavigation({
 				console.error('Sidebar search failed:', err);
 				if (!cancelled) {
 					setSearchResults([]);
-					setSearchError('Search failed');
+					setSearchError(t.nav.searchFailed);
 				}
 			} finally {
 				if (!cancelled) {
@@ -690,7 +693,7 @@ const SideNavigation = memo(function SideNavigation({
 					onClick={toggleCollapse}
 					className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
 					aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-					title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+					title={isCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
 				>
 					{isCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
 				</button>
@@ -704,7 +707,7 @@ const SideNavigation = memo(function SideNavigation({
 							<input
 								ref={setSearchInputRef}
 								type="text"
-								placeholder="Search (⌘K)..."
+								placeholder={t.nav.searchPlaceholder}
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								className="w-full pl-10 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
@@ -726,7 +729,7 @@ const SideNavigation = memo(function SideNavigation({
 							<button
 								onClick={() => setIsCollapsed(false)}
 								className="flex items-center justify-center p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200"
-								title="Search (⌘K)"
+								title={t.nav.search}
 							>
 								<Icons.Search />
 						</button>
@@ -738,9 +741,9 @@ const SideNavigation = memo(function SideNavigation({
 			{!isCollapsed && searchQuery.trim() && unifiedSearchResults.length > 0 && (
 				<div className="p-4 border-b border-gray-200 dark:border-gray-700">
 					<div className="flex items-center justify-between mb-3">
-						<h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Search Results</h3>
+						<h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.nav.searchResults}</h3>
 						{isSearching && (
-							<span className="text-xs text-gray-500 dark:text-gray-400">Searching…</span>
+							<span className="text-xs text-gray-500 dark:text-gray-400">{t.nav.searching}</span>
 						)}
 					</div>
 					<div className="space-y-1">
@@ -778,7 +781,7 @@ const SideNavigation = memo(function SideNavigation({
 											{item.title}
 										</div>
 										<div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-											{result.type.charAt(0).toUpperCase() + result.type.slice(1)} • {item.id}
+											{(result.type === 'document' ? t.common.document : result.type === 'decision' ? t.common.decision : t.common.task)} • {item.id}
 										</div>
 									</div>
 									{result.score !== null && (
@@ -795,7 +798,7 @@ const SideNavigation = memo(function SideNavigation({
 
 			{!isCollapsed && searchQuery.trim() && unifiedSearchResults.length === 0 && !isSearching && !searchError && (
 				<div className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-					No matching results
+					{t.nav.noSearchResults}
 				</div>
 			)}
 
@@ -816,13 +819,13 @@ const SideNavigation = memo(function SideNavigation({
 				{error && !isLoading && !isCollapsed && (
 					<div className="px-4 py-4">
 						<div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-							<p className="text-sm text-red-700 dark:text-red-400 mb-2">Failed to load navigation</p>
+							<p className="text-sm text-red-700 dark:text-red-400 mb-2">{t.nav.failedToLoadNav}</p>
 								{onRetry && (
 									<button
 										onClick={onRetry}
 										className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200"
 									>
-										Retry
+										{t.common.retry}
 									</button>
 							)}
 						</div>
@@ -834,7 +837,7 @@ const SideNavigation = memo(function SideNavigation({
 					<div className="px-4 py-4">
 						<div className="flex items-center space-x-3 text-gray-700 dark:text-gray-300">
 							<span className="text-gray-500 dark:text-gray-400"><Icons.Tasks /></span>
-							<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Tasks ({tasks.length})</span>
+							<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.nav.tasks} ({tasks.length})</span>
 						</div>
 					</div>
 				)}
@@ -854,7 +857,7 @@ const SideNavigation = memo(function SideNavigation({
 							}
 						>
 							<Icons.Board />
-							<span className="ml-3 text-sm font-medium">Kanban Board</span>
+							<span className="ml-3 text-sm font-medium">{t.nav.board}</span>
 						</NavLink>
 
 						{/* Tasks Navigation */}
@@ -869,7 +872,7 @@ const SideNavigation = memo(function SideNavigation({
 							}
 						>
 							<Icons.List />
-							<span className="ml-3 text-sm font-medium">All Tasks</span>
+							<span className="ml-3 text-sm font-medium">{t.nav.tasks}</span>
 						</NavLink>
 
 						{/* Milestones Navigation */}
@@ -884,7 +887,7 @@ const SideNavigation = memo(function SideNavigation({
 							}
 						>
 							<Icons.Milestone />
-							<span className="ml-3 text-sm font-medium">Milestones</span>
+							<span className="ml-3 text-sm font-medium">{t.nav.milestones}</span>
 						</NavLink>
 
 						{/* Drafts Navigation */}
@@ -899,7 +902,7 @@ const SideNavigation = memo(function SideNavigation({
 							}
 						>
 							<Icons.Draft />
-							<span className="ml-3 text-sm font-medium">Drafts</span>
+							<span className="ml-3 text-sm font-medium">{t.nav.drafts}</span>
 						</NavLink>
 
 						{/* Statistics Navigation */}
@@ -914,7 +917,7 @@ const SideNavigation = memo(function SideNavigation({
 							}
 						>
 							<Icons.Statistics />
-							<span className="ml-3 text-sm font-medium">Statistics</span>
+							<span className="ml-3 text-sm font-medium">{t.nav.statistics}</span>
 						</NavLink>
 					</div>
 				)}
@@ -931,17 +934,17 @@ const SideNavigation = memo(function SideNavigation({
 										<button
 											onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
 											className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
-											title={isDocsCollapsed ? "Expand documents" : "Collapse documents"}
+											title={isDocsCollapsed ? t.nav.expandDocuments : t.nav.collapseDocuments}
 										>
 											{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Documents ({docs.length})</span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.nav.documents} ({docs.length})</span>
 								</div>
 									<button
 										onClick={handleCreateDocument}
 										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200"
-										title="Create new document"
+										title={t.nav.createDocument}
 									>
 										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -954,7 +957,7 @@ const SideNavigation = memo(function SideNavigation({
 							{!isDocsCollapsed && (
 								<div className="space-y-1">
 									{filteredDocs.length === 0 ? (
-										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{t.nav.noDocuments}</p>
 									) : (
 										filteredDocs.map((doc) => (
 											<NavLink
@@ -987,12 +990,12 @@ const SideNavigation = memo(function SideNavigation({
 										<button
 											onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
 											className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
-											title={isDecisionsCollapsed ? "Expand decisions" : "Collapse decisions"}
+											title={isDecisionsCollapsed ? t.nav.expandDecisions : t.nav.collapseDecisions}
 										>
 											{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Decisions ({decisions.length})</span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.nav.decisions} ({decisions.length})</span>
 								</div>
 								{/* Temporarily hidden - decisions editing not ready */}
 								{/*{false && (*/}
@@ -1013,7 +1016,7 @@ const SideNavigation = memo(function SideNavigation({
 							{!isDecisionsCollapsed && (
 								<div className="space-y-1">
 									{filteredDecisions.length === 0 ? (
-										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No decisions</p>
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{t.nav.noDecisions}</p>
 									) : (
 										filteredDecisions.map((decision) => (
 											<NavLink
@@ -1046,12 +1049,12 @@ const SideNavigation = memo(function SideNavigation({
 									<button
 										onClick={() => setIsWikiCollapsed(!isWikiCollapsed)}
 										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
-										title={isWikiCollapsed ? 'Expand wiki' : 'Collapse wiki'}
+										title={isWikiCollapsed ? t.nav.expandWiki : t.nav.collapseWiki}
 									>
 										{isWikiCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.DocumentBook /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Wiki ({countWikiFiles(wikiTree)})</span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.nav.wiki} ({countWikiFiles(wikiTree)})</span>
 								</div>
 								<WikiActionDropdown
 									nodeName=""
@@ -1067,7 +1070,7 @@ const SideNavigation = memo(function SideNavigation({
 							{!isWikiCollapsed && (
 								<div className="space-y-1">
 									{wikiTree.length === 0 ? (
-										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No wiki pages</p>
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{t.nav.noWikiPages}</p>
 									) : (
 										wikiTree.map((node) => (
 											<WikiTreeItem key={node.path} node={node} onCreateFile={handleCreateWikiFile} onCreateFolder={handleCreateWikiFolder} onRename={handleRenameWiki} />
@@ -1084,7 +1087,7 @@ const SideNavigation = memo(function SideNavigation({
 						<NavLink
 							to="/"
 							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Kanban Board"
+							data-tooltip-content={t.nav.board}
 							className={({ isActive }) =>
 								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
 									isActive
@@ -1100,7 +1103,7 @@ const SideNavigation = memo(function SideNavigation({
 						<NavLink
 							to="/tasks"
 							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="All Tasks"
+							data-tooltip-content={t.nav.tasks}
 							className={({ isActive }) =>
 								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
 									isActive
@@ -1117,7 +1120,7 @@ const SideNavigation = memo(function SideNavigation({
 						<NavLink
 							to="/drafts"
 							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Drafts"
+							data-tooltip-content={t.nav.drafts}
 							className={({ isActive }) =>
 								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
 									isActive
@@ -1134,7 +1137,7 @@ const SideNavigation = memo(function SideNavigation({
 						<NavLink
 							to="/milestones"
 							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Milestones"
+							data-tooltip-content={t.nav.milestones}
 							className={({ isActive }) =>
 								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
 									isActive
@@ -1151,7 +1154,7 @@ const SideNavigation = memo(function SideNavigation({
 						<NavLink
 							to="/statistics"
 							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Statistics"
+							data-tooltip-content={t.nav.statistics}
 							className={({ isActive }) =>
 								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
 									isActive
@@ -1170,7 +1173,7 @@ const SideNavigation = memo(function SideNavigation({
 								setIsDocsCollapsed(false);
 							}}
 								data-tooltip-id="sidebar-tooltip"
-								data-tooltip-content="Documentation"
+								data-tooltip-content={t.nav.documents}
 								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
 									location.pathname.startsWith('/documentation')
 										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
@@ -1187,7 +1190,7 @@ const SideNavigation = memo(function SideNavigation({
 								setIsDecisionsCollapsed(false);
 							}}
 								data-tooltip-id="sidebar-tooltip"
-								data-tooltip-content="Decisions"
+								data-tooltip-content={t.nav.decisions}
 								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
 									location.pathname.startsWith('/decisions')
 										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
@@ -1204,7 +1207,7 @@ const SideNavigation = memo(function SideNavigation({
 								setIsWikiCollapsed(false);
 							}}
 								data-tooltip-id="sidebar-tooltip"
-								data-tooltip-content="Wiki"
+								data-tooltip-content={t.nav.wiki}
 								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
 									location.pathname.startsWith('/wiki')
 										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
@@ -1233,7 +1236,7 @@ const SideNavigation = memo(function SideNavigation({
 						}
 					>
 						<Icons.DocumentSettings />
-						<span className="ml-3 text-sm font-medium">Settings</span>
+						<span className="ml-3 text-sm font-medium">{t.nav.settings}</span>
 						{version && (
 							<span className="ml-auto text-xs text-gray-500 dark:text-gray-400">Backlog.md - v{version}</span>
 						)}
@@ -1242,7 +1245,7 @@ const SideNavigation = memo(function SideNavigation({
 					<NavLink
 						to="/settings"
 						data-tooltip-id="sidebar-tooltip"
-						data-tooltip-content="Settings"
+						data-tooltip-content={t.nav.settings}
 						className={({ isActive }) =>
 							`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
 								isActive
@@ -1262,25 +1265,25 @@ const SideNavigation = memo(function SideNavigation({
 					<Modal
 						isOpen={true}
 						onClose={() => setShowCreateWikiModal(false)}
-						title={createWikiIsFolder ? (createWikiParentPath ? `Create folder in ${createWikiParentPath}` : 'Create folder') : (createWikiParentPath ? `Create page in ${createWikiParentPath}` : 'Create wiki page')}
+						title={createWikiIsFolder ? (createWikiParentPath ? t.nav.createFolderIn(createWikiParentPath) : t.nav.createFolder) : (createWikiParentPath ? t.nav.createPageIn(createWikiParentPath) : t.nav.createPage)}
 					>
 						<div className="space-y-4">
 							<div>
 								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-									{createWikiIsFolder ? 'Folder name' : 'File name'}
+									{createWikiIsFolder ? t.nav.folderName : t.nav.fileName}
 								</label>
 								<input
 									type="text"
 									value={newWikiName}
 									onChange={(e) => setNewWikiName(e.target.value)}
 									onKeyDown={(e) => e.key === 'Enter' && executeCreateWiki()}
-									placeholder={createWikiIsFolder ? 'e.g. concepts' : 'e.g. architecture'}
+									placeholder={createWikiIsFolder ? t.nav.folderNamePlaceholder : t.nav.fileNamePlaceholder}
 									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
 									autoFocus
 								/>
 								{!createWikiIsFolder && (
 									<p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-										.md extension will be added automatically
+										{t.nav.mdExtensionHint}
 									</p>
 								)}
 							</div>
@@ -1294,14 +1297,14 @@ const SideNavigation = memo(function SideNavigation({
 									onClick={() => setShowCreateWikiModal(false)}
 									className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
 								>
-									Cancel
+									{t.common.cancel}
 								</button>
 								<button
 									onClick={executeCreateWiki}
 									disabled={isCreatingWiki || !newWikiName.trim()}
 									className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 								>
-									{isCreatingWiki ? 'Creating...' : 'Create'}
+									{isCreatingWiki ? t.common.creating : t.common.create}
 								</button>
 							</div>
 						</div>
@@ -1312,12 +1315,12 @@ const SideNavigation = memo(function SideNavigation({
 						<Modal
 							isOpen={true}
 							onClose={() => setShowRenameWikiModal(false)}
-							title={`Rename ${renameWikiOldName}`}
+							title={`${t.common.rename} ${renameWikiOldName}`}
 						>
 							<div className="space-y-4">
 								<div>
 									<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-										New name
+										{t.common.newName}
 									</label>
 									<input
 										type="text"
@@ -1338,14 +1341,14 @@ const SideNavigation = memo(function SideNavigation({
 										onClick={() => setShowRenameWikiModal(false)}
 										className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
 									>
-										Cancel
+										{t.common.cancel}
 									</button>
 									<button
 										onClick={executeRenameWiki}
 										disabled={isRenamingWiki || !renameWikiNewName.trim()}
 										className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 									>
-										{isRenamingWiki ? 'Renaming...' : 'Rename'}
+										{isRenamingWiki ? t.common.renaming : t.common.rename}
 									</button>
 								</div>
 							</div>

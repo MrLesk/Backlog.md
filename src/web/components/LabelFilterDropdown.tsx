@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from '../hooks/useI18n';
 
 interface LabelFilterDropdownProps {
 	availableLabels: string[];
@@ -18,6 +19,7 @@ export default function LabelFilterDropdown({
 	const [isOpen, setIsOpen] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
+	const { t } = useI18n();
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -54,10 +56,10 @@ export default function LabelFilterDropdown({
 				className={`${className} py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200 text-left`}
 			>
 				<div className="flex items-center justify-between gap-2">
-					<span>Labels</span>
+					<span>{t.labelFilter.labels}</span>
 					<span className="text-xs text-gray-500 dark:text-gray-400">
 						{selectedLabels.length === 0
-							? "All"
+							? t.common.all
 							: selectedLabels.length === 1
 								? selectedLabels[0]
 								: `${selectedLabels.length} selected`}
@@ -71,7 +73,7 @@ export default function LabelFilterDropdown({
 					className="absolute z-50 mt-2 w-[220px] max-h-56 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
 				>
 					{availableLabels.length === 0 ? (
-						<div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No labels</div>
+						<div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{t.labelFilter.noLabels}</div>
 					) : (
 						availableLabels.map((label) => {
 							const isSelected = selectedLabels.includes(label);
@@ -100,7 +102,7 @@ export default function LabelFilterDropdown({
 								setIsOpen(false);
 							}}
 						>
-							Clear label filter
+							{t.labelFilter.clearFilter}
 						</button>
 					)}
 				</div>

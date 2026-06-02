@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import MDEditor from "@uiw/react-md-editor";
 import { renderMermaidIn } from "../utils/mermaid";
 import { apiClient } from "../lib/api";
+import { useI18n } from '../hooks/useI18n';
 
 interface Props {
 	source: string;
@@ -49,6 +50,7 @@ function isExternalLink(href?: string): boolean {
 export default function MermaidMarkdown({ source, onFileClick }: Props) {
 	const ref = useRef<HTMLDivElement | null>(null);
 	const safeSource = sanitizeMarkdownSource(source);
+	const { t } = useI18n();
 
 	useEffect(() => {
 		if (!ref.current) return;
@@ -96,13 +98,13 @@ export default function MermaidMarkdown({ source, onFileClick }: Props) {
 					href={href}
 					onClick={handleClick}
 					className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-					title="Click to preview file"
+					title={t.mermaidMarkdown.clickToPreview}
 				>
 					{children}
 				</a>
 			);
 		},
-		[onFileClick],
+		[onFileClick, t],
 	);
 
 	return (

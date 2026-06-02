@@ -1,5 +1,6 @@
 import React from "react";
 import type { Task } from "../../types";
+import { useI18n } from "../hooks/useI18n";
 
 interface MilestoneTaskRowProps {
 	task: Task;
@@ -30,7 +31,9 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 	onEditTask,
 	onDragStart,
 	onDragEnd,
-}) => (
+}) => {
+	const { t } = useI18n();
+	return (
 	<div
 		draggable
 		onDragStart={(event) => onDragStart(event, task)}
@@ -63,13 +66,14 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 		<div className="w-20 flex justify-center">
 			{task.priority ? (
 				<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${priorityBadgeClass}`}>
-					{task.priority}
+					{t.taskDetails.priorityLabel(task.priority)}
 				</span>
 			) : (
 				<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
 			)}
 		</div>
 	</div>
-);
+	);
+};
 
 export default MilestoneTaskRow;

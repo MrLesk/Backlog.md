@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { type Task } from '../../types';
 import { sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
@@ -33,6 +34,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   laneId,
   targetMilestone
 }) => {
+  const { t } = useI18n();
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
@@ -198,8 +200,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               type="button"
               onClick={() => setShowMenu(!showMenu)}
               className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 focus:outline-none"
-              title="Column actions"
-              aria-label="Column actions"
+              title={t.taskColumn.columnActions}
+              aria-label={t.taskColumn.columnActions}
               aria-haspopup="menu"
               aria-expanded={showMenu}
               aria-controls={columnActionsId}
@@ -224,7 +226,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
                   <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
                   </svg>
-                  Sort by Priority
+                  {t.taskColumn.sortByPriority}
                 </button>
               </div>
             )}
@@ -286,7 +288,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         {isDragOver && dragSourceStatus !== title && (
           <div className="border-2 border-green-400 dark:border-green-500 border-dashed rounded-md bg-green-50 dark:bg-green-900/20 p-4 text-center transition-colors duration-200">
             <div className="text-green-600 dark:text-green-400 text-sm font-medium transition-colors duration-200">
-              Drop task here to change status
+              {t.taskColumn.dropToChangeStatus}
             </div>
           </div>
         )}
@@ -294,23 +296,23 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         {isEmpty && !isDragOver && (
           <div className="text-center py-2 text-gray-400 dark:text-gray-500 text-xs transition-colors duration-200">
             {dragSourceStatus && dragSourceStatus !== title
-              ? `Drop to move`
-              : `Empty`}
+              ? t.taskColumn.dropToMove
+              : t.taskColumn.empty}
           </div>
         )}
 
         {/* Cleanup button for the configured terminal column */}
         {onCleanup && tasks.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-	            <button
-	              onClick={onCleanup}
-	              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors duration-200"
-	              title="Clean up old completed tasks"
-	            >
-	              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-	                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            <button
+              onClick={onCleanup}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors duration-200"
+              title={t.taskColumn.cleanUpTitle}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
-              Clean Up Old Tasks
+              {t.taskColumn.cleanUp}
             </button>
           </div>
         )}
