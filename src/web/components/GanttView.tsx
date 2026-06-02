@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Task } from "../../types";
+import { compareTaskIds, groupSubtasksUnderParents } from "../../utils/task-sorting";
 import { useI18n } from "../hooks/useI18n";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -327,19 +328,8 @@ function getTimelineX(date: Date, columns: TimelineColumn[], granularity: Granul
 	return x;
 }
 
-function extractTaskNumericId(taskId: string): number | null {
-	const match = taskId.trim().match(/(\d+)$/);
-	if (!match?.[1]) return null;
-	return Number.parseInt(match[1], 10);
-}
-
-function compareTaskIds(a: ParsedTask, b: ParsedTask): number {
-	const idA = extractTaskNumericId(a.id);
-	const idB = extractTaskNumericId(b.id);
-	if (idA !== null && idB !== null) return idA - idB;
-	if (idA !== null) return -1;
-	if (idB !== null) return 1;
-	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+function compareParsedTaskIds(a: ParsedTask, b: ParsedTask): number {
+	return compareTaskIds(a.id, b.id);
 }
 
 function getTaskStatusColor(status: string): string {
@@ -393,13 +383,24 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 	}, [parsedTasks, currentYear]);
 
 	const sortedTasks = useMemo(() => {
+		if (sortColumn === "id") {
+			const list = [...parsedTasks];
+			list.sort((a, b) => {
+				const cmp = compareParsedTaskIds(a, b);
+				return sortDirection === "asc" ? cmp : -cmp;
+			});
+			return groupSubtasksUnderParents(
+				list,
+				compareParsedTaskIds,
+				(p) => p.raw.parentTaskId,
+				sortDirection,
+			);
+		}
+
 		const list = [...parsedTasks];
 		list.sort((a, b) => {
 			let cmp = 0;
 			switch (sortColumn) {
-				case "id":
-					cmp = compareTaskIds(a, b);
-					break;
 				case "title":
 					cmp = a.title.localeCompare(b.title);
 					break;

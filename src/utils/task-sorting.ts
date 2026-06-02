@@ -165,6 +165,54 @@ export function sortByOrdinalAndPriority<
 }
 
 /**
+ * Re-order a list so that subtasks appear immediately under their parent task.
+ * Parent tasks retain the order from the input array. Subtasks are sorted
+ * using the provided comparator (defaults to input order).
+ * When direction is "desc", subtasks are reversed after sorting.
+ */
+export function groupSubtasksUnderParents<T extends { id: string }>(
+	items: T[],
+	compareFn?: (a: T, b: T) => number,
+	getParentId?: (item: T) => string | undefined,
+	direction?: "asc" | "desc",
+): T[] {
+	const byId = new Map<string, T>();
+	for (const item of items) {
+		byId.set(item.id, item);
+	}
+
+	const topLevel: T[] = [];
+	const childrenByParent = new Map<string, T[]>();
+
+	for (const item of items) {
+		const parentId = getParentId?.(item) ?? ((item as Record<string, unknown>).parentTaskId as string | undefined);
+		const parent = parentId ? byId.get(parentId) : undefined;
+		if (parent) {
+			const existing = childrenByParent.get(parent.id) ?? [];
+			existing.push(item);
+			childrenByParent.set(parent.id, existing);
+			continue;
+		}
+		topLevel.push(item);
+	}
+
+	const ordered: T[] = [];
+	for (const task of topLevel) {
+		ordered.push(task);
+		const subs = childrenByParent.get(task.id) ?? [];
+		if (compareFn) {
+			subs.sort(compareFn);
+		}
+		if (direction === "desc") {
+			subs.reverse();
+		}
+		ordered.push(...subs);
+	}
+
+	return ordered;
+}
+
+/**
  * Sort tasks by a specified field with fallback to task ID sorting.
  * Supported fields: 'priority', 'id', 'ordinal'
  */
