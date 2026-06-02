@@ -5,7 +5,6 @@ import { useI18n } from "../hooks/useI18n";
 const DAY = 24 * 60 * 60 * 1000;
 const ROW_HEIGHT = 40;
 const HEADER_HEIGHT = 80;
-const LEFT_PANEL_WIDTH = 480;
 
 export type Granularity = "day" | "week" | "month" | "quarter" | "year";
 
@@ -22,7 +21,7 @@ const GRANULARITY_CONFIG: Record<Granularity, {
 	year: { pxPerDay: 350 / 365, minWidthPx: 8, minDurationDays: 0, columnWidth: 350 },
 };
 
-type GanttSortColumn = "id" | "title" | "start" | "end";
+type GanttSortColumn = "id" | "title" | "plannedStart" | "plannedEnd" | "actualStart" | "actualEnd";
 type SortDirection = "asc" | "desc";
 
 interface ParsedTask {
@@ -33,6 +32,8 @@ interface ParsedTask {
 	originalStart?: string;
 	originalEnd?: string;
 	isFallback: boolean;
+	plannedStart?: Date;
+	plannedEnd?: Date;
 	status: string;
 	priority?: "high" | "medium" | "low";
 	dependencies: string[];
@@ -54,7 +55,8 @@ interface GanttViewProps {
 
 function parseDate(dateStr?: string): Date | null {
 	if (!dateStr) return null;
-	const iso = dateStr.includes(" ") ? dateStr.replace(" ", "T") : `${dateStr}T00:00:00`;
+	const hasTime = dateStr.includes(" ");
+	const iso = hasTime ? dateStr.replace(" ", "T") : `${dateStr}T00:00:00`;
 	const d = new Date(iso);
 	return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -63,14 +65,17 @@ function parseTasks(tasks: Task[]): ParsedTask[] {
 	return tasks.map((task) => {
 		const plannedStart = parseDate(task.plannedStart);
 		const plannedEnd = parseDate(task.plannedEnd);
+		const actualStart = parseDate(task.actualStart);
+		const actualEnd = parseDate(task.actualEnd);
 		const created = parseDate(task.createdDate);
 		const updated = parseDate(task.updatedDate);
 
+		// Actual time resolution (for left table and actual bar)
 		let start: Date;
 		let originalStart: string | undefined;
-		if (plannedStart) {
-			start = plannedStart;
-			originalStart = task.plannedStart;
+		if (actualStart) {
+			start = actualStart;
+			originalStart = task.actualStart;
 		} else if (created) {
 			start = created;
 			originalStart = task.createdDate;
@@ -81,9 +86,9 @@ function parseTasks(tasks: Task[]): ParsedTask[] {
 		let end: Date;
 		let originalEnd: string | undefined;
 		let isFallback = false;
-		if (plannedEnd) {
-			end = plannedEnd;
-			originalEnd = task.plannedEnd;
+		if (actualEnd) {
+			end = actualEnd;
+			originalEnd = task.actualEnd;
 		} else if (updated) {
 			end = updated;
 			originalEnd = task.updatedDate;
@@ -109,6 +114,8 @@ function parseTasks(tasks: Task[]): ParsedTask[] {
 			originalStart,
 			originalEnd,
 			isFallback,
+			plannedStart: plannedStart ?? undefined,
+			plannedEnd: plannedEnd ?? undefined,
 			status: task.status,
 			priority: task.priority,
 			dependencies: task.dependencies ?? [],
@@ -121,15 +128,24 @@ function formatShortDate(date: Date): string {
 	return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-function formatDisplayDate(date: Date): string {
+function formatDisplayDate(date: Date, showTime = true): string {
 	const y = date.getFullYear();
 	const m = date.getMonth() + 1;
 	const d = date.getDate();
+	const hh = date.getHours();
+	const mm = date.getMinutes();
+	const hasTime = hh !== 0 || mm !== 0;
 	const now = new Date();
+	let result: string;
 	if (y === now.getFullYear()) {
-		return `${m}/${d}`;
+		result = `${m}/${d}`;
+	} else {
+		result = `${y}/${m}/${d}`;
 	}
-	return `${y}/${m}/${d}`;
+	if (showTime && hasTime) {
+		result += ` ${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+	}
+	return result;
 }
 
 function getWeekStart(date: Date): Date {
@@ -291,13 +307,19 @@ function getTimelineColumns(viewStart: Date, viewEnd: Date, granularity: Granula
 	return columns;
 }
 
-function getTimelineX(date: Date, columns: TimelineColumn[], granularity: Granularity): number {
+function getTimelineX(date: Date, columns: TimelineColumn[], granularity: Granularity, snapToDay = false): number {
+	const normalizedDate = new Date(date);
+	if (snapToDay) normalizedDate.setHours(0, 0, 0, 0);
 	let x = 0;
 	for (const col of columns) {
-		if (date.getTime() >= col.end.getTime()) {
+		const colStart = new Date(col.start);
+		if (snapToDay) colStart.setHours(0, 0, 0, 0);
+		const colEnd = new Date(col.end);
+		if (snapToDay) colEnd.setHours(0, 0, 0, 0);
+		if (normalizedDate.getTime() >= colEnd.getTime()) {
 			x += GRANULARITY_CONFIG[granularity].columnWidth;
-		} else if (date.getTime() >= col.start.getTime()) {
-			const ratio = (date.getTime() - col.start.getTime()) / (col.end.getTime() - col.start.getTime());
+		} else if (normalizedDate.getTime() >= colStart.getTime()) {
+			const ratio = (normalizedDate.getTime() - colStart.getTime()) / (colEnd.getTime() - colStart.getTime());
 			x += ratio * GRANULARITY_CONFIG[granularity].columnWidth;
 			break;
 		}
@@ -340,9 +362,11 @@ function getTaskStatusColor(status: string): string {
 
 export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 	const { t } = useI18n();
-	const [granularity, setGranularity] = useState<Granularity>("week");
+	const [granularity, setGranularity] = useState<Granularity>("day");
 	const [sortColumn, setSortColumn] = useState<GanttSortColumn>("id");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+	const [showPlanTime, setShowPlanTime] = useState(false);
+	const [showActualTime, setShowActualTime] = useState(true);
 	const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
@@ -355,6 +379,18 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 	const timelineContainerRef = useRef<HTMLDivElement>(null);
 
 	const parsedTasks = useMemo(() => parseTasks(tasks), [tasks]);
+	const currentYear = new Date().getFullYear();
+	const hasCrossYearTasks = useMemo(() => {
+		return parsedTasks.some((task) => {
+			const years = [
+				task.plannedStart?.getFullYear(),
+				task.plannedEnd?.getFullYear(),
+				task.start.getFullYear(),
+				task.end.getFullYear(),
+			];
+			return years.some((y) => y !== undefined && y !== currentYear);
+		});
+	}, [parsedTasks, currentYear]);
 
 	const sortedTasks = useMemo(() => {
 		const list = [...parsedTasks];
@@ -367,10 +403,16 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 				case "title":
 					cmp = a.title.localeCompare(b.title);
 					break;
-				case "start":
+				case "plannedStart":
+					cmp = (a.plannedStart?.getTime() ?? 0) - (b.plannedStart?.getTime() ?? 0);
+					break;
+				case "plannedEnd":
+					cmp = (a.plannedEnd?.getTime() ?? 0) - (b.plannedEnd?.getTime() ?? 0);
+					break;
+				case "actualStart":
 					cmp = a.start.getTime() - b.start.getTime();
 					break;
-				case "end":
+				case "actualEnd":
 					cmp = a.end.getTime() - b.end.getTime();
 					break;
 			}
@@ -379,11 +421,26 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 		return list;
 	}, [parsedTasks, sortColumn, sortDirection]);
 
+	const leftPanelWidth = useMemo(() => {
+		const base = hasCrossYearTasks ? 320 : 368;
+		const planWidth = hasCrossYearTasks ? 192 : 160;
+		const actualWidth = hasCrossYearTasks ? 352 : 256;
+		return base + (showPlanTime ? planWidth : 0) + (showActualTime ? actualWidth : 0);
+	}, [showPlanTime, showActualTime, hasCrossYearTasks]);
+
 	useEffect(() => {
 		const range = getInitialViewRange(sortedTasks, granularity);
 		setViewStart(range.start);
 		setViewEnd(range.end);
 	}, [sortedTasks, granularity]);
+
+	const hasAutoSelected = useRef(false);
+	useEffect(() => {
+		if (!hasAutoSelected.current && sortedTasks.length > 0 && !selectedTaskId) {
+			setSelectedTaskId(sortedTasks[0]?.id ?? null);
+			hasAutoSelected.current = true;
+		}
+	}, [sortedTasks, selectedTaskId]);
 
 	const config = GRANULARITY_CONFIG[granularity];
 	const columns = useMemo(() => getTimelineColumns(viewStart, viewEnd, granularity), [viewStart, viewEnd, granularity]);
@@ -392,16 +449,47 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 	const taskPositions = useMemo(() => {
 		const positions: Record<string, { x: number; y: number; width: number }> = {};
 		sortedTasks.forEach((task) => {
-			const x = getTimelineX(task.start, columns, granularity);
-			const endX = getTimelineX(task.end, columns, granularity);
+			const x = getTimelineX(task.start, columns, granularity, false);
+			const endX = getTimelineX(task.end, columns, granularity, false);
 			const rawWidth = endX - x;
-			const minWidth = config.minWidthPx;
-			const width = Math.max(rawWidth, minWidth);
+			const width = task.isFallback ? Math.max(rawWidth, config.minWidthPx) : Math.max(rawWidth, 4);
 			const y = HEADER_HEIGHT + sortedTasks.indexOf(task) * ROW_HEIGHT;
 			positions[task.id] = { x, y, width };
 		});
 		return positions;
 	}, [sortedTasks, columns, granularity, config]);
+
+	const planPositions = useMemo(() => {
+		const positions: Record<string, { x: number; y: number; width: number } | null> = {};
+		sortedTasks.forEach((task) => {
+			if (!task.plannedStart || !task.plannedEnd) {
+				positions[task.id] = null;
+				return;
+			}
+			const x = getTimelineX(task.plannedStart, columns, granularity, true);
+			const endX = getTimelineX(task.plannedEnd, columns, granularity, true);
+			const rawWidth = endX - x;
+			const width = Math.max(rawWidth, 2);
+			const y = HEADER_HEIGHT + sortedTasks.indexOf(task) * ROW_HEIGHT;
+			positions[task.id] = { x, y, width };
+		});
+		return positions;
+	}, [sortedTasks, columns, granularity, config]);
+
+	const scrollToTask = useCallback((taskId: string) => {
+		const pos = taskPositions[taskId];
+		if (pos && timelineContainerRef.current) {
+			const container = timelineContainerRef.current;
+			const targetScrollLeft = pos.x + pos.width / 2 - container.clientWidth / 2;
+			container.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: "smooth" });
+		}
+	}, [taskPositions]);
+
+	useEffect(() => {
+		if (selectedTaskId) {
+			scrollToTask(selectedTaskId);
+		}
+	}, [selectedTaskId, granularity, scrollToTask]);
 
 	const highlightedIds = useMemo(() => {
 		if (!selectedTaskId) return new Set<string>();
@@ -447,7 +535,7 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 	const renderSortableHeader = useCallback((label: string, column: GanttSortColumn, widthClass: string) => (
 		<th className={`px-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${widthClass}`} style={{ height: HEADER_HEIGHT }} aria-sort={getSortAriaValue(column)}>
 			<div className="h-full flex items-end pb-2">
-				<button type="button" onClick={() => handleSortChange(column)} className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100">
+				<button type="button" onClick={() => handleSortChange(column)} className="inline-flex flex-row items-center hover:text-gray-700 dark:hover:text-gray-100 leading-tight whitespace-pre-line gap-1">
 					{label}
 					{renderSortIcon(column)}
 				</button>
@@ -518,28 +606,60 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 		<>
 			<style>{"\n\t\t\t\t.gantt-hide-scrollbar::-webkit-scrollbar { display: none; }\n\t\t\t"}</style>
 			<div className="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors duration-200">
-				{/* Toolbar */}
-				<div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-					<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-						{(t as any).gantt?.title ?? "Gantt"}
-					</h2>
-					<div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-						{granularityButtons.map((btn) => (
-							<button
-								key={btn.key}
-								type="button"
-								onClick={() => setGranularity(btn.key)}
-								className={`px-3 py-1 text-sm rounded-md transition-colors ${
-									granularity === btn.key
-										? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm font-medium"
-										: "text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-								}`}
-							>
-								{btn.label}
-							</button>
-						))}
+					{/* Toolbar */}
+					<div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 gap-4">
+						<div className="flex items-center gap-4">
+							<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+								{(t as any).gantt?.title ?? "Gantt"}
+							</h2>
+							<div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+								{granularityButtons.map((btn) => (
+									<button
+										key={btn.key}
+										type="button"
+										onClick={() => setGranularity(btn.key)}
+										className={`px-3 py-1 text-sm rounded-md transition-colors ${
+											granularity === btn.key
+												? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm font-medium"
+												: "text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+										}`}
+									>
+										{btn.label}
+									</button>
+								))}
+							</div>
+						</div>
+						<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+							{Array.from(
+								tasks.reduce((map, task) => {
+									const lower = task.status.toLowerCase();
+									if (!map.has(lower)) map.set(lower, task.status);
+									return map;
+								}, new Map<string, string>()),
+							).map(([lower, original]) => (
+								<div key={lower} className="flex items-center gap-1">
+									<div className={`w-4 h-3 rounded-sm ${getTaskStatusColor(lower)}`} />
+									<span>{original}</span>
+								</div>
+							))}
+							<div className="flex items-center gap-1">
+								<div className="w-4 h-3 border border-gray-400 dark:border-white rounded-sm" style={{ backgroundImage: "repeating-linear-gradient(-60deg, transparent, transparent 2px, rgba(128,128,128,0.18) 2px, rgba(128,128,128,0.18) 3px)", backgroundSize: "4px 4px" }} />
+								<span>{(t as any).gantt?.legend?.planned ?? "Planned"}</span>
+							</div>
+							<div className="flex items-center gap-1">
+								<svg width="16" height="10" className="text-gray-500 dark:text-gray-400">
+									<line x1="0" y1="5" x2="12" y2="5" stroke="currentColor" strokeWidth="1.5" />
+									<polygon points="12,5 8,3 8,7" fill="currentColor" />
+								</svg>
+								<span>{(t as any).gantt?.legend?.dependency ?? "Dependency"}</span>
+							</div>
+							<div className="flex items-center gap-1">
+								<span className="text-amber-600 dark:text-amber-400 font-bold">*</span>
+								<span>{(t as any).gantt?.legend?.fallback ?? "Fallback"}</span>
+							</div>
+						</div>
 					</div>
-				</div>
+
 
 				{/* Main content */}
 				<div className="flex flex-1 overflow-hidden">
@@ -547,15 +667,37 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 					<div
 						ref={leftScrollRef}
 						className="flex-shrink-0 border-r border-gray-200 dark:border-gray-700 overflow-y-auto gantt-hide-scrollbar"
-						style={{ width: LEFT_PANEL_WIDTH, scrollbarWidth: "none" }}
+						style={{ width: leftPanelWidth, scrollbarWidth: "none" }}
 					>
 						<table className="w-full text-left border-collapse table-fixed">
-							<thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 z-10" style={{ height: HEADER_HEIGHT }}>
+							<thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 z-10 relative" style={{ height: HEADER_HEIGHT }}>
+								<div className="absolute top-2 left-2 flex items-center gap-3 z-20">
+									<label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 cursor-pointer select-none whitespace-nowrap">
+										<input
+											type="checkbox"
+											checked={showPlanTime}
+											onChange={(e) => setShowPlanTime(e.target.checked)}
+											className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+										/>
+										{(t as any).gantt?.showPlanTime ?? "Show Plan Time"}
+									</label>
+									<label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 cursor-pointer select-none whitespace-nowrap">
+										<input
+											type="checkbox"
+											checked={showActualTime}
+											onChange={(e) => setShowActualTime(e.target.checked)}
+											className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+										/>
+										{(t as any).gantt?.showActualTime ?? "Show Actual Time"}
+									</label>
+								</div>
 								<tr className="border-b border-gray-200 dark:border-gray-700" style={{ height: HEADER_HEIGHT }}>
 									{renderSortableHeader((t as any).gantt?.columns?.id ?? "ID", "id", "w-24")}
 									{renderSortableHeader((t as any).gantt?.columns?.title ?? "Title", "title", "")}
-									{renderSortableHeader((t as any).gantt?.columns?.start ?? "Start", "start", "w-20")}
-									{renderSortableHeader((t as any).gantt?.columns?.end ?? "End", "end", "w-20")}
+									{showPlanTime && renderSortableHeader((t as any).gantt?.columns?.plannedStart ?? "Plan Start", "plannedStart", hasCrossYearTasks ? "w-24" : "w-20")}
+									{showPlanTime && renderSortableHeader((t as any).gantt?.columns?.plannedEnd ?? "Plan End", "plannedEnd", hasCrossYearTasks ? "w-24" : "w-20")}
+									{showActualTime && renderSortableHeader((t as any).gantt?.columns?.actualStart ?? "Actual Start", "actualStart", hasCrossYearTasks ? "w-44" : "w-32")}
+									{showActualTime && renderSortableHeader((t as any).gantt?.columns?.actualEnd ?? "Actual End", "actualEnd", hasCrossYearTasks ? "w-44" : "w-32")}
 									<th className="px-2 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" style={{ height: HEADER_HEIGHT }}>
 										<div className="h-full flex items-end pb-2">
 											{(t as any).gantt?.columns?.action ?? "Action"}
@@ -568,16 +710,11 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 									<tr
 										key={task.id}
 										className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer ${
-											selectedTaskId === task.id ? "bg-blue-50 dark:bg-blue-900/20" : ""
+											selectedTaskId === task.id ? "bg-blue-100 dark:bg-blue-900/40" : ""
 										}`}
 										onClick={() => {
 											setSelectedTaskId((prev) => (prev === task.id ? null : task.id));
-											const pos = taskPositions[task.id];
-											if (pos && timelineContainerRef.current) {
-												const container = timelineContainerRef.current;
-												const targetScrollLeft = pos.x + pos.width / 2 - container.clientWidth / 2;
-												container.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: "smooth" });
-											}
+											scrollToTask(task.id);
 										}}
 									>
 										<td className="px-2 h-10 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap w-24">
@@ -586,16 +723,30 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 										<td className="px-2 h-10 text-sm text-gray-700 dark:text-gray-300 truncate" title={task.title}>
 											{task.title}
 										</td>
-										<td className="px-2 h-10 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap w-20">
-											{formatDisplayDate(task.start)}
-										</td>
-										<td className="px-2 h-10 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap w-20">
-											{task.isFallback ? (
-												<span className="text-amber-600 dark:text-amber-400">{formatDisplayDate(task.end)} *</span>
-											) : (
-												formatDisplayDate(task.end)
+										{showPlanTime && (
+											<React.Fragment>
+												<td className={`px-2 h-10 text-sm text-gray-600 dark:text-gray-400 truncate ${hasCrossYearTasks ? "w-24" : "w-20"}`}>
+													{task.plannedStart ? formatDisplayDate(task.plannedStart, false) : "-"}
+												</td>
+												<td className={`px-2 h-10 text-sm text-gray-600 dark:text-gray-400 truncate ${hasCrossYearTasks ? "w-24" : "w-20"}`}>
+													{task.plannedEnd ? formatDisplayDate(task.plannedEnd, false) : "-"}
+												</td>
+											</React.Fragment>
+										)}
+											{showActualTime && (
+												<React.Fragment>
+													<td className={`px-2 h-10 text-sm text-gray-600 dark:text-gray-400 truncate ${hasCrossYearTasks ? "w-44" : "w-32"}`}>
+														{task.raw.actualStart ? formatDisplayDate(task.start) : (
+															<span className="text-amber-600 dark:text-amber-400">{formatDisplayDate(task.start)} *</span>
+														)}
+													</td>
+													<td className={`px-2 h-10 text-sm text-gray-600 dark:text-gray-400 truncate ${hasCrossYearTasks ? "w-44" : "w-32"}`}>
+														{task.raw.actualEnd ? formatDisplayDate(task.end) : (
+															<span className="text-amber-600 dark:text-amber-400">{formatDisplayDate(task.end)} *</span>
+														)}
+													</td>
+												</React.Fragment>
 											)}
-										</td>
 										<td className="px-2 h-10 whitespace-nowrap w-20">
 											<button
 												type="button"
@@ -723,17 +874,18 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 								/>
 							))}
 
-							{/* Task bars */}
+							{/* Actual task bars (bottom layer) */}
 							{sortedTasks.map((task) => {
 								const pos = taskPositions[task.id];
 								if (!pos) return null;
 								const isHighlighted = highlightedIds.has(task.id);
 								const isDimmed = selectedTaskId && !isHighlighted;
 								const isHovered = hoveredTaskId === task.id;
+								const barTop = pos.y + (ROW_HEIGHT - 24) / 2;
 
 								return (
 									<div
-										key={task.id}
+										key={`actual-${task.id}`}
 										data-task-bar
 										className={`absolute h-6 rounded transition-all duration-200 cursor-pointer ${
 											getTaskStatusColor(task.status)
@@ -742,7 +894,7 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 										}`}
 										style={{
 											left: pos.x,
-											top: pos.y + (ROW_HEIGHT - 24) / 2,
+											top: barTop,
 											width: Math.max(pos.width, 2),
 											minWidth: 2,
 										}}
@@ -769,6 +921,41 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 								);
 							})}
 
+							{/* Plan border bars (top layer) */}
+							{sortedTasks.map((task) => {
+								const planPos = planPositions[task.id];
+								if (!planPos) return null;
+								const isHighlighted = highlightedIds.has(task.id);
+								const isDimmed = selectedTaskId && !isHighlighted;
+								const barTop = planPos.y + (ROW_HEIGHT - 24) / 2;
+								const hatch = "repeating-linear-gradient(-60deg, transparent, transparent 4px, rgba(128,128,128,0.18) 4px, rgba(128,128,128,0.18) 5px)";
+
+								return (
+									<div
+										key={`plan-${task.id}`}
+										className={`absolute h-6 rounded-md pointer-events-none border-2 border-white dark:border-gray-500 ${
+											isDimmed ? "opacity-20" : isHighlighted ? "opacity-100" : "opacity-80"
+										}`}
+										style={{
+											left: planPos.x,
+											top: barTop,
+											width: Math.max(planPos.width, 2),
+											minWidth: 2,
+											backgroundImage: hatch,
+											backgroundSize: "6px 6px",
+										}}
+									>
+										<div
+											className="absolute inset-0 rounded-md border border-gray-400 dark:border-white"
+											style={{
+												backgroundImage: hatch,
+												backgroundSize: "6px 6px",
+											}}
+										/>
+									</div>
+								);
+							})}
+
 							{/* Dependency arrows */}
 							<svg
 								className="absolute inset-0 pointer-events-none"
@@ -776,13 +963,32 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 							>
 								{sortedTasks.map((task) =>
 									task.dependencies.map((depId) => {
-										const from = taskPositions[depId];
-										const to = taskPositions[task.id];
-										if (!from || !to) return null;
-										const startX = from.x + from.width;
-										const startY = from.y + ROW_HEIGHT / 2;
-										const endX = to.x;
-										const endY = to.y + ROW_HEIGHT / 2;
+										const fromTask = sortedTasks.find((t) => t.id === depId);
+										const toTask = task;
+										if (!fromTask || !toTask) return null;
+
+										const fromPos = taskPositions[depId];
+										const toPos = taskPositions[task.id];
+										if (!fromPos || !toPos) return null;
+
+										// Resolve arrow start point (from task's end side)
+										let startX: number;
+										if (fromTask.plannedStart && fromTask.end.getTime() < fromTask.plannedStart.getTime()) {
+											startX = fromTask.plannedEnd ? getTimelineX(fromTask.plannedEnd, columns, granularity) : fromPos.x + fromPos.width;
+										} else {
+											startX = fromPos.x + fromPos.width;
+										}
+
+										// Resolve arrow end point (to task's start side)
+										let endX: number;
+										if (toTask.plannedStart && toTask.start.getTime() < toTask.plannedStart.getTime()) {
+											endX = toPos.x;
+										} else {
+											endX = toTask.plannedStart ? getTimelineX(toTask.plannedStart, columns, granularity) : toPos.x;
+										}
+
+										const startY = fromPos.y + ROW_HEIGHT / 2;
+										const endY = toPos.y + ROW_HEIGHT / 2;
 										const HSEG = 6;
 										const ARROW_SIZE = 6;
 										const p0x = startX + HSEG;
@@ -800,10 +1006,10 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 										const isDimmed = selectedTaskId && !isHighlighted;
 										const colorClass = isHighlighted
 											? "stroke-blue-500 dark:stroke-blue-400"
-											: "stroke-gray-800 dark:stroke-white";
+											: "stroke-gray-500 dark:stroke-gray-400";
 										const fillClass = isHighlighted
 											? "fill-blue-500 dark:fill-blue-400"
-											: "fill-gray-800 dark:fill-white";
+											: "fill-gray-500 dark:fill-gray-400";
 										const opacityClass = isDimmed ? "opacity-20" : isHighlighted ? "opacity-100" : "opacity-70";
 
 										return (
@@ -831,15 +1037,15 @@ export default function GanttView({ tasks, onEditTask }: GanttViewProps) {
 							return (
 								<div className="space-y-0.5">
 									<div className="font-semibold">{task.id} - {task.title}</div>
-									<div>
-										{(t as any).gantt?.tooltip?.start ?? "Start"}: {formatDisplayDate(task.start)}
-										{task.originalStart && ` (${task.originalStart})`}
-									</div>
-									<div>
-										{(t as any).gantt?.tooltip?.end ?? "End"}: {formatDisplayDate(task.end)}
-										{task.originalEnd && ` (${task.originalEnd})`}
-										{task.isFallback && ` [${(t as any).gantt?.tooltip?.fallback ?? "fallback"}]`}
-									</div>
+											{task.plannedStart && task.plannedEnd && (
+												<div className="text-gray-300">
+													{(t as any).gantt?.tooltip?.planned ?? "Planned"}: {formatDisplayDate(task.plannedStart, false)} → {formatDisplayDate(task.plannedEnd, false)}
+												</div>
+											)}
+											<div>
+												{(t as any).gantt?.tooltip?.actual ?? "Actual"}: {formatDisplayDate(task.start)} → {formatDisplayDate(task.end)}
+												{task.isFallback && ` [${(t as any).gantt?.tooltip?.fallback ?? "fallback"}]`}
+											</div>
 								</div>
 							);
 						})()}

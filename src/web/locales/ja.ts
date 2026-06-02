@@ -653,6 +653,8 @@ export const ja: TranslationDict = {
 	},
 	gantt: {
 		title: "ガント",
+		showPlanTime: "計画時間を表示",
+		showActualTime: "実際時間を表示",
 		granularity: {
 			day: "日",
 			week: "週",
@@ -663,8 +665,10 @@ export const ja: TranslationDict = {
 		columns: {
 			id: "ID",
 			title: "タイトル",
-			start: "開始",
-			end: "終了",
+			plannedStart: "計画\n開始",
+			plannedEnd: "計画\n終了",
+			actualStart: "実際\n開始",
+			actualEnd: "実際\n終了",
 			action: "アクション",
 		},
 		noTasks: "表示するタスクがありません",
@@ -673,9 +677,22 @@ export const ja: TranslationDict = {
 			detail: "詳細",
 		},
 		tooltip: {
-			start: "開始",
-			end: "終了",
+			planned: "計画",
+			actual: "実際",
 			fallback: "フォールバック",
+		},
+		legend: {
+			actual: "実際",
+			planned: "計画",
+			dependency: "依存関係",
+			fallback: "フォールバック",
+		},
+		statusLabels: {
+			done: "完了",
+			inProgress: "進行中",
+			toDo: "未着手",
+			blocked: "阻塞",
+			cancelled: "取消",
 		},
 	},
 	wiki: {

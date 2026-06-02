@@ -648,6 +648,8 @@ export const zhTW: TranslationDict = {
 	},
 	gantt: {
 		title: "甘特圖",
+		showPlanTime: "顯示計劃時間",
+		showActualTime: "顯示實際時間",
 		granularity: {
 			day: "日",
 			week: "週",
@@ -658,8 +660,10 @@ export const zhTW: TranslationDict = {
 		columns: {
 			id: "ID",
 			title: "名稱",
-			start: "開始",
-			end: "結束",
+			plannedStart: "計劃開始",
+			plannedEnd: "計劃結束",
+			actualStart: "實際開始",
+			actualEnd: "實際結束",
 			action: "操作",
 		},
 		noTasks: "暫無任務",
@@ -668,9 +672,22 @@ export const zhTW: TranslationDict = {
 			detail: "詳情",
 		},
 		tooltip: {
-			start: "開始",
-			end: "結束",
-			fallback: "兜底",
+			planned: "計劃",
+			actual: "實際",
+			fallback: "估算",
+		},
+		legend: {
+			actual: "實際任務",
+			planned: "計劃時間",
+			dependency: "依賴關係",
+			fallback: "估算時間",
+		},
+		statusLabels: {
+			done: "已完成",
+			inProgress: "進行中",
+			toDo: "待辦",
+			blocked: "阻塞",
+			cancelled: "已取消",
 		},
 	},
 	wiki: {

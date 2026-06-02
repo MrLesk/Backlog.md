@@ -650,6 +650,8 @@ export const en = {
 	},
 	gantt: {
 		title: "Gantt",
+		showPlanTime: "Show Plan Time",
+		showActualTime: "Show Actual Time",
 		granularity: {
 			day: "Day",
 			week: "Week",
@@ -660,8 +662,10 @@ export const en = {
 		columns: {
 			id: "ID",
 			title: "Title",
-			start: "Start",
-			end: "End",
+			plannedStart: "Plan Start",
+			plannedEnd: "Plan End",
+			actualStart: "Actual Start",
+			actualEnd: "Actual End",
 			action: "Action",
 		},
 		noTasks: "No tasks to display",
@@ -670,9 +674,22 @@ export const en = {
 			detail: "Detail",
 		},
 		tooltip: {
-			start: "Start",
-			end: "End",
+			planned: "Planned",
+			actual: "Actual",
 			fallback: "fallback",
+		},
+		legend: {
+			actual: "Actual",
+			planned: "Planned",
+			dependency: "Dependency",
+			fallback: "Fallback",
+		},
+		statusLabels: {
+			done: "Done",
+			inProgress: "In Progress",
+			toDo: "To Do",
+			blocked: "Blocked",
+			cancelled: "Cancelled",
 		},
 	},
 	wiki: {

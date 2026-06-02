@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@kimi'
 created_date: '2026-05-27 02:05'
-updated_date: '2026-05-28 00:35'
+updated_date: '2026-05-28 09:58'
 labels: []
+milestone: m-7
 dependencies: []
 references:
   - src/server/index.ts
