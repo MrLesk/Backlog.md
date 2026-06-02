@@ -31,3 +31,13 @@ export function createUrlPath(basePath: string, id: string, title: string): stri
 	const cleanId = id.replace(/^(doc-|decision-)/, "");
 	return `${basePath}/${cleanId}/${sanitizedTitle}`;
 }
+
+/**
+ * Encodes a wiki path for use in URLs.
+ * Unlike encodeURIComponent, this preserves '/' separators so that
+ * sub-directory paths remain readable (e.g. concepts/search-sequences.md
+ * instead of concepts%2Fsearch-sequences.md).
+ */
+export function encodeWikiPath(path: string): string {
+	return path.split("/").map(encodeURIComponent).join("/");
+}
