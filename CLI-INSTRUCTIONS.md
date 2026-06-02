@@ -174,6 +174,7 @@ Manage task dependencies to create execution sequences and prevent circular rela
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
 | Project overview | `backlog overview` (interactive TUI showing project statistics) |
+| Project stats (plain) | `backlog overview --plain` (terminal table, no colors) |
 
 ## Web Interface
 

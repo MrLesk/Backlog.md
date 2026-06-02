@@ -122,8 +122,11 @@ describe("getTaskStatistics", () => {
 
 		expect(stats.recentActivity.created.length).toBe(1);
 		expect(stats.recentActivity.created[0]?.id).toBe("task-1");
-		expect(stats.recentActivity.updated.length).toBe(1);
-		expect(stats.recentActivity.updated[0]?.id).toBe("task-3");
+		// task-1 has no updatedDate, so createdDate is used as fallback for recentlyUpdated
+		// task-3 has an updatedDate within 7 days
+		expect(stats.recentActivity.updated.length).toBe(2);
+		const updatedIds = stats.recentActivity.updated.map((t) => t.id).sort();
+		expect(updatedIds).toEqual(["task-1", "task-3"]);
 	});
 
 	test("identifies stale tasks correctly", () => {

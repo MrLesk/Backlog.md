@@ -807,6 +807,29 @@ backlog board --milestones
 | Demote to draft    | `backlog task demote 42`                     |
 | Install wiki skill | `backlog wiki install claude`                |
 
+### Project Overview
+
+Display project-level task statistics and health indicators:
+
+```bash
+# Interactive colored TUI (default)
+backlog overview
+
+# Plain text output (no colors, pipe-friendly)
+backlog overview --plain
+```
+
+**Output includes:**
+- Status distribution (To Do, In Progress, Done, etc.)
+- Priority distribution (high, medium, low, none)
+- Recent activity (recently created and updated tasks)
+- Project health:
+  - Average task age
+  - At-risk tasks (due today or tomorrow)
+  - Overdue tasks (past due date)
+  - Stale tasks (no updates for 30+ days, no due date set)
+  - Blocked tasks (waiting on unmet dependencies)
+
 ---
 
 ## Common Issues
