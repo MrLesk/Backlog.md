@@ -300,11 +300,34 @@ export default function WikiDetail() {
 		setIsEditing(false);
 	};
 
+	const extractTempImageUrls = (text: string): string[] => {
+		const matches = text.match(/\/assets\/\.temp\/[^)\s\\"']+/g);
+		return matches ? [...new Set(matches)] : [];
+	};
+
+	const replaceTempImageUrls = (text: string, mapping: Record<string, string>): string => {
+		let result = text;
+		for (const [oldUrl, newUrl] of Object.entries(mapping)) {
+			result = result.replaceAll(oldUrl, newUrl);
+		}
+		return result;
+	};
+
 	const handleSave = useCallback(async () => {
 		if (!wikiPath || !hasChanges) return;
 		try {
 			setIsSaving(true);
-			await apiClient.updateWikiPage(wikiPath, editContent, editTitle, editLabels);
+
+			// Promote temporary pasted images before saving.
+			let saveContent = editContent;
+			const tempUrls = extractTempImageUrls(editContent);
+			if (tempUrls.length > 0) {
+				const mapping = await apiClient.promoteAssets(tempUrls);
+				saveContent = replaceTempImageUrls(saveContent, mapping);
+				setEditContent(saveContent);
+			}
+
+			await apiClient.updateWikiPage(wikiPath, saveContent, editTitle, editLabels);
 			setIsEditing(false);
 			setShowSaveSuccess(true);
 			setTimeout(() => setShowSaveSuccess(false), 4000);
