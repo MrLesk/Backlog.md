@@ -4040,7 +4040,8 @@ program
 program
 	.command("overview")
 	.description("display project statistics and metrics")
-	.action(async () => {
+	.option("--plain", "use plain text output without colors")
+	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
@@ -4053,7 +4054,7 @@ program
 
 			// Import and run the overview command
 			const { runOverviewCommand } = await import("./commands/overview.ts");
-			await runOverviewCommand(core);
+			await runOverviewCommand(core, options);
 		} catch (err) {
 			console.error("Failed to display project overview", err);
 			process.exitCode = 1;

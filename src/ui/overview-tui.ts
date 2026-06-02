@@ -1,283 +1,294 @@
-import { box } from "neo-neo-bblessed";
+import picocolors from "picocolors";
 import type { TaskStatistics } from "../core/statistics.ts";
+import type { Task } from "../types/index.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { createScreen } from "./tui.ts";
 
-/**
- * Render the project overview in an interactive TUI
- */
-export async function renderOverviewTui(statistics: TaskStatistics, projectName: string): Promise<void> {
-	// If not in TTY, fall back to plain text output
-	if (!process.stdout.isTTY) {
-		renderPlainTextOverview(statistics, projectName);
-		return;
-	}
-
-	return new Promise<void>((resolve) => {
-		const screen = createScreen({ title: `${projectName} - Overview` });
-
-		// Main container
-		const container = box({
-			parent: screen,
-			width: "100%",
-			height: "100%",
-		});
-
-		// Title
-		box({
-			parent: container,
-			top: 0,
-			left: "center",
-			width: "shrink",
-			height: 3,
-			content: `{center}{bold}${projectName} - Project Overview{/bold}{/center}`,
-			tags: true,
-			style: {},
-		});
-
-		// Status Overview Section (Top Left)
-		const statusBox = box({
-			parent: container,
-			top: 3,
-			left: 0,
-			width: "50%",
-			height: "40%",
-			border: { type: "line" },
-			label: " Status Overview ",
-			style: {
-				border: { fg: "gray" },
-			},
-			tags: true,
-			scrollable: true,
-			alwaysScroll: true,
-			keys: true,
-			vi: true,
-			mouse: true,
-		});
-
-		let statusContent = "";
-		for (const [status, count] of statistics.statusCounts) {
-			const icon = getStatusIcon(status);
-			const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
-			statusContent += `  ${icon} {bold}${status}:{/bold} ${count} tasks (${percentage}%)\n`;
-		}
-		statusContent += `\n  {cyan-fg}Total Tasks:{/cyan-fg} ${statistics.totalTasks}\n`;
-		statusContent += `  {green-fg}Completion:{/green-fg} ${statistics.completionPercentage}%\n`;
-		if (statistics.draftCount > 0) {
-			statusContent += `  {yellow-fg}Drafts:{/yellow-fg} ${statistics.draftCount}\n`;
-		}
-		statusBox.setContent(statusContent);
-
-		// Priority Breakdown Section (Top Right)
-		const priorityBox = box({
-			parent: container,
-			top: 3,
-			left: "50%",
-			width: "50%",
-			height: "40%",
-			border: { type: "line" },
-			label: " Priority Breakdown ",
-			style: {
-				border: { fg: "gray" },
-			},
-			tags: true,
-			scrollable: true,
-			alwaysScroll: true,
-			keys: true,
-			vi: true,
-			mouse: true,
-		});
-
-		let priorityContent = "";
-		const priorityColors = {
-			high: "red",
-			medium: "yellow",
-			low: "green",
-			none: "gray",
-		};
-		for (const [priority, count] of statistics.priorityCounts) {
-			if (count > 0) {
-				const color = priorityColors[priority as keyof typeof priorityColors] || "white";
-				const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
-				const displayPriority =
-					priority === "none" ? "No Priority" : priority.charAt(0).toUpperCase() + priority.slice(1);
-				priorityContent += `  {${color}-fg}${displayPriority}:{/${color}-fg} ${count} tasks (${percentage}%)\n`;
-			}
-		}
-		priorityBox.setContent(priorityContent);
-
-		// Recent Activity Section (Bottom Left)
-		const activityBox = box({
-			parent: container,
-			top: "43%",
-			left: 0,
-			width: "50%",
-			height: "28%",
-			border: { type: "line" },
-			label: " Recent Activity ",
-			style: {
-				border: { fg: "gray" },
-			},
-			tags: true,
-			scrollable: true,
-			alwaysScroll: true,
-			keys: true,
-			vi: true,
-			mouse: true,
-		});
-
-		let activityContent = "{bold}Recently Created:{/bold}\n";
-		if (statistics.recentActivity.created.length > 0) {
-			for (const task of statistics.recentActivity.created) {
-				activityContent += `  ${task.id} - ${task.title.substring(0, 40)}${task.title.length > 40 ? "..." : ""}\n`;
-			}
-		} else {
-			activityContent += "  {gray-fg}No tasks created in the last 7 days{/gray-fg}\n";
-		}
-
-		activityContent += "\n{bold}Recently Updated:{/bold}\n";
-		if (statistics.recentActivity.updated.length > 0) {
-			for (const task of statistics.recentActivity.updated) {
-				activityContent += `  ${task.id} - ${task.title.substring(0, 40)}${task.title.length > 40 ? "..." : ""}\n`;
-			}
-		} else {
-			activityContent += "  {gray-fg}No tasks updated in the last 7 days{/gray-fg}\n";
-		}
-		activityBox.setContent(activityContent);
-
-		// Project Health Section (Bottom Right)
-		const healthBox = box({
-			parent: container,
-			top: "43%",
-			left: "50%",
-			width: "50%",
-			height: "28%",
-			border: { type: "line" },
-			label: " Project Health ",
-			style: {
-				border: { fg: "gray" },
-			},
-			tags: true,
-			scrollable: true,
-			alwaysScroll: true,
-			keys: true,
-			vi: true,
-			mouse: true,
-		});
-
-		let healthContent = `{bold}Average Task Age:{/bold} ${statistics.projectHealth.averageTaskAge} days\n\n`;
-
-		healthContent += "{bold}Stale Tasks:{/bold} {gray-fg}(>30 days without updates){/gray-fg}\n";
-		if (statistics.projectHealth.staleTasks.length > 0) {
-			for (const task of statistics.projectHealth.staleTasks) {
-				healthContent += `  {yellow-fg}${task.id}{/yellow-fg} - ${task.title.substring(0, 35)}${task.title.length > 35 ? "..." : ""}\n`;
-			}
-		} else {
-			healthContent += "  {green-fg}No stale tasks{/green-fg}\n";
-		}
-
-		healthContent += "\n{bold}Blocked Tasks:{/bold} {gray-fg}(waiting on dependencies){/gray-fg}\n";
-		if (statistics.projectHealth.blockedTasks.length > 0) {
-			for (const task of statistics.projectHealth.blockedTasks) {
-				healthContent += `  {red-fg}${task.id}{/red-fg} - ${task.title.substring(0, 35)}${task.title.length > 35 ? "..." : ""}\n`;
-			}
-		} else {
-			healthContent += "  {green-fg}No blocked tasks{/green-fg}\n";
-		}
-		healthBox.setContent(healthContent);
-
-		// Instructions at bottom
-		box({
-			parent: container,
-			bottom: 0,
-			left: 0,
-			width: "100%",
-			height: 3,
-			content: "{center}Press q or Esc to exit{/center}",
-			tags: true,
-			style: {
-				fg: "gray",
-			},
-		});
-
-		// Focus on status box for scrolling
-		statusBox.focus();
-
-		// Exit handlers
-		screen.key(["escape", "q", "C-c"], () => {
-			screen.destroy();
-			resolve();
-		});
-
-		screen.render();
-	});
+function rule(char: string, width: number): string {
+	return char.repeat(Math.max(0, width));
 }
 
-/**
- * Render plain text overview for non-TTY environments
- */
-function renderPlainTextOverview(statistics: TaskStatistics, projectName: string): void {
-	console.log(`\n${projectName} - Project Overview\n${"=".repeat(40)}\n`);
+function formatDateForStats(dateStr: string): string {
+	const hasTime = dateStr.includes(" ") || dateStr.includes("T");
+	const normalized = `${dateStr.replace(" ", "T")}${hasTime ? ":00Z" : "T00:00:00Z"}`;
+	const date = new Date(normalized);
+	return date.toLocaleDateString();
+}
 
-	console.log("Status Overview:");
+function renderTaskItem(task: Task, terminalWidth: number): string {
+	const maxLen = terminalWidth - 20;
+	const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+	return `  ${task.id} - ${title}`;
+}
+
+// ─── Colored TUI ───────────────────────────────────────────────────────────
+
+export async function renderOverviewTui(statistics: TaskStatistics, projectName: string): Promise<void> {
+	const w = process.stdout.columns || 80;
+
+	if (process.stdout.isTTY) {
+		process.stdout.write("\x1b[2J\x1b[0;0H");
+	}
+
+	const lines: string[] = [];
+
+	// Title
+	const title = `${projectName} - Project Overview`;
+	const pad = Math.max(0, Math.floor((w - title.length) / 2));
+	lines.push(" ".repeat(pad) + picocolors.bold(title));
+	lines.push(rule("=", w));
+
+	// Section 1: Status Overview
+	lines.push(picocolors.bold("Status Overview"));
+	lines.push(rule("=", w));
 	for (const [status, count] of statistics.statusCounts) {
+		const icon = getStatusIcon(status);
 		const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
-		console.log(`  ${status}: ${count} tasks (${percentage}%)`);
+		lines.push(`  ${icon} ${picocolors.bold(status)}: ${count} tasks (${percentage}%)`);
 	}
-	console.log(`\n  Total Tasks: ${statistics.totalTasks}`);
-	console.log(`  Completion: ${statistics.completionPercentage}%`);
+	lines.push("");
+	lines.push(`  ${picocolors.cyan("Total Tasks:")} ${statistics.totalTasks}`);
+	lines.push(`  ${picocolors.green("Completion:")} ${statistics.completionPercentage}%`);
 	if (statistics.draftCount > 0) {
-		console.log(`  Drafts: ${statistics.draftCount}`);
+		lines.push(`  ${picocolors.yellow("Drafts:")} ${statistics.draftCount}`);
 	}
 
-	console.log("\nPriority Breakdown:");
+	// Section 2: Priority Breakdown
+	lines.push("");
+	lines.push(picocolors.bold("Priority Breakdown"));
+	lines.push(rule("=", w));
+	const priorityColors: Record<string, (s: string) => string> = {
+		high: picocolors.red,
+		medium: picocolors.yellow,
+		low: picocolors.green,
+		none: picocolors.gray,
+	};
 	for (const [priority, count] of statistics.priorityCounts) {
 		if (count > 0) {
+			const colorFn = priorityColors[priority] || picocolors.white;
 			const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
 			const displayPriority =
 				priority === "none" ? "No Priority" : priority.charAt(0).toUpperCase() + priority.slice(1);
-			console.log(`  ${displayPriority}: ${count} tasks (${percentage}%)`);
+			lines.push(`  ${colorFn(displayPriority)}: ${count} tasks (${percentage}%)`);
 		}
 	}
 
-	console.log("\nRecent Activity:");
-	console.log("  Recently Created:");
+	// Section 3: Recent Activity
+	lines.push("");
+	lines.push(picocolors.bold("Recent Activity"));
+	lines.push(rule("=", w));
+	lines.push(picocolors.bold("Recently Created"));
+	lines.push(rule("-", w));
 	if (statistics.recentActivity.created.length > 0) {
 		for (const task of statistics.recentActivity.created) {
-			console.log(`    ${task.id} - ${task.title}`);
+			lines.push(renderTaskItem(task, w));
 		}
 	} else {
-		console.log("    No tasks created in the last 7 days");
+		lines.push(`  ${picocolors.gray("No tasks created in the last 7 days")}`);
 	}
 
-	console.log("\n  Recently Updated:");
+	lines.push("");
+	lines.push(picocolors.bold("Recently Updated"));
+	lines.push(rule("-", w));
 	if (statistics.recentActivity.updated.length > 0) {
 		for (const task of statistics.recentActivity.updated) {
-			console.log(`    ${task.id} - ${task.title}`);
+			lines.push(renderTaskItem(task, w));
 		}
 	} else {
-		console.log("    No tasks updated in the last 7 days");
+		lines.push(`  ${picocolors.gray("No tasks updated in the last 7 days")}`);
 	}
 
-	console.log("\nProject Health:");
-	console.log(`  Average Task Age: ${statistics.projectHealth.averageTaskAge} days`);
+	// Section 4: Project Health
+	lines.push("");
+	lines.push(picocolors.bold("Project Health"));
+	lines.push(rule("=", w));
+	lines.push(`${picocolors.bold("Average Task Age:")} ${statistics.projectHealth.averageTaskAge} days`);
 
-	console.log("\n  Stale Tasks (>30 days without updates):");
-	if (statistics.projectHealth.staleTasks.length > 0) {
+	const ar = statistics.projectHealth.atRiskTasks.length;
+	const ov = statistics.projectHealth.overdueTasks.length;
+	const st = statistics.projectHealth.staleTasks.length;
+	const bl = statistics.projectHealth.blockedTasks.length;
+	lines.push(
+		`  ${picocolors.yellow("At Risk:")} ${ar}   ${picocolors.red("Overdue:")} ${ov}   ${picocolors.gray("Stale:")} ${st}   ${picocolors.red("Blocked:")} ${bl}`,
+	);
+
+	if (ar > 0) {
+		lines.push("");
+		lines.push(`${picocolors.bold("At Risk Tasks:")} ${picocolors.gray("(due soon, require immediate attention)")}`);
+		lines.push(rule("-", w));
+		for (const task of statistics.projectHealth.atRiskTasks) {
+			const dateStr = task.dueDate ? ` | Due By ${formatDateForStats(task.dueDate)}` : "";
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			lines.push(`  ${picocolors.yellow(task.id)} - ${title}${picocolors.gray(dateStr)}`);
+		}
+	}
+
+	if (ov > 0) {
+		lines.push("");
+		lines.push(`${picocolors.bold("Overdue Tasks:")} ${picocolors.gray("(passed the due date)")}`);
+		lines.push(rule("-", w));
+		for (const task of statistics.projectHealth.overdueTasks) {
+			const dateStr = task.dueDate ? ` | Due By ${formatDateForStats(task.dueDate)}` : "";
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			lines.push(`  ${picocolors.red(task.id)} - ${title}${picocolors.gray(dateStr)}`);
+		}
+	}
+
+	if (st > 0) {
+		lines.push("");
+		lines.push(`${picocolors.bold("Stale Tasks:")} ${picocolors.gray("(No updates for 30+ days, no due date set)")}`);
+		lines.push(rule("-", w));
 		for (const task of statistics.projectHealth.staleTasks) {
-			console.log(`    ${task.id} - ${task.title}`);
+			const dateStr = ` | Updated: ${formatDateForStats(task.updatedDate || task.createdDate)}`;
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			lines.push(`  ${picocolors.yellow(task.id)} - ${title}${picocolors.gray(dateStr)}`);
 		}
-	} else {
-		console.log("    No stale tasks");
 	}
 
-	console.log("\n  Blocked Tasks (waiting on dependencies):");
-	if (statistics.projectHealth.blockedTasks.length > 0) {
+	if (bl > 0) {
+		lines.push("");
+		lines.push(`${picocolors.bold("Blocked Tasks:")} ${picocolors.gray("(waiting on dependencies)")}`);
+		lines.push(rule("-", w));
 		for (const task of statistics.projectHealth.blockedTasks) {
-			console.log(`    ${task.id} - ${task.title}`);
+			const dateStr = task.dueDate
+				? ` | Due By ${formatDateForStats(task.dueDate)}`
+				: ` | Updated: ${formatDateForStats(task.updatedDate || task.createdDate)}`;
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			lines.push(`  ${picocolors.red(task.id)} - ${title}${picocolors.gray(dateStr)}`);
 		}
-	} else {
-		console.log("    No blocked tasks");
+	}
+
+	console.log(lines.join("\n"));
+}
+
+// ─── Plain text renderer ───────────────────────────────────────────────────
+
+function renderPlainDistribution(
+	title: string,
+	counts: Map<string, number> | Record<string, number>,
+	total: number,
+): string {
+	const entries = counts instanceof Map ? Array.from(counts.entries()) : Object.entries(counts);
+	const filtered = entries.filter(([, count]) => count > 0);
+	if (filtered.length === 0) return "";
+
+	const maxLabelWidth = Math.max(...filtered.map(([label]) => label.length));
+	const maxCountWidth = Math.max(...filtered.map(([, count]) => String(count).length));
+
+	const lines: string[] = [];
+	for (const [label, count] of filtered) {
+		const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+		const paddedLabel = label.padEnd(maxLabelWidth, " ");
+		const paddedCount = String(count).padStart(maxCountWidth, " ");
+		lines.push(`  ${paddedLabel}  ${paddedCount}  ${pct}%`);
+	}
+	return `${title}\n${rule("-", title.length)}\n${lines.join("\n")}`;
+}
+
+function renderPlainTaskList(title: string, tasks: Task[]): string {
+	if (tasks.length === 0) return "";
+	const lines: string[] = [];
+	for (const task of tasks) {
+		const dateStr = task.updatedDate
+			? `updated ${formatDateForStats(task.updatedDate)}`
+			: task.createdDate
+				? `created ${formatDateForStats(task.createdDate)}`
+				: "";
+		lines.push(`  ${task.id}: ${task.title}${dateStr ? ` (${dateStr})` : ""}`);
+	}
+	return `${title}\n${rule("-", title.length)}\n${lines.join("\n")}`;
+}
+
+export function renderStatsPlainText(stats: TaskStatistics, projectName: string): void {
+	const w = process.stdout.columns || 80;
+
+	// Title
+	console.log(`${projectName} - Project Overview`);
+	console.log(rule("=", `${projectName} - Project Overview`.length));
+
+	// Status Overview
+	console.log("Status Overview");
+	console.log(rule("=", "Status Overview".length));
+	for (const [status, count] of stats.statusCounts) {
+		const percentage = stats.totalTasks > 0 ? Math.round((count / stats.totalTasks) * 100) : 0;
+		console.log(`  ${status}: ${count} tasks (${percentage}%)`);
 	}
 	console.log("");
+	console.log(`  Total Tasks: ${stats.totalTasks}`);
+	console.log(`  Completion: ${stats.completionPercentage}%`);
+	if (stats.draftCount > 0) {
+		console.log(`  Drafts: ${stats.draftCount}`);
+	}
+
+	// Priority Breakdown
+	console.log("");
+	console.log(renderPlainDistribution("Priority Breakdown", stats.priorityCounts, stats.totalTasks));
+
+	// Recent Activity
+	console.log("");
+	console.log("Recent Activity");
+	console.log(rule("=", "Recent Activity".length));
+	console.log(renderPlainTaskList("Recently Created", stats.recentActivity.created));
+	if (stats.recentActivity.created.length > 0) console.log("");
+	console.log(renderPlainTaskList("Recently Updated", stats.recentActivity.updated));
+
+	// Project Health (last)
+	console.log("");
+	console.log("Project Health");
+	console.log(rule("=", "Project Health".length));
+	console.log(`  Average Task Age: ${stats.projectHealth.averageTaskAge} days`);
+	console.log(`  At Risk: ${stats.projectHealth.atRiskTasks.length}`);
+	console.log(`  Overdue: ${stats.projectHealth.overdueTasks.length}`);
+	console.log(`  Stale: ${stats.projectHealth.staleTasks.length}`);
+	console.log(`  Blocked: ${stats.projectHealth.blockedTasks.length}`);
+
+	if (stats.projectHealth.atRiskTasks.length > 0) {
+		console.log("");
+		console.log("At Risk Tasks: (due soon, require immediate attention)");
+		console.log(rule("-", "At Risk Tasks: (due soon, require immediate attention)".length));
+		for (const task of stats.projectHealth.atRiskTasks) {
+			const dateStr = task.dueDate ? ` | Due By ${formatDateForStats(task.dueDate)}` : "";
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			console.log(`  ${task.id} - ${title}${dateStr}`);
+		}
+	}
+	if (stats.projectHealth.overdueTasks.length > 0) {
+		console.log("");
+		console.log("Overdue Tasks: (passed the due date)");
+		console.log(rule("-", "Overdue Tasks: (passed the due date)".length));
+		for (const task of stats.projectHealth.overdueTasks) {
+			const dateStr = task.dueDate ? ` | Due By ${formatDateForStats(task.dueDate)}` : "";
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			console.log(`  ${task.id} - ${title}${dateStr}`);
+		}
+	}
+	if (stats.projectHealth.staleTasks.length > 0) {
+		console.log("");
+		console.log("Stale Tasks: (No updates for 30+ days, no due date set)");
+		console.log(rule("-", "Stale Tasks: (No updates for 30+ days, no due date set)".length));
+		for (const task of stats.projectHealth.staleTasks) {
+			const dateStr = ` | Updated: ${formatDateForStats(task.updatedDate || task.createdDate)}`;
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			console.log(`  ${task.id} - ${title}${dateStr}`);
+		}
+	}
+	if (stats.projectHealth.blockedTasks.length > 0) {
+		console.log("");
+		console.log("Blocked Tasks: (waiting on dependencies)");
+		console.log(rule("-", "Blocked Tasks: (waiting on dependencies)".length));
+		for (const task of stats.projectHealth.blockedTasks) {
+			const dateStr = task.dueDate
+				? ` | Due By ${formatDateForStats(task.dueDate)}`
+				: ` | Updated: ${formatDateForStats(task.updatedDate || task.createdDate)}`;
+			const maxLen = Math.max(0, w - 20 - dateStr.length);
+			const title = task.title.length > maxLen ? `${task.title.substring(0, maxLen)}...` : task.title;
+			console.log(`  ${task.id} - ${title}${dateStr}`);
+		}
+	}
 }

@@ -1,4 +1,5 @@
 import type { Task } from "../types/index.ts";
+import { taskIdsEqual } from "../utils/task-path.ts";
 
 export interface TaskStatistics {
 	statusCounts: Map<string, number>;
@@ -94,10 +95,13 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 			taskCount++;
 		}
 
-		if (task.updatedDate) {
-			const updatedDate = new Date(task.updatedDate);
-			if (updatedDate >= oneWeekAgo) {
-				recentlyUpdated.push(task);
+		{
+			const lastUpdated = task.updatedDate || task.createdDate;
+			if (lastUpdated) {
+				const updatedDate = new Date(lastUpdated);
+				if (updatedDate >= oneWeekAgo) {
+					recentlyUpdated.push(task);
+				}
 			}
 		}
 
@@ -129,7 +133,7 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		if (task.dependencies && task.dependencies.length > 0 && task.status !== "Done") {
 			// Check if any dependency is not done
 			const hasBlockingDependency = task.dependencies.some((depId) => {
-				const dep = tasks.find((t) => t.id === depId);
+				const dep = tasks.find((t) => taskIdsEqual(t.id, depId));
 				return dep && dep.status !== "Done";
 			});
 
