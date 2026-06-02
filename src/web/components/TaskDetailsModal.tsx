@@ -33,6 +33,8 @@ interface Props {
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
   availableLabels?: string[];
+  onDrillDown?: (task: Task) => void; // Navigate into a dependency task
+  onBack?: () => void; // Navigate back to parent task
 }
 
 type Mode = "preview" | "edit" | "create";
@@ -73,6 +75,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   isDraftMode,
   definitionOfDoneDefaults,
   availableLabels,
+  onDrillDown,
+  onBack,
 }) => {
   const { theme } = useTheme();
   const { t } = useI18n();
@@ -703,6 +707,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
       title={isCreateMode ? (isDraftMode ? t.taskDetails.createDraft : t.taskDetails.createTask) : `${displayId} — ${task.title}`}
       maxWidthClass="max-w-5xl"
       disableEscapeClose={mode === "edit" || mode === "create"}
+      leftActions={
+        onBack ? (
+          <button
+            onClick={onBack}
+            className="inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 transition-colors duration-200"
+            title={t.common.back}
+            aria-label={t.common.back}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+        ) : undefined
+      }
       actions={
         <div className="flex items-center gap-2">
 		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
@@ -1243,6 +1261,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
               currentTaskId={task?.id}
               label=""
               disabled={isFromOtherBranch}
+              onTaskClick={(taskId) => {
+                const targetTask = availableTasks.find(t => t.id === taskId);
+                if (targetTask && onDrillDown) {
+                  onDrillDown(targetTask);
+                }
+              }}
             />
           </div>
 
