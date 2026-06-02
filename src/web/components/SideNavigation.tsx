@@ -17,7 +17,7 @@ import {
 import ErrorBoundary from './ErrorBoundary';
 import Modal from './Modal';
 import { SidebarSkeleton } from './LoadingSpinner';
-import { sanitizeUrlTitle } from '../utils/urlHelpers';
+import { sanitizeUrlTitle, encodeWikiPath } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
@@ -379,7 +379,7 @@ const WikiTreeItem = memo(function WikiTreeItem({
 	return (
 		<div className="group/file relative flex items-center rounded-lg transition-colors duration-200">
 			<NavLink
-				to={`/wiki/${encodeURIComponent(node.path)}`}
+				to={`/wiki/${encodeWikiPath(node.path)}`}
 				className={({ isActive }) =>
 					`flex-1 flex items-center space-x-3 px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 ${
 						isActive
@@ -604,11 +604,21 @@ const SideNavigation = memo(function SideNavigation({
 		const saved = localStorage.getItem('sideNavCollapsed');
 		return saved ? JSON.parse(saved) : false;
 	});
+	const [sidebarWidth, setSidebarWidth] = useState(() => {
+		const saved = localStorage.getItem('sideNavWidth');
+		return saved ? Number.parseInt(saved, 10) : 320;
+	});
+	const [isResizing, setIsResizing] = useState(false);
 	const [searchQuery, setSearchQuery] = useState('');
 	const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 	const [isSearching, setIsSearching] = useState(false);
 	const [searchError, setSearchError] = useState<string | null>(null);
 	const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
+	const [searchType, setSearchType] = useState<SearchResultType | 'all'>('all');
+	const [searchTypeDropdownOpen, setSearchTypeDropdownOpen] = useState(false);
+	const searchTypeDropdownRef = useRef<HTMLDivElement>(null);
+	const sidebarRef = useRef<HTMLDivElement>(null);
+	const resizeGhostRef = useRef<HTMLDivElement>(null);
 	const [isDocsCollapsed, setIsDocsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('docsCollapsed');
 		if (saved !== null) {
@@ -745,7 +755,7 @@ const SideNavigation = memo(function SideNavigation({
 			setShowCreateWikiModal(false);
 			await onRefreshData();
 			if (!createWikiIsFolder) {
-				navigate(`/wiki/${encodeURIComponent(fullPath)}`);
+				navigate(`/wiki/${encodeWikiPath(fullPath)}`);
 			}
 		} catch (err) {
 			setCreateWikiError(err instanceof Error ? err.message : t.nav.failedToCreate);
@@ -781,8 +791,8 @@ const SideNavigation = memo(function SideNavigation({
 			setShowRenameWikiModal(false);
 			await onRefreshData();
 			// If the currently viewed wiki page was renamed, navigate to the new path
-			if (location.pathname.startsWith(`/wiki/${encodeURIComponent(renameWikiOldPath)}`)) {
-				navigate(`/wiki/${encodeURIComponent(newPath)}`);
+			if (location.pathname.startsWith(`/wiki/${encodeWikiPath(renameWikiOldPath)}`)) {
+				navigate(`/wiki/${encodeWikiPath(newPath)}`);
 			}
 		} catch (err) {
 			setRenameWikiError(err instanceof Error ? err.message : t.nav.failedToRename);
@@ -862,8 +872,12 @@ const SideNavigation = memo(function SideNavigation({
 		const timeout = setTimeout(async () => {
 			try {
 				const parsedQuery = parseSearchCommandQuery(query);
-				const types: SearchResultType[] | undefined =
-					parsedQuery.types ?? (hasTaskSearchFilters(parsedQuery) ? ['task'] : undefined);
+				let types: SearchResultType[] | undefined;
+				if (searchType !== 'all') {
+					types = [searchType];
+				} else {
+					types = parsedQuery.types ?? (hasTaskSearchFilters(parsedQuery) ? ['task'] : undefined);
+				}
 				const results = await apiClient.search({ ...parsedQuery, types, limit: 15 });
 				if (!cancelled) {
 					setSearchResults(results);
@@ -885,7 +899,7 @@ const SideNavigation = memo(function SideNavigation({
 			cancelled = true;
 			clearTimeout(timeout);
 		};
-	}, [searchQuery]);
+	}, [searchQuery, searchType]);
 
 	const unifiedSearchResults = useMemo(() => {
 		if (!searchQuery.trim()) {
@@ -909,9 +923,82 @@ const SideNavigation = memo(function SideNavigation({
 		setIsCollapsed((prev: any) => !prev);
 	}, []);
 
+	// Sidebar resize handlers — mutate DOM directly during drag for smoothness
+	const handleResizeStart = useCallback((e: React.MouseEvent) => {
+		e.preventDefault();
+		setIsResizing(true);
+	}, []);
+
+	const handleResizeMove = useCallback((e: MouseEvent) => {
+		if (!isResizing || !resizeGhostRef.current || !sidebarRef.current) return;
+		const sidebarRect = sidebarRef.current.getBoundingClientRect();
+		const newWidth = Math.max(200, Math.min(500, e.clientX - sidebarRect.left));
+		resizeGhostRef.current.style.left = `${newWidth}px`;
+	}, [isResizing]);
+
+	const handleResizeEnd = useCallback(() => {
+		if (isResizing && resizeGhostRef.current) {
+			const finalWidth = Math.max(200, Math.min(500, resizeGhostRef.current.offsetLeft));
+			setSidebarWidth(finalWidth);
+			localStorage.setItem('sideNavWidth', String(finalWidth));
+			setIsResizing(false);
+		}
+	}, [isResizing]);
+
+	useEffect(() => {
+		if (isResizing) {
+			document.addEventListener('mousemove', handleResizeMove);
+			document.addEventListener('mouseup', handleResizeEnd);
+			document.body.style.cursor = 'col-resize';
+			document.body.style.userSelect = 'none';
+		} else {
+			document.removeEventListener('mousemove', handleResizeMove);
+			document.removeEventListener('mouseup', handleResizeEnd);
+			document.body.style.cursor = '';
+			document.body.style.userSelect = '';
+		}
+		return () => {
+			document.removeEventListener('mousemove', handleResizeMove);
+			document.removeEventListener('mouseup', handleResizeEnd);
+			document.body.style.cursor = '';
+			document.body.style.userSelect = '';
+		};
+	}, [isResizing, handleResizeMove, handleResizeEnd]);
+
+	// Close search type dropdown on click outside
+	useEffect(() => {
+		const handleClickOutside = (e: MouseEvent) => {
+			if (searchTypeDropdownRef.current && !searchTypeDropdownRef.current.contains(e.target as Node)) {
+				setSearchTypeDropdownOpen(false);
+			}
+		};
+		document.addEventListener('mousedown', handleClickOutside);
+		return () => document.removeEventListener('mousedown', handleClickOutside);
+	}, []);
+
 	return (
 		<ErrorBoundary>
-			<div className={`relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 flex flex-col min-h-full z-10 ${isCollapsed ? 'w-16' : 'w-80 min-w-80'}`}>
+			<div
+				ref={sidebarRef}
+				className={`relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col min-h-full z-10 ${isCollapsed ? 'w-16 transition-all duration-300' : 'transition-all duration-300'}`}
+				style={isCollapsed ? undefined : { width: sidebarWidth }}
+			>
+				{/* Resize Handle */}
+				{!isCollapsed && !isResizing && (
+					<div
+						className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400/50 z-20 transition-colors"
+						onMouseDown={handleResizeStart}
+						title="Drag to resize sidebar"
+					/>
+				)}
+				{/* Resize Ghost Bar */}
+				{isResizing && (
+					<div
+						ref={resizeGhostRef}
+						className="absolute top-0 bottom-0 w-0.5 bg-blue-500 z-50 pointer-events-none shadow-lg"
+						style={{ left: sidebarWidth }}
+					/>
+				)}
 			{/* Search Bar */}
 			<div className={`${isCollapsed ? 'px-2' : 'px-4'} border-b border-gray-200 dark:border-gray-700 h-18 flex items-center relative`}>
 				{/* Collapse Toggle Button - Always positioned on the border */}
@@ -926,10 +1013,57 @@ const SideNavigation = memo(function SideNavigation({
 				
 				{!isCollapsed ? (
 					<div className="flex items-center w-full">
-						<div className="relative flex-1">
-							<div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
-								<Icons.Search />
-							</div>
+						<div className="relative flex-1" ref={searchTypeDropdownRef}>
+							<button
+								onClick={() => setSearchTypeDropdownOpen(!searchTypeDropdownOpen)}
+								className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors z-10"
+								title="Search type"
+							>
+								{searchType === 'all' ? <Icons.Search /> :
+								 searchType === 'task' ? <Icons.Tasks /> :
+								 searchType === 'document' ? <Icons.Document /> :
+								 searchType === 'decision' ? <Icons.Decision /> :
+								 <Icons.DocumentBook />}
+							</button>
+							{searchTypeDropdownOpen && (
+								<div className="absolute left-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1">
+									<button
+										onClick={() => { setSearchType('all'); setSearchTypeDropdownOpen(false); }}
+										className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${searchType === 'all' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+									>
+										<Icons.Search />
+										{t.common.all}
+									</button>
+									<button
+										onClick={() => { setSearchType('task'); setSearchTypeDropdownOpen(false); }}
+										className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${searchType === 'task' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+									>
+										<Icons.Tasks />
+										{t.common.task}
+									</button>
+									<button
+										onClick={() => { setSearchType('document'); setSearchTypeDropdownOpen(false); }}
+										className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${searchType === 'document' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+									>
+										<Icons.Document />
+										{t.common.document}
+									</button>
+									<button
+										onClick={() => { setSearchType('decision'); setSearchTypeDropdownOpen(false); }}
+										className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${searchType === 'decision' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+									>
+										<Icons.Decision />
+										{t.common.decision}
+									</button>
+									<button
+										onClick={() => { setSearchType('wiki'); setSearchTypeDropdownOpen(false); }}
+										className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${searchType === 'wiki' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+									>
+										<Icons.DocumentBook />
+										{t.nav.wiki}
+									</button>
+								</div>
+							)}
 							<input
 								ref={setSearchInputRef}
 								type="text"
@@ -984,7 +1118,7 @@ const SideNavigation = memo(function SideNavigation({
 											return `/decisions/${stripIdPrefix(dec.id)}/${sanitizeUrlTitle(dec.title)}`;
 										}
 										if (result.type === 'wiki') {
-											return `/wiki/${encodeURIComponent((result as WikiSearchResult).wiki.path)}`;
+											return `/wiki/${encodeWikiPath((result as WikiSearchResult).wiki.path)}`;
 										}
 										const task = (result as TaskSearchResult).task;
 										return `/?highlight=${encodeURIComponent(task.id)}`;

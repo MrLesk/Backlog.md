@@ -1,3 +1,4 @@
+import { encodeWikiPath } from "../utils/urlHelpers.ts";
 import type { TaskStatistics } from "../../core/statistics.ts";
 import type {
 	BacklogConfig,
@@ -594,7 +595,7 @@ export class ApiClient {
 	}
 
 	async fetchWikiPage(path: string): Promise<WikiPage> {
-		const response = await fetch(`${API_BASE}/wiki/${encodeURIComponent(path)}`);
+		const response = await fetch(`${API_BASE}/wiki/${encodeWikiPath(path)}`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch wiki page");
 		}
@@ -602,7 +603,7 @@ export class ApiClient {
 	}
 
 	async updateWikiPage(path: string, content: string, title?: string, labels?: string[]): Promise<void> {
-		const response = await fetch(`${API_BASE}/wiki/${encodeURIComponent(path)}`, {
+		const response = await fetch(`${API_BASE}/wiki/${encodeWikiPath(path)}`, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ content, title, ...(labels !== undefined && { labels }) }),
@@ -640,7 +641,7 @@ export class ApiClient {
 	}
 
 	async renameWikiItem(oldPath: string, newPath: string): Promise<{ success: boolean; path: string }> {
-		const response = await fetch(`${API_BASE}/wiki/${encodeURIComponent(oldPath)}`, {
+		const response = await fetch(`${API_BASE}/wiki/${encodeWikiPath(oldPath)}`, {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ newPath }),

@@ -9,6 +9,7 @@ import { SuccessToast } from "./SuccessToast";
 import { useTheme } from "../contexts/ThemeContext";
 import ChipInput from "./ChipInput";
 import { useI18n } from '../hooks/useI18n';
+import { encodeWikiPath } from '../utils/urlHelpers';
 import type { WikiPage } from "../../types";
 
 /**
@@ -112,7 +113,7 @@ function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void 
 					console.warn("Wikilink escapes wiki root:", rawPath);
 					return;
 				}
-				navigate(`/wiki/${encodeURIComponent(resolvedPath)}`);
+				navigate(`/wiki/${encodeWikiPath(resolvedPath)}`);
 				onClose();
 				return;
 			}
@@ -132,7 +133,7 @@ function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void 
 					console.warn("Markdown link escapes wiki root:", decodedHref);
 					return;
 				}
-				navigate(`/wiki/${encodeURIComponent(resolvedPath)}`);
+				navigate(`/wiki/${encodeWikiPath(resolvedPath)}`);
 				onClose();
 			}
 		};
@@ -150,7 +151,7 @@ function WikiLinkPreview({ path, onClose }: { path: string; onClose: () => void 
 		const linkText = p1;
 		const resolved = resolveWikiPath(path, p1);
 		if (resolved === null) return linkText;
-		const linkPath = encodeURIComponent(resolved);
+		const linkPath = encodeWikiPath(resolved);
 		return `[${linkText}](/wiki/${linkPath})`;
 	}) || "";
 
@@ -360,7 +361,7 @@ export default function WikiDetail() {
 		const linkText = p1;
 		const resolved = wikiPath ? resolveWikiPath(wikiPath, p1) : p1;
 		if (resolved === null) return `~~${linkText}~~`;
-		const linkPath = encodeURIComponent(resolved);
+		const linkPath = encodeWikiPath(resolved);
 		return `[${linkText}](/wiki/${linkPath})`;
 	});
 
