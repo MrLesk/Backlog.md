@@ -39,6 +39,9 @@ export type TaskCreateArgs = {
 	documentation?: string[];
 	modifiedFiles?: string[];
 	finalSummary?: string;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 };
 
 export type TaskListArgs = {
@@ -127,6 +130,9 @@ export class TaskHandlers {
 				acceptanceCriteria,
 				definitionOfDoneAdd: args.definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
+				dueDate: args.dueDate,
+				plannedStart: args.plannedStart,
+				plannedEnd: args.plannedEnd,
 			});
 
 			return await formatTaskCallResult(createdTask);

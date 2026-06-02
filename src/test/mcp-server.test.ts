@@ -218,7 +218,7 @@ describe("McpServer bootstrap", () => {
 			"task_complete",
 			"milestone_list",
 			"milestone_add",
-			"milestone_rename",
+			"milestone_edit",
 			"milestone_remove",
 			"milestone_archive",
 			"definition_of_done_defaults_get",

@@ -111,6 +111,9 @@ title: Add GraphQL resolver
 status: To Do
 assignee: [@sara]
 labels: [backend, api]
+dueDate: 2026-06-15
+plannedStart: 2026-06-01
+plannedEnd: 2026-06-10
 modified_files:
   - src/server/api.ts
   - src/web/components/TaskList.tsx
@@ -165,6 +168,12 @@ PR-style summary of what was implemented.
 | Status                  | `backlog task edit 42 -s "In Progress"`                  |
 | Assignee                | `backlog task edit 42 -a @sara`                          |
 | Labels                  | `backlog task edit 42 -l backend,api`                    |
+| Due Date                | `backlog task edit 42 --due-date 2026-06-15`             |
+| Planned Start           | `backlog task edit 42 --planned-start 2026-06-01`        |
+| Planned End             | `backlog task edit 42 --planned-end 2026-06-10`          |
+| Clear Due Date          | `backlog task edit 42 --clear-due-date`                  |
+| Clear Planned Start     | `backlog task edit 42 --clear-planned-start`             |
+| Clear Planned End       | `backlog task edit 42 --clear-planned-end`               |
 | Description             | `backlog task edit 42 -d "New description"`              |
 | Add AC                  | `backlog task edit 42 --ac "New criterion"`              |
 | Add DoD                 | `backlog task edit 42 --dod "Ship notes"`                |
@@ -193,6 +202,12 @@ PR-style summary of what was implemented.
 ```bash
 # Example
 backlog task create "Task title" -d "Description" --ac "First criterion" --ac "Second criterion"
+
+# With due date
+backlog task create "Task title" -d "Description" --due-date 2026-06-15
+
+# With planned dates
+backlog task create "Task title" -d "Description" --planned-start 2026-06-01 --planned-end 2026-06-10
 ```
 
 ### Title (one liner)
@@ -721,6 +736,76 @@ backlog doc view doc-1
 - Supported document types are `readme`, `guide`, `specification`, and `other`.
 - Document IDs are global across the entire docs tree, including nested subfolders.
 - Prefer CLI, MCP, or Web document APIs over ad-hoc file writes so frontmatter and metadata remain valid.
+
+### Milestones
+
+> Milestones group tasks by iteration, version, or release cycle. They are stored as Markdown files in `backlog/milestones/` and differ from `tasks/` (specific work items).
+
+Use Backlog.md public interfaces for milestone creation, listing, and archival so IDs, frontmatter, paths, and task relationships stay consistent.
+
+#### CLI Usage
+
+The CLI supports creating, listing, and archiving milestones.
+
+```bash
+# Create a new milestone (saved under backlog/milestones/)
+backlog milestone add "Release 2.0" -d "Ship the v2.0 release"
+
+# Edit a milestone (title, description, dates)
+backlog milestone edit "Release 2.0" -t "Release 2.1" -d "Updated scope"
+backlog milestone edit "Release 2.0" --due-date 2026-06-15
+backlog milestone edit "Release 2.0" --planned-start 2026-06-01 --planned-end 2026-06-10
+backlog milestone edit "Release 2.0" --clear-due-date --clear-planned-start
+
+# List active milestones (shows completion ratio)
+backlog milestone list
+
+# Include completed milestones
+backlog milestone list --show-completed
+
+# Plain text output (AI-friendly)
+backlog milestone list --plain
+
+# Archive a completed milestone
+backlog milestone archive "Release 2.0"
+```
+
+Archiving removes the milestone from the active list, moves its file to the archive folder, and unbinds its tasks (tasks are not deleted).
+
+**Assigning tasks to milestones:**
+
+```bash
+# At creation
+backlog task create "Feature X" -m "Release 2.0"
+
+# Edit an existing task
+backlog task edit 7 --milestone "Release 2.0"
+
+# Clear milestone assignment
+backlog task edit 7 --clear-milestone
+```
+
+The `-m` / `--milestone` option supports fuzzy matching by title, ID (e.g. `m-2`), or numeric alias (e.g. `2`).
+
+**Board grouping by milestone:**
+
+```bash
+backlog board --milestones
+```
+
+#### MCP / API Usage
+
+- Use `milestone_add` to create milestones with title and optional description.
+- Use `milestone_rename` to rename a milestone and optionally update its date fields.
+- Use `milestone_archive` to archive a milestone.
+- Use `milestone_list` to list active and archived milestones.
+
+#### Key Rules
+
+- Milestone files live under `backlog/milestones/`; archived milestones move to `backlog/archive/milestones/`.
+- Milestone IDs follow the `m-N` format and are auto-assigned at creation.
+- Archiving unbinds tasks but does not delete them; tasks revert to the unassigned pool.
+- Prefer CLI or MCP APIs over ad-hoc file writes so frontmatter and metadata remain valid.
 
 ### Task Operations
 

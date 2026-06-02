@@ -41,7 +41,9 @@ describe("Git Operations", () => {
 		});
 
 		it("should recognize SSL-related errors", () => {
-			expect(isNetworkError(new Error("OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443"))).toBe(true);
+			expect(isNetworkError(new Error("OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443"))).toBe(
+				true,
+			);
 			expect(isNetworkError(new Error("SSL handshake failed"))).toBe(true);
 			expect(isNetworkError(new Error("TLS handshake timeout"))).toBe(true);
 			expect(isNetworkError(new Error("ssl_connect error"))).toBe(true);

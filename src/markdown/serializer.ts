@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { AcceptanceCriterion, Decision, Document, Task } from "../types/index.ts";
+import type { AcceptanceCriterion, Decision, Document, Milestone, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -67,6 +67,9 @@ export function serializeTask(task: Task): string {
 		...(task.priority && { priority: task.priority }),
 		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
 		...(task.onStatusChange && { onStatusChange: task.onStatusChange }),
+		...(task.dueDate && { due_date: task.dueDate }),
+		...(task.plannedStart && { planned_start: task.plannedStart }),
+		...(task.plannedEnd && { planned_end: task.plannedEnd }),
 	};
 
 	let contentBody = task.rawContent ?? "";
@@ -156,6 +159,19 @@ export function serializeDocument(document: Document): string {
 	};
 
 	return matter.stringify(document.rawContent, frontmatter);
+}
+
+export function serializeMilestone(milestone: Milestone): string {
+	const frontmatter = {
+		id: milestone.id,
+		title: milestone.title,
+		...(milestone.dueDate && { due_date: milestone.dueDate }),
+		...(milestone.plannedStart && { planned_start: milestone.plannedStart }),
+		...(milestone.plannedEnd && { planned_end: milestone.plannedEnd }),
+	};
+
+	const content = milestone.rawContent?.trim() ? milestone.rawContent : `## Description\n\n${milestone.description}`;
+	return matter.stringify(content, frontmatter);
 }
 
 export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {

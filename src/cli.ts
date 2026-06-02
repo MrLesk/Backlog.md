@@ -227,12 +227,18 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.finalSummary !== undefined ||
 			options.appendNotes !== undefined ||
 			options.appendFinalSummary !== undefined ||
+			options.clearDueDate ||
+			options.clearPlannedStart ||
+			options.clearPlannedEnd ||
 			options.clearFinalSummary ||
 			options.dependsOn !== undefined ||
 			options.dep !== undefined ||
 			options.ref !== undefined ||
 			options.doc !== undefined ||
-			options.modifiedFile !== undefined,
+			options.modifiedFile !== undefined ||
+			options.dueDate !== undefined ||
+			options.plannedStart !== undefined ||
+			options.plannedEnd !== undefined,
 	);
 }
 
@@ -1471,6 +1477,9 @@ taskCmd
 	.option("--final-summary <text>", "add final summary")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
+	.option("--due-date <date>", "task due date (YYYY-MM-DD)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
@@ -2128,6 +2137,12 @@ taskCmd
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--clear-milestone", "clear task milestone assignment")
+	.option("--due-date <date>", "task due date (YYYY-MM-DD)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--clear-due-date", "clear task due date")
+	.option("--clear-planned-start", "clear planned start date")
+	.option("--clear-planned-end", "clear planned end date")
 	.option("--plain", "use plain text output after editing")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
@@ -2449,6 +2464,24 @@ taskCmd
 		}
 		if (options.clearFinalSummary) {
 			editArgs.finalSummaryClear = true;
+		}
+		if (typeof options.dueDate === "string") {
+			editArgs.dueDate = options.dueDate.trim();
+		}
+		if (typeof options.plannedStart === "string") {
+			editArgs.plannedStart = options.plannedStart.trim();
+		}
+		if (typeof options.plannedEnd === "string") {
+			editArgs.plannedEnd = options.plannedEnd.trim();
+		}
+		if (options.clearDueDate) {
+			editArgs.dueDate = "";
+		}
+		if (options.clearPlannedStart) {
+			editArgs.plannedStart = "";
+		}
+		if (options.clearPlannedEnd) {
+			editArgs.plannedEnd = "";
 		}
 		if (acceptanceAdditions.length > 0) {
 			editArgs.acceptanceCriteriaAdd = acceptanceAdditions;
@@ -2854,6 +2887,85 @@ milestoneCmd
 			console.log("  (collapsed, use --show-completed to list)");
 		}
 	});
+
+milestoneCmd
+	.command("edit <name>")
+	.description("edit a milestone title, description, and/or dates")
+	.option("-t, --title <title>", "new milestone title")
+	.option("-d, --description <description>", "new milestone description")
+	.option("--due-date <date>", "due date (YYYY-MM-DD)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--clear-due-date", "clear due date")
+	.option("--clear-planned-start", "clear planned start date")
+	.option("--clear-planned-end", "clear planned end date")
+	.action(
+		async (
+			name: string,
+			options: {
+				title?: string;
+				description?: string;
+				dueDate?: string;
+				plannedStart?: string;
+				plannedEnd?: string;
+				clearDueDate?: boolean;
+				clearPlannedStart?: boolean;
+				clearPlannedEnd?: boolean;
+			},
+		) => {
+			const cwd = await requireProjectRoot();
+			const core = new Core(cwd);
+
+			const hasEditFlags =
+				options.title ||
+				options.description ||
+				options.dueDate ||
+				options.plannedStart ||
+				options.plannedEnd ||
+				options.clearDueDate ||
+				options.clearPlannedStart ||
+				options.clearPlannedEnd;
+			if (!hasEditFlags) {
+				console.error(
+					"No edits specified. Use --title, --description, --due-date, --planned-start, --planned-end, or --clear-* options.",
+				);
+				process.exitCode = 1;
+				return;
+			}
+
+			const milestone = await core.filesystem.loadMilestone(name);
+			if (!milestone) {
+				console.error(`Milestone "${name}" not found.`);
+				process.exitCode = 1;
+				return;
+			}
+
+			const title = options.title?.trim() || milestone.title;
+			const dueDate = options.clearDueDate ? "" : options.dueDate;
+			const plannedStart = options.clearPlannedStart ? "" : options.plannedStart;
+			const plannedEnd = options.clearPlannedEnd ? "" : options.plannedEnd;
+
+			const result = await core.updateMilestone(
+				milestone.id,
+				title,
+				undefined,
+				dueDate,
+				plannedStart,
+				plannedEnd,
+				options.description,
+			);
+
+			if (!result.success) {
+				console.error(`Failed to edit milestone "${name}".`);
+				process.exitCode = 1;
+				return;
+			}
+
+			const label = result.milestone?.title ?? name;
+			const id = result.milestone?.id;
+			console.log(`Updated milestone "${label}"${id ? ` (${id})` : ""}.`);
+		},
+	);
 
 milestoneCmd
 	.command("archive <name>")

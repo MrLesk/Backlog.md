@@ -104,6 +104,12 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [removingMilestoneKey, setRemovingMilestoneKey] = useState<string | null>(null);
 	const [editingBucket, setEditingBucket] = useState<MilestoneBucket | null>(null);
 	const [editMilestoneName, setEditMilestoneName] = useState("");
+	const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
+	const [newMilestonePlannedStart, setNewMilestonePlannedStart] = useState("");
+	const [newMilestonePlannedEnd, setNewMilestonePlannedEnd] = useState("");
+	const [editMilestoneDueDate, setEditMilestoneDueDate] = useState("");
+	const [editMilestonePlannedStart, setEditMilestonePlannedStart] = useState("");
+	const [editMilestonePlannedEnd, setEditMilestonePlannedEnd] = useState("");
 	const [removingBucket, setRemovingBucket] = useState<MilestoneBucket | null>(null);
 	const [removeTaskHandling, setRemoveTaskHandling] = useState<RemoveTaskHandling>("clear");
 	const [removeReassignTo, setRemoveReassignTo] = useState("");
@@ -270,6 +276,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const closeAddModal = () => {
 		setShowAddModal(false);
 		setNewMilestone("");
+		setNewMilestoneDueDate("");
+		setNewMilestonePlannedStart("");
+		setNewMilestonePlannedEnd("");
 		setError(null);
 	};
 
@@ -286,10 +295,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.createMilestone(value);
-			setNewMilestone("");
+			await apiClient.createMilestone(value, undefined, newMilestoneDueDate, newMilestonePlannedStart, newMilestonePlannedEnd);
+			closeAddModal();
 			setSuccess(t.milestones.addSuccess(value));
-			setShowAddModal(false);
 			if (onRefreshData) {
 				await onRefreshData();
 			}
@@ -345,6 +353,10 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		if (!bucket.milestone) return;
 		setEditingBucket(bucket);
 		setEditMilestoneName(bucket.label || bucket.milestone);
+		const entity = milestoneEntities.find((m) => m.id === bucket.milestone);
+		setEditMilestoneDueDate(entity?.dueDate || "");
+		setEditMilestonePlannedStart(entity?.plannedStart || "");
+		setEditMilestonePlannedEnd(entity?.plannedEnd || "");
 		setModalError(null);
 		setError(null);
 		setSuccess(null);
@@ -353,6 +365,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const closeEditModal = () => {
 		setEditingBucket(null);
 		setEditMilestoneName("");
+		setEditMilestoneDueDate("");
+		setEditMilestonePlannedStart("");
+		setEditMilestonePlannedEnd("");
 		setModalError(null);
 	};
 
@@ -386,7 +401,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.updateMilestone(bucket.milestone, value);
+			await apiClient.updateMilestone(bucket.milestone, value, editMilestoneDueDate, editMilestonePlannedStart, editMilestonePlannedEnd);
 			closeEditModal();
 			setSuccess(t.milestones.renameSuccess(previousLabel, value));
 			if (onRefreshData) {
@@ -644,6 +659,25 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							</div>
 						)}
 					</div>
+
+					{/* Milestone dates */}
+					{(() => {
+						const entity = milestoneEntities.find((m) => m.id === bucket.milestone);
+						if (!entity || (!entity.dueDate && !entity.plannedStart && !entity.plannedEnd)) return null;
+						return (
+							<div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+								{entity.dueDate && (
+									<span>{t.taskDetails.section.dueDate}: {entity.dueDate}</span>
+								)}
+								{entity.plannedStart && (
+									<span>{t.taskDetails.section.plannedStart}: {entity.plannedStart}</span>
+								)}
+								{entity.plannedEnd && (
+									<span>{t.taskDetails.section.plannedEnd}: {entity.plannedEnd}</span>
+								)}
+							</div>
+						);
+					})()}
 
 					{/* Progress bar - only for non-empty */}
 					{!isEmpty && (
@@ -1022,9 +1056,36 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							onChange={(e) => handleNewMilestoneChange(e.target.value)}
 							placeholder={t.milestones.namePlaceholder}
 							autoFocus
-							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
 						/>
 						{error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.dueDate}</label>
+						<input
+							type="date"
+							value={newMilestoneDueDate}
+							onChange={(e) => setNewMilestoneDueDate(e.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.plannedStart}</label>
+						<input
+							type="date"
+							value={newMilestonePlannedStart}
+							onChange={(e) => setNewMilestonePlannedStart(e.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.plannedEnd}</label>
+						<input
+							type="date"
+							value={newMilestonePlannedEnd}
+							onChange={(e) => setNewMilestonePlannedEnd(e.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
 					</div>
 					<div className="flex justify-end gap-2">
 						<button
@@ -1058,12 +1119,39 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							value={editMilestoneName}
 							onInput={(event) => handleEditMilestoneNameChange((event.target as HTMLInputElement).value)}
 							autoFocus
-							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
 						/>
 						<p className="text-xs text-gray-500 dark:text-gray-400">
 							{t.milestones.renameHint}
 						</p>
 						{modalError && <p className="text-xs text-red-600 dark:text-red-400">{modalError}</p>}
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.dueDate}</label>
+						<input
+							type="date"
+							value={editMilestoneDueDate}
+							onChange={(e) => setEditMilestoneDueDate(e.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.plannedStart}</label>
+						<input
+							type="date"
+							value={editMilestonePlannedStart}
+							onChange={(e) => setEditMilestonePlannedStart(e.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
+					</div>
+					<div className="space-y-2">
+						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.taskDetails.section.plannedEnd}</label>
+						<input
+							type="date"
+							value={editMilestonePlannedEnd}
+							onChange={(e) => setEditMilestonePlannedEnd(e.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+						/>
 					</div>
 					<div className="flex justify-end gap-2">
 						<button

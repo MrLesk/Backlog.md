@@ -246,6 +246,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [documentation, setDocumentation] = useState<string[]>(task?.documentation || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
+  const [dueDate, setDueDate] = useState<string>(task?.dueDate || "");
+  const [plannedStart, setPlannedStart] = useState<string>(task?.plannedStart || "");
+  const [plannedEnd, setPlannedEnd] = useState<string>(task?.plannedEnd || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
@@ -260,6 +263,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
     finalSummary: task?.finalSummary || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
     definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
+    dueDate: task?.dueDate || "",
+    plannedStart: task?.plannedStart || "",
+    plannedEnd: task?.plannedEnd || "",
   }), [task, defaultDefinitionOfDone, isCreateMode]);
 
   const isDirty = useMemo(() => {
@@ -270,9 +276,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
       notes !== baseline.notes ||
       finalSummary !== baseline.finalSummary ||
       JSON.stringify(criteria) !== baseline.criteria ||
-      JSON.stringify(definitionOfDone) !== baseline.definitionOfDone
+      JSON.stringify(definitionOfDone) !== baseline.definitionOfDone ||
+      dueDate !== baseline.dueDate ||
+      plannedStart !== baseline.plannedStart ||
+      plannedEnd !== baseline.plannedEnd
     );
-  }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, baseline]);
+  }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, dueDate, plannedStart, plannedEnd, baseline]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -348,6 +357,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setReferences(task?.references || []);
     setDocumentation(task?.documentation || []);
     setMilestone(task?.milestone || "");
+    setDueDate(task?.dueDate || "");
+    setPlannedStart(task?.plannedStart || "");
+    setPlannedEnd(task?.plannedEnd || "");
     setMode(shouldPreserveEditMode ? "edit" : isCreateMode ? "create" : "preview");
     preserveEditModeAfterCommentRefresh.current = false;
     previousTaskId.current = nextTaskId;
@@ -381,6 +393,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setFinalSummary(task?.finalSummary || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
       setDefinitionOfDone(task?.definitionOfDoneItems || []);
+      setDueDate(task?.dueDate || "");
+      setPlannedStart(task?.plannedStart || "");
+      setPlannedEnd(task?.plannedEnd || "");
       setMode("preview");
       refreshAfterCommentChange();
     }
@@ -543,6 +558,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
         priority: (priority === "" ? undefined : priority) as "high" | "medium" | "low" | undefined,
         dependencies,
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
+        dueDate: dueDate.trim().length > 0 ? dueDate.trim() : undefined,
+        plannedStart: plannedStart.trim().length > 0 ? plannedStart.trim() : undefined,
+        plannedEnd: plannedEnd.trim().length > 0 ? plannedEnd.trim() : undefined,
       };
 
       if (isCreateMode && onSubmit) {
@@ -1246,7 +1264,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   }
                 }}
                 disabled={isFromOtherBranch}
-                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 dark:[color-scheme:dark] ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
               />
             </div>
           )}
@@ -1335,6 +1353,71 @@ export const TaskDetailsModal: React.FC<Props> = ({
               label=""
               disabled={isFromOtherBranch}
             />
+          </div>
+
+          {/* Dates */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <SectionHeader title={t.taskDetails.section.dates} />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t.taskDetails.section.dueDate}</label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setDueDate(value);
+                    let updates: InlineMetaUpdatePayload = { dueDate: value || undefined };
+                    if (value && !plannedStart) {
+                      const today = new Date().toISOString().slice(0, 10);
+                      if (value >= today) {
+                        setPlannedStart(today);
+                        setPlannedEnd(value);
+                        updates.plannedStart = today;
+                        updates.plannedEnd = value;
+                      }
+                    }
+                    if (task && !isCreateMode) {
+                      handleInlineMetaUpdate(updates);
+                    }
+                  }}
+                  disabled={isFromOtherBranch}
+                  className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 dark:[color-scheme:dark] ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t.taskDetails.section.plannedStart}</label>
+                <input
+                  type="date"
+                  value={plannedStart}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPlannedStart(value);
+                    if (task && !isCreateMode) {
+                      handleInlineMetaUpdate({ plannedStart: value || undefined });
+                    }
+                  }}
+                  disabled={isFromOtherBranch}
+                  className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 dark:[color-scheme:dark] ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t.taskDetails.section.plannedEnd}</label>
+                <input
+                  type="date"
+                  value={plannedEnd}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPlannedEnd(value);
+                    if (task && !isCreateMode) {
+                      handleInlineMetaUpdate({ plannedEnd: value || undefined });
+                    }
+                  }}
+                  disabled={isFromOtherBranch}
+                  className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 dark:[color-scheme:dark] ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Archive button at bottom of sidebar */}

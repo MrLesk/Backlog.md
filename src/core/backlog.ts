@@ -1056,6 +1056,9 @@ export class Core {
 				...(typeof input.finalSummary === "string" && { finalSummary: input.finalSummary }),
 				...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
+				...(input.dueDate && { dueDate: input.dueDate }),
+				...(input.plannedStart && { plannedStart: input.plannedStart }),
+				...(input.plannedEnd && { plannedEnd: input.plannedEnd }),
 			};
 
 			const filePath = await this.writePreparedTask(task, isDraft);
@@ -1186,6 +1189,45 @@ export class Core {
 				mutated = true;
 			}
 		}
+
+		const applyOptionalDateField = (
+			value: string | undefined,
+			current: string | undefined,
+			assign: (next: string | undefined) => void,
+		) => {
+			if (typeof value === "string") {
+				const trimmed = value.trim();
+				const next = trimmed.length > 0 ? trimmed : undefined;
+				if ((current ?? undefined) !== next) {
+					assign(next);
+					mutated = true;
+				}
+			}
+		};
+
+		applyOptionalDateField(input.dueDate, task.dueDate, (next) => {
+			if (next === undefined) {
+				delete task.dueDate;
+			} else {
+				task.dueDate = next;
+			}
+		});
+
+		applyOptionalDateField(input.plannedStart, task.plannedStart, (next) => {
+			if (next === undefined) {
+				delete task.plannedStart;
+			} else {
+				task.plannedStart = next;
+			}
+		});
+
+		applyOptionalDateField(input.plannedEnd, task.plannedEnd, (next) => {
+			if (next === undefined) {
+				delete task.plannedEnd;
+			} else {
+				task.plannedEnd = next;
+			}
+		});
 
 		if (input.assignee !== undefined) {
 			const sanitizedAssignee = normalizeStringList(input.assignee) ?? [];
@@ -2129,10 +2171,14 @@ export class Core {
 		};
 	}
 
-	async renameMilestone(
+	async updateMilestone(
 		identifier: string,
 		title: string,
 		autoCommit?: boolean,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+		description?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -2140,7 +2186,7 @@ export class Core {
 		milestone?: Milestone;
 		previousTitle?: string;
 	}> {
-		const result = await this.fs.renameMilestone(identifier, title);
+		const result = await this.fs.updateMilestone(identifier, title, dueDate, plannedStart, plannedEnd, description);
 		if (!result.success) {
 			return result;
 		}
@@ -2155,7 +2201,7 @@ export class Core {
 				await this.git.resetPaths(commitPaths, repoRoot);
 				const rollbackTitle = result.previousTitle ?? title;
 				try {
-					await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
+					await this.fs.updateMilestone(result.milestone?.id ?? identifier, rollbackTitle);
 				} catch {
 					// Ignore rollback failure and propagate original commit error.
 				}
