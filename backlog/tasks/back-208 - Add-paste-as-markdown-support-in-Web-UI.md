@@ -163,4 +163,8 @@ Goal: avoid accumulating orphaned images in `assets/` when users paste images bu
 **Word `file://` image references**
 - Investigated but reverted. Word copies images as `file:///C:/Users/...` local paths. Browser cannot read them, and backend `file://` access was rejected for security reasons. Current behaviour: `file://` `<img>` tags are silently removed. Users can paste screenshots directly (Win+Shift+S) which work as `image/png` blobs.
 
+### Related Issues
+
+- [[back-488]] — wiki 页面保存时未复用 temp → paste 的图片迁移逻辑，导致粘贴到 wiki 的图片在 `.temp/` 清理后丢失。
+
 <!-- SECTION:NOTES:END -->
