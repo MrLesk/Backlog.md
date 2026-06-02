@@ -1689,6 +1689,79 @@ ${description || `Milestone: ${title}`}`,
 		};
 	}
 
+	async listProjectFiles(rawPath: string): Promise<{ name: string; type: "file" | "directory" }[]> {
+		const rootDir = resolve(this.projectRoot);
+		const targetPath = resolve(join(rootDir, rawPath));
+
+		// Robust containment check: reject traversal, absolute paths, and root itself
+		const rel = relative(rootDir, targetPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside || isAbsolute(rawPath)) {
+			throw new Error("Access denied");
+		}
+
+		let fileStats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
+		try {
+			fileStats = await stat(targetPath);
+		} catch {
+			throw new Error("Path not found");
+		}
+		if (!fileStats.isDirectory()) {
+			throw new Error("Path is not a directory");
+		}
+
+		const entries = await readdir(targetPath, { withFileTypes: true });
+		const results = entries
+			.filter((entry) => entry.isFile() || entry.isDirectory())
+			.map((entry) => ({
+				name: entry.name,
+				type: entry.isDirectory() ? ("directory" as const) : ("file" as const),
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name));
+
+		return results;
+	}
+
+	async searchProjectFiles(query: string): Promise<{ name: string; path: string; type: "file" | "directory" }[]> {
+		const MAX_RESULTS = 50;
+		const rootDir = resolve(this.projectRoot);
+		const lowerQuery = query.toLowerCase();
+		const results: { name: string; path: string; type: "file" | "directory" }[] = [];
+
+		const excludeDirs = new Set([
+			"node_modules",
+			".git",
+			"dist",
+			"build",
+			".backlog",
+			".locks",
+		]);
+
+		const walk = async (dirPath: string, relPath: string): Promise<void> => {
+			if (results.length >= MAX_RESULTS) return;
+			const entries = await readdir(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (results.length >= MAX_RESULTS) return;
+				if (entry.name.startsWith(".")) continue;
+				const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+				if (entry.isDirectory()) {
+					if (excludeDirs.has(entry.name)) continue;
+					if (entry.name.toLowerCase().includes(lowerQuery)) {
+						results.push({ name: entry.name, path: entryRelPath, type: "directory" });
+					}
+					await walk(join(dirPath, entry.name), entryRelPath);
+				} else if (entry.isFile()) {
+					if (entry.name.toLowerCase().includes(lowerQuery)) {
+						results.push({ name: entry.name, path: entryRelPath, type: "file" });
+					}
+				}
+			}
+		};
+
+		await walk(rootDir, "");
+		return results;
+	}
+
 	async getWikiTree(): Promise<WikiTreeNode[]> {
 		const wikiRoot = join(this.resolvedBacklogDir, "wiki");
 		return this.buildWikiTreeRecursive(wikiRoot, "");

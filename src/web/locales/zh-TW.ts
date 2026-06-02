@@ -194,6 +194,7 @@ export const zhTW: TranslationDict = {
 		},
 		clickToPreview: "點擊預覽",
 		removeReference: "移除引用",
+		removeDocumentation: "移除文件",
 		priorityLabel: (level: string) => {
 			const map: Record<string, string> = { high: "高", medium: "中", low: "低" };
 			return map[level] ?? level;
@@ -206,6 +207,7 @@ export const zhTW: TranslationDict = {
 		noNotes: "暫無實作備註",
 		noPlan: "暫無實作計畫",
 		noReferences: "暫無引用",
+		noDocumentation: "暫無文件",
 		placeholderFinalSummary: "輸入最終總結",
 		placeholderReferences: "輸入引用並按回車",
 		archiveConfirm: (title: string) => `歸檔任務 "${title}"？`,

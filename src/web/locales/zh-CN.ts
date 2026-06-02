@@ -194,6 +194,7 @@ export const zhCN: TranslationDict = {
 		},
 		clickToPreview: "点击预览",
 		removeReference: "移除引用",
+		removeDocumentation: "移除文档",
 		priorityLabel: (level: string) => {
 			const map: Record<string, string> = { high: "高", medium: "中", low: "低" };
 			return map[level] ?? level;
@@ -206,6 +207,7 @@ export const zhCN: TranslationDict = {
 		noNotes: "暂无实现备注",
 		noPlan: "暂无实现计划",
 		noReferences: "暂无引用",
+		noDocumentation: "暂无文档",
 		placeholderFinalSummary: "输入最终总结",
 		placeholderReferences: "输入引用并按回车",
 		archiveConfirm: (title: string) => `归档任务 "${title}"？`,

@@ -192,6 +192,7 @@ export const en = {
 		},
 		clickToPreview: "Click to preview",
 		removeReference: "Remove reference",
+		removeDocumentation: "Remove document",
 		priorityLabel: (level: string) => {
 			const map: Record<string, string> = { high: "High", medium: "Medium", low: "Low" };
 			return map[level] ?? level;
@@ -204,6 +205,7 @@ export const en = {
 		noNotes: "No implementation notes",
 		noPlan: "No implementation plan",
 		noReferences: "No references",
+		noDocumentation: "No documents",
 		placeholderFinalSummary: "Enter final summary",
 		placeholderReferences: "Type reference and press Enter",
 		archiveConfirm: (title: string) => `Archive task "${title}"?`,

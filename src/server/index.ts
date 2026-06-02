@@ -441,6 +441,12 @@ export class BacklogServer {
 					"/api/file-content": {
 						GET: async (req: Request) => await this.handleGetFileContent(req),
 					},
+					"/api/list-files": {
+						GET: async (req: Request) => await this.handleListFiles(req),
+					},
+					"/api/search-files": {
+						GET: async (req: Request) => await this.handleSearchFiles(req),
+					},
 					"/api/upload": {
 						POST: async (req: Request) => await this.handleUpload(req),
 					},
@@ -962,6 +968,10 @@ export class BacklogServer {
 
 		if ("references" in updates && Array.isArray(updates.references)) {
 			updateInput.references = updates.references;
+		}
+
+		if ("documentation" in updates && Array.isArray(updates.documentation)) {
+			updateInput.documentation = updates.documentation;
 		}
 
 		if ("modifiedFiles" in updates && Array.isArray(updates.modifiedFiles)) {
@@ -1817,6 +1827,43 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error getting statistics:", error);
 			return Response.json({ error: "Failed to get statistics" }, { status: 500 });
+		}
+	}
+
+	private async handleListFiles(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const rawPath = url.searchParams.get("path") || "";
+
+			const result = await this.core.filesystem.listProjectFiles(rawPath);
+			return Response.json({ entries: result });
+		} catch (error) {
+			console.error("Error listing files:", error);
+			const message = error instanceof Error ? error.message : "Failed to list files";
+			if (message === "Access denied") {
+				return Response.json({ error: message }, { status: 403 });
+			}
+			if (message === "Path not found" || message === "Path is not a directory") {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleSearchFiles(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const query = url.searchParams.get("query") || "";
+			if (!query) {
+				return Response.json({ results: [] });
+			}
+
+			const results = await this.core.filesystem.searchProjectFiles(query);
+			return Response.json({ results });
+		} catch (error) {
+			console.error("Error searching files:", error);
+			const message = error instanceof Error ? error.message : "Failed to search files";
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 

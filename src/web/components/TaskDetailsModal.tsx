@@ -9,6 +9,7 @@ import MermaidMarkdown from './MermaidMarkdown';
 import FilePreviewModal from "./FilePreviewModal";
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
+import { PathAutocomplete } from "./PathAutocomplete";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { useI18n } from "../hooks/useI18n";
 
@@ -228,6 +229,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
+  const [documentation, setDocumentation] = useState<string[]>(task?.documentation || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
@@ -300,6 +302,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setPriority(task?.priority || "");
     setDependencies(task?.dependencies || []);
     setReferences(task?.references || []);
+    setDocumentation(task?.documentation || []);
     setMilestone(task?.milestone || "");
     setMode(isCreateMode ? "create" : "preview");
     setError(null);
@@ -561,6 +564,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (updates.priority !== undefined) setPriority(String(updates.priority));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
     if (updates.references !== undefined) setReferences(updates.references as string[]);
+    if (updates.documentation !== undefined) setDocumentation(updates.documentation as string[]);
     if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
 
     // Only update server if editing existing task
@@ -603,7 +607,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const isDoneStatus = (status || "").toLowerCase().includes("done");
 
   const displayId = task?.id ?? "";
-  const documentation = task?.documentation ?? [];
+
 
   return (
     <>
@@ -761,7 +765,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                             handleInlineMetaUpdate({ references: newRefs });
                           }}
                           className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
-                          title={t.taskDetails.removeReference}
+                          title={t.taskDetails.removeDocumentation}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -772,7 +776,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">{t.taskDetails.noReferences}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t.taskDetails.noDocumentation}</p>
               )}
               {!isFromOtherBranch && (
                 <form
@@ -787,9 +791,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   }}
                   className="flex gap-2"
                 >
-                  <input
+                  <PathAutocomplete
                     name="newRef"
-                    type="text"
                     placeholder={t.taskDetails.placeholderRefDoc}
                     className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   />
@@ -805,13 +808,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Documentation */}
-          {documentation.length > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-              <SectionHeader title={t.taskDetails.section.documentation} />
-              <div className="space-y-2">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <SectionHeader title={t.taskDetails.section.documentation} />
+            <div className="space-y-3">
+              {documentation.length > 0 ? (
                 <ul className="space-y-2">
                   {documentation.map((doc, idx) => (
-                    <li key={idx} className="flex items-center gap-3">
+                    <li key={idx} className="flex items-center gap-3 group">
                       <span className="flex-1 min-w-0">
                         {doc.startsWith("http://") || doc.startsWith("https://") ? (
                           <a
@@ -832,12 +835,54 @@ export const TaskDetailsModal: React.FC<Props> = ({
                           </button>
                         )}
                       </span>
+                      {!isFromOtherBranch && (
+                        <button
+                          onClick={() => {
+                            const newDocs = documentation.filter((_, i) => i !== idx);
+                            handleInlineMetaUpdate({ documentation: newDocs });
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
+                          title={t.taskDetails.removeReference}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
-              </div>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t.taskDetails.noReferences}</p>
+              )}
+              {!isFromOtherBranch && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = e.currentTarget.elements.namedItem("newDoc") as HTMLInputElement;
+                    const value = input.value.trim();
+                    if (value && !documentation.includes(value)) {
+                      handleInlineMetaUpdate({ documentation: [...documentation, value] });
+                      input.value = "";
+                    }
+                  }}
+                  className="flex gap-2"
+                >
+                  <PathAutocomplete
+                    name="newDoc"
+                    placeholder={t.taskDetails.placeholderRefDoc}
+                    className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  >
+                    {t.common.add}
+                  </button>
+                </form>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Acceptance Criteria */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
