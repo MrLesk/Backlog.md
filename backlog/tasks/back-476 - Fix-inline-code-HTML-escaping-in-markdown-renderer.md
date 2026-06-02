@@ -2,8 +2,10 @@
 id: BACK-476
 title: Fix HTML-entity escaping inside inline code in markdown renderer
 status: Done
-assignee: []
+assignee: 
+  - Kimi
 created_date: '2026-05-13 23:08'
+updated_date: '2026-05-13 23:37'
 labels:
   - web-ui
   - bug
