@@ -213,7 +213,7 @@ export interface DocumentUpdateInput {
 	tags?: string[];
 }
 
-export type SearchResultType = "task" | "document" | "decision";
+export type SearchResultType = "task" | "document" | "decision" | "wiki";
 
 export type SearchPriorityFilter = "high" | "medium" | "low";
 
@@ -259,7 +259,14 @@ export interface DecisionSearchResult {
 	matches?: SearchMatch[];
 }
 
-export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult;
+export interface WikiSearchResult {
+	type: "wiki";
+	score: number | null;
+	wiki: WikiPage;
+	matches?: SearchMatch[];
+}
+
+export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult | WikiSearchResult;
 
 export interface Sequence {
 	/** 1-based sequence index */

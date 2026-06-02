@@ -1601,8 +1601,8 @@ taskCmd
 
 program
 	.command("search [query]")
-	.description("search tasks, documents, and decisions using the shared index")
-	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
+	.description("search tasks, documents, decisions, and wiki using the shared index")
+	.option("--type <type>", "limit results to type (task, document, decision, wiki)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
 	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
 	.option(
@@ -1624,13 +1624,13 @@ program
 
 		const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
 		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
-		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
+		const allowedTypes: SearchResultType[] = ["task", "document", "decision", "wiki"];
 		const types = rawTypes
 			? rawTypes
 					.map((value: string) => value.toLowerCase())
 					.filter((value: string): value is SearchResultType => {
 						if (!allowedTypes.includes(value as SearchResultType)) {
-							console.warn(`Ignoring unsupported type '${value}'. Supported: task, document, decision`);
+							console.warn(`Ignoring unsupported type '${value}'. Supported: task, document, decision, wiki`);
 							return false;
 						}
 						return true;
@@ -1774,7 +1774,10 @@ function printSearchResults(results: SearchResult[]): void {
 			documents.push(result);
 			continue;
 		}
-		decisions.push(result);
+		if (result.type === "decision") {
+			decisions.push(result);
+		}
+		// wiki results are currently web-only; skip in CLI plain output
 	}
 
 	const localTasks = tasks.filter((t) => isLocalEditableTask(t.task));
