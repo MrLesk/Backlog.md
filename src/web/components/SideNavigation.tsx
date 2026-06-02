@@ -174,6 +174,11 @@ const Icons = {
 			<circle cx="12" cy="12" r="1" strokeWidth={2} />
 		</svg>
 	),
+	Gantt: () => (
+		<svg className="w-5 h-5" fill="currentColor" viewBox="0 0 1024 1024">
+			<path d="M153.6 806.4a44.8 44.8 0 0 1 44.8-44.8h179.2v-44.8a44.8 44.8 0 0 1 44.8-44.8h313.6a44.8 44.8 0 0 1 44.8 44.8V896a44.8 44.8 0 0 1-44.8 44.8H422.4a44.8 44.8 0 0 1-44.8-44.8v-44.736L198.4 851.2a44.8 44.8 0 0 1-44.8-44.8z m313.6-44.8v89.6h224v-89.6H467.2zM243.2 403.2a44.8 44.8 0 0 1 44.8-44.8h582.4a44.8 44.8 0 0 1 44.8 44.8v44.864L960 448a44.8 44.8 0 0 1 0 89.6l-44.8 0.064V582.4a44.8 44.8 0 0 1-44.8 44.8H288a44.8 44.8 0 0 1-44.8-44.8V403.2z m89.6 44.8v89.6h492.8V448H332.8zM19.2 179.2a44.8 44.8 0 0 1 44.8-44.8l134.4 0.064V89.6a44.8 44.8 0 0 1 44.8-44.8h201.6a44.8 44.8 0 0 1 44.8 44.8v44.864L736 134.4a44.8 44.8 0 0 1 0 89.6H489.6v44.8a44.8 44.8 0 0 1-44.8 44.8H243.2a44.8 44.8 0 0 1-44.8-44.8v-44.8H64a44.8 44.8 0 0 1-44.8-44.8z m268.8-44.8v89.6h112V134.4H288z" />
+		</svg>
+	),
 	Plus: () => (
 		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1272,6 +1277,21 @@ const SideNavigation = memo(function SideNavigation({
 							<span className="ml-3 text-sm font-medium">{t.nav.milestones}</span>
 						</NavLink>
 
+						{/* Gantt Navigation */}
+						<NavLink
+							to="/gantt"
+							className={({ isActive }) =>
+								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
+									isActive
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+									}`
+							}
+						>
+							<Icons.Gantt />
+							<span className="ml-3 text-sm font-medium">{t.nav.gantt}</span>
+						</NavLink>
+
 						{/* Drafts Navigation */}
 						<NavLink
 							to="/drafts"
@@ -1511,6 +1531,23 @@ const SideNavigation = memo(function SideNavigation({
 						>
 							<div className="w-6 h-6 flex items-center justify-center">
 								<Icons.Milestone />
+							</div>
+						</NavLink>
+						{/* Gantt Navigation */}
+						<NavLink
+							to="/gantt"
+							data-tooltip-id="sidebar-tooltip"
+							data-tooltip-content={t.nav.gantt}
+							className={({ isActive }) =>
+								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
+									isActive
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+								}`
+							}
+						>
+							<div className="w-6 h-6 flex items-center justify-center">
+								<Icons.Gantt />
 							</div>
 						</NavLink>
 						{/* Statistics Navigation */}

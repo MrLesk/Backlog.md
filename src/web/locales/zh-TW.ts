@@ -78,6 +78,7 @@ export const zhTW: TranslationDict = {
 		tasks: "所有任務",
 		drafts: "草稿",
 		milestones: "里程碑",
+		gantt: "甘特圖",
 		documents: "文檔",
 		decisions: "決策",
 		statistics: "統計",
@@ -642,6 +643,33 @@ export const zhTW: TranslationDict = {
 		label: "依賴",
 		placeholderEmpty: "輸入任務 ID 或標題，按回車或逗號確認",
 		placeholderAddMore: "添加更多依賴...",
+	},
+	gantt: {
+		title: "甘特圖",
+		granularity: {
+			day: "日",
+			week: "週",
+			month: "月",
+			quarter: "季",
+			year: "年",
+		},
+		columns: {
+			id: "ID",
+			title: "名稱",
+			start: "開始",
+			end: "結束",
+			action: "操作",
+		},
+		noTasks: "暫無任務",
+		today: "今天",
+		action: {
+			detail: "詳情",
+		},
+		tooltip: {
+			start: "開始",
+			end: "結束",
+			fallback: "兜底",
+		},
 	},
 	wiki: {
 		failedToLoad: "Wiki 頁面載入失敗",

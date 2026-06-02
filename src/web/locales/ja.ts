@@ -78,6 +78,7 @@ export const ja: TranslationDict = {
 		tasks: "すべてのタスク",
 		drafts: "ドラフト",
 		milestones: "マイルストーン",
+		gantt: "ガント",
 		documents: "ドキュメント",
 		decisions: "決定事項",
 		statistics: "統計",
@@ -647,6 +648,33 @@ export const ja: TranslationDict = {
 		label: "依存関係",
 		placeholderEmpty: "タスク ID またはタイトルを入力して、Enter またはカンマを押してください",
 		placeholderAddMore: "さらに依存関係を追加...",
+	},
+	gantt: {
+		title: "ガント",
+		granularity: {
+			day: "日",
+			week: "週",
+			month: "月",
+			quarter: "四半期",
+			year: "年",
+		},
+		columns: {
+			id: "ID",
+			title: "タイトル",
+			start: "開始",
+			end: "終了",
+			action: "アクション",
+		},
+		noTasks: "表示するタスクがありません",
+		today: "今日",
+		action: {
+			detail: "詳細",
+		},
+		tooltip: {
+			start: "開始",
+			end: "終了",
+			fallback: "フォールバック",
+		},
 	},
 	wiki: {
 		failedToLoad: "Wiki ページの読み込みに失敗しました",

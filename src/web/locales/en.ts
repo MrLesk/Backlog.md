@@ -76,6 +76,7 @@ export const en = {
 		tasks: "All Tasks",
 		drafts: "Drafts",
 		milestones: "Milestones",
+		gantt: "Gantt",
 		documents: "Documents",
 		decisions: "Decisions",
 		statistics: "Statistics",
@@ -644,6 +645,33 @@ export const en = {
 		label: "Dependencies",
 		placeholderEmpty: "Type task ID or title, then press Enter or comma",
 		placeholderAddMore: "Add more dependencies...",
+	},
+	gantt: {
+		title: "Gantt",
+		granularity: {
+			day: "Day",
+			week: "Week",
+			month: "Month",
+			quarter: "Quarter",
+			year: "Year",
+		},
+		columns: {
+			id: "ID",
+			title: "Title",
+			start: "Start",
+			end: "End",
+			action: "Action",
+		},
+		noTasks: "No tasks to display",
+		today: "Today",
+		action: {
+			detail: "Detail",
+		},
+		tooltip: {
+			start: "Start",
+			end: "End",
+			fallback: "fallback",
+		},
 	},
 	wiki: {
 		failedToLoad: "Failed to load wiki page",
