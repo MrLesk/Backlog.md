@@ -2912,6 +2912,44 @@ milestoneCmd
 	});
 
 milestoneCmd
+	.command("create <title>")
+	.description("create a new milestone")
+	.option("-d, --description <description>", "milestone description")
+	.option("--due-date <date>", "due date (YYYY-MM-DD)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
+	.action(
+		async (
+			title: string,
+			options: {
+				description?: string;
+				dueDate?: string;
+				plannedStart?: string;
+				plannedEnd?: string;
+				actualStart?: string;
+				actualEnd?: string;
+			},
+		) => {
+			const cwd = await requireProjectRoot();
+			const core = new Core(cwd);
+
+			const milestone = await core.filesystem.createMilestone(
+				title.trim(),
+				options.description,
+				options.dueDate,
+				options.plannedStart,
+				options.plannedEnd,
+				options.actualStart,
+				options.actualEnd,
+			);
+
+			console.log(`Created milestone "${milestone.title}" (${milestone.id}).`);
+		},
+	);
+
+milestoneCmd
 	.command("edit <name>")
 	.description("edit a milestone title, description, and/or dates")
 	.option("-t, --title <title>", "new milestone title")
@@ -2919,9 +2957,13 @@ milestoneCmd
 	.option("--due-date <date>", "due date (YYYY-MM-DD)")
 	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
 	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
 	.option("--clear-due-date", "clear due date")
 	.option("--clear-planned-start", "clear planned start date")
 	.option("--clear-planned-end", "clear planned end date")
+	.option("--clear-actual-start", "clear actual start date")
+	.option("--clear-actual-end", "clear actual end date")
 	.action(
 		async (
 			name: string,
@@ -2931,9 +2973,13 @@ milestoneCmd
 				dueDate?: string;
 				plannedStart?: string;
 				plannedEnd?: string;
+				actualStart?: string;
+				actualEnd?: string;
 				clearDueDate?: boolean;
 				clearPlannedStart?: boolean;
 				clearPlannedEnd?: boolean;
+				clearActualStart?: boolean;
+				clearActualEnd?: boolean;
 			},
 		) => {
 			const cwd = await requireProjectRoot();
@@ -2945,9 +2991,13 @@ milestoneCmd
 				options.dueDate ||
 				options.plannedStart ||
 				options.plannedEnd ||
+				options.actualStart ||
+				options.actualEnd ||
 				options.clearDueDate ||
 				options.clearPlannedStart ||
-				options.clearPlannedEnd;
+				options.clearPlannedEnd ||
+				options.clearActualStart ||
+				options.clearActualEnd;
 			if (!hasEditFlags) {
 				console.error(
 					"No edits specified. Use --title, --description, --due-date, --planned-start, --planned-end, --actual-start, --actual-end, or --clear-* options.",
@@ -2967,6 +3017,8 @@ milestoneCmd
 			const dueDate = options.clearDueDate ? "" : options.dueDate;
 			const plannedStart = options.clearPlannedStart ? "" : options.plannedStart;
 			const plannedEnd = options.clearPlannedEnd ? "" : options.plannedEnd;
+			const actualStart = options.clearActualStart ? "" : options.actualStart;
+			const actualEnd = options.clearActualEnd ? "" : options.actualEnd;
 
 			const result = await core.updateMilestone(
 				milestone.id,
@@ -2976,6 +3028,8 @@ milestoneCmd
 				plannedStart,
 				plannedEnd,
 				options.description,
+				actualStart,
+				actualEnd,
 			);
 
 			if (!result.success) {

@@ -1,6 +1,7 @@
 import { rename as moveFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { milestoneKey } from "../core/milestones.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -1108,6 +1109,44 @@ export class Core {
 			if (isTerminalStatus(newStatus, statuses) && !isTerminalStatus(oldStatus, statuses) && !task.actualEnd) {
 				task.actualEnd = now;
 			}
+
+			// Milestone-level auto-population
+			const taskMilestone = task.milestone;
+			if (taskMilestone) {
+				const milestone = await this.fs.loadMilestone(taskMilestone);
+				if (milestone) {
+					const taskMilestoneKey = milestoneKey(taskMilestone);
+					if (isInProgressStatus(newStatus) && !isInProgressStatus(oldStatus) && !milestone.actualStart) {
+						await this.fs.updateMilestone(
+							milestone.id,
+							milestone.title,
+							undefined,
+							undefined,
+							undefined,
+							undefined,
+							now,
+							undefined,
+						);
+					}
+					if (isTerminalStatus(newStatus, statuses) && !isTerminalStatus(oldStatus, statuses) && !milestone.actualEnd) {
+						const allTasks = await this.fs.listTasks();
+						const milestoneTasks = allTasks.filter((t) => milestoneKey(t.milestone) === taskMilestoneKey);
+						const allTerminal = milestoneTasks.every((t) => isTerminalStatus(t.status, statuses));
+						if (allTerminal) {
+							await this.fs.updateMilestone(
+								milestone.id,
+								milestone.title,
+								undefined,
+								undefined,
+								undefined,
+								undefined,
+								undefined,
+								now,
+							);
+						}
+					}
+				}
+			}
 		}
 
 		await this.fs.saveTask(task);
@@ -2212,6 +2251,8 @@ export class Core {
 		plannedStart?: string,
 		plannedEnd?: string,
 		description?: string,
+		actualStart?: string,
+		actualEnd?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -2219,7 +2260,16 @@ export class Core {
 		milestone?: Milestone;
 		previousTitle?: string;
 	}> {
-		const result = await this.fs.updateMilestone(identifier, title, dueDate, plannedStart, plannedEnd, description);
+		const result = await this.fs.updateMilestone(
+			identifier,
+			title,
+			dueDate,
+			plannedStart,
+			plannedEnd,
+			description,
+			actualStart,
+			actualEnd,
+		);
 		if (!result.success) {
 			return result;
 		}

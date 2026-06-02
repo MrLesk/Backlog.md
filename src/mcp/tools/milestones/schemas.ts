@@ -21,6 +21,14 @@ export const milestoneAddSchema: JsonSchema = {
 			maxLength: 2000,
 			description: "Optional description for the milestone",
 		},
+		actualStart: {
+			type: "string",
+			description: "Actual start date-time (YYYY-MM-DD HH:MM). Pass empty string to clear.",
+		},
+		actualEnd: {
+			type: "string",
+			description: "Actual end date-time (YYYY-MM-DD HH:MM). Pass empty string to clear.",
+		},
 	},
 	required: ["name"],
 	additionalProperties: false,
@@ -63,6 +71,14 @@ export const milestoneEditSchema: JsonSchema = {
 		plannedEnd: {
 			type: "string",
 			description: "Planned end date (YYYY-MM-DD). Pass empty string to clear.",
+		},
+		actualStart: {
+			type: "string",
+			description: "Actual start date-time (YYYY-MM-DD HH:MM). Pass empty string to clear.",
+		},
+		actualEnd: {
+			type: "string",
+			description: "Actual end date-time (YYYY-MM-DD HH:MM). Pass empty string to clear.",
 		},
 	},
 	required: ["from", "to"],

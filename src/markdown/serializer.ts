@@ -170,6 +170,8 @@ export function serializeMilestone(milestone: Milestone): string {
 		...(milestone.dueDate && { due_date: milestone.dueDate }),
 		...(milestone.plannedStart && { planned_start: milestone.plannedStart }),
 		...(milestone.plannedEnd && { planned_end: milestone.plannedEnd }),
+		...(milestone.actualStart && { actual_start: milestone.actualStart }),
+		...(milestone.actualEnd && { actual_end: milestone.actualEnd }),
 	};
 
 	const content = milestone.rawContent?.trim() ? milestone.rawContent : `## Description\n\n${milestone.description}`;

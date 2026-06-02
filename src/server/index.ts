@@ -1640,6 +1640,8 @@ export class BacklogServer {
 				dueDate?: string;
 				plannedStart?: string;
 				plannedEnd?: string;
+				actualStart?: string;
+				actualEnd?: string;
 			};
 			const title = body.title?.trim();
 
@@ -1690,6 +1692,8 @@ export class BacklogServer {
 				body.dueDate,
 				body.plannedStart,
 				body.plannedEnd,
+				body.actualStart,
+				body.actualEnd,
 			);
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
@@ -1717,6 +1721,8 @@ export class BacklogServer {
 				dueDate: typeof bodyJson.dueDate === "string" ? bodyJson.dueDate : undefined,
 				plannedStart: typeof bodyJson.plannedStart === "string" ? bodyJson.plannedStart : undefined,
 				plannedEnd: typeof bodyJson.plannedEnd === "string" ? bodyJson.plannedEnd : undefined,
+				actualStart: typeof bodyJson.actualStart === "string" ? bodyJson.actualStart : undefined,
+				actualEnd: typeof bodyJson.actualEnd === "string" ? bodyJson.actualEnd : undefined,
 			});
 			const milestone =
 				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??
