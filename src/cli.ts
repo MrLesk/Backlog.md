@@ -11,6 +11,7 @@ import { type CompletionInstallResult, installCompletion, registerCompletionComm
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
+import { formatInstallResult, installWikiSkill } from "./commands/wiki-install.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -224,12 +225,18 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.finalSummary !== undefined ||
 			options.appendNotes !== undefined ||
 			options.appendFinalSummary !== undefined ||
+			options.clearDueDate ||
+			options.clearPlannedStart ||
+			options.clearPlannedEnd ||
 			options.clearFinalSummary ||
 			options.dependsOn !== undefined ||
 			options.dep !== undefined ||
 			options.ref !== undefined ||
 			options.doc !== undefined ||
-			options.modifiedFile !== undefined,
+			options.modifiedFile !== undefined ||
+			options.dueDate !== undefined ||
+			options.plannedStart !== undefined ||
+			options.plannedEnd !== undefined,
 	);
 }
 
@@ -1468,6 +1475,11 @@ taskCmd
 	.option("--final-summary <text>", "add final summary")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
+	.option("--due-date <date>", "task due date (YYYY-MM-DD)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
@@ -1577,6 +1589,11 @@ taskCmd
 				acceptanceCriteria: criteria.map((text) => ({ text, checked: false })),
 				definitionOfDoneAdd: toStringArray(options.dod),
 				disableDefinitionOfDoneDefaults: options.dodDefaults === false,
+				dueDate: typeof options.dueDate === "string" ? options.dueDate.trim() : undefined,
+				plannedStart: typeof options.plannedStart === "string" ? options.plannedStart.trim() : undefined,
+				plannedEnd: typeof options.plannedEnd === "string" ? options.plannedEnd.trim() : undefined,
+				actualStart: typeof options.actualStart === "string" ? options.actualStart.trim() : undefined,
+				actualEnd: typeof options.actualEnd === "string" ? options.actualEnd.trim() : undefined,
 			});
 
 			if (usePlainOutput) {
@@ -1600,8 +1617,8 @@ taskCmd
 
 program
 	.command("search [query]")
-	.description("search tasks, documents, and decisions using the shared index")
-	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
+	.description("search tasks, documents, decisions, and wiki using the shared index")
+	.option("--type <type>", "limit results to type (task, document, decision, wiki)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
 	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
 	.option(
@@ -1623,13 +1640,13 @@ program
 
 		const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
 		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
-		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
+		const allowedTypes: SearchResultType[] = ["task", "document", "decision", "wiki"];
 		const types = rawTypes
 			? rawTypes
 					.map((value: string) => value.toLowerCase())
 					.filter((value: string): value is SearchResultType => {
 						if (!allowedTypes.includes(value as SearchResultType)) {
-							console.warn(`Ignoring unsupported type '${value}'. Supported: task, document, decision`);
+							console.warn(`Ignoring unsupported type '${value}'. Supported: task, document, decision, wiki`);
 							return false;
 						}
 						return true;
@@ -1773,7 +1790,10 @@ function printSearchResults(results: SearchResult[]): void {
 			documents.push(result);
 			continue;
 		}
-		decisions.push(result);
+		if (result.type === "decision") {
+			decisions.push(result);
+		}
+		// wiki results are currently web-only; skip in CLI plain output
 	}
 
 	const localTasks = tasks.filter((t) => isLocalEditableTask(t.task));
@@ -2122,6 +2142,16 @@ taskCmd
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--clear-milestone", "clear task milestone assignment")
+	.option("--due-date <date>", "task due date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--clear-due-date", "clear task due date")
+	.option("--clear-planned-start", "clear planned start date")
+	.option("--clear-planned-end", "clear planned end date")
+	.option("--clear-actual-start", "clear actual start date")
+	.option("--clear-actual-end", "clear actual end date")
 	.option("--plain", "use plain text output after editing")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
@@ -2431,6 +2461,36 @@ taskCmd
 		if (options.clearFinalSummary) {
 			editArgs.finalSummaryClear = true;
 		}
+		if (typeof options.dueDate === "string") {
+			editArgs.dueDate = options.dueDate.trim();
+		}
+		if (typeof options.plannedStart === "string") {
+			editArgs.plannedStart = options.plannedStart.trim();
+		}
+		if (typeof options.plannedEnd === "string") {
+			editArgs.plannedEnd = options.plannedEnd.trim();
+		}
+		if (typeof options.actualStart === "string") {
+			editArgs.actualStart = options.actualStart.trim();
+		}
+		if (typeof options.actualEnd === "string") {
+			editArgs.actualEnd = options.actualEnd.trim();
+		}
+		if (options.clearDueDate) {
+			editArgs.dueDate = "";
+		}
+		if (options.clearPlannedStart) {
+			editArgs.plannedStart = "";
+		}
+		if (options.clearPlannedEnd) {
+			editArgs.plannedEnd = "";
+		}
+		if (options.clearActualStart) {
+			editArgs.actualStart = "";
+		}
+		if (options.clearActualEnd) {
+			editArgs.actualEnd = "";
+		}
 		if (acceptanceAdditions.length > 0) {
 			editArgs.acceptanceCriteriaAdd = acceptanceAdditions;
 		}
@@ -2527,9 +2587,9 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.demoteTask(taskId);
-			if (success) {
-				console.log(`Demoted task ${taskId}`);
+			const newDraftId = await core.demoteTask(taskId);
+			if (newDraftId) {
+				console.log(`Demoted task ${taskId} to draft ${newDraftId.replace(/^[a-zA-Z]+-/i, "")}`);
 			} else {
 				console.error(`Task ${taskId} not found.`);
 			}
@@ -2704,9 +2764,9 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.promoteDraft(taskId);
-			if (success) {
-				console.log(`Promoted draft ${taskId}`);
+			const promotedTask = await core.promoteDraft(taskId);
+			if (promotedTask) {
+				console.log(`Promoted draft ${taskId} to task ${promotedTask.id.replace(/^[a-zA-Z]+-/i, "")}`);
 			} else {
 				console.error(`Draft ${taskId} not found.`);
 			}
@@ -2835,6 +2895,139 @@ milestoneCmd
 			console.log("  (collapsed, use --show-completed to list)");
 		}
 	});
+
+milestoneCmd
+	.command("create <title>")
+	.description("create a new milestone")
+	.option("-d, --description <description>", "milestone description")
+	.option("--due-date <date>", "due date (YYYY-MM-DD)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
+	.action(
+		async (
+			title: string,
+			options: {
+				description?: string;
+				dueDate?: string;
+				plannedStart?: string;
+				plannedEnd?: string;
+				actualStart?: string;
+				actualEnd?: string;
+			},
+		) => {
+			const cwd = await requireProjectRoot();
+			const core = new Core(cwd);
+
+			const milestone = await core.filesystem.createMilestone(
+				title.trim(),
+				options.description,
+				options.dueDate,
+				options.plannedStart,
+				options.plannedEnd,
+				options.actualStart,
+				options.actualEnd,
+			);
+
+			console.log(`Created milestone "${milestone.title}" (${milestone.id}).`);
+		},
+	);
+
+milestoneCmd
+	.command("edit <name>")
+	.description("edit a milestone title, description, and/or dates")
+	.option("-t, --title <title>", "new milestone title")
+	.option("-d, --description <description>", "new milestone description")
+	.option("--due-date <date>", "due date (YYYY-MM-DD)")
+	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
+	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
+	.option("--clear-due-date", "clear due date")
+	.option("--clear-planned-start", "clear planned start date")
+	.option("--clear-planned-end", "clear planned end date")
+	.option("--clear-actual-start", "clear actual start date")
+	.option("--clear-actual-end", "clear actual end date")
+	.action(
+		async (
+			name: string,
+			options: {
+				title?: string;
+				description?: string;
+				dueDate?: string;
+				plannedStart?: string;
+				plannedEnd?: string;
+				actualStart?: string;
+				actualEnd?: string;
+				clearDueDate?: boolean;
+				clearPlannedStart?: boolean;
+				clearPlannedEnd?: boolean;
+				clearActualStart?: boolean;
+				clearActualEnd?: boolean;
+			},
+		) => {
+			const cwd = await requireProjectRoot();
+			const core = new Core(cwd);
+
+			const hasEditFlags =
+				options.title ||
+				options.description ||
+				options.dueDate ||
+				options.plannedStart ||
+				options.plannedEnd ||
+				options.actualStart ||
+				options.actualEnd ||
+				options.clearDueDate ||
+				options.clearPlannedStart ||
+				options.clearPlannedEnd ||
+				options.clearActualStart ||
+				options.clearActualEnd;
+			if (!hasEditFlags) {
+				console.error(
+					"No edits specified. Use --title, --description, --due-date, --planned-start, --planned-end, --actual-start, --actual-end, or --clear-* options.",
+				);
+				process.exitCode = 1;
+				return;
+			}
+
+			const milestone = await core.filesystem.loadMilestone(name);
+			if (!milestone) {
+				console.error(`Milestone "${name}" not found.`);
+				process.exitCode = 1;
+				return;
+			}
+
+			const title = options.title?.trim() || milestone.title;
+			const dueDate = options.clearDueDate ? "" : options.dueDate;
+			const plannedStart = options.clearPlannedStart ? "" : options.plannedStart;
+			const plannedEnd = options.clearPlannedEnd ? "" : options.plannedEnd;
+			const actualStart = options.clearActualStart ? "" : options.actualStart;
+			const actualEnd = options.clearActualEnd ? "" : options.actualEnd;
+
+			const result = await core.updateMilestone(
+				milestone.id,
+				title,
+				undefined,
+				dueDate,
+				plannedStart,
+				plannedEnd,
+				options.description,
+				actualStart,
+				actualEnd,
+			);
+
+			if (!result.success) {
+				console.error(`Failed to edit milestone "${name}".`);
+				process.exitCode = 1;
+				return;
+			}
+
+			const label = result.milestone?.title ?? name;
+			const id = result.milestone?.id;
+			console.log(`Updated milestone "${label}"${id ? ` (${id})` : ""}.`);
+		},
+	);
 
 milestoneCmd
 	.command("archive <name>")
@@ -3329,6 +3522,30 @@ const configCmd = program
 		} catch (err) {
 			console.error("Failed to update configuration", err);
 			process.exitCode = 1;
+		}
+	});
+
+// Wiki command group
+const wikiCmd = program.command("wiki");
+
+wikiCmd
+	.description("manage backlog wiki skills")
+	.command("install <agent>")
+	.description("install the llm-wiki-for-backlog skill into the specified agent's skills directory")
+	.option("--force", "overwrite existing skill or replace existing directory with symlink")
+	.option("--dry-run", "preview operations without writing")
+	.action(async (agent: string, options: { force?: boolean; dryRun?: boolean }) => {
+		try {
+			const cwd = await requireProjectRoot();
+			const result = await installWikiSkill(cwd, agent, {
+				force: options.force,
+				dryRun: options.dryRun,
+			});
+			console.log(formatInstallResult(result, !!options.dryRun));
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`Error: ${message}`);
+			process.exit(1);
 		}
 	});
 
@@ -3885,7 +4102,8 @@ program
 program
 	.command("overview")
 	.description("display project statistics and metrics")
-	.action(async () => {
+	.option("--plain", "use plain text output without colors")
+	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
@@ -3898,7 +4116,7 @@ program
 
 			// Import and run the overview command
 			const { runOverviewCommand } = await import("./commands/overview.ts");
-			await runOverviewCommand(core);
+			await runOverviewCommand(core, options);
 		} catch (err) {
 			console.error("Failed to display project overview", err);
 			process.exitCode = 1;

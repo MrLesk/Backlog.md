@@ -12,6 +12,7 @@ import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { getStoredUtcTimestamp } from "../utils/date-utc.ts";
 import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
 import { normalizeTaskId, normalizeTaskIdentity } from "../utils/task-path.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
@@ -328,7 +329,7 @@ function chooseWinners(
 
 		// If strategy is "most_recent", only hydrate if any remote is newer
 		if (strategy === "most_recent") {
-			const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+			const localTs = local.updatedDate ? getStoredUtcTimestamp(local.updatedDate) : 0;
 			const newestRemote = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
 
 			if (newestRemote.lastModified.getTime() > localTs) {
@@ -343,7 +344,7 @@ function chooseWinners(
 
 		// For "most_progressed", we might need to check if remote is newer
 		// to potentially have a more progressed status
-		const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+		const localTs = local.updatedDate ? getStoredUtcTimestamp(local.updatedDate) : 0;
 		const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
 
 		if (maybeNewer) {
@@ -558,7 +559,7 @@ export async function loadRemoteTasks(
  */
 function getTaskDate(task: Task): Date {
 	if (task.updatedDate) {
-		return new Date(task.updatedDate);
+		return new Date(getStoredUtcTimestamp(task.updatedDate));
 	}
 	return task.lastModified ?? new Date(0);
 }
@@ -673,7 +674,7 @@ export async function loadLocalBranchTasks(
 
 				// For existing tasks, check if any other branch version is newer
 				if (strategy === "most_recent") {
-					const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+					const localTs = local.updatedDate ? getStoredUtcTimestamp(local.updatedDate) : 0;
 					const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
 
 					if (newestOther.lastModified.getTime() > localTs) {
@@ -681,7 +682,7 @@ export async function loadLocalBranchTasks(
 					}
 				} else {
 					// For most_progressed, we need to hydrate to check status
-					const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+					const localTs = local.updatedDate ? getStoredUtcTimestamp(local.updatedDate) : 0;
 					const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
 
 					if (maybeNewer) {

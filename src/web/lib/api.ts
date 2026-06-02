@@ -2,6 +2,7 @@ import type { TaskStatistics } from "../../core/statistics.ts";
 import type {
 	BacklogConfig,
 	Decision,
+	DocsTreeNode,
 	Document,
 	Milestone,
 	SearchPriorityFilter,
@@ -9,7 +10,10 @@ import type {
 	SearchResultType,
 	Task,
 	TaskStatus,
+	WikiPage,
+	WikiTreeNode,
 } from "../../types/index.ts";
+import { encodeWikiPath } from "../utils/urlHelpers.ts";
 
 const API_BASE = "/api";
 
@@ -75,15 +79,16 @@ export class ApiClient {
 	}
 
 	// Enhanced fetch with retry logic and better error handling
-	private async fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
+	private async fetchWithRetry(url: string, options: RequestInit = {}, customTimeout?: number): Promise<Response> {
 		const { retries = 3, timeout = 10000 } = this.config;
+		const effectiveTimeout = customTimeout ?? timeout;
 		let lastError: Error | undefined;
 
 		for (let attempt = 0; attempt <= retries; attempt++) {
 			try {
 				// Add timeout to the request
 				const controller = new AbortController();
-				const timeoutId = setTimeout(() => controller.abort(), timeout);
+				const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
 				const response = await fetch(url, {
 					...options,
@@ -131,8 +136,8 @@ export class ApiClient {
 	}
 
 	// Helper method for JSON responses
-	private async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
-		const response = await this.fetchWithRetry(url, options);
+	private async fetchJson<T>(url: string, options: RequestInit = {}, timeout?: number): Promise<T> {
+		const response = await this.fetchWithRetry(url, options, timeout);
 		return response.json();
 	}
 	async fetchTasks(options?: {
@@ -265,6 +270,18 @@ export class ApiClient {
 		});
 	}
 
+	async demoteTask(id: string): Promise<void> {
+		await this.fetchWithRetry(`${API_BASE}/tasks/${id}/demote`, {
+			method: "POST",
+		});
+	}
+
+	async promoteDraft(id: string): Promise<Task> {
+		return this.fetchJson<Task>(`${API_BASE}/drafts/${id}/promote`, {
+			method: "POST",
+		});
+	}
+
 	async getCleanupPreview(age: number): Promise<{
 		count: number;
 		tasks: Array<{ id: string; title: string; updatedDate?: string; createdDate: string }>;
@@ -322,6 +339,24 @@ export class ApiClient {
 			throw new Error("Failed to update config");
 		}
 		return response.json();
+	}
+
+	async listFiles(path: string): Promise<{ name: string; type: "file" | "directory" }[]> {
+		const response = await fetch(`${API_BASE}/list-files?path=${encodeURIComponent(path)}`);
+		if (!response.ok) {
+			throw new Error("Failed to list files");
+		}
+		const data = (await response.json()) as { entries: { name: string; type: "file" | "directory" }[] };
+		return data.entries;
+	}
+
+	async searchFiles(query: string): Promise<{ name: string; path: string; type: "file" | "directory" }[]> {
+		const response = await fetch(`${API_BASE}/search-files?query=${encodeURIComponent(query)}`);
+		if (!response.ok) {
+			throw new Error("Failed to search files");
+		}
+		const data = (await response.json()) as { results: { name: string; path: string; type: "file" | "directory" }[] };
+		return data.results;
 	}
 
 	async fetchDocs(): Promise<Document[]> {
@@ -459,13 +494,21 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async createMilestone(title: string, description?: string): Promise<Milestone> {
+	async createMilestone(
+		title: string,
+		description?: string,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+		actualStart?: string,
+		actualEnd?: string,
+	): Promise<Milestone> {
 		const response = await fetch(`${API_BASE}/milestones`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ title, description }),
+			body: JSON.stringify({ title, description, dueDate, plannedStart, plannedEnd, actualStart, actualEnd }),
 		});
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));
@@ -477,13 +520,18 @@ export class ApiClient {
 	async updateMilestone(
 		id: string,
 		title: string,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+		actualStart?: string,
+		actualEnd?: string,
 	): Promise<{ success: boolean; milestone?: Milestone | null; message?: string }> {
 		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ title }),
+			body: JSON.stringify({ title, dueDate, plannedStart, plannedEnd, actualStart, actualEnd }),
 		});
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));
@@ -529,8 +577,183 @@ export class ApiClient {
 		>(`${API_BASE}/statistics`);
 	}
 
+	async fetchDocsTree(): Promise<DocsTreeNode[]> {
+		const response = await fetch(`${API_BASE}/docs/tree`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch docs tree");
+		}
+		return response.json();
+	}
+
+	async createDocsFolder(path: string): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/docs/folder`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create docs folder");
+		}
+		return response.json();
+	}
+
+	async fetchWikiTree(): Promise<WikiTreeNode[]> {
+		const response = await fetch(`${API_BASE}/wiki/tree`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch wiki tree");
+		}
+		return response.json();
+	}
+
+	async fetchWikiPage(path: string): Promise<WikiPage> {
+		const response = await fetch(`${API_BASE}/wiki/${encodeWikiPath(path)}`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch wiki page");
+		}
+		return response.json();
+	}
+
+	async updateWikiPage(path: string, content: string, title?: string, labels?: string[]): Promise<void> {
+		const response = await fetch(`${API_BASE}/wiki/${encodeWikiPath(path)}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ content, title, ...(labels !== undefined && { labels }) }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to update wiki page");
+		}
+	}
+
+	async createWikiPage(path: string, content?: string, labels?: string[]): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/wiki`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path, content, ...(labels !== undefined && { labels }) }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create wiki page");
+		}
+		return response.json();
+	}
+
+	async createWikiFolder(path: string): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/wiki`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path, isFolder: true }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create wiki folder");
+		}
+		return response.json();
+	}
+
+	async renameWikiItem(oldPath: string, newPath: string): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/wiki/${encodeWikiPath(oldPath)}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ newPath }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to rename wiki item");
+		}
+		return response.json();
+	}
+
 	async checkStatus(): Promise<InitializationStatus> {
 		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
+	}
+
+	async fetchFileContent(path: string): Promise<{
+		content: string;
+		path: string;
+		lineStart?: number;
+		lineEnd?: number;
+		totalLines: number;
+		isMarkdown: boolean;
+	}> {
+		return this.fetchJson<{
+			content: string;
+			path: string;
+			lineStart?: number;
+			lineEnd?: number;
+			totalLines: number;
+			isMarkdown: boolean;
+		}>(`${API_BASE}/file-content?path=${encodeURIComponent(path)}`);
+	}
+
+	async uploadTempAsset(file: File): Promise<{ url: string }> {
+		const formData = new FormData();
+		formData.append("file", file);
+		const response = await fetch(`${API_BASE}/upload?temp=1`, {
+			method: "POST",
+			body: formData,
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to upload asset");
+		}
+		return response.json();
+	}
+
+	async uploadTempAssetFromUrl(imageUrl: string): Promise<{ url: string }> {
+		const response = await fetch(`${API_BASE}/upload?temp=1`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ url: imageUrl }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to upload asset from URL");
+		}
+		return response.json();
+	}
+
+	async uploadTempAssetFromDataUri(dataUri: string): Promise<{ url: string }> {
+		const response = await fetch(`${API_BASE}/upload?temp=1`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ dataUri }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to upload asset from data URI");
+		}
+		return response.json();
+	}
+
+	async convertDocx(
+		file: File,
+	): Promise<{ html: string; images: { tempUrl: string; alt: string }[]; messages: string[] }> {
+		const formData = new FormData();
+		formData.append("file", file);
+		const response = await fetch(`${API_BASE}/docx/convert`, {
+			method: "POST",
+			body: formData,
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to convert Word document");
+		}
+		return response.json();
+	}
+
+	async promoteAssets(urls: string[]): Promise<Record<string, string>> {
+		const response = await fetch(`${API_BASE}/assets/promote`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ urls }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to promote assets");
+		}
+		return response.json();
 	}
 
 	async initializeProject(options: {

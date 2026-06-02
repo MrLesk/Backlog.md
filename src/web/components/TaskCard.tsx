@@ -1,5 +1,7 @@
 import React from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { type Task } from '../../types';
+import { getLabelColorClasses } from '../utils/labelColors';
 
 interface TaskCardProps {
   task: Task;
@@ -9,14 +11,157 @@ interface TaskCardProps {
   onDragEnd?: () => void;
   status?: string;
   laneId?: string;
+  terminalStatus?: string | null;
+  labelColors?: Record<string, string>;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId }) => {
+const CURRENT_YEAR = new Date().getFullYear();
+
+const formatCardDate = (dateStr: string): string => {
+  const date = new Date(dateStr + "T00:00:00");
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const year = date.getFullYear();
+  if (year === CURRENT_YEAR) {
+    return `${month}/${day}`;
+  }
+  return `${year}/${month}/${day}`;
+};
+
+const formatPlannedRange = (start?: string, end?: string): string | null => {
+  if (!start && !end) return null;
+  if (start && end) {
+    return `${formatCardDate(start)}~${formatCardDate(end)}`;
+  }
+  return start ? formatCardDate(start) : end ? formatCardDate(end) : null;
+};
+
+const formatRelativeDate = (dateStr: string) => {
+  // Handle both date-only and datetime formats
+  const hasTime = dateStr.includes(" ") || dateStr.includes("T");
+  const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+  return `${Math.floor(diffDays / 365)}y ago`;
+};
+
+const getPriorityClass = (priority?: string) => {
+  switch (priority) {
+    case 'high': return 'border-l-4 border-l-red-500 dark:border-l-red-400';
+    case 'medium': return 'border-l-4 border-l-yellow-500 dark:border-l-yellow-400';
+    case 'low': return 'border-l-4 border-l-green-500 dark:border-l-green-400';
+    default: return 'border-l-4 border-l-gray-300 dark:border-l-gray-600';
+  }
+};
+
+interface WidthAwareLabelsProps {
+  labels: string[];
+  labelColors?: Record<string, string>;
+}
+
+const WidthAwareLabels: React.FC<WidthAwareLabelsProps> = ({ labels, labelColors }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const measureRef = React.useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = React.useState(labels.length);
+
+  React.useEffect(() => {
+    const measure = () => {
+      if (!containerRef.current || !measureRef.current) return;
+      const containerWidth = containerRef.current.clientWidth;
+      const measureChildren = Array.from(measureRef.current.children) as HTMLElement[];
+      if (measureChildren.length === 0) return;
+
+      const gap = 4; // gap-1 = 4px
+      const labelWidths = measureChildren.slice(0, labels.length).map((c) => c.getBoundingClientRect().width);
+      const overflowWidth = measureChildren[labels.length]?.getBoundingClientRect().width ?? 0;
+
+      let count = 0;
+      let used = 0;
+      for (let i = 0; i < labelWidths.length; i++) {
+        const w = labelWidths[i] ?? 0;
+        const nextUsed = used + (count > 0 ? gap : 0) + w;
+        const remaining = labels.length - i - 1;
+        const needsOverflow = remaining > 0;
+        const required = nextUsed + (needsOverflow ? gap + overflowWidth : 0);
+        if (required <= containerWidth) {
+          count++;
+          used = nextUsed;
+        } else {
+          break;
+        }
+      }
+      setVisibleCount(count);
+    };
+
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [labels]);
+
+  return (
+    <div className="relative">
+      <div ref={containerRef} className="flex flex-wrap gap-1 mt-2">
+        {labels.slice(0, visibleCount).map((label) => {
+          const colorClasses = getLabelColorClasses(labelColors?.[label]);
+          return (
+            <span
+              key={label}
+              className={`inline-block px-1.5 py-0.5 text-[10px] rounded transition-colors duration-200 ${colorClasses.bg} ${colorClasses.text}`}
+            >
+              {label}
+            </span>
+          );
+        })}
+        {labels.length > visibleCount && (
+          <span className="inline-block px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+            +{labels.length - visibleCount}
+          </span>
+        )}
+      </div>
+      {/* Hidden measurement container */}
+      <div
+        ref={measureRef}
+        className="absolute invisible whitespace-nowrap flex gap-1 pointer-events-none"
+        aria-hidden="true"
+      >
+        {labels.map((label) => (
+          <span key={label} className="inline-block px-1.5 py-0.5 text-[10px] rounded">
+            {label}
+          </span>
+        ))}
+        <span className="inline-block px-1.5 py-0.5 text-[10px]">+99</span>
+      </div>
+    </div>
+  );
+};
+
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, terminalStatus, labelColors }) => {
+  const { t } = useI18n();
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
 
   // Check if task is from another branch (read-only)
   const isFromOtherBranch = Boolean(task.branch);
+
+  // Compute due-date risk border class
+  let dueDateRiskClass = "";
+  if (task.dueDate && task.status !== "Done") {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(task.dueDate + "T00:00:00");
+    const diffDays = Math.floor((due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    if (diffDays < 0) dueDateRiskClass = "border-l-2 border-red-500";
+    else if (diffDays <= 1) dueDateRiskClass = "border-l-2 border-amber-500";
+  }
 
   const handleDragStart = (e: React.DragEvent) => {
     // Prevent dragging cross-branch tasks
@@ -44,36 +189,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     onDragEnd?.();
   };
 
-  const getPriorityClass = (priority?: string) => {
-    switch (priority) {
-      case 'high': return 'border-l-4 border-l-red-500 dark:border-l-red-400';
-      case 'medium': return 'border-l-4 border-l-yellow-500 dark:border-l-yellow-400';
-      case 'low': return 'border-l-4 border-l-green-500 dark:border-l-green-400';
-      default: return 'border-l-4 border-l-gray-300 dark:border-l-gray-600';
-    }
-  };
-
-  const formatRelativeDate = (dateStr: string) => {
-    // Handle both date-only and datetime formats
-    const hasTime = dateStr.includes(" ") || dateStr.includes("T");
-    const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'today';
-    if (diffDays === 1) return 'yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
-    return `${Math.floor(diffDays / 365)}y ago`;
-  };
-
   const getPriorityBadge = (priority?: string) => {
     switch (priority) {
-      case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
-      case 'medium': return { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', label: 'Med' };
-      case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: 'Low' };
+      case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: t.taskCard.priorityShort('high') };
+      case 'medium': return { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', label: t.taskCard.priorityShort('medium') };
+      case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: t.taskCard.priorityShort('low') };
       default: return null;
     }
   };
@@ -87,7 +207,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            Switch to <span className="font-semibold text-amber-300">{task.branch}</span> branch to move this task
+            {t.taskCard.switchBranchPrefix} <span className="font-semibold text-amber-300">{task.branch}</span> {t.taskCard.switchBranchSuffix}
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-gray-700"></div>
         </div>
@@ -98,7 +218,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           isFromOtherBranch 
             ? 'opacity-75 cursor-not-allowed border-dashed' 
             : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400'
-        } ${getPriorityClass(task.priority)} ${
+        } ${getPriorityClass(task.priority)} ${dueDateRiskClass} ${
           isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
         }`}
         draggable={!isFromOtherBranch}
@@ -113,22 +233,35 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
             <span className="truncate">
-              From <span className="font-semibold">{task.branch}</span> branch
+              {t.taskCard.fromBranchPrefix} <span className="font-semibold">{task.branch}</span> {t.taskCard.fromBranchSuffix}
             </span>
           </div>
         )}
 
-        {/* Header row with priority badge and task ID */}
+        {/* Header row with task ID, planned dates, and priority badge */}
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <span className="text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
-          {(() => {
-            const badge = getPriorityBadge(task.priority);
-            return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
-                {badge.label}
-              </span>
-            ) : null;
-          })()}
+          <div className="flex items-center gap-1.5">
+            {(() => {
+              const planned = formatPlannedRange(task.plannedStart, task.plannedEnd);
+              return planned ? (
+                <span className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {planned}
+                </span>
+              ) : null;
+            })()}
+            {(() => {
+              const badge = getPriorityBadge(task.priority);
+              return badge ? (
+                <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
+                  {badge.label}
+                </span>
+              ) : null;
+            })()}
+          </div>
         </div>
 
         {/* Title */}
@@ -140,28 +273,30 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           {task.title}
         </h4>
 
-        {/* Labels - limit to 3 */}
+        {/* Labels - width-aware overflow */}
         {task.labels.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {task.labels.slice(0, 3).map(label => (
-              <span
-                key={label}
-                className="inline-block px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors duration-200"
-              >
-                {label}
-              </span>
-            ))}
-            {task.labels.length > 3 && (
-              <span className="inline-block px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
-                +{task.labels.length - 3}
-              </span>
-            )}
-          </div>
+          <WidthAwareLabels labels={task.labels} labelColors={labelColors} />
         )}
 
-        {/* Footer with date */}
+        {/* Footer with due date, created date, and assignee */}
         <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
-          <span>{formatRelativeDate(task.createdDate)}</span>
+          <div className="flex items-center gap-2">
+            <span>{formatRelativeDate(task.createdDate)}</span>
+            {task.dueDate && (() => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const due = new Date(task.dueDate + "T00:00:00");
+              const isOverdue = due < today && task.status !== terminalStatus;
+              return (
+                <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                  <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {formatCardDate(task.dueDate)}
+                </span>
+              );
+            })()}
+          </div>
           {task.assignee.length > 0 && (
             <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
               {task.assignee[0]}

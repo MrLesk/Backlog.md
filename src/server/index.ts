@@ -3,6 +3,7 @@ import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
+import { convertDocxToMarkdown } from "../core/docx-converter.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
@@ -16,6 +17,7 @@ import {
 	type SearchResultType,
 	type Task,
 	type TaskUpdateInput,
+	type WikiPage,
 } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
@@ -197,6 +199,10 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	// Statistics cache
+	private cachedStatisticsResponse: string | null = null;
+	private statisticsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private statisticsDirty = false;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -219,15 +225,16 @@ export class BacklogServer {
 				if (event.type === "ready") {
 					if (!this.storeReadyBroadcasted) {
 						this.storeReadyBroadcasted = true;
-						return;
 					}
 					this.broadcastTasksUpdated();
+					this.invalidateStatistics();
 					return;
 				}
 
 				// Broadcast for tasks/documents/decisions so clients refresh caches/search
 				this.storeReadyBroadcasted = true;
 				this.broadcastTasksUpdated();
+				this.invalidateStatistics();
 			});
 		}
 
@@ -271,6 +278,65 @@ export class BacklogServer {
 		}
 	}
 
+	private broadcastDraftsUpdated() {
+		for (const ws of this.sockets) {
+			try {
+				ws.send("drafts-updated");
+			} catch {}
+		}
+	}
+
+	private invalidateStatistics(): void {
+		this.statisticsDirty = true;
+		this.cachedStatisticsResponse = null;
+		if (this.statisticsDebounceTimer) {
+			clearTimeout(this.statisticsDebounceTimer);
+		}
+		this.statisticsDebounceTimer = setTimeout(() => {
+			this.statisticsDebounceTimer = null;
+			void this.recomputeAndBroadcastStatistics();
+		}, 500);
+	}
+
+	private async recomputeAndBroadcastStatistics(): Promise<void> {
+		if (!this.statisticsDirty) return;
+		this.statisticsDirty = false;
+
+		try {
+			const store = await this.getContentStoreInstance();
+			const snapshot = store.getSnapshot();
+			const tasks = snapshot.tasks;
+			const config = await this.core.filesystem.loadConfig();
+			const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+			const drafts = await this.core.filesystem.listDrafts();
+			const statistics = getTaskStatistics(tasks, drafts, statuses);
+			const response = {
+				...statistics,
+				statusCounts: Object.fromEntries(statistics.statusCounts),
+				priorityCounts: Object.fromEntries(statistics.priorityCounts),
+			};
+			this.cachedStatisticsResponse = JSON.stringify(response);
+
+			// If dirty again during computation, schedule another recompute
+			if (this.statisticsDirty) {
+				this.invalidateStatistics();
+				return;
+			}
+
+			this.broadcastStatisticsUpdated();
+		} catch (error) {
+			console.error("Error recomputing statistics:", error);
+		}
+	}
+
+	private broadcastStatisticsUpdated() {
+		for (const ws of this.sockets) {
+			try {
+				ws.send("statistics-updated");
+			} catch {}
+		}
+	}
+
 	async start(port?: number, openBrowser = true): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
@@ -297,6 +363,7 @@ export class BacklogServer {
 
 		try {
 			await this.ensureServicesReady();
+			void this.cleanupTempAssets();
 			const serveOptions = {
 				port: finalPort,
 				development: process.env.NODE_ENV === "development",
@@ -305,10 +372,13 @@ export class BacklogServer {
 					"/tasks": spaIndexHtml,
 					"/milestones": spaIndexHtml,
 					"/drafts": spaIndexHtml,
+					"/gantt": spaIndexHtml,
 					"/documentation": spaIndexHtml,
 					"/documentation/*": spaIndexHtml,
 					"/decisions": spaIndexHtml,
 					"/decisions/*": spaIndexHtml,
+					"/wiki": spaIndexHtml,
+					"/wiki/*": spaIndexHtml,
 					"/statistics": spaIndexHtml,
 					"/settings": spaIndexHtml,
 
@@ -328,6 +398,9 @@ export class BacklogServer {
 					"/api/tasks/:id/complete": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
 					},
+					"/api/tasks/:id/demote": {
+						POST: async (req: Request & { params: { id: string } }) => await this.handleDemoteTask(req.params.id),
+					},
 					"/api/statuses": {
 						GET: async () => await this.handleGetStatuses(),
 					},
@@ -345,6 +418,41 @@ export class BacklogServer {
 					"/api/docs/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
+					},
+					"/api/docs/tree": {
+						GET: async () => await this.handleGetDocsTree(),
+					},
+					"/api/docs/folder": {
+						POST: async (req: Request) => await this.handleCreateDocsFolder(req),
+					},
+					"/api/wiki/tree": {
+						GET: async () => await this.handleGetWikiTree(),
+					},
+					"/api/wiki": {
+						POST: async (req: Request) => await this.handleCreateWiki(req),
+					},
+					"/api/wiki/*": {
+						GET: async (req: Request) => {
+							const url = new URL(req.url);
+							const pathname = decodeURIComponent(url.pathname || "");
+							const prefix = "/api/wiki/";
+							const path = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
+							return await this.handleGetWikiPage(path);
+						},
+						PUT: async (req: Request) => {
+							const url = new URL(req.url);
+							const pathname = decodeURIComponent(url.pathname || "");
+							const prefix = "/api/wiki/";
+							const path = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
+							return await this.handleUpdateWiki(req, path);
+						},
+						PATCH: async (req: Request) => {
+							const url = new URL(req.url);
+							const pathname = decodeURIComponent(url.pathname || "");
+							const prefix = "/api/wiki/";
+							const path = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
+							return await this.handleRenameWiki(req, path);
+						},
 					},
 					"/api/decisions": {
 						GET: async () => await this.handleListDecisions(),
@@ -404,6 +512,24 @@ export class BacklogServer {
 					},
 					"/api/search": {
 						GET: async (req: Request) => await this.handleSearch(req),
+					},
+					"/api/file-content": {
+						GET: async (req: Request) => await this.handleGetFileContent(req),
+					},
+					"/api/list-files": {
+						GET: async (req: Request) => await this.handleListFiles(req),
+					},
+					"/api/search-files": {
+						GET: async (req: Request) => await this.handleSearchFiles(req),
+					},
+					"/api/upload": {
+						POST: async (req: Request) => await this.handleUpload(req),
+					},
+					"/api/assets/promote": {
+						POST: async (req: Request) => await this.handlePromoteAssets(req),
+					},
+					"/api/docx/convert": {
+						POST: async (req: Request) => await this.handleConvertDocx(req),
 					},
 					"/sequences": {
 						GET: async () => await this.handleGetSequences(),
@@ -723,7 +849,7 @@ export class BacklogServer {
 
 			let types: SearchResultType[] | undefined;
 			if (typeParams.length > 0) {
-				const allowed: SearchResultType[] = ["task", "document", "decision"];
+				const allowed: SearchResultType[] = ["task", "document", "decision", "wiki"];
 				const normalizedTypes = typeParams
 					.map((value) => value.toLowerCase())
 					.filter((value): value is SearchResultType => {
@@ -841,6 +967,11 @@ export class BacklogServer {
 				acceptanceCriteria,
 				definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults,
+				dueDate: typeof payload.dueDate === "string" ? payload.dueDate.trim() : undefined,
+				plannedStart: typeof payload.plannedStart === "string" ? payload.plannedStart.trim() : undefined,
+				plannedEnd: typeof payload.plannedEnd === "string" ? payload.plannedEnd.trim() : undefined,
+				actualStart: typeof payload.actualStart === "string" ? payload.actualStart.trim() : undefined,
+				actualEnd: typeof payload.actualEnd === "string" ? payload.actualEnd.trim() : undefined,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -919,6 +1050,10 @@ export class BacklogServer {
 			updateInput.references = updates.references;
 		}
 
+		if ("documentation" in updates && Array.isArray(updates.documentation)) {
+			updateInput.documentation = updates.documentation;
+		}
+
 		if ("modifiedFiles" in updates && Array.isArray(updates.modifiedFiles)) {
 			updateInput.modifiedFiles = updates.modifiedFiles;
 		}
@@ -933,6 +1068,22 @@ export class BacklogServer {
 
 		if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
 			updateInput.finalSummary = updates.finalSummary;
+		}
+
+		if ("dueDate" in updates && typeof updates.dueDate === "string") {
+			updateInput.dueDate = updates.dueDate.trim();
+		}
+		if ("plannedStart" in updates && typeof updates.plannedStart === "string") {
+			updateInput.plannedStart = updates.plannedStart.trim();
+		}
+		if ("actualStart" in updates && typeof updates.actualStart === "string") {
+			updateInput.actualStart = updates.actualStart.trim();
+		}
+		if ("actualEnd" in updates && typeof updates.actualEnd === "string") {
+			updateInput.actualEnd = updates.actualEnd.trim();
+		}
+		if ("plannedEnd" in updates && typeof updates.plannedEnd === "string") {
+			updateInput.plannedEnd = updates.plannedEnd.trim();
 		}
 
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
@@ -1007,6 +1158,32 @@ export class BacklogServer {
 		}
 	}
 
+	private async handleDemoteTask(taskId: string): Promise<Response> {
+		try {
+			const task = await this.core.filesystem.loadTask(taskId);
+			if (!task) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+
+			const newDraftId = await this.core.demoteTask(taskId);
+			if (!newDraftId) {
+				return Response.json({ error: "Failed to demote task" }, { status: 500 });
+			}
+
+			// Notify listeners to refresh both tasks and drafts lists
+			this.broadcastTasksUpdated();
+			this.broadcastDraftsUpdated();
+			return Response.json({ success: true, draftId: newDraftId });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to demote task";
+			console.error("Error demoting task:", error);
+			if (isCreateLockError(error)) {
+				return Response.json({ error: message }, { status: 409 });
+			}
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
 	private async handleGetStatuses(): Promise<Response> {
 		const config = await this.core.filesystem.loadConfig();
 		const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
@@ -1046,6 +1223,153 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error loading document:", error);
 			return Response.json({ error: "Document not found" }, { status: 404 });
+		}
+	}
+
+	private async handleGetDocsTree(): Promise<Response> {
+		try {
+			const tree = await this.core.filesystem.getDocsTree();
+			return Response.json(tree);
+		} catch (error) {
+			console.error("Error building docs tree:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleCreateDocsFolder(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const path = typeof body?.path === "string" ? body.path.trim() : undefined;
+			if (!path) {
+				return Response.json({ error: "Path is required" }, { status: 400 });
+			}
+			if (path.includes("..") || path.startsWith("/") || path.startsWith("\\")) {
+				return Response.json({ error: "Invalid path" }, { status: 400 });
+			}
+			const createdPath = await this.core.filesystem.createDocsFolder(path);
+			return Response.json({ success: true, path: createdPath }, { status: 201 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to create docs folder";
+			if (message.includes("already exists")) {
+				return Response.json({ error: message }, { status: 409 });
+			}
+			console.error("Error creating docs folder:", error);
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleGetWikiTree(): Promise<Response> {
+		try {
+			const tree = await this.core.filesystem.getWikiTree();
+			return Response.json(tree);
+		} catch (error) {
+			console.error("Error building wiki tree:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleGetWikiPage(pagePath: string): Promise<Response> {
+		try {
+			let page: WikiPage;
+			if (pagePath.startsWith("wiki/")) {
+				// Frontend resolveWikiPath prefixes wiki-internal paths with wiki/;
+				// strip it so readWikiPage uses the default wikiRoot.
+				page = await this.core.filesystem.readWikiPage(pagePath.slice("wiki/".length));
+			} else {
+				try {
+					page = await this.core.filesystem.readWikiPage(pagePath);
+				} catch {
+					// Fallback to project root for paths that reference sibling
+					// directories (e.g. wiki_output/).
+					page = await this.core.filesystem.readWikiPage(pagePath, this.core.filesystem.backlogDir);
+				}
+			}
+			return Response.json(page);
+		} catch (error) {
+			console.error("Error loading wiki page:", error);
+			const message = error instanceof Error ? error.message : "Page not found";
+			if (message === "Page not found") {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleUpdateWiki(req: Request, pagePath: string): Promise<Response> {
+		try {
+			const body = await req.json();
+			const content = typeof body?.content === "string" ? body.content : undefined;
+			const title = typeof body?.title === "string" ? body.title : undefined;
+			const labels = Array.isArray(body?.labels) ? body.labels.map(String) : undefined;
+			if (typeof content !== "string") {
+				return Response.json({ error: "Content is required" }, { status: 400 });
+			}
+
+			await this.core.filesystem.saveWikiPage(pagePath, content, title, labels);
+			return Response.json({ success: true });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to update wiki";
+			console.error("Error updating wiki:", error);
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleCreateWiki(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const path = typeof body?.path === "string" ? body.path.trim() : undefined;
+			const content = typeof body?.content === "string" ? body.content : undefined;
+			const isFolder = body?.isFolder === true;
+			const labels = Array.isArray(body?.labels) ? body.labels.map(String) : undefined;
+
+			if (!path) {
+				return Response.json({ error: "Path is required" }, { status: 400 });
+			}
+			if (path.includes("..") || path.startsWith("/") || path.startsWith("\\")) {
+				return Response.json({ error: "Invalid path" }, { status: 400 });
+			}
+
+			const createdPath = isFolder
+				? await this.core.filesystem.createWikiFolder(path)
+				: await this.core.filesystem.createWikiPage(path, content, labels);
+			return Response.json({ success: true, path: createdPath }, { status: 201 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to create wiki page";
+			if (message.includes("already exists")) {
+				return Response.json({ error: message }, { status: 409 });
+			}
+			console.error("Error creating wiki:", error);
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleRenameWiki(req: Request, oldPath: string): Promise<Response> {
+		try {
+			const body = await req.json();
+			const newPath = typeof body?.newPath === "string" ? body.newPath.trim() : undefined;
+
+			if (!oldPath || !newPath) {
+				return Response.json({ error: "Old path and new path are required" }, { status: 400 });
+			}
+			if (oldPath.includes("..") || oldPath.startsWith("/") || oldPath.startsWith("\\")) {
+				return Response.json({ error: "Invalid old path" }, { status: 400 });
+			}
+			if (newPath.includes("..") || newPath.startsWith("/") || newPath.startsWith("\\")) {
+				return Response.json({ error: "Invalid new path" }, { status: 400 });
+			}
+
+			const renamedPath = await this.core.filesystem.renameWikiItem(oldPath, newPath);
+			return Response.json({ success: true, path: renamedPath }, { status: 200 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to rename wiki item";
+			if (message.includes("not found")) {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			if (message.includes("already exists")) {
+				return Response.json({ error: message }, { status: 409 });
+			}
+			console.error("Error renaming wiki:", error);
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 
@@ -1257,11 +1581,11 @@ export class BacklogServer {
 
 	private async handlePromoteDraft(draftId: string): Promise<Response> {
 		try {
-			const success = await this.core.promoteDraft(draftId);
-			if (!success) {
+			const task = await this.core.promoteDraft(draftId);
+			if (!task) {
 				return Response.json({ error: "Draft not found" }, { status: 404 });
 			}
-			return Response.json({ success: true });
+			return Response.json(task);
 		} catch (error) {
 			console.error("Error promoting draft:", error);
 			if (isCreateLockError(error)) {
@@ -1353,7 +1677,15 @@ export class BacklogServer {
 
 	private async handleCreateMilestone(req: Request): Promise<Response> {
 		try {
-			const body = (await req.json()) as { title?: string; description?: string };
+			const body = (await req.json()) as {
+				title?: string;
+				description?: string;
+				dueDate?: string;
+				plannedStart?: string;
+				plannedEnd?: string;
+				actualStart?: string;
+				actualEnd?: string;
+			};
 			const title = body.title?.trim();
 
 			if (!title) {
@@ -1397,7 +1729,15 @@ export class BacklogServer {
 				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
 			}
 
-			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			const milestone = await this.core.filesystem.createMilestone(
+				title,
+				body.description,
+				body.dueDate,
+				body.plannedStart,
+				body.plannedEnd,
+				body.actualStart,
+				body.actualEnd,
+			);
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
 			console.error("Error creating milestone:", error);
@@ -1409,25 +1749,26 @@ export class BacklogServer {
 		try {
 			const body = await this.readOptionalJsonBody(req);
 			const title = typeof body.title === "string" ? body.title.trim() : "";
-			const updateTasks = typeof body.updateTasks === "boolean" ? body.updateTasks : true;
 
 			if (!title) {
 				return Response.json({ error: "Milestone title is required" }, { status: 400 });
 			}
 
-			const sourceMilestone = await this.core.filesystem.loadMilestone(milestoneId);
-			const result = await new MilestoneHandlers(this.core).renameMilestone({
+			const bodyJson = body as Record<string, unknown>;
+			const updateTasks = bodyJson.updateTasks !== false;
+			const result = await new MilestoneHandlers(this.core).editMilestone({
 				from: milestoneId,
 				to: title,
 				updateTasks,
+				dueDate: typeof bodyJson.dueDate === "string" ? bodyJson.dueDate : undefined,
+				plannedStart: typeof bodyJson.plannedStart === "string" ? bodyJson.plannedStart : undefined,
+				plannedEnd: typeof bodyJson.plannedEnd === "string" ? bodyJson.plannedEnd : undefined,
+				actualStart: typeof bodyJson.actualStart === "string" ? bodyJson.actualStart : undefined,
+				actualEnd: typeof bodyJson.actualEnd === "string" ? bodyJson.actualEnd : undefined,
 			});
-			const milestone =
-				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??
-				(await this.core.filesystem.loadMilestone(title));
 			this.broadcastTasksUpdated();
 			return Response.json({
 				success: true,
-				milestone: milestone ?? null,
 				message: this.getMilestoneMutationMessage(result),
 			});
 		} catch (error) {
@@ -1653,23 +1994,99 @@ export class BacklogServer {
 
 	private async handleGetStatistics(): Promise<Response> {
 		try {
-			// Load tasks using the same logic as CLI overview
-			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+			// Return cached response immediately if available
+			if (this.cachedStatisticsResponse) {
+				return new Response(this.cachedStatisticsResponse, {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
 
-			// Calculate statistics using the exact same function as CLI
+			// Compute on-demand if no cache exists
+			const store = await this.getContentStoreInstance();
+			const snapshot = store.getSnapshot();
+			const tasks = snapshot.tasks;
+
+			const config = await this.core.filesystem.loadConfig();
+			const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+			const drafts = await this.core.filesystem.listDrafts();
+
 			const statistics = getTaskStatistics(tasks, drafts, statuses);
 
-			// Convert Maps to objects for JSON serialization
 			const response = {
 				...statistics,
 				statusCounts: Object.fromEntries(statistics.statusCounts),
 				priorityCounts: Object.fromEntries(statistics.priorityCounts),
 			};
 
-			return Response.json(response);
+			const body = JSON.stringify(response);
+			this.cachedStatisticsResponse = body;
+			return new Response(body, { headers: { "Content-Type": "application/json" } });
 		} catch (error) {
 			console.error("Error getting statistics:", error);
 			return Response.json({ error: "Failed to get statistics" }, { status: 500 });
+		}
+	}
+
+	private async handleListFiles(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const rawPath = url.searchParams.get("path") || "";
+
+			const result = await this.core.filesystem.listProjectFiles(rawPath);
+			return Response.json({ entries: result });
+		} catch (error) {
+			console.error("Error listing files:", error);
+			const message = error instanceof Error ? error.message : "Failed to list files";
+			if (message === "Access denied") {
+				return Response.json({ error: message }, { status: 403 });
+			}
+			if (message === "Path not found" || message === "Path is not a directory") {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleSearchFiles(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const query = url.searchParams.get("query") || "";
+			if (!query) {
+				return Response.json({ results: [] });
+			}
+
+			const results = await this.core.filesystem.searchProjectFiles(query);
+			return Response.json({ results });
+		} catch (error) {
+			console.error("Error searching files:", error);
+			const message = error instanceof Error ? error.message : "Failed to search files";
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleGetFileContent(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const rawPath = url.searchParams.get("path") || "";
+			if (!rawPath) {
+				return Response.json({ error: "path parameter is required" }, { status: 400 });
+			}
+
+			const result = await this.core.filesystem.readProjectFile(rawPath);
+			return Response.json(result);
+		} catch (error) {
+			console.error("Error reading file:", error);
+			const message = error instanceof Error ? error.message : "Failed to read file";
+			if (message === "Access denied") {
+				return Response.json({ error: message }, { status: 403 });
+			}
+			if (message === "File not found" || message === "Path is a directory") {
+				return Response.json({ error: message }, { status: 404 });
+			}
+			if (message === "Invalid line range" || message === "File too large") {
+				return Response.json({ error: message }, { status: 400 });
+			}
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 
@@ -1761,6 +2178,95 @@ export class BacklogServer {
 			console.error("Error initializing project:", error);
 			const message = error instanceof Error ? error.message : "Failed to initialize project";
 			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleUpload(req: Request): Promise<Response> {
+		try {
+			const url = new URL(req.url);
+			const isTemp = url.searchParams.get("temp") === "1";
+			const contentType = req.headers.get("content-type") || "";
+
+			if (contentType.startsWith("multipart/form-data")) {
+				const formData = await req.formData();
+				const file = formData.get("file");
+				if (!(file instanceof File)) {
+					return Response.json({ error: "No file provided" }, { status: 400 });
+				}
+				const result = await this.core.assets.uploadFile(file, isTemp);
+				return Response.json(result);
+			}
+
+			if (contentType.startsWith("application/json")) {
+				const body = await req.json();
+				if (typeof body.dataUri === "string") {
+					const result = await this.core.assets.uploadFromDataUri(body.dataUri, isTemp);
+					return Response.json(result);
+				}
+				if (typeof body.url === "string") {
+					const result = await this.core.assets.uploadFromUrl(body.url, isTemp);
+					return Response.json(result);
+				}
+				return Response.json({ error: "Expected file, url, or dataUri" }, { status: 400 });
+			}
+
+			return Response.json({ error: "Unsupported content type" }, { status: 400 });
+		} catch (error) {
+			console.error("Error uploading file:", error);
+			const message = error instanceof Error ? error.message : "Upload failed";
+			const isClientError = error instanceof Error && error.name === "ClientError";
+			return Response.json({ error: message }, { status: isClientError ? 400 : 500 });
+		}
+	}
+
+	private async handlePromoteAssets(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const urls = Array.isArray(body.urls) ? body.urls : [];
+			const result = await this.core.assets.promote(urls);
+			return Response.json(result);
+		} catch (error) {
+			console.error("Error promoting assets:", error);
+			const message = error instanceof Error ? error.message : "Promote failed";
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleConvertDocx(req: Request): Promise<Response> {
+		try {
+			const contentType = req.headers.get("content-type") || "";
+			if (!contentType.startsWith("multipart/form-data")) {
+				return Response.json({ error: "Expected multipart/form-data" }, { status: 400 });
+			}
+
+			const formData = await req.formData();
+			const file = formData.get("file");
+			if (!(file instanceof File)) {
+				return Response.json({ error: "No file provided" }, { status: 400 });
+			}
+
+			if (!file.name.toLowerCase().endsWith(".docx")) {
+				return Response.json({ error: "Only .docx files are supported" }, { status: 400 });
+			}
+
+			const buffer = Buffer.from(await file.arrayBuffer());
+			const result = await convertDocxToMarkdown(buffer, this.core.assets);
+			return Response.json(result);
+		} catch (error) {
+			console.error("Error converting docx:", error);
+			const message = error instanceof Error ? error.message : "Conversion failed";
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async cleanupTempAssets(): Promise<void> {
+		try {
+			const { removed } = await this.core.assets.cleanup();
+			if (removed > 0) {
+				console.log(`🧹 Cleaned up ${removed} temporary asset(s) older than 30 min`);
+			}
+		} catch {
+			// ignore cleanup errors — don't block server start
 		}
 	}
 }

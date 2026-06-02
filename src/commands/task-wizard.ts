@@ -21,6 +21,11 @@ interface TaskWizardValues {
 	references: string;
 	documentation: string;
 	dependencies: string;
+	dueDate: string;
+	plannedStart: string;
+	plannedEnd: string;
+	actualStart: string;
+	actualEnd: string;
 }
 
 export interface TaskWizardTaskOption {
@@ -509,6 +514,11 @@ async function runTaskWizardValues(params: {
 			references: values.references,
 			documentation: values.documentation,
 			dependencies: values.dependencies,
+			dueDate: values.dueDate,
+			plannedStart: values.plannedStart,
+			plannedEnd: values.plannedEnd,
+			actualStart: values.actualStart,
+			actualEnd: values.actualEnd,
 		};
 	} catch (error) {
 		if (error instanceof TaskWizardCancelledError) {
@@ -563,6 +573,11 @@ function toInitialWizardValues(input: { title?: string } & Partial<Task>): TaskW
 		references: formatListInput(input.references),
 		documentation: formatListInput(input.documentation),
 		dependencies: formatListInput(input.dependencies),
+		dueDate: input.dueDate ?? "",
+		plannedStart: input.plannedStart ?? "",
+		plannedEnd: input.plannedEnd ?? "",
+		actualStart: input.actualStart ?? "",
+		actualEnd: input.actualEnd ?? "",
 	};
 }
 
@@ -609,6 +624,11 @@ export async function runTaskCreateWizard(
 		...(definitionOfDoneAdd.length > 0 && { definitionOfDoneAdd }),
 		...(values.implementationPlan.trim().length > 0 && { implementationPlan: values.implementationPlan }),
 		...(values.implementationNotes.trim().length > 0 && { implementationNotes: values.implementationNotes }),
+		...(values.dueDate.trim().length > 0 && { dueDate: values.dueDate.trim() }),
+		...(values.plannedStart.trim().length > 0 && { plannedStart: values.plannedStart.trim() }),
+		...(values.plannedEnd.trim().length > 0 && { plannedEnd: values.plannedEnd.trim() }),
+		...(values.actualStart.trim().length > 0 && { actualStart: values.actualStart.trim() }),
+		...(values.actualEnd.trim().length > 0 && { actualEnd: values.actualEnd.trim() }),
 	};
 	return input;
 }
@@ -678,6 +698,22 @@ export async function runTaskEditWizard(
 	}
 	if (values.implementationNotes !== initial.implementationNotes) {
 		updateInput.implementationNotes = values.implementationNotes;
+	}
+
+	if (values.dueDate !== initial.dueDate) {
+		updateInput.dueDate = values.dueDate.trim();
+	}
+	if (values.plannedStart !== initial.plannedStart) {
+		updateInput.plannedStart = values.plannedStart.trim();
+	}
+	if (values.plannedEnd !== initial.plannedEnd) {
+		updateInput.plannedEnd = values.plannedEnd.trim();
+	}
+	if (values.actualStart !== initial.actualStart) {
+		updateInput.actualStart = values.actualStart.trim();
+	}
+	if (values.actualEnd !== initial.actualEnd) {
+		updateInput.actualEnd = values.actualEnd.trim();
 	}
 
 	const existingCriteria = (options.task.acceptanceCriteriaItems ?? [])

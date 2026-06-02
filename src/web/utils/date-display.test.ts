@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
+	dateTimeLocalToStoredUtc,
 	formatStoredUtcDateForCompactDisplay,
 	formatStoredUtcDateForDisplay,
 	parseStoredUtcDate,
+	storedUtcToDateTimeLocal,
 } from "./date-display";
 
 describe("parseStoredUtcDate", () => {
@@ -60,5 +62,44 @@ describe("formatStoredUtcDateForCompactDisplay", () => {
 	it("handles missing and invalid values gracefully", () => {
 		expect(formatStoredUtcDateForCompactDisplay("", now)).toBe("—");
 		expect(formatStoredUtcDateForCompactDisplay("not-a-date", now)).toBe("not-a-date");
+	});
+});
+
+describe("storedUtcToDateTimeLocal", () => {
+	it("converts stored UTC datetime to local datetime-local format", () => {
+		const result = storedUtcToDateTimeLocal("2026-02-09 06:01");
+		const [datePart, timePart] = result.split("T");
+		expect(datePart).toBe("2026-02-09");
+		expect(timePart).toBeDefined();
+		if (!timePart) throw new Error("Expected timePart to be defined");
+		const [hours, minutes] = timePart.split(":");
+		expect(hours).toBeDefined();
+		expect(minutes).toBeDefined();
+		const localDate = new Date(2026, 1, 9, Number.parseInt(hours, 10), Number.parseInt(minutes, 10), 0);
+		expect(localDate.toISOString()).toBe("2026-02-09T06:01:00.000Z");
+	});
+
+	it("returns empty string for empty input", () => {
+		expect(storedUtcToDateTimeLocal("")).toBe("");
+	});
+
+	it("falls back to T replacement for invalid input", () => {
+		expect(storedUtcToDateTimeLocal("not-a-date")).toBe("not-a-date");
+	});
+});
+
+describe("dateTimeLocalToStoredUtc", () => {
+	it("converts local datetime-local to stored UTC format", () => {
+		const utcDate = new Date(Date.UTC(2026, 1, 9, 6, 1, 0));
+		const localStr = `${utcDate.getFullYear()}-${String(utcDate.getMonth() + 1).padStart(2, "0")}-${String(utcDate.getDate()).padStart(2, "0")}T${String(utcDate.getHours()).padStart(2, "0")}:${String(utcDate.getMinutes()).padStart(2, "0")}`;
+		expect(dateTimeLocalToStoredUtc(localStr)).toBe("2026-02-09 06:01");
+	});
+
+	it("returns empty string for empty input", () => {
+		expect(dateTimeLocalToStoredUtc("")).toBe("");
+	});
+
+	it("falls back to space replacement for non-datetime-local input", () => {
+		expect(dateTimeLocalToStoredUtc("2026-02-09 06:01")).toBe("2026-02-09 06:01");
 	});
 });

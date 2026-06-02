@@ -298,6 +298,10 @@ export class GitOperations {
 			"connection timed out",
 			"temporary failure in name resolution",
 			"operation timed out",
+			"ssl_error_syscall",
+			"ssl_connect",
+			"ssl handshake failed",
+			"tls handshake timeout",
 		];
 
 		const lowerMessage = message.toLowerCase();

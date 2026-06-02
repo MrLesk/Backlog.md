@@ -37,6 +37,11 @@ export interface TaskEditArgs {
 	definitionOfDoneRemove?: number[];
 	definitionOfDoneCheck?: number[];
 	definitionOfDoneUncheck?: number[];
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 }
 
 export type TaskEditRequest = TaskEditArgs & { id: string };

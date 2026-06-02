@@ -205,5 +205,21 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.uncheckDefinitionOfDone = [...args.definitionOfDoneUncheck];
 	}
 
+	if (typeof args.dueDate === "string") {
+		updateInput.dueDate = args.dueDate.trim();
+	}
+	if (typeof args.plannedStart === "string") {
+		updateInput.plannedStart = args.plannedStart.trim();
+	}
+	if (typeof args.plannedEnd === "string") {
+		updateInput.plannedEnd = args.plannedEnd.trim();
+	}
+	if (typeof args.actualStart === "string") {
+		updateInput.actualStart = args.actualStart.trim();
+	}
+	if (typeof args.actualEnd === "string") {
+		updateInput.actualEnd = args.actualEnd.trim();
+	}
+
 	return updateInput;
 }

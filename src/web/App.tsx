@@ -4,11 +4,13 @@ import Layout from './components/Layout';
 import BoardPage from './components/BoardPage';
 import DocumentationDetail from './components/DocumentationDetail';
 import DecisionDetail from './components/DecisionDetail';
+import WikiDetail from './components/WikiDetail';
 import TaskList from './components/TaskList';
 import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
+import GanttView from './components/GanttView';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
 import { SuccessToast } from './components/SuccessToast';
@@ -16,6 +18,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import {
 	type Decision,
 	type DecisionSearchResult,
+	type DocsTreeNode,
 	type Document,
 	type DocumentSearchResult,
 	type BacklogConfig,
@@ -23,9 +26,13 @@ import {
 	type SearchResult,
 	type Task,
 	type TaskSearchResult,
+	type WikiTreeNode,
 } from '../types';
 import { apiClient } from './lib/api';
+import { collectAvailableLabels } from '../utils/label-filter';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
+import { useI18nContext } from './contexts/I18nContext';
+import { isValidLocale } from './locales';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 
@@ -163,11 +170,15 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
 function App() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskHistory, setTaskHistory] = useState<Task[]>([]);
+  const taskHistoryRef = useRef<Task[]>([]);
+  useEffect(() => { taskHistoryRef.current = taskHistory; }, [taskHistory]);
   const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
   const [config, setConfig] = useState<BacklogConfig | null>(null);
+  const labelColors = config?.labelColors;
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
@@ -181,9 +192,12 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [wikiTree, setWikiTree] = useState<WikiTreeNode[]>([]);
+  const [docsTree, setDocsTree] = useState<DocsTreeNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const { isOnline } = useHealthCheckContext();
+  const { setLocale } = useI18nContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
 
@@ -214,6 +228,17 @@ function App() {
   const handleInitialized = useCallback(() => {
     setIsInitialized(true);
   }, []);
+
+  const handleLabelColorsChange = useCallback(async (colors: Record<string, string>) => {
+    if (!config) return;
+    try {
+      const updated = { ...config, labelColors: colors };
+      await apiClient.updateConfig(updated);
+      setConfig(updated);
+    } catch (err) {
+      console.error('Failed to update label colors:', err);
+    }
+  }, [config]);
 
   const applySearchResults = useCallback((
     results: SearchResult[],
@@ -255,15 +280,22 @@ function App() {
     return { tasks: normalizedTasks, docs: docsList, decisions: decisionsList };
   }, []);
 
+  const hasLoadedRef = useRef(false);
+
   const loadAllData = useCallback(async () => {
+    const isFirstLoad = !hasLoadedRef.current;
     try {
-      setIsLoading(true);
-      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData] = await Promise.all([
+      if (isFirstLoad) {
+        setIsLoading(true);
+      }
+      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, wikiTreeData, docsTreeData] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
         apiClient.search(),
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
+        apiClient.fetchWikiTree(),
+        apiClient.fetchDocsTree(),
       ]);
 
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
@@ -274,6 +306,9 @@ function App() {
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
       setConfig(configData);
+      if (isFirstLoad && configData.locale && isValidLocale(configData.locale)) {
+        setLocale(configData.locale);
+      }
       setMilestoneEntities(milestonesData);
       setArchivedMilestones(archivedMilestonesData);
       setMilestones(
@@ -281,10 +316,15 @@ function App() {
           (milestone) => !archivedKeys.has(milestoneKey(milestone)),
         ),
       );
+      setWikiTree(wikiTreeData);
+      setDocsTree(docsTreeData);
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
-      setIsLoading(false);
+      if (isFirstLoad) {
+        setIsLoading(false);
+        hasLoadedRef.current = true;
+      }
     }
   }, [applySearchResults]);
 
@@ -359,6 +399,7 @@ function App() {
 
   const handleNewTask = () => {
     setEditingTask(null);
+    setTaskHistory([]);
     setIsDraftMode(false);
     setShowModal(true);
   };
@@ -366,18 +407,42 @@ function App() {
   const handleNewDraft = () => {
     // Create a draft task (same as new task but with status 'Draft')
     setEditingTask(null);
+    setTaskHistory([]);
     setIsDraftMode(true);
     setShowModal(true);
   };
 
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
+    setTaskHistory([]);
     setShowModal(true);
   };
+
+  const handlePromotedTask = (task: Task) => {
+    setEditingTask(task);
+    setTaskHistory([]);
+    setIsDraftMode(false);
+    setShowModal(true);
+  };
+
+  const handleDrillDown = useCallback((task: Task) => {
+    if (editingTask) {
+      setTaskHistory(prev => [...prev, editingTask]);
+    }
+    setEditingTask(task);
+  }, [editingTask]);
+
+  const handleBack = useCallback(() => {
+    const prevHistory = taskHistoryRef.current;
+    const parentTask = prevHistory[prevHistory.length - 1] ?? null;
+    setTaskHistory(prevHistory.slice(0, -1));
+    setEditingTask(parentTask);
+  }, []);
 
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingTask(null);
+    setTaskHistory([]);
     setIsDraftMode(false);
   };
 
@@ -483,6 +548,8 @@ function App() {
                 tasks={tasks}
                 docs={docs}
                 decisions={decisions}
+                wikiTree={wikiTree}
+                docsTree={docsTree}
                 isLoading={isLoading}
                 onRefreshData={refreshData}
               />
@@ -494,15 +561,17 @@ function App() {
                 <BoardPage
                   onEditTask={handleEditTask}
                   onNewTask={handleNewTask}
-                tasks={tasks}
-                onRefreshData={refreshData}
-                statuses={statuses}
-                milestones={milestones}
-                availableLabels={availableLabels}
-                milestoneEntities={milestoneEntities}
-                archivedMilestones={archivedMilestones}
-                isLoading={isLoading}
-              />
+                  tasks={tasks}
+                  onRefreshData={refreshData}
+                  statuses={statuses}
+                  milestones={milestones}
+                  availableLabels={collectAvailableLabels(tasks, availableLabels)}
+                  milestoneEntities={milestoneEntities}
+                  archivedMilestones={archivedMilestones}
+                  isLoading={isLoading}
+                  labelColors={labelColors}
+                  onLabelColorsChange={handleLabelColorsChange}
+                />
             }
           />
             <Route
@@ -534,15 +603,18 @@ function App() {
               />
             }
           />
-            <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
+            <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} availableStatuses={statuses} availableMilestones={milestones} milestoneEntities={milestoneEntities} availableLabels={availableLabels} />} />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
             <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
             <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
             <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
             <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
             <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
+            <Route path="wiki" element={<WikiDetail />} />
+            <Route path="wiki/*" element={<WikiDetail />} />
             <Route path="statistics" element={<Statistics tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="gantt" element={<GanttView tasks={tasks} onEditTask={handleEditTask} />} />
           </Route>
         </Routes>
 
@@ -553,12 +625,16 @@ function App() {
           onSaved={refreshData}
           onSubmit={handleSubmitTask}
           onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+          onPromoted={handlePromotedTask}
+          onDrillDown={handleDrillDown}
+          onBack={taskHistory.length > 0 ? handleBack : undefined}
           availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
           availableMilestones={milestones}
           milestoneEntities={milestoneEntities}
           archivedMilestoneEntities={archivedMilestones}
           isDraftMode={isDraftMode}
           definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+          availableLabels={collectAvailableLabels(tasks, availableLabels)}
         />
 
         {/* Task Creation Confirmation Toast */}

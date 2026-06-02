@@ -1,5 +1,6 @@
 import React from "react";
 import type { Task } from "../../types";
+import { useI18n } from "../hooks/useI18n";
 
 interface MilestoneTaskRowProps {
 	task: Task;
@@ -30,13 +31,15 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 	onEditTask,
 	onDragStart,
 	onDragEnd,
-}) => (
+}) => {
+	const { t } = useI18n();
+	return (
 	<div
 		draggable
 		onDragStart={(event) => onDragStart(event, task)}
 		onDragEnd={onDragEnd}
 		onClick={() => onEditTask(task)}
-		className="group grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 items-center px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
+		className="group grid grid-cols-[1.5rem_6rem_1fr_6rem_5rem] gap-3 items-center px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
 	>
 		<div className="w-6 flex justify-center opacity-40 group-hover:opacity-100 transition-opacity">
 			<DragHandle />
@@ -63,13 +66,14 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 		<div className="w-20 flex justify-center">
 			{task.priority ? (
 				<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${priorityBadgeClass}`}>
-					{task.priority}
+					{t.taskDetails.priorityLabel(task.priority)}
 				</span>
 			) : (
 				<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
 			)}
 		</div>
 	</div>
-);
+	);
+};
 
 export default MilestoneTaskRow;

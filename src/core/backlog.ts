@@ -1,6 +1,7 @@
 import { rename as moveFile, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { milestoneKey } from "../core/milestones.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -22,6 +23,7 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
+import { getStoredUtcTimestamp } from "../utils/date-utc.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import {
 	getDocumentSubPathFromRelativePath,
@@ -37,6 +39,7 @@ import {
 } from "../utils/milestone-filter.ts";
 import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
+	isInProgressStatus,
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
 } from "../utils/status.ts";
@@ -52,6 +55,7 @@ import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { AssetManager } from "./assets.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
@@ -124,7 +128,8 @@ function buildLatestStateMap(
 
 	for (const task of localTasks) {
 		if (!task.id) continue;
-		const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
+		const lastModified =
+			task.lastModified ?? (task.updatedDate ? new Date(getStoredUtcTimestamp(task.updatedDate)) : new Date(0));
 
 		update({
 			id: task.id,
@@ -173,6 +178,7 @@ function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTas
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
+	public assets: AssetManager;
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
@@ -180,6 +186,7 @@ export class Core {
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
+		this.assets = new AssetManager(join(dirname(this.fs.docsDir), "assets"));
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
@@ -851,7 +858,8 @@ export class Core {
 		// Add local active tasks to state
 		for (const task of localTasks) {
 			if (!task.id) continue;
-			const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
+			const lastModified =
+				task.lastModified ?? (task.updatedDate ? new Date(getStoredUtcTimestamp(task.updatedDate)) : new Date(0));
 			stateEntries.push({
 				id: task.id,
 				type: "task",
@@ -864,7 +872,7 @@ export class Core {
 		// Add local completed tasks to state
 		for (const task of localCompletedTasks) {
 			if (!task.id) continue;
-			const lastModified = task.updatedDate ? new Date(task.updatedDate) : new Date(0);
+			const lastModified = task.updatedDate ? new Date(getStoredUtcTimestamp(task.updatedDate)) : new Date(0);
 			stateEntries.push({
 				id: task.id,
 				type: "completed",
@@ -1052,7 +1060,21 @@ export class Core {
 				...(typeof input.finalSummary === "string" && { finalSummary: input.finalSummary }),
 				...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
+				...(input.dueDate && { dueDate: input.dueDate }),
+				...(input.plannedStart && { plannedStart: input.plannedStart }),
+				...(input.plannedEnd && { plannedEnd: input.plannedEnd }),
+				...(input.actualStart && { actualStart: input.actualStart }),
+				...(input.actualEnd && { actualEnd: input.actualEnd }),
 			};
+
+			// Auto-populate actualStart / actualEnd when created directly in terminal / in-progress status
+			const statuses = config?.statuses ?? DEFAULT_STATUSES;
+			if (isInProgressStatus(resolvedStatus) && !task.actualStart) {
+				task.actualStart = createdDate;
+			}
+			if (isTerminalStatus(resolvedStatus, statuses) && !task.actualEnd) {
+				task.actualEnd = createdDate;
+			}
 
 			const filePath = await this.writePreparedTask(task, isDraft);
 			return { task, filePath };
@@ -1085,6 +1107,58 @@ export class Core {
 
 		// Always set updatedDate when updating a task
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+
+		// Auto-populate actualStart / actualEnd on status changes
+		if (statusChanged) {
+			const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const config = await this.fs.loadConfig();
+			const statuses = config?.statuses ?? DEFAULT_STATUSES;
+
+			if (isInProgressStatus(newStatus) && !isInProgressStatus(oldStatus) && !task.actualStart) {
+				task.actualStart = now;
+			}
+			if (isTerminalStatus(newStatus, statuses) && !isTerminalStatus(oldStatus, statuses) && !task.actualEnd) {
+				task.actualEnd = now;
+			}
+
+			// Milestone-level auto-population
+			const taskMilestone = task.milestone;
+			if (taskMilestone) {
+				const milestone = await this.fs.loadMilestone(taskMilestone);
+				if (milestone) {
+					const taskMilestoneKey = milestoneKey(taskMilestone);
+					if (isInProgressStatus(newStatus) && !isInProgressStatus(oldStatus) && !milestone.actualStart) {
+						await this.fs.updateMilestone(
+							milestone.id,
+							milestone.title,
+							undefined,
+							undefined,
+							undefined,
+							undefined,
+							now,
+							undefined,
+						);
+					}
+					if (isTerminalStatus(newStatus, statuses) && !isTerminalStatus(oldStatus, statuses) && !milestone.actualEnd) {
+						const allTasks = await this.fs.listTasks();
+						const milestoneTasks = allTasks.filter((t) => milestoneKey(t.milestone) === taskMilestoneKey);
+						const allTerminal = milestoneTasks.every((t) => isTerminalStatus(t.status, statuses));
+						if (allTerminal) {
+							await this.fs.updateMilestone(
+								milestone.id,
+								milestone.title,
+								undefined,
+								undefined,
+								undefined,
+								undefined,
+								undefined,
+								now,
+							);
+						}
+					}
+				}
+			}
+		}
 
 		await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
@@ -1182,6 +1256,61 @@ export class Core {
 				mutated = true;
 			}
 		}
+
+		const applyOptionalDateField = (
+			value: string | undefined,
+			current: string | undefined,
+			assign: (next: string | undefined) => void,
+		) => {
+			if (typeof value === "string") {
+				const trimmed = value.trim();
+				const next = trimmed.length > 0 ? trimmed : undefined;
+				if ((current ?? undefined) !== next) {
+					assign(next);
+					mutated = true;
+				}
+			}
+		};
+
+		applyOptionalDateField(input.dueDate, task.dueDate, (next) => {
+			if (next === undefined) {
+				delete task.dueDate;
+			} else {
+				task.dueDate = next;
+			}
+		});
+
+		applyOptionalDateField(input.plannedStart, task.plannedStart, (next) => {
+			if (next === undefined) {
+				delete task.plannedStart;
+			} else {
+				task.plannedStart = next;
+			}
+		});
+
+		applyOptionalDateField(input.plannedEnd, task.plannedEnd, (next) => {
+			if (next === undefined) {
+				delete task.plannedEnd;
+			} else {
+				task.plannedEnd = next;
+			}
+		});
+
+		applyOptionalDateField(input.actualStart, task.actualStart, (next) => {
+			if (next === undefined) {
+				delete task.actualStart;
+			} else {
+				task.actualStart = next;
+			}
+		});
+
+		applyOptionalDateField(input.actualEnd, task.actualEnd, (next) => {
+			if (next === undefined) {
+				delete task.actualEnd;
+			} else {
+				task.actualEnd = next;
+			}
+		});
 
 		if (input.assignee !== undefined) {
 			const sanitizedAssignee = normalizeStringList(input.assignee) ?? [];
@@ -2063,10 +2192,16 @@ export class Core {
 		};
 	}
 
-	async renameMilestone(
+	async updateMilestone(
 		identifier: string,
 		title: string,
 		autoCommit?: boolean,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+		description?: string,
+		actualStart?: string,
+		actualEnd?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -2074,7 +2209,16 @@ export class Core {
 		milestone?: Milestone;
 		previousTitle?: string;
 	}> {
-		const result = await this.fs.renameMilestone(identifier, title);
+		const result = await this.fs.updateMilestone(
+			identifier,
+			title,
+			dueDate,
+			plannedStart,
+			plannedEnd,
+			description,
+			actualStart,
+			actualEnd,
+		);
 		if (!result.success) {
 			return result;
 		}
@@ -2089,7 +2233,7 @@ export class Core {
 				await this.git.resetPaths(commitPaths, repoRoot);
 				const rollbackTitle = result.previousTitle ?? title;
 				try {
-					await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
+					await this.fs.updateMilestone(result.milestone?.id ?? identifier, rollbackTitle);
 				} catch {
 					// Ignore rollback failure and propagate original commit error.
 				}
@@ -2136,8 +2280,8 @@ export class Core {
 			const taskDate = task.updatedDate || task.createdDate;
 			if (!taskDate) return false;
 
-			const date = new Date(taskDate);
-			return date < cutoffDate;
+			const date = getStoredUtcTimestamp(taskDate);
+			return date < cutoffDate.getTime();
 		});
 	}
 
@@ -2153,28 +2297,28 @@ export class Core {
 		return success;
 	}
 
-	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.promoteDraft(draftId);
+	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<Task | false> {
+		const task = await this.fs.promoteDraft(draftId);
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
+		if (task && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draftId, "draft")}`, repoRoot);
 		}
 
-		return success;
+		return task;
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.demoteTask(taskId);
+	async demoteTask(taskId: string, autoCommit?: boolean): Promise<string | null> {
+		const newDraftId = await this.fs.demoteTask(taskId);
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
+		if (newDraftId && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(taskId)}`, repoRoot);
 		}
 
-		return success;
+		return newDraftId;
 	}
 
 	/**
@@ -2802,7 +2946,9 @@ export class Core {
 				const stateEntries = branchStateEntries || [];
 				for (const completedTask of completedTasks) {
 					if (!completedTask.id) continue;
-					const lastModified = completedTask.updatedDate ? new Date(completedTask.updatedDate) : new Date(0);
+					const lastModified = completedTask.updatedDate
+						? new Date(getStoredUtcTimestamp(completedTask.updatedDate))
+						: new Date(0);
 					stateEntries.push({
 						id: completedTask.id,
 						type: "completed",

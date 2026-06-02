@@ -15,6 +15,8 @@ interface BoardPageProps {
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	isLoading: boolean;
+	labelColors?: Record<string, string>;
+	onLabelColorsChange?: (colors: Record<string, string>) => void;
 }
 
 export default function BoardPage({
@@ -28,6 +30,8 @@ export default function BoardPage({
 	milestoneEntities,
 	archivedMilestones,
 	isLoading,
+	labelColors,
+	onLabelColorsChange,
 }: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
@@ -139,6 +143,8 @@ export default function BoardPage({
 				filterLabels={filterLabels}
 				filterPriority={filterPriority}
 				onFiltersChange={handleFiltersChange}
+				labelColors={labelColors}
+				onLabelColorsChange={onLabelColorsChange}
 			/>
 		</div>
 	);

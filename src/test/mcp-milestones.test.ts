@@ -190,7 +190,7 @@ describe("MCP milestone tools", () => {
 		expect(edited?.milestone).toBe("m-0");
 
 		const rename = await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "1", to: "Release 2.1" } },
+			params: { name: "milestone_edit", arguments: { from: "1", to: "Release 2.1" } },
 		});
 		expect(getText(rename.content)).toContain('Renamed milestone "Release 2.0" (m-1)');
 		expect(getText(rename.content)).toContain('"Release 2.1"');
@@ -229,7 +229,7 @@ describe("MCP milestone tools", () => {
 		expect(updated?.milestone).toBe("m-01");
 
 		const renamed = await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "1", to: "Legacy Release Prime" } },
+			params: { name: "milestone_edit", arguments: { from: "1", to: "Legacy Release Prime" } },
 		});
 		expect(getText(renamed.content)).toContain("(m-01)");
 		expect(getText(renamed.content)).toContain('"Legacy Release Prime"');
@@ -363,7 +363,7 @@ describe("MCP milestone tools", () => {
 
 		const rename = await server.testInterface.callTool({
 			params: {
-				name: "milestone_rename",
+				name: "milestone_edit",
 				arguments: { from: "Release 1.0", to: "Release 2.0" },
 			},
 		});
@@ -400,7 +400,7 @@ describe("MCP milestone tools", () => {
 
 		const rename = await server.testInterface.callTool({
 			params: {
-				name: "milestone_rename",
+				name: "milestone_edit",
 				arguments: { from: "Release 1.0", to: "Release 2.0", updateTasks: false },
 			},
 		});
@@ -426,7 +426,7 @@ describe("MCP milestone tools", () => {
 
 		const originalCommitFiles = server.git.commitFiles.bind(server.git);
 		const originalResetPaths = server.git.resetPaths.bind(server.git);
-		const originalRenameMilestone = server.filesystem.renameMilestone.bind(server.filesystem);
+		const originalRenameMilestone = server.filesystem.updateMilestone.bind(server.filesystem);
 		const commitError = new Error("simulated commit failure");
 		let renameCalls = 0;
 
@@ -434,23 +434,23 @@ describe("MCP milestone tools", () => {
 			throw commitError;
 		}) as typeof server.git.commitFiles;
 		server.git.resetPaths = (async () => {}) as typeof server.git.resetPaths;
-		server.filesystem.renameMilestone = (async (...args: Parameters<typeof server.filesystem.renameMilestone>) => {
+		server.filesystem.updateMilestone = (async (...args: Parameters<typeof server.filesystem.updateMilestone>) => {
 			renameCalls += 1;
 			if (renameCalls === 1) {
 				return await originalRenameMilestone(...args);
 			}
 			throw new Error("simulated rollback failure");
-		}) as typeof server.filesystem.renameMilestone;
+		}) as typeof server.filesystem.updateMilestone;
 
 		try {
-			await expect(server.renameMilestone("Release 1.0", "Release 2.0", true)).rejects.toThrow(
+			await expect(server.updateMilestone("Release 1.0", "Release 2.0", true)).rejects.toThrow(
 				"simulated commit failure",
 			);
 			expect(renameCalls).toBe(2);
 		} finally {
 			server.git.commitFiles = originalCommitFiles;
 			server.git.resetPaths = originalResetPaths;
-			server.filesystem.renameMilestone = originalRenameMilestone;
+			server.filesystem.updateMilestone = originalRenameMilestone;
 		}
 	});
 
@@ -470,7 +470,7 @@ describe("MCP milestone tools", () => {
 
 		const rename = await server.testInterface.callTool({
 			params: {
-				name: "milestone_rename",
+				name: "milestone_edit",
 				arguments: { from: "Release 1.0", to: "Release 2.0", updateTasks: false },
 			},
 		});
@@ -497,7 +497,7 @@ describe("MCP milestone tools", () => {
 
 		const rename = await server.testInterface.callTool({
 			params: {
-				name: "milestone_rename",
+				name: "milestone_edit",
 				arguments: { from: "Release 1.0", to: "Release 1.0", updateTasks: false },
 			},
 		});
@@ -526,7 +526,7 @@ describe("MCP milestone tools", () => {
 
 		const rename = await server.testInterface.callTool({
 			params: {
-				name: "milestone_rename",
+				name: "milestone_edit",
 				arguments: { from: "Release 1.0", to: "Release 2.0", updateTasks: false },
 			},
 		});
@@ -603,7 +603,7 @@ describe("MCP milestone tools", () => {
 
 		const rename = await server.testInterface.callTool({
 			params: {
-				name: "milestone_rename",
+				name: "milestone_edit",
 				arguments: { from: "Release 1.0", to: "Release 2.0", updateTasks: false },
 			},
 		});
@@ -625,7 +625,7 @@ describe("MCP milestone tools", () => {
 		});
 
 		const rename = await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "Release A", to: "m-1" } },
+			params: { name: "milestone_edit", arguments: { from: "Release A", to: "m-1" } },
 		});
 		expect(rename.isError).toBe(true);
 		expect(getText(rename.content)).toContain("Milestone alias conflict");
@@ -644,7 +644,7 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Release B" } },
 		});
 		const renameCollision = await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "Release B", to: "m-1" } },
+			params: { name: "milestone_edit", arguments: { from: "Release B", to: "m-1" } },
 		});
 		expect(renameCollision.isError).toBe(true);
 		expect(getText(renameCollision.content)).toContain("Milestone alias conflict");
@@ -665,7 +665,7 @@ describe("MCP milestone tools", () => {
 		});
 
 		const renamed = await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "m-0", to: "Release A Prime" } },
+			params: { name: "milestone_edit", arguments: { from: "m-0", to: "Release A Prime" } },
 		});
 		expect(getText(renamed.content)).toContain('Renamed milestone "Release A" (m-0) → "Release A Prime" (m-0).');
 		expect(getText(renamed.content)).toContain("Updated 1 local task");
@@ -698,7 +698,7 @@ describe("MCP milestone tools", () => {
 		await server.editTask("task-1", { milestone: "Release A" });
 
 		await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "m-0", to: "Release A Prime" } },
+			params: { name: "milestone_edit", arguments: { from: "m-0", to: "Release A Prime" } },
 		});
 
 		const updatedTask = await server.getTask("task-1");
@@ -715,7 +715,7 @@ describe("MCP milestone tools", () => {
 		await server.editTask("task-1", { milestone: "0" });
 
 		await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "Release A", to: "Release A Prime" } },
+			params: { name: "milestone_edit", arguments: { from: "Release A", to: "Release A Prime" } },
 		});
 
 		const updatedTask = await server.getTask("task-1");
@@ -809,7 +809,7 @@ describe("MCP milestone tools", () => {
 		await server.editTask("task-1", { milestone: "0" });
 
 		const renameByTitle = await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "m-0", to: "ID-like title renamed" } },
+			params: { name: "milestone_edit", arguments: { from: "m-0", to: "ID-like title renamed" } },
 		});
 		expect(getText(renameByTitle.content)).toContain("Updated 1 local task");
 
@@ -836,7 +836,7 @@ describe("MCP milestone tools", () => {
 		expect(created?.milestone).toBe("m-1");
 
 		const renamed = await server.testInterface.callTool({
-			params: { name: "milestone_rename", arguments: { from: "1", to: "Canonical ID Prime" } },
+			params: { name: "milestone_edit", arguments: { from: "1", to: "Canonical ID Prime" } },
 		});
 		expect(getText(renamed.content)).toContain("(m-1)");
 	});

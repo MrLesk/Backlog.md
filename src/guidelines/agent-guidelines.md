@@ -110,6 +110,11 @@ title: Add GraphQL resolver
 status: To Do
 assignee: [@sara]
 labels: [backend, api]
+dueDate: 2026-06-15
+plannedStart: 2026-06-01
+plannedEnd: 2026-06-10
+actualStart: 2026-06-02 09:30
+actualEnd: 2026-06-09 17:00
 modified_files:
   - src/server/api.ts
   - src/web/components/TaskList.tsx
@@ -160,6 +165,16 @@ PR-style summary of what was implemented.
 | Status                  | `backlog task edit 42 -s "In Progress"`                  |
 | Assignee                | `backlog task edit 42 -a @sara`                          |
 | Labels                  | `backlog task edit 42 -l backend,api`                    |
+| Due Date                | `backlog task edit 42 --due-date 2026-06-15`             |
+| Planned Start           | `backlog task edit 42 --planned-start 2026-06-01`        |
+| Planned End             | `backlog task edit 42 --planned-end 2026-06-10`          |
+| Clear Due Date          | `backlog task edit 42 --clear-due-date`                  |
+| Clear Planned Start     | `backlog task edit 42 --clear-planned-start`             |
+| Clear Planned End       | `backlog task edit 42 --clear-planned-end`               |
+| Actual Start            | `backlog task edit 42 --actual-start 2026-06-02 09:30`   |
+| Actual End              | `backlog task edit 42 --actual-end 2026-06-09 17:00`     |
+| Clear Actual Start      | `backlog task edit 42 --clear-actual-start`              |
+| Clear Actual End        | `backlog task edit 42 --clear-actual-end`                |
 | Description             | `backlog task edit 42 -d "New description"`              |
 | Add AC                  | `backlog task edit 42 --ac "New criterion"`              |
 | Add DoD                 | `backlog task edit 42 --dod "Ship notes"`                |
@@ -187,6 +202,12 @@ PR-style summary of what was implemented.
 ```bash
 # Example
 backlog task create "Task title" -d "Description" --ac "First criterion" --ac "Second criterion"
+
+# With due date
+backlog task create "Task title" -d "Description" --due-date 2026-06-15
+
+# With planned dates
+backlog task create "Task title" -d "Description" --planned-start 2026-06-01 --planned-end 2026-06-10
 ```
 
 ### Title (one liner)
@@ -520,6 +541,10 @@ backlog search --modified-file src/server/api.ts --plain
 | Assign           | `backlog task edit 42 -a @sara`             |
 | Add labels       | `backlog task edit 42 -l backend,api`       |
 | Set priority     | `backlog task edit 42 --priority high`      |
+| Set actual start | `backlog task edit 42 --actual-start 2026-06-02 09:30` |
+| Set actual end   | `backlog task edit 42 --actual-end 2026-06-09 17:00` |
+
+> **Note on actual dates**: `actualStart` and `actualEnd` are automatically populated when you change a task's status (to "In Progress" and "Done" respectively). You do not need to set them manually unless the user explicitly requests it.
 
 ### Acceptance Criteria Management
 
@@ -707,6 +732,79 @@ backlog doc view doc-1
 - Document IDs are global across the entire docs tree, including nested subfolders.
 - Prefer CLI, MCP, or Web document APIs over ad-hoc file writes so frontmatter and metadata remain valid.
 
+### Milestones
+
+> Milestones group tasks by iteration, version, or release cycle. They are stored as Markdown files in `backlog/milestones/` and differ from `tasks/` (specific work items).
+
+Use Backlog.md public interfaces for milestone creation, listing, and archival so IDs, frontmatter, paths, and task relationships stay consistent.
+
+> **Important**: Assigning a milestone name to a task via `--milestone` only records the name on the task file; it **does not create a milestone file**. To create a milestone with an ID, dates, or other metadata, you must explicitly create it first using `milestone create` or `milestone_add`, then assign tasks to it.
+
+#### CLI Usage
+
+The CLI supports creating, listing, and archiving milestones.
+
+```bash
+# Create a new milestone file explicitly (saved under backlog/milestones/)
+backlog milestone create "Release 2.0" -d "Ship the v2.0 release"
+
+# Edit a milestone (title, description, dates)
+backlog milestone edit "Release 2.0" -t "Release 2.1" -d "Updated scope"
+backlog milestone edit "Release 2.0" --due-date 2026-06-15
+backlog milestone edit "Release 2.0" --planned-start 2026-06-01 --planned-end 2026-06-10
+backlog milestone edit "Release 2.0" --actual-start "2026-06-02 09:30" --actual-end "2026-06-09 17:00"
+backlog milestone edit "Release 2.0" --clear-due-date --clear-planned-start
+
+# List active milestones (shows completion ratio)
+backlog milestone list
+
+# Include completed milestones
+backlog milestone list --show-completed
+
+# Plain text output (AI-friendly)
+backlog milestone list --plain
+
+# Archive a completed milestone
+backlog milestone archive "Release 2.0"
+```
+
+Archiving removes the milestone from the active list, moves its file to the archive folder, and unbinds its tasks (tasks are not deleted).
+
+**Assigning tasks to milestones:**
+
+```bash
+# At creation
+backlog task create "Feature X" -m "Release 2.0"
+
+# Edit an existing task
+backlog task edit 7 --milestone "Release 2.0"
+
+# Clear milestone assignment
+backlog task edit 7 --clear-milestone
+```
+
+The `-m` / `--milestone` option supports fuzzy matching by title, ID (e.g. `m-2`), or numeric alias (e.g. `2`).
+
+**Board grouping by milestone:**
+
+```bash
+backlog board --milestones
+```
+
+#### MCP / API Usage
+
+- Use `milestone_add` to create milestones with title and optional description, actualStart, and actualEnd.
+- Use `milestone_edit` to rename a milestone and optionally update its date fields, including actualStart and actualEnd.
+- Use `milestone_archive` to archive a milestone.
+- Use `milestone_list` to list active and archived milestones.
+
+#### Key Rules
+
+- Milestone files live under `backlog/milestones/`; archived milestones move to `backlog/archive/milestones/`.
+- Milestone IDs follow the `m-N` format and are auto-assigned at creation.
+- Archiving unbinds tasks but does not delete them; tasks revert to the unassigned pool.
+- Prefer CLI or MCP APIs over ad-hoc file writes so frontmatter and metadata remain valid.
+
 ### Task Operations
 
 | Action             | Command                                      |
@@ -720,6 +818,30 @@ backlog doc view doc-1
 | Filter by assignee | `backlog task list -a @sara --plain`         |
 | Archive task       | `backlog task archive 42`                    |
 | Demote to draft    | `backlog task demote 42`                     |
+| Install wiki skill | `backlog wiki install claude`                |
+
+### Project Overview
+
+Display project-level task statistics and health indicators:
+
+```bash
+# Interactive colored TUI (default)
+backlog overview
+
+# Plain text output (no colors, pipe-friendly)
+backlog overview --plain
+```
+
+**Output includes:**
+- Status distribution (To Do, In Progress, Done, etc.)
+- Priority distribution (high, medium, low, none)
+- Recent activity (recently created and updated tasks)
+- Project health:
+  - Average task age
+  - At-risk tasks (due today or tomorrow)
+  - Overdue tasks (past due date)
+  - Stale tasks (no updates for 30+ days, no due date set)
+  - Blocked tasks (waiting on unmet dependencies)
 
 ---
 

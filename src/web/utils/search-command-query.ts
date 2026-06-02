@@ -17,7 +17,7 @@ interface Token {
 }
 
 const PRIORITIES: SearchPriorityFilter[] = ["high", "medium", "low"];
-const RESULT_TYPES: SearchResultType[] = ["task", "document", "decision"];
+const RESULT_TYPES: SearchResultType[] = ["task", "document", "decision", "wiki"];
 
 export function parseSearchCommandQuery(input: string): ParsedSearchCommandQuery {
 	const result: ParsedSearchCommandQuery = { query: "" };

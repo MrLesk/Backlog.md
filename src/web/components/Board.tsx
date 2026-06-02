@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
@@ -29,14 +30,9 @@ interface BoardProps {
   filterLabels?: string[];
   filterPriority?: string;
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
+  labelColors?: Record<string, string>;
+  onLabelColorsChange?: (colors: Record<string, string>) => void;
 }
-
-const PRIORITY_OPTIONS = [
-  { label: 'All priorities', value: '' },
-  { label: 'High', value: 'high' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'Low', value: 'low' },
-] as const;
 
 const BOARD_FILTER_SELECT_CLASS =
   'min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200';
@@ -62,10 +58,20 @@ const Board: React.FC<BoardProps> = ({
   filterLabels = [],
   filterPriority = '',
   onFiltersChange,
+  labelColors,
+  onLabelColorsChange,
 }) => {
+  const { t } = useI18n();
+  const PRIORITY_OPTIONS = [
+    { label: t.board.allPriorities, value: '' },
+    { label: t.common.high, value: 'high' },
+    { label: t.common.medium, value: 'medium' },
+    { label: t.common.low, value: 'low' },
+  ] as const;
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [dragSourceLane, setDragSourceLane] = useState<string | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
@@ -413,7 +419,7 @@ const Board: React.FC<BoardProps> = ({
 
   const getLaneLabel = (lane: typeof lanes[0]): string => {
     if (lane.isNoMilestone || !lane.milestone) {
-      return 'Unassigned';
+      return t.common.unassigned;
     }
     return lane.label;
   };
@@ -428,7 +434,7 @@ const Board: React.FC<BoardProps> = ({
   if (isLoading && statuses.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-lg text-gray-600 dark:text-gray-300 transition-colors duration-200">Loading tasks...</div>
+        <div className="text-lg text-gray-600 dark:text-gray-300 transition-colors duration-200">{t.board.loading}</div>
       </div>
     );
   }
@@ -447,8 +453,8 @@ const Board: React.FC<BoardProps> = ({
       )}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
-          <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Board view controls">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">{t.board.title}</h2>
+          <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label={t.board.viewControls}>
             <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-1 bg-gray-50 dark:bg-gray-800/50 transition-colors duration-200">
               <button
                 type="button"
@@ -459,13 +465,13 @@ const Board: React.FC<BoardProps> = ({
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                 }`}
               >
-                All Tasks
+                {t.board.allTasks}
               </button>
               <button
                 type="button"
                 onClick={() => onLaneChange('milestone')}
                 disabled={!hasTasksWithMilestones}
-                title={!hasTasksWithMilestones ? 'No tasks have milestones. Assign milestones to tasks first.' : 'Group tasks by milestone'}
+                title={!hasTasksWithMilestones ? t.board.noMilestonesHint : t.board.groupByMilestone}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ${
                   !hasTasksWithMilestones
                     ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50'
@@ -474,19 +480,19 @@ const Board: React.FC<BoardProps> = ({
                       : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                 }`}
               >
-                Milestone
+                {t.board.milestoneSwimlanes}
               </button>
             </div>
             {onFiltersChange && (
-              <div className="flex flex-wrap items-center gap-3" aria-label="Board filters">
+              <div className="flex flex-wrap items-center gap-3" aria-label={t.board.filters}>
                 <select
-                  aria-label="Filter board by assignee"
+                  aria-label={t.board.filterAssignee}
                   value={filterAssignee}
                   onChange={e => onFiltersChange({ assignee: e.target.value, labels: normalizedFilterLabels, priority: filterPriority })}
                   className={BOARD_FILTER_SELECT_CLASS}
                 >
-                  <option value="">All assignees</option>
-                  <option value="__unassigned__">Unassigned</option>
+                  <option value="">{t.board.allAssignees}</option>
+                  <option value="__unassigned__">{t.common.unassigned}</option>
                   {uniqueAssignees.map(a => (
                     <option key={a} value={a}>{a}</option>
                   ))}
@@ -498,10 +504,12 @@ const Board: React.FC<BoardProps> = ({
                   onChange={labels => onFiltersChange({ assignee: filterAssignee, labels, priority: filterPriority })}
                   menuId="board-labels-filter-menu"
                   className="min-w-[200px]"
+                  labelColors={labelColors}
+                  onLabelColorsChange={onLabelColorsChange}
                 />
 
                 <select
-                  aria-label="Filter board by priority"
+                  aria-label={t.board.filterPriority}
                   value={filterPriority}
                   onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: e.target.value })}
                   className={BOARD_FILTER_SELECT_CLASS}
@@ -517,7 +525,7 @@ const Board: React.FC<BoardProps> = ({
                     onClick={() => onFiltersChange({ assignee: '', labels: [], priority: '' })}
                     className={BOARD_FILTER_BUTTON_CLASS}
                   >
-                    Clear filters
+                    {t.board.clearFilters}
                   </button>
                 )}
               </div>
@@ -528,7 +536,7 @@ const Board: React.FC<BoardProps> = ({
           className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
           onClick={onNewTask}
         >
-          + New Task
+          {t.board.newTask}
         </button>
       </div>
 
@@ -594,17 +602,22 @@ const Board: React.FC<BoardProps> = ({
                             onTaskReorder={handleTaskReorder}
                             dragSourceStatus={dragSourceStatus}
                             dragSourceLane={dragSourceLane}
+                            draggedTaskId={draggedTaskId}
                             laneId={lane.key}
                             targetMilestone={lane.milestone ?? null}
-                            onDragStart={({ status: draggedStatus, laneId }) => {
+                            onDragStart={({ status: draggedStatus, laneId, taskId }) => {
                               setDragSourceStatus(draggedStatus);
                               setDragSourceLane(laneId ?? null);
+                              setDraggedTaskId(taskId);
                             }}
                             onDragEnd={() => {
                               setDragSourceStatus(null);
                               setDragSourceLane(null);
+                              setDraggedTaskId(null);
                             }}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                            terminalStatus={terminalStatus}
+                            labelColors={labelColors}
                           />
                         </div>
                       ))}
@@ -628,16 +641,21 @@ const Board: React.FC<BoardProps> = ({
                   onTaskReorder={handleTaskReorder}
                   dragSourceStatus={dragSourceStatus}
                   dragSourceLane={dragSourceLane}
+                  draggedTaskId={draggedTaskId}
                   laneId={DEFAULT_LANE_KEY}
-                  onDragStart={({ status: draggedStatus, laneId }) => {
+                  onDragStart={({ status: draggedStatus, laneId, taskId }) => {
                     setDragSourceStatus(draggedStatus);
                     setDragSourceLane(laneId ?? null);
+                    setDraggedTaskId(taskId);
                   }}
                   onDragEnd={() => {
                     setDragSourceStatus(null);
                     setDragSourceLane(null);
+                    setDraggedTaskId(null);
                   }}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                  terminalStatus={terminalStatus}
+                  labelColors={labelColors}
                 />
               </div>
             ))}

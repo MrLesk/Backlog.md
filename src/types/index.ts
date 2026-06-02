@@ -54,6 +54,11 @@ export interface Task {
 	branch?: string;
 	ordinal?: number;
 	filePath?: string;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 	// Metadata fields
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed" | "local-branch";
@@ -107,6 +112,11 @@ export interface TaskCreateInput {
 	definitionOfDoneAdd?: string[];
 	disableDefinitionOfDoneDefaults?: boolean;
 	rawContent?: string;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 }
 
 export interface TaskUpdateInput {
@@ -139,6 +149,11 @@ export interface TaskUpdateInput {
 	finalSummary?: string;
 	appendFinalSummary?: string[];
 	clearFinalSummary?: boolean;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
 	addAcceptanceCriteria?: Array<AcceptanceCriterionInput | string>;
 	removeAcceptanceCriteria?: number[];
@@ -177,6 +192,11 @@ export interface Milestone {
 	title: string;
 	description: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 }
 
 export const DOCUMENT_TYPE_VALUES = ["readme", "guide", "specification", "other"] as const;
@@ -213,7 +233,7 @@ export interface DocumentUpdateInput {
 	tags?: string[];
 }
 
-export type SearchResultType = "task" | "document" | "decision";
+export type SearchResultType = "task" | "document" | "decision" | "wiki";
 
 export type SearchPriorityFilter = "high" | "medium" | "low";
 
@@ -259,7 +279,14 @@ export interface DecisionSearchResult {
 	matches?: SearchMatch[];
 }
 
-export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult;
+export interface WikiSearchResult {
+	type: "wiki";
+	score: number | null;
+	wiki: WikiPage;
+	matches?: SearchMatch[];
+}
+
+export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult | WikiSearchResult;
 
 export interface Sequence {
 	/** 1-based sequence index */
@@ -294,6 +321,7 @@ export interface BacklogConfig {
 	defaultEditor?: string;
 	autoOpenBrowser?: boolean;
 	defaultPort?: number;
+	locale?: string;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
 	/** Disable all Git integration for filesystem-only projects. */
@@ -307,6 +335,8 @@ export interface BacklogConfig {
 	backlogDirectory?: string;
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */
 	onStatusChange?: string;
+	/** Custom label colors mapped by label name to a color key. */
+	labelColors?: Record<string, string>;
 	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
 	prefixes?: PrefixConfig;
 	mcp?: {
@@ -333,4 +363,26 @@ export interface BacklogConfig {
 export interface ParsedMarkdown {
 	frontmatter: Record<string, unknown>;
 	content: string;
+}
+
+export interface WikiTreeNode {
+	name: string;
+	path: string;
+	type: "file" | "directory";
+	children?: WikiTreeNode[];
+}
+
+export interface DocsTreeNode {
+	name: string;
+	path: string;
+	type: "file" | "directory";
+	docId?: string;
+	docTitle?: string;
+	children?: DocsTreeNode[];
+}
+
+export interface WikiPage {
+	content: string;
+	frontmatter: Record<string, unknown>;
+	path: string;
 }

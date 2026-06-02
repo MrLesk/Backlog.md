@@ -1,16 +1,37 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import MDEditor from "@uiw/react-md-editor";
 import { renderMermaidIn } from "../utils/mermaid";
+import { apiClient } from "../lib/api";
+import { useI18n } from '../hooks/useI18n';
 
 interface Props {
 	source: string;
+	onFileClick?: (path: string) => void;
 }
 
 const URI_AUTOLINK_PREFIX_REGEX = /^<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\u0000-\u0020]*>/;
 const EMAIL_AUTOLINK_PREFIX_REGEX = /^<[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z0-9-]+>/;
 
 function sanitizeMarkdownSource(source: string): string {
+	const protectedRanges: { start: number; end: number }[] = [];
+
+	// Protect code blocks (```...```)
+	for (const match of source.matchAll(/```[\s\S]*?```/g)) {
+		protectedRanges.push({ start: match.index!, end: match.index! + match[0].length });
+	}
+
+	// Protect inline code (`...`)
+	for (const match of source.matchAll(/`[^`\n]+`/g)) {
+		protectedRanges.push({ start: match.index!, end: match.index! + match[0].length });
+	}
+
 	return source.replace(/<(?=[A-Za-z])/g, (match, offset, fullText) => {
+		// Skip replacement inside code blocks and inline code
+		for (const range of protectedRanges) {
+			if (offset >= range.start && offset < range.end) {
+				return match;
+			}
+		}
 		const remaining = fullText.slice(offset);
 		if (URI_AUTOLINK_PREFIX_REGEX.test(remaining) || EMAIL_AUTOLINK_PREFIX_REGEX.test(remaining)) {
 			return match;
@@ -19,9 +40,17 @@ function sanitizeMarkdownSource(source: string): string {
 	});
 }
 
-export default function MermaidMarkdown({ source }: Props) {
+function isExternalLink(href?: string): boolean {
+	if (!href) return true;
+	if (href.startsWith("#")) return false;
+	if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return true;
+	return false;
+}
+
+export default function MermaidMarkdown({ source, onFileClick }: Props) {
 	const ref = useRef<HTMLDivElement | null>(null);
 	const safeSource = sanitizeMarkdownSource(source);
+	const { t } = useI18n();
 
 	useEffect(() => {
 		if (!ref.current) return;
@@ -37,9 +66,50 @@ export default function MermaidMarkdown({ source }: Props) {
 		return () => cancelAnimationFrame(frameId);
 	}, [safeSource]);
 
+	const LinkComponent = React.useCallback(
+		({ href, children }: { href?: string; children?: React.ReactNode }) => {
+			if (isExternalLink(href)) {
+				return (
+					<a href={href} target="_blank" rel="noopener noreferrer">
+						{children}
+					</a>
+				);
+			}
+
+			if (!onFileClick) {
+				return <a href={href}>{children}</a>;
+			}
+
+			const handleClick = async (e: React.MouseEvent) => {
+				e.preventDefault();
+				if (!href) return;
+				try {
+					// Verify file exists before opening preview
+					await apiClient.fetchFileContent(href);
+					onFileClick(href);
+				} catch {
+					// File not found or inaccessible: fall back to normal link behavior
+					window.open(href, "_blank");
+				}
+			};
+
+			return (
+				<a
+					href={href}
+					onClick={handleClick}
+					className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+					title={t.mermaidMarkdown.clickToPreview}
+				>
+					{children}
+				</a>
+			);
+		},
+		[onFileClick, t],
+	);
+
 	return (
 		<div ref={ref} className="wmde-markdown">
-			<MDEditor.Markdown source={safeSource} />
+			<MDEditor.Markdown source={safeSource} components={{ a: LinkComponent }} />
 		</div>
 	);
 }

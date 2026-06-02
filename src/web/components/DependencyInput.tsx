@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 import { type Task } from '../../types';
+import { useI18n } from '../hooks/useI18n';
 
 interface DependencyInputProps {
   value: string[];
@@ -8,14 +9,16 @@ interface DependencyInputProps {
   currentTaskId?: string;
   label?: string; // optional label; render only if provided
   disabled?: boolean;
+  onTaskClick?: (taskId: string) => void;
 }
 
-const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, currentTaskId, label = 'Dependencies', disabled }) => {
+const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, currentTaskId, label, disabled, onTaskClick }) => {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputId = 'dependency-input';
+  const { t } = useI18n();
 
   // Get task display text
   const getTaskDisplay = (taskId: string) => {
@@ -106,7 +109,11 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
         <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
           {label}
         </label>
-      ) : null}
+      ) : (
+        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
+          {t.dependencyInput.label}
+        </label>
+      )}
       <div className="relative w-full">
         <div className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200 max-h-60 overflow-auto pr-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
           {/* Display selected dependencies */}
@@ -117,15 +124,26 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                   key={index}
                   className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200 min-w-0 max-w-full"
                 >
-                  <span className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]">{getTaskDisplay(taskId)}</span>
-	                  {!disabled && (
-	                    <button
-	                      type="button"
-	                      onClick={() => removeDependency(index)}
-	                      className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
-	                      aria-label={`Remove ${taskId}`}
-	                    >
-	                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  {onTaskClick ? (
+                    <button
+                      type="button"
+                      onClick={() => onTaskClick(taskId)}
+                      className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem] text-left hover:underline cursor-pointer"
+                      title={getTaskDisplay(taskId)}
+                    >
+                      {getTaskDisplay(taskId)}
+                    </button>
+                  ) : (
+                    <span className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]">{getTaskDisplay(taskId)}</span>
+                  )}
+                  {!disabled && (
+                    <button
+                      type="button"
+                      onClick={() => removeDependency(index)}
+                      className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
+                      aria-label={`${t.common.remove} ${taskId}`}
+                    >
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                         <path
                           fillRule="evenodd"
                           d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
@@ -146,7 +164,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder={value.length === 0 ? "Type task ID or title, then press Enter or comma" : "Add more dependencies..."}
+            placeholder={value.length === 0 ? t.dependencyInput.placeholderEmpty : t.dependencyInput.placeholderAddMore}
             className="w-full outline-none text-sm bg-transparent resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
             rows={1}
             disabled={disabled}
@@ -156,15 +174,15 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
         {/* Suggestions dropdown */}
         {suggestions.length > 0 && (
           <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-64 overflow-auto overscroll-contain transition-colors duration-200">
-	            {suggestions.map((task, index) => (
-	              <button
-	                key={task.id}
-	                type="button"
-	                onClick={() => addDependency(task.id)}
-	                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 ${
-	                  index === selectedIndex ? 'bg-gray-100 dark:bg-gray-700' : ''
-	                }`}
-	              >
+            {suggestions.map((task, index) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => addDependency(task.id)}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 ${
+                  index === selectedIndex ? 'bg-gray-100 dark:bg-gray-700' : ''
+                }`}
+              >
                 <div className="font-medium text-gray-900 dark:text-white">{task.id}</div>
                 <div className="text-gray-600 dark:text-gray-300 break-words whitespace-normal">{task.title}</div>
               </button>

@@ -1,11 +1,21 @@
-import { mkdir, rename, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
-import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import { parseDecision, parseDocument, parseMarkdown, parseMilestone, parseTask } from "../markdown/parser.ts";
+import { serializeDecision, serializeDocument, serializeMilestone, serializeTask } from "../markdown/serializer.ts";
+import type {
+	BacklogConfig,
+	Decision,
+	DocsTreeNode,
+	Document,
+	Milestone,
+	Task,
+	TaskListFilter,
+	WikiPage,
+	WikiTreeNode,
+} from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
@@ -558,7 +568,7 @@ export class FileSystem {
 		}
 	}
 
-	async promoteDraft(draftId: string): Promise<boolean> {
+	async promoteDraft(draftId: string): Promise<Task | false> {
 		try {
 			return await this.withCreateLock(async () => {
 				// Load the draft
@@ -596,7 +606,9 @@ export class FileSystem {
 				// Delete old draft file
 				await unlink(draft.filePath);
 
-				return true;
+				// Load the saved task to get the full object with filePath
+				const savedTask = await this.loadTask(newTaskId);
+				return savedTask ?? promotedTask;
 			});
 		} catch (error) {
 			if (isCreateLockError(error)) {
@@ -606,12 +618,12 @@ export class FileSystem {
 		}
 	}
 
-	async demoteTask(taskId: string): Promise<boolean> {
+	async demoteTask(taskId: string): Promise<string | null> {
 		try {
 			return await this.withCreateLock(async () => {
 				// Load the task
 				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return false;
+				if (!task?.filePath) return null;
 
 				// Get existing draft IDs to generate next ID
 				// Draft prefix is always "draft" (not configurable like task prefix)
@@ -634,13 +646,13 @@ export class FileSystem {
 				// Delete old task file
 				await unlink(task.filePath);
 
-				return true;
+				return newDraftId;
 			});
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw error;
 			}
-			return false;
+			return null;
 		}
 	}
 
@@ -917,14 +929,8 @@ export class FileSystem {
 		return `${id} - ${safeTitle}.md`;
 	}
 
-	private serializeMilestoneContent(id: string, title: string, rawContent: string): string {
-		return `---
-id: ${id}
-title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
----
-
-${rawContent.trim()}
-`;
+	private serializeMilestoneContent(milestone: Milestone): string {
+		return serializeMilestone(milestone);
 	}
 
 	private rewriteDefaultMilestoneDescription(rawContent: string, previousTitle: string, nextTitle: string): string {
@@ -1089,7 +1095,15 @@ ${rawContent.trim()}
 		}
 	}
 
-	async createMilestone(title: string, description?: string): Promise<Milestone> {
+	async createMilestone(
+		title: string,
+		description?: string,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+		actualStart?: string,
+		actualEnd?: string,
+	): Promise<Milestone> {
 		return await this.withCreateLock(async () => {
 			const milestonesDir = await this.getMilestonesDir();
 
@@ -1135,13 +1149,17 @@ ${rawContent.trim()}
 			const id = `m-${nextId}`;
 
 			const filename = this.buildMilestoneFilename(id, title);
-			const content = this.serializeMilestoneContent(
+			const content = this.serializeMilestoneContent({
 				id,
 				title,
-				`## Description
-
-${description || `Milestone: ${title}`}`,
-			);
+				description: description || `Milestone: ${title}`,
+				rawContent: `## Description\n\n${description || `Milestone: ${title}`}`,
+				...(dueDate !== undefined && { dueDate: dueDate.trim() || undefined }),
+				...(plannedStart !== undefined && { plannedStart: plannedStart.trim() || undefined }),
+				...(plannedEnd !== undefined && { plannedEnd: plannedEnd.trim() || undefined }),
+				...(actualStart !== undefined && { actualStart: actualStart.trim() || undefined }),
+				...(actualEnd !== undefined && { actualEnd: actualEnd.trim() || undefined }),
+			});
 
 			const filepath = join(milestonesDir, filename);
 			await Bun.write(filepath, content);
@@ -1155,9 +1173,15 @@ ${description || `Milestone: ${title}`}`,
 		});
 	}
 
-	async renameMilestone(
+	async updateMilestone(
 		identifier: string,
 		title: string,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+		description?: string,
+		actualStart?: string,
+		actualEnd?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -1187,12 +1211,28 @@ ${description || `Milestone: ${title}`}`,
 			targetPath = join(milestonesDir, targetFilename);
 			sourcePath = milestoneMatch.filepath;
 			originalContent = milestoneMatch.content;
-			const nextRawContent = this.rewriteDefaultMilestoneDescription(
+			let nextRawContent = this.rewriteDefaultMilestoneDescription(
 				milestone.rawContent,
 				milestone.title,
 				normalizedTitle,
 			);
-			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent);
+			if (description !== undefined) {
+				nextRawContent = nextRawContent.replace(
+					/##\s+Description\s*(?:\r?\n)+([\s\S]*?)(?=\n##\s+|$)/i,
+					`## Description\n\n${description}`,
+				);
+			}
+			const updatedContent = this.serializeMilestoneContent({
+				...milestone,
+				title: normalizedTitle,
+				description: parseMilestone(nextRawContent).description,
+				rawContent: nextRawContent,
+				...(dueDate !== undefined && { dueDate: dueDate.trim() || undefined }),
+				...(plannedStart !== undefined && { plannedStart: plannedStart.trim() || undefined }),
+				...(plannedEnd !== undefined && { plannedEnd: plannedEnd.trim() || undefined }),
+				...(actualStart !== undefined && { actualStart: actualStart.trim() || undefined }),
+				...(actualEnd !== undefined && { actualEnd: actualEnd.trim() || undefined }),
+			});
 
 			if (sourcePath !== targetPath) {
 				if (await Bun.file(targetPath).exists()) {
@@ -1421,6 +1461,36 @@ ${description || `Milestone: ${title}`}`,
 				case "backlogDirectory":
 					config.backlogDirectory = value.replace(/['"]/g, "");
 					break;
+				case "locale":
+					config.locale = value.replace(/['"]/g, "");
+					break;
+				case "label_colors":
+				case "labelColors":
+					if (value.startsWith("{") && value.endsWith("}")) {
+						try {
+							const inner = value.slice(1, -1);
+							const pairs = inner
+								.split(",")
+								.map((p) => p.trim())
+								.filter(Boolean);
+							const colors: Record<string, string> = {};
+							for (const pair of pairs) {
+								const colonIdx = pair.indexOf(":");
+								if (colonIdx !== -1) {
+									const k = pair.substring(0, colonIdx).trim().replace(/['"]/g, "");
+									const v = pair
+										.substring(colonIdx + 1)
+										.trim()
+										.replace(/['"]/g, "");
+									if (k) colors[k] = v;
+								}
+							}
+							config.labelColors = colors;
+						} catch {
+							// ignore malformed object
+						}
+					}
+					break;
 			}
 		}
 
@@ -1447,6 +1517,8 @@ ${description || `Milestone: ${title}`}`,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
+			locale: config.locale,
+			labelColors: config.labelColors,
 		};
 	}
 
@@ -1479,6 +1551,14 @@ ${description || `Milestone: ${title}`}`,
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...(config.locale ? [`locale: "${config.locale}"`] : []),
+			...(config.labelColors && Object.keys(config.labelColors).length > 0
+				? [
+						`label_colors: {${Object.entries(config.labelColors)
+							.map(([k, v]) => `"${k}": "${v}"`)
+							.join(", ")}}`,
+					]
+				: []),
 		];
 
 		return `${lines.join("\n")}\n`;
@@ -1603,6 +1683,385 @@ ${description || `Milestone: ${title}`}`,
 		}
 
 		return changed ? escaped : undefined;
+	}
+
+	async readProjectFile(rawPath: string): Promise<{
+		content: string;
+		path: string;
+		lineStart?: number;
+		lineEnd?: number;
+		totalLines: number;
+		isMarkdown: boolean;
+	}> {
+		const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+		const lineRangeMatch = rawPath.match(/^(.+?)(?::(\d+)(?:-(\d+))?)?$/);
+		const filePath = lineRangeMatch?.[1] ?? rawPath;
+		const lineStart = lineRangeMatch?.[2] ? Number.parseInt(lineRangeMatch[2], 10) : undefined;
+		const lineEnd = lineRangeMatch?.[3] ? Number.parseInt(lineRangeMatch[3], 10) : lineStart;
+
+		const rootDir = resolve(this.projectRoot);
+		const targetPath = resolve(join(rootDir, filePath));
+
+		// Robust containment check: reject traversal, absolute paths, and root itself
+		const rel = relative(rootDir, targetPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside || isAbsolute(filePath)) {
+			throw new Error("Access denied");
+		}
+
+		let fileStats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
+		try {
+			fileStats = await stat(targetPath);
+		} catch {
+			throw new Error("File not found");
+		}
+		if (fileStats.isDirectory()) {
+			throw new Error("Path is a directory");
+		}
+		if (fileStats.size > MAX_FILE_SIZE) {
+			throw new Error("File too large");
+		}
+
+		const file = Bun.file(targetPath);
+		const fullContent = await file.text();
+		const allLines = fullContent.split(/\r?\n/);
+		const totalLines = allLines.length;
+
+		let content: string;
+		let start: number | undefined;
+		let end: number | undefined;
+
+		if (lineStart !== undefined && lineEnd !== undefined) {
+			start = Math.max(1, lineStart);
+			end = Math.min(totalLines, lineEnd);
+			if (start > end) {
+				throw new Error("Invalid line range");
+			}
+			content = allLines.slice(start - 1, end).join("\n");
+		} else {
+			content = fullContent;
+		}
+
+		const isMarkdown = targetPath.toLowerCase().endsWith(".md");
+
+		return {
+			content,
+			path: filePath,
+			lineStart: start,
+			lineEnd: end,
+			totalLines,
+			isMarkdown,
+		};
+	}
+
+	async listProjectFiles(rawPath: string): Promise<{ name: string; type: "file" | "directory" }[]> {
+		const rootDir = resolve(this.projectRoot);
+		const targetPath = resolve(join(rootDir, rawPath));
+
+		// Robust containment check: reject traversal, absolute paths, and root itself
+		const rel = relative(rootDir, targetPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside || isAbsolute(rawPath)) {
+			throw new Error("Access denied");
+		}
+
+		let fileStats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
+		try {
+			fileStats = await stat(targetPath);
+		} catch {
+			throw new Error("Path not found");
+		}
+		if (!fileStats.isDirectory()) {
+			throw new Error("Path is not a directory");
+		}
+
+		const entries = await readdir(targetPath, { withFileTypes: true });
+		const results = entries
+			.filter((entry) => entry.isFile() || entry.isDirectory())
+			.map((entry) => ({
+				name: entry.name,
+				type: entry.isDirectory() ? ("directory" as const) : ("file" as const),
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name));
+
+		return results;
+	}
+
+	async searchProjectFiles(query: string): Promise<{ name: string; path: string; type: "file" | "directory" }[]> {
+		const MAX_RESULTS = 50;
+		const rootDir = resolve(this.projectRoot);
+		const lowerQuery = query.toLowerCase();
+		const results: { name: string; path: string; type: "file" | "directory" }[] = [];
+
+		const excludeDirs = new Set(["node_modules", ".git", "dist", "build", ".backlog", ".locks"]);
+
+		const walk = async (dirPath: string, relPath: string): Promise<void> => {
+			if (results.length >= MAX_RESULTS) return;
+			const entries = await readdir(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (results.length >= MAX_RESULTS) return;
+				if (entry.name.startsWith(".")) continue;
+				const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+				if (entry.isDirectory()) {
+					if (excludeDirs.has(entry.name)) continue;
+					if (entry.name.toLowerCase().includes(lowerQuery)) {
+						results.push({ name: entry.name, path: entryRelPath, type: "directory" });
+					}
+					await walk(join(dirPath, entry.name), entryRelPath);
+				} else if (entry.isFile()) {
+					if (entry.name.toLowerCase().includes(lowerQuery)) {
+						results.push({ name: entry.name, path: entryRelPath, type: "file" });
+					}
+				}
+			}
+		};
+
+		await walk(rootDir, "");
+		return results;
+	}
+
+	async getWikiTree(): Promise<WikiTreeNode[]> {
+		const wikiRoot = join(this.resolvedBacklogDir, "wiki");
+		return this.buildWikiTreeRecursive(wikiRoot, "");
+	}
+
+	async listWikiPages(): Promise<WikiPage[]> {
+		const wikiRoot = join(this.resolvedBacklogDir, "wiki");
+		const pages: WikiPage[] = [];
+		const walk = async (dirPath: string, relPath: string) => {
+			const entries = await readdir(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+				if (entry.isDirectory()) {
+					if (entry.name === "wiki_output") continue;
+					await walk(join(dirPath, entry.name), entryRelPath);
+				} else if (entry.isFile() && entry.name.endsWith(".md")) {
+					try {
+						pages.push(await this.readWikiPage(entryRelPath));
+					} catch {
+						// skip unreadable pages
+					}
+				}
+			}
+		};
+		try {
+			await walk(wikiRoot, "");
+		} catch {
+			// wiki directory may not exist
+		}
+		return pages;
+	}
+
+	private async buildWikiTreeRecursive(dirPath: string, relPath: string): Promise<WikiTreeNode[]> {
+		const entries = await readdir(dirPath, { withFileTypes: true });
+		const nodes: WikiTreeNode[] = [];
+		for (const entry of entries) {
+			const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				if (entry.name === "wiki_output") continue;
+				const children = await this.buildWikiTreeRecursive(join(dirPath, entry.name), entryRelPath);
+				nodes.push({ name: entry.name, path: entryRelPath, type: "directory", children });
+			} else if (entry.isFile() && entry.name.endsWith(".md")) {
+				nodes.push({ name: entry.name, path: entryRelPath, type: "file" });
+			}
+		}
+		return nodes;
+	}
+
+	async getDocsTree(): Promise<DocsTreeNode[]> {
+		const docsDir = await this.getDocsDir();
+		return this.buildDocsTreeRecursive(docsDir, "");
+	}
+
+	private async buildDocsTreeRecursive(dirPath: string, relPath: string): Promise<DocsTreeNode[]> {
+		const entries = await readdir(dirPath, { withFileTypes: true });
+		const nodes: DocsTreeNode[] = [];
+		for (const entry of entries) {
+			const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				const children = await this.buildDocsTreeRecursive(join(dirPath, entry.name), entryRelPath);
+				nodes.push({ name: entry.name, path: entryRelPath, type: "directory", children });
+			} else if (entry.isFile() && entry.name.endsWith(".md") && entry.name.toLowerCase() !== "readme.md") {
+				const base = entry.name.replace(/\.md$/i, "");
+				const docId = base.split(" - ")[0] ?? "";
+				nodes.push({ name: entry.name, path: entryRelPath, type: "file", docId });
+			}
+		}
+		return nodes;
+	}
+
+	async createDocsFolder(folderPath: string): Promise<string> {
+		const docsDir = await this.getDocsDir();
+		const normalizedPath = normalizeDocumentSubPath(folderPath);
+		const dirPath = resolve(join(docsDir, ...normalizedPath.split("/")));
+
+		const rel = relative(docsDir, dirPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid docs path");
+		}
+
+		if (await Bun.file(dirPath).exists()) {
+			throw new Error("Docs folder already exists");
+		}
+
+		await mkdir(dirPath, { recursive: true });
+		return normalizedPath;
+	}
+
+	async readWikiPage(pagePath: string, rootDir?: string): Promise<WikiPage> {
+		const normalizedPath = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
+		const effectiveRoot = rootDir ? resolve(rootDir) : resolve(join(this.resolvedBacklogDir, "wiki"));
+		const filePath = resolve(join(effectiveRoot, normalizedPath));
+
+		// Containment check against the effective root
+		const rel = relative(effectiveRoot, filePath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Page not found");
+		}
+
+		let fileStats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
+		try {
+			fileStats = await stat(filePath);
+		} catch {
+			throw new Error("Page not found");
+		}
+		if (fileStats.isDirectory()) {
+			throw new Error("Page not found");
+		}
+
+		const file = Bun.file(filePath);
+		const content = await file.text();
+		const parsed = parseMarkdown(content);
+
+		return {
+			content: parsed.content,
+			frontmatter: parsed.frontmatter,
+			path: normalizedPath,
+		};
+	}
+
+	async saveWikiPage(pagePath: string, content: string, title?: string, labels?: string[]): Promise<void> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const normalizedPath = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
+		const filePath = resolve(join(wikiRoot, normalizedPath));
+
+		// Directory traversal containment check
+		const rel = relative(wikiRoot, filePath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		await this.ensureDirectoryExists(dirname(filePath));
+
+		// Preserve existing frontmatter, update title, labels, and set updated_date
+		let frontmatter: Record<string, unknown> = {};
+		if (await Bun.file(filePath).exists()) {
+			const existing = await Bun.file(filePath).text();
+			const parsed = parseMarkdown(existing);
+			frontmatter = (parsed.frontmatter as Record<string, unknown>) || {};
+		}
+		if (title !== undefined) {
+			frontmatter.title = title;
+		}
+		if (labels !== undefined) {
+			frontmatter.labels = labels;
+		}
+		const updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		frontmatter.updated_date = updatedDate;
+
+		const fileContent = Object.keys(frontmatter).length > 0 ? matter.stringify(content, frontmatter) : content;
+		await Bun.write(filePath, fileContent);
+	}
+
+	async createWikiPage(pagePath: string, content = "", labels?: string[]): Promise<string> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const normalizedPath = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
+		const filePath = resolve(join(wikiRoot, normalizedPath));
+
+		// Directory traversal containment check
+		const rel = relative(wikiRoot, filePath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		// Prevent overwriting existing files
+		if (await Bun.file(filePath).exists()) {
+			throw new Error("Wiki page already exists");
+		}
+
+		await this.ensureDirectoryExists(dirname(filePath));
+		const title = basename(normalizedPath, ".md");
+		const defaultContent = content || `# ${title}\n\n`;
+		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const frontmatter: Record<string, unknown> = { title, created_date: createdDate };
+		if (labels !== undefined && labels.length > 0) {
+			frontmatter.labels = labels;
+		}
+		const fileContent = matter.stringify(defaultContent, frontmatter);
+		await Bun.write(filePath, fileContent);
+
+		return normalizedPath;
+	}
+
+	async createWikiFolder(folderPath: string): Promise<string> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const dirPath = resolve(join(wikiRoot, folderPath));
+
+		// Directory traversal containment check
+		const rel = relative(wikiRoot, dirPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		// Prevent overwriting existing files or directories
+		if (await Bun.file(dirPath).exists()) {
+			throw new Error("Wiki folder already exists");
+		}
+
+		await mkdir(dirPath, { recursive: true });
+		return folderPath;
+	}
+
+	async renameWikiItem(oldPath: string, newPath: string): Promise<string> {
+		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
+		const oldFullPath = resolve(join(wikiRoot, oldPath));
+		const newFullPath = resolve(join(wikiRoot, newPath));
+
+		// Directory traversal containment check for both paths
+		const oldRel = relative(wikiRoot, oldFullPath);
+		const newRel = relative(wikiRoot, newFullPath);
+		const oldIsInside = !oldRel.startsWith("..") && !isAbsolute(oldRel);
+		const newIsInside = !newRel.startsWith("..") && !isAbsolute(newRel);
+		if (!oldIsInside || !newIsInside) {
+			throw new Error("Invalid wiki path");
+		}
+
+		// Source must exist (use stat to handle both files and directories)
+		try {
+			await stat(oldFullPath);
+		} catch {
+			throw new Error("Item not found");
+		}
+
+		// Destination must not exist
+		try {
+			await stat(newFullPath);
+			throw new Error("Destination already exists");
+		} catch (err) {
+			if (err instanceof Error && err.message === "Destination already exists") throw err;
+			// stat threw because file doesn't exist — that's what we want
+		}
+
+		// Ensure parent directory of destination exists
+		await this.ensureDirectoryExists(dirname(newFullPath));
+		await rename(oldFullPath, newFullPath);
+		return newPath;
 	}
 
 	private normalizeDefinitionOfDone(definitionOfDone: unknown): string[] | undefined {

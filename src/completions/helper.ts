@@ -99,6 +99,9 @@ async function getArgumentCompletions(argumentName: string): Promise<string[]> {
 	if (lowerName.includes("title") || lowerName.includes("name")) {
 		return []; // Free-form text, no completions
 	}
+	if (lowerName === "agent") {
+		return ["claude", "codex", "agents"];
+	}
 
 	return [];
 }

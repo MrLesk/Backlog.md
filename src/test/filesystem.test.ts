@@ -192,7 +192,7 @@ Invalid content`,
 			await filesystem.saveTask(sampleTask);
 
 			const demoted = await filesystem.demoteTask("task-1");
-			expect(demoted).toBe(true);
+			expect(demoted).toBe("DRAFT-1");
 
 			// Task should be removed from tasks directory
 			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
@@ -242,7 +242,7 @@ Invalid content`,
 			await filesystem.saveDraft(sampleDraft);
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			// Draft should be removed from drafts directory
 			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
@@ -272,7 +272,7 @@ Invalid content`,
 			await filesystem.saveDraft(sampleDraft);
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			const promotedTask = await filesystem.loadTask("task-1");
 			expect(promotedTask?.id).toBe("TASK-1");
@@ -288,13 +288,13 @@ Invalid content`,
 			});
 
 			const demoted = await filesystem.demoteTask("task-1");
-			expect(demoted).toBe(true);
+			expect(demoted).toBe("DRAFT-1");
 
 			const draft = await filesystem.loadDraft("draft-1");
 			expect(draft?.status).toBe("In Progress");
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			const promotedTask = await filesystem.loadTask("task-1");
 			expect(promotedTask?.id).toBe("TASK-1");
@@ -317,7 +317,7 @@ Invalid content`,
 			await filesystem.saveDraft(sampleDraft);
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			// Draft should be removed
 			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
@@ -363,7 +363,7 @@ Invalid content`,
 			// Create and promote a draft
 			await filesystem.saveDraft(sampleDraft);
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			// BUG: Currently returns TASK-1 because promoteDraft only checks active tasks
 			// Expected: Should return TASK-2 to avoid collision with completed task
@@ -425,6 +425,33 @@ Invalid content`,
 			await filesystem.saveConfig(cfg);
 			const loaded = await filesystem.loadConfig();
 			expect(loaded?.defaultReporter).toBe("@author");
+		});
+
+		it("should save and load labelColors", async () => {
+			const cfg: BacklogConfig = {
+				projectName: "Colors",
+				statuses: ["To Do"],
+				labels: ["bug", "feature"],
+				dateFormat: "yyyy-mm-dd",
+				labelColors: { bug: "red", feature: "blue" },
+			};
+
+			await filesystem.saveConfig(cfg);
+			const loaded = await filesystem.loadConfig();
+			expect(loaded?.labelColors).toEqual({ bug: "red", feature: "blue" });
+		});
+
+		it("should omit empty labelColors from serialized config", async () => {
+			const cfg: BacklogConfig = {
+				projectName: "NoColors",
+				statuses: ["To Do"],
+				labels: [],
+				dateFormat: "yyyy-mm-dd",
+			};
+
+			await filesystem.saveConfig(cfg);
+			const content = await Bun.file(filesystem.configFilePath).text();
+			expect(content).not.toContain("label_colors");
 		});
 	});
 
@@ -905,6 +932,137 @@ Invalid content`,
 			const filename = files.find((f) => f.startsWith("task-dashes -"));
 			expect(filename).toBeDefined();
 			expect(filename?.includes("--")).toBe(false);
+		});
+	});
+
+	describe("readProjectFile", () => {
+		it("reads a valid file within project root", async () => {
+			const testFile = join(TEST_DIR, "src", "test.ts");
+			await mkdir(join(TEST_DIR, "src"), { recursive: true });
+			await Bun.write(testFile, "line 1\nline 2\nline 3");
+			const result = await filesystem.readProjectFile("src/test.ts");
+			expect(result.content).toBe("line 1\nline 2\nline 3");
+			expect(result.totalLines).toBe(3);
+			expect(result.isMarkdown).toBe(false);
+		});
+
+		it("rejects sibling-prefix traversal", async () => {
+			await mkdir(join(TEST_DIR, "project-secret"), { recursive: true });
+			await Bun.write(join(TEST_DIR, "project-secret", "secret.txt"), "secret");
+			await expect(filesystem.readProjectFile("../project-secret/secret.txt")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects absolute paths", async () => {
+			await expect(filesystem.readProjectFile("/etc/passwd")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects .. traversal", async () => {
+			await expect(filesystem.readProjectFile("../../../etc/passwd")).rejects.toThrow("Access denied");
+		});
+
+		it("supports line ranges", async () => {
+			const testFile = join(TEST_DIR, "file.ts");
+			await Bun.write(testFile, "a\nb\nc\nd\ne\n");
+			const result = await filesystem.readProjectFile("file.ts:2-4");
+			expect(result.content).toBe("b\nc\nd");
+			expect(result.lineStart).toBe(2);
+			expect(result.lineEnd).toBe(4);
+		});
+
+		it("rejects non-existent files", async () => {
+			await expect(filesystem.readProjectFile("missing.txt")).rejects.toThrow("File not found");
+		});
+
+		it("rejects directories", async () => {
+			await mkdir(join(TEST_DIR, "subdir"), { recursive: true });
+			await expect(filesystem.readProjectFile("subdir")).rejects.toThrow("Path is a directory");
+		});
+
+		it("rejects oversized files", async () => {
+			const bigFile = join(TEST_DIR, "big.txt");
+			await Bun.write(bigFile, "x".repeat(6 * 1024 * 1024));
+			await expect(filesystem.readProjectFile("big.txt")).rejects.toThrow("File too large");
+		});
+	});
+
+	describe("listProjectFiles", () => {
+		it("lists files and directories sorted alphabetically", async () => {
+			await mkdir(join(TEST_DIR, "src", "web"), { recursive: true });
+			await Bun.write(join(TEST_DIR, "src", "app.ts"), "app");
+			await Bun.write(join(TEST_DIR, "src", "web", "index.ts"), "index");
+			await Bun.write(join(TEST_DIR, "README.md"), "readme");
+
+			const result = await filesystem.listProjectFiles(".");
+			const names = result.map((r) => r.name);
+			expect(names).toContain("README.md");
+			expect(names).toContain("src");
+			expect(result.find((r) => r.name === "src")?.type).toBe("directory");
+			expect(result.find((r) => r.name === "README.md")?.type).toBe("file");
+			// Verify alphabetical order (backlog dir is created by ensureBacklogStructure)
+			expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+		});
+
+		it("lists nested directory contents", async () => {
+			await mkdir(join(TEST_DIR, "src", "web"), { recursive: true });
+			await Bun.write(join(TEST_DIR, "src", "web", "index.ts"), "index");
+
+			const result = await filesystem.listProjectFiles("src/web");
+			expect(result.length).toBe(1);
+			expect(result[0]?.name).toBe("index.ts");
+			expect(result[0]?.type).toBe("file");
+		});
+
+		it("rejects sibling-prefix traversal", async () => {
+			await mkdir(join(TEST_DIR, "project-secret"), { recursive: true });
+			await expect(filesystem.listProjectFiles("../project-secret")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects absolute paths", async () => {
+			await expect(filesystem.listProjectFiles("/etc")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects .. traversal", async () => {
+			await expect(filesystem.listProjectFiles("../../../etc")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects non-existent paths", async () => {
+			await expect(filesystem.listProjectFiles("missing-dir")).rejects.toThrow("Path not found");
+		});
+
+		it("rejects files (not directories)", async () => {
+			await Bun.write(join(TEST_DIR, "file.txt"), "content");
+			await expect(filesystem.listProjectFiles("file.txt")).rejects.toThrow("Path is not a directory");
+		});
+	});
+
+	describe("wiki operations", () => {
+		beforeEach(async () => {
+			const wikiDir = join(TEST_DIR, "backlog", "wiki");
+			await mkdir(join(wikiDir, "guides"), { recursive: true });
+			await Bun.write(join(wikiDir, "index.md"), "---\ntitle: Index\n---\n# Welcome");
+			await Bun.write(join(wikiDir, "guides", "setup.md"), "---\ntitle: Setup\n---\n# Setup Guide");
+		});
+
+		it("builds wiki tree", async () => {
+			const tree = await filesystem.getWikiTree();
+			const names = tree.map((n) => n.name).sort();
+			expect(names).toContain("guides");
+			expect(names).toContain("index.md");
+
+			const guidesDir = tree.find((n) => n.name === "guides" && n.type === "directory");
+			expect(guidesDir).toBeDefined();
+			expect(guidesDir?.children?.some((c) => c.name === "setup.md")).toBe(true);
+		});
+
+		it("reads a wiki page", async () => {
+			const page = await filesystem.readWikiPage("guides/setup");
+			expect(page.path).toBe("guides/setup.md");
+			expect(page.content).toContain("# Setup Guide");
+			expect(page.frontmatter.title).toBe("Setup");
+		});
+
+		it("rejects wiki page traversal", async () => {
+			await expect(filesystem.readWikiPage("../secret")).rejects.toThrow("Page not found");
 		});
 	});
 });

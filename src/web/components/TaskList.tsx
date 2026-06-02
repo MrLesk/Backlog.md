@@ -14,6 +14,8 @@ import { formatStoredUtcDateForCompactDisplay, parseStoredUtcDate } from "../uti
 import CleanupModal from "./CleanupModal";
 import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
+import { useI18n } from "../hooks/useI18n";
+import { compareTaskIds, groupSubtasksUnderParents } from "../../utils/task-sorting";
 
 interface TaskListProps {
 	onEditTask: (task: Task) => void;
@@ -27,13 +29,6 @@ interface TaskListProps {
 	onRefreshData?: () => Promise<void>;
 }
 
-const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter }> = [
-	{ label: "All priorities", value: "" },
-	{ label: "High", value: "high" },
-	{ label: "Medium", value: "medium" },
-	{ label: "Low", value: "low" },
-];
-
 type TaskSortColumn = "id" | "title" | "status" | "priority" | "milestone" | "created";
 type SortDirection = "asc" | "desc";
 
@@ -43,22 +38,8 @@ const PRIORITY_RANK: Record<string, number> = {
 	low: 1,
 };
 
-function extractTaskNumericId(taskId: string): number | null {
-	const match = taskId.trim().match(/(\d+)$/);
-	if (!match?.[1]) return null;
-	return Number.parseInt(match[1], 10);
-}
-
 function compareTaskIdsAscending(a: Task, b: Task): number {
-	const idA = extractTaskNumericId(a.id);
-	const idB = extractTaskNumericId(b.id);
-
-	if (idA !== null && idB !== null) {
-		return idA - idB;
-	}
-	if (idA !== null) return -1;
-	if (idB !== null) return 1;
-	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+	return compareTaskIds(a.id, b.id);
 }
 
 function sortTasksByIdDescending(list: Task[]): Task[] {
@@ -90,8 +71,15 @@ const TaskList: React.FC<TaskListProps> = ({
 	archivedMilestones,
 	onRefreshData,
 }) => {
+	const { t } = useI18n();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
+	const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter }> = [
+		{ label: t.taskList.allPriorities, value: "" },
+		{ label: t.common.high, value: "high" },
+		{ label: t.common.medium, value: "medium" },
+		{ label: t.common.low, value: "low" },
+	];
 	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
 		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
 	);
@@ -340,7 +328,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				console.error("Failed to apply task filters:", err);
 				if (!cancelled) {
 					setDisplayTasks([]);
-					setError("Unable to fetch tasks for the selected filters.");
+					setError(t.taskList.filterError);
 				}
 			}
 		};
@@ -419,7 +407,7 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const handleCleanupSuccess = async (movedCount: number) => {
 		setShowCleanupModal(false);
-		setCleanupSuccessMessage(`Successfully moved ${movedCount} task${movedCount !== 1 ? 's' : ''} to completed folder`);
+		setCleanupSuccessMessage(t.taskList.cleanupSuccess(movedCount));
 
 		// Refresh the data - existing effects will handle re-filtering automatically
 		if (onRefreshData) {
@@ -475,16 +463,15 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const renderSortIcon = (column: TaskSortColumn) => {
 		const isActive = sortColumn === column;
-		if (!isActive) {
-			return (
-				<span className="text-[10px] text-gray-300 dark:text-gray-600 select-none" aria-hidden="true">
-					↕
-				</span>
-			);
-		}
+		const isAsc = sortDirection === "asc";
 		return (
-			<span className="text-[10px] text-gray-600 dark:text-gray-300 select-none" aria-hidden="true">
-				{sortDirection === "asc" ? "▲" : "▼"}
+			<span className="inline-flex items-center justify-center w-4 text-xs select-none" aria-hidden="true">
+				<span className={isActive && isAsc ? "text-gray-600 dark:text-gray-300" : "text-gray-300 dark:text-gray-600"}>
+					↑
+				</span>
+				<span className={isActive && !isAsc ? "text-gray-600 dark:text-gray-300" : "text-gray-300 dark:text-gray-600"}>
+					↓
+				</span>
 			</span>
 		);
 	};
@@ -520,13 +507,14 @@ const TaskList: React.FC<TaskListProps> = ({
 		const compareText = (a: string, b: string) => collator.compare(a, b);
 		const withDirection = (value: number) => (sortDirection === "asc" ? value : -value);
 
+		if (sortColumn === "id") {
+			const sorted = [...displayTasks].sort((a, b) => withDirection(compareTaskIdsAscending(a, b)));
+			return groupSubtasksUnderParents(sorted, compareTaskIdsAscending, undefined, sortDirection);
+		}
+
 		return [...displayTasks].sort((a, b) => {
 			let result = 0;
 			switch (sortColumn) {
-				case "id": {
-					result = withDirection(compareTaskIdsAscending(a, b));
-					break;
-				}
 				case "title": {
 					result = withDirection(compareText(a.title, b.title));
 					break;
@@ -599,12 +587,12 @@ const TaskList: React.FC<TaskListProps> = ({
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
 			<div className="flex flex-col gap-4 mb-6">
 				<div className="flex items-center justify-between gap-3">
-						<h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
+						<h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t.taskList.title}</h1>
 						<button
-							className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+							className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
 							onClick={onNewTask}
 						>
-							+ New Task
+							{t.taskList.newTask}
 					</button>
 				</div>
 
@@ -615,7 +603,7 @@ const TaskList: React.FC<TaskListProps> = ({
 							onChange={(event) => handleStatusChange(event.target.value)}
 							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
-							<option value="">All statuses</option>
+							<option value="">{t.taskList.allStatuses}</option>
 							{availableStatuses.map((status) => (
 								<option key={status} value={status}>
 									{status}
@@ -640,8 +628,8 @@ const TaskList: React.FC<TaskListProps> = ({
 							onChange={(event) => handleMilestoneChange(event.target.value)}
 							className="min-w-[160px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
-							<option value="">All milestones</option>
-							<option value="__none">No milestone</option>
+							<option value="">{t.taskList.allMilestones}</option>
+							<option value="__none">{t.taskList.noMilestone}</option>
 							{milestoneOptions.map((milestone) => (
 								<option key={milestone} value={milestone}>
 									{getMilestoneLabel(milestone, milestoneEntities)}
@@ -664,12 +652,12 @@ const TaskList: React.FC<TaskListProps> = ({
 									type="button"
 									onClick={() => setShowCleanupModal(true)}
 									className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 flex items-center gap-2 whitespace-nowrap"
-									title="Clean up old completed tasks"
+									title={t.taskColumn.cleanUpTitle}
 								>
 									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 								</svg>
-								Clean Up
+								{t.taskColumn.cleanUp}
 							</button>
 						)}
 
@@ -681,12 +669,12 @@ const TaskList: React.FC<TaskListProps> = ({
 									style={{ visibility: hasActiveFilters ? "visible" : "hidden" }}
 									aria-hidden={!hasActiveFilters}
 								>
-									Clear filters
+									{t.board.clearFilters}
 							</button>
 						</div>
 
 						<div className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap text-right min-w-[170px]">
-							Showing {currentCount} of {totalTasks} tasks
+							{t.taskList.showingCount(currentCount, totalTasks)}
 						</div>
 					</div>
 				</div>
@@ -704,12 +692,12 @@ const TaskList: React.FC<TaskListProps> = ({
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
 					</svg>
 					<h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-						{hasActiveFilters ? "No tasks match the current filters" : "No tasks"}
+						{hasActiveFilters ? t.taskList.noTasksMatchFilters : t.taskList.noTasks}
 					</h3>
 					<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
 						{hasActiveFilters
-							? "Try adjusting your search or clearing filters to see more tasks."
-							: "Get started by creating a new task."}
+							? t.taskList.tryAdjustingFilters
+							: t.taskList.getStarted}
 					</p>
 				</div>
 			) : (
@@ -720,14 +708,14 @@ const TaskList: React.FC<TaskListProps> = ({
 								{renderColumnGroup()}
 								<thead>
 									<tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300">
-										{renderSortableHeader("ID", "id")}
-										{renderSortableHeader("Title", "title")}
-										{renderSortableHeader("Status", "status")}
-										{renderSortableHeader("Priority", "priority")}
-										<th className="px-3 py-2">Labels</th>
-										<th className="px-3 py-2">Assignee</th>
-										{renderSortableHeader("Milestone", "milestone")}
-										{renderSortableHeader("Created", "created")}
+										{renderSortableHeader(t.taskList.columns.id, "id")}
+										{renderSortableHeader(t.taskList.columns.title, "title")}
+										{renderSortableHeader(t.taskList.columns.status, "status")}
+										{renderSortableHeader(t.taskList.columns.priority, "priority")}
+										<th className="px-3 py-2">{t.common.labels}</th>
+										<th className="px-3 py-2">{t.common.assignee}</th>
+										{renderSortableHeader(t.taskList.columns.milestone, "milestone")}
+										{renderSortableHeader(t.taskList.columns.created, "created")}
 									</tr>
 								</thead>
 							</table>
@@ -791,7 +779,7 @@ const TaskList: React.FC<TaskListProps> = ({
 													<span
 														className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getPriorityColor(task.priority)}`}
 													>
-														{task.priority}
+														{t.taskDetails.priorityLabel(task.priority)}
 													</span>
 												) : (
 													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>

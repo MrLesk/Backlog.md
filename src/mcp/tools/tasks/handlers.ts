@@ -39,6 +39,11 @@ export type TaskCreateArgs = {
 	documentation?: string[];
 	modifiedFiles?: string[];
 	finalSummary?: string;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 };
 
 export type TaskListArgs = {
@@ -127,6 +132,11 @@ export class TaskHandlers {
 				acceptanceCriteria,
 				definitionOfDoneAdd: args.definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
+				dueDate: args.dueDate,
+				actualStart: args.actualStart,
+				actualEnd: args.actualEnd,
+				plannedStart: args.plannedStart,
+				plannedEnd: args.plannedEnd,
 			});
 
 			return await formatTaskCallResult(createdTask);
@@ -463,21 +473,21 @@ export class TaskHandlers {
 
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
-		let success: boolean;
+		let newDraftId: string | null;
 		try {
-			success = await this.core.demoteTask(task.id, false);
+			newDraftId = await this.core.demoteTask(task.id, false);
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
 			throw error;
 		}
-		if (!success) {
+		if (!newDraftId) {
 			throw new BacklogToolError(`Failed to demote task: ${args.id}`, "OPERATION_FAILED");
 		}
 
-		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		return await formatTaskCallResult(refreshed);
+		const refreshed = await this.core.filesystem.loadDraft(newDraftId);
+		return await formatTaskCallResult(refreshed ?? task);
 	}
 
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
