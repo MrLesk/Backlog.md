@@ -1,8 +1,9 @@
 ---
 id: BACK-485
 title: 'Fix draft promote flow and unify action button styles'
-status: To Do
-assignee: []
+status: Done
+assignee: 
+  - '@kimi'
 created_date: '2026-05-23 14:20'
 updated_date: '2026-05-23 16:36'
 labels:

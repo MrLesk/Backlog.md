@@ -2,8 +2,10 @@
 id: BACK-474
 title: Add wiki install command
 status: Done
-assignee: []
+assignee: 
+  - Kimi
 created_date: '2026-05-07 14:51'
+updated_date: '2026-05-07 15:17'
 labels:
   - feature
   - cli

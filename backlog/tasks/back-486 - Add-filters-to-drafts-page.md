@@ -2,7 +2,8 @@
 id: BACK-486
 title: 'Add filters to drafts page'
 status: Done
-assignee: []
+assignee:
+  - '@kimi'
 created_date: '2026-05-23 15:10'
 updated_date: '2026-05-23 15:18'
 labels:

@@ -2,8 +2,10 @@
 id: BACK-475
 title: Add Word (.docx) upload to enable image extraction for pasted Word content
 status: Done
-assignee: []
+assignee: 
+  - Kimi
 created_date: '2026-05-11 20:05'
+updated_date: '2026-05-11 21:37'
 labels:
   - web-ui
   - enhancement
