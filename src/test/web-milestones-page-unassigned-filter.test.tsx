@@ -3,6 +3,7 @@ import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import MilestonesPage from "../web/components/MilestonesPage";
+import { I18nProvider } from "../web/contexts/I18nContext.tsx";
 
 const statuses = ["To Do", "In Progress", "Done"];
 
@@ -21,20 +22,22 @@ const makeTask = (overrides: Partial<Task>): Task => ({
 
 const renderMilestonesPage = (tasks: Task[]) =>
 	renderToString(
-		<MemoryRouter>
-			<MilestonesPage
-				tasks={tasks}
-				statuses={statuses}
-				milestoneEntities={milestones}
-				archivedMilestones={[]}
-				onEditTask={() => {}}
-			/>
-		</MemoryRouter>,
+		<I18nProvider>
+			<MemoryRouter>
+				<MilestonesPage
+					tasks={tasks}
+					statuses={statuses}
+					milestoneEntities={milestones}
+					archivedMilestones={[]}
+					onEditTask={() => {}}
+				/>
+			</MemoryRouter>
+		</I18nProvider>,
 	);
 
 const getUnassignedCount = (html: string): string | undefined => {
 	const normalizedHtml = html.replaceAll("<!-- -->", "");
-	const match = normalizedHtml.match(/Unassigned tasks[\s\S]*?\((\d+)\)/);
+	const match = normalizedHtml.match(/Unassigned Tasks[\s\S]*?\((\d+)\)/);
 	return match?.[1];
 };
 
@@ -58,7 +61,7 @@ describe("MilestonesPage unassigned filtering", () => {
 			makeTask({ id: "task-2", title: "Complete unassigned", status: "Complete" }),
 		]);
 
-		expect(html).toContain("No active unassigned tasks. Completed tasks are hidden.");
+		expect(html).toContain("No active unassigned tasks");
 		expect(html).not.toContain("Done unassigned");
 		expect(html).not.toContain("Complete unassigned");
 		expect(getUnassignedCount(html)).toBe("0");

@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import MilestonesPage from "../web/components/MilestonesPage.tsx";
+import { I18nProvider } from "../web/contexts/I18nContext.tsx";
 import { apiClient } from "../web/lib/api.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
@@ -90,16 +91,18 @@ const renderPage = (
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<MemoryRouter>
-				<MilestonesPage
-					tasks={tasks}
-					statuses={["To Do", "In Progress", "Done"]}
-					milestoneEntities={milestoneEntities}
-					archivedMilestones={[]}
-					onEditTask={() => {}}
-					onRefreshData={options.onRefreshData}
-				/>
-			</MemoryRouter>,
+			<I18nProvider>
+				<MemoryRouter>
+					<MilestonesPage
+						tasks={tasks}
+						statuses={["To Do", "In Progress", "Done"]}
+						milestoneEntities={milestoneEntities}
+						archivedMilestones={[]}
+						onEditTask={() => {}}
+						onRefreshData={options.onRefreshData}
+					/>
+				</MemoryRouter>
+			</I18nProvider>,
 		);
 	});
 	return container as HTMLElement;
@@ -191,13 +194,25 @@ describe("Web milestones page search", () => {
 		expect(filteredText).toContain("No tasks");
 	});
 
+	it("searches by substring and does not fuzzy-match unrelated IDs", () => {
+		const container = renderPage();
+
+		// Searching "101" should only match task-101, not task-202/task-303/task-404
+		setSearchValue(container, "101");
+		const text = container.textContent ?? "";
+		expect(text).toContain("Setup authentication flow");
+		expect(text).not.toContain("Deploy pipeline");
+		expect(text).not.toContain("Draft release notes");
+		expect(text).not.toContain("Ship docs site");
+	});
+
 	it("keeps unassigned section visible during search even when no unassigned tasks match", () => {
 		const container = renderPage();
 
 		setSearchValue(container, "task-404");
 		const filteredText = container.textContent ?? "";
-		expect(filteredText).toContain("Unassigned tasks");
-		expect(filteredText).toContain("No matching unassigned tasks.");
+		expect(filteredText).toContain("Unassigned Tasks");
+		expect(filteredText).toContain("No unassigned tasks match your search");
 		expect(filteredText).not.toContain("Draft release notes");
 
 		const clearSearchButton = container.querySelector("button[aria-label='Clear milestone search']");
@@ -215,10 +230,10 @@ describe("Web milestones page search", () => {
 
 		setSearchValue(container, "zzzz-no-match");
 		const noMatchText = container.textContent ?? "";
-		expect(noMatchText).toContain('No milestones or tasks match "zzzz-no-match".');
+		expect(noMatchText).toContain('No milestones match "zzzz-no-match".');
 		expect(noMatchText).toContain("Release 1");
 		expect(noMatchText).toContain("Release 2");
-		expect(noMatchText).toContain("Unassigned tasks");
+		expect(noMatchText).toContain("Unassigned Tasks");
 	});
 
 	it("opens an edit modal from each milestone card", () => {
@@ -230,7 +245,7 @@ describe("Web milestones page search", () => {
 
 		clickElement(editButtons[0] as HTMLButtonElement);
 
-		expect(container.textContent).toContain("Edit milestone");
+		expect(container.textContent).toContain("Edit Milestone");
 		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
 		expect(input).toBeTruthy();
 		expect(input?.value).toBe("Release 2");

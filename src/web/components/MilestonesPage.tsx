@@ -114,22 +114,27 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		}
 		const normalizedQuery = searchQueryTrimmed.toLowerCase();
 		const exactIdMatches = searchableTasks.filter((task) => task.id.toLowerCase() === normalizedQuery);
+		const substringMatches = searchableTasks.filter(
+			(task) => task.id.toLowerCase().includes(normalizedQuery) || task.title.toLowerCase().includes(normalizedQuery),
+		);
 		const matchedTaskIds =
 			exactIdMatches.length > 0
 				? new Set(exactIdMatches.map((task) => task.id))
-				: (() => {
-						const fuse = new Fuse(searchableTasks, {
-							threshold: 0.35,
-							ignoreLocation: true,
-							minMatchCharLength: 2,
-							keys: [
-								{ name: "title", weight: 0.55 },
-								{ name: "id", weight: 0.45 },
-							],
-						});
-						const matches = fuse.search(searchQueryTrimmed);
-						return new Set(matches.map((match) => match.item.id));
-					})();
+				: substringMatches.length > 0
+					? new Set(substringMatches.map((task) => task.id))
+					: (() => {
+							const fuse = new Fuse(searchableTasks, {
+								threshold: 0.35,
+								ignoreLocation: true,
+								minMatchCharLength: 2,
+								keys: [
+									{ name: 'title', weight: 0.55 },
+									{ name: 'id', weight: 0.45 },
+								],
+							});
+							const matches = fuse.search(searchQueryTrimmed);
+							return new Set(matches.map((match) => match.item.id));
+						})();
 
 		return buckets.map((bucket) => {
 			const filteredTasks = bucket.tasks.filter((task) => matchedTaskIds.has(task.id));
@@ -655,7 +660,10 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const renderUnassignedSection = () => {
 		if (!unassignedBucket || (!isSearchActive && unassignedBucket.total === 0)) return null;
 
-		const sortedActiveTasks = getSortedTasks(unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status)));
+		const unassignedTasksForDisplay = isSearchActive
+			? unassignedBucket.tasks
+			: unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status));
+		const sortedActiveTasks = getSortedTasks(unassignedTasksForDisplay);
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
 		const displayTasks = showAllUnassigned ? sortedActiveTasks : sortedActiveTasks.slice(0, 12);
 		const hasMore = sortedActiveTasks.length > 12;
