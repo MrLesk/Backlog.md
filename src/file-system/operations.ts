@@ -1761,6 +1761,33 @@ ${description || `Milestone: ${title}`}`,
 		return this.buildWikiTreeRecursive(wikiRoot, "");
 	}
 
+	async listWikiPages(): Promise<WikiPage[]> {
+		const wikiRoot = join(this.resolvedBacklogDir, "wiki");
+		const pages: WikiPage[] = [];
+		const walk = async (dirPath: string, relPath: string) => {
+			const entries = await readdir(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+				if (entry.isDirectory()) {
+					if (entry.name === "wiki_output") continue;
+					await walk(join(dirPath, entry.name), entryRelPath);
+				} else if (entry.isFile() && entry.name.endsWith(".md")) {
+					try {
+						pages.push(await this.readWikiPage(entryRelPath));
+					} catch {
+						// skip unreadable pages
+					}
+				}
+			}
+		};
+		try {
+			await walk(wikiRoot, "");
+		} catch {
+			// wiki directory may not exist
+		}
+		return pages;
+	}
+
 	private async buildWikiTreeRecursive(dirPath: string, relPath: string): Promise<WikiTreeNode[]> {
 		const entries = await readdir(dirPath, { withFileTypes: true });
 		const nodes: WikiTreeNode[] = [];

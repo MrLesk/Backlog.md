@@ -3,7 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
-import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import type { Decision, Document, Task, TaskListFilter, WikiPage } from "../types/index.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
@@ -12,15 +12,17 @@ interface ContentSnapshot {
 	tasks: Task[];
 	documents: Document[];
 	decisions: Decision[];
+	wikis: WikiPage[];
 }
 
-type ContentStoreEventType = "ready" | "tasks" | "documents" | "decisions";
+type ContentStoreEventType = "ready" | "tasks" | "documents" | "decisions" | "wikis";
 
 export type ContentStoreEvent =
 	| { type: "ready"; snapshot: ContentSnapshot; version: number }
 	| { type: "tasks"; tasks: Task[]; snapshot: ContentSnapshot; version: number }
 	| { type: "documents"; documents: Document[]; snapshot: ContentSnapshot; version: number }
-	| { type: "decisions"; decisions: Decision[]; snapshot: ContentSnapshot; version: number };
+	| { type: "decisions"; decisions: Decision[]; snapshot: ContentSnapshot; version: number }
+	| { type: "wikis"; wikis: WikiPage[]; snapshot: ContentSnapshot; version: number };
 
 export type ContentStoreListener = (event: ContentStoreEvent) => void;
 
@@ -36,10 +38,12 @@ export class ContentStore {
 	private readonly tasks = new Map<string, Task>();
 	private readonly documents = new Map<string, Document>();
 	private readonly decisions = new Map<string, Decision>();
+	private readonly wikis = new Map<string, WikiPage>();
 
 	private cachedTasks: Task[] = [];
 	private cachedDocuments: Document[] = [];
 	private cachedDecisions: Decision[] = [];
+	private cachedWikis: WikiPage[] = [];
 
 	private readonly listeners = new Set<ContentStoreListener>();
 	private readonly watchers: WatchHandle[] = [];
@@ -143,11 +147,19 @@ export class ContentStore {
 		return this.cachedDecisions.slice();
 	}
 
+	getWikis(): WikiPage[] {
+		if (!this.initialized) {
+			throw new Error("ContentStore not initialized. Call ensureInitialized() first.");
+		}
+		return this.cachedWikis.slice();
+	}
+
 	getSnapshot(): ContentSnapshot {
 		return {
 			tasks: this.cachedTasks.slice(),
 			documents: this.cachedDocuments.slice(),
 			decisions: this.cachedDecisions.slice(),
+			wikis: this.cachedWikis.slice(),
 		};
 	}
 
@@ -192,6 +204,11 @@ export class ContentStore {
 			return;
 		}
 
+		if (type === "wikis") {
+			this.emit({ type, wikis: snapshot.wikis, snapshot, version: this.version });
+			return;
+		}
+
 		this.emit({ type: "ready", snapshot, version: this.version });
 	}
 
@@ -200,15 +217,17 @@ export class ContentStore {
 
 		// Use custom task loader if provided (e.g., loadTasks for cross-branch support)
 		// Otherwise fall back to filesystem-only loading
-		const [tasks, documents, decisions] = await Promise.all([
+		const [tasks, documents, decisions, wikis] = await Promise.all([
 			this.loadTasksWithLoader(),
 			this.filesystem.listDocuments(),
 			this.filesystem.listDecisions(),
+			this.filesystem.listWikiPages(),
 		]);
 
 		this.replaceTasks(tasks);
 		this.replaceDocuments(documents);
 		this.replaceDecisions(decisions);
+		this.replaceWikis(wikis);
 
 		this.initialized = true;
 		if (this.enableWatchers) {
@@ -321,7 +340,7 @@ export class ContentStore {
 			const file = this.normalizeFilename(filename);
 			if (!file || file.includes("wiki_output")) return;
 			this.enqueue(async () => {
-				this.notify("tasks");
+				await this.refreshWikisFromDisk();
 			});
 		});
 		this.attachWatcherErrorHandler(watcher, "wiki");
@@ -629,6 +648,14 @@ export class ContentStore {
 		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 	}
 
+	private replaceWikis(wikis: WikiPage[]): void {
+		this.wikis.clear();
+		for (const wiki of wikis) {
+			this.wikis.set(wiki.path, wiki);
+		}
+		this.cachedWikis = Array.from(this.wikis.values()).sort((a, b) => a.path.localeCompare(b.path));
+	}
+
 	private patchFilesystem(): void {
 		if (this.restoreFilesystemPatch) {
 			return;
@@ -758,6 +785,18 @@ export class ContentStore {
 		}
 		this.replaceDecisions(decisions);
 		this.notify("decisions");
+	}
+
+	private async refreshWikisFromDisk(): Promise<void> {
+		const wikis = await this.retryRead(
+			async () => this.filesystem.listWikiPages(),
+			() => true,
+		);
+		if (!wikis) {
+			return;
+		}
+		this.replaceWikis(wikis);
+		this.notify("wikis");
 	}
 
 	private async handleDecisionWrite(decisionId: string): Promise<void> {

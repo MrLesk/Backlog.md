@@ -12,6 +12,7 @@ import {
 	type Task,
 	type TaskSearchResult,
 	type WikiTreeNode,
+	type WikiSearchResult,
 } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import Modal from './Modal';
@@ -104,6 +105,11 @@ const Icons = {
 	DecisionPage: () => (
 		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+		</svg>
+	),
+	WikiPage: () => (
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
 		</svg>
 	),
 	DecisionArchitecture: () => (
@@ -967,51 +973,73 @@ const SideNavigation = memo(function SideNavigation({
 						)}
 					</div>
 					<div className="space-y-1">
-						{unifiedSearchResults.map((result, index) => {
-							const item = result.type === 'task'
-								? (result as TaskSearchResult).task
-								: result.type === 'document'
-									? (result as DocumentSearchResult).document
-									: (result as DecisionSearchResult).decision;
-							const getResultLink = () => {
-								if (result.type === 'document') {
-									return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
-								}
-								if (result.type === 'decision') {
-									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
-								}
-								return `/?highlight=${encodeURIComponent(item.id)}`;
-							};
+								{unifiedSearchResults.map((result, index) => {
+									const getResultLink = () => {
+										if (result.type === 'document') {
+											const doc = (result as DocumentSearchResult).document;
+											return `/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`;
+										}
+										if (result.type === 'decision') {
+											const dec = (result as DecisionSearchResult).decision;
+											return `/decisions/${stripIdPrefix(dec.id)}/${sanitizeUrlTitle(dec.title)}`;
+										}
+										if (result.type === 'wiki') {
+											return `/wiki/${encodeURIComponent((result as WikiSearchResult).wiki.path)}`;
+										}
+										const task = (result as TaskSearchResult).task;
+										return `/?highlight=${encodeURIComponent(task.id)}`;
+									};
 
-							const getResultIcon = () => {
-								if (result.type === 'document') return <span className="text-green-500"><Icons.DocumentPage /></span>;
-								if (result.type === 'decision') return <span className="text-stone-500"><Icons.DecisionPage /></span>;
-								return <span className="text-purple-500"><Icons.Tasks /></span>;
-							};
+									const getResultIcon = () => {
+										if (result.type === 'document') return <span className="text-green-500"><Icons.DocumentPage /></span>;
+										if (result.type === 'decision') return <span className="text-stone-500"><Icons.DecisionPage /></span>;
+										if (result.type === 'wiki') return <span className="text-blue-500"><Icons.WikiPage /></span>;
+										return <span className="text-purple-500"><Icons.Tasks /></span>;
+									};
 
-							return (
-								<NavLink
-									key={`${result.type}-${item.id}-${index}`}
-									to={getResultLink()}
-									className="flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-gray-100"
-								>
-									{getResultIcon()}
-									<div className="flex-1 min-w-0">
-										<div className="font-medium truncate">
-											{item.title}
-										</div>
-										<div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-											{(result.type === 'document' ? t.common.document : result.type === 'decision' ? t.common.decision : t.common.task)} • {item.id}
-										</div>
-									</div>
-									{result.score !== null && (
-										<div className="text-xs text-gray-400 dark:text-gray-500">
-											{`${Math.round((1 - result.score) * 100)}%`}
-										</div>
-									)}
-								</NavLink>
-							);
-						})}
+									const getResultMeta = () => {
+										if (result.type === 'document') {
+											const doc = (result as DocumentSearchResult).document;
+											return { title: doc.title, id: doc.id, label: t.common.document };
+										}
+										if (result.type === 'decision') {
+											const dec = (result as DecisionSearchResult).decision;
+											return { title: dec.title, id: dec.id, label: t.common.decision };
+										}
+										if (result.type === 'wiki') {
+											const wiki = (result as WikiSearchResult).wiki;
+											const title = typeof wiki.frontmatter.title === 'string' ? wiki.frontmatter.title : wiki.path.replace(/\.md$/i, '').split('/').pop() ?? wiki.path;
+											return { title, id: wiki.path, label: t.nav.wiki };
+										}
+										const task = (result as TaskSearchResult).task;
+										return { title: task.title, id: task.id, label: t.common.task };
+									};
+
+									const meta = getResultMeta();
+
+									return (
+										<NavLink
+											key={`${result.type}-${meta.id}-${index}`}
+											to={getResultLink()}
+											className="flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-gray-100"
+										>
+											{getResultIcon()}
+											<div className="flex-1 min-w-0">
+												<div className="font-medium truncate">
+													{meta.title}
+												</div>
+												<div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+													{meta.label} • {meta.id}
+												</div>
+											</div>
+											{result.score !== null && (
+												<div className="text-xs text-gray-400 dark:text-gray-500">
+													{`${Math.round((1 - result.score) * 100)}%`}
+												</div>
+											)}
+										</NavLink>
+									);
+								})}
 					</div>
 				</div>
 			)}

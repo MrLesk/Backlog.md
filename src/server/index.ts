@@ -791,7 +791,7 @@ export class BacklogServer {
 
 			let types: SearchResultType[] | undefined;
 			if (typeParams.length > 0) {
-				const allowed: SearchResultType[] = ["task", "document", "decision"];
+				const allowed: SearchResultType[] = ["task", "document", "decision", "wiki"];
 				const normalizedTypes = typeParams
 					.map((value) => value.toLowerCase())
 					.filter((value): value is SearchResultType => {

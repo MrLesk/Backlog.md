@@ -9,6 +9,7 @@ import type {
 	SearchResult,
 	SearchResultType,
 	Task,
+	WikiPage,
 } from "../types/index.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "../utils/modified-files.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
@@ -42,7 +43,13 @@ interface DecisionSearchEntity extends BaseSearchEntity {
 	readonly decision: Decision;
 }
 
-type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEntity;
+interface WikiSearchEntity extends BaseSearchEntity {
+	readonly type: "wiki";
+	readonly wiki: WikiPage;
+	readonly fileName: string;
+}
+
+type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEntity | WikiSearchEntity;
 
 type NormalizedFilters = {
 	statuses?: string[];
@@ -118,6 +125,7 @@ export class SearchService {
 	private tasks: TaskSearchEntity[] = [];
 	private documents: DocumentSearchEntity[] = [];
 	private decisions: DecisionSearchEntity[] = [];
+	private wikis: WikiSearchEntity[] = [];
 	private collection: SearchEntity[] = [];
 	private version = 0;
 
@@ -161,7 +169,7 @@ export class SearchService {
 
 		const trimmedQuery = query.trim();
 		const allowedTypes = new Set<SearchResultType>(
-			types && types.length > 0 ? types : ["task", "document", "decision"],
+			types && types.length > 0 ? types : ["task", "document", "decision", "wiki"],
 		);
 		const normalizedFilters = this.normalizeFilters(filters);
 
@@ -198,7 +206,7 @@ export class SearchService {
 
 	private async initialize(): Promise<void> {
 		const snapshot = await this.store.ensureInitialized();
-		this.applySnapshot(snapshot.tasks, snapshot.documents, snapshot.decisions);
+		this.applySnapshot(snapshot.tasks, snapshot.documents, snapshot.decisions, snapshot.wikis);
 
 		if (!this.unsubscribe) {
 			this.unsubscribe = this.store.subscribe((event) => {
@@ -215,10 +223,10 @@ export class SearchService {
 			return;
 		}
 		this.version = event.version;
-		this.applySnapshot(event.snapshot.tasks, event.snapshot.documents, event.snapshot.decisions);
+		this.applySnapshot(event.snapshot.tasks, event.snapshot.documents, event.snapshot.decisions, event.snapshot.wikis);
 	}
 
-	private applySnapshot(tasks: Task[], documents: Document[], decisions: Decision[]): void {
+	private applySnapshot(tasks: Task[], documents: Document[], decisions: Decision[], wikis: WikiPage[]): void {
 		this.tasks = tasks.map((task) => ({
 			id: task.id,
 			type: "task",
@@ -250,7 +258,20 @@ export class SearchService {
 			decision,
 		}));
 
-		this.collection = [...this.tasks, ...this.documents, ...this.decisions];
+		this.wikis = wikis.map((wiki) => {
+			const fileName = wiki.path.replace(/\.md$/i, "").split("/").pop() ?? wiki.path;
+			const title = typeof wiki.frontmatter.title === "string" ? wiki.frontmatter.title : fileName;
+			return {
+				id: wiki.path,
+				type: "wiki" as const,
+				title,
+				bodyText: wiki.content,
+				wiki,
+				fileName,
+			};
+		});
+
+		this.collection = [...this.tasks, ...this.documents, ...this.decisions, ...this.wikis];
 		this.rebuildFuse();
 	}
 
@@ -273,6 +294,7 @@ export class SearchService {
 				{ name: "idVariants", weight: 0.1 },
 				{ name: "dependencyIds", weight: 0.05 },
 				{ name: "modifiedFiles", weight: 0.15 },
+				{ name: "fileName", weight: 0.25 },
 			],
 		});
 	}
@@ -305,6 +327,15 @@ export class SearchService {
 
 		if (allowedTypes.has("decision")) {
 			for (const entity of this.decisions) {
+				results.push(this.mapEntityToResult(entity));
+				if (limit && results.length >= limit) {
+					return results;
+				}
+			}
+		}
+
+		if (allowedTypes.has("wiki")) {
+			for (const entity of this.wikis) {
 				results.push(this.mapEntityToResult(entity));
 				if (limit && results.length >= limit) {
 					return results;
@@ -473,6 +504,15 @@ export class SearchService {
 				type: "document",
 				score,
 				document: entity.document,
+				matches,
+			};
+		}
+
+		if (entity.type === "wiki") {
+			return {
+				type: "wiki",
+				score,
+				wiki: entity.wiki,
 				matches,
 			};
 		}
