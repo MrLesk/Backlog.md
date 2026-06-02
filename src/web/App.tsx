@@ -170,6 +170,9 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
 function App() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskHistory, setTaskHistory] = useState<Task[]>([]);
+  const taskHistoryRef = useRef<Task[]>([]);
+  useEffect(() => { taskHistoryRef.current = taskHistory; }, [taskHistory]);
   const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
@@ -396,6 +399,7 @@ function App() {
 
   const handleNewTask = () => {
     setEditingTask(null);
+    setTaskHistory([]);
     setIsDraftMode(false);
     setShowModal(true);
   };
@@ -403,24 +407,42 @@ function App() {
   const handleNewDraft = () => {
     // Create a draft task (same as new task but with status 'Draft')
     setEditingTask(null);
+    setTaskHistory([]);
     setIsDraftMode(true);
     setShowModal(true);
   };
 
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
+    setTaskHistory([]);
     setShowModal(true);
   };
 
   const handlePromotedTask = (task: Task) => {
     setEditingTask(task);
+    setTaskHistory([]);
     setIsDraftMode(false);
     setShowModal(true);
   };
 
+  const handleDrillDown = useCallback((task: Task) => {
+    if (editingTask) {
+      setTaskHistory(prev => [...prev, editingTask]);
+    }
+    setEditingTask(task);
+  }, [editingTask]);
+
+  const handleBack = useCallback(() => {
+    const prevHistory = taskHistoryRef.current;
+    const parentTask = prevHistory[prevHistory.length - 1] ?? null;
+    setTaskHistory(prevHistory.slice(0, -1));
+    setEditingTask(parentTask);
+  }, []);
+
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingTask(null);
+    setTaskHistory([]);
     setIsDraftMode(false);
   };
 
@@ -604,6 +626,8 @@ function App() {
           onSubmit={handleSubmitTask}
           onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
           onPromoted={handlePromotedTask}
+          onDrillDown={handleDrillDown}
+          onBack={taskHistory.length > 0 ? handleBack : undefined}
           availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
           availableMilestones={milestones}
           milestoneEntities={milestoneEntities}

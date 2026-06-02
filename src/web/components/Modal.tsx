@@ -9,9 +9,10 @@ interface ModalProps {
 	maxWidthClass?: string; // e.g., "max-w-4xl"
 	disableEscapeClose?: boolean; // when true, Escape and backdrop click won't close (child can handle it)
 	actions?: React.ReactNode; // optional actions rendered in header before close
+	leftActions?: React.ReactNode; // optional actions rendered in header before title
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidthClass = "max-w-2xl", disableEscapeClose, actions }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidthClass = "max-w-2xl", disableEscapeClose, actions, leftActions }) => {
 	const { t } = useI18n();
 	useEffect(() => {
 		const handleEscape = (e: KeyboardEvent) => {
@@ -51,7 +52,10 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
 				aria-labelledby="modal-title"
 			>
 				<div className="sticky top-0 z-10 flex items-center justify-between px-6 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
-					<h2 id="modal-title" className="text-base font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 mr-4 line-clamp-2">{title}</h2>
+					<div className="flex items-center gap-2 flex-1 min-w-0 mr-4">
+						{leftActions}
+						<h2 id="modal-title" className="text-base font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 line-clamp-2">{title}</h2>
+					</div>
 					<div className="flex items-center gap-2">
 						{actions}
 							<button
