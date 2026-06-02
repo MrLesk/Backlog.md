@@ -28,6 +28,8 @@ import {
 } from '../types';
 import { apiClient } from './lib/api';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
+import { useI18nContext } from './contexts/I18nContext';
+import { isValidLocale } from './locales';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 
@@ -187,6 +189,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   
   const { isOnline } = useHealthCheckContext();
+  const { setLocale } = useI18nContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
 
@@ -283,6 +286,9 @@ function App() {
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
       setConfig(configData);
+      if (configData.locale && isValidLocale(configData.locale)) {
+        setLocale(configData.locale);
+      }
       setMilestoneEntities(milestonesData);
       setArchivedMilestones(archivedMilestonesData);
       setMilestones(

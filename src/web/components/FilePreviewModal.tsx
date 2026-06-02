@@ -3,6 +3,7 @@ import Modal from "./Modal";
 import { apiClient } from "../lib/api";
 import MermaidMarkdown from "./MermaidMarkdown";
 import { useTheme } from "../contexts/ThemeContext";
+import { useI18n } from "../hooks/useI18n";
 
 interface Props {
 	path: string;
@@ -52,6 +53,7 @@ function wrapInCodeBlock(content: string, language: string): string {
 
 export const FilePreviewModal: React.FC<Props> = ({ path, onClose }) => {
 	const { theme } = useTheme();
+	const { t } = useI18n();
 	const [content, setContent] = useState<string>("");
 	const [filePath, setFilePath] = useState<string>("");
 	const [lineStart, setLineStart] = useState<number | undefined>();
@@ -78,7 +80,7 @@ export const FilePreviewModal: React.FC<Props> = ({ path, onClose }) => {
 				setIsMarkdown(data.isMarkdown);
 			} catch (err) {
 				if (cancelled) return;
-				const message = err instanceof Error ? err.message : "Failed to load file";
+				const message = err instanceof Error ? err.message : t.filePreview.failedToLoad;
 				setError(message);
 			} finally {
 				if (!cancelled) setLoading(false);
@@ -104,15 +106,15 @@ export const FilePreviewModal: React.FC<Props> = ({ path, onClose }) => {
 
 	return (
 		<Modal isOpen onClose={onClose} title={title} maxWidthClass="max-w-4xl">
-			{loading && <div className="text-sm text-gray-500 dark:text-gray-400">Loading...</div>}
+			{loading && <div className="text-sm text-gray-500 dark:text-gray-400">{t.filePreview.loading}</div>}
 			{error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
 			{!loading && !error && (
 				<div className="space-y-2">
 					<div className="text-xs text-gray-500 dark:text-gray-400">
-						{totalLines} line{totalLines !== 1 ? "s" : ""} total
+						{t.filePreview.lineCountTotal.replace("{count}", String(totalLines))}
 						{isPartial && (
 							<span className="ml-2 text-blue-600 dark:text-blue-400">
-								showing lines {lineStart}-{lineEnd}
+								{t.filePreview.showingLines.replace("{start}", String(lineStart)).replace("{end}", String(lineEnd))}
 							</span>
 						)}
 					</div>
@@ -127,7 +129,7 @@ export const FilePreviewModal: React.FC<Props> = ({ path, onClose }) => {
 						<div className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-[60vh] overflow-auto">
 							{isPartial && (
 								<div className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs px-4 py-1.5 border-b border-blue-200 dark:border-blue-800 sticky top-0 z-10">
-									Lines {lineStart}-{lineEnd} of {totalLines}
+									{t.filePreview.linesOfTotal.replace("{start}", String(lineStart)).replace("{end}", String(lineEnd)).replace("{total}", String(totalLines))}
 								</div>
 							)}
 							<div

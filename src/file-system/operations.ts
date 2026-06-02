@@ -1430,6 +1430,9 @@ ${description || `Milestone: ${title}`}`,
 				case "backlogDirectory":
 					config.backlogDirectory = value.replace(/['"]/g, "");
 					break;
+				case "locale":
+					config.locale = value.replace(/['"]/g, "");
+					break;
 			}
 		}
 
@@ -1456,6 +1459,7 @@ ${description || `Milestone: ${title}`}`,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
+			locale: config.locale,
 		};
 	}
 
@@ -1488,6 +1492,7 @@ ${description || `Milestone: ${title}`}`,
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...(config.locale ? [`locale: "${config.locale}"`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

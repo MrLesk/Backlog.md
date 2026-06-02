@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { AssetManager } from "../core/assets.ts";
@@ -7,7 +7,6 @@ import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 let TEST_DIR: string;
 let assetsRoot: string;
 let manager: AssetManager;
-
 
 describe("AssetManager", () => {
 	beforeEach(async () => {
