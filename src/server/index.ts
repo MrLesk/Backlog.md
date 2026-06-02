@@ -199,6 +199,10 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	// Statistics cache
+	private cachedStatisticsResponse: string | null = null;
+	private statisticsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private statisticsDirty = false;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -221,15 +225,16 @@ export class BacklogServer {
 				if (event.type === "ready") {
 					if (!this.storeReadyBroadcasted) {
 						this.storeReadyBroadcasted = true;
-						return;
 					}
 					this.broadcastTasksUpdated();
+					this.invalidateStatistics();
 					return;
 				}
 
 				// Broadcast for tasks/documents/decisions so clients refresh caches/search
 				this.storeReadyBroadcasted = true;
 				this.broadcastTasksUpdated();
+				this.invalidateStatistics();
 			});
 		}
 
@@ -277,6 +282,57 @@ export class BacklogServer {
 		for (const ws of this.sockets) {
 			try {
 				ws.send("drafts-updated");
+			} catch {}
+		}
+	}
+
+	private invalidateStatistics(): void {
+		this.statisticsDirty = true;
+		this.cachedStatisticsResponse = null;
+		if (this.statisticsDebounceTimer) {
+			clearTimeout(this.statisticsDebounceTimer);
+		}
+		this.statisticsDebounceTimer = setTimeout(() => {
+			this.statisticsDebounceTimer = null;
+			void this.recomputeAndBroadcastStatistics();
+		}, 500);
+	}
+
+	private async recomputeAndBroadcastStatistics(): Promise<void> {
+		if (!this.statisticsDirty) return;
+		this.statisticsDirty = false;
+
+		try {
+			const store = await this.getContentStoreInstance();
+			const snapshot = store.getSnapshot();
+			const tasks = snapshot.tasks;
+			const config = await this.core.filesystem.loadConfig();
+			const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+			const drafts = await this.core.filesystem.listDrafts();
+			const statistics = getTaskStatistics(tasks, drafts, statuses);
+			const response = {
+				...statistics,
+				statusCounts: Object.fromEntries(statistics.statusCounts),
+				priorityCounts: Object.fromEntries(statistics.priorityCounts),
+			};
+			this.cachedStatisticsResponse = JSON.stringify(response);
+
+			// If dirty again during computation, schedule another recompute
+			if (this.statisticsDirty) {
+				this.invalidateStatistics();
+				return;
+			}
+
+			this.broadcastStatisticsUpdated();
+		} catch (error) {
+			console.error("Error recomputing statistics:", error);
+		}
+	}
+
+	private broadcastStatisticsUpdated() {
+		for (const ws of this.sockets) {
+			try {
+				ws.send("statistics-updated");
 			} catch {}
 		}
 	}
@@ -1956,20 +2012,33 @@ export class BacklogServer {
 
 	private async handleGetStatistics(): Promise<Response> {
 		try {
-			// Load tasks using the same logic as CLI overview
-			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+			// Return cached response immediately if available
+			if (this.cachedStatisticsResponse) {
+				return new Response(this.cachedStatisticsResponse, {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
 
-			// Calculate statistics using the exact same function as CLI
+			// Compute on-demand if no cache exists
+			const store = await this.getContentStoreInstance();
+			const snapshot = store.getSnapshot();
+			const tasks = snapshot.tasks;
+
+			const config = await this.core.filesystem.loadConfig();
+			const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+			const drafts = await this.core.filesystem.listDrafts();
+
 			const statistics = getTaskStatistics(tasks, drafts, statuses);
 
-			// Convert Maps to objects for JSON serialization
 			const response = {
 				...statistics,
 				statusCounts: Object.fromEntries(statistics.statusCounts),
 				priorityCounts: Object.fromEntries(statistics.priorityCounts),
 			};
 
-			return Response.json(response);
+			const body = JSON.stringify(response);
+			this.cachedStatisticsResponse = body;
+			return new Response(body, { headers: { "Content-Type": "application/json" } });
 		} catch (error) {
 			console.error("Error getting statistics:", error);
 			return Response.json({ error: "Failed to get statistics" }, { status: 500 });

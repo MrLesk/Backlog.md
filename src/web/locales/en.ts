@@ -475,6 +475,23 @@ export const en = {
 		atRiskTooltip: "Due soon, requires immediate attention",
 		overdueTooltip: "Past the due date",
 		staleTooltip: "No updates for 30+ days, no due date set",
+		contributionTitle: (count: number) =>
+			count === 0
+				? "No tasks completed in the last year"
+				: count === 1
+					? "1 task completed in the last year"
+					: `${count} tasks completed in the last year`,
+		less: "Less",
+		more: "More",
+		mon: "Mon",
+		wed: "Wed",
+		fri: "Fri",
+		tasksCompletedOn: (count: number, date: string) =>
+			count === 0
+				? `No tasks completed on ${date}`
+				: count === 1
+					? `1 task completed on ${date}`
+					: `${count} tasks completed on ${date}`,
 	},
 
 	modal: {

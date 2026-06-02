@@ -477,6 +477,13 @@ export const zhTW: TranslationDict = {
 		atRiskTooltip: "即將截止，需立即處理",
 		overdueTooltip: "已過截止日期",
 		staleTooltip: "超過30天未更新、無明確截止日期",
+		contributionTitle: (count: number) => `過一年完成 ${count} 個任務`,
+		less: "少",
+		more: "多",
+		mon: "週一",
+		wed: "週三",
+		fri: "週五",
+		tasksCompletedOn: (count: number, date: string) => `${date}: 完成 ${count} 個任務`,
 	},
 
 	modal: {

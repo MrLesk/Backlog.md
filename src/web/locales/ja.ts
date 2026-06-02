@@ -479,6 +479,13 @@ export const ja: TranslationDict = {
 		atRiskTooltip: "期限が近づいています。直ちに対応が必要です。",
 		overdueTooltip: "期限を過ぎています。",
 		staleTooltip: "30日以上更新がなく、期限が設定されていません。",
+		contributionTitle: (count: number) => `過去1年間に${count}件のタスクを完了`,
+		less: "少ない",
+		more: "多い",
+		mon: "月",
+		wed: "水",
+		fri: "金",
+		tasksCompletedOn: (count: number, date: string) => `${date}: ${count}件のタスク完了`,
 	},
 
 	modal: {

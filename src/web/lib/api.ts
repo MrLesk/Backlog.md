@@ -90,15 +90,16 @@ export class ApiClient {
 	}
 
 	// Enhanced fetch with retry logic and better error handling
-	private async fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
+	private async fetchWithRetry(url: string, options: RequestInit = {}, customTimeout?: number): Promise<Response> {
 		const { retries = 3, timeout = 10000 } = this.config;
+		const effectiveTimeout = customTimeout ?? timeout;
 		let lastError: Error | undefined;
 
 		for (let attempt = 0; attempt <= retries; attempt++) {
 			try {
 				// Add timeout to the request
 				const controller = new AbortController();
-				const timeoutId = setTimeout(() => controller.abort(), timeout);
+				const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
 				const response = await fetch(url, {
 					...options,
@@ -146,8 +147,8 @@ export class ApiClient {
 	}
 
 	// Helper method for JSON responses
-	private async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
-		const response = await this.fetchWithRetry(url, options);
+	private async fetchJson<T>(url: string, options: RequestInit = {}, timeout?: number): Promise<T> {
+		const response = await this.fetchWithRetry(url, options, timeout);
 		return response.json();
 	}
 	async fetchTasks(options?: {

@@ -379,4 +379,42 @@ describe("getTaskStatistics", () => {
 		expect(stats.projectHealth.atRiskTasks.length).toBe(0);
 		expect(stats.projectHealth.overdueTasks.length).toBe(0);
 	});
+
+	test("computes completion heatmap correctly", () => {
+		const now = new Date();
+		const today = now.toISOString().split("T")[0] as string;
+		const yesterday = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] as string;
+		const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] as string;
+		const oldDate = new Date(now.getTime() - 400 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] as string;
+
+		const tasks: Task[] = [
+			// Two tasks completed today (using actualEnd)
+			createTask({ id: "task-1", title: "Done Today 1", status: "Done", actualEnd: today }),
+			createTask({ id: "task-2", title: "Done Today 2", status: "Done", actualEnd: today }),
+			// One task completed yesterday (using updatedDate fallback)
+			createTask({ id: "task-3", title: "Done Yesterday", status: "Done", updatedDate: yesterday }),
+			// Task with both actualEnd and updatedDate — actualEnd should win
+			createTask({
+				id: "task-4",
+				title: "Done Two Days Ago",
+				status: "Done",
+				actualEnd: twoDaysAgo,
+				updatedDate: today,
+			}),
+			// Old task — should be excluded from heatmap
+			createTask({ id: "task-5", title: "Done Long Ago", status: "Done", actualEnd: oldDate }),
+			// Not done — should be excluded
+			createTask({ id: "task-6", title: "Not Done", status: "To Do", updatedDate: today }),
+			// Done but no completion date — should be skipped
+			createTask({ id: "task-7", title: "Done No Date", status: "Done" }),
+		];
+
+		const stats = getTaskStatistics(tasks, [], statuses);
+
+		expect(stats.completionHeatmap[today]).toBe(2);
+		expect(stats.completionHeatmap[yesterday]).toBe(1);
+		expect(stats.completionHeatmap[twoDaysAgo]).toBe(1);
+		expect(stats.completionHeatmap[oldDate]).toBeUndefined();
+		expect(Object.keys(stats.completionHeatmap).length).toBe(3);
+	});
 });
