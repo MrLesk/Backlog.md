@@ -130,7 +130,7 @@ describe("Core", () => {
 			await core.createTask(sampleTask, true);
 
 			const demoted = await core.demoteTask("task-1", true);
-			expect(demoted).toBe(true);
+			expect(demoted).toBe("DRAFT-1");
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toContain("backlog: Demote task TASK-1");
@@ -614,7 +614,7 @@ describe("Core", () => {
 			);
 
 			const promoted = await core.promoteDraft(draft.id, true);
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toContain(`backlog: Promote draft ${draft.id.toUpperCase()}`);

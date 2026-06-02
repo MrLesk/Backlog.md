@@ -2219,28 +2219,28 @@ export class Core {
 		return success;
 	}
 
-	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.promoteDraft(draftId);
+	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<Task | false> {
+		const task = await this.fs.promoteDraft(draftId);
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
+		if (task && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draftId, "draft")}`, repoRoot);
 		}
 
-		return success;
+		return task;
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.demoteTask(taskId);
+	async demoteTask(taskId: string, autoCommit?: boolean): Promise<string | null> {
+		const newDraftId = await this.fs.demoteTask(taskId);
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
+		if (newDraftId && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
 			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(taskId)}`, repoRoot);
 		}
 
-		return success;
+		return newDraftId;
 	}
 
 	/**

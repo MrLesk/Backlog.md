@@ -20,6 +20,7 @@ interface Props {
   onSaved?: () => Promise<void> | void; // refresh callback
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
   onArchive?: () => void; // For archiving tasks
+  onPromoted?: (task: Task) => void; // For opening a newly promoted task
   availableStatuses?: string[]; // Available statuses for new tasks
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
@@ -62,6 +63,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSaved,
   onSubmit,
   onArchive,
+  onPromoted,
   availableStatuses,
   availableMilestones: _availableMilestones,
   milestoneEntities,
@@ -276,6 +278,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
     modeRef.current = mode;
   }, [mode]);
 
+  const isDoneStatus = (status || "").toLowerCase().includes("done");
+  const isDraftTask = task?.id?.startsWith("DRAFT-") ?? false;
+
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -299,15 +304,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
         e.stopPropagation();
         void handleComplete();
       }
-      if (mode === "preview" && !isDoneStatus && (e.key.toLowerCase() === "d") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (mode === "preview" && !isDoneStatus && !isDraftTask && (e.key.toLowerCase() === "d") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         void handleDemote();
       }
+      if (mode === "preview" && isDraftTask && (e.key.toLowerCase() === "p") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        void handlePromote();
+      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status]);
+  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, isDraftTask]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -685,6 +695,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		}
 	};
 
+	const handlePromote = async () => {
+		if (!task) return;
+		if (!window.confirm(t.taskDetails.promoteConfirm)) return;
+		try {
+			const promotedTask = await apiClient.promoteDraft(task.id);
+			if (onSaved) await onSaved();
+			window.dispatchEvent(new CustomEvent('drafts-updated'));
+			onClose();
+			if (onPromoted) onPromoted(promotedTask);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		}
+	};
+
   const handleArchive = async () => {
     if (!task || !onArchive) return;
     if (!window.confirm(t.taskDetails.archiveConfirm(task.title))) return;
@@ -696,7 +720,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const totalCount = (criteria || []).length;
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
-  const isDoneStatus = (status || "").toLowerCase().includes("done");
   const comments = displayComments;
 
   const displayId = task?.id ?? "";
@@ -728,13 +751,22 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		              {t.taskDetails.markCompleted}
 		            </button>
 		          )}
-		          {!isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
+		          {!isDoneStatus && !isDraftTask && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
 		            <button
 		              onClick={handleDemote}
 		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		              title={t.taskDetails.demoteToDraftTitle}
 		            >
 		              {t.taskDetails.demoteToDraft}
+		            </button>
+		          )}
+		          {isDraftTask && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
+		            <button
+		              onClick={handlePromote}
+		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		              title={t.taskDetails.promoteToTaskTitle}
+		            >
+		              {t.taskDetails.promoteToTask}
 		            </button>
 		          )}
 		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (

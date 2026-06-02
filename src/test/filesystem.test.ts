@@ -192,7 +192,7 @@ Invalid content`,
 			await filesystem.saveTask(sampleTask);
 
 			const demoted = await filesystem.demoteTask("task-1");
-			expect(demoted).toBe(true);
+			expect(demoted).toBe("DRAFT-1");
 
 			// Task should be removed from tasks directory
 			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
@@ -242,7 +242,7 @@ Invalid content`,
 			await filesystem.saveDraft(sampleDraft);
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			// Draft should be removed from drafts directory
 			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
@@ -272,7 +272,7 @@ Invalid content`,
 			await filesystem.saveDraft(sampleDraft);
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			const promotedTask = await filesystem.loadTask("task-1");
 			expect(promotedTask?.id).toBe("TASK-1");
@@ -288,13 +288,13 @@ Invalid content`,
 			});
 
 			const demoted = await filesystem.demoteTask("task-1");
-			expect(demoted).toBe(true);
+			expect(demoted).toBe("DRAFT-1");
 
 			const draft = await filesystem.loadDraft("draft-1");
 			expect(draft?.status).toBe("In Progress");
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			const promotedTask = await filesystem.loadTask("task-1");
 			expect(promotedTask?.id).toBe("TASK-1");
@@ -317,7 +317,7 @@ Invalid content`,
 			await filesystem.saveDraft(sampleDraft);
 
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			// Draft should be removed
 			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
@@ -363,7 +363,7 @@ Invalid content`,
 			// Create and promote a draft
 			await filesystem.saveDraft(sampleDraft);
 			const promoted = await filesystem.promoteDraft("draft-1");
-			expect(promoted).toBe(true);
+			expect(promoted).not.toBe(false);
 
 			// BUG: Currently returns TASK-1 because promoteDraft only checks active tasks
 			// Expected: Should return TASK-2 to avoid collision with completed task

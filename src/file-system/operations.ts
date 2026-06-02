@@ -568,7 +568,7 @@ export class FileSystem {
 		}
 	}
 
-	async promoteDraft(draftId: string): Promise<boolean> {
+	async promoteDraft(draftId: string): Promise<Task | false> {
 		try {
 			return await this.withCreateLock(async () => {
 				// Load the draft
@@ -606,7 +606,9 @@ export class FileSystem {
 				// Delete old draft file
 				await unlink(draft.filePath);
 
-				return true;
+				// Load the saved task to get the full object with filePath
+				const savedTask = await this.loadTask(newTaskId);
+				return savedTask ?? promotedTask;
 			});
 		} catch (error) {
 			if (isCreateLockError(error)) {
@@ -616,12 +618,12 @@ export class FileSystem {
 		}
 	}
 
-	async demoteTask(taskId: string): Promise<boolean> {
+	async demoteTask(taskId: string): Promise<string | null> {
 		try {
 			return await this.withCreateLock(async () => {
 				// Load the task
 				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return false;
+				if (!task?.filePath) return null;
 
 				// Get existing draft IDs to generate next ID
 				// Draft prefix is always "draft" (not configurable like task prefix)
@@ -644,13 +646,13 @@ export class FileSystem {
 				// Delete old task file
 				await unlink(task.filePath);
 
-				return true;
+				return newDraftId;
 			});
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw error;
 			}
-			return false;
+			return null;
 		}
 	}
 

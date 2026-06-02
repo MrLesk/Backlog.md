@@ -2546,9 +2546,9 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.demoteTask(taskId);
-			if (success) {
-				console.log(`Demoted task ${taskId}`);
+			const newDraftId = await core.demoteTask(taskId);
+			if (newDraftId) {
+				console.log(`Demoted task ${taskId} to draft ${newDraftId.replace(/^[a-zA-Z]+-/i, "")}`);
 			} else {
 				console.error(`Task ${taskId} not found.`);
 			}
@@ -2723,9 +2723,9 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.promoteDraft(taskId);
-			if (success) {
-				console.log(`Promoted draft ${taskId}`);
+			const promotedTask = await core.promoteDraft(taskId);
+			if (promotedTask) {
+				console.log(`Promoted draft ${taskId} to task ${promotedTask.id.replace(/^[a-zA-Z]+-/i, "")}`);
 			} else {
 				console.error(`Draft ${taskId} not found.`);
 			}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../hooks/useI18n';
+import { apiClient } from '../lib/api';
 import { type Task } from '../../types';
 
 interface DraftsListProps {
@@ -52,17 +53,16 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
   };
 
   const handlePromoteDraft = async (draftId: string) => {
+    if (!window.confirm(t.taskDetails.promoteConfirm)) return;
     try {
-      const response = await fetch(`/api/drafts/${draftId}/promote`, {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to promote draft: ${response.statusText}`);
-      }
-      
-      // Reload drafts after successful promotion
+      const newTask = await apiClient.promoteDraft(draftId);
+
+      // Reload drafts list and notify listeners
       await loadDrafts();
+      window.dispatchEvent(new CustomEvent('drafts-updated'));
+
+      // Open the newly promoted task
+      onEditTask(newTask);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to promote draft');
     }
@@ -112,7 +112,7 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
               {drafts.length} {drafts.length !== 1 ? t.drafts.drafts : t.drafts.draft}
             </div>
 	            <button 
-	              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200" 
+	              className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200" 
 	              onClick={onNewDraft}
 	            >
 	              {t.drafts.newDraft}
@@ -180,7 +180,7 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
                         e.stopPropagation();
                         handlePromoteDraft(draft.id);
                       }}
-                      className="inline-flex items-center px-3 py-1.5 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 dark:focus:ring-offset-gray-800 transition-colors duration-200"
+                      className="inline-flex items-center px-3 py-1.5 bg-emerald-600 dark:bg-emerald-700 text-white text-sm font-medium rounded-md hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 dark:focus:ring-offset-gray-800 transition-colors duration-200"
                     >
                       {t.drafts.promoteToTask}
                     </button>

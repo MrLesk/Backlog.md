@@ -398,6 +398,12 @@ function App() {
     setShowModal(true);
   };
 
+  const handlePromotedTask = (task: Task) => {
+    setEditingTask(task);
+    setIsDraftMode(false);
+    setShowModal(true);
+  };
+
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingTask(null);
@@ -580,6 +586,7 @@ function App() {
           onSaved={refreshData}
           onSubmit={handleSubmitTask}
           onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+          onPromoted={handlePromotedTask}
           availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
           availableMilestones={milestones}
           milestoneEntities={milestoneEntities}

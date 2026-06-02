@@ -1116,7 +1116,7 @@ describe("CLI Integration", () => {
 
 			// Archive the task
 			const success = await core.archiveTask("task-1", false);
-			expect(success).toBe(true);
+			expect(success).not.toBe(false);
 
 			// Verify task is no longer in tasks directory
 			const task = await core.filesystem.loadTask("task-1");
@@ -1155,7 +1155,7 @@ describe("CLI Integration", () => {
 
 			// Demote the task
 			const success = await core.demoteTask("task-2", false);
-			expect(success).toBe(true);
+			expect(success).not.toBeNull();
 
 			// Verify task is no longer in tasks directory
 			const task = await core.filesystem.loadTask("task-2");
@@ -1187,7 +1187,7 @@ describe("CLI Integration", () => {
 
 			// Promote the draft
 			const success = await core.promoteDraft(draft.id, false);
-			expect(success).toBe(true);
+			expect(success).not.toBe(false);
 
 			// Verify draft is no longer in drafts directory
 			const loadedDraft = await core.filesystem.loadDraft(draft.id);
@@ -1219,7 +1219,7 @@ describe("CLI Integration", () => {
 
 			// Archive the draft
 			const success = await core.archiveDraft(draft.id, false);
-			expect(success).toBe(true);
+			expect(success).not.toBe(false);
 
 			// Verify draft is no longer in drafts directory
 			const loadedDraft = await core.filesystem.loadDraft(draft.id);
@@ -1242,7 +1242,7 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			const success = await core.demoteTask("task-999", false);
-			expect(success).toBe(false);
+			expect(success).toBeNull();
 		});
 
 		it("should handle archiving non-existent draft", async () => {
@@ -1271,7 +1271,7 @@ describe("CLI Integration", () => {
 			);
 
 			const success = await core.archiveTask("task-5", true); // autoCommit = true
-			expect(success).toBe(true);
+			expect(success).not.toBe(false);
 
 			// Verify operation completed successfully
 			const task = await core.filesystem.loadTask("task-5");

@@ -1100,15 +1100,15 @@ export class BacklogServer {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
 
-			const success = await this.core.demoteTask(taskId);
-			if (!success) {
+			const newDraftId = await this.core.demoteTask(taskId);
+			if (!newDraftId) {
 				return Response.json({ error: "Failed to demote task" }, { status: 500 });
 			}
 
 			// Notify listeners to refresh both tasks and drafts lists
 			this.broadcastTasksUpdated();
 			this.broadcastDraftsUpdated();
-			return Response.json({ success: true });
+			return Response.json({ success: true, draftId: newDraftId });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
 			console.error("Error demoting task:", error);
@@ -1516,11 +1516,11 @@ export class BacklogServer {
 
 	private async handlePromoteDraft(draftId: string): Promise<Response> {
 		try {
-			const success = await this.core.promoteDraft(draftId);
-			if (!success) {
+			const task = await this.core.promoteDraft(draftId);
+			if (!task) {
 				return Response.json({ error: "Draft not found" }, { status: 404 });
 			}
-			return Response.json({ success: true });
+			return Response.json(task);
 		} catch (error) {
 			console.error("Error promoting draft:", error);
 			if (isCreateLockError(error)) {
