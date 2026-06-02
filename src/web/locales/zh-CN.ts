@@ -78,6 +78,7 @@ export const zhCN: TranslationDict = {
 		tasks: "所有任务",
 		drafts: "草稿",
 		milestones: "里程碑",
+		gantt: "甘特图",
 		documents: "文档",
 		decisions: "决策",
 		statistics: "统计",
@@ -642,6 +643,33 @@ export const zhCN: TranslationDict = {
 		label: "依赖",
 		placeholderEmpty: "输入任务 ID 或标题，按回车或逗号确认",
 		placeholderAddMore: "添加更多依赖...",
+	},
+	gantt: {
+		title: "甘特图",
+		granularity: {
+			day: "日",
+			week: "周",
+			month: "月",
+			quarter: "季",
+			year: "年",
+		},
+		columns: {
+			id: "ID",
+			title: "名称",
+			start: "开始",
+			end: "结束",
+			action: "操作",
+		},
+		noTasks: "暂无任务",
+		today: "今天",
+		action: {
+			detail: "详情",
+		},
+		tooltip: {
+			start: "开始",
+			end: "结束",
+			fallback: "兜底",
+		},
 	},
 	wiki: {
 		failedToLoad: "Wiki 页面加载失败",

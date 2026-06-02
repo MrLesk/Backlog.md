@@ -316,6 +316,7 @@ export class BacklogServer {
 					"/tasks": spaIndexHtml,
 					"/milestones": spaIndexHtml,
 					"/drafts": spaIndexHtml,
+					"/gantt": spaIndexHtml,
 					"/documentation": spaIndexHtml,
 					"/documentation/*": spaIndexHtml,
 					"/decisions": spaIndexHtml,
