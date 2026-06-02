@@ -32,7 +32,7 @@ function looksLikeUrl(value: string): boolean {
 }
 
 export const PathAutocomplete = React.forwardRef<HTMLInputElement, PathAutocompleteProps>(
-	({ name, placeholder, disabled, className, onSubmit }, forwardedRef) => {
+	({ name, placeholder, disabled, className, onSubmit: _onSubmit }, forwardedRef) => {
 		const inputRef = useRef<HTMLInputElement>(null);
 		const containerRef = useRef<HTMLDivElement>(null);
 		const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -116,7 +116,7 @@ export const PathAutocomplete = React.forwardRef<HTMLInputElement, PathAutocompl
 			}
 			const hasSep = value.includes("/") || value.includes("\\");
 			if (hasSep) {
-				const { dir, prefix } = getDirectoryAndPrefix(value);
+				const { dir } = getDirectoryAndPrefix(value);
 				const separator = value.includes("\\") ? "\\" : "/";
 				void fetchList(dir, separator);
 			} else {
