@@ -2053,8 +2053,8 @@ export class FileSystem {
 		try {
 			await stat(newFullPath);
 			throw new Error("Destination already exists");
-		} catch (err: any) {
-			if (err.message === "Destination already exists") throw err;
+		} catch (err) {
+			if (err instanceof Error && err.message === "Destination already exists") throw err;
 			// stat threw because file doesn't exist — that's what we want
 		}
 

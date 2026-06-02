@@ -38,7 +38,7 @@ export class AssetManager {
 	async uploadFile(file: File, isTemp = false): Promise<UploadResult> {
 		const buffer = new Uint8Array(await file.arrayBuffer());
 		const nameMatch = file.name.match(/\.([^./]+)$/);
-		const ext = nameMatch ? nameMatch[1]!.toLowerCase() : this.resolveExtFromMime(file.type);
+		const ext = nameMatch ? nameMatch[1].toLowerCase() : this.resolveExtFromMime(file.type);
 		return this.saveBuffer(buffer, ext, isTemp);
 	}
 
@@ -47,8 +47,8 @@ export class AssetManager {
 		if (!match) {
 			throw new ClientError("Invalid data URI");
 		}
-		const mime = match[1]!;
-		const base64 = match[2]!;
+		const mime = match[1];
+		const base64 = match[2];
 		const buffer = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 		return this.saveBuffer(buffer, this.resolveExtFromMime(mime), isTemp);
 	}

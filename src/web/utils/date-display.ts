@@ -36,11 +36,12 @@ export function dateTimeLocalToStoredUtc(localStr: string): string {
 	const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
 	if (!match) return normalized.replace("T", " ");
 
-	const year = parseIntStrict(match[1]!);
-	const month = parseIntStrict(match[2]!) - 1;
-	const day = parseIntStrict(match[3]!);
-	const hours = parseIntStrict(match[4]!);
-	const minutes = parseIntStrict(match[5]!);
+	const [, yearStr, monthStr, dayStr, hoursStr, minutesStr] = match;
+	const year = parseIntStrict(yearStr);
+	const month = parseIntStrict(monthStr) - 1;
+	const day = parseIntStrict(dayStr);
+	const hours = parseIntStrict(hoursStr);
+	const minutes = parseIntStrict(minutesStr);
 
 	const date = new Date(year, month, day, hours, minutes, 0);
 	return date.toISOString().slice(0, 16).replace("T", " ");

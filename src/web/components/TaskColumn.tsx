@@ -13,7 +13,8 @@ interface TaskColumnProps {
   onTaskReorder?: (payload: ReorderTaskPayload) => void;
   dragSourceStatus?: string | null;
   dragSourceLane?: string | null;
-  onDragStart?: (context: { status: string; laneId?: string | null }) => void;
+  draggedTaskId?: string | null;
+  onDragStart?: (context: { status: string; laneId?: string | null; taskId: string }) => void;
   onDragEnd?: () => void;
   onCleanup?: () => void;
   laneId?: string;
@@ -30,6 +31,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onTaskReorder,
   dragSourceStatus,
   dragSourceLane,
+  draggedTaskId,
   onDragStart,
   onDragEnd,
   onCleanup,
@@ -40,7 +42,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 }) => {
   const { t } = useI18n();
   const [isDragOver, setIsDragOver] = React.useState(false);
-  const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
   const [showMenu, setShowMenu] = React.useState(false);
   const [columnSort, setColumnSort] = React.useState<{ field: "id" | "title" | "priority"; direction: "asc" | "desc" } | null>(null);
@@ -170,20 +171,23 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       return;
     }
 
-    const columnWithoutDropped = tasks.filter((task) => task.id !== droppedTaskId);
+    // Use visual order (respecting any active column sort) to compute drop position
+    const displayTasks = getDisplayTasks();
+    const columnWithoutDropped = displayTasks.filter((task) => task.id !== droppedTaskId);
 
     let insertIndex = columnWithoutDropped.length;
     if (dropPosition) {
       const { index, position } = dropPosition;
       const baseIndex = position === 'before' ? index : index + 1;
-      let count = 0;
-      for (let i = 0; i < Math.min(baseIndex, tasks.length); i += 1) {
-        if (tasks[i]?.id === droppedTaskId) {
-          continue;
-        }
-        count += 1;
+      const droppedVisualIndex = displayTasks.findIndex((t) => t.id === droppedTaskId);
+
+      if (droppedVisualIndex === -1) {
+        insertIndex = Math.min(baseIndex, columnWithoutDropped.length);
+      } else if (droppedVisualIndex < baseIndex) {
+        insertIndex = Math.max(0, baseIndex - 1);
+      } else {
+        insertIndex = baseIndex;
       }
-      insertIndex = count;
     }
 
     const orderedTaskIds = columnWithoutDropped.map((task) => task.id);
@@ -192,11 +196,18 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     const isSameColumn = sourceStatus === title;
     const isOrderUnchanged =
       isSameColumn &&
-      orderedTaskIds.length === tasks.length &&
-      orderedTaskIds.every((taskId, idx) => taskId === tasks[idx]?.id);
+      orderedTaskIds.length === displayTasks.length &&
+      orderedTaskIds.every((taskId, idx) => taskId === displayTasks[idx]?.id);
 
     if (isOrderUnchanged) {
       return;
+    }
+
+    // When dropping into a different column, clear the target column's manual
+    // sort so the default (ordinal-based) ordering takes effect. The new task's
+    // ordinal has already been set to reflect the visual drop position.
+    if (!isSameColumn) {
+      setColumnSort(null);
     }
 
     onTaskReorder({
@@ -364,12 +375,9 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               onUpdate={onTaskUpdate}
               onEdit={onEditTask}
               onDragStart={() => {
-                setDraggedTaskId(task.id);
-                setColumnSort(null);
-                onDragStart?.({ status: title, laneId: laneId ?? null });
+                onDragStart?.({ status: title, laneId: laneId ?? null, taskId: task.id });
               }}
               onDragEnd={() => {
-                setDraggedTaskId(null);
                 setDropPosition(null);
                 onDragEnd?.();
               }}

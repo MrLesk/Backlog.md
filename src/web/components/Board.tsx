@@ -71,6 +71,7 @@ const Board: React.FC<BoardProps> = ({
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [dragSourceLane, setDragSourceLane] = useState<string | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
@@ -601,15 +602,18 @@ const Board: React.FC<BoardProps> = ({
                             onTaskReorder={handleTaskReorder}
                             dragSourceStatus={dragSourceStatus}
                             dragSourceLane={dragSourceLane}
+                            draggedTaskId={draggedTaskId}
                             laneId={lane.key}
                             targetMilestone={lane.milestone ?? null}
-                            onDragStart={({ status: draggedStatus, laneId }) => {
+                            onDragStart={({ status: draggedStatus, laneId, taskId }) => {
                               setDragSourceStatus(draggedStatus);
                               setDragSourceLane(laneId ?? null);
+                              setDraggedTaskId(taskId);
                             }}
                             onDragEnd={() => {
                               setDragSourceStatus(null);
                               setDragSourceLane(null);
+                              setDraggedTaskId(null);
                             }}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                             terminalStatus={terminalStatus}
@@ -637,14 +641,17 @@ const Board: React.FC<BoardProps> = ({
                   onTaskReorder={handleTaskReorder}
                   dragSourceStatus={dragSourceStatus}
                   dragSourceLane={dragSourceLane}
+                  draggedTaskId={draggedTaskId}
                   laneId={DEFAULT_LANE_KEY}
-                  onDragStart={({ status: draggedStatus, laneId }) => {
+                  onDragStart={({ status: draggedStatus, laneId, taskId }) => {
                     setDragSourceStatus(draggedStatus);
                     setDragSourceLane(laneId ?? null);
+                    setDraggedTaskId(taskId);
                   }}
                   onDragEnd={() => {
                     setDragSourceStatus(null);
                     setDragSourceLane(null);
+                    setDraggedTaskId(null);
                   }}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                   terminalStatus={terminalStatus}

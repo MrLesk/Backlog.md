@@ -71,10 +71,11 @@ describe("storedUtcToDateTimeLocal", () => {
 		const [datePart, timePart] = result.split("T");
 		expect(datePart).toBe("2026-02-09");
 		expect(timePart).toBeDefined();
-		const [hours, minutes] = timePart!.split(":");
+		if (!timePart) throw new Error("Expected timePart to be defined");
+		const [hours, minutes] = timePart.split(":");
 		expect(hours).toBeDefined();
 		expect(minutes).toBeDefined();
-		const localDate = new Date(2026, 1, 9, Number.parseInt(hours!, 10), Number.parseInt(minutes!, 10), 0);
+		const localDate = new Date(2026, 1, 9, Number.parseInt(hours, 10), Number.parseInt(minutes, 10), 0);
 		expect(localDate.toISOString()).toBe("2026-02-09T06:01:00.000Z");
 	});
 
