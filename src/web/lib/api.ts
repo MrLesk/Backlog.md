@@ -334,6 +334,24 @@ export class ApiClient {
 		return response.json();
 	}
 
+	async listFiles(path: string): Promise<{ name: string; type: "file" | "directory" }[]> {
+		const response = await fetch(`${API_BASE}/list-files?path=${encodeURIComponent(path)}`);
+		if (!response.ok) {
+			throw new Error("Failed to list files");
+		}
+		const data = await response.json() as { entries: { name: string; type: "file" | "directory" }[] };
+		return data.entries;
+	}
+
+	async searchFiles(query: string): Promise<{ name: string; path: string; type: "file" | "directory" }[]> {
+		const response = await fetch(`${API_BASE}/search-files?query=${encodeURIComponent(query)}`);
+		if (!response.ok) {
+			throw new Error("Failed to search files");
+		}
+		const data = await response.json() as { results: { name: string; path: string; type: "file" | "directory" }[] };
+		return data.results;
+	}
+
 	async fetchDocs(): Promise<Document[]> {
 		const response = await fetch(`${API_BASE}/docs`);
 		if (!response.ok) {

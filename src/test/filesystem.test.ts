@@ -958,6 +958,56 @@ Invalid content`,
 		});
 	});
 
+	describe("listProjectFiles", () => {
+		it("lists files and directories sorted alphabetically", async () => {
+			await mkdir(join(TEST_DIR, "src", "web"), { recursive: true });
+			await Bun.write(join(TEST_DIR, "src", "app.ts"), "app");
+			await Bun.write(join(TEST_DIR, "src", "web", "index.ts"), "index");
+			await Bun.write(join(TEST_DIR, "README.md"), "readme");
+
+			const result = await filesystem.listProjectFiles(".");
+			const names = result.map((r) => r.name);
+			expect(names).toContain("README.md");
+			expect(names).toContain("src");
+			expect(result.find((r) => r.name === "src")?.type).toBe("directory");
+			expect(result.find((r) => r.name === "README.md")?.type).toBe("file");
+			// Verify alphabetical order (backlog dir is created by ensureBacklogStructure)
+			expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+		});
+
+		it("lists nested directory contents", async () => {
+			await mkdir(join(TEST_DIR, "src", "web"), { recursive: true });
+			await Bun.write(join(TEST_DIR, "src", "web", "index.ts"), "index");
+
+			const result = await filesystem.listProjectFiles("src/web");
+			expect(result.length).toBe(1);
+			expect(result[0]?.name).toBe("index.ts");
+			expect(result[0]?.type).toBe("file");
+		});
+
+		it("rejects sibling-prefix traversal", async () => {
+			await mkdir(join(TEST_DIR, "project-secret"), { recursive: true });
+			await expect(filesystem.listProjectFiles("../project-secret")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects absolute paths", async () => {
+			await expect(filesystem.listProjectFiles("/etc")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects .. traversal", async () => {
+			await expect(filesystem.listProjectFiles("../../../etc")).rejects.toThrow("Access denied");
+		});
+
+		it("rejects non-existent paths", async () => {
+			await expect(filesystem.listProjectFiles("missing-dir")).rejects.toThrow("Path not found");
+		});
+
+		it("rejects files (not directories)", async () => {
+			await Bun.write(join(TEST_DIR, "file.txt"), "content");
+			await expect(filesystem.listProjectFiles("file.txt")).rejects.toThrow("Path is not a directory");
+		});
+	});
+
 	describe("wiki operations", () => {
 		beforeEach(async () => {
 			const wikiDir = join(TEST_DIR, "backlog", "wiki");

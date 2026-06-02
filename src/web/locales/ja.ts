@@ -195,6 +195,7 @@ export const ja: TranslationDict = {
 		},
 		clickToPreview: "クリックしてプレビュー",
 		removeReference: "参照を削除",
+		removeDocumentation: "ドキュメントを削除",
 		priorityLabel: (level: string) => {
 			const map: Record<string, string> = { high: "高", medium: "中", low: "低" };
 			return map[level] ?? level;
@@ -207,6 +208,7 @@ export const ja: TranslationDict = {
 		noNotes: "実装メモがありません",
 		noPlan: "実装計画がありません",
 		noReferences: "参照がありません",
+		noDocumentation: "ドキュメントがありません",
 		placeholderFinalSummary: "最終サマリーを入力",
 		placeholderReferences: "参照を入力して Enter を押してください",
 		archiveConfirm: (title: string) => `タスク "${title}" をアーカイブしますか？`,
