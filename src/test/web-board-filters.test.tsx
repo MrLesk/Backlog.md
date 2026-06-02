@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import BoardPage from "../web/components/BoardPage.tsx";
+import { I18nProvider } from "../web/contexts/I18nContext.tsx";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -99,19 +100,21 @@ const renderBoardPage = (
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<BrowserRouter>
-				<BoardPage
-					tasks={renderedTasks}
-					statuses={renderedStatuses}
-					milestones={[]}
-					availableLabels={options.availableLabels ?? ["bug", "docs", "enhancement"]}
-					milestoneEntities={[]}
-					archivedMilestones={[]}
-					isLoading={false}
-					onEditTask={() => {}}
-					onNewTask={() => {}}
-				/>
-			</BrowserRouter>,
+			<I18nProvider initialLocale="en">
+				<BrowserRouter>
+					<BoardPage
+						tasks={renderedTasks}
+						statuses={renderedStatuses}
+						milestones={[]}
+						availableLabels={options.availableLabels ?? ["bug", "docs", "enhancement"]}
+						milestoneEntities={[]}
+						archivedMilestones={[]}
+						isLoading={false}
+						onEditTask={() => {}}
+						onNewTask={() => {}}
+					/>
+				</BrowserRouter>
+			</I18nProvider>,
 		);
 	});
 	return container as HTMLElement;

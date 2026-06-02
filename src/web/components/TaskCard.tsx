@@ -1,6 +1,7 @@
 import React from 'react';
 import { useI18n } from '../hooks/useI18n';
 import { type Task } from '../../types';
+import { getLabelColorClasses } from '../utils/labelColors';
 
 interface TaskCardProps {
   task: Task;
@@ -11,6 +12,7 @@ interface TaskCardProps {
   status?: string;
   laneId?: string;
   terminalStatus?: string | null;
+  labelColors?: Record<string, string>;
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -59,7 +61,90 @@ const getPriorityClass = (priority?: string) => {
   }
 };
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, terminalStatus }) => {
+interface WidthAwareLabelsProps {
+  labels: string[];
+  labelColors?: Record<string, string>;
+}
+
+const WidthAwareLabels: React.FC<WidthAwareLabelsProps> = ({ labels, labelColors }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const measureRef = React.useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = React.useState(labels.length);
+
+  React.useEffect(() => {
+    const measure = () => {
+      if (!containerRef.current || !measureRef.current) return;
+      const containerWidth = containerRef.current.clientWidth;
+      const measureChildren = Array.from(measureRef.current.children) as HTMLElement[];
+      if (measureChildren.length === 0) return;
+
+      const gap = 4; // gap-1 = 4px
+      const labelWidths = measureChildren.slice(0, labels.length).map((c) => c.getBoundingClientRect().width);
+      const overflowWidth = measureChildren[labels.length]?.getBoundingClientRect().width ?? 0;
+
+      let count = 0;
+      let used = 0;
+      for (let i = 0; i < labelWidths.length; i++) {
+        const w = labelWidths[i] ?? 0;
+        const nextUsed = used + (count > 0 ? gap : 0) + w;
+        const remaining = labels.length - i - 1;
+        const needsOverflow = remaining > 0;
+        const required = nextUsed + (needsOverflow ? gap + overflowWidth : 0);
+        if (required <= containerWidth) {
+          count++;
+          used = nextUsed;
+        } else {
+          break;
+        }
+      }
+      setVisibleCount(count);
+    };
+
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [labels]);
+
+  return (
+    <div className="relative">
+      <div ref={containerRef} className="flex flex-wrap gap-1 mt-2">
+        {labels.slice(0, visibleCount).map((label) => {
+          const colorClasses = getLabelColorClasses(labelColors?.[label]);
+          return (
+            <span
+              key={label}
+              className={`inline-block px-1.5 py-0.5 text-[10px] rounded transition-colors duration-200 ${colorClasses.bg} ${colorClasses.text}`}
+            >
+              {label}
+            </span>
+          );
+        })}
+        {labels.length > visibleCount && (
+          <span className="inline-block px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+            +{labels.length - visibleCount}
+          </span>
+        )}
+      </div>
+      {/* Hidden measurement container */}
+      <div
+        ref={measureRef}
+        className="absolute invisible whitespace-nowrap flex gap-1 pointer-events-none"
+        aria-hidden="true"
+      >
+        {labels.map((label) => (
+          <span key={label} className="inline-block px-1.5 py-0.5 text-[10px] rounded">
+            {label}
+          </span>
+        ))}
+        <span className="inline-block px-1.5 py-0.5 text-[10px]">+99</span>
+      </div>
+    </div>
+  );
+};
+
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, terminalStatus, labelColors }) => {
   const { t } = useI18n();
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
@@ -188,23 +273,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           {task.title}
         </h4>
 
-        {/* Labels - limit to 3 */}
+        {/* Labels - width-aware overflow */}
         {task.labels.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {task.labels.slice(0, 3).map(label => (
-              <span
-                key={label}
-                className="inline-block px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors duration-200"
-              >
-                {label}
-              </span>
-            ))}
-            {task.labels.length > 3 && (
-              <span className="inline-block px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
-                +{task.labels.length - 3}
-              </span>
-            )}
-          </div>
+          <WidthAwareLabels labels={task.labels} labelColors={labelColors} />
         )}
 
         {/* Footer with due date, created date, and assignee */}

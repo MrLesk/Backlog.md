@@ -19,6 +19,7 @@ interface TaskColumnProps {
   laneId?: string;
   targetMilestone?: string | null;
   terminalStatus?: string | null;
+  labelColors?: Record<string, string>;
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
@@ -35,6 +36,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   laneId,
   targetMilestone,
   terminalStatus,
+  labelColors,
 }) => {
   const { t } = useI18n();
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -374,6 +376,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               status={title}
               laneId={laneId}
               terminalStatus={terminalStatus}
+              labelColors={labelColors}
             />
             
             {/* Drop indicator for after this task */}

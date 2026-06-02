@@ -26,6 +26,7 @@ export const zhTW: TranslationDict = {
 		document: "文件",
 		task: "任務",
 		save: "保存",
+		default: "預設",
 		search: "搜尋",
 		clear: "清除",
 		add: "新增",

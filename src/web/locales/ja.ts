@@ -26,6 +26,7 @@ export const ja: TranslationDict = {
 		document: "ドキュメント",
 		task: "タスク",
 		save: "保存",
+		default: "デフォルト",
 		search: "検索",
 		clear: "クリア",
 		add: "追加",

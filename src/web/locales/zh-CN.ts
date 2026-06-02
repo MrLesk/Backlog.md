@@ -26,6 +26,7 @@ export const zhCN: TranslationDict = {
 		document: "文档",
 		task: "任务",
 		save: "保存",
+		default: "默认",
 		search: "搜索",
 		clear: "清除",
 		add: "添加",
