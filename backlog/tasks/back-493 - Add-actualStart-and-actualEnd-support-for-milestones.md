@@ -5,11 +5,13 @@ status: Done
 assignee:
   - '@kimi'
 created_date: '2026-05-28 01:55'
-updated_date: '2026-05-28 05:42'
+updated_date: '2026-05-28 18:34'
 labels: []
+milestone: m-7
 dependencies:
   - BACK-492
 priority: medium
+ordinal: 42400
 actual_start: '2026-05-28 04:00'
 actual_end: '2026-05-28 05:42'
 ---

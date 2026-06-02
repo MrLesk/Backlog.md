@@ -4,11 +4,12 @@ title: Fix task edit modal keyboard shortcuts interfering with title input
 status: Done
 assignee:
   - '@kimi'
-created_date: '2026-05-28 02:31'
-updated_date: '2026-05-28 03:10'
+created_date: '2026-05-27 02:31'
+updated_date: '2026-05-28 18:34'
 labels: []
 dependencies: []
 priority: medium
+ordinal: 43400
 actual_start: '2026-05-28 03:38'
 actual_end: '2026-05-28 03:10'
 ---

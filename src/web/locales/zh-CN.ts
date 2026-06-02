@@ -648,6 +648,8 @@ export const zhCN: TranslationDict = {
 	},
 	gantt: {
 		title: "甘特图",
+		showPlanTime: "显示计划时间",
+		showActualTime: "显示实际时间",
 		granularity: {
 			day: "日",
 			week: "周",
@@ -658,8 +660,10 @@ export const zhCN: TranslationDict = {
 		columns: {
 			id: "ID",
 			title: "名称",
-			start: "开始",
-			end: "结束",
+			plannedStart: "计划开始",
+			plannedEnd: "计划结束",
+			actualStart: "实际开始",
+			actualEnd: "实际结束",
 			action: "操作",
 		},
 		noTasks: "暂无任务",
@@ -668,9 +672,22 @@ export const zhCN: TranslationDict = {
 			detail: "详情",
 		},
 		tooltip: {
-			start: "开始",
-			end: "结束",
-			fallback: "兜底",
+			planned: "计划",
+			actual: "实际",
+			fallback: "估算",
+		},
+		legend: {
+			actual: "实际任务",
+			planned: "计划时间",
+			dependency: "依赖关系",
+			fallback: "估算时间",
+		},
+		statusLabels: {
+			done: "已完成",
+			inProgress: "进行中",
+			toDo: "待办",
+			blocked: "阻塞",
+			cancelled: "已取消",
 		},
 	},
 	wiki: {

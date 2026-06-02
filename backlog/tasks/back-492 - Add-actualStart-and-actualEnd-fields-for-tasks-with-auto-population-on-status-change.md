@@ -1,16 +1,18 @@
 ---
 id: BACK-492
-title: Add actualStart and actualEnd fields for tasks with auto-population on status change
+title: >-
+  Add actualStart and actualEnd fields for tasks with auto-population on status
+  change
 status: Done
 assignee:
   - '@kimi'
 created_date: '2026-05-28 01:15'
-updated_date: '2026-05-28 02:55'
+updated_date: '2026-05-28 18:34'
 labels: []
+milestone: m-7
 dependencies: []
-
-references: []
 priority: medium
+ordinal: 41400
 ---
 
 ## Description
