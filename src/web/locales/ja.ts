@@ -169,6 +169,8 @@ export const ja: TranslationDict = {
 		markCompleted: "完了としてマーク",
 		demoteToDraft: "ドラフトに降格",
 		demoteToDraftTitle: "ドラフトに降格",
+		promoteToTask: "タスクに昇格",
+		promoteToTaskTitle: "タスクに昇格",
 		moveToCompletedHint: "完了フォルダに移動（ボードから削除）",
 		crossBranchHint: (branch: string) =>
 			`このタスクは ${branch} ブランチに存在します。編集するにはそのブランチに切り替えてください。`,
@@ -217,6 +219,7 @@ export const ja: TranslationDict = {
 		archiveTask: "タスクをアーカイブ",
 		completeConfirm: "このタスクを完了しますか？完了フォルダに移動されます。",
 		demoteConfirm: "このタスクをドラフトに降格しますか？ドラフトフォルダに移動されます。",
+		promoteConfirm: "このドラフトをタスクに昇格しますか？タスクフォルダに移動されます。",
 		discardAndClosePrompt: "未保存の変更を破棄して閉じますか？",
 		failedToUpdateCriterion: "受入基準の更新に失敗しました",
 		failedToUpdateDod: "完了チェック項目の更新に失敗しました",

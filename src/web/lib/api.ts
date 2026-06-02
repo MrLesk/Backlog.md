@@ -1,4 +1,3 @@
-import { encodeWikiPath } from "../utils/urlHelpers.ts";
 import type { TaskStatistics } from "../../core/statistics.ts";
 import type {
 	BacklogConfig,
@@ -14,6 +13,7 @@ import type {
 	WikiPage,
 	WikiTreeNode,
 } from "../../types/index.ts";
+import { encodeWikiPath } from "../utils/urlHelpers.ts";
 
 const API_BASE = "/api";
 
@@ -271,6 +271,12 @@ export class ApiClient {
 
 	async demoteTask(id: string): Promise<void> {
 		await this.fetchWithRetry(`${API_BASE}/tasks/${id}/demote`, {
+			method: "POST",
+		});
+	}
+
+	async promoteDraft(id: string): Promise<Task> {
+		return this.fetchJson<Task>(`${API_BASE}/drafts/${id}/promote`, {
 			method: "POST",
 		});
 	}
