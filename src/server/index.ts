@@ -910,6 +910,9 @@ export class BacklogServer {
 				acceptanceCriteria,
 				definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults,
+				dueDate: typeof payload.dueDate === "string" ? payload.dueDate.trim() : undefined,
+				plannedStart: typeof payload.plannedStart === "string" ? payload.plannedStart.trim() : undefined,
+				plannedEnd: typeof payload.plannedEnd === "string" ? payload.plannedEnd.trim() : undefined,
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -1006,6 +1009,16 @@ export class BacklogServer {
 
 		if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
 			updateInput.finalSummary = updates.finalSummary;
+		}
+
+		if ("dueDate" in updates && typeof updates.dueDate === "string") {
+			updateInput.dueDate = updates.dueDate.trim();
+		}
+		if ("plannedStart" in updates && typeof updates.plannedStart === "string") {
+			updateInput.plannedStart = updates.plannedStart.trim();
+		}
+		if ("plannedEnd" in updates && typeof updates.plannedEnd === "string") {
+			updateInput.plannedEnd = updates.plannedEnd.trim();
 		}
 
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
@@ -1599,7 +1612,13 @@ export class BacklogServer {
 
 	private async handleCreateMilestone(req: Request): Promise<Response> {
 		try {
-			const body = (await req.json()) as { title?: string; description?: string };
+			const body = (await req.json()) as {
+				title?: string;
+				description?: string;
+				dueDate?: string;
+				plannedStart?: string;
+				plannedEnd?: string;
+			};
 			const title = body.title?.trim();
 
 			if (!title) {
@@ -1643,7 +1662,13 @@ export class BacklogServer {
 				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
 			}
 
-			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			const milestone = await this.core.filesystem.createMilestone(
+				title,
+				body.description,
+				body.dueDate,
+				body.plannedStart,
+				body.plannedEnd,
+			);
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
 			console.error("Error creating milestone:", error);
@@ -1655,25 +1680,24 @@ export class BacklogServer {
 		try {
 			const body = await this.readOptionalJsonBody(req);
 			const title = typeof body.title === "string" ? body.title.trim() : "";
-			const updateTasks = typeof body.updateTasks === "boolean" ? body.updateTasks : true;
 
 			if (!title) {
 				return Response.json({ error: "Milestone title is required" }, { status: 400 });
 			}
 
-			const sourceMilestone = await this.core.filesystem.loadMilestone(milestoneId);
-			const result = await new MilestoneHandlers(this.core).renameMilestone({
+			const bodyJson = body as Record<string, unknown>;
+			const updateTasks = bodyJson.updateTasks !== false;
+			const result = await new MilestoneHandlers(this.core).editMilestone({
 				from: milestoneId,
 				to: title,
 				updateTasks,
+				dueDate: typeof bodyJson.dueDate === "string" ? bodyJson.dueDate : undefined,
+				plannedStart: typeof bodyJson.plannedStart === "string" ? bodyJson.plannedStart : undefined,
+				plannedEnd: typeof bodyJson.plannedEnd === "string" ? bodyJson.plannedEnd : undefined,
 			});
-			const milestone =
-				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??
-				(await this.core.filesystem.loadMilestone(title));
 			this.broadcastTasksUpdated();
 			return Response.json({
 				success: true,
-				milestone: milestone ?? null,
 				message: this.getMilestoneMutationMessage(result),
 			});
 		} catch (error) {

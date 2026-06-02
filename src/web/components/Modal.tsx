@@ -51,7 +51,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
 				aria-labelledby="modal-title"
 			>
 				<div className="sticky top-0 z-10 flex items-center justify-between px-6 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
-					<h2 id="modal-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+					<h2 id="modal-title" className="text-base font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 mr-4 line-clamp-2">{title}</h2>
 					<div className="flex items-center gap-2">
 						{actions}
 							<button

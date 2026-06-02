@@ -192,6 +192,9 @@ export function parseTask(content: string): Task {
 		priority: validatedPriority,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,
+		dueDate: frontmatter.due_date ? normalizeDate(frontmatter.due_date) : undefined,
+		plannedStart: frontmatter.planned_start ? normalizeDate(frontmatter.planned_start) : undefined,
+		plannedEnd: frontmatter.planned_end ? normalizeDate(frontmatter.planned_end) : undefined,
 	};
 }
 
@@ -233,6 +236,9 @@ export function parseMilestone(content: string): Milestone {
 		title: String(frontmatter.title || ""),
 		description: extractSection(rawContent, "Description") || "",
 		rawContent,
+		dueDate: frontmatter.due_date ? normalizeDate(frontmatter.due_date) : undefined,
+		plannedStart: frontmatter.planned_start ? normalizeDate(frontmatter.planned_start) : undefined,
+		plannedEnd: frontmatter.planned_end ? normalizeDate(frontmatter.planned_end) : undefined,
 	};
 }
 

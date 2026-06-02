@@ -54,6 +54,9 @@ export interface Task {
 	branch?: string;
 	ordinal?: number;
 	filePath?: string;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 	// Metadata fields
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed" | "local-branch";
@@ -107,6 +110,9 @@ export interface TaskCreateInput {
 	definitionOfDoneAdd?: string[];
 	disableDefinitionOfDoneDefaults?: boolean;
 	rawContent?: string;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 }
 
 export interface TaskUpdateInput {
@@ -139,6 +145,9 @@ export interface TaskUpdateInput {
 	finalSummary?: string;
 	appendFinalSummary?: string[];
 	clearFinalSummary?: boolean;
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
 	addAcceptanceCriteria?: Array<AcceptanceCriterionInput | string>;
 	removeAcceptanceCriteria?: number[];
@@ -177,6 +186,9 @@ export interface Milestone {
 	title: string;
 	description: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
+	dueDate?: string;
+	plannedStart?: string;
+	plannedEnd?: string;
 }
 
 export const DOCUMENT_TYPE_VALUES = ["readme", "guide", "specification", "other"] as const;

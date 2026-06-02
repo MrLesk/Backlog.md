@@ -10,7 +10,29 @@ interface TaskCardProps {
   onDragEnd?: () => void;
   status?: string;
   laneId?: string;
+  terminalStatus?: string | null;
 }
+
+const CURRENT_YEAR = new Date().getFullYear();
+
+const formatCardDate = (dateStr: string): string => {
+  const date = new Date(dateStr + "T00:00:00");
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const year = date.getFullYear();
+  if (year === CURRENT_YEAR) {
+    return `${month}/${day}`;
+  }
+  return `${year}/${month}/${day}`;
+};
+
+const formatPlannedRange = (start?: string, end?: string): string | null => {
+  if (!start && !end) return null;
+  if (start && end) {
+    return `${formatCardDate(start)}~${formatCardDate(end)}`;
+  }
+  return start ? formatCardDate(start) : end ? formatCardDate(end) : null;
+};
 
 const formatRelativeDate = (dateStr: string) => {
   // Handle both date-only and datetime formats
@@ -37,7 +59,7 @@ const getPriorityClass = (priority?: string) => {
   }
 };
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, terminalStatus }) => {
   const { t } = useI18n();
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
@@ -120,17 +142,30 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        {/* Header row with priority badge and task ID */}
+        {/* Header row with task ID, planned dates, and priority badge */}
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <span className="text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
-          {(() => {
-            const badge = getPriorityBadge(task.priority);
-            return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
-                {badge.label}
-              </span>
-            ) : null;
-          })()}
+          <div className="flex items-center gap-1.5">
+            {(() => {
+              const planned = formatPlannedRange(task.plannedStart, task.plannedEnd);
+              return planned ? (
+                <span className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {planned}
+                </span>
+              ) : null;
+            })()}
+            {(() => {
+              const badge = getPriorityBadge(task.priority);
+              return badge ? (
+                <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
+                  {badge.label}
+                </span>
+              ) : null;
+            })()}
+          </div>
         </div>
 
         {/* Title */}
@@ -161,9 +196,25 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        {/* Footer with date */}
+        {/* Footer with due date, created date, and assignee */}
         <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
-          <span>{formatRelativeDate(task.createdDate)}</span>
+          <div className="flex items-center gap-2">
+            <span>{formatRelativeDate(task.createdDate)}</span>
+            {task.dueDate && (() => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const due = new Date(task.dueDate + "T00:00:00");
+              const isOverdue = due < today && task.status !== terminalStatus;
+              return (
+                <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                  <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {formatCardDate(task.dueDate)}
+                </span>
+              );
+            })()}
+          </div>
           {task.assignee.length > 0 && (
             <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
               {task.assignee[0]}

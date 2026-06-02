@@ -4,7 +4,7 @@ import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseMarkdown, parseMilestone, parseTask } from "../markdown/parser.ts";
-import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
+import { serializeDecision, serializeDocument, serializeMilestone, serializeTask } from "../markdown/serializer.ts";
 import type {
 	BacklogConfig,
 	Decision,
@@ -929,14 +929,8 @@ export class FileSystem {
 		return `${id} - ${safeTitle}.md`;
 	}
 
-	private serializeMilestoneContent(id: string, title: string, rawContent: string): string {
-		return `---
-id: ${id}
-title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
----
-
-${rawContent.trim()}
-`;
+	private serializeMilestoneContent(milestone: Milestone): string {
+		return serializeMilestone(milestone);
 	}
 
 	private rewriteDefaultMilestoneDescription(rawContent: string, previousTitle: string, nextTitle: string): string {
@@ -1101,7 +1095,13 @@ ${rawContent.trim()}
 		}
 	}
 
-	async createMilestone(title: string, description?: string): Promise<Milestone> {
+	async createMilestone(
+		title: string,
+		description?: string,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+	): Promise<Milestone> {
 		return await this.withCreateLock(async () => {
 			const milestonesDir = await this.getMilestonesDir();
 
@@ -1147,13 +1147,15 @@ ${rawContent.trim()}
 			const id = `m-${nextId}`;
 
 			const filename = this.buildMilestoneFilename(id, title);
-			const content = this.serializeMilestoneContent(
+			const content = this.serializeMilestoneContent({
 				id,
 				title,
-				`## Description
-
-${description || `Milestone: ${title}`}`,
-			);
+				description: description || `Milestone: ${title}`,
+				rawContent: `## Description\n\n${description || `Milestone: ${title}`}`,
+				...(dueDate !== undefined && { dueDate: dueDate.trim() || undefined }),
+				...(plannedStart !== undefined && { plannedStart: plannedStart.trim() || undefined }),
+				...(plannedEnd !== undefined && { plannedEnd: plannedEnd.trim() || undefined }),
+			});
 
 			const filepath = join(milestonesDir, filename);
 			await Bun.write(filepath, content);
@@ -1167,9 +1169,13 @@ ${description || `Milestone: ${title}`}`,
 		});
 	}
 
-	async renameMilestone(
+	async updateMilestone(
 		identifier: string,
 		title: string,
+		dueDate?: string,
+		plannedStart?: string,
+		plannedEnd?: string,
+		description?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -1199,12 +1205,26 @@ ${description || `Milestone: ${title}`}`,
 			targetPath = join(milestonesDir, targetFilename);
 			sourcePath = milestoneMatch.filepath;
 			originalContent = milestoneMatch.content;
-			const nextRawContent = this.rewriteDefaultMilestoneDescription(
+			let nextRawContent = this.rewriteDefaultMilestoneDescription(
 				milestone.rawContent,
 				milestone.title,
 				normalizedTitle,
 			);
-			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent);
+			if (description !== undefined) {
+				nextRawContent = nextRawContent.replace(
+					/##\s+Description\s*(?:\r?\n)+([\s\S]*?)(?=\n##\s+|$)/i,
+					`## Description\n\n${description}`,
+				);
+			}
+			const updatedContent = this.serializeMilestoneContent({
+				...milestone,
+				title: normalizedTitle,
+				description: parseMilestone(nextRawContent).description,
+				rawContent: nextRawContent,
+				...(dueDate !== undefined && { dueDate: dueDate.trim() || undefined }),
+				...(plannedStart !== undefined && { plannedStart: plannedStart.trim() || undefined }),
+				...(plannedEnd !== undefined && { plannedEnd: plannedEnd.trim() || undefined }),
+			});
 
 			if (sourcePath !== targetPath) {
 				if (await Bun.file(targetPath).exists()) {

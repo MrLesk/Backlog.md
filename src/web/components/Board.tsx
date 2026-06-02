@@ -606,6 +606,7 @@ const Board: React.FC<BoardProps> = ({
                               setDragSourceLane(null);
                             }}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                            terminalStatus={terminalStatus}
                           />
                         </div>
                       ))}
@@ -639,6 +640,7 @@ const Board: React.FC<BoardProps> = ({
                     setDragSourceLane(null);
                   }}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                  terminalStatus={terminalStatus}
                 />
               </div>
             ))}

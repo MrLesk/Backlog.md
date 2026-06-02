@@ -132,6 +132,21 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				maxLength: 50,
 			},
+			dueDate: {
+				type: "string",
+				maxLength: 10,
+				description: "Due date in YYYY-MM-DD format",
+			},
+			plannedStart: {
+				type: "string",
+				maxLength: 10,
+				description: "Planned start date in YYYY-MM-DD format",
+			},
+			plannedEnd: {
+				type: "string",
+				maxLength: 10,
+				description: "Planned end date in YYYY-MM-DD format",
+			},
 		},
 		required: ["title"],
 		additionalProperties: false,
@@ -378,6 +393,21 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				},
 				maxItems: 50,
 				description: "Mark task-specific Definition of Done items as incomplete by 1-based index on this task.",
+			},
+			dueDate: {
+				type: "string",
+				maxLength: 10,
+				description: "Due date in YYYY-MM-DD format. Set to empty string to clear.",
+			},
+			plannedStart: {
+				type: "string",
+				maxLength: 10,
+				description: "Planned start date in YYYY-MM-DD format. Set to empty string to clear.",
+			},
+			plannedEnd: {
+				type: "string",
+				maxLength: 10,
+				description: "Planned end date in YYYY-MM-DD format. Set to empty string to clear.",
 			},
 		},
 		required: ["id"],

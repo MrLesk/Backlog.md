@@ -1,14 +1,14 @@
 import type { McpServer } from "../../server.ts";
 import type { McpToolHandler } from "../../types.ts";
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
-import type { MilestoneAddArgs, MilestoneArchiveArgs, MilestoneRemoveArgs, MilestoneRenameArgs } from "./handlers.ts";
+import type { MilestoneAddArgs, MilestoneArchiveArgs, MilestoneEditArgs, MilestoneRemoveArgs } from "./handlers.ts";
 import { MilestoneHandlers } from "./handlers.ts";
 import {
 	milestoneAddSchema,
 	milestoneArchiveSchema,
+	milestoneEditSchema,
 	milestoneListSchema,
 	milestoneRemoveSchema,
-	milestoneRenameSchema,
 } from "./schemas.ts";
 
 export function registerMilestoneTools(server: McpServer): void {
@@ -36,15 +36,15 @@ export function registerMilestoneTools(server: McpServer): void {
 		async (input) => handlers.addMilestone(input as MilestoneAddArgs),
 	);
 
-	const renameTool: McpToolHandler = createSimpleValidatedTool(
+	const editTool: McpToolHandler = createSimpleValidatedTool(
 		{
-			name: "milestone_rename",
-			description: "Rename a milestone file and optionally update local tasks",
-			inputSchema: milestoneRenameSchema,
-			annotations: { title: "Rename Milestone", destructiveHint: false },
+			name: "milestone_edit",
+			description: "Edit a milestone: rename, update dates, or both. Pass empty string to clear a date.",
+			inputSchema: milestoneEditSchema,
+			annotations: { title: "Edit Milestone", destructiveHint: false },
 		},
-		milestoneRenameSchema,
-		async (input) => handlers.renameMilestone(input as MilestoneRenameArgs),
+		milestoneEditSchema,
+		async (input) => handlers.editMilestone(input as MilestoneEditArgs),
 	);
 
 	const removeTool: McpToolHandler = createSimpleValidatedTool(
@@ -71,7 +71,7 @@ export function registerMilestoneTools(server: McpServer): void {
 
 	server.addTool(listTool);
 	server.addTool(addTool);
-	server.addTool(renameTool);
+	server.addTool(editTool);
 	server.addTool(removeTool);
 	server.addTool(archiveTool);
 }

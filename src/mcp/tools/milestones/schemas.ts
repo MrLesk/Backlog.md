@@ -26,7 +26,7 @@ export const milestoneAddSchema: JsonSchema = {
 	additionalProperties: false,
 };
 
-export const milestoneRenameSchema: JsonSchema = {
+export const milestoneEditSchema: JsonSchema = {
 	type: "object",
 	properties: {
 		from: {
@@ -39,12 +39,30 @@ export const milestoneRenameSchema: JsonSchema = {
 			type: "string",
 			minLength: 1,
 			maxLength: 100,
-			description: "New milestone name (trimmed; case-insensitive uniqueness)",
+			description:
+				"New milestone name (trimmed; case-insensitive uniqueness). Set to the same as 'from' to only update dates.",
 		},
 		updateTasks: {
 			type: "boolean",
 			description: "Whether to update local tasks that reference the milestone (default: true)",
 			default: true,
+		},
+		description: {
+			type: "string",
+			maxLength: 2000,
+			description: "Optional new description for the milestone",
+		},
+		dueDate: {
+			type: "string",
+			description: "Due date (YYYY-MM-DD). Pass empty string to clear.",
+		},
+		plannedStart: {
+			type: "string",
+			description: "Planned start date (YYYY-MM-DD). Pass empty string to clear.",
+		},
+		plannedEnd: {
+			type: "string",
+			description: "Planned end date (YYYY-MM-DD). Pass empty string to clear.",
 		},
 	},
 	required: ["from", "to"],
