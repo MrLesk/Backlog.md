@@ -272,6 +272,14 @@ export class BacklogServer {
 		}
 	}
 
+	private broadcastDraftsUpdated() {
+		for (const ws of this.sockets) {
+			try {
+				ws.send("drafts-updated");
+			} catch {}
+		}
+	}
+
 	async start(port?: number, openBrowser = true): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
@@ -331,6 +339,9 @@ export class BacklogServer {
 					},
 					"/api/tasks/:id/complete": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+					},
+					"/api/tasks/:id/demote": {
+						POST: async (req: Request & { params: { id: string } }) => await this.handleDemoteTask(req.params.id),
 					},
 					"/api/statuses": {
 						GET: async () => await this.handleGetStatuses(),
@@ -1058,6 +1069,32 @@ export class BacklogServer {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to complete task";
 			console.error("Error completing task:", error);
+			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async handleDemoteTask(taskId: string): Promise<Response> {
+		try {
+			const task = await this.core.filesystem.loadTask(taskId);
+			if (!task) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+
+			const success = await this.core.demoteTask(taskId);
+			if (!success) {
+				return Response.json({ error: "Failed to demote task" }, { status: 500 });
+			}
+
+			// Notify listeners to refresh both tasks and drafts lists
+			this.broadcastTasksUpdated();
+			this.broadcastDraftsUpdated();
+			return Response.json({ success: true });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to demote task";
+			console.error("Error demoting task:", error);
+			if (isCreateLockError(error)) {
+				return Response.json({ error: message }, { status: 409 });
+			}
 			return Response.json({ error: message }, { status: 500 });
 		}
 	}

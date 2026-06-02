@@ -282,6 +282,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
         e.stopPropagation();
         void handleComplete();
       }
+      if (mode === "preview" && !isDoneStatus && (e.key.toLowerCase() === "d") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        void handleDemote();
+      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
@@ -593,6 +598,18 @@ export const TaskDetailsModal: React.FC<Props> = ({
     }
   };
 
+	const handleDemote = async () => {
+		if (!task) return;
+		if (!window.confirm(t.taskDetails.demoteConfirm)) return;
+		try {
+			await apiClient.demoteTask(task.id);
+			if (onSaved) await onSaved();
+			onClose();
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		}
+	};
+
   const handleArchive = async () => {
     if (!task || !onArchive) return;
     if (!window.confirm(t.taskDetails.archiveConfirm(task.title))) return;
@@ -632,6 +649,15 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		              title={t.taskDetails.markCompletedTitle}
 		            >
 		              {t.taskDetails.markCompleted}
+		            </button>
+		          )}
+		          {!isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
+		            <button
+		              onClick={handleDemote}
+		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		              title={t.taskDetails.demoteToDraftTitle}
+		            >
+		              {t.taskDetails.demoteToDraft}
 		            </button>
 		          )}
 		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
