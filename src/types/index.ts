@@ -343,6 +343,15 @@ export interface WikiTreeNode {
 	children?: WikiTreeNode[];
 }
 
+export interface DocsTreeNode {
+	name: string;
+	path: string;
+	type: "file" | "directory";
+	docId?: string;
+	docTitle?: string;
+	children?: DocsTreeNode[];
+}
+
 export interface WikiPage {
 	content: string;
 	frontmatter: Record<string, unknown>;

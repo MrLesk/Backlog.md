@@ -361,6 +361,12 @@ export class BacklogServer {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
 					},
+					"/api/docs/tree": {
+						GET: async () => await this.handleGetDocsTree(),
+					},
+					"/api/docs/folder": {
+						POST: async (req: Request) => await this.handleCreateDocsFolder(req),
+					},
 					"/api/wiki/tree": {
 						GET: async () => await this.handleGetWikiTree(),
 					},
@@ -1138,6 +1144,38 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error loading document:", error);
 			return Response.json({ error: "Document not found" }, { status: 404 });
+		}
+	}
+
+	private async handleGetDocsTree(): Promise<Response> {
+		try {
+			const tree = await this.core.filesystem.getDocsTree();
+			return Response.json(tree);
+		} catch (error) {
+			console.error("Error building docs tree:", error);
+			return Response.json([]);
+		}
+	}
+
+	private async handleCreateDocsFolder(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const path = typeof body?.path === "string" ? body.path.trim() : undefined;
+			if (!path) {
+				return Response.json({ error: "Path is required" }, { status: 400 });
+			}
+			if (path.includes("..") || path.startsWith("/") || path.startsWith("\\")) {
+				return Response.json({ error: "Invalid path" }, { status: 400 });
+			}
+			const createdPath = await this.core.filesystem.createDocsFolder(path);
+			return Response.json({ success: true, path: createdPath }, { status: 201 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to create docs folder";
+			if (message.includes("already exists")) {
+				return Response.json({ error: message }, { status: 409 });
+			}
+			console.error("Error creating docs folder:", error);
+			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 

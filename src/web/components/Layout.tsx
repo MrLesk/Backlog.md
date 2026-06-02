@@ -2,7 +2,7 @@ import { Outlet } from 'react-router-dom';
 import SideNavigation from './SideNavigation';
 import Navigation from './Navigation';
 import { HealthIndicator, HealthSuccessToast } from './HealthIndicator';
-import { type Task, type Document, type Decision, type WikiTreeNode } from '../../types';
+import { type Task, type Document, type Decision, type DocsTreeNode, type WikiTreeNode } from '../../types';
 
 interface LayoutProps {
 	projectName: string;
@@ -12,6 +12,7 @@ interface LayoutProps {
 	docs: Document[];
 	decisions: Decision[];
 	wikiTree: WikiTreeNode[];
+	docsTree: DocsTreeNode[];
 	isLoading: boolean;
 	onRefreshData: () => Promise<void>;
 }
@@ -24,6 +25,7 @@ export default function Layout({
 	docs, 
 	decisions, 
 	wikiTree,
+	docsTree,
 	isLoading, 
 	onRefreshData 
 }: LayoutProps) {
@@ -35,6 +37,7 @@ export default function Layout({
 				docs={docs}
 				decisions={decisions}
 				wikiTree={wikiTree}
+				docsTree={docsTree}
 				isLoading={isLoading}
 				onRefreshData={onRefreshData}
 			/>
