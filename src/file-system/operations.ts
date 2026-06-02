@@ -1845,13 +1845,13 @@ ${description || `Milestone: ${title}`}`,
 		return normalizedPath;
 	}
 
-	async readWikiPage(pagePath: string): Promise<WikiPage> {
+	async readWikiPage(pagePath: string, rootDir?: string): Promise<WikiPage> {
 		const normalizedPath = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
-		const wikiRoot = resolve(join(this.resolvedBacklogDir, "wiki"));
-		const filePath = resolve(join(wikiRoot, normalizedPath));
+		const effectiveRoot = rootDir ? resolve(rootDir) : resolve(join(this.resolvedBacklogDir, "wiki"));
+		const filePath = resolve(join(effectiveRoot, normalizedPath));
 
-		// Robust containment check
-		const rel = relative(wikiRoot, filePath);
+		// Containment check against the effective root
+		const rel = relative(effectiveRoot, filePath);
 		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
 		if (!isInside) {
 			throw new Error("Page not found");

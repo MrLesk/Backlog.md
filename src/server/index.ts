@@ -17,6 +17,7 @@ import {
 	type SearchResultType,
 	type Task,
 	type TaskUpdateInput,
+	type WikiPage,
 } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
@@ -1191,7 +1192,20 @@ export class BacklogServer {
 
 	private async handleGetWikiPage(pagePath: string): Promise<Response> {
 		try {
-			const page = await this.core.filesystem.readWikiPage(pagePath);
+			let page: WikiPage;
+			if (pagePath.startsWith("wiki/")) {
+				// Frontend resolveWikiPath prefixes wiki-internal paths with wiki/;
+				// strip it so readWikiPage uses the default wikiRoot.
+				page = await this.core.filesystem.readWikiPage(pagePath.slice("wiki/".length));
+			} else {
+				try {
+					page = await this.core.filesystem.readWikiPage(pagePath);
+				} catch {
+					// Fallback to project root for paths that reference sibling
+					// directories (e.g. wiki_output/).
+					page = await this.core.filesystem.readWikiPage(pagePath, this.core.filesystem.backlogDir);
+				}
+			}
 			return Response.json(page);
 		} catch (error) {
 			console.error("Error loading wiki page:", error);
