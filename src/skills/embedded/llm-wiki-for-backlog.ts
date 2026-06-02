@@ -667,6 +667,11 @@ Personal knowledge base where the LLM is the sole maintainer. Human feeds source
 │   │   ├── concepts/         # Concept articles extracted from backlog
 │   │   ├── entities/         # People, tools, projects, orgs mentioned in backlog
 │   │   ├── comparisons/      # Cross-cutting analyses across tasks/docs/decisions
+│   │   ├── patterns/         # Reusable task execution patterns extracted from completed work
+│   │   ├── decisions/        # Micro-decisions made during task execution (informal)
+│   │   ├── reasoning/        # AI planning traces — why tasks were decomposed this way
+│   │   ├── execution/        # Key knowledge extracted from Implementation Notes
+│   │   ├── retrospectives/   # Lightweight retrospectives based on local data
 │   │   └── usermanual/       # Optional: structured user manual (see UserManual section below)
 │   └── wiki_output/          # Layer 3: Query products. Valuable results → flow back to wiki/
 │       ├── reports/
@@ -806,16 +811,66 @@ Before building the wiki, verify that Backlog.md has been initialized in the pro
    - Read and analyze the source
    - Create or update \`wiki/sources/\` pages
    - Extract/update concepts and entities
+   - Check if source code changes (e.g. \`src/\`) require updates to existing concept pages (architecture, API surfaces, behavior changes)
+   - Skip build artifacts, generated files, and lockfiles unless semantically relevant
    - (skip discussion step in batch mode)
 
 5. **Run mini-lint** after all sources processed
 
-6. **Report summary** of what was added/updated/skipped
+6. **Pairing Memory Extraction (MUST NOT SKIP)** — After all sources are processed, check if any pairing-memory content should be generated or updated. This step is frequently missed; do not skip it even if the batch is small:
 
-7. **Append to \`wiki/log.md\`** with full timestamp \`## [YYYY-MM-DD HH:mm:ss] batch-ingest | {summary}\`
+   | Directory | Trigger Condition | Generation Logic | Human Review |
+   |-----------|-------------------|------------------|--------------|
+   | \`wiki/reasoning/\` | AI completed planning for a complex task/doc | Create/update \`{doc-id}.md\` or \`{task-id}.md\` with decomposition rationale, alternatives considered, and chosen approach | Required before execution |
+   | \`wiki/patterns/\` | 3+ completed tasks follow similar execution pattern | Suggest new pattern draft; create only after human confirms | Required |
+   | \`wiki/decisions/\` | Task body contains "chose X over Y" or "decided to..." | Extract micro-decision with context and rationale | Recommended |
+   | \`wiki/execution/\` | Task has Implementation Notes with reusable knowledge | Extract cross-task knowledge, link to source tasks | Optional (AI maintains) |
+   | \`wiki/retrospectives/\` | Weekly or per-batch completion | Generate data summary (completion rate, avg time, blockers); human adds qualitative observations | Recommended |
+
+   **Reasoning generation detail:**
+   - When AI plans tasks from a doc, create \`wiki/reasoning/{doc-id}.md\`
+   - Content: original requirement, problem decomposition, alternatives compared, chosen approach with rationale, task breakdown with estimates and risks
+   - Link to planned tasks via \`[[sources/{task-id}]]\`
+   - Human reviews before execution; if rejected, append correction note rather than delete
+
+   **Pattern detection detail:**
+   - Scan \`completed/\` and recently \`Done\` tasks for structural similarities
+   - Pattern file includes: applicable scenario, standard steps, common pitfalls, reference tasks
+   - Only create if human confirms: "This looks like a reusable pattern — want me to file it?"
+
+   **Decision extraction detail:**
+   - Scan task bodies (especially Implementation Notes and Remarks) for choice statements
+   - Decision file includes: what was decided, why, rejected alternatives, related tasks
+   - Distinct from formal \`backlog/decisions/\` ADRs — these are informal, execution-level choices
+
+   **Execution notes extraction detail:**
+   - After task completion, scan Implementation Notes for knowledge reusable across tasks
+   - Extract to \`wiki/execution/\` with \`extracted_from\` frontmatter linking source tasks
+   - Update existing execution notes if new tasks add to the same topic
+
+   **Retrospective generation detail:**
+   - Compute metrics from task dates (created, completed, status changes)
+   - Report: tasks completed vs planned, average cycle time, active blockers, label distribution
+   - Human adds: qualitative observations, team dynamics, lessons learned
+   - Append to \`wiki/retrospectives/\` rather than overwriting (per-period file)
+
+   **Pairing Memory Checklist — confirm each item:**
+   - [ ] \`wiki/execution/\` — Any task with Implementation Notes containing cross-task reusable knowledge?
+   - [ ] \`wiki/decisions/\` — Any "chose X over Y" or "decided to..." statements in task bodies?
+   - [ ] \`wiki/reasoning/\` — Any complex planning or decomposition rationale to document?
+   - [ ] \`wiki/patterns/\` — 3+ completed tasks showing similar execution patterns?
+   - [ ] \`wiki/retrospectives/\` — Time for a periodic review?
+
+7. **Update \`wiki/index.md\` — completeness check** — Ensure \`index.md\` contains an indexed section for **every** subdirectory under \`wiki/\`, even if empty. Missing sections are a common failure mode. Required sections:
+   - Sources, Concepts, Entities, Comparisons, Patterns, Decisions, Reasoning, Execution, Retrospectives, User Manual, Developer Notes, Reports
+   - For empty sections, use \`_No entries yet._\` placeholder
+
+8. **Report summary** of what was added/updated/skipped, including pairing-memory items
+
+9. **Append to \`wiki/log.md\`** with full timestamp \`## [YYYY-MM-DD HH:mm:ss] batch-ingest | {summary}\`
 
 **Page conventions:**
-- Every page: YAML frontmatter with \`title\`, \`created_date\`, \`updated_date\` at minimum; \`labels\` as optional array of tags (e.g. \`source\`, \`concept\`, \`entity\`, \`comparison\`)
+- Every page: YAML frontmatter with \`title\`, \`created_date\`, \`updated_date\` at minimum; \`labels\` as optional array of tags (e.g. \`source\`, \`concept\`, \`entity\`, \`comparison\`, \`pattern\`, \`decision\`, \`reasoning\`, \`execution\`, \`retrospective\`)
 - Source pages include \`source_path\` linking back to original backlog file
 - All cross-references: \`[[wikilinks]]\`
 - Filenames: lowercase-with-hyphens
@@ -948,6 +1003,11 @@ The LLM reads from the following backlog folders as raw input. These are immutab
 - \`wiki/concepts/\` — Extracted concept articles
 - \`wiki/entities/\` — People, tools, projects, organizations
 - \`wiki/comparisons/\` — Cross-cutting analyses
+- \`wiki/patterns/\` — Reusable task execution patterns extracted from completed work. AI detects similarities across tasks and proposes patterns; human confirms before creation.
+- \`wiki/decisions/\` — Informal micro-decisions made during task execution ("chose X over Y because..."). Distinct from formal ADRs in \`backlog/decisions/\`.
+- \`wiki/reasoning/\` — AI planning traces documenting how tasks were decomposed from docs. Humans review before execution to validate or correct planning logic.
+- \`wiki/execution/\` — Key knowledge extracted from task Implementation Notes, elevated into cross-task reusable form. AI-maintained; human reviews occasionally.
+- \`wiki/retrospectives/\` — Lightweight period reviews based on local task data (completion rates, cycle times, blockers). AI generates data; human adds qualitative observations.
 - \`wiki/usermanual/\` — Optional structured user manual (see UserManual section below)
 
 ### UserManual (\`wiki/usermanual/\`)
