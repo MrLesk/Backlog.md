@@ -29,6 +29,7 @@ import {
 	type WikiTreeNode,
 } from '../types';
 import { apiClient } from './lib/api';
+import { collectAvailableLabels } from '../utils/label-filter';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { useI18nContext } from './contexts/I18nContext';
 import { isValidLocale } from './locales';
@@ -542,7 +543,7 @@ function App() {
                   onRefreshData={refreshData}
                   statuses={statuses}
                   milestones={milestones}
-                  availableLabels={availableLabels}
+                  availableLabels={collectAvailableLabels(tasks, availableLabels)}
                   milestoneEntities={milestoneEntities}
                   archivedMilestones={archivedMilestones}
                   isLoading={isLoading}
@@ -609,6 +610,7 @@ function App() {
           archivedMilestoneEntities={archivedMilestones}
           isDraftMode={isDraftMode}
           definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+          availableLabels={collectAvailableLabels(tasks, availableLabels)}
         />
 
         {/* Task Creation Confirmation Toast */}

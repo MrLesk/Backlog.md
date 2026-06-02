@@ -32,6 +32,7 @@ interface Props {
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
+  availableLabels?: string[];
 }
 
 type Mode = "preview" | "edit" | "create";
@@ -75,6 +76,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   archivedMilestoneEntities,
   isDraftMode,
   definitionOfDoneDefaults,
+  availableLabels,
 }) => {
   const { theme } = useTheme();
   const { t } = useI18n();
@@ -1318,6 +1320,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               onChange={(value) => handleInlineMetaUpdate({ labels: value })}
               placeholder={t.taskDetails.placeholderLabels}
               disabled={isFromOtherBranch}
+              availableOptions={availableLabels}
             />
           </div>
 
