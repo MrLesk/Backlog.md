@@ -15,6 +15,35 @@ interface MilestoneSearchEntry {
 
 type RemoveTaskHandling = "clear" | "reassign";
 
+type BucketSortColumn = "id" | "title" | "status" | "priority";
+type BucketSortDirection = "asc" | "desc";
+
+interface BucketSortConfig {
+	column: BucketSortColumn;
+	direction: BucketSortDirection;
+}
+
+const BUCKET_PRIORITY_RANK: Record<string, number> = {
+	high: 3,
+	medium: 2,
+	low: 1,
+};
+
+function extractTaskNumericId(taskId: string): number | null {
+	const match = taskId.trim().match(/(\d+)$/);
+	if (!match?.[1]) return null;
+	return Number.parseInt(match[1], 10);
+}
+
+function compareTaskIdsAscending(a: Task, b: Task): number {
+	const idA = extractTaskNumericId(a.id);
+	const idB = extractTaskNumericId(b.id);
+	if (idA !== null && idB !== null) return idA - idB;
+	if (idA !== null) return -1;
+	if (idB !== null) return 1;
+	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+}
+
 const rebuildFilteredBucket = (
 	bucket: MilestoneBucket,
 	filteredTasks: Task[],
@@ -80,6 +109,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [removeReassignTo, setRemoveReassignTo] = useState("");
 	const [modalError, setModalError] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState("");
+	const [bucketSorts, setBucketSorts] = useState<Record<string, BucketSortConfig>>({});
 
 	const archivedMilestoneIds = useMemo(
 		() => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
@@ -467,16 +497,100 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		return "text-gray-600 dark:text-gray-400";
 	};
 
-	const getSortedTasks = (bucketTasks: Task[]) => {
+	const handleBucketSortChange = (bucketKey: string, column: BucketSortColumn) => {
+		setBucketSorts((previous) => {
+			const current = previous[bucketKey];
+			if (current?.column === column) {
+				return {
+					...previous,
+					[bucketKey]: { column, direction: current.direction === "asc" ? "desc" : "asc" },
+				};
+			}
+			return { ...previous, [bucketKey]: { column, direction: "asc" } };
+		});
+	};
+
+	const renderSortIcon = (bucketKey: string, column: BucketSortColumn) => {
+		const config = bucketSorts[bucketKey];
+		const isActive = config?.column === column;
+		const isAsc = config?.direction === "asc";
+		return (
+			<span className="inline-flex items-center justify-center w-4 text-xs select-none" aria-hidden="true">
+				<span className={isActive && isAsc ? "text-gray-600 dark:text-gray-300" : "text-gray-300 dark:text-gray-600"}>
+					↑
+				</span>
+				<span className={isActive && !isAsc ? "text-gray-600 dark:text-gray-300" : "text-gray-300 dark:text-gray-600"}>
+					↓
+				</span>
+			</span>
+		);
+	};
+
+	const renderBucketTableHeader = (bucketKey: string) => (
+		<div className="grid grid-cols-[1.5rem_6rem_1fr_6rem_5rem] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+			<div /> {/* Drag handle spacer */}
+			<button
+				type="button"
+				onClick={() => handleBucketSortChange(bucketKey, "id")}
+				className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100 text-left"
+			>
+				ID {renderSortIcon(bucketKey, "id")}
+			</button>
+			<button
+				type="button"
+				onClick={() => handleBucketSortChange(bucketKey, "title")}
+				className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100 text-left"
+			>
+				{t.milestones.tableHeaders.title} {renderSortIcon(bucketKey, "title")}
+			</button>
+			<button
+				type="button"
+				onClick={() => handleBucketSortChange(bucketKey, "status")}
+				className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100 justify-center"
+			>
+				{t.milestones.tableHeaders.status} {renderSortIcon(bucketKey, "status")}
+			</button>
+			<button
+				type="button"
+				onClick={() => handleBucketSortChange(bucketKey, "priority")}
+				className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100 justify-center"
+			>
+				{t.milestones.tableHeaders.priority} {renderSortIcon(bucketKey, "priority")}
+			</button>
+		</div>
+	);
+
+	const getSortedTasks = (bucketTasks: Task[], bucketKey: string): Task[] => {
+		const config = bucketSorts[bucketKey];
+		if (!config) return bucketTasks;
+
+		const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+		const withDirection = (value: number) => (config.direction === "asc" ? value : -value);
+
 		return bucketTasks.slice().sort((a, b) => {
-			// Done tasks go to the bottom
-			const aDone = isDoneStatus(a.status);
-			const bDone = isDoneStatus(b.status);
-			if (aDone !== bDone) return aDone ? 1 : -1;
-			// Sort by created date descending (newest first)
-			const aDate = a.createdDate ?? "";
-			const bDate = b.createdDate ?? "";
-			return bDate.localeCompare(aDate);
+			let result = 0;
+			switch (config.column) {
+				case "id": {
+					result = withDirection(compareTaskIdsAscending(a, b));
+					break;
+				}
+				case "title": {
+					result = withDirection(collator.compare(a.title, b.title));
+					break;
+				}
+				case "status": {
+					result = withDirection(collator.compare(a.status, b.status));
+					break;
+				}
+				case "priority": {
+					const rankA = BUCKET_PRIORITY_RANK[(a.priority ?? "").toLowerCase()] ?? 0;
+					const rankB = BUCKET_PRIORITY_RANK[(b.priority ?? "").toLowerCase()] ?? 0;
+					result = withDirection(rankA - rankB);
+					break;
+				}
+			}
+			if (result !== 0) return result;
+			return compareTaskIdsAscending(b, a);
 		});
 	};
 
@@ -488,7 +602,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const defaultExpanded = defaultExpandedByBucketKey[bucket.key] ?? (bucket.total > 0 && bucket.total <= 8);
 		const isExpanded = expandedBuckets[bucket.key] ?? defaultExpanded;
 		const listId = `milestone-${safeIdSegment(bucket.key)}`;
-		const sortedTasks = getSortedTasks(bucket.tasks);
+		const sortedTasks = getSortedTasks(bucket.tasks, bucket.key);
 		const isDropTarget = dropTargetKey === bucket.key;
 		const isDragging = draggedTask !== null;
 		const isArchiving = archivingMilestoneKey === bucket.key;
@@ -627,6 +741,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					{isExpanded && !isEmpty && (
 						<div id={listId} className="mt-4 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
 							<div className="divide-y divide-gray-200 dark:divide-gray-700">
+							{renderBucketTableHeader(bucket.key)}
 								{sortedTasks.slice(0, 10).map((task) => {
 									return (
 										<MilestoneTaskRow
@@ -663,7 +778,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const unassignedTasksForDisplay = isSearchActive
 			? unassignedBucket.tasks
 			: unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status));
-		const sortedActiveTasks = getSortedTasks(unassignedTasksForDisplay);
+		const sortedActiveTasks = getSortedTasks(unassignedTasksForDisplay, "__unassigned");
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
 		const displayTasks = showAllUnassigned ? sortedActiveTasks : sortedActiveTasks.slice(0, 12);
 		const hasMore = sortedActiveTasks.length > 12;
@@ -703,14 +818,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								<>
 									{/* Table */}
 									<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
-										{/* Table header */}
-										<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-											<div className="w-6" /> {/* Drag handle column */}
-										<div className="w-24">ID</div>
-										<div>{t.milestones.tableHeaders.title}</div>
-										<div className="text-center w-24">{t.milestones.tableHeaders.status}</div>
-										<div className="text-center w-20">{t.milestones.tableHeaders.priority}</div>
-										</div>
+											{renderBucketTableHeader("__unassigned")}
 
 										{/* Table rows */}
 										<div className="divide-y divide-gray-200 dark:divide-gray-700">

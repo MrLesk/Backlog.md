@@ -601,7 +601,7 @@ export const ja: TranslationDict = {
 		actions: "列アクション",
 		cleanUpOld: "古い完了タスクをクリーンアップ",
 		columnActions: "列アクション",
-		sortByPriority: "優先度で並べ替え",
+		sortByPriority: "優先度順を適用",
 		dropToChangeStatus: "タスクをドロップしてステータスを変更",
 		dropToMove: "ドロップして移動",
 		empty: "空",

@@ -476,16 +476,15 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const renderSortIcon = (column: TaskSortColumn) => {
 		const isActive = sortColumn === column;
-		if (!isActive) {
-			return (
-				<span className="text-[10px] text-gray-300 dark:text-gray-600 select-none" aria-hidden="true">
-					↕
-				</span>
-			);
-		}
+		const isAsc = sortDirection === "asc";
 		return (
-			<span className="text-[10px] text-gray-600 dark:text-gray-300 select-none" aria-hidden="true">
-				{sortDirection === "asc" ? "▲" : "▼"}
+			<span className="inline-flex items-center justify-center w-4 text-xs select-none" aria-hidden="true">
+				<span className={isActive && isAsc ? "text-gray-600 dark:text-gray-300" : "text-gray-300 dark:text-gray-600"}>
+					↑
+				</span>
+				<span className={isActive && !isAsc ? "text-gray-600 dark:text-gray-300" : "text-gray-300 dark:text-gray-600"}>
+					↓
+				</span>
 			</span>
 		);
 	};

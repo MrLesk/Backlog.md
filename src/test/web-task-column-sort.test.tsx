@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Task } from "../types/index.ts";
+import { I18nProvider } from "../web/contexts/I18nContext.tsx";
 import TaskColumn from "../web/components/TaskColumn.tsx";
 import type { ReorderTaskPayload } from "../web/lib/api.ts";
 
@@ -38,14 +39,16 @@ const renderTaskColumn = (
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<TaskColumn
-				title={options.title ?? "To Do"}
-				tasks={tasks}
-				onTaskUpdate={() => {}}
-				onEditTask={() => {}}
-				onTaskReorder={onTaskReorder}
-				onCleanup={options.onCleanup}
-			/>,
+			<I18nProvider initialLocale="en">
+				<TaskColumn
+					title={options.title ?? "To Do"}
+					tasks={tasks}
+					onTaskUpdate={() => {}}
+					onEditTask={() => {}}
+					onTaskReorder={onTaskReorder}
+					onCleanup={options.onCleanup}
+				/>
+			</I18nProvider>,
 		);
 	});
 	return container as HTMLElement;
@@ -88,7 +91,7 @@ describe("TaskColumn priority sorting", () => {
 
 		await openActionsMenu(container);
 		const sortButton = Array.from(container.querySelectorAll("button")).find((button) =>
-			button.textContent?.includes("Sort by Priority"),
+			button.textContent?.includes("Apply Priority Order"),
 		);
 		expect(sortButton).toBeTruthy();
 		await clickElement(sortButton as Element);
@@ -116,7 +119,7 @@ describe("TaskColumn priority sorting", () => {
 
 		await openActionsMenu(container);
 		const sortButton = Array.from(container.querySelectorAll("button")).find((button) =>
-			button.textContent?.includes("Sort by Priority"),
+			button.textContent?.includes("Apply Priority Order"),
 		);
 		expect(sortButton).toBeTruthy();
 		await clickElement(sortButton as Element);

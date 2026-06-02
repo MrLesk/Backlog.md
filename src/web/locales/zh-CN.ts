@@ -596,7 +596,7 @@ export const zhCN: TranslationDict = {
 		actions: "列操作",
 		cleanUpOld: "清理旧已完成任务",
 		columnActions: "列操作",
-		sortByPriority: "按优先级排序",
+		sortByPriority: "按优先级重排（保存）",
 		dropToChangeStatus: "拖放到此处以更改状态",
 		dropToMove: "拖放以移动",
 		empty: "空",

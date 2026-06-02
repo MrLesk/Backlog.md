@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from '../hooks/useI18n';
 import { type Task } from '../../types';
-import { sortByPriority } from '../../utils/task-sorting';
+import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
 import TaskCard from './TaskCard';
 
@@ -39,9 +39,10 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
   const [showMenu, setShowMenu] = React.useState(false);
+  const [columnSort, setColumnSort] = React.useState<{ field: "id" | "title" | "priority"; direction: "asc" | "desc" } | null>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
-  const canSortByPriority = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
+  const canSort = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
 
   React.useEffect(() => {
     if (!showMenu) return;
@@ -55,19 +56,55 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showMenu]);
 
-  const handleSortByPriority = () => {
-    if (!onTaskReorder || !canSortByPriority) {
+  const getDisplayTasks = () => {
+    if (!columnSort) return tasks;
+    return [...tasks].sort((a, b) => {
+      let result = 0;
+      switch (columnSort.field) {
+        case "id": {
+          result = compareTaskIds(a.id, b.id);
+          break;
+        }
+        case "title": {
+          result = a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true });
+          break;
+        }
+        case "priority": {
+          const rank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+          const rankA = a.priority ? (rank[a.priority] ?? 0) : 0;
+          const rankB = b.priority ? (rank[b.priority] ?? 0) : 0;
+          result = rankA - rankB;
+          break;
+        }
+      }
+      if (result !== 0) {
+        return columnSort.direction === "asc" ? result : -result;
+      }
+      return compareTaskIds(a.id, b.id);
+    });
+  };
+
+  const handleLocalSort = (field: "id" | "title" | "priority", direction: "asc" | "desc") => {
+    setColumnSort(current => {
+      if (current?.field === field && current?.direction === direction) {
+        return null;
+      }
+      return { field, direction };
+    });
+    setShowMenu(false);
+  };
+
+  const handleApplyPriorityOrder = () => {
+    if (!onTaskReorder || !canSort) {
       setShowMenu(false);
       return;
     }
-
+    setColumnSort(null);
     const sortedTasks = sortByPriority(tasks);
     const orderedTaskIds = sortedTasks.map(t => t.id);
-
     const currentIds = tasks.map(t => t.id);
     const hasChanged = orderedTaskIds.some((id, index) => id !== currentIds[index]);
     const leadTaskId = orderedTaskIds[0];
-
     if (hasChanged && leadTaskId) {
       onTaskReorder({
         taskId: leadTaskId,
@@ -76,9 +113,17 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         ...(targetMilestone !== undefined ? { targetMilestone } : {}),
       });
     }
-
     setShowMenu(false);
   };
+
+  const sortOptions = [
+    { label: "ID", field: "id" as const, direction: "asc" as const },
+    { label: "ID", field: "id" as const, direction: "desc" as const },
+    { label: t.milestones.tableHeaders.title, field: "title" as const, direction: "asc" as const },
+    { label: t.milestones.tableHeaders.title, field: "title" as const, direction: "desc" as const },
+    { label: t.milestones.tableHeaders.priority, field: "priority" as const, direction: "asc" as const },
+    { label: t.milestones.tableHeaders.priority, field: "priority" as const, direction: "desc" as const },
+  ];
 
   const getStatusBadgeClass = (status: string) => {
     const statusLower = status.toLowerCase();
@@ -194,7 +239,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           </span>
         </div>
         
-        {canSortByPriority && (
+        {canSort && (
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -215,16 +260,53 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               <div
                 id={columnActionsId}
                 role="menu"
-                className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1 ring-1 ring-black ring-opacity-5"
+                className="absolute right-0 mt-1 min-w-[12rem] w-max bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1 ring-1 ring-black ring-opacity-5"
               >
+                {sortOptions.map((option) => {
+                  const isActive = columnSort?.field === option.field && columnSort?.direction === option.direction;
+                  return (
+                    <button
+                      key={`${option.field}-${option.direction}`}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => handleLocalSort(option.field, option.direction)}
+                      className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors duration-150 whitespace-nowrap ${
+                        isActive
+                          ? "bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                          : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      <span className={`text-xs font-medium w-4 text-center ${isActive ? "text-gray-600 dark:text-gray-300" : ""}`}>
+                        {option.direction === "asc" ? "↑" : "↓"}
+                      </span>
+                      <span className="flex-1">{option.label}</span>
+                      {isActive && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setColumnSort(null);
+                          }}
+                          className="ml-2 p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded"
+                          aria-label="Clear sort"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </button>
+                  );
+                })}
+                <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={handleSortByPriority}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
+                  onClick={handleApplyPriorityOrder}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150 whitespace-nowrap"
                 >
                   <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4 4m0 0l4-4m-4 4v-12" />
                   </svg>
                   {t.taskColumn.sortByPriority}
                 </button>
@@ -235,7 +317,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       </div>
       
       <div className="space-y-3">
-        {tasks.map((task, index) => (
+        {getDisplayTasks().map((task, index) => (
           <div 
             key={task.id} 
             className="relative"
@@ -266,6 +348,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               onEdit={onEditTask}
               onDragStart={() => {
                 setDraggedTaskId(task.id);
+                setColumnSort(null);
                 onDragStart?.({ status: title, laneId: laneId ?? null });
               }}
               onDragEnd={() => {
