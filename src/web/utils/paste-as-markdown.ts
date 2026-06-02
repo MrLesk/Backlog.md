@@ -57,7 +57,8 @@ export async function cleanHtml(html: string, options?: { keepMedia?: boolean })
 			if (current.length === 0) {
 				current.push(el);
 			} else {
-				const last = current[current.length - 1]!;
+				const last = current[current.length - 1];
+				if (!last) continue;
 				let next = last.nextSibling;
 				let adjacent = false;
 				while (next) {
@@ -82,7 +83,8 @@ export async function cleanHtml(html: string, options?: { keepMedia?: boolean })
 
 		for (const cluster of clusters) {
 			const ul = doc.createElement("ul");
-			const first = cluster[0]!;
+			const first = cluster[0];
+			if (!first) continue;
 			for (const el of cluster) {
 				for (const ignore of Array.from(el.querySelectorAll('[style*="mso-list:Ignore"]'))) {
 					ignore.remove();
@@ -197,7 +199,8 @@ export async function cleanHtml(html: string, options?: { keepMedia?: boolean })
 			if (current.length === 0) {
 				current.push(el);
 			} else {
-				const last = current[current.length - 1]!;
+				const last = current[current.length - 1];
+				if (!last) continue;
 				let next = last.nextSibling;
 				let adjacent = false;
 				while (next) {
@@ -232,8 +235,8 @@ export async function cleanHtml(html: string, options?: { keepMedia?: boolean })
 				ul.appendChild(li);
 				el.remove();
 			}
-			const first = cluster[0]!;
-			if (first.parentNode) {
+			const first = cluster[0];
+			if (first?.parentNode) {
 				first.parentNode.insertBefore(ul, first);
 			}
 		}
