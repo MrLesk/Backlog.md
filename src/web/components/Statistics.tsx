@@ -124,7 +124,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 		);
 	}
 
-	const TaskPreview = ({ task, showDate, onClick }: { task: Task; showDate: 'created' | 'updated'; onClick?: () => void }) => {
+	const TaskPreview = ({ task, showDate, onClick }: { task: Task; showDate: 'created' | 'updated' | 'dueDate'; onClick?: () => void }) => {
 		const formatDate = (dateStr: string) => {
 			const hasTime = dateStr.includes(" ") || dateStr.includes("T");
 			const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
@@ -142,11 +142,20 @@ const Statistics: React.FC<StatisticsProps> = ({
 			}
 		};
 
-		const displayDate = showDate === 'created' ? task.createdDate : task.updatedDate || task.createdDate;
+		const displayDate = showDate === 'created'
+			? task.createdDate
+			: showDate === 'dueDate'
+				? task.dueDate
+				: task.updatedDate || task.createdDate;
+		const dateLabel = showDate === 'created'
+			? t.common.created
+			: showDate === 'dueDate'
+				? t.common.dueBy
+				: t.common.updated;
 
 		return (
-			<div 
-				key={task.id} 
+			<div
+				key={task.id}
 				className={`flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors duration-200 ${
 					onClick ? 'hover:bg-gray-100 dark:hover:bg-gray-600/50 cursor-pointer' : ''
 				}`}
@@ -156,7 +165,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 				<div className="flex-1 min-w-0">
 					<p className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</p>
 					<p className="text-sm text-gray-500 dark:text-gray-400">
-						{task.id} • {showDate === 'created' ? t.common.created : t.common.updated} {formatDate(displayDate)}
+						{task.id} • {dateLabel} {displayDate ? formatDate(displayDate) : ''}
 					</p>
 				</div>
 			</div>
@@ -449,21 +458,35 @@ const Statistics: React.FC<StatisticsProps> = ({
 							<span className="font-medium text-gray-900 dark:text-gray-100">{statistics.projectHealth.averageTaskAge}{t.statistics.daysShort}</span>
 						</div>
 						
+						{statistics.projectHealth.atRiskTasks.length > 0 && (
+							<div className="flex items-center space-x-1" title={t.statistics.atRiskTooltip}>
+								<div className="w-2 h-2 bg-amber-500 rounded-circle"></div>
+								<span className="font-medium text-amber-700 dark:text-amber-400">{t.statistics.atRiskCount(statistics.projectHealth.atRiskTasks.length)}</span>
+							</div>
+						)}
+						
+						{statistics.projectHealth.overdueTasks.length > 0 && (
+							<div className="flex items-center space-x-1" title={t.statistics.overdueTooltip}>
+								<div className="w-2 h-2 bg-red-500 rounded-circle"></div>
+								<span className="font-medium text-red-700 dark:text-red-400">{t.statistics.overdueCount(statistics.projectHealth.overdueTasks.length)}</span>
+							</div>
+						)}
+						
 						{statistics.projectHealth.staleTasks.length > 0 && (
-							<div className="flex items-center space-x-1">
-								<div className="w-2 h-2 bg-yellow-500 rounded-circle"></div>
-								<span className="font-medium text-yellow-700 dark:text-yellow-400">{t.statistics.staleCount(statistics.projectHealth.staleTasks.length)}</span>
+							<div className="flex items-center space-x-1" title={t.statistics.staleTooltip}>
+								<div className="w-2 h-2 bg-slate-400 rounded-circle"></div>
+								<span className="font-medium text-slate-700 dark:text-slate-400">{t.statistics.staleCount(statistics.projectHealth.staleTasks.length)}</span>
 							</div>
 						)}
 						
 						{statistics.projectHealth.blockedTasks.length > 0 && (
-							<div className="flex items-center space-x-1">
+							<div className="flex items-center space-x-1" title={t.statistics.blockedTasksDesc}>
 								<div className="w-2 h-2 bg-red-500 rounded-circle"></div>
 								<span className="font-medium text-red-700 dark:text-red-400">{t.statistics.blockedCount(statistics.projectHealth.blockedTasks.length)}</span>
 							</div>
 						)}
 						
-						{statistics.projectHealth.staleTasks.length === 0 && statistics.projectHealth.blockedTasks.length === 0 && (
+						{statistics.projectHealth.atRiskTasks.length === 0 && statistics.projectHealth.overdueTasks.length === 0 && statistics.projectHealth.staleTasks.length === 0 && statistics.projectHealth.blockedTasks.length === 0 && (
 							<div className="flex items-center space-x-1">
 								<div className="w-2 h-2 bg-green-500 rounded-circle"></div>
 								<span className="font-medium text-green-700 dark:text-green-400">{t.statistics.allGood}</span>
@@ -473,13 +496,67 @@ const Statistics: React.FC<StatisticsProps> = ({
 				</div>
 				
 				{/* Expandable task lists - only show if there are issues */}
-				{(statistics.projectHealth.staleTasks.length > 0 || statistics.projectHealth.blockedTasks.length > 0) && (
+				{(statistics.projectHealth.atRiskTasks.length > 0 || statistics.projectHealth.overdueTasks.length > 0 || statistics.projectHealth.staleTasks.length > 0 || statistics.projectHealth.blockedTasks.length > 0) && (
 					<div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-							{/* Stale Tasks */}
+						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+							{/* At Risk Tasks */}
+							{statistics.projectHealth.atRiskTasks.length > 0 && (
+								<div>
+									<h4 className="font-medium text-amber-700 dark:text-amber-400 mb-3 text-sm">
+										{t.statistics.atRiskTasksTitle}
+									</h4>
+									<p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+										{t.statistics.atRiskTasksDesc}
+									</p>
+									<div className="space-y-2">
+										{statistics.projectHealth.atRiskTasks.slice(0, 3).map((task) => (
+											<TaskPreview 
+												key={task.id}
+												task={task} 
+												showDate="dueDate" 
+												onClick={onEditTask ? () => onEditTask(task) : undefined}
+											/>
+										))}
+										{statistics.projectHealth.atRiskTasks.length > 3 && (
+											<p className="text-xs text-gray-500 dark:text-gray-400 px-3">
+												{t.statistics.moreAtRiskTasks(statistics.projectHealth.atRiskTasks.length - 3)}
+											</p>
+										)}
+									</div>
+								</div>
+							)}
+
+								{/* Overdue Tasks */}
+							{statistics.projectHealth.overdueTasks.length > 0 && (
+								<div>
+									<h4 className="font-medium text-red-700 dark:text-red-400 mb-3 text-sm">
+										{t.statistics.overdueTasksTitle}
+									</h4>
+									<p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+										{t.statistics.overdueTasksDesc}
+									</p>
+									<div className="space-y-2">
+										{statistics.projectHealth.overdueTasks.slice(0, 3).map((task) => (
+											<TaskPreview 
+												key={task.id}
+												task={task} 
+												showDate="dueDate" 
+												onClick={onEditTask ? () => onEditTask(task) : undefined}
+											/>
+										))}
+										{statistics.projectHealth.overdueTasks.length > 3 && (
+											<p className="text-xs text-gray-500 dark:text-gray-400 px-3">
+												{t.statistics.moreOverdueTasks(statistics.projectHealth.overdueTasks.length - 3)}
+											</p>
+										)}
+									</div>
+								</div>
+							)}
+
+								{/* Stale Tasks */}
 							{statistics.projectHealth.staleTasks.length > 0 && (
 								<div>
-									<h4 className="font-medium text-yellow-700 dark:text-yellow-400 mb-3 text-sm">
+									<h4 className="font-medium text-slate-700 dark:text-slate-400 mb-3 text-sm">
 										{t.statistics.staleTasksTitle}
 									</h4>
 									<p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
@@ -504,35 +581,35 @@ const Statistics: React.FC<StatisticsProps> = ({
 							)}
 
 								{/* Blocked Tasks */}
-								{statistics.projectHealth.blockedTasks.length > 0 && (
-									<div>
-										<h4 className="font-medium text-red-700 dark:text-red-400 mb-3 text-sm">
-											{t.statistics.blockedTasksTitle}
-										</h4>
-										<p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-											{t.statistics.blockedTasksDesc}
-										</p>
-										<div className="space-y-2">
-											{statistics.projectHealth.blockedTasks.slice(0, 3).map((task) => (
-												<TaskPreview 
-													key={task.id}
-													task={task} 
-													showDate="created" 
-													onClick={onEditTask ? () => onEditTask(task) : undefined}
-												/>
-											))}
-											{statistics.projectHealth.blockedTasks.length > 3 && (
-												<p className="text-xs text-gray-500 dark:text-gray-400 px-3">
-													{t.statistics.moreBlockedTasks(statistics.projectHealth.blockedTasks.length - 3)}
-												</p>
-											)}
-										</div>
+							{statistics.projectHealth.blockedTasks.length > 0 && (
+								<div>
+									<h4 className="font-medium text-red-700 dark:text-red-400 mb-3 text-sm">
+										{t.statistics.blockedTasksTitle}
+									</h4>
+									<p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+										{t.statistics.blockedTasksDesc}
+									</p>
+									<div className="space-y-2">
+										{statistics.projectHealth.blockedTasks.slice(0, 3).map((task) => (
+											<TaskPreview 
+												key={task.id}
+												task={task} 
+												showDate="created" 
+												onClick={onEditTask ? () => onEditTask(task) : undefined}
+											/>
+										))}
+										{statistics.projectHealth.blockedTasks.length > 3 && (
+											<p className="text-xs text-gray-500 dark:text-gray-400 px-3">
+												{t.statistics.moreBlockedTasks(statistics.projectHealth.blockedTasks.length - 3)}
+											</p>
+										)}
 									</div>
-								)}
-							</div>
+								</div>
+							)}
 						</div>
-					)}
-				</div>
+					</div>
+				)}
+			</div>
 
 			</div>
 	);

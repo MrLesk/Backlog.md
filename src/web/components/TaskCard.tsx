@@ -67,6 +67,17 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
   // Check if task is from another branch (read-only)
   const isFromOtherBranch = Boolean(task.branch);
 
+  // Compute due-date risk border class
+  let dueDateRiskClass = "";
+  if (task.dueDate && task.status !== "Done") {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(task.dueDate + "T00:00:00");
+    const diffDays = Math.floor((due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    if (diffDays < 0) dueDateRiskClass = "border-l-2 border-red-500";
+    else if (diffDays <= 1) dueDateRiskClass = "border-l-2 border-amber-500";
+  }
+
   const handleDragStart = (e: React.DragEvent) => {
     // Prevent dragging cross-branch tasks
     if (isFromOtherBranch) {
@@ -122,7 +133,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           isFromOtherBranch 
             ? 'opacity-75 cursor-not-allowed border-dashed' 
             : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400'
-        } ${getPriorityClass(task.priority)} ${
+        } ${getPriorityClass(task.priority)} ${dueDateRiskClass} ${
           isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
         }`}
         draggable={!isFromOtherBranch}

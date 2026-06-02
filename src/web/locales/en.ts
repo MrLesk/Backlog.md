@@ -66,6 +66,7 @@ export const en = {
 		created: "Created",
 		updated: "Updated",
 		branch: "Branch",
+		dueBy: "Due by",
 	},
 
 	nav: {
@@ -459,6 +460,17 @@ export const en = {
 		blockedTasksTitle: "Blocked Tasks",
 		blockedTasksDesc: "Tasks that cannot progress because their dependencies are not yet completed",
 		moreBlockedTasks: (n: number) => `+${n} more blocked tasks`,
+		atRiskCount: (n: number) => `${n} At Risk`,
+		overdueCount: (n: number) => `${n} Overdue`,
+		atRiskTasksTitle: "At Risk Tasks (Due Soon)",
+		atRiskTasksDesc: "Tasks due soon that require immediate attention",
+		moreAtRiskTasks: (n: number) => `+${n} more at-risk tasks`,
+		overdueTasksTitle: "Overdue Tasks",
+		overdueTasksDesc: "Tasks that have passed their due date",
+		moreOverdueTasks: (n: number) => `+${n} more overdue tasks`,
+		atRiskTooltip: "Due soon, requires immediate attention",
+		overdueTooltip: "Past the due date",
+		staleTooltip: "No updates for 30+ days, no due date set",
 	},
 
 	modal: {

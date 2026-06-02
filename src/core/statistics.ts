@@ -14,6 +14,8 @@ export interface TaskStatistics {
 	projectHealth: {
 		averageTaskAge: number;
 		staleTasks: Task[];
+		atRiskTasks: Task[];
+		overdueTasks: Task[];
 		blockedTasks: Task[];
 	};
 }
@@ -44,6 +46,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 	const recentlyCreated: Task[] = [];
 	const recentlyUpdated: Task[] = [];
 	const staleTasks: Task[] = [];
+	const atRiskTasks: Task[] = [];
+	const overdueTasks: Task[] = [];
 	const blockedTasks: Task[] = [];
 	let totalAge = 0;
 	let taskCount = 0;
@@ -97,14 +101,27 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 			}
 		}
 
-		// Identify stale tasks (not updated in 30 days and not done)
-		if (task.status !== "Done") {
+		// Identify stale tasks (not updated in 30 days and not done, and no due date)
+		if (task.status !== "Done" && !task.dueDate) {
 			const lastDate = task.updatedDate || task.createdDate;
 			if (lastDate) {
 				const date = new Date(lastDate);
 				if (date < oneMonthAgo) {
 					staleTasks.push(task);
 				}
+			}
+		}
+
+		// Identify at-risk and overdue tasks based on dueDate
+		if (task.status !== "Done" && task.dueDate) {
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+			const due = new Date(`${task.dueDate}T00:00:00`);
+			const diffDays = Math.floor((due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+			if (diffDays < 0) {
+				overdueTasks.push(task);
+			} else if (diffDays <= 1) {
+				atRiskTasks.push(task);
 			}
 		}
 
@@ -156,6 +173,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		projectHealth: {
 			averageTaskAge,
 			staleTasks: staleTasks.slice(0, 5), // Top 5 stale tasks
+			atRiskTasks: atRiskTasks.slice(0, 5), // Top 5 at-risk tasks
+			overdueTasks: overdueTasks.slice(0, 5), // Top 5 overdue tasks
 			blockedTasks: blockedTasks.slice(0, 5), // Top 5 blocked tasks
 		},
 	};
