@@ -39,3 +39,15 @@ export async function getCanonicalStatus(input: string | undefined, core?: Core)
 export function formatValidStatuses(configuredStatuses: string[]): string {
 	return configuredStatuses.join(", ");
 }
+
+function normalizeStatusForComparison(status: string | null | undefined): string {
+	return (status ?? "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+/**
+ * Check if a status represents "in progress" (case-insensitive, space-insensitive).
+ * Matches "In Progress", "inprogress", "进行中", etc.
+ */
+export function isInProgressStatus(status: string | null | undefined): boolean {
+	return normalizeStatusForComparison(status) === "inprogress";
+}

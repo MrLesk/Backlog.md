@@ -201,6 +201,8 @@ export const zhCN: TranslationDict = {
 			dueDate: "截止日期",
 			plannedStart: "计划开始",
 			plannedEnd: "计划结束",
+			actualStart: "实际开始",
+			actualEnd: "实际结束",
 		},
 		clickToPreview: "点击预览",
 		removeReference: "移除引用",

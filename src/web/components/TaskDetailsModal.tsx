@@ -10,7 +10,11 @@ import FilePreviewModal from "./FilePreviewModal";
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { PathAutocomplete } from "./PathAutocomplete";
-import { formatStoredUtcDateForDisplay } from "../utils/date-display";
+import {
+  dateTimeLocalToStoredUtc,
+  formatStoredUtcDateForDisplay,
+  storedUtcToDateTimeLocal,
+} from "../utils/date-display";
 import { useI18n } from "../hooks/useI18n";
 
 interface Props {
@@ -249,6 +253,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [dueDate, setDueDate] = useState<string>(task?.dueDate || "");
   const [plannedStart, setPlannedStart] = useState<string>(task?.plannedStart || "");
   const [plannedEnd, setPlannedEnd] = useState<string>(task?.plannedEnd || "");
+  const [actualStart, setActualStart] = useState<string>(task?.actualStart || "");
+  const [actualEnd, setActualEnd] = useState<string>(task?.actualEnd || "");
+
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
@@ -266,6 +273,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     dueDate: task?.dueDate || "",
     plannedStart: task?.plannedStart || "",
     plannedEnd: task?.plannedEnd || "",
+    actualStart: task?.actualStart || "",
+    actualEnd: task?.actualEnd || "",
   }), [task, defaultDefinitionOfDone, isCreateMode]);
 
   const isDirty = useMemo(() => {
@@ -279,9 +288,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
       JSON.stringify(definitionOfDone) !== baseline.definitionOfDone ||
       dueDate !== baseline.dueDate ||
       plannedStart !== baseline.plannedStart ||
-      plannedEnd !== baseline.plannedEnd
+      plannedEnd !== baseline.plannedEnd ||
+      actualStart !== baseline.actualStart ||
+      actualEnd !== baseline.actualEnd
     );
-  }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, dueDate, plannedStart, plannedEnd, baseline]);
+  }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, dueDate, plannedStart, plannedEnd, actualStart, actualEnd, baseline]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -360,6 +371,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setDueDate(task?.dueDate || "");
     setPlannedStart(task?.plannedStart || "");
     setPlannedEnd(task?.plannedEnd || "");
+    setActualStart(task?.actualStart || "");
+    setActualEnd(task?.actualEnd || "");
     setMode(shouldPreserveEditMode ? "edit" : isCreateMode ? "create" : "preview");
     preserveEditModeAfterCommentRefresh.current = false;
     previousTaskId.current = nextTaskId;
@@ -396,6 +409,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setDueDate(task?.dueDate || "");
       setPlannedStart(task?.plannedStart || "");
       setPlannedEnd(task?.plannedEnd || "");
+      setActualStart(task?.actualStart || "");
+      setActualEnd(task?.actualEnd || "");
       setMode("preview");
       refreshAfterCommentChange();
     }
@@ -561,6 +576,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
         dueDate: dueDate.trim().length > 0 ? dueDate.trim() : undefined,
         plannedStart: plannedStart.trim().length > 0 ? plannedStart.trim() : undefined,
         plannedEnd: plannedEnd.trim().length > 0 ? plannedEnd.trim() : undefined,
+        actualStart: actualStart.trim().length > 0 ? actualStart.trim() : undefined,
+        actualEnd: actualEnd.trim().length > 0 ? actualEnd.trim() : undefined,
       };
 
       if (isCreateMode && onSubmit) {
@@ -1411,6 +1428,38 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     setPlannedEnd(value);
                     if (task && !isCreateMode) {
                       handleInlineMetaUpdate({ plannedEnd: value || undefined });
+                    }
+                  }}
+                  disabled={isFromOtherBranch}
+                  className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 dark:[color-scheme:dark] ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t.taskDetails.section.actualStart}</label>
+                <input
+                  type="datetime-local"
+                  value={storedUtcToDateTimeLocal(actualStart)}
+                  onChange={(e) => {
+                    const value = dateTimeLocalToStoredUtc(e.target.value);
+                    setActualStart(value);
+                    if (task && !isCreateMode) {
+                      handleInlineMetaUpdate({ actualStart: value || undefined });
+                    }
+                  }}
+                  disabled={isFromOtherBranch}
+                  className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 dark:[color-scheme:dark] ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t.taskDetails.section.actualEnd}</label>
+                <input
+                  type="datetime-local"
+                  value={storedUtcToDateTimeLocal(actualEnd)}
+                  onChange={(e) => {
+                    const value = dateTimeLocalToStoredUtc(e.target.value);
+                    setActualEnd(value);
+                    if (task && !isCreateMode) {
+                      handleInlineMetaUpdate({ actualEnd: value || undefined });
                     }
                   }}
                   disabled={isFromOtherBranch}

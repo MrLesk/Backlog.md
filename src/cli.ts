@@ -1480,6 +1480,8 @@ taskCmd
 	.option("--due-date <date>", "task due date (YYYY-MM-DD)")
 	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
 	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
 	.option("--draft")
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
@@ -1589,6 +1591,11 @@ taskCmd
 				acceptanceCriteria: criteria.map((text) => ({ text, checked: false })),
 				definitionOfDoneAdd: toStringArray(options.dod),
 				disableDefinitionOfDoneDefaults: options.dodDefaults === false,
+				dueDate: typeof options.dueDate === "string" ? options.dueDate.trim() : undefined,
+				plannedStart: typeof options.plannedStart === "string" ? options.plannedStart.trim() : undefined,
+				plannedEnd: typeof options.plannedEnd === "string" ? options.plannedEnd.trim() : undefined,
+				actualStart: typeof options.actualStart === "string" ? options.actualStart.trim() : undefined,
+				actualEnd: typeof options.actualEnd === "string" ? options.actualEnd.trim() : undefined,
 			});
 
 			if (usePlainOutput) {
@@ -2138,11 +2145,15 @@ taskCmd
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--clear-milestone", "clear task milestone assignment")
 	.option("--due-date <date>", "task due date (YYYY-MM-DD)")
+	.option("--actual-start <date>", "actual start date (YYYY-MM-DD HH:MM)")
+	.option("--actual-end <date>", "actual end date (YYYY-MM-DD HH:MM)")
 	.option("--planned-start <date>", "planned start date (YYYY-MM-DD)")
 	.option("--planned-end <date>", "planned end date (YYYY-MM-DD)")
 	.option("--clear-due-date", "clear task due date")
 	.option("--clear-planned-start", "clear planned start date")
 	.option("--clear-planned-end", "clear planned end date")
+	.option("--clear-actual-start", "clear actual start date")
+	.option("--clear-actual-end", "clear actual end date")
 	.option("--plain", "use plain text output after editing")
 	.option("--add-label <label>")
 	.option("--remove-label <label>")
@@ -2474,6 +2485,12 @@ taskCmd
 		if (typeof options.plannedEnd === "string") {
 			editArgs.plannedEnd = options.plannedEnd.trim();
 		}
+		if (typeof options.actualStart === "string") {
+			editArgs.actualStart = options.actualStart.trim();
+		}
+		if (typeof options.actualEnd === "string") {
+			editArgs.actualEnd = options.actualEnd.trim();
+		}
 		if (options.clearDueDate) {
 			editArgs.dueDate = "";
 		}
@@ -2482,6 +2499,12 @@ taskCmd
 		}
 		if (options.clearPlannedEnd) {
 			editArgs.plannedEnd = "";
+		}
+		if (options.clearActualStart) {
+			editArgs.actualStart = "";
+		}
+		if (options.clearActualEnd) {
+			editArgs.actualEnd = "";
 		}
 		if (acceptanceAdditions.length > 0) {
 			editArgs.acceptanceCriteriaAdd = acceptanceAdditions;
@@ -2927,7 +2950,7 @@ milestoneCmd
 				options.clearPlannedEnd;
 			if (!hasEditFlags) {
 				console.error(
-					"No edits specified. Use --title, --description, --due-date, --planned-start, --planned-end, or --clear-* options.",
+					"No edits specified. Use --title, --description, --due-date, --planned-start, --planned-end, --actual-start, --actual-end, or --clear-* options.",
 				);
 				process.exitCode = 1;
 				return;

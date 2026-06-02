@@ -24,6 +24,8 @@ interface TaskWizardValues {
 	dueDate: string;
 	plannedStart: string;
 	plannedEnd: string;
+	actualStart: string;
+	actualEnd: string;
 }
 
 export interface TaskWizardTaskOption {
@@ -515,6 +517,8 @@ async function runTaskWizardValues(params: {
 			dueDate: values.dueDate,
 			plannedStart: values.plannedStart,
 			plannedEnd: values.plannedEnd,
+			actualStart: values.actualStart,
+			actualEnd: values.actualEnd,
 		};
 	} catch (error) {
 		if (error instanceof TaskWizardCancelledError) {
@@ -572,6 +576,8 @@ function toInitialWizardValues(input: { title?: string } & Partial<Task>): TaskW
 		dueDate: input.dueDate ?? "",
 		plannedStart: input.plannedStart ?? "",
 		plannedEnd: input.plannedEnd ?? "",
+		actualStart: input.actualStart ?? "",
+		actualEnd: input.actualEnd ?? "",
 	};
 }
 
@@ -621,6 +627,8 @@ export async function runTaskCreateWizard(
 		...(values.dueDate.trim().length > 0 && { dueDate: values.dueDate.trim() }),
 		...(values.plannedStart.trim().length > 0 && { plannedStart: values.plannedStart.trim() }),
 		...(values.plannedEnd.trim().length > 0 && { plannedEnd: values.plannedEnd.trim() }),
+		...(values.actualStart.trim().length > 0 && { actualStart: values.actualStart.trim() }),
+		...(values.actualEnd.trim().length > 0 && { actualEnd: values.actualEnd.trim() }),
 	};
 	return input;
 }
@@ -700,6 +708,12 @@ export async function runTaskEditWizard(
 	}
 	if (values.plannedEnd !== initial.plannedEnd) {
 		updateInput.plannedEnd = values.plannedEnd.trim();
+	}
+	if (values.actualStart !== initial.actualStart) {
+		updateInput.actualStart = values.actualStart.trim();
+	}
+	if (values.actualEnd !== initial.actualEnd) {
+		updateInput.actualEnd = values.actualEnd.trim();
 	}
 
 	const existingCriteria = (options.task.acceptanceCriteriaItems ?? [])

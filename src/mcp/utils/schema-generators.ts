@@ -147,6 +147,16 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10,
 				description: "Planned end date in YYYY-MM-DD format",
 			},
+			actualStart: {
+				type: "string",
+				maxLength: 16,
+				description: "Actual start date in YYYY-MM-DD HH:MM format",
+			},
+			actualEnd: {
+				type: "string",
+				maxLength: 16,
+				description: "Actual end date in YYYY-MM-DD HH:MM format",
+			},
 		},
 		required: ["title"],
 		additionalProperties: false,
@@ -423,6 +433,16 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				maxLength: 10,
 				description: "Planned end date in YYYY-MM-DD format. Set to empty string to clear.",
+			},
+			actualStart: {
+				type: "string",
+				maxLength: 16,
+				description: "Actual start date in YYYY-MM-DD HH:MM format. Set to empty string to clear.",
+			},
+			actualEnd: {
+				type: "string",
+				maxLength: 16,
+				description: "Actual end date in YYYY-MM-DD HH:MM format. Set to empty string to clear.",
 			},
 		},
 		required: ["id"],

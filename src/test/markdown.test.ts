@@ -666,6 +666,23 @@ Description here.`;
 			expect(task.dueDate).toBeUndefined();
 			expect(task.plannedStart).toBeUndefined();
 			expect(task.plannedEnd).toBeUndefined();
+			expect(task.actualStart).toBeUndefined();
+			expect(task.actualEnd).toBeUndefined();
+		});
+
+		it("should parse actualStart and actualEnd as date-time", () => {
+			const content = `---
+id: task-1
+title: "Actual Date Task"
+status: "To Do"
+actual_start: 2026-06-02 09:30
+actual_end: 2026-06-09 17:00
+---
+
+Description here.`;
+			const task = parseTask(content);
+			expect(task.actualStart).toBe("2026-06-02 09:30");
+			expect(task.actualEnd).toBe("2026-06-09 17:00");
 		});
 	});
 
@@ -703,6 +720,8 @@ Description here.`;
 			expect(result).not.toContain("due_date");
 			expect(result).not.toContain("planned_start");
 			expect(result).not.toContain("planned_end");
+			expect(result).not.toContain("actual_start");
+			expect(result).not.toContain("actual_end");
 		});
 	});
 
@@ -726,6 +745,25 @@ Description here.`;
 			expect(parsed.dueDate).toBe("2026-06-15");
 			expect(parsed.plannedStart).toBe("2026-06-01");
 			expect(parsed.plannedEnd).toBe("2026-06-10");
+		});
+
+		it("should preserve actualStart and actualEnd through parse and serialize", () => {
+			const original: Task = {
+				id: "task-1",
+				title: "Actual Date Round Trip",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-01-01 12:00",
+				labels: [],
+				dependencies: [],
+				actualStart: "2026-06-02 09:30",
+				actualEnd: "2026-06-09 17:00",
+				rawContent: "Description here.",
+			};
+			const serialized = serializeTask(original);
+			const parsed = parseTask(serialized);
+			expect(parsed.actualStart).toBe("2026-06-02 09:30");
+			expect(parsed.actualEnd).toBe("2026-06-09 17:00");
 		});
 	});
 });

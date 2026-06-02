@@ -71,6 +71,8 @@ export interface Task {
 	dueDate?: string;
 	plannedStart?: string;
 	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 	// Metadata fields
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed" | "local-branch";
@@ -127,6 +129,8 @@ export interface TaskCreateInput {
 	dueDate?: string;
 	plannedStart?: string;
 	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 }
 
 export interface TaskUpdateInput {
@@ -163,6 +167,8 @@ export interface TaskUpdateInput {
 	dueDate?: string;
 	plannedStart?: string;
 	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 	acceptanceCriteria?: AcceptanceCriterionInput[];
 	addAcceptanceCriteria?: Array<AcceptanceCriterionInput | string>;
 	removeAcceptanceCriteria?: number[];

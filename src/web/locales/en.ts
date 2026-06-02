@@ -199,6 +199,8 @@ export const en = {
 			dueDate: "Due Date",
 			plannedStart: "Planned Start",
 			plannedEnd: "Planned End",
+			actualStart: "Actual Start",
+			actualEnd: "Actual End",
 		},
 		clickToPreview: "Click to preview",
 		removeReference: "Remove reference",

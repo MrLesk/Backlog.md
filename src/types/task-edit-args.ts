@@ -42,6 +42,8 @@ export interface TaskEditArgs {
 	dueDate?: string;
 	plannedStart?: string;
 	plannedEnd?: string;
+	actualStart?: string;
+	actualEnd?: string;
 }
 
 export type TaskEditRequest = TaskEditArgs & { id: string };
