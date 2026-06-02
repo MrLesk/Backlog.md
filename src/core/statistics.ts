@@ -1,4 +1,5 @@
 import type { Task } from "../types/index.ts";
+import { getStoredUtcTimestamp } from "../utils/date-utc.ts";
 import { taskIdsEqual } from "../utils/task-path.ts";
 
 export interface TaskStatistics {
@@ -76,8 +77,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 
 		// Track recent activity
 		if (task.createdDate) {
-			const createdDate = new Date(task.createdDate);
-			if (createdDate >= oneWeekAgo) {
+			const createdDate = getStoredUtcTimestamp(task.createdDate);
+			if (createdDate >= oneWeekAgo.getTime()) {
 				recentlyCreated.push(task);
 			}
 
@@ -86,10 +87,10 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 			// For active tasks, use the time from creation to now
 			let ageInDays: number;
 			if (task.status === "Done" && task.updatedDate) {
-				const updatedDate = new Date(task.updatedDate);
-				ageInDays = Math.floor((updatedDate.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
+				const updatedDate = getStoredUtcTimestamp(task.updatedDate);
+				ageInDays = Math.floor((updatedDate - createdDate) / (24 * 60 * 60 * 1000));
 			} else {
-				ageInDays = Math.floor((now.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
+				ageInDays = Math.floor((now.getTime() - createdDate) / (24 * 60 * 60 * 1000));
 			}
 			totalAge += ageInDays;
 			taskCount++;
@@ -98,8 +99,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		{
 			const lastUpdated = task.updatedDate || task.createdDate;
 			if (lastUpdated) {
-				const updatedDate = new Date(lastUpdated);
-				if (updatedDate >= oneWeekAgo) {
+				const updatedDate = getStoredUtcTimestamp(lastUpdated);
+				if (updatedDate >= oneWeekAgo.getTime()) {
 					recentlyUpdated.push(task);
 				}
 			}
@@ -109,8 +110,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		if (task.status !== "Done" && !task.dueDate) {
 			const lastDate = task.updatedDate || task.createdDate;
 			if (lastDate) {
-				const date = new Date(lastDate);
-				if (date < oneMonthAgo) {
+				const date = getStoredUtcTimestamp(lastDate);
+				if (date < oneMonthAgo.getTime()) {
 					staleTasks.push(task);
 				}
 			}
@@ -145,15 +146,15 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 
 	// Sort recent activity by date
 	recentlyCreated.sort((a, b) => {
-		const dateA = new Date(a.createdDate || 0);
-		const dateB = new Date(b.createdDate || 0);
-		return dateB.getTime() - dateA.getTime();
+		const dateA = a.createdDate ? getStoredUtcTimestamp(a.createdDate) : 0;
+		const dateB = b.createdDate ? getStoredUtcTimestamp(b.createdDate) : 0;
+		return dateB - dateA;
 	});
 
 	recentlyUpdated.sort((a, b) => {
-		const dateA = new Date(a.updatedDate || 0);
-		const dateB = new Date(b.updatedDate || 0);
-		return dateB.getTime() - dateA.getTime();
+		const dateA = a.updatedDate ? getStoredUtcTimestamp(a.updatedDate) : 0;
+		const dateB = b.updatedDate ? getStoredUtcTimestamp(b.updatedDate) : 0;
+		return dateB - dateA;
 	});
 
 	// Calculate average task age

@@ -23,6 +23,7 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
+import { getStoredUtcTimestamp } from "../utils/date-utc.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import {
 	getDocumentSubPathFromRelativePath,
@@ -127,7 +128,8 @@ function buildLatestStateMap(
 
 	for (const task of localTasks) {
 		if (!task.id) continue;
-		const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
+		const lastModified =
+			task.lastModified ?? (task.updatedDate ? new Date(getStoredUtcTimestamp(task.updatedDate)) : new Date(0));
 
 		update({
 			id: task.id,
@@ -856,7 +858,8 @@ export class Core {
 		// Add local active tasks to state
 		for (const task of localTasks) {
 			if (!task.id) continue;
-			const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
+			const lastModified =
+				task.lastModified ?? (task.updatedDate ? new Date(getStoredUtcTimestamp(task.updatedDate)) : new Date(0));
 			stateEntries.push({
 				id: task.id,
 				type: "task",
@@ -869,7 +872,7 @@ export class Core {
 		// Add local completed tasks to state
 		for (const task of localCompletedTasks) {
 			if (!task.id) continue;
-			const lastModified = task.updatedDate ? new Date(task.updatedDate) : new Date(0);
+			const lastModified = task.updatedDate ? new Date(getStoredUtcTimestamp(task.updatedDate)) : new Date(0);
 			stateEntries.push({
 				id: task.id,
 				type: "completed",
@@ -2268,8 +2271,8 @@ export class Core {
 			const taskDate = task.updatedDate || task.createdDate;
 			if (!taskDate) return false;
 
-			const date = new Date(taskDate);
-			return date < cutoffDate;
+			const date = getStoredUtcTimestamp(taskDate);
+			return date < cutoffDate.getTime();
 		});
 	}
 
@@ -2934,7 +2937,9 @@ export class Core {
 				const stateEntries = branchStateEntries || [];
 				for (const completedTask of completedTasks) {
 					if (!completedTask.id) continue;
-					const lastModified = completedTask.updatedDate ? new Date(completedTask.updatedDate) : new Date(0);
+					const lastModified = completedTask.updatedDate
+						? new Date(getStoredUtcTimestamp(completedTask.updatedDate))
+						: new Date(0);
 					stateEntries.push({
 						id: completedTask.id,
 						type: "completed",

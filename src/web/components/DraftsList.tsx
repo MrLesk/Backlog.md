@@ -6,6 +6,7 @@ import { type Milestone, type SearchPriorityFilter, type Task } from '../../type
 import LabelFilterDropdown from './LabelFilterDropdown';
 import { collectAvailableLabels } from '../../utils/label-filter.ts';
 import { getMilestoneLabel } from '../utils/milestones';
+import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 
 interface DraftsListProps {
 	onEditTask: (task: Task) => void;
@@ -375,9 +376,9 @@ const DraftsList: React.FC<DraftsListProps> = ({
 									</div>
 									<div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
 										<span>{draft.id}</span>
-										<span>{t.drafts.created}: {new Date(draft.createdDate).toLocaleDateString()}</span>
+										<span>{t.drafts.created}: {formatStoredUtcDateForDisplay(draft.createdDate)}</span>
 										{draft.updatedDate && (
-											<span>{t.drafts.updated}: {new Date(draft.updatedDate).toLocaleDateString()}</span>
+											<span>{t.drafts.updated}: {formatStoredUtcDateForDisplay(draft.updatedDate)}</span>
 										)}
 									</div>
 									{draft.assignee && draft.assignee.length > 0 && (

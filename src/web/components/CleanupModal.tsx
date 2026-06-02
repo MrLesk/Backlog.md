@@ -89,7 +89,17 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess 
 
 	const formatDate = (dateStr?: string) => {
 		if (!dateStr) return '';
-		const date = new Date(dateStr);
+		const hasTime = dateStr.includes(' ') || dateStr.includes('T');
+		const date = new Date(dateStr.replace(' ', 'T') + (hasTime ? ':00Z' : 'T00:00:00Z'));
+		if (hasTime) {
+			return date.toLocaleString(undefined, {
+				year: 'numeric',
+				month: 'short',
+				day: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit',
+			});
+		}
 		return date.toLocaleDateString(undefined, {
 			year: 'numeric',
 			month: 'short',
