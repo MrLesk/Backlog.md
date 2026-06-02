@@ -248,4 +248,132 @@ describe("getTaskStatistics", () => {
 		expect(stats.completedTasks).toBe(3);
 		expect(stats.totalTasks).toBe(3);
 	});
+
+	test("identifies at-risk tasks correctly", () => {
+		const now = new Date();
+		const today = now;
+		const tomorrow = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
+		const yesterday = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+		const twoDaysLater = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+		const tasks: Task[] = [
+			createTask({
+				id: "task-1",
+				title: "At Risk Tomorrow",
+				status: "To Do",
+				dueDate: tomorrow.toISOString().split("T")[0] as string,
+			}),
+			createTask({
+				id: "task-2",
+				title: "Overdue Task",
+				status: "To Do",
+				dueDate: yesterday.toISOString().split("T")[0] as string,
+			}),
+			createTask({
+				id: "task-3",
+				title: "Future Task",
+				status: "To Do",
+				dueDate: twoDaysLater.toISOString().split("T")[0] as string,
+			}),
+			createTask({
+				id: "task-4",
+				title: "At Risk Today",
+				status: "To Do",
+				dueDate: today.toISOString().split("T")[0] as string,
+			}),
+		];
+
+		const stats = getTaskStatistics(tasks, [], statuses);
+
+		expect(stats.projectHealth.atRiskTasks.length).toBe(2);
+		expect(stats.projectHealth.atRiskTasks.map((t) => t.id).sort()).toEqual(["task-1", "task-4"]);
+		expect(stats.projectHealth.overdueTasks.length).toBe(1);
+		expect(stats.projectHealth.overdueTasks[0]?.id).toBe("task-2");
+	});
+
+	test("identifies overdue tasks correctly", () => {
+		const now = new Date();
+		const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
+		const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+		const tasks: Task[] = [
+			createTask({
+				id: "task-1",
+				title: "Overdue Task",
+				status: "In Progress",
+				dueDate: tenDaysAgo.toISOString().split("T")[0] as string,
+			}),
+			createTask({
+				id: "task-2",
+				title: "Overdue Done Task",
+				status: "Done",
+				dueDate: tenDaysAgo.toISOString().split("T")[0] as string,
+			}),
+			createTask({
+				id: "task-3",
+				title: "On Time Task",
+				status: "To Do",
+				dueDate: thirtyDaysAgo.toISOString().split("T")[0] as string,
+			}),
+		];
+
+		const stats = getTaskStatistics(tasks, [], statuses);
+
+		expect(stats.projectHealth.overdueTasks.length).toBe(2);
+		expect(stats.projectHealth.overdueTasks.map((t) => t.id).sort()).toEqual(["task-1", "task-3"]);
+		expect(stats.projectHealth.overdueTasks.some((t) => t.id === "task-2")).toBe(false);
+	});
+
+	test("excludes tasks with dueDate from stale tasks", () => {
+		const now = new Date();
+		const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+		const tasks: Task[] = [
+			createTask({
+				id: "task-1",
+				title: "Stale No DueDate",
+				status: "To Do",
+				createdDate: twoMonthsAgo.toISOString().split("T")[0] as string,
+			}),
+			createTask({
+				id: "task-2",
+				title: "Old With DueDate",
+				status: "To Do",
+				createdDate: twoMonthsAgo.toISOString().split("T")[0] as string,
+				dueDate: "2026-12-31",
+			}),
+		];
+
+		const stats = getTaskStatistics(tasks, [], statuses);
+
+		expect(stats.projectHealth.staleTasks.length).toBe(1);
+		expect(stats.projectHealth.staleTasks[0]?.id).toBe("task-1");
+		expect(stats.projectHealth.staleTasks.some((t) => t.id === "task-2")).toBe(false);
+	});
+
+	test("does not count done tasks as at-risk or overdue", () => {
+		const now = new Date();
+		const tomorrow = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
+		const yesterday = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+
+		const tasks: Task[] = [
+			createTask({
+				id: "task-1",
+				title: "Done At Risk",
+				status: "Done",
+				dueDate: tomorrow.toISOString().split("T")[0] as string,
+			}),
+			createTask({
+				id: "task-2",
+				title: "Done Overdue",
+				status: "Done",
+				dueDate: yesterday.toISOString().split("T")[0] as string,
+			}),
+		];
+
+		const stats = getTaskStatistics(tasks, [], statuses);
+
+		expect(stats.projectHealth.atRiskTasks.length).toBe(0);
+		expect(stats.projectHealth.overdueTasks.length).toBe(0);
+	});
 });
