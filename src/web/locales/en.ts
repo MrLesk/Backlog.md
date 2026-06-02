@@ -598,7 +598,7 @@ export const en = {
 		actions: "Column actions",
 		cleanUpOld: "Clean up old completed tasks",
 		columnActions: "Column actions",
-		sortByPriority: "Sort by Priority",
+		sortByPriority: "Apply Priority Order",
 		dropToChangeStatus: "Drop task here to change status",
 		dropToMove: "Drop to move",
 		empty: "Empty",
