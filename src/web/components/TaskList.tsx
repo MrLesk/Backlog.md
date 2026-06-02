@@ -15,6 +15,7 @@ import CleanupModal from "./CleanupModal";
 import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
 import { useI18n } from "../hooks/useI18n";
+import { compareTaskIds, groupSubtasksUnderParents } from "../../utils/task-sorting";
 
 interface TaskListProps {
 	onEditTask: (task: Task) => void;
@@ -37,22 +38,8 @@ const PRIORITY_RANK: Record<string, number> = {
 	low: 1,
 };
 
-function extractTaskNumericId(taskId: string): number | null {
-	const match = taskId.trim().match(/(\d+)$/);
-	if (!match?.[1]) return null;
-	return Number.parseInt(match[1], 10);
-}
-
 function compareTaskIdsAscending(a: Task, b: Task): number {
-	const idA = extractTaskNumericId(a.id);
-	const idB = extractTaskNumericId(b.id);
-
-	if (idA !== null && idB !== null) {
-		return idA - idB;
-	}
-	if (idA !== null) return -1;
-	if (idB !== null) return 1;
-	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+	return compareTaskIds(a.id, b.id);
 }
 
 function sortTasksByIdDescending(list: Task[]): Task[] {
@@ -520,13 +507,14 @@ const TaskList: React.FC<TaskListProps> = ({
 		const compareText = (a: string, b: string) => collator.compare(a, b);
 		const withDirection = (value: number) => (sortDirection === "asc" ? value : -value);
 
+		if (sortColumn === "id") {
+			const sorted = [...displayTasks].sort((a, b) => withDirection(compareTaskIdsAscending(a, b)));
+			return groupSubtasksUnderParents(sorted, compareTaskIdsAscending, undefined, sortDirection);
+		}
+
 		return [...displayTasks].sort((a, b) => {
 			let result = 0;
 			switch (sortColumn) {
-				case "id": {
-					result = withDirection(compareTaskIdsAscending(a, b));
-					break;
-				}
 				case "title": {
 					result = withDirection(compareText(a.title, b.title));
 					break;

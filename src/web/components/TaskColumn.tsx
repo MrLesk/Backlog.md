@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from '../hooks/useI18n';
 import { type Task } from '../../types';
-import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
+import { compareTaskIds, groupSubtasksUnderParents, sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
 import TaskCard from './TaskCard';
 
@@ -60,13 +60,26 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
   const getDisplayTasks = () => {
     if (!columnSort) return tasks;
+
+    if (columnSort.field === "id") {
+      const sorted = [...tasks].sort((a, b) => {
+        const result = compareTaskIds(a.id, b.id);
+        if (result !== 0) {
+          return columnSort.direction === "asc" ? result : -result;
+        }
+        return compareTaskIds(a.id, b.id);
+      });
+      return groupSubtasksUnderParents(
+        sorted,
+        (a, b) => compareTaskIds(a.id, b.id),
+        undefined,
+        columnSort.direction,
+      );
+    }
+
     return [...tasks].sort((a, b) => {
       let result = 0;
       switch (columnSort.field) {
-        case "id": {
-          result = compareTaskIds(a.id, b.id);
-          break;
-        }
         case "title": {
           result = a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true });
           break;

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { compareTaskIds, parseTaskId, sortByPriority, sortByTaskId, sortTasks } from "../utils/task-sorting.ts";
+import {
+	compareTaskIds,
+	groupSubtasksUnderParents,
+	parseTaskId,
+	sortByPriority,
+	sortByTaskId,
+	sortTasks,
+} from "../utils/task-sorting.ts";
 
 describe("parseTaskId", () => {
 	test("parses simple task IDs", () => {
@@ -169,6 +176,70 @@ describe("sortByPriority", () => {
 
 		// Original array order should be preserved
 		expect(tasks).toEqual(original);
+	});
+});
+
+describe("groupSubtasksUnderParents", () => {
+	test("groups subtasks under their parent in ID order", () => {
+		const tasks = [
+			{ id: "task-3", title: "Task 3" },
+			{ id: "task-2.1", title: "Subtask 2.1", parentTaskId: "task-2" },
+			{ id: "task-2", title: "Task 2" },
+			{ id: "task-1", title: "Task 1" },
+			{ id: "task-2.2", title: "Subtask 2.2", parentTaskId: "task-2" },
+		];
+
+		const grouped = groupSubtasksUnderParents(tasks, (a, b) => compareTaskIds(a.id, b.id));
+		expect(grouped.map((t) => t.id)).toEqual(["task-3", "task-2", "task-2.1", "task-2.2", "task-1"]);
+	});
+
+	test("places orphaned subtasks at top level when parent is missing", () => {
+		const tasks = [
+			{ id: "task-1", title: "Task 1" },
+			{ id: "task-2.1", title: "Orphan", parentTaskId: "task-2" },
+		];
+
+		const grouped = groupSubtasksUnderParents(tasks);
+		expect(grouped.map((t) => t.id)).toEqual(["task-1", "task-2.1"]);
+	});
+
+	test("uses custom getParentId when parentTaskId is nested", () => {
+		const tasks = [
+			{ id: "task-3", raw: { parentTaskId: undefined } },
+			{ id: "task-2.1", raw: { parentTaskId: "task-2" } },
+			{ id: "task-2", raw: { parentTaskId: undefined } },
+			{ id: "task-1", raw: { parentTaskId: undefined } },
+		];
+
+		const grouped = groupSubtasksUnderParents(
+			tasks,
+			(a, b) => compareTaskIds(a.id, b.id),
+			(item) => item.raw.parentTaskId,
+		);
+		expect(grouped.map((t) => t.id)).toEqual(["task-3", "task-2", "task-2.1", "task-1"]);
+	});
+
+	test("preserves original parent order when no comparator given", () => {
+		const tasks = [
+			{ id: "task-2", title: "Task 2" },
+			{ id: "task-1", title: "Task 1" },
+			{ id: "task-2.1", title: "Subtask 2.1", parentTaskId: "task-2" },
+		];
+
+		const grouped = groupSubtasksUnderParents(tasks);
+		expect(grouped.map((t) => t.id)).toEqual(["task-2", "task-2.1", "task-1"]);
+	});
+
+	test("reverses subtasks when direction is desc", () => {
+		const tasks = [
+			{ id: "task-2", title: "Task 2" },
+			{ id: "task-2.1", title: "Subtask 2.1", parentTaskId: "task-2" },
+			{ id: "task-2.3", title: "Subtask 2.3", parentTaskId: "task-2" },
+			{ id: "task-2.2", title: "Subtask 2.2", parentTaskId: "task-2" },
+		];
+
+		const grouped = groupSubtasksUnderParents(tasks, (a, b) => compareTaskIds(a.id, b.id), undefined, "desc");
+		expect(grouped.map((t) => t.id)).toEqual(["task-2", "task-2.3", "task-2.2", "task-2.1"]);
 	});
 });
 

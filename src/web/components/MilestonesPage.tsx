@@ -6,6 +6,7 @@ import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, milestoneKey } from "../utils/milestones";
 import { storedUtcToDateTimeLocal, dateTimeLocalToStoredUtc, formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
+import { compareTaskIds, groupSubtasksUnderParents } from "../../utils/task-sorting";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
 
@@ -30,19 +31,8 @@ const BUCKET_PRIORITY_RANK: Record<string, number> = {
 	low: 1,
 };
 
-function extractTaskNumericId(taskId: string): number | null {
-	const match = taskId.trim().match(/(\d+)$/);
-	if (!match?.[1]) return null;
-	return Number.parseInt(match[1], 10);
-}
-
 function compareTaskIdsAscending(a: Task, b: Task): number {
-	const idA = extractTaskNumericId(a.id);
-	const idB = extractTaskNumericId(b.id);
-	if (idA !== null && idB !== null) return idA - idB;
-	if (idA !== null) return -1;
-	if (idB !== null) return 1;
-	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+	return compareTaskIds(a.id, b.id);
 }
 
 const rebuildFilteredBucket = (
@@ -593,13 +583,14 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 		const withDirection = (value: number) => (config.direction === "asc" ? value : -value);
 
+		if (config.column === "id") {
+			const sorted = bucketTasks.slice().sort((a, b) => withDirection(compareTaskIdsAscending(a, b)));
+			return groupSubtasksUnderParents(sorted, compareTaskIdsAscending, undefined, config.direction);
+		}
+
 		return bucketTasks.slice().sort((a, b) => {
 			let result = 0;
 			switch (config.column) {
-				case "id": {
-					result = withDirection(compareTaskIdsAscending(a, b));
-					break;
-				}
 				case "title": {
 					result = withDirection(collator.compare(a.title, b.title));
 					break;
