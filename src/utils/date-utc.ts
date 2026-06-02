@@ -6,6 +6,7 @@ export function parseIntStrict(value: string): number {
 }
 
 export function parseStoredUtcDate(dateStr: string): Date | null {
+	if (typeof dateStr !== "string") return null;
 	const normalized = dateStr.trim();
 	if (!normalized) return null;
 
@@ -59,6 +60,7 @@ export function parseStoredUtcDate(dateStr: string): Date | null {
 }
 
 export function getStoredUtcTimestamp(dateStr: string): number {
+	if (typeof dateStr !== "string") return 0;
 	const parsed = parseStoredUtcDate(dateStr);
 	return parsed ? parsed.getTime() : 0;
 }

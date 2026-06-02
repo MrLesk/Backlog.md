@@ -303,7 +303,7 @@ function App() {
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
       setConfig(configData);
-      if (configData.locale && isValidLocale(configData.locale)) {
+      if (isFirstLoad && configData.locale && isValidLocale(configData.locale)) {
         setLocale(configData.locale);
       }
       setMilestoneEntities(milestonesData);

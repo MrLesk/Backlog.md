@@ -1,5 +1,5 @@
 import type { Task } from "../types/index.ts";
-import { getStoredUtcTimestamp } from "../utils/date-utc.ts";
+import { getStoredUtcTimestamp, parseStoredUtcDate } from "../utils/date-utc.ts";
 import { taskIdsEqual } from "../utils/task-path.ts";
 
 export interface TaskStatistics {
@@ -20,6 +20,7 @@ export interface TaskStatistics {
 		overdueTasks: Task[];
 		blockedTasks: Task[];
 	};
+	completionHeatmap: Record<string, number>;
 }
 
 /**
@@ -53,6 +54,8 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 	const blockedTasks: Task[] = [];
 	let totalAge = 0;
 	let taskCount = 0;
+	const completionHeatmap: Record<string, number> = {};
+	const oneYearAgo = now.getTime() - 365 * 24 * 60 * 60 * 1000;
 
 	// Process each task
 	for (const task of tasks) {
@@ -65,9 +68,21 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		const currentCount = statusCounts.get(task.status) || 0;
 		statusCounts.set(task.status, currentCount + 1);
 
-		// Count completed tasks
+		// Count completed tasks and build heatmap
 		if (task.status === "Done") {
 			completedTasks++;
+
+			const completionDateStr = task.actualEnd || task.updatedDate;
+			if (typeof completionDateStr === "string" && completionDateStr) {
+				const completionDate = parseStoredUtcDate(completionDateStr);
+				if (completionDate) {
+					const completionTime = completionDate.getTime();
+					if (completionTime >= oneYearAgo) {
+						const dateKey = completionDate.toISOString().slice(0, 10);
+						completionHeatmap[dateKey] = (completionHeatmap[dateKey] || 0) + 1;
+					}
+				}
+			}
 		}
 
 		// Count by priority
@@ -182,5 +197,6 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 			overdueTasks: overdueTasks.slice(0, 5), // Top 5 overdue tasks
 			blockedTasks: blockedTasks.slice(0, 5), // Top 5 blocked tasks
 		},
+		completionHeatmap,
 	};
 }
