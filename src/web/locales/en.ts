@@ -308,6 +308,10 @@ export const en = {
 		draft: "draft",
 		newDraft: "New Draft",
 		promoteToTask: "Promote to Task",
+		searchPlaceholder: "Search by draft ID or title",
+		showingCount: (current: number, total: number) => `Showing ${current} of ${total} drafts`,
+		noDraftsMatchFilters: "No drafts match your filters",
+		tryAdjustingFilters: "Try adjusting your filters or clearing them to see more drafts.",
 	},
 
 	documents: {

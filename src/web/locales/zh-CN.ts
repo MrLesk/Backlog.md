@@ -310,6 +310,10 @@ export const zhCN: TranslationDict = {
 		draft: "个草稿",
 		newDraft: "新建草稿",
 		promoteToTask: "提升为任务",
+		searchPlaceholder: "按草稿 ID 或标题搜索",
+		showingCount: (current: number, total: number) => `显示 ${current} / ${total} 个草稿`,
+		noDraftsMatchFilters: "没有符合筛选条件的草稿",
+		tryAdjustingFilters: "尝试调整筛选条件或清除筛选以查看更多草稿。",
 	},
 
 	documents: {

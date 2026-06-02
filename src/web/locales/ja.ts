@@ -312,6 +312,10 @@ export const ja: TranslationDict = {
 		draft: "件のドラフト",
 		newDraft: "新規ドラフト",
 		promoteToTask: "タスクに昇格",
+		searchPlaceholder: "ドラフト ID またはタイトルで検索",
+		showingCount: (current: number, total: number) => `${total} 件中 ${current} 件のドラフトを表示`,
+		noDraftsMatchFilters: "フィルターに一致するドラフトがありません",
+		tryAdjustingFilters: "フィルターを調整するかクリアして、より多くのドラフトを表示してください。",
 	},
 
 	documents: {

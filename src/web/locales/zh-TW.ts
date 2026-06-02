@@ -310,6 +310,10 @@ export const zhTW: TranslationDict = {
 		draft: "個草稿",
 		newDraft: "新建草稿",
 		promoteToTask: "提升為任務",
+		searchPlaceholder: "按草稿 ID 或標題搜尋",
+		showingCount: (current: number, total: number) => `顯示 ${current} / ${total} 個草稿`,
+		noDraftsMatchFilters: "沒有符合篩選條件的草稿",
+		tryAdjustingFilters: "嘗試調整篩選條件或清除篩選以查看更多草稿。",
 	},
 
 	documents: {
