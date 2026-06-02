@@ -27,6 +27,38 @@ describe("Git Operations", () => {
 		});
 	});
 
+	describe("isNetworkError", () => {
+		const git = new GitOperations(process.cwd());
+		const isNetworkError = (git as unknown as { isNetworkError(error: unknown): boolean }).isNetworkError.bind(git);
+
+		it("should recognize classic network errors", () => {
+			expect(isNetworkError(new Error("Could not resolve host: github.com"))).toBe(true);
+			expect(isNetworkError(new Error("Connection refused"))).toBe(true);
+			expect(isNetworkError(new Error("Network is unreachable"))).toBe(true);
+			expect(isNetworkError(new Error("Connection timed out"))).toBe(true);
+			expect(isNetworkError(new Error("Operation timed out"))).toBe(true);
+			expect(isNetworkError(new Error("Temporary failure in name resolution"))).toBe(true);
+		});
+
+		it("should recognize SSL-related errors", () => {
+			expect(isNetworkError(new Error("OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443"))).toBe(true);
+			expect(isNetworkError(new Error("SSL handshake failed"))).toBe(true);
+			expect(isNetworkError(new Error("TLS handshake timeout"))).toBe(true);
+			expect(isNetworkError(new Error("ssl_connect error"))).toBe(true);
+		});
+
+		it("should return false for non-network errors", () => {
+			expect(isNetworkError(new Error("merge conflict"))).toBe(false);
+			expect(isNetworkError(new Error("fatal: not a git repository"))).toBe(false);
+			expect(isNetworkError(new Error("bad config file"))).toBe(false);
+		});
+
+		it("should handle string errors", () => {
+			expect(isNetworkError("SSL_ERROR_SYSCALL in connection")).toBe(true);
+			expect(isNetworkError("not a network problem")).toBe(false);
+		});
+	});
+
 	// Note: Skipping integration tests that require git repository setup
 	// These tests can be enabled for local development but may timeout in CI
 });
