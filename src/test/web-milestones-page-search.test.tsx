@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import MilestonesPage from "../web/components/MilestonesPage.tsx";
+import { I18nProvider } from "../web/contexts/I18nContext.tsx";
 import { apiClient } from "../web/lib/api.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
@@ -90,16 +91,18 @@ const renderPage = (
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<MemoryRouter>
-				<MilestonesPage
-					tasks={tasks}
-					statuses={["To Do", "In Progress", "Done"]}
-					milestoneEntities={milestoneEntities}
-					archivedMilestones={[]}
-					onEditTask={() => {}}
-					onRefreshData={options.onRefreshData}
-				/>
-			</MemoryRouter>,
+			<I18nProvider>
+				<MemoryRouter>
+					<MilestonesPage
+						tasks={tasks}
+						statuses={["To Do", "In Progress", "Done"]}
+						milestoneEntities={milestoneEntities}
+						archivedMilestones={[]}
+						onEditTask={() => {}}
+						onRefreshData={options.onRefreshData}
+					/>
+				</MemoryRouter>
+			</I18nProvider>,
 		);
 	});
 	return container as HTMLElement;
@@ -189,6 +192,18 @@ describe("Web milestones page search", () => {
 		expect(filteredText).not.toContain("Deploy pipeline");
 		expect(filteredText).not.toContain("Ship docs site");
 		expect(filteredText).toContain("No tasks");
+	});
+
+	it("searches by substring and does not fuzzy-match unrelated IDs", () => {
+		const container = renderPage();
+
+		// Searching "101" should only match task-101, not task-202/task-303/task-404
+		setSearchValue(container, "101");
+		const text = container.textContent ?? "";
+		expect(text).toContain("Setup authentication flow");
+		expect(text).not.toContain("Deploy pipeline");
+		expect(text).not.toContain("Draft release notes");
+		expect(text).not.toContain("Ship docs site");
 	});
 
 	it("keeps unassigned section visible during search even when no unassigned tasks match", () => {
