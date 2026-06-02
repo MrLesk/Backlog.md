@@ -15,6 +15,7 @@ import {
   formatStoredUtcDateForDisplay,
   storedUtcToDateTimeLocal,
 } from "../utils/date-display";
+import { isTypingTarget } from "../utils/keyboard";
 import { useI18n } from "../hooks/useI18n";
 
 interface Props {
@@ -287,6 +288,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e)) return;
+
       if (mode === "edit" && (e.key === "Escape")) {
         e.preventDefault();
         e.stopPropagation();

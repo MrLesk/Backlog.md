@@ -46,6 +46,27 @@ Users can manually override these values via CLI commands and Web UI.
 - [x] #9 The two fields are optional; absence must not break existing tasks or frontmatter files.
 <!-- AC:END -->
 
+## Implementation Plan
+
+<!-- SECTION:IMPLEMENTATION_PLAN:BEGIN -->
+1. Add `actualStart`/`actualEnd` to TypeScript types (`Task`, `TaskCreateInput`, `TaskUpdateInput`, `TaskEditArgs`).
+2. Extend markdown parser/serializer to read/write `actual_start`/`actual_end` frontmatter fields.
+3. Implement auto-population in `core/backlog.ts` `updateTask`: detect status transitions to in-progress / terminal and set fields if empty.
+4. Add CLI flags (`--actual-start`, `--actual-end`, `--clear-actual-start`, `--clear-actual-end`) for create/edit commands.
+5. Add server API and MCP tool support.
+6. Add Web UI `datetime-local` inputs; later fix timezone consistency with `createdDate` via `storedUtcToDateTimeLocal`/`dateTimeLocalToStoredUtc`.
+7. Add i18n labels, plain-text formatter output, agent guidelines update, and tests.
+<!-- SECTION:IMPLEMENTATION_PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- Storage format follows `createdDate` convention (`YYYY-MM-DD HH:MM`, UTC) for minute-level precision.
+- `isInProgressStatus()` uses case-insensitive match on "inprogress" to support localized status names.
+- Auto-population only fires when the field is empty, preserving any manual override.
+- Web UI timezone fix (BACK-492 follow-up): `datetime-local` inputs now correctly convert between UTC storage and local display, matching `createdDate` behavior.
+<!-- SECTION:NOTES:END -->
+
 ## Related Tasks
 
 - [[BACK-493]] — Milestone-level `actualStart` / `actualEnd` support (deferred follow-up).

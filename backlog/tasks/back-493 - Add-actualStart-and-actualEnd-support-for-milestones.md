@@ -5,7 +5,7 @@ status: Draft
 assignee:
   - '@kimi'
 created_date: '2026-05-28 01:55'
-updated_date: '2026-05-28 01:55'
+updated_date: '2026-05-28 02:58'
 labels: []
 dependencies:
   - 'BACK-492'
@@ -29,7 +29,7 @@ Users can manually override these values via CLI and Web UI.
 - Core business logic: hook into `updateTask` to detect milestone-level trigger conditions and cascade updates to the parent milestone.
 - CLI: `milestone create` and `milestone edit` flags (`--actual-start`, `--actual-end`, `--clear-actual-start`, `--clear-actual-end`).
 - Server API: milestone create/update handlers.
-- Web UI: milestone detail/edit forms with `datetime-local` inputs.
+- Web UI: milestone detail/edit forms with `datetime-local` inputs, following the same UTC-storage/local-display convention established in BACK-492 (via `storedUtcToDateTimeLocal` / `dateTimeLocalToStoredUtc`).
 - MCP: milestone schemas and handlers.
 - i18n labels for all 4 locales.
 - Tests and agent guidelines.
@@ -48,9 +48,27 @@ Users can manually override these values via CLI and Web UI.
 - [ ] #5 Web UI and server API support `actualStart` and `actualEnd` in milestone create / edit / view paths.
 - [ ] #6 MCP milestone schemas and handlers support `actualStart` and `actualEnd`.
 - [ ] #7 i18n labels added for all 4 locales (en, ja, zh-CN, zh-TW).
-- [ ] #8 Agent guidelines updated to mention milestone actual date fields.
-- [ ] #9 The two fields are optional; absence must not break existing milestones or frontmatter files.
+- [ ] #8 Web UI `datetime-local` inputs correctly convert between stored UTC values and local timezone display, consistent with task-level `actualStart`/`actualEnd` behavior.
+- [ ] #9 Agent guidelines updated to mention milestone actual date fields.
+- [ ] #10 The two fields are optional; absence must not break existing milestones or frontmatter files.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:IMPLEMENTATION_PLAN:BEGIN -->
+1. Extend `Milestone` type and milestone markdown parser/serializer with `actual_start`/`actual_end` frontmatter fields.
+2. Add milestone auto-population logic in `updateTask`: when a task under a milestone transitions to in-progress, set milestone `actualStart` if empty; when the last non-terminal task under a milestone becomes terminal, set milestone `actualEnd` if empty.
+3. Add CLI flags (`--actual-start`, `--actual-end`, `--clear-actual-start`, `--clear-actual-end`) to `milestone create` and `milestone edit`.
+4. Extend server API and MCP milestone handlers.
+5. Add Web UI `datetime-local` inputs for milestones, reusing `storedUtcToDateTimeLocal`/`dateTimeLocalToStoredUtc` from BACK-492 for timezone consistency.
+6. Add i18n labels, update agent guidelines, and write tests.
+<!-- SECTION:IMPLEMENTATION_PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+_(Deferred to implementation phase.)_
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 
