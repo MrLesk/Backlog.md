@@ -2,6 +2,7 @@ import type { TaskStatistics } from "../../core/statistics.ts";
 import type {
 	BacklogConfig,
 	Decision,
+	DocsTreeNode,
 	Document,
 	Milestone,
 	SearchPriorityFilter,
@@ -345,7 +346,7 @@ export class ApiClient {
 		if (!response.ok) {
 			throw new Error("Failed to list files");
 		}
-		const data = await response.json() as { entries: { name: string; type: "file" | "directory" }[] };
+		const data = (await response.json()) as { entries: { name: string; type: "file" | "directory" }[] };
 		return data.entries;
 	}
 
@@ -354,7 +355,7 @@ export class ApiClient {
 		if (!response.ok) {
 			throw new Error("Failed to search files");
 		}
-		const data = await response.json() as { results: { name: string; path: string; type: "file" | "directory" }[] };
+		const data = (await response.json()) as { results: { name: string; path: string; type: "file" | "directory" }[] };
 		return data.results;
 	}
 
@@ -561,6 +562,27 @@ export class ApiClient {
 		return this.fetchJson<
 			TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
 		>(`${API_BASE}/statistics`);
+	}
+
+	async fetchDocsTree(): Promise<DocsTreeNode[]> {
+		const response = await fetch(`${API_BASE}/docs/tree`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch docs tree");
+		}
+		return response.json();
+	}
+
+	async createDocsFolder(path: string): Promise<{ success: boolean; path: string }> {
+		const response = await fetch(`${API_BASE}/docs/folder`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path }),
+		});
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || "Failed to create docs folder");
+		}
+		return response.json();
 	}
 
 	async fetchWikiTree(): Promise<WikiTreeNode[]> {

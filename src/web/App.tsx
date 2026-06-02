@@ -17,6 +17,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import {
 	type Decision,
 	type DecisionSearchResult,
+	type DocsTreeNode,
 	type Document,
 	type DocumentSearchResult,
 	type BacklogConfig,
@@ -186,6 +187,7 @@ function App() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [wikiTree, setWikiTree] = useState<WikiTreeNode[]>([]);
+  const [docsTree, setDocsTree] = useState<DocsTreeNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const { isOnline } = useHealthCheckContext();
@@ -269,13 +271,14 @@ function App() {
       if (isFirstLoad) {
         setIsLoading(true);
       }
-      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, wikiTreeData] = await Promise.all([
+      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, wikiTreeData, docsTreeData] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
         apiClient.search(),
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
         apiClient.fetchWikiTree(),
+        apiClient.fetchDocsTree(),
       ]);
 
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
@@ -297,6 +300,7 @@ function App() {
         ),
       );
       setWikiTree(wikiTreeData);
+      setDocsTree(docsTreeData);
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -503,6 +507,7 @@ function App() {
                 docs={docs}
                 decisions={decisions}
                 wikiTree={wikiTree}
+                docsTree={docsTree}
                 isLoading={isLoading}
                 onRefreshData={refreshData}
               />

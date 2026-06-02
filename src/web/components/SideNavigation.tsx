@@ -4,6 +4,7 @@ import { Tooltip } from 'react-tooltip';
 import {
 	type Decision,
 	type DecisionSearchResult,
+	type DocsTreeNode,
 	type Document,
 	type DocumentSearchResult,
 	type SearchResult,
@@ -187,7 +188,21 @@ const countWikiFiles = (nodes: WikiTreeNode[]): number => {
 	return count;
 };
 
+const countDocsFiles = (nodes: DocsTreeNode[]): number => {
+	let count = 0;
+	for (const node of nodes) {
+		if (node.type === 'file') {
+			count++;
+		}
+		if (node.children) {
+			count += countDocsFiles(node.children);
+		}
+	}
+	return count;
+};
+
 const WIKI_EXPANDED_PATHS_KEY = 'wikiExpandedPaths';
+const DOCS_EXPANDED_PATHS_KEY = 'docsExpandedPaths';
 
 const WikiActionDropdown = memo(function WikiActionDropdown({
 	parentPath,
@@ -202,7 +217,7 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 	isFile: boolean;
 	onCreateFile: (parentPath: string) => void;
 	onCreateFolder: (parentPath: string) => void;
-	onRename: (path: string, name: string) => void;
+	onRename?: (path: string, name: string) => void;
 }) {
 	const { t } = useI18n();
 	const [isOpen, setIsOpen] = useState(false);
@@ -219,13 +234,13 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 	}, []);
 
 	return (
-		<div className="relative" ref={menuRef}>
+		<div className="relative flex" ref={menuRef}>
 			<button
 				onClick={(e) => {
 					e.stopPropagation();
 					setIsOpen(!isOpen);
 				}}
-				className="p-0.5 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+				className="p-1 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
 				title={t.common.actions}
 			>
 				<Icons.Plus />
@@ -256,16 +271,18 @@ const WikiActionDropdown = memo(function WikiActionDropdown({
 							{t.nav.createFolder}
 						</button>
 					)}
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							setIsOpen(false);
-							onRename(parentPath, nodeName);
-						}}
-						className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-					>
-						{t.common.rename}
-					</button>
+					{onRename && (
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								setIsOpen(false);
+								onRename(parentPath, nodeName);
+							}}
+							className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+						>
+							{t.common.rename}
+						</button>
+					)}
 				</div>
 			)}
 		</div>
@@ -382,9 +399,181 @@ const WikiTreeItem = memo(function WikiTreeItem({
 	);
 });
 
+const DocActionDropdown = memo(function DocActionDropdown({
+	parentPath,
+	isFile,
+	onCreateFile,
+	onCreateFolder,
+}: {
+	parentPath: string;
+	isFile: boolean;
+	onCreateFile: (parentPath: string) => void;
+	onCreateFolder: (parentPath: string) => void;
+}) {
+	const { t } = useI18n();
+	const [isOpen, setIsOpen] = useState(false);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const handleClickOutside = (e: MouseEvent) => {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				setIsOpen(false);
+			}
+		};
+		document.addEventListener('mousedown', handleClickOutside);
+		return () => document.removeEventListener('mousedown', handleClickOutside);
+	}, []);
+
+	return (
+		<div className="relative flex" ref={menuRef}>
+			<button
+				onClick={(e) => {
+					e.stopPropagation();
+					setIsOpen(!isOpen);
+				}}
+				className="p-1 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+				title={t.common.actions}
+			>
+				<Icons.Plus />
+			</button>
+			{isOpen && (
+				<div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1">
+					{!isFile && (
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								setIsOpen(false);
+								onCreateFile(parentPath);
+							}}
+							className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+						>
+							{t.nav.createFile}
+						</button>
+					)}
+					{!isFile && (
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								setIsOpen(false);
+								onCreateFolder(parentPath);
+							}}
+							className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+						>
+							{t.nav.createFolder}
+						</button>
+					)}
+				</div>
+			)}
+		</div>
+	);
+});
+
+const DocTreeItem = memo(function DocTreeItem({
+	node,
+	docs,
+	onCreateFile,
+	onCreateFolder,
+}: {
+	node: DocsTreeNode;
+	docs: Document[];
+	onCreateFile: (parentPath: string) => void;
+	onCreateFolder: (parentPath: string) => void;
+}) {
+	const [isExpanded, setIsExpanded] = useState(() => {
+		if (typeof window === 'undefined') return false;
+		try {
+			const saved = localStorage.getItem(DOCS_EXPANDED_PATHS_KEY);
+			const paths: string[] = saved ? JSON.parse(saved) : [];
+			return paths.includes(node.path);
+		} catch {
+			return false;
+		}
+	});
+
+	const toggleExpanded = useCallback(() => {
+		setIsExpanded((prev) => {
+			const next = !prev;
+			try {
+				const saved = localStorage.getItem(DOCS_EXPANDED_PATHS_KEY);
+				const paths = new Set<string>(saved ? JSON.parse(saved) : []);
+				if (next) {
+					paths.add(node.path);
+				} else {
+					paths.delete(node.path);
+				}
+				localStorage.setItem(DOCS_EXPANDED_PATHS_KEY, JSON.stringify(Array.from(paths)));
+			} catch {
+				// Ignore localStorage errors
+			}
+			return next;
+		});
+	}, [node.path]);
+
+	if (node.type === 'directory') {
+		const fileCount = countDocsFiles(node.children || []);
+		const hasChildren = (node.children || []).length > 0;
+
+		return (
+			<div className="group/directory">
+				<button
+					onClick={() => hasChildren && toggleExpanded()}
+					className={`flex items-center space-x-2 w-full px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 ${!hasChildren ? 'cursor-default' : ''}`}
+				>
+					<span className="text-gray-400 dark:text-gray-500 w-4">
+						{hasChildren ? (isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />) : null}
+					</span>
+					<span className="text-gray-400 dark:text-gray-500"><Icons.Folder /></span>
+					<span className="truncate">{node.name}</span>
+					{fileCount > 0 && (
+						<span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({fileCount})</span>
+					)}
+					<div className="ml-auto opacity-0 group-hover/directory:opacity-100 group-hover/directory:pointer-events-auto pointer-events-none transition-opacity duration-150">
+						<DocActionDropdown
+							parentPath={node.path}
+							isFile={false}
+							onCreateFile={onCreateFile}
+							onCreateFolder={onCreateFolder}
+						/>
+					</div>
+				</button>
+				{isExpanded && node.children && (
+					<div className="ml-4 space-y-1">
+						{node.children.map((child) => (
+							<DocTreeItem key={child.path} node={child} docs={docs} onCreateFile={onCreateFile} onCreateFolder={onCreateFolder} />
+						))}
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	const doc = node.docId ? docs.find(d => d.id === node.docId) : undefined;
+	const docTitle = doc?.title || node.name.replace(/\.md$/i, '');
+	const docId = doc?.id || node.docId || '';
+
+	return (
+		<div className="group/file relative flex items-center rounded-lg transition-colors duration-200">
+			<NavLink
+				to={`/documentation/${stripIdPrefix(docId)}/${sanitizeUrlTitle(docTitle)}`}
+				className={({ isActive }) =>
+					`flex-1 flex items-center space-x-3 px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 ${
+						isActive
+							? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+							: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+					}`
+				}
+			>
+				<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
+				<span className="truncate">{docTitle}</span>
+			</NavLink>
+		</div>
+	);
+});
+
 interface SideNavigationProps {
 	tasks: Task[];
 	docs: Document[];
+	docsTree: DocsTreeNode[];
 	decisions: Decision[];
 	wikiTree: WikiTreeNode[];
 	isLoading: boolean;
@@ -396,6 +585,7 @@ interface SideNavigationProps {
 const SideNavigation = memo(function SideNavigation({
 	tasks,
 	docs,
+	docsTree,
 	decisions,
 	wikiTree,
 	isLoading,
@@ -456,10 +646,41 @@ const SideNavigation = memo(function SideNavigation({
 	const [isRenamingWiki, setIsRenamingWiki] = useState(false);
 	const [renameWikiError, setRenameWikiError] = useState<string | null>(null);
 
-	// Create handlers - just navigate to new pages
-	const handleCreateDocument = useCallback(() => {
-		navigate('/documentation/new');
+	// Docs folder modal state
+	const [showCreateDocsFolderModal, setShowCreateDocsFolderModal] = useState(false);
+	const [createDocsFolderParentPath, setCreateDocsFolderParentPath] = useState('');
+	const [newDocsFolderName, setNewDocsFolderName] = useState('');
+	const [isCreatingDocsFolder, setIsCreatingDocsFolder] = useState(false);
+	const [createDocsFolderError, setCreateDocsFolderError] = useState<string | null>(null);
+
+	const handleCreateDocFile = useCallback((parentPath: string) => {
+		const query = parentPath ? `?path=${encodeURIComponent(parentPath)}` : '';
+		navigate(`/documentation/new${query}`);
 	}, [navigate]);
+
+	const handleCreateDocFolder = useCallback((parentPath: string) => {
+		setCreateDocsFolderParentPath(parentPath);
+		setNewDocsFolderName('');
+		setCreateDocsFolderError(null);
+		setShowCreateDocsFolderModal(true);
+	}, []);
+
+	const executeCreateDocsFolder = useCallback(async () => {
+		if (!newDocsFolderName.trim()) return;
+		try {
+			setIsCreatingDocsFolder(true);
+			setCreateDocsFolderError(null);
+			const name = newDocsFolderName.trim();
+			const fullPath = createDocsFolderParentPath ? `${createDocsFolderParentPath}/${name}` : name;
+			await apiClient.createDocsFolder(fullPath);
+			setShowCreateDocsFolderModal(false);
+			await onRefreshData();
+		} catch (err) {
+			setCreateDocsFolderError(err instanceof Error ? err.message : t.nav.failedToCreate);
+		} finally {
+			setIsCreatingDocsFolder(false);
+		}
+	}, [newDocsFolderName, createDocsFolderParentPath, onRefreshData, t.nav.failedToCreate]);
 
 	useEffect(() => {
 		localStorage.setItem('sideNavCollapsed', JSON.stringify(isCollapsed));
@@ -676,7 +897,6 @@ const SideNavigation = memo(function SideNavigation({
 	}, [searchQuery, searchResults]);
 
 	// Always show full lists in their sections, search results are separate
-	const filteredDocs = docs;
 	const filteredDecisions = decisions;
 
 	const toggleCollapse = useCallback(() => {
@@ -941,45 +1161,27 @@ const SideNavigation = memo(function SideNavigation({
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
 									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.nav.documents} ({docs.length})</span>
 								</div>
-									<button
-										onClick={handleCreateDocument}
-										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200"
-										title={t.nav.createDocument}
-									>
-										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-										<circle cx="12" cy="12" r="10" />
-									</svg>
-								</button>
+								<DocActionDropdown
+									parentPath=""
+									isFile={false}
+									onCreateFile={handleCreateDocFile}
+									onCreateFolder={handleCreateDocFolder}
+								/>
 							</div>
 							
-							{/* Document List */}
+							{/* Document Tree */}
 							{!isDocsCollapsed && (
 								<div className="space-y-1">
-									{filteredDocs.length === 0 ? (
+									{docsTree.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{t.nav.noDocuments}</p>
 									) : (
-										filteredDocs.map((doc) => (
-											<NavLink
-												key={doc.id}
-												to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
-												className={({ isActive }) =>
-													`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
-														isActive
-															? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-															: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-													}`
-												}
-											>
-												<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
-												<span className="truncate">{doc.title}</span>
-											</NavLink>
+										docsTree.map((node) => (
+											<DocTreeItem key={node.path} node={node} docs={docs} onCreateFile={handleCreateDocFile} onCreateFolder={handleCreateDocFolder} />
 										))
 									)}
 								</div>
 							)}
 						</div>
-
 						{/* Divider between Documents and Decisions */}
 						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
 
@@ -1062,7 +1264,6 @@ const SideNavigation = memo(function SideNavigation({
 									parentPath=""
 									onCreateFile={handleCreateWikiFile}
 									onCreateFolder={handleCreateWikiFolder}
-									onRename={() => {}}
 								/>
 							</div>
 
@@ -1349,6 +1550,51 @@ const SideNavigation = memo(function SideNavigation({
 										className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 									>
 										{isRenamingWiki ? t.common.renaming : t.common.rename}
+									</button>
+								</div>
+							</div>
+						</Modal>
+					)}
+
+					{showCreateDocsFolderModal && (
+						<Modal
+							isOpen={true}
+							onClose={() => setShowCreateDocsFolderModal(false)}
+							title={createDocsFolderParentPath ? t.nav.createFolderIn(createDocsFolderParentPath) : t.nav.createFolder}
+						>
+							<div className="space-y-4">
+								<div>
+									<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+										{t.nav.folderName}
+									</label>
+									<input
+										type="text"
+										value={newDocsFolderName}
+										onChange={(e) => setNewDocsFolderName(e.target.value)}
+										onKeyDown={(e) => e.key === 'Enter' && executeCreateDocsFolder()}
+										placeholder={t.nav.folderNamePlaceholder}
+										className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+										autoFocus
+									/>
+								</div>
+
+								{createDocsFolderError && (
+									<div className="text-sm text-red-600 dark:text-red-400">{createDocsFolderError}</div>
+								)}
+
+								<div className="flex justify-end space-x-3">
+									<button
+										onClick={() => setShowCreateDocsFolderModal(false)}
+										className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+									>
+										{t.common.cancel}
+									</button>
+									<button
+										onClick={executeCreateDocsFolder}
+										disabled={isCreatingDocsFolder || !newDocsFolderName.trim()}
+										className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+									>
+										{isCreatingDocsFolder ? t.common.creating : t.common.create}
 									</button>
 								</div>
 							</div>

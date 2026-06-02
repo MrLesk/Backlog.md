@@ -101,8 +101,9 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
             setIsLoading(false);
             setDocTitle('');
             setOriginalDocTitle('');
-            setDocPath('');
-            setOriginalDocPath('');
+            const pathParam = searchParams.get('path') || '';
+            setDocPath(pathParam);
+            setOriginalDocPath(pathParam);
             setContent('');
             setOriginalContent('');
         } else if (id) {

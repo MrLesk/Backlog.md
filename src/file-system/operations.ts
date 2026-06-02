@@ -8,6 +8,7 @@ import { serializeDecision, serializeDocument, serializeTask } from "../markdown
 import type {
 	BacklogConfig,
 	Decision,
+	DocsTreeNode,
 	Document,
 	Milestone,
 	Task,
@@ -1728,14 +1729,7 @@ ${description || `Milestone: ${title}`}`,
 		const lowerQuery = query.toLowerCase();
 		const results: { name: string; path: string; type: "file" | "directory" }[] = [];
 
-		const excludeDirs = new Set([
-			"node_modules",
-			".git",
-			"dist",
-			"build",
-			".backlog",
-			".locks",
-		]);
+		const excludeDirs = new Set(["node_modules", ".git", "dist", "build", ".backlog", ".locks"]);
 
 		const walk = async (dirPath: string, relPath: string): Promise<void> => {
 			if (results.length >= MAX_RESULTS) return;
@@ -1781,6 +1775,47 @@ ${description || `Milestone: ${title}`}`,
 			}
 		}
 		return nodes;
+	}
+
+	async getDocsTree(): Promise<DocsTreeNode[]> {
+		const docsDir = await this.getDocsDir();
+		return this.buildDocsTreeRecursive(docsDir, "");
+	}
+
+	private async buildDocsTreeRecursive(dirPath: string, relPath: string): Promise<DocsTreeNode[]> {
+		const entries = await readdir(dirPath, { withFileTypes: true });
+		const nodes: DocsTreeNode[] = [];
+		for (const entry of entries) {
+			const entryRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				const children = await this.buildDocsTreeRecursive(join(dirPath, entry.name), entryRelPath);
+				nodes.push({ name: entry.name, path: entryRelPath, type: "directory", children });
+			} else if (entry.isFile() && entry.name.endsWith(".md") && entry.name.toLowerCase() !== "readme.md") {
+				const base = entry.name.replace(/\.md$/i, "");
+				const docId = base.split(" - ")[0] ?? "";
+				nodes.push({ name: entry.name, path: entryRelPath, type: "file", docId });
+			}
+		}
+		return nodes;
+	}
+
+	async createDocsFolder(folderPath: string): Promise<string> {
+		const docsDir = await this.getDocsDir();
+		const normalizedPath = normalizeDocumentSubPath(folderPath);
+		const dirPath = resolve(join(docsDir, ...normalizedPath.split("/")));
+
+		const rel = relative(docsDir, dirPath);
+		const isInside = !rel.startsWith("..") && !isAbsolute(rel);
+		if (!isInside) {
+			throw new Error("Invalid docs path");
+		}
+
+		if (await Bun.file(dirPath).exists()) {
+			throw new Error("Docs folder already exists");
+		}
+
+		await mkdir(dirPath, { recursive: true });
+		return normalizedPath;
 	}
 
 	async readWikiPage(pagePath: string): Promise<WikiPage> {
