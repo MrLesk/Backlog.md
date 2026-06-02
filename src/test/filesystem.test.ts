@@ -426,6 +426,33 @@ Invalid content`,
 			const loaded = await filesystem.loadConfig();
 			expect(loaded?.defaultReporter).toBe("@author");
 		});
+
+		it("should save and load labelColors", async () => {
+			const cfg: BacklogConfig = {
+				projectName: "Colors",
+				statuses: ["To Do"],
+				labels: ["bug", "feature"],
+				dateFormat: "yyyy-mm-dd",
+				labelColors: { bug: "red", feature: "blue" },
+			};
+
+			await filesystem.saveConfig(cfg);
+			const loaded = await filesystem.loadConfig();
+			expect(loaded?.labelColors).toEqual({ bug: "red", feature: "blue" });
+		});
+
+		it("should omit empty labelColors from serialized config", async () => {
+			const cfg: BacklogConfig = {
+				projectName: "NoColors",
+				statuses: ["To Do"],
+				labels: [],
+				dateFormat: "yyyy-mm-dd",
+			};
+
+			await filesystem.saveConfig(cfg);
+			const content = await Bun.file(filesystem.configFilePath).text();
+			expect(content).not.toContain("label_colors");
+		});
 	});
 
 	describe("directory accessors", () => {

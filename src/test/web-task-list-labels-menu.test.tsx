@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskList from "../web/components/TaskList.tsx";
+import { I18nProvider } from "../web/contexts/I18nContext.tsx";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -71,18 +72,20 @@ const renderTaskList = (
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<MemoryRouter initialEntries={initialEntries}>
-				<TaskList
-					tasks={renderedTasks}
-					availableStatuses={renderedStatuses}
-					availableLabels={["bug", "docs"]}
-					availableMilestones={[]}
-					milestoneEntities={[]}
-					archivedMilestones={[]}
-					onEditTask={() => {}}
-					onNewTask={() => {}}
-				/>
-			</MemoryRouter>,
+			<I18nProvider initialLocale="en">
+				<MemoryRouter initialEntries={initialEntries}>
+					<TaskList
+						tasks={renderedTasks}
+						availableStatuses={renderedStatuses}
+						availableLabels={["bug", "docs"]}
+						availableMilestones={[]}
+						milestoneEntities={[]}
+						archivedMilestones={[]}
+						onEditTask={() => {}}
+						onNewTask={() => {}}
+					/>
+				</MemoryRouter>
+			</I18nProvider>,
 		);
 	});
 	return container as HTMLElement;
@@ -174,6 +177,14 @@ describe("TaskList labels filter menu", () => {
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 			fetchCalls.push(url);
+			if (url.includes("/api/config")) {
+				return {
+					ok: true,
+					status: 200,
+					statusText: "OK",
+					json: async () => ({ projectName: "Test", statuses: ["To Do"], labels: [], dateFormat: "yyyy-mm-dd" }),
+				} as Response;
+			}
 			expect(url).toContain("/api/search");
 			expect(url).toContain("label=bug");
 			return {
@@ -186,10 +197,10 @@ describe("TaskList labels filter menu", () => {
 
 		const container = renderTaskList(["/?label=bug"]);
 		const labelsButton = getLabelsButton(container);
-		await waitFor(() => fetchCalls.length === 1);
+		await waitFor(() => fetchCalls.filter((u) => u.includes("/api/search")).length === 1);
 
 		expect(labelsButton.textContent).toContain("bug");
-		expect(fetchCalls).toHaveLength(1);
+		expect(fetchCalls.filter((u) => u.includes("/api/search"))).toHaveLength(1);
 
 		await clickElement(labelsButton);
 

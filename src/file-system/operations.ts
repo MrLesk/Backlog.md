@@ -1464,6 +1464,33 @@ export class FileSystem {
 				case "locale":
 					config.locale = value.replace(/['"]/g, "");
 					break;
+				case "label_colors":
+				case "labelColors":
+					if (value.startsWith("{") && value.endsWith("}")) {
+						try {
+							const inner = value.slice(1, -1);
+							const pairs = inner
+								.split(",")
+								.map((p) => p.trim())
+								.filter(Boolean);
+							const colors: Record<string, string> = {};
+							for (const pair of pairs) {
+								const colonIdx = pair.indexOf(":");
+								if (colonIdx !== -1) {
+									const k = pair.substring(0, colonIdx).trim().replace(/['"]/g, "");
+									const v = pair
+										.substring(colonIdx + 1)
+										.trim()
+										.replace(/['"]/g, "");
+									if (k) colors[k] = v;
+								}
+							}
+							config.labelColors = colors;
+						} catch {
+							// ignore malformed object
+						}
+					}
+					break;
 			}
 		}
 
@@ -1491,6 +1518,7 @@ export class FileSystem {
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
 			locale: config.locale,
+			labelColors: config.labelColors,
 		};
 	}
 
@@ -1524,6 +1552,13 @@ export class FileSystem {
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
 			...(config.locale ? [`locale: "${config.locale}"`] : []),
+			...(config.labelColors && Object.keys(config.labelColors).length > 0
+				? [
+						`label_colors: {${Object.entries(config.labelColors)
+							.map(([k, v]) => `"${k}": "${v}"`)
+							.join(", ")}}`,
+					]
+				: []),
 		];
 
 		return `${lines.join("\n")}\n`;

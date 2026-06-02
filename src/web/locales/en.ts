@@ -24,6 +24,7 @@ export const en = {
 		document: "Document",
 		task: "Task",
 		save: "Save",
+		default: "Default",
 		search: "Search",
 		clear: "Clear",
 		add: "Add",

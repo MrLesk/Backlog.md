@@ -174,6 +174,7 @@ function App() {
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
   const [config, setConfig] = useState<BacklogConfig | null>(null);
+  const labelColors = config?.labelColors;
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
@@ -223,6 +224,17 @@ function App() {
   const handleInitialized = useCallback(() => {
     setIsInitialized(true);
   }, []);
+
+  const handleLabelColorsChange = useCallback(async (colors: Record<string, string>) => {
+    if (!config) return;
+    try {
+      const updated = { ...config, labelColors: colors };
+      await apiClient.updateConfig(updated);
+      setConfig(updated);
+    } catch (err) {
+      console.error('Failed to update label colors:', err);
+    }
+  }, [config]);
 
   const applySearchResults = useCallback((
     results: SearchResult[],
@@ -526,15 +538,17 @@ function App() {
                 <BoardPage
                   onEditTask={handleEditTask}
                   onNewTask={handleNewTask}
-                tasks={tasks}
-                onRefreshData={refreshData}
-                statuses={statuses}
-                milestones={milestones}
-                availableLabels={availableLabels}
-                milestoneEntities={milestoneEntities}
-                archivedMilestones={archivedMilestones}
-                isLoading={isLoading}
-              />
+                  tasks={tasks}
+                  onRefreshData={refreshData}
+                  statuses={statuses}
+                  milestones={milestones}
+                  availableLabels={availableLabels}
+                  milestoneEntities={milestoneEntities}
+                  archivedMilestones={archivedMilestones}
+                  isLoading={isLoading}
+                  labelColors={labelColors}
+                  onLabelColorsChange={handleLabelColorsChange}
+                />
             }
           />
             <Route

@@ -30,6 +30,8 @@ interface BoardProps {
   filterLabels?: string[];
   filterPriority?: string;
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
+  labelColors?: Record<string, string>;
+  onLabelColorsChange?: (colors: Record<string, string>) => void;
 }
 
 const BOARD_FILTER_SELECT_CLASS =
@@ -56,6 +58,8 @@ const Board: React.FC<BoardProps> = ({
   filterLabels = [],
   filterPriority = '',
   onFiltersChange,
+  labelColors,
+  onLabelColorsChange,
 }) => {
   const { t } = useI18n();
   const PRIORITY_OPTIONS = [
@@ -499,6 +503,8 @@ const Board: React.FC<BoardProps> = ({
                   onChange={labels => onFiltersChange({ assignee: filterAssignee, labels, priority: filterPriority })}
                   menuId="board-labels-filter-menu"
                   className="min-w-[200px]"
+                  labelColors={labelColors}
+                  onLabelColorsChange={onLabelColorsChange}
                 />
 
                 <select
@@ -607,6 +613,7 @@ const Board: React.FC<BoardProps> = ({
                             }}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                             terminalStatus={terminalStatus}
+                            labelColors={labelColors}
                           />
                         </div>
                       ))}
@@ -641,6 +648,7 @@ const Board: React.FC<BoardProps> = ({
                   }}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                   terminalStatus={terminalStatus}
+                  labelColors={labelColors}
                 />
               </div>
             ))}
