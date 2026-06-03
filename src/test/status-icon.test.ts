@@ -24,7 +24,7 @@ describe("Status Icon Component", () => {
 		test("returns correct style for To Do status", () => {
 			const style = getStatusStyle("To Do");
 			expect(style.icon).toBe("○");
-			expect(style.color).toBe("white");
+			expect(style.color).toBe("default");
 		});
 
 		test("returns correct style for Review status", () => {
@@ -42,7 +42,7 @@ describe("Status Icon Component", () => {
 		test("returns default style for unknown status", () => {
 			const style = getStatusStyle("Unknown Status");
 			expect(style.icon).toBe("○");
-			expect(style.color).toBe("white");
+			expect(style.color).toBe("default");
 		});
 	});
 
@@ -51,13 +51,13 @@ describe("Status Icon Component", () => {
 			expect(getStatusColor("Done")).toBe("green");
 			expect(getStatusColor("In Progress")).toBe("yellow");
 			expect(getStatusColor("Blocked")).toBe("red");
-			expect(getStatusColor("To Do")).toBe("white");
+			expect(getStatusColor("To Do")).toBe("default");
 			expect(getStatusColor("Review")).toBe("blue");
 			expect(getStatusColor("Testing")).toBe("cyan");
 		});
 
 		test("returns default color for unknown status", () => {
-			expect(getStatusColor("Unknown")).toBe("white");
+			expect(getStatusColor("Unknown")).toBe("default");
 		});
 	});
 

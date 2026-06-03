@@ -15,13 +15,13 @@ export function getStatusStyle(status: string): StatusStyle {
 		Done: { icon: "✔", color: "green" },
 		"In Progress": { icon: "◒", color: "yellow" },
 		Blocked: { icon: "●", color: "red" },
-		"To Do": { icon: "○", color: "white" },
+		"To Do": { icon: "○", color: "default" },
 		Review: { icon: "◆", color: "blue" },
 		Testing: { icon: "▣", color: "cyan" },
 	};
 
 	// Return the mapped style or default for unknown statuses
-	return statusMap[status] || { icon: "○", color: "white" };
+	return statusMap[status] || { icon: "○", color: "default" };
 }
 
 /**
@@ -40,6 +40,14 @@ export function getStatusColor(status: string): string {
  */
 export function getStatusIcon(status: string): string {
 	return getStatusStyle(status).icon;
+}
+
+/**
+ * Wrap text in blessed color tags. "default" emits {default-fg} (SGR 39 = terminal default).
+ * Returns text as-is if color is empty.
+ */
+export function wrapStatusColor(text: string, color: string): string {
+	return color ? `{${color}-fg}${text}{/}` : text;
 }
 
 /**

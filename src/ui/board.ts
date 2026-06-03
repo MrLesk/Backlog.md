@@ -440,7 +440,7 @@ export async function renderBoardTui(
 					mouse: true,
 					scrollable: true,
 					tags: true,
-					style: { selected: { fg: "white" } },
+					style: { selected: {} },
 				});
 
 				const renderedItems = getFormattedItems(columnData.tasks);
@@ -487,9 +487,22 @@ export async function renderBoardTui(
 
 		const setColumnActiveState = (column: ColumnView | undefined, active: boolean) => {
 			if (!column) return;
-			const listStyle = column.list.style as { selected?: { bg?: string } };
-			// In move mode, use green highlight for the moving task
-			if (listStyle.selected) listStyle.selected.bg = moveOp && active ? "green" : active ? "blue" : undefined;
+			const listStyle = column.list.style as {
+				selected?: { bg?: string; fg?: string; inverse?: boolean; bold?: boolean };
+			};
+			if (listStyle.selected) {
+				if (active) {
+					listStyle.selected.inverse = true;
+					listStyle.selected.bold = !moveOp;
+					listStyle.selected.bg = moveOp ? "cyan" : undefined;
+					listStyle.selected.fg = moveOp ? "black" : undefined;
+				} else {
+					listStyle.selected.inverse = false;
+					listStyle.selected.bold = false;
+					listStyle.selected.bg = undefined;
+					listStyle.selected.fg = undefined;
+				}
+			}
 			const boxStyle = column.box.style as { border?: { fg?: string } };
 			if (boxStyle.border) boxStyle.border.fg = active ? "yellow" : "gray";
 			syncColumnSelectionDisplay(column, active);
@@ -981,6 +994,51 @@ export async function renderBoardTui(
 				selectColumnRow(column, nextIndex, true);
 				screen.render();
 			}
+		});
+
+		const lanePageAmount = () => {
+			const column = columns[currentCol];
+			if (!column) return 0;
+			const height = typeof column.list.height === "number" ? column.list.height : 0;
+			return height > 0 ? Math.max(1, height - 1) : 5;
+		};
+
+		screen.key(["pageup", "C-u"], () => {
+			if (popupOpen || moveOp) return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const selected = column.list.selected ?? 0;
+			const nextIndex = Math.max(0, selected - lanePageAmount());
+			column.list.select(nextIndex);
+			screen.render();
+		});
+
+		screen.key(["pagedown", "C-d"], () => {
+			if (popupOpen || moveOp) return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const selected = column.list.selected ?? 0;
+			const total = column.tasks.length;
+			if (total === 0) return;
+			const nextIndex = Math.min(total - 1, selected + lanePageAmount());
+			column.list.select(nextIndex);
+			screen.render();
+		});
+
+		screen.key(["home"], () => {
+			if (popupOpen || moveOp) return;
+			const column = columns[currentCol];
+			if (!column || column.tasks.length === 0) return;
+			column.list.select(0);
+			screen.render();
+		});
+
+		screen.key(["end"], () => {
+			if (popupOpen || moveOp) return;
+			const column = columns[currentCol];
+			if (!column || column.tasks.length === 0) return;
+			column.list.select(column.tasks.length - 1);
+			screen.render();
 		});
 
 		const openTaskEditor = async (task: Task) => {

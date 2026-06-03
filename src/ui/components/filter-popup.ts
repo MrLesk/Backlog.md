@@ -92,7 +92,7 @@ export function createPopupChrome(options: PopupChromeOptions): {
 		right: 1,
 		width: 5,
 		height: 1,
-		style: { fg: "white", bg: "blue" },
+		style: { inverse: true, bold: true },
 	});
 
 	const helpBox = box({
@@ -165,8 +165,8 @@ export async function openSingleSelectFilterPopup(options: {
 			scrollable: true,
 			style: {
 				bg: "default",
-				selected: { bg: "blue", fg: "white" },
-				item: { bg: "default", hover: { bg: "blue" } },
+				selected: { inverse: true, bold: true },
+				item: { bg: "default", hover: { inverse: true } },
 			},
 		});
 
@@ -263,8 +263,8 @@ export async function openMultiSelectFilterPopup(options: {
 			showHelp: false,
 			style: {
 				bg: "default",
-				item: { fg: "white", bg: "default" },
-				selected: { fg: "white", bg: "blue" },
+				item: { bg: "default" },
+				selected: { inverse: true, bold: true },
 			},
 			keys: {
 				cancel: ["C-]"],

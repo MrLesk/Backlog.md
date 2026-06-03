@@ -32,9 +32,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			height: 3,
 			content: `{center}{bold}${projectName} - Project Overview{/bold}{/center}`,
 			tags: true,
-			style: {
-				fg: "white",
-			},
+			style: {},
 		});
 
 		// Status Overview Section (Top Left)
