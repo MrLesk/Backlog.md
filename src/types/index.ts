@@ -304,6 +304,10 @@ export interface AgentConfig {
 	alias: string;
 	/** CLI binary to launch (claude | codex | opencode | absolute path). */
 	binary: string;
+	/** Optional model alias passed to the agent (claude only, e.g. "sonnet", "opus"). Falls back to the agent's default when absent. */
+	model?: string;
+	/** Optional effort level passed to the agent (claude only, e.g. "low", "medium", "high"). Falls back to the agent's default when absent. */
+	effort?: string;
 }
 
 export interface BoardColumnConfig {

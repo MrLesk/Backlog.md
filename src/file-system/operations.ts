@@ -1585,10 +1585,13 @@ ${description || `Milestone: ${title}`}`,
 			const agents: AgentConfig[] = [];
 			for (const entry of raw) {
 				if (typeof entry !== "object" || entry === null) continue;
-				const e = entry as { alias?: unknown; binary?: unknown };
+				const e = entry as { alias?: unknown; binary?: unknown; model?: unknown; effort?: unknown };
 				if (typeof e.alias !== "string" || !e.alias.trim()) continue;
 				if (typeof e.binary !== "string" || !e.binary.trim()) continue;
-				agents.push({ alias: e.alias.trim(), binary: e.binary.trim() });
+				const agent: AgentConfig = { alias: e.alias.trim(), binary: e.binary.trim() };
+				if (typeof e.model === "string" && e.model.trim()) agent.model = e.model.trim();
+				if (typeof e.effort === "string" && e.effort.trim()) agent.effort = e.effort.trim();
+				agents.push(agent);
 			}
 			return agents.length > 0 ? agents : undefined;
 		} catch {
@@ -1660,6 +1663,8 @@ ${description || `Milestone: ${title}`}`,
 		for (const agent of agents) {
 			out.push(`  - alias: ${this.quoteYamlString(agent.alias)}`);
 			out.push(`    binary: ${this.quoteYamlString(agent.binary)}`);
+			if (agent.model?.trim()) out.push(`    model: ${this.quoteYamlString(agent.model.trim())}`);
+			if (agent.effort?.trim()) out.push(`    effort: ${this.quoteYamlString(agent.effort.trim())}`);
 		}
 		return out;
 	}

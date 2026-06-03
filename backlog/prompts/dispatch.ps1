@@ -93,11 +93,16 @@ $tasksDir = Join-Path $projectRoot 'backlog\tasks'
 # the value as a raw binary name (back-compat with existing tasks).
 $configFile = Join-Path $projectRoot 'backlog\config.yml'
 $aliasMap = @{}
+$modelMap = @{}
+$effortMap = @{}
 if (Test-Path $configFile) {
     $configContent = Get-Content $configFile -Raw
     # Extract the agents: block line by line — simple enough without gray-matter.
+    # `alias:` opens a new entry; `binary:`/`model:`/`effort:` attach to the
+    # current alias (model/effort follow binary in the YAML, so we keep the
+    # alias as context until the next entry rather than clearing it on binary).
     $inAgents = $false
-    $pendingAlias = ''
+    $currentAlias = ''
     foreach ($line in $configContent -split '\r?\n') {
         if ($line -match '^agents:') {
             $inAgents = $true
@@ -107,12 +112,13 @@ if (Test-Path $configFile) {
             # Stop at the next top-level key (not indented).
             if ($line -match '^[A-Za-z_]') { $inAgents = $false; continue }
             if ($line -match '^\s+-\s+alias:\s*[''"]?([^''"]+)[''"]?\s*$') {
-                $pendingAlias = $matches[1].Trim()
-            } elseif ($line -match '^\s+binary:\s*[''"]?([^''"]+)[''"]?\s*$') {
-                if ($pendingAlias -ne '') {
-                    $aliasMap[$pendingAlias] = $matches[1].Trim()
-                    $pendingAlias = ''
-                }
+                $currentAlias = $matches[1].Trim()
+            } elseif ($currentAlias -ne '' -and $line -match '^\s+binary:\s*[''"]?([^''"]+)[''"]?\s*$') {
+                $aliasMap[$currentAlias] = $matches[1].Trim()
+            } elseif ($currentAlias -ne '' -and $line -match '^\s+model:\s*[''"]?([^''"]+)[''"]?\s*$') {
+                $modelMap[$currentAlias] = $matches[1].Trim()
+            } elseif ($currentAlias -ne '' -and $line -match '^\s+effort:\s*[''"]?([^''"]+)[''"]?\s*$') {
+                $effortMap[$currentAlias] = $matches[1].Trim()
             }
         }
     }
@@ -162,6 +168,19 @@ if ($env:NEW_STATUS -eq 'In Review') {
 # Resolve alias → binary if configured; otherwise use as-is.
 $agentBinary = if ($aliasMap.ContainsKey($agentName)) { $aliasMap[$agentName] } else { $agentName }
 Write-Host "dispatch.ps1: task=$env:TASK_ID status=$env:NEW_STATUS agent=$agentName binary=$agentBinary"
+
+# ── Model / effort resolution (claude only) ───────────────────────────────────
+# Per-agent model/effort from the config alias drive --model/--effort. Only
+# claude supports these flags; codex/opencode launches are left unchanged.
+$claudeModelArgs = @()
+if ($agentBinary.ToLower() -eq 'claude') {
+    if ($modelMap.ContainsKey($agentName) -and $modelMap[$agentName] -ne '') {
+        $claudeModelArgs += @('--model', $modelMap[$agentName])
+    }
+    if ($effortMap.ContainsKey($agentName) -and $effortMap[$agentName] -ne '') {
+        $claudeModelArgs += @('--effort', $effortMap[$agentName])
+    }
+}
 
 # ── Binary lookup ─────────────────────────────────────────────────────────────
 if ($agentBinary.ToLower() -eq 'claude') {
@@ -259,7 +278,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } else {
-        $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions')
+        $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions') + $claudeModelArgs
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -294,7 +313,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } else {
-        $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions')
+        $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions') + $claudeModelArgs
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -332,7 +351,7 @@ if ($isCoderRework) {
         -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
 } else {
     # Claude: new session, prompt via stdin.
-    $agentArgs = @('-p', '--dangerously-skip-permissions')
+    $agentArgs = @('-p', '--dangerously-skip-permissions') + $claudeModelArgs
     Start-Process `
         -FilePath $agentExec `
         -ArgumentList $agentArgs `

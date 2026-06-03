@@ -23,7 +23,16 @@ const AgentsSection: React.FC<AgentsSectionProps> = ({ agents, onChange }) => {
 
 	const emit = (next: AgentConfig[]) => {
 		setRows(next);
-		onChange(next.filter((r) => r.alias.trim() && r.binary.trim()));
+		onChange(
+			next
+				.filter((r) => r.alias.trim() && r.binary.trim())
+				.map((r) => ({
+					alias: r.alias,
+					binary: r.binary,
+					...(r.model?.trim() ? { model: r.model.trim() } : {}),
+					...(r.effort?.trim() ? { effort: r.effort.trim() } : {}),
+				})),
+		);
 	};
 
 	const update = (index: number, field: keyof AgentConfig, value: string) => {
@@ -48,7 +57,9 @@ const AgentsSection: React.FC<AgentsSectionProps> = ({ agents, onChange }) => {
 			</div>
 			<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
 				Give each AI agent a friendly alias and map it to the CLI binary. Tasks will show a
-				dropdown to pick from these names instead of a free-text field.
+				dropdown to pick from these names instead of a free-text field. Model and effort are
+				optional and apply to <code>claude</code> agents only (e.g. run coders/reviewers on
+				<code> sonnet</code> to save quota).
 			</p>
 			{rows.length === 0 && (
 				<p className="text-sm text-gray-400 dark:text-gray-500">
@@ -56,14 +67,19 @@ const AgentsSection: React.FC<AgentsSectionProps> = ({ agents, onChange }) => {
 				</p>
 			)}
 			<div className="space-y-2">
-				<div className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center text-xs text-gray-500 dark:text-gray-400 px-1 mb-1">
+				<div className="grid grid-cols-[1fr_auto_1fr_1fr_1fr_auto] gap-2 items-center text-xs text-gray-500 dark:text-gray-400 px-1 mb-1">
 					<span>Alias (shown in UI + stored in task)</span>
 					<span />
 					<span>Binary (CLI command to launch)</span>
+					<span>Model (optional, claude)</span>
+					<span>Effort (optional, claude)</span>
 					<span />
 				</div>
 				{rows.map((row, index) => (
-					<div key={index} className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
+					<div
+						key={index}
+						className="grid grid-cols-[1fr_auto_1fr_1fr_1fr_auto] gap-2 items-center"
+					>
 						<input
 							type="text"
 							value={row.alias}
@@ -79,6 +95,22 @@ const AgentsSection: React.FC<AgentsSectionProps> = ({ agents, onChange }) => {
 							onChange={(e) => update(index, 'binary', e.target.value)}
 							placeholder="e.g. claude"
 							aria-label="Agent binary"
+							className={INPUT_CLS}
+						/>
+						<input
+							type="text"
+							value={row.model ?? ''}
+							onChange={(e) => update(index, 'model', e.target.value)}
+							placeholder="e.g. sonnet"
+							aria-label="Agent model"
+							className={INPUT_CLS}
+						/>
+						<input
+							type="text"
+							value={row.effort ?? ''}
+							onChange={(e) => update(index, 'effort', e.target.value)}
+							placeholder="e.g. high"
+							aria-label="Agent effort"
 							className={INPUT_CLS}
 						/>
 						<button

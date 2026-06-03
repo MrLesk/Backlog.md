@@ -110,9 +110,14 @@ esac
 # ── Alias → binary resolution ─────────────────────────────────────────────────
 config_file="$project_root/backlog/config.yml"
 agent_binary="$agent_name"
+agent_model=""
+agent_effort=""
 if [ -f "$config_file" ]; then
     in_agents=0
-    pending_alias=""
+    current_alias=""
+    # `alias:` opens an entry; binary/model/effort attach to the current alias
+    # (model/effort follow binary in the YAML, so keep the alias as context
+    # until the next entry rather than clearing it on binary).
     while IFS= read -r line || [ -n "$line" ]; do
         if echo "$line" | grep -q '^agents:'; then
             in_agents=1; continue
@@ -122,18 +127,31 @@ if [ -f "$config_file" ]; then
                 in_agents=0; continue
             fi
             if echo "$line" | grep -qE '^\s+-\s+alias:'; then
-                pending_alias="$(echo "$line" | sed "s/.*alias:[[:space:]]*//" | tr -d "'\" ")"
-            elif echo "$line" | grep -qE '^\s+binary:'; then
-                if [ -n "$pending_alias" ]; then
-                    binary_val="$(echo "$line" | sed "s/.*binary:[[:space:]]*//" | tr -d "'\" ")"
-                    if [ "$pending_alias" = "$agent_name" ]; then
-                        agent_binary="$binary_val"
-                    fi
-                    pending_alias=""
+                current_alias="$(echo "$line" | sed "s/.*alias:[[:space:]]*//" | tr -d "'\" ")"
+            elif [ -n "$current_alias" ] && echo "$line" | grep -qE '^\s+binary:'; then
+                if [ "$current_alias" = "$agent_name" ]; then
+                    agent_binary="$(echo "$line" | sed "s/.*binary:[[:space:]]*//" | tr -d "'\" ")"
+                fi
+            elif [ -n "$current_alias" ] && echo "$line" | grep -qE '^\s+model:'; then
+                if [ "$current_alias" = "$agent_name" ]; then
+                    agent_model="$(echo "$line" | sed "s/.*model:[[:space:]]*//" | tr -d "'\" ")"
+                fi
+            elif [ -n "$current_alias" ] && echo "$line" | grep -qE '^\s+effort:'; then
+                if [ "$current_alias" = "$agent_name" ]; then
+                    agent_effort="$(echo "$line" | sed "s/.*effort:[[:space:]]*//" | tr -d "'\" ")"
                 fi
             fi
         fi
     done < "$config_file"
+fi
+
+# ── Model / effort flags (claude only) ────────────────────────────────────────
+# Per-agent model/effort drive --model/--effort. Only claude supports these
+# flags; codex/opencode launches are left unchanged.
+claude_model_args=""
+if [ "$agent_binary" = "claude" ]; then
+    [ -n "$agent_model" ] && claude_model_args="--model $agent_model"
+    [ -n "$agent_effort" ] && claude_model_args="$claude_model_args --effort $agent_effort"
 fi
 
 echo "dispatch.sh: task=${TASK_ID:-?} status=${NEW_STATUS:-?} agent=$agent_name binary=$agent_binary"
@@ -178,7 +196,8 @@ fi
                 -f "$rework_path" -- 'Read and follow the attached instructions.' \
                 > "$log_file" 2> "$log_file.err" &
         else
-            nohup claude --resume "$coder_session_id" --dangerously-skip-permissions \
+            # shellcheck disable=SC2086 # intentional word-splitting of optional flags
+            nohup claude --resume "$coder_session_id" --dangerously-skip-permissions $claude_model_args \
                 < "$rework_path" > "$log_file" 2> "$log_file.err" &
         fi
         disown
@@ -195,14 +214,16 @@ fi
                 -f "$resume_path" -- 'Read and follow the attached instructions.' \
                 > "$log_file" 2> "$log_file.err" &
         else
-            nohup claude --resume "$reviewer_session_id" --dangerously-skip-permissions \
+            # shellcheck disable=SC2086 # intentional word-splitting of optional flags
+            nohup claude --resume "$reviewer_session_id" --dangerously-skip-permissions $claude_model_args \
                 < "$resume_path" > "$log_file" 2> "$log_file.err" &
         fi
         disown
     else
     case "$agent_binary" in
         claude)
-            nohup claude -p --dangerously-skip-permissions \
+            # shellcheck disable=SC2086 # intentional word-splitting of optional flags
+            nohup claude -p --dangerously-skip-permissions $claude_model_args \
                 < "$prompt_path" > "$log_file" 2> "$log_file.err" &
             ;;
         codex)
