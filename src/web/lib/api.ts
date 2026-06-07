@@ -48,7 +48,12 @@ export class ApiError extends Error {
 	}
 
 	static fromResponse(response: Response, data?: unknown): ApiError {
-		const message = `HTTP ${response.status}: ${response.statusText}`;
+		const errorMessage =
+			typeof data === "object" && data !== null && "error" in data ? (data as { error?: unknown }).error : undefined;
+		const message =
+			typeof errorMessage === "string" && errorMessage.trim().length > 0
+				? errorMessage
+				: `HTTP ${response.status}: ${response.statusText}`;
 		return new ApiError(message, response.status, response.statusText, data);
 	}
 }

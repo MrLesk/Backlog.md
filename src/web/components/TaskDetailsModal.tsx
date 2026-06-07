@@ -41,6 +41,8 @@ type InlineMetaUpdatePayload = Omit<Partial<Task>, "milestone"> & {
   milestone?: string | null;
 };
 
+const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
+
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
   <div className="flex items-center justify-between mb-3">
     <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-tight transition-colors duration-200">
@@ -559,12 +561,21 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (!task || isFromOtherBranch) return;
     const body = commentBody.trim();
     if (!body) return;
+    const author = commentAuthor.trim();
+    if (containsCommentDelimiterLine(body)) {
+      setError("Comment body cannot contain standalone '---' delimiter lines.");
+      return;
+    }
+    if (author && containsCommentDelimiterLine(author)) {
+      setError("Comment author cannot contain standalone '---' delimiter lines.");
+      return;
+    }
     setCommentSaving(true);
     setError(null);
     try {
       const updatedTask = await apiClient.updateTask(task.id, {
         commentsAppend: [body],
-        ...(commentAuthor.trim().length > 0 && { commentAuthor: commentAuthor.trim() }),
+        ...(author.length > 0 && { commentAuthor: author }),
       });
       setDisplayComments(updatedTask.comments ?? []);
       setCommentsChanged(true);

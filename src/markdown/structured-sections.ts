@@ -43,6 +43,7 @@ const COMMENTS_BEGIN_MARKER = "<!-- COMMENTS:BEGIN -->";
 const COMMENTS_END_MARKER = "<!-- COMMENTS:END -->";
 const COMMENT_BEGIN_MARKER = "<!-- COMMENT:BEGIN -->";
 const COMMENT_END_MARKER = "<!-- COMMENT:END -->";
+const COMMENT_DELIMITER = "---";
 const KNOWN_SECTION_TITLES = new Set<string>([
 	...getStructuredSectionTitles(),
 	ACCEPTANCE_CRITERIA_TITLE,
@@ -668,19 +669,22 @@ function containsCommentMarker(value: string | undefined): boolean {
 	return /<!--\s*COMMENTS?:/i.test(value ?? "");
 }
 
-function parseCommentBlock(block: string, fallbackIndex: number): TaskComment | undefined {
-	const normalized = block.replace(/\r\n/g, "\n").trim();
-	if (!normalized) return undefined;
+function containsCommentDelimiter(value: string | undefined): boolean {
+	return /^\s*---\s*$/m.test((value ?? "").replace(/\r\n/g, "\n"));
+}
 
-	const separatorIndex = normalized.search(/\n\s*\n/);
-	const metadataText = separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : "";
-	const body = separatorIndex >= 0 ? normalized.slice(separatorIndex).replace(/^\s+/, "").trim() : normalized;
-	if (!body) return undefined;
-
+function parseCommentMetadata(
+	lines: string[],
+	fallbackIndex: number,
+): {
+	index: number;
+	author?: string;
+	createdDate: string;
+} {
 	let index = fallbackIndex;
 	let author: string | undefined;
 	let createdDate = "";
-	for (const line of metadataText.split("\n")) {
+	for (const line of lines) {
 		const match = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
 		if (!match?.[1]) continue;
 		const key = match[1].toLowerCase();
@@ -696,13 +700,71 @@ function parseCommentBlock(block: string, fallbackIndex: number): TaskComment | 
 			createdDate = value.trim();
 		}
 	}
+	return { index, ...(author && { author }), createdDate };
+}
 
+function parseLegacyCommentBlock(block: string, fallbackIndex: number): TaskComment | undefined {
+	const normalized = block.replace(/\r\n/g, "\n").trim();
+	if (!normalized) return undefined;
+
+	const separatorIndex = normalized.search(/\n\s*\n/);
+	const metadataText = separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : "";
+	const body = separatorIndex >= 0 ? normalized.slice(separatorIndex).replace(/^\s+/, "").trim() : normalized;
+	if (!body) return undefined;
+
+	const { index, author, createdDate } = parseCommentMetadata(metadataText.split("\n"), fallbackIndex);
 	return {
 		index,
 		body,
 		createdDate,
 		...(author && { author }),
 	};
+}
+
+function parseDelimitedComments(sectionBody: string): TaskComment[] {
+	const lines = sectionBody.replace(/\r\n/g, "\n").split("\n");
+	const comments: TaskComment[] = [];
+	let lineIndex = 0;
+
+	const isDelimiter = (line: string): boolean => line.trim() === COMMENT_DELIMITER;
+	const skipBlankLines = () => {
+		while (lineIndex < lines.length && lines[lineIndex]?.trim() === "") {
+			lineIndex += 1;
+		}
+	};
+
+	while (lineIndex < lines.length) {
+		skipBlankLines();
+		if (lineIndex >= lines.length) break;
+
+		const metadataLines: string[] = [];
+		while (lineIndex < lines.length && !isDelimiter(lines[lineIndex] ?? "")) {
+			metadataLines.push(lines[lineIndex] ?? "");
+			lineIndex += 1;
+		}
+		if (lineIndex >= lines.length) break;
+		lineIndex += 1;
+
+		const bodyLines: string[] = [];
+		while (lineIndex < lines.length && !isDelimiter(lines[lineIndex] ?? "")) {
+			bodyLines.push(lines[lineIndex] ?? "");
+			lineIndex += 1;
+		}
+		if (lineIndex >= lines.length) break;
+		lineIndex += 1;
+
+		const body = bodyLines.join("\n").trim();
+		if (!body) continue;
+		const { author, createdDate } = parseCommentMetadata(metadataLines, comments.length + 1);
+		comments.push({
+			index: comments.length + 1,
+			body,
+			createdDate,
+			...(author && { author }),
+		});
+	}
+
+	return comments;
 }
 
 function parseComments(content: string): TaskComment[] {
@@ -713,6 +775,10 @@ function parseComments(content: string): TaskComment[] {
 		return [];
 	}
 
+	if (!sectionBody.includes(COMMENT_BEGIN_MARKER)) {
+		return parseDelimitedComments(sectionBody);
+	}
+
 	const blockRegex = new RegExp(
 		`${escapeForRegex(COMMENT_BEGIN_MARKER)}\\s*\\n([\\s\\S]*?)${escapeForRegex(COMMENT_END_MARKER)}`,
 		"gi",
@@ -720,7 +786,7 @@ function parseComments(content: string): TaskComment[] {
 	const comments: TaskComment[] = [];
 	let match: RegExpExecArray | null = blockRegex.exec(sectionBody);
 	while (match !== null) {
-		const parsed = parseCommentBlock(match[1] ?? "", comments.length + 1);
+		const parsed = parseLegacyCommentBlock(match[1] ?? "", comments.length + 1);
 		if (parsed) {
 			comments.push(parsed);
 		}
@@ -733,19 +799,24 @@ function parseComments(content: string): TaskComment[] {
 	}));
 }
 
-function formatCommentBlock(comment: TaskComment, fallbackIndex: number): string {
-	const index = Number.isFinite(comment.index) && comment.index > 0 ? comment.index : fallbackIndex;
+function formatCommentBlock(comment: TaskComment): string {
 	const body = String(comment.body ?? "")
 		.replace(/\r\n/g, "\n")
 		.trim();
 	if (containsCommentMarker(body)) {
 		throw new Error("Comment body cannot contain Backlog comment markers.");
 	}
-	const lines = [COMMENT_BEGIN_MARKER, `index: ${index}`];
+	if (containsCommentDelimiter(body)) {
+		throw new Error("Comment body cannot contain standalone '---' delimiter lines.");
+	}
+	const lines: string[] = [];
 	const author = normalizeCommentMetadata(comment.author);
 	if (author) {
 		if (containsCommentMarker(author)) {
 			throw new Error("Comment author cannot contain Backlog comment markers.");
+		}
+		if (containsCommentDelimiter(author)) {
+			throw new Error("Comment author cannot contain standalone '---' delimiter lines.");
 		}
 		lines.push(`author: ${author}`);
 	}
@@ -753,7 +824,13 @@ function formatCommentBlock(comment: TaskComment, fallbackIndex: number): string
 	if (containsCommentMarker(createdDate)) {
 		throw new Error("Comment created date cannot contain Backlog comment markers.");
 	}
-	lines.push(`created: ${createdDate}`, "", body, COMMENT_END_MARKER);
+	if (containsCommentDelimiter(createdDate)) {
+		throw new Error("Comment created date cannot contain standalone '---' delimiter lines.");
+	}
+	if (createdDate) {
+		lines.push(`created: ${createdDate}`);
+	}
+	lines.push(COMMENT_DELIMITER, body, COMMENT_DELIMITER);
 	return lines.join("\n");
 }
 
@@ -769,12 +846,12 @@ function formatCommentsSection(comments: TaskComment[]): string {
 		return "";
 	}
 
-	const lines = [COMMENTS_SECTION_HEADER, COMMENTS_BEGIN_MARKER];
+	const lines = [COMMENTS_SECTION_HEADER, "", COMMENTS_BEGIN_MARKER];
 	normalizedComments.forEach((comment, index) => {
 		if (index > 0) {
 			lines.push("");
 		}
-		lines.push(formatCommentBlock(comment, index + 1));
+		lines.push(formatCommentBlock(comment));
 	});
 	lines.push(COMMENTS_END_MARKER);
 	return lines.join("\n");

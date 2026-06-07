@@ -424,6 +424,14 @@ describe("MCP task tools (MVP)", () => {
 		expect(editSchema?.properties?.definitionOfDoneCheck?.description).toContain("this task");
 	});
 
+	it("documents reserved comment delimiters in task_edit schema", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
+
+		expect(editSchema?.properties?.commentsAppend?.description).toContain("standalone '---' lines are reserved");
+	});
+
 	it("exposes ordinal in task schemas", async () => {
 		const tools = await mcpServer.testInterface.listTools();
 		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));

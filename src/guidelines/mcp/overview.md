@@ -67,7 +67,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_create` — create new tasks with description and acceptance criteria; DoD fields are for **exceptional** task-level overrides only (`definitionOfDoneAdd`, `disableDefinitionOfDoneDefaults`)
 - `task_edit` — update task metadata, status, plan, notes, comments (`commentsAppend` with optional `commentAuthor`), final summary, acceptance criteria, task-level Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`) for **exceptional** per-task updates, and dependencies
 - DoD is not acceptance criteria: acceptance criteria define scope/behavior, while DoD tracks completion hygiene
-- Comments are for discussion and review notes; Implementation Notes are for execution progress; Final Summary is the PR-style completion summary.
+- Comments are for discussion and review notes; Implementation Notes are for execution progress; Final Summary is the PR-style completion summary. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
 - `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
 - `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Note: archived task IDs can be reused by new tasks (soft delete behavior).
 

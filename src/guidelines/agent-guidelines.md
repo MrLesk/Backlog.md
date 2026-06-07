@@ -628,6 +628,7 @@ Do not expect the literal sequence `\n` inside double quotes to become a newline
 
 - Use comments for task discussion, review notes, questions, and handoff context that should remain visible to humans and agents.
 - Comments are append-only via `backlog task edit <id> --comment "..."`; include `--comment-author @name` when attribution is useful.
+- Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
 - Do not use comments as the primary execution log; use Implementation Notes for progress and Final Summary for the PR description.
 
 ### Final Summary Formatting

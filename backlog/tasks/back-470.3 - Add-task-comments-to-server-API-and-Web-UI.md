@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-05-31 17:32'
-updated_date: '2026-05-31 17:59'
+updated_date: '2026-06-07 21:39'
 labels:
   - comments
   - server
@@ -27,24 +27,26 @@ ordinal: 29000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Add browser support for task comments using the same shared task model as CLI and MCP. The Web UI should display comments on task detail and allow appending a new comment for local editable tasks without requiring a full task edit flow.
+Add browser support for task comments using the same shared task model as CLI and MCP. The Web UI should display comments read-only in task detail preview and allow appending a new comment for local editable tasks only while the task modal is in edit mode.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Server task responses include comments and a local editable task can receive a new comment through the task update API.
 - [x] #2 Web task detail displays comments in chronological order with readable author, timestamp, and markdown-rendered body.
-- [x] #3 Web users can add a comment from the task detail view without switching to full edit mode.
+- [x] #3 Web users can add a comment while editing an editable task, and adding a comment does not switch the modal out of edit mode.
 - [x] #4 Read-only cross-branch tasks display comments but do not allow comment submission.
 - [x] #5 Web/API tests cover comment display, append behavior, refresh behavior, and read-only disabling.
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Add server update payload handling for comment appends via the existing task update endpoint.
 2. Extend Web API typing through the shared Task model.
-3. Add a comments section to the task modal preview that renders markdown comments and allows local editable tasks to submit a new comment without entering full edit mode.
+3. Add a comments section to the task modal preview that renders comments read-only, with the append form available only in edit mode for local editable tasks.
 4. Add server/Web tests for display, append, refresh, and read-only state where practical.
 <!-- SECTION:PLAN:END -->
 
@@ -57,7 +59,7 @@ Added server update payload handling, Web API typing, and TaskDetailsModal comme
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Server API responses include comments and the Web task details modal displays comments and lets local editable tasks append new comments without switching into full edit mode. Cross-branch read-only tasks keep the form hidden.
+Server API responses include comments and the Web task details modal displays comments read-only in preview. Local editable tasks can append comments from edit mode without the add action changing the modal mode, while cross-branch read-only tasks keep the form hidden.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

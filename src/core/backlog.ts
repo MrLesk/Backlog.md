@@ -1389,6 +1389,8 @@ export class Core {
 		};
 
 		const containsCommentMarker = (inputValue: string): boolean => /<!--\s*COMMENTS?:/i.test(inputValue);
+		const containsCommentDelimiter = (inputValue: string): boolean =>
+			/^\s*---\s*$/m.test(inputValue.replace(/\r\n/g, "\n"));
 
 		const sanitizeCommentInput = (value: TaskCommentInput | string): TaskCommentInput | undefined => {
 			const rawBody = typeof value === "string" ? value : value.body;
@@ -1398,6 +1400,9 @@ export class Core {
 			if (body.length === 0) return undefined;
 			if (containsCommentMarker(body)) {
 				throw new Error("Comment body cannot contain Backlog comment markers.");
+			}
+			if (containsCommentDelimiter(body)) {
+				throw new Error("Comment body cannot contain standalone '---' delimiter lines.");
 			}
 			const author =
 				typeof value === "string"
@@ -1409,8 +1414,14 @@ export class Core {
 			if (author && containsCommentMarker(author)) {
 				throw new Error("Comment author cannot contain Backlog comment markers.");
 			}
+			if (author && containsCommentDelimiter(author)) {
+				throw new Error("Comment author cannot contain standalone '---' delimiter lines.");
+			}
 			if (createdDate && containsCommentMarker(createdDate)) {
 				throw new Error("Comment created date cannot contain Backlog comment markers.");
+			}
+			if (createdDate && containsCommentDelimiter(createdDate)) {
+				throw new Error("Comment created date cannot contain standalone '---' delimiter lines.");
 			}
 			return {
 				body,

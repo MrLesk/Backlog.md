@@ -294,7 +294,8 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					maxLength: 5000,
 				},
 				maxItems: 20,
-				description: "Append markdown comments to the task.",
+				description:
+					"Append comments to the task. Comment bodies may contain Markdown, but standalone '---' lines are reserved as comment delimiters.",
 			},
 			commentAuthor: {
 				type: "string",

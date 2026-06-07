@@ -163,6 +163,48 @@ describe("Task comments", () => {
 		expect(body.indexOf("## Comments")).toBeGreaterThan(body.indexOf("## Definition of Done"));
 	});
 
+	it("formats comments with compact delimiter blocks", () => {
+		const updated = CommentsManager.updateContent("## Description\n\nTask description", [
+			{ index: 1, author: "@reviewer", createdDate: "2026-05-31 10:45", body: "Review note" },
+		]);
+		const commentsSection = updated.slice(updated.indexOf("## Comments"));
+
+		expect(updated).toContain("## Comments\n\n<!-- COMMENTS:BEGIN -->");
+		expect(updated).not.toContain("## Comments\n\n\n<!-- COMMENTS:BEGIN -->");
+		expect(commentsSection).toContain("author: @reviewer\ncreated: 2026-05-31 10:45\n---\nReview note\n---");
+		expect(commentsSection).not.toContain("<!-- COMMENT:BEGIN -->");
+		expect(commentsSection).not.toContain("index:");
+	});
+
+	it("parses compact delimiter comments", () => {
+		const content = [
+			"## Description",
+			"",
+			"Task description",
+			"",
+			"## Comments",
+			"",
+			"<!-- COMMENTS:BEGIN -->",
+			"author: Alex",
+			"created: 2026-06-07 21:21",
+			"---",
+			"test",
+			"---",
+			"",
+			"author: Codex",
+			"created: 2026-06-07 21:22",
+			"---",
+			"second comment",
+			"---",
+			"<!-- COMMENTS:END -->",
+		].join("\n");
+
+		expect(CommentsManager.parseAllComments(content)).toEqual([
+			{ index: 1, author: "Alex", createdDate: "2026-06-07 21:21", body: "test" },
+			{ index: 2, author: "Codex", createdDate: "2026-06-07 21:22", body: "second comment" },
+		]);
+	});
+
 	it("ignores comment markers nested inside structured description examples", () => {
 		const content = [
 			"## Description",
@@ -201,6 +243,9 @@ describe("Task comments", () => {
 			{ index: 2, createdDate: "2026-05-31 10:45", body: "Follow-up" },
 		]);
 		expect(updated).toContain("Example-only comment");
+		const updatedCommentsSection = updated.slice(updated.lastIndexOf("## Comments"));
+		expect(updatedCommentsSection).toContain("---\nActual comment\n---");
+		expect(updatedCommentsSection).not.toContain("<!-- COMMENT:BEGIN -->");
 		expect(CommentsManager.parseAllComments(updated).map((comment) => comment.body)).toEqual([
 			"Actual comment",
 			"Follow-up",
@@ -260,6 +305,30 @@ describe("Task comments", () => {
 		expect(loaded?.comments ?? []).toEqual([]);
 	});
 
+	it("rejects standalone comment delimiters before persisting comments", async () => {
+		const core = new Core(TEST_DIR);
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Invalid delimiter comment task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-05-31 10:00",
+				labels: [],
+				dependencies: [],
+				description: "Task description",
+			},
+			false,
+		);
+
+		await expect(
+			core.updateTaskFromInput("task-1", { appendComments: ["Valid line\n---\nInvalid delimiter"] }, false),
+		).rejects.toThrow("Comment body cannot contain standalone '---' delimiter lines.");
+
+		const loaded = await core.filesystem.loadTask("task-1");
+		expect(loaded?.comments ?? []).toEqual([]);
+	});
+
 	it("appends and renders comments through CLI plain output", async () => {
 		const create = await $`bun ${[CLI_PATH, "task", "create", "CLI comment task"]}`.cwd(TEST_DIR).quiet().nothrow();
 		expect(create.exitCode).toBe(0);
@@ -295,6 +364,25 @@ describe("Task comments", () => {
 			.nothrow();
 		expect(edit.exitCode).not.toBe(0);
 		expect(`${edit.stderr}${edit.stdout}`).toContain("Comment body cannot contain Backlog comment markers.");
+
+		const core = new Core(TEST_DIR);
+		const loaded = await core.filesystem.loadTask("task-1");
+		expect(loaded?.comments ?? []).toEqual([]);
+	});
+
+	it("rejects standalone comment delimiters in CLI comments", async () => {
+		const create = await $`bun ${[CLI_PATH, "task", "create", "CLI invalid delimiter comment task"]}`
+			.cwd(TEST_DIR)
+			.quiet()
+			.nothrow();
+		expect(create.exitCode).toBe(0);
+
+		const edit = await $`bun ${[CLI_PATH, "task", "edit", "1", "--comment", "Invalid\n---\ndelimiter"]}`
+			.cwd(TEST_DIR)
+			.quiet()
+			.nothrow();
+		expect(edit.exitCode).not.toBe(0);
+		expect(`${edit.stderr}${edit.stdout}`).toContain("Comment body cannot contain standalone '---' delimiter lines.");
 
 		const core = new Core(TEST_DIR);
 		const loaded = await core.filesystem.loadTask("task-1");
