@@ -1476,6 +1476,19 @@ function generateDetailContent(
 		bodyContent.push("");
 	}
 
+	const comments = (task.comments ?? []).filter((comment) => comment.body.trim().length > 0);
+	if (comments.length > 0) {
+		bodyContent.push(formatHeading("Comments", 2));
+		for (const comment of comments) {
+			const parts = [`#${comment.index}`];
+			if (comment.author) parts.push(comment.author);
+			if (comment.createdDate) parts.push(comment.createdDate);
+			bodyContent.push(`{bold}${parts.join(" - ")}{/bold}`);
+			bodyContent.push(transformCodePaths(comment.body.trim()));
+			bodyContent.push("");
+		}
+	}
+
 	const finalSummary = task.finalSummary?.trim();
 	if (finalSummary) {
 		bodyContent.push(formatHeading("Final Summary", 2));

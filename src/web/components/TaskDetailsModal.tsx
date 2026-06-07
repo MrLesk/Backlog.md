@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import type { AcceptanceCriterion, Milestone, Task } from "../../types";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AcceptanceCriterion, Milestone, Task, TaskComment } from "../../types";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
@@ -33,11 +33,15 @@ type TaskUpdatePayload = Partial<Task> & {
   definitionOfDoneCheck?: number[];
   definitionOfDoneUncheck?: number[];
   disableDefinitionOfDoneDefaults?: boolean;
+  commentsAppend?: string[];
+  commentAuthor?: string;
 };
 
 type InlineMetaUpdatePayload = Omit<Partial<Task>, "milestone"> & {
   milestone?: string | null;
 };
+
+const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
   <div className="flex items-center justify-between mb-3">
@@ -66,6 +70,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const isCreateMode = !task;
   const isFromOtherBranch = Boolean(task?.branch);
   const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
+  const modeRef = useRef(mode);
+  const previousTaskId = useRef(task?.id ?? "");
+  const previousIsOpen = useRef(isOpen);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +83,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [description, setDescription] = useState(task?.description || "");
   const [plan, setPlan] = useState(task?.implementationPlan || "");
   const [notes, setNotes] = useState(task?.implementationNotes || "");
+  const [displayComments, setDisplayComments] = useState<TaskComment[]>(task?.comments ?? []);
+  const [commentBody, setCommentBody] = useState("");
+  const [commentAuthor, setCommentAuthor] = useState("");
+  const [commentSaving, setCommentSaving] = useState(false);
+  const [commentsChanged, setCommentsChanged] = useState(false);
+  const preserveEditModeAfterCommentRefresh = useRef(false);
   const [finalSummary, setFinalSummary] = useState(task?.finalSummary || "");
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(task?.acceptanceCriteriaItems || []);
   const defaultDefinitionOfDone = useMemo(
@@ -253,6 +266,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
     );
   }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, baseline]);
 
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -283,10 +300,22 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
+    const nextTaskId = task?.id ?? "";
+    const sameOpenTaskRefresh = isOpen && previousIsOpen.current && nextTaskId.length > 0 && previousTaskId.current === nextTaskId;
+    const shouldPreserveEditMode =
+      !isCreateMode &&
+      sameOpenTaskRefresh &&
+      (modeRef.current === "edit" || preserveEditModeAfterCommentRefresh.current);
+
     setTitle(task?.title || "");
     setDescription(task?.description || "");
     setPlan(task?.implementationPlan || "");
     setNotes(task?.implementationNotes || "");
+    setDisplayComments(task?.comments ?? []);
+    setCommentBody("");
+    setCommentAuthor("");
+    setCommentSaving(false);
+    setCommentsChanged(false);
     setFinalSummary(task?.finalSummary || "");
     setCriteria(task?.acceptanceCriteriaItems || []);
     setDefinitionOfDone(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : []));
@@ -297,11 +326,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setDependencies(task?.dependencies || []);
     setReferences(task?.references || []);
     setMilestone(task?.milestone || "");
-    setMode(isCreateMode ? "create" : "preview");
+    setMode(shouldPreserveEditMode ? "edit" : isCreateMode ? "create" : "preview");
+    preserveEditModeAfterCommentRefresh.current = false;
+    previousTaskId.current = nextTaskId;
+    previousIsOpen.current = isOpen;
     setError(null);
     // Preload tasks for dependency picker
     apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
   }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone]);
+
+  const refreshAfterCommentChange = useCallback(() => {
+    if (!commentsChanged) return;
+    setCommentsChanged(false);
+    if (onSaved) void onSaved();
+  }, [commentsChanged, onSaved]);
 
   const handleCancelEdit = () => {
     if (isDirty) {
@@ -316,10 +354,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setDescription(task?.description || "");
       setPlan(task?.implementationPlan || "");
       setNotes(task?.implementationNotes || "");
+      setCommentBody("");
+      setCommentAuthor("");
       setFinalSummary(task?.finalSummary || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
       setDefinitionOfDone(task?.definitionOfDoneItems || []);
       setMode("preview");
+      refreshAfterCommentChange();
     }
   };
 
@@ -456,6 +497,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         await apiClient.updateTask(task.id, taskData);
         setMode("preview");
         if (onSaved) await onSaved();
+        setCommentsChanged(false);
       }
     } catch (err) {
       // Extract and display the error message from API response
@@ -533,6 +575,39 @@ export const TaskDetailsModal: React.FC<Props> = ({
     }
   };
 
+  const handleAddComment = async () => {
+    if (!task || isFromOtherBranch) return;
+    const body = commentBody.trim();
+    if (!body) return;
+    const author = commentAuthor.trim();
+    if (containsCommentDelimiterLine(body)) {
+      setError("Comment body cannot contain standalone '---' delimiter lines.");
+      return;
+    }
+    if (author && containsCommentDelimiterLine(author)) {
+      setError("Comment author cannot contain standalone '---' delimiter lines.");
+      return;
+    }
+    setCommentSaving(true);
+    setError(null);
+    preserveEditModeAfterCommentRefresh.current = true;
+    try {
+      const updatedTask = await apiClient.updateTask(task.id, {
+        commentsAppend: [body],
+        ...(author.length > 0 && { commentAuthor: author }),
+      });
+      setDisplayComments(updatedTask.comments ?? []);
+      setCommentsChanged(true);
+      setCommentBody("");
+      setCommentAuthor("");
+    } catch (err) {
+      preserveEditModeAfterCommentRefresh.current = false;
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCommentSaving(false);
+    }
+  };
+
   // labels handled via ChipInput; no textarea parsing
 
 	const handleComplete = async () => {
@@ -559,6 +634,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
   const isDoneStatus = (status || "").toLowerCase().includes("done");
+  const comments = displayComments;
 
   const displayId = task?.id ?? "";
   const documentation = task?.documentation ?? [];
@@ -571,6 +647,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         if (mode === "edit" && isDirty) {
           if (!window.confirm("Discard unsaved changes and close?")) return;
         }
+        refreshAfterCommentChange();
         onClose();
       }}
       title={isCreateMode ? (isDraftMode ? "Create New Draft" : "Create New Task") : `${displayId} — ${task.title}`}
@@ -727,7 +804,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">No references</p>
               )}
-              {!isFromOtherBranch && (
+              {mode === "preview" && !isFromOtherBranch && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -901,6 +978,59 @@ export const TaskDetailsModal: React.FC<Props> = ({
               </div>
             )}
           </div>
+
+          {/* Comments */}
+          {!isCreateMode && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+              <SectionHeader title={`Comments${comments.length ? ` (${comments.length})` : ""}`} />
+              {comments.length > 0 ? (
+                <div className="space-y-4">
+                  {comments.map((comment) => (
+                    <article key={`${comment.index}-${comment.createdDate}`} className="border-l-2 border-gray-200 dark:border-gray-700 pl-3">
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span className="font-semibold text-gray-700 dark:text-gray-200">#{comment.index}</span>
+                        {comment.author ? <span>{comment.author}</span> : null}
+                        {comment.createdDate ? <span>{formatStoredUtcDateForDisplay(comment.createdDate)}</span> : null}
+                      </div>
+                      <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
+                        <MermaidMarkdown source={comment.body} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500 dark:text-gray-400">No comments</div>
+              )}
+              {mode === "edit" && !isFromOtherBranch && (
+                <div className="mt-4 space-y-2">
+                  <input
+                    type="text"
+                    value={commentAuthor}
+                    onChange={(e) => setCommentAuthor(e.target.value)}
+                    placeholder="Author"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+                  />
+                  <textarea
+                    value={commentBody}
+                    onChange={(e) => setCommentBody(e.target.value)}
+                    rows={4}
+                    placeholder="Add a comment..."
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleAddComment()}
+                      disabled={commentSaving || commentBody.trim().length === 0}
+                      className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50"
+                    >
+                      {commentSaving ? "Adding..." : "Add comment"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Final Summary */}
           {(mode !== "preview" || finalSummary.trim().length > 0) && (

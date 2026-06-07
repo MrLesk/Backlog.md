@@ -107,6 +107,7 @@ backlog task edit BACK-1 -d "Detailed context" --ac "Clear acceptance criteria"
 
 # Track work
 backlog task list -s "To Do"
+backlog task edit BACK-1 --comment "Can we split the UI work into a separate PR?" --comment-author @sara
 backlog search "kanban"
 backlog board
 
@@ -114,7 +115,7 @@ backlog board
 backlog browser
 ```
 
-You can switch between AI-assisted and manual workflows at any time — both operate on the same Markdown task files. It is recommended to modify tasks via Backlog.md commands (CLI/MCP/Web) rather than editing task files manually, so field types and metadata stay consistent. Tasks can record project-root-relative modified files and later be found with `backlog search --modified-file src/path.ts --plain`.
+You can switch between AI-assisted and manual workflows at any time — both operate on the same Markdown task files. It is recommended to modify tasks via Backlog.md commands (CLI/MCP/Web) rather than editing task files manually, so field types and metadata stay consistent. Tasks can record project-root-relative modified files and later be found with `backlog search --modified-file src/path.ts --plain`. Use task comments for discussion and review notes; comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters. Use Implementation Notes for execution progress and Final Summary for PR-style completion notes.
 
 **Learn more:** [CLI reference](CLI-INSTRUCTIONS.md) | [Advanced configuration](ADVANCED-CONFIG.md)
 

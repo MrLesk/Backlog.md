@@ -25,6 +25,8 @@ export interface TaskEditArgs {
 	notesSet?: string;
 	notesAppend?: string[];
 	notesClear?: boolean;
+	commentsAppend?: string[];
+	commentAuthor?: string;
 	finalSummary?: string;
 	finalSummaryAppend?: string[];
 	finalSummaryClear?: boolean;

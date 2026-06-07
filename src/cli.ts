@@ -221,6 +221,8 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.acceptanceCriteria !== undefined ||
 			options.plan !== undefined ||
 			options.notes !== undefined ||
+			options.comment !== undefined ||
+			options.commentAuthor !== undefined ||
 			options.finalSummary !== undefined ||
 			options.appendNotes !== undefined ||
 			options.appendFinalSummary !== undefined ||
@@ -2160,6 +2162,12 @@ taskCmd
 	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
 	.option("--plan <text>", "set implementation plan")
 	.option("--notes <text>", "set implementation notes (replaces existing)")
+	.option(
+		"--comment <text>",
+		"append a task comment; standalone '---' lines are reserved (can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option("--comment-author <author>", "author to record for appended comments")
 	.option("--final-summary <text>", "set final summary (replaces existing)")
 	.option(
 		"--append-notes <text>",
@@ -2367,6 +2375,7 @@ taskCmd
 		const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
 		const notesAppendValues = toStringArray(options.appendNotes);
+		const commentsAppendValues = toStringArray(options.comment);
 		const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
 
 		const editArgs: TaskEditArgs = {};
@@ -2421,6 +2430,12 @@ taskCmd
 		}
 		if (notesAppendValues.length > 0) {
 			editArgs.notesAppend = notesAppendValues;
+		}
+		if (commentsAppendValues.length > 0) {
+			editArgs.commentsAppend = commentsAppendValues;
+		}
+		if (typeof options.commentAuthor === "string") {
+			editArgs.commentAuthor = String(options.commentAuthor);
 		}
 		if (typeof options.finalSummary === "string") {
 			editArgs.finalSummary = String(options.finalSummary);

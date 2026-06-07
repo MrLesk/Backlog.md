@@ -69,13 +69,16 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Mixed DoD operations | `backlog task edit 7 --check-dod 1 --uncheck-dod 2 --remove-dod 4` |
 | Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` (replaces existing) |
 | Append notes | `backlog task edit 7 --append-notes "New findings"` |
+| Add comment | `backlog task edit 7 --comment "Question for review" --comment-author @sara` |
 | Add final summary | `backlog task edit 7 --final-summary "PR-style summary"` |
 | Append final summary | `backlog task edit 7 --append-final-summary "More details"` |
 | Clear final summary | `backlog task edit 7 --clear-final-summary` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Archive     | `backlog task archive 7`                             |
 
-### Multi-line input (description/plan/notes/final summary)
+Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes.
+
+### Multi-line input (description/plan/notes/comments/final summary)
 
 The CLI preserves input literally — `\n` sequences are not auto-converted. Use one of the following forms (recommended order for AI agents):
 
@@ -96,7 +99,7 @@ Line2
 Final paragraph"
 ```
 
-The same shape works for `--plan`, `--notes`, `--final-summary`, and the `--append-*` variants.
+The same shape works for `--plan`, `--notes`, `--comment`, `--final-summary`, and the `--append-*` variants.
 
 **3. Shell-specific shorthand (interactive shells only — rejected by tree-sitter-based agent sandboxes, see [#595](https://github.com/MrLesk/Backlog.md/issues/595)):**
 

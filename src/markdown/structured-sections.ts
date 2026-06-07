@@ -1,4 +1,4 @@
-import type { AcceptanceCriterion } from "../types/index.ts";
+import type { AcceptanceCriterion, TaskComment } from "../types/index.ts";
 import { getStructuredSectionTitles } from "./section-titles.ts";
 
 export type StructuredSectionKey = "description" | "implementationPlan" | "implementationNotes" | "finalSummary";
@@ -33,10 +33,17 @@ const ACCEPTANCE_CRITERIA_SECTION_HEADER = "## Acceptance Criteria";
 const ACCEPTANCE_CRITERIA_TITLE = ACCEPTANCE_CRITERIA_SECTION_HEADER.replace(/^##\s*/, "");
 const DEFINITION_OF_DONE_SECTION_HEADER = "## Definition of Done";
 const DEFINITION_OF_DONE_TITLE = DEFINITION_OF_DONE_SECTION_HEADER.replace(/^##\s*/, "");
+const COMMENTS_SECTION_HEADER = "## Comments";
+const COMMENTS_TITLE = COMMENTS_SECTION_HEADER.replace(/^##\s*/, "");
 const ACCEPTANCE_CRITERIA_BEGIN_MARKER = "<!-- AC:BEGIN -->";
 const ACCEPTANCE_CRITERIA_END_MARKER = "<!-- AC:END -->";
 const DEFINITION_OF_DONE_BEGIN_MARKER = "<!-- DOD:BEGIN -->";
 const DEFINITION_OF_DONE_END_MARKER = "<!-- DOD:END -->";
+const COMMENTS_BEGIN_MARKER = "<!-- COMMENTS:BEGIN -->";
+const COMMENTS_END_MARKER = "<!-- COMMENTS:END -->";
+const COMMENT_BEGIN_MARKER = "<!-- COMMENT:BEGIN -->";
+const COMMENT_END_MARKER = "<!-- COMMENT:END -->";
+const COMMENT_DELIMITER = "---";
 const KNOWN_SECTION_TITLES = new Set<string>([
 	...getStructuredSectionTitles(),
 	ACCEPTANCE_CRITERIA_TITLE,
@@ -126,6 +133,20 @@ function checklistLegacyRegex(definition: ChecklistSectionDefinition, flags: str
 	);
 }
 
+function commentsSentinelRegex(flags = "i"): RegExp {
+	const header = escapeForRegex(COMMENTS_SECTION_HEADER);
+	const begin = escapeForRegex(COMMENTS_BEGIN_MARKER);
+	const end = escapeForRegex(COMMENTS_END_MARKER);
+	return new RegExp(`(\\n|^)${header}\\s*\\n${begin}\\s*\\n([\\s\\S]*?)${end}`, flags);
+}
+
+function commentsLegacyRegex(flags: string): RegExp {
+	return new RegExp(
+		`(\\n|^)${escapeForRegex(COMMENTS_SECTION_HEADER)}\\s*\\n(?!${escapeForRegex(COMMENTS_BEGIN_MARKER)})([\\s\\S]*?)(?=\\n+##\\s+|\\n*$)`,
+		flags,
+	);
+}
+
 function acceptanceCriteriaSentinelRegex(flags = "i"): RegExp {
 	return checklistSentinelRegex(ACCEPTANCE_CRITERIA_DEFINITION, flags);
 }
@@ -139,6 +160,10 @@ function findSectionEndIndex(content: string, title: string): number | undefined
 	let sentinelMatch: RegExpExecArray | null = null;
 	if (normalizedTitle.toLowerCase() === ACCEPTANCE_CRITERIA_TITLE.toLowerCase()) {
 		sentinelMatch = acceptanceCriteriaSentinelRegex().exec(content);
+	} else if (normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()) {
+		sentinelMatch = checklistSentinelRegex(DEFINITION_OF_DONE_DEFINITION).exec(content);
+	} else if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
+		sentinelMatch = commentsSentinelRegex().exec(content);
 	} else {
 		const keyEntry = Object.entries(SECTION_CONFIG).find(
 			([, config]) => config.title.toLowerCase() === normalizedTitle.toLowerCase(),
@@ -156,11 +181,51 @@ function findSectionEndIndex(content: string, title: string): number | undefined
 		return sentinelMatch.index + sentinelMatch[0].length;
 	}
 
-	const legacyMatch = legacySectionRegex(normalizedTitle, "i").exec(content);
+	const legacyMatch =
+		normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()
+			? checklistLegacyRegex(DEFINITION_OF_DONE_DEFINITION, "i").exec(content)
+			: normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()
+				? commentsLegacyRegex("i").exec(content)
+				: legacySectionRegex(normalizedTitle, "i").exec(content);
 	if (legacyMatch) {
 		return legacyMatch.index + legacyMatch[0].length;
 	}
 	return undefined;
+}
+
+function findSectionStartIndex(content: string, title: string): number | undefined {
+	const normalizedTitle = title.trim();
+	let sentinelMatch: RegExpExecArray | null = null;
+	if (normalizedTitle.toLowerCase() === ACCEPTANCE_CRITERIA_TITLE.toLowerCase()) {
+		sentinelMatch = acceptanceCriteriaSentinelRegex().exec(content);
+	} else if (normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()) {
+		sentinelMatch = checklistSentinelRegex(DEFINITION_OF_DONE_DEFINITION).exec(content);
+	} else if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
+		sentinelMatch = commentsSentinelRegex().exec(content);
+	} else {
+		const keyEntry = Object.entries(SECTION_CONFIG).find(
+			([, config]) => config.title.toLowerCase() === normalizedTitle.toLowerCase(),
+		);
+		if (keyEntry) {
+			const key = keyEntry[0] as StructuredSectionKey;
+			sentinelMatch = new RegExp(
+				`(\\n|^)## ${escapeForRegex(getConfig(key).title)}\\s*\\n${escapeForRegex(getBeginMarker(key))}\\s*\\n([\\s\\S]*?)${escapeForRegex(getEndMarker(key))}`,
+				"i",
+			).exec(content);
+		}
+	}
+
+	if (sentinelMatch) {
+		return sentinelMatch.index;
+	}
+
+	const legacyMatch =
+		normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()
+			? checklistLegacyRegex(DEFINITION_OF_DONE_DEFINITION, "i").exec(content)
+			: normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()
+				? commentsLegacyRegex("i").exec(content)
+				: legacySectionRegex(normalizedTitle, "i").exec(content);
+	return legacyMatch?.index;
 }
 
 function sentinelBlockRegex(key: StructuredSectionKey): RegExp {
@@ -243,6 +308,16 @@ function insertAfterSection(content: string, title: string, block: string): { in
 	return { inserted: true, content: newContent };
 }
 
+function insertBeforeSection(content: string, title: string, block: string): { inserted: boolean; content: string } {
+	if (!block.trim()) return { inserted: false, content };
+	const insertPos = findSectionStartIndex(content, title);
+	if (insertPos === undefined) return { inserted: false, content };
+	const before = content.slice(0, insertPos).trimEnd();
+	const after = content.slice(insertPos).replace(/^\s+/, "");
+	const newContent = `${before}${before ? "\n\n" : ""}${block}${after ? `\n\n${after}` : ""}`;
+	return { inserted: true, content: newContent };
+}
+
 function insertAtStart(content: string, block: string): string {
 	const trimmedBlock = block.trim();
 	if (!trimmedBlock) return content;
@@ -315,6 +390,12 @@ export function updateStructuredSections(content: string, sections: SectionValue
 			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, notesBlock);
 		}
 		if (!res.inserted) {
+			res = insertBeforeSection(tail, COMMENTS_TITLE, notesBlock);
+		}
+		if (!res.inserted) {
+			res = insertBeforeSection(tail, getConfig("finalSummary").title, notesBlock);
+		}
+		if (!res.inserted) {
 			tail = appendBlock(tail, notesBlock);
 		} else {
 			tail = res.content;
@@ -323,7 +404,10 @@ export function updateStructuredSections(content: string, sections: SectionValue
 
 	if (finalSummary) {
 		const finalBlock = buildSectionBlock("finalSummary", finalSummary);
-		let res = insertAfterSection(tail, getConfig("implementationNotes").title, finalBlock);
+		let res = insertAfterSection(tail, COMMENTS_TITLE, finalBlock);
+		if (!res.inserted) {
+			res = insertAfterSection(tail, getConfig("implementationNotes").title, finalBlock);
+		}
 		if (!res.inserted) {
 			res = insertAfterSection(tail, getConfig("implementationPlan").title, finalBlock);
 		}
@@ -574,6 +658,273 @@ function parseAllChecklistItems(content: string, definition: ChecklistSectionDef
 	}
 	// Prefer marked content when present; otherwise fall back to legacy
 	return marked.length > 0 ? marked : legacy;
+}
+
+function normalizeCommentMetadata(value: string | undefined): string | undefined {
+	const normalized = value?.replace(/\r\n/g, "\n").replace(/\s+/g, " ").trim();
+	return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function containsCommentMarker(value: string | undefined): boolean {
+	return /<!--\s*COMMENTS?:/i.test(value ?? "");
+}
+
+function containsCommentDelimiter(value: string | undefined): boolean {
+	return /^\s*---\s*$/m.test((value ?? "").replace(/\r\n/g, "\n"));
+}
+
+function parseCommentMetadata(
+	lines: string[],
+	fallbackIndex: number,
+): {
+	index: number;
+	author?: string;
+	createdDate: string;
+} {
+	let index = fallbackIndex;
+	let author: string | undefined;
+	let createdDate = "";
+	for (const line of lines) {
+		const match = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
+		if (!match?.[1]) continue;
+		const key = match[1].toLowerCase();
+		const value = match[2] ?? "";
+		if (key === "index") {
+			const parsed = Number.parseInt(value, 10);
+			if (Number.isFinite(parsed) && parsed > 0) {
+				index = parsed;
+			}
+		} else if (key === "author") {
+			author = normalizeCommentMetadata(value);
+		} else if (key === "created") {
+			createdDate = value.trim();
+		}
+	}
+	return { index, ...(author && { author }), createdDate };
+}
+
+function parseLegacyCommentBlock(block: string, fallbackIndex: number): TaskComment | undefined {
+	const normalized = block.replace(/\r\n/g, "\n").trim();
+	if (!normalized) return undefined;
+
+	const separatorIndex = normalized.search(/\n\s*\n/);
+	const metadataText = separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : "";
+	const body = separatorIndex >= 0 ? normalized.slice(separatorIndex).replace(/^\s+/, "").trim() : normalized;
+	if (!body) return undefined;
+
+	const { index, author, createdDate } = parseCommentMetadata(metadataText.split("\n"), fallbackIndex);
+	return {
+		index,
+		body,
+		createdDate,
+		...(author && { author }),
+	};
+}
+
+function parseDelimitedComments(sectionBody: string): TaskComment[] {
+	const lines = sectionBody.replace(/\r\n/g, "\n").split("\n");
+	const comments: TaskComment[] = [];
+	let lineIndex = 0;
+
+	const isDelimiter = (line: string): boolean => line.trim() === COMMENT_DELIMITER;
+	const skipBlankLines = () => {
+		while (lineIndex < lines.length && lines[lineIndex]?.trim() === "") {
+			lineIndex += 1;
+		}
+	};
+
+	while (lineIndex < lines.length) {
+		skipBlankLines();
+		if (lineIndex >= lines.length) break;
+
+		const metadataLines: string[] = [];
+		while (lineIndex < lines.length && !isDelimiter(lines[lineIndex] ?? "")) {
+			metadataLines.push(lines[lineIndex] ?? "");
+			lineIndex += 1;
+		}
+		if (lineIndex >= lines.length) break;
+		lineIndex += 1;
+
+		const bodyLines: string[] = [];
+		while (lineIndex < lines.length && !isDelimiter(lines[lineIndex] ?? "")) {
+			bodyLines.push(lines[lineIndex] ?? "");
+			lineIndex += 1;
+		}
+		if (lineIndex >= lines.length) break;
+		lineIndex += 1;
+
+		const body = bodyLines.join("\n").trim();
+		if (!body) continue;
+		const { author, createdDate } = parseCommentMetadata(metadataLines, comments.length + 1);
+		comments.push({
+			index: comments.length + 1,
+			body,
+			createdDate,
+			...(author && { author }),
+		});
+	}
+
+	return comments;
+}
+
+function parseComments(content: string): TaskComment[] {
+	const src = content.replace(/\r\n/g, "\n");
+	const sentinelMatch = findMatchOutsideRanges(commentsSentinelRegex("i"), src, getStructuredSectionRanges(src));
+	const sectionBody = sentinelMatch?.[2];
+	if (sectionBody === undefined) {
+		return [];
+	}
+
+	if (!sectionBody.includes(COMMENT_BEGIN_MARKER)) {
+		return parseDelimitedComments(sectionBody);
+	}
+
+	const blockRegex = new RegExp(
+		`${escapeForRegex(COMMENT_BEGIN_MARKER)}\\s*\\n([\\s\\S]*?)${escapeForRegex(COMMENT_END_MARKER)}`,
+		"gi",
+	);
+	const comments: TaskComment[] = [];
+	let match: RegExpExecArray | null = blockRegex.exec(sectionBody);
+	while (match !== null) {
+		const parsed = parseLegacyCommentBlock(match[1] ?? "", comments.length + 1);
+		if (parsed) {
+			comments.push(parsed);
+		}
+		match = blockRegex.exec(sectionBody);
+	}
+
+	return comments.map((comment, index) => ({
+		...comment,
+		index: Number.isFinite(comment.index) && comment.index > 0 ? comment.index : index + 1,
+	}));
+}
+
+function formatCommentBlock(comment: TaskComment): string {
+	const body = String(comment.body ?? "")
+		.replace(/\r\n/g, "\n")
+		.trim();
+	if (containsCommentMarker(body)) {
+		throw new Error("Comment body cannot contain Backlog comment markers.");
+	}
+	if (containsCommentDelimiter(body)) {
+		throw new Error("Comment body cannot contain standalone '---' delimiter lines.");
+	}
+	const lines: string[] = [];
+	const author = normalizeCommentMetadata(comment.author);
+	if (author) {
+		if (containsCommentMarker(author)) {
+			throw new Error("Comment author cannot contain Backlog comment markers.");
+		}
+		if (containsCommentDelimiter(author)) {
+			throw new Error("Comment author cannot contain standalone '---' delimiter lines.");
+		}
+		lines.push(`author: ${author}`);
+	}
+	const createdDate = String(comment.createdDate ?? "").trim();
+	if (containsCommentMarker(createdDate)) {
+		throw new Error("Comment created date cannot contain Backlog comment markers.");
+	}
+	if (containsCommentDelimiter(createdDate)) {
+		throw new Error("Comment created date cannot contain standalone '---' delimiter lines.");
+	}
+	if (createdDate) {
+		lines.push(`created: ${createdDate}`);
+	}
+	lines.push(COMMENT_DELIMITER, body, COMMENT_DELIMITER);
+	return lines.join("\n");
+}
+
+function formatCommentsSection(comments: TaskComment[]): string {
+	const normalizedComments = comments
+		.map((comment, index) => ({
+			...comment,
+			index: Number.isFinite(comment.index) && comment.index > 0 ? comment.index : index + 1,
+			body: String(comment.body ?? "").trim(),
+		}))
+		.filter((comment) => comment.body.length > 0);
+	if (normalizedComments.length === 0) {
+		return "";
+	}
+
+	const lines = [COMMENTS_SECTION_HEADER, "", COMMENTS_BEGIN_MARKER];
+	normalizedComments.forEach((comment, index) => {
+		if (index > 0) {
+			lines.push("");
+		}
+		lines.push(formatCommentBlock(comment));
+	});
+	lines.push(COMMENTS_END_MARKER);
+	return lines.join("\n");
+}
+
+function findCommentSectionRanges(content: string): Array<{ start: number; end: number }> {
+	const protectedRanges = getStructuredSectionRanges(content);
+	const ranges: Array<{ start: number; end: number }> = [];
+	const collectRanges = (regex: RegExp) => {
+		for (const match of content.matchAll(regex)) {
+			const start = match.index ?? 0;
+			const end = start + match[0].length;
+			if (isIndexWithinRanges(start, protectedRanges)) continue;
+			if (ranges.some((range) => rangesOverlap(range.start, range.end, start, end))) continue;
+			ranges.push({ start, end });
+		}
+	};
+
+	collectRanges(commentsSentinelRegex("gi"));
+	return ranges.sort((a, b) => b.start - a.start);
+}
+
+function stripCommentsSection(content: string): string {
+	let stripped = content;
+	for (const range of findCommentSectionRanges(content)) {
+		stripped = `${stripped.slice(0, range.start)}\n${stripped.slice(range.end)}`;
+	}
+	return stripped.replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+function updateCommentsContent(content: string, comments: TaskComment[]): string {
+	const { text: src, useCRLF } = normalizeToLF(content);
+	const stripped = stripCommentsSection(src).trim();
+	const newSection = formatCommentsSection(comments);
+	if (!newSection) {
+		return restoreLineEndings(stripped, useCRLF);
+	}
+
+	let res = insertAfterSection(stripped, getConfig("implementationNotes").title, newSection);
+	if (!res.inserted) {
+		res = insertAfterSection(stripped, getConfig("implementationPlan").title, newSection);
+	}
+	if (!res.inserted) {
+		res = insertBeforeSection(stripped, getConfig("finalSummary").title, newSection);
+	}
+	if (!res.inserted) {
+		res = insertAfterSection(stripped, DEFINITION_OF_DONE_TITLE, newSection);
+	}
+	if (!res.inserted) {
+		res = insertAfterSection(stripped, ACCEPTANCE_CRITERIA_TITLE, newSection);
+	}
+	if (!res.inserted) {
+		res = insertAfterSection(stripped, getConfig("description").title, newSection);
+	}
+	const output = res.inserted ? res.content : appendBlock(stripped, newSection);
+	return restoreLineEndings(output.replace(/\n{3,}/g, "\n\n").trim(), useCRLF);
+}
+
+/* biome-ignore lint/complexity/noStaticOnlyClass: Utility methods grouped for clarity */
+export class CommentsManager {
+	static readonly BEGIN_MARKER = COMMENTS_BEGIN_MARKER;
+	static readonly END_MARKER = COMMENTS_END_MARKER;
+	static readonly COMMENT_BEGIN_MARKER = COMMENT_BEGIN_MARKER;
+	static readonly COMMENT_END_MARKER = COMMENT_END_MARKER;
+	static readonly SECTION_HEADER = COMMENTS_SECTION_HEADER;
+
+	static parseAllComments(content: string): TaskComment[] {
+		return parseComments(content);
+	}
+
+	static updateContent(content: string, comments: TaskComment[]): string {
+		return updateCommentsContent(content, comments);
+	}
 }
 
 /* biome-ignore lint/complexity/noStaticOnlyClass: Utility methods grouped for clarity */

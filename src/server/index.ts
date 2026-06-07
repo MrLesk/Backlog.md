@@ -931,6 +931,19 @@ export class BacklogServer {
 			updateInput.implementationNotes = updates.implementationNotes;
 		}
 
+		if ("commentsAppend" in updates && Array.isArray(updates.commentsAppend)) {
+			const author =
+				typeof updates.commentAuthor === "string" && updates.commentAuthor.trim().length > 0
+					? updates.commentAuthor.trim()
+					: undefined;
+			updateInput.appendComments = updates.commentsAppend
+				.map((body: unknown) => ({
+					body: String(body ?? "").trim(),
+					...(author && { author }),
+				}))
+				.filter((comment: { body: string }) => comment.body.length > 0);
+		}
+
 		if ("finalSummary" in updates && typeof updates.finalSummary === "string") {
 			updateInput.finalSummary = updates.finalSummary;
 		}
