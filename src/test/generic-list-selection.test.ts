@@ -4,7 +4,9 @@ import { GenericList } from "../ui/components/generic-list.ts";
 import { createScreen } from "../ui/tui.ts";
 
 type RenderedList = ListInterface & {
+	emit: (event: string, ch?: string, key?: { name: string }) => boolean;
 	ritems: string[];
+	selected?: number;
 };
 
 function withTtyScreen(run: (screen: ScreenInterface) => void): void {
@@ -47,6 +49,35 @@ describe("GenericList selection rendering", () => {
 			expect(listBox.ritems[1]).toBe("TASK-2");
 			expect(list.getSelectedIndex()).toBe(1);
 			expect(highlighted.at(-1)).toBe(1);
+
+			list.destroy();
+		});
+	});
+
+	it("uses display-index mapping for page navigation in grouped lists", () => {
+		withTtyScreen((screen) => {
+			const highlighted: number[] = [];
+			const list = new GenericList({
+				parent: screen,
+				items: [
+					{ id: "TASK-1", group: "One" },
+					{ id: "TASK-2", group: "One" },
+					{ id: "TASK-3", group: "Two" },
+				],
+				groupBy: (item: { group?: string }) => item.group ?? "",
+				itemRenderer: (item) => item.id,
+				onHighlight: (_item, index) => {
+					highlighted.push(index);
+				},
+				showHelp: false,
+			});
+
+			const listBox = list.getListBox() as RenderedList;
+			listBox.emit("key end", "", { name: "end" });
+
+			expect(list.getSelectedIndex()).toBe(2);
+			expect(listBox.selected).toBe(4);
+			expect(highlighted.at(-1)).toBe(2);
 
 			list.destroy();
 		});

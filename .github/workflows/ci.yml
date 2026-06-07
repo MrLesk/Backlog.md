@@ -39,10 +39,10 @@ jobs:
         run: |
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Windows runners hit Bun/file-system resource pressure under the default parallelism.
-            bun test --timeout=30000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
+            bun test --isolate --timeout=30000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
           else
-            # Run tests with increased timeout to handle Bun shell operations
-            bun test --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
+            # Isolate test files because some suites intentionally mutate global process state.
+            bun test --isolate --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
           fi
         shell: bash
       - name: Run interactive TUI regression tests

@@ -32,8 +32,8 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
-import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
-import { createScreen } from "./tui.ts";
+import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
+import { addScrollKeys, createScreen } from "./tui.ts";
 
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	switch (priority) {
@@ -760,6 +760,7 @@ export async function viewTaskEnhanced(
 			items: filteredTasks,
 			selectedIndex: initialIndex,
 			border: false,
+			scrollbar: false,
 			top: 1,
 			left: 1,
 			width: "100%-4",
@@ -775,7 +776,7 @@ export async function viewTaskEnhanced(
 				const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 				const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 
-				const content = `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+				const content = `${wrapStatusColor(statusIcon, statusColor)} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
 				// Dim cross-branch tasks to indicate read-only status
 				return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 			},
@@ -991,6 +992,8 @@ export async function viewTaskEnhanced(
 			wrap: true,
 			padding: { left: 1, right: 1, top: 0, bottom: 0 },
 			content: detailContent.bodyContent.join("\n"),
+			scrollbar: { ch: " ", inverse: true },
+			style: { scrollbar: { bg: "gray" } },
 		});
 
 		configureDetailBox(bodyContainer);
@@ -1325,7 +1328,7 @@ function generateDetailContent(
 	resolveMilestoneLabel?: (milestone: string) => string,
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
-		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
+		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
 
 	// Add cross-branch indicator if task is from another branch
@@ -1565,7 +1568,7 @@ export async function createTaskPopup(
 		right: 1,
 		width: 5,
 		height: 1,
-		style: { fg: "white", bg: "blue" },
+		style: { inverse: true, bold: true },
 	});
 
 	const contentArea = scrollabletext({
@@ -1581,7 +1584,11 @@ export async function createTaskPopup(
 		wrap: true,
 		padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		content: bodyContent.join("\n"),
+		scrollbar: { ch: " ", inverse: true },
+		style: { scrollbar: { bg: "gray" } },
 	});
+
+	addScrollKeys(contentArea, screen);
 
 	const closePopup = () => {
 		popup.destroy();
