@@ -316,10 +316,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			const total = this.filteredItems.length;
 			if (total === 0) return;
 			const clamped = Math.max(0, Math.min(total - 1, nextIndex));
-			this.listBox.select(clamped);
-			this.selectedIndex = clamped;
-			this.onHighlight?.(this.filteredItems[clamped] ?? null, clamped);
-			this.getScreen()?.render?.();
+			this.setHighlightedIndex(clamped, { render: true });
 		};
 
 		const pageAmount = () => {

@@ -1003,41 +1003,44 @@ export async function renderBoardTui(
 			return height > 0 ? Math.max(1, height - 1) : 5;
 		};
 
+		const isBoardLaneNavigationBlocked = () =>
+			popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || Boolean(moveOp);
+
 		screen.key(["pageup", "C-u"], () => {
-			if (popupOpen || moveOp) return;
+			if (isBoardLaneNavigationBlocked()) return;
 			const column = columns[currentCol];
 			if (!column) return;
 			const selected = column.list.selected ?? 0;
 			const nextIndex = Math.max(0, selected - lanePageAmount());
-			column.list.select(nextIndex);
+			selectColumnRow(column, nextIndex, true);
 			screen.render();
 		});
 
 		screen.key(["pagedown", "C-d"], () => {
-			if (popupOpen || moveOp) return;
+			if (isBoardLaneNavigationBlocked()) return;
 			const column = columns[currentCol];
 			if (!column) return;
 			const selected = column.list.selected ?? 0;
 			const total = column.tasks.length;
 			if (total === 0) return;
 			const nextIndex = Math.min(total - 1, selected + lanePageAmount());
-			column.list.select(nextIndex);
+			selectColumnRow(column, nextIndex, true);
 			screen.render();
 		});
 
 		screen.key(["home"], () => {
-			if (popupOpen || moveOp) return;
+			if (isBoardLaneNavigationBlocked()) return;
 			const column = columns[currentCol];
 			if (!column || column.tasks.length === 0) return;
-			column.list.select(0);
+			selectColumnRow(column, 0, true);
 			screen.render();
 		});
 
 		screen.key(["end"], () => {
-			if (popupOpen || moveOp) return;
+			if (isBoardLaneNavigationBlocked()) return;
 			const column = columns[currentCol];
 			if (!column || column.tasks.length === 0) return;
-			column.list.select(column.tasks.length - 1);
+			selectColumnRow(column, column.tasks.length - 1, true);
 			screen.render();
 		});
 

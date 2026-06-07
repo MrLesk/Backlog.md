@@ -3,9 +3,9 @@ id: BACK-469
 title: 'TUI theme-adaptive rendering: remove hardcoded colors, add scroll improvements'
 status: In Progress
 assignee:
-  - '@claude'
+  - '@codex'
 created_date: '2026-02-21 08:42'
-updated_date: '2026-05-31 00:00'
+updated_date: '2026-06-07 19:42'
 labels:
   - ui
   - board
@@ -76,9 +76,29 @@ Comprehensive TUI improvement for terminal theme compatibility and quality of li
 - [ ] #13 Screenshot compare command generates static PNG, animated APNG, and GIF comparisons
 <!-- AC:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Review-fix pass for PR #670:
+1. In src/ui/board.ts, apply the same interaction guards used by arrow navigation to the new PageUp/PageDown/Home/End board handlers so they do not mutate board selection while filter controls, filter popups, or modals are active.
+2. In src/ui/components/generic-list.ts, route page/home/end navigation through the existing highlighted-index path so grouped lists preserve display-index mapping, highlighted row rendering, and highlight callbacks.
+3. In tools/tui-screenshot-compare.sh, move dependency checks into subcommand-specific checks so usage/help is always available, compare only requires compare dependencies, manual capture only requires screencapture, and auto capture checks Ghostty/tmux/Swift/build binary requirements.
+4. Add focused tests for the generic-list grouped navigation regression and script dependency behavior where practical, then run targeted tests plus typecheck/lint.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Review fixes applied for PR #670:
+- Board PageUp/PageDown/Home/End now respect filter, popup, and modal focus guards and use selectColumnRow to keep the active-row marker in sync.
+- GenericList page/home/end navigation now uses setHighlightedIndex so grouped display-index mappings remain correct.
+- Screenshot comparison helper dependency checks are now subcommand-specific, so usage/help is not blocked by missing Ghostty.
+Verification: bun test src/test/generic-list-selection.test.ts src/test/tui-screenshot-compare-script.test.ts; bunx tsc --noEmit; bun run check .; ./tools/tui-screenshot-compare.sh; bun test.
+<!-- SECTION:NOTES:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

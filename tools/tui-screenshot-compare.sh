@@ -57,16 +57,29 @@ all_pairings() { printf '%s\n' "${PAIRINGS:-$DEFAULT_PAIRINGS}"; }
 
 pairing_field() { echo "$1" | cut -d'|' -f"$2"; }
 
-check_deps() {
+check_auto_capture_deps() {
 	local missing=()
 	command -v screencapture &>/dev/null || missing+=("screencapture")
-	command -v ffmpeg &>/dev/null || missing+=("ffmpeg")
 	command -v swift &>/dev/null || missing+=("swift")
 	command -v tmux &>/dev/null || missing+=("tmux")
 	if (( ${#missing[@]} > 0 )); then
-		die "Missing required tools (macOS only): ${missing[*]}"
+		die "Missing required auto-capture tools (macOS only): ${missing[*]}"
 	fi
 	[[ -x "$GHOSTTY_BIN" ]] || die "Ghostty not found at ${GHOSTTY_BIN} (set GHOSTTY_BIN)."
+}
+
+check_manual_capture_deps() {
+	command -v screencapture &>/dev/null || die "Missing required manual capture tool (macOS only): screencapture"
+}
+
+check_compare_deps() {
+	local missing=()
+	command -v ffmpeg &>/dev/null || missing+=("ffmpeg")
+	command -v ffprobe &>/dev/null || missing+=("ffprobe")
+	command -v bc &>/dev/null || missing+=("bc")
+	if (( ${#missing[@]} > 0 )); then
+		die "Missing required compare tools: ${missing[*]}"
+	fi
 }
 
 # Print the CGWindowID of the Ghostty window with an exact title match.
@@ -387,21 +400,22 @@ do_compare() {
 
 # --- Main ---
 
-check_deps
-
 case "${1:-}" in
 	capture)
 		if [[ "${2:-}" == "--manual" ]]; then
 			[[ -n "${3:-}" ]] || die "Usage: $0 capture --manual <label>"
+			check_manual_capture_deps
 			do_capture_manual "$3"
 		else
 			[[ -n "${2:-}" ]] || die "Usage: $0 capture <label> [pairing-key...]"
+			check_auto_capture_deps
 			label="$2"; shift 2
 			do_capture "$label" "$@"
 		fi
 		;;
 	compare)
 		[[ -n "${2:-}" && -n "${3:-}" ]] || die "Usage: $0 compare <before-label> <after-label>"
+		check_compare_deps
 		do_compare "$2" "$3"
 		;;
 	*)
