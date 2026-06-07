@@ -6,8 +6,16 @@ import { renderToString } from "react-dom/server";
 import type { Milestone, Task } from "../types/index.ts";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import { apiClient } from "../web/lib/api.ts";
 
 let activeRoot: Root | null = null;
+
+const setFormValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+	const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
+	valueSetter?.call(element, value);
+	element.dispatchEvent(new window.Event("input", { bubbles: true }));
+	element.dispatchEvent(new window.Event("change", { bubbles: true }));
+};
 
 const setupDom = () => {
 	const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost" });
@@ -201,6 +209,95 @@ describe("Web task popup Final Summary display", () => {
 
 		expect(container?.textContent).toContain("Visible comment");
 		expect(container?.textContent).toContain("Add comment");
+	});
+
+	it("stays in edit mode after adding a comment and receiving refreshed task data", async () => {
+		setupDom();
+
+		const originalUpdateTask = apiClient.updateTask.bind(apiClient);
+		const task: Task = {
+			id: "TASK-12B",
+			title: "Editable comments refresh",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-01-01",
+			labels: [],
+			dependencies: [],
+			comments: [{ index: 1, createdDate: "2025-01-02 12:00", body: "Visible comment" }],
+		};
+		const updatedTask: Task = {
+			...task,
+			comments: [
+				...(task.comments ?? []),
+				{ index: 2, author: "@reviewer", createdDate: "2025-01-03 12:00", body: "New comment" },
+			],
+		};
+		apiClient.updateTask = async (id, updates) => {
+			expect(id).toBe("TASK-12B");
+			expect(updates.commentsAppend).toEqual(["New comment"]);
+			expect(updates.commentAuthor).toBe("@reviewer");
+			return updatedTask;
+		};
+
+		try {
+			const container = document.getElementById("root");
+			expect(container).toBeTruthy();
+			activeRoot = createRoot(container as HTMLElement);
+
+			await act(async () => {
+				activeRoot?.render(
+					<ThemeProvider>
+						<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
+					</ThemeProvider>,
+				);
+				await Promise.resolve();
+			});
+
+			const editButton = Array.from((container as HTMLElement).querySelectorAll("button")).find((button) =>
+				button.textContent?.includes("Edit"),
+			);
+			expect(editButton).toBeTruthy();
+			await act(async () => {
+				editButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+
+			const authorInput = (container as HTMLElement).querySelector("input[placeholder='Author']") as HTMLInputElement | null;
+			const commentTextarea = (container as HTMLElement).querySelector(
+				"textarea[placeholder='Add a comment...']",
+			) as HTMLTextAreaElement | null;
+			expect(authorInput).toBeTruthy();
+			expect(commentTextarea).toBeTruthy();
+			await act(async () => {
+				setFormValue(authorInput!, "@reviewer");
+				setFormValue(commentTextarea!, "New comment");
+				await Promise.resolve();
+			});
+
+			const addButton = Array.from((container as HTMLElement).querySelectorAll("button")).find((button) =>
+				button.textContent?.includes("Add comment"),
+			);
+			expect(addButton).toBeTruthy();
+			await act(async () => {
+				addButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+
+			await act(async () => {
+				activeRoot?.render(
+					<ThemeProvider>
+						<TaskDetailsModal task={updatedTask} isOpen={true} onClose={() => {}} />
+					</ThemeProvider>,
+				);
+				await Promise.resolve();
+			});
+
+			expect(container?.textContent).toContain("New comment");
+			expect(container?.textContent).toContain("Add comment");
+			expect(container?.textContent).toContain("Save");
+		} finally {
+			apiClient.updateTask = originalUpdateTask;
+		}
 	});
 
 	it("hides Final Summary section in preview when empty", () => {

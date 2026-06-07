@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AcceptanceCriterion, Milestone, Task, TaskComment } from "../../types";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
@@ -70,6 +70,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const isCreateMode = !task;
   const isFromOtherBranch = Boolean(task?.branch);
   const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
+  const modeRef = useRef(mode);
+  const previousTaskId = useRef(task?.id ?? "");
+  const previousIsOpen = useRef(isOpen);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,6 +88,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [commentAuthor, setCommentAuthor] = useState("");
   const [commentSaving, setCommentSaving] = useState(false);
   const [commentsChanged, setCommentsChanged] = useState(false);
+  const preserveEditModeAfterCommentRefresh = useRef(false);
   const [finalSummary, setFinalSummary] = useState(task?.finalSummary || "");
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(task?.acceptanceCriteriaItems || []);
   const defaultDefinitionOfDone = useMemo(
@@ -262,6 +266,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
     );
   }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, baseline]);
 
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -292,6 +300,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
+    const nextTaskId = task?.id ?? "";
+    const sameOpenTaskRefresh = isOpen && previousIsOpen.current && nextTaskId.length > 0 && previousTaskId.current === nextTaskId;
+    const shouldPreserveEditMode =
+      !isCreateMode &&
+      sameOpenTaskRefresh &&
+      (modeRef.current === "edit" || preserveEditModeAfterCommentRefresh.current);
+
     setTitle(task?.title || "");
     setDescription(task?.description || "");
     setPlan(task?.implementationPlan || "");
@@ -311,7 +326,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setDependencies(task?.dependencies || []);
     setReferences(task?.references || []);
     setMilestone(task?.milestone || "");
-    setMode(isCreateMode ? "create" : "preview");
+    setMode(shouldPreserveEditMode ? "edit" : isCreateMode ? "create" : "preview");
+    preserveEditModeAfterCommentRefresh.current = false;
+    previousTaskId.current = nextTaskId;
+    previousIsOpen.current = isOpen;
     setError(null);
     // Preload tasks for dependency picker
     apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
@@ -572,6 +590,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     }
     setCommentSaving(true);
     setError(null);
+    preserveEditModeAfterCommentRefresh.current = true;
     try {
       const updatedTask = await apiClient.updateTask(task.id, {
         commentsAppend: [body],
@@ -582,6 +601,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setCommentBody("");
       setCommentAuthor("");
     } catch (err) {
+      preserveEditModeAfterCommentRefresh.current = false;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setCommentSaving(false);
