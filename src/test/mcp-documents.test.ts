@@ -64,6 +64,7 @@ describe("MCP document tools", () => {
 		expect(createText).toContain("Document created successfully.");
 		expect(createText).toContain("Document doc-1 - Engineering Guidelines");
 		expect(createText).toContain("Path: guides/doc-1 - Engineering-Guidelines.md");
+		expect(createText).toMatch(/Created: \d{4}-\d{2}-\d{2} \d{2}:\d{2} \(UTC\)/);
 		expect(createText).toContain("Tags: engineering");
 		expect(createText).toContain("# Overview");
 
@@ -75,6 +76,7 @@ describe("MCP document tools", () => {
 		expect(listText).toContain("Documents:");
 		expect(listText).toContain("doc-1 - Engineering Guidelines");
 		expect(listText).toContain("path: guides/doc-1 - Engineering-Guidelines.md");
+		expect(listText).toMatch(/created: \d{4}-\d{2}-\d{2} \d{2}:\d{2} \(UTC\)/);
 		expect(listText).toContain("tags: engineering");
 	});
 

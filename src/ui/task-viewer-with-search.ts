@@ -1482,7 +1482,7 @@ function generateDetailContent(
 		for (const comment of comments) {
 			const parts = [`#${comment.index}`];
 			if (comment.author) parts.push(comment.author);
-			if (comment.createdDate) parts.push(comment.createdDate);
+			if (comment.createdDate) parts.push(formatDateForDisplay(comment.createdDate));
 			bodyContent.push(`{bold}${parts.join(" - ")}{/bold}`);
 			bodyContent.push(transformCodePaths(comment.body.trim()));
 			bodyContent.push("");

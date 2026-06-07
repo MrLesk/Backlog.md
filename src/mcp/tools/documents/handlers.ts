@@ -1,4 +1,5 @@
 import type { Document, DocumentSearchResult } from "../../../types/index.ts";
+import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -41,10 +42,10 @@ export class DocumentHandlers {
 		const metadata: string[] = [
 			`type: ${document.type}`,
 			`path: ${document.path ?? "(unknown)"}`,
-			`created: ${document.createdDate}`,
+			`created: ${formatUtcDateForDisplay(document.createdDate, { appendUtcLabel: true })}`,
 		];
 		if (document.updatedDate) {
-			metadata.push(`updated: ${document.updatedDate}`);
+			metadata.push(`updated: ${formatUtcDateForDisplay(document.updatedDate, { appendUtcLabel: true })}`);
 		}
 		if (document.tags && document.tags.length > 0) {
 			metadata.push(`tags: ${document.tags.join(", ")}`);

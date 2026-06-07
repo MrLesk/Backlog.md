@@ -1,4 +1,5 @@
 import type { Document } from "../../types/index.ts";
+import { formatUtcDateForDisplay } from "../../utils/utc-date-display.ts";
 import type { CallToolResult } from "../types.ts";
 
 function formatTags(tags?: string[]): string {
@@ -13,11 +14,11 @@ function buildDocumentText(document: Document, options?: { includeContent?: bool
 		`Document ${document.id} - ${document.title}`,
 		`Type: ${document.type}`,
 		`Path: ${document.path ?? "(unknown)"}`,
-		`Created: ${document.createdDate}`,
+		`Created: ${formatUtcDateForDisplay(document.createdDate, { appendUtcLabel: true })}`,
 	];
 
 	if (document.updatedDate) {
-		lines.push(`Updated: ${document.updatedDate}`);
+		lines.push(`Updated: ${formatUtcDateForDisplay(document.updatedDate, { appendUtcLabel: true })}`);
 	}
 
 	lines.push(formatTags(document.tags));
