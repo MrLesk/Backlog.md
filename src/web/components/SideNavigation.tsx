@@ -162,6 +162,78 @@ const Icons = {
 	),
 };
 
+interface FolderNodeProps {
+	node: DocsTreeNode;
+	depth: number;
+	folderExpanded: Record<string, boolean>;
+	setFolderExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+	stripIdPrefix: (id: string) => string;
+	sanitizeUrlTitle: (title: string) => string;
+}
+
+const FolderNode = memo(function FolderNode({
+	node,
+	depth,
+	folderExpanded,
+	setFolderExpanded,
+	stripIdPrefix,
+	sanitizeUrlTitle,
+}: FolderNodeProps) {
+	const isExpanded = folderExpanded[node.path] ?? true;
+	
+	const toggle = useCallback(() => {
+		setFolderExpanded(prev => ({ ...prev, [node.path]: !isExpanded }));
+	}, [node.path, isExpanded, setFolderExpanded]);
+
+	return (
+		<div>
+			<button
+				onClick={toggle}
+				aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+				aria-expanded={isExpanded}
+				className="flex items-center px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 w-full"
+				style={{ paddingLeft: `${12 + depth * 12}px` }}
+			>
+				{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+				<span className="text-gray-500 dark:text-gray-400 ml-1"><Icons.Folder /></span>
+				<span className="ml-2 font-medium">{node.name}</span>
+			</button>
+			{isExpanded && (
+				<div>
+					{node.children.map(child => (
+						<FolderNode
+							key={child.path}
+							node={child}
+							depth={depth + 1}
+							folderExpanded={folderExpanded}
+							setFolderExpanded={setFolderExpanded}
+							stripIdPrefix={stripIdPrefix}
+							sanitizeUrlTitle={sanitizeUrlTitle}
+						/>
+					))}
+					{node.docs.map(doc => (
+						<NavLink
+							key={doc.id}
+							to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
+							className={({ isActive }) =>
+								`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
+									isActive
+										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+								}`
+							}
+							style={{ paddingLeft: `${12 + (depth + 1) * 12}px` }}
+						>
+							<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
+							<span className="truncate">{doc.title}</span>
+						</NavLink>
+					))}
+				</div>
+			)}
+		</div>
+	);
+});
+
 interface SideNavigationProps {
 	tasks: Task[];
 	docs: Document[];
@@ -354,51 +426,6 @@ const SideNavigation = memo(function SideNavigation({
 	const filteredDecisions = decisions;
 
 	const { tree, ungroupedDocs } = useMemo(() => buildDocsTree(filteredDocs), [filteredDocs]);
-
-	const FolderNode: React.FC<{ node: DocsTreeNode; depth: number }> = ({ node, depth }) => {
-		const isExpanded = folderExpanded[node.path] ?? true;
-		const toggle = () => setFolderExpanded(prev => ({ ...prev, [node.path]: !isExpanded }));
-
-		return (
-			<div>
-				<button
-					onClick={toggle}
-					aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
-					aria-expanded={isExpanded}
-					className={`flex items-center px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 w-full`}
-					style={{ paddingLeft: `${12 + depth * 12}px` }}
-				>
-					{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
-					<span className="text-gray-500 dark:text-gray-400 ml-1"><Icons.Folder /></span>
-					<span className="ml-2 font-medium">{node.name}</span>
-				</button>
-				{isExpanded && (
-					<div>
-						{node.children.map(child => (
-							<FolderNode key={child.path} node={child} depth={depth + 1} />
-						))}
-						{node.docs.map(doc => (
-							<NavLink
-								key={doc.id}
-								to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
-								className={({ isActive }) =>
-									`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
-										isActive
-											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-											: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-									}`
-								}
-								style={{ paddingLeft: `${12 + (depth + 1) * 12}px` }}
-							>
-								<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
-								<span className="truncate">{doc.title}</span>
-							</NavLink>
-						))}
-					</div>
-				)}
-			</div>
-		);
-	};
 
 	const toggleCollapse = useCallback(() => {
 		setIsCollapsed((prev: any) => !prev);
@@ -705,7 +732,15 @@ const SideNavigation = memo(function SideNavigation({
 											) : (
 												<>
 													{tree.map(node => (
-														<FolderNode key={node.path} node={node} depth={0} />
+														<FolderNode
+															key={node.path}
+															node={node}
+															depth={0}
+															folderExpanded={folderExpanded}
+															setFolderExpanded={setFolderExpanded}
+															stripIdPrefix={stripIdPrefix}
+															sanitizeUrlTitle={sanitizeUrlTitle}
+														/>
 													))}
 													{ungroupedDocs.map(doc => (
 														<NavLink
