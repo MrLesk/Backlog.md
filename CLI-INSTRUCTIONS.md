@@ -14,19 +14,22 @@ Full command reference for Backlog.md. For getting started, see [README.md](READ
 - **Project name** – identifier for your backlog (defaults to the current directory on re-run).
 - **Backlog folder** – choose `backlog/`, `.backlog/`, or a custom project-relative path.
 - **Config location** – for built-in folders, choose folder-local `config.yml` or root `backlog.config.yml`; custom paths use root `backlog.config.yml`.
-- **Integration choice** – decide whether your AI tools connect through the **MCP connector** (recommended) or stick with **CLI commands (legacy)**.
-- **Instruction files (CLI path only)** – when you choose the legacy CLI flow, pick which instruction files to create (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot, or skip).
+- **Integration choice** – decide whether your AI tools use **CLI instructions** (recommended), the optional **MCP connector**, or no AI setup.
+- **Instruction files (CLI path)** – the CLI setup writes a short nudge to AGENTS.md by default in non-interactive setup. Interactive setup lets you choose CLAUDE.md, AGENTS.md, GEMINI.md, Copilot instructions, or skip.
 - **Advanced settings prompt** – default answer "No" finishes init immediately; choosing "Yes" jumps straight into the advanced wizard documented in [ADVANCED-CONFIG.md](ADVANCED-CONFIG.md).
 
 The advanced wizard includes interactive Definition of Done defaults editing (add/remove/reorder/clear), so project checklist defaults can be managed without manual YAML edits.
 
 You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`) continue to provide fully non-interactive setups, and init also supports `--backlog-dir <path>` plus `--config-location <folder|root>` for scripted configuration.
 
+Humans and agents can run `backlog instructions` for workflow guides and `backlog instructions overview` for the overview.
+
 ## Documentation
 
 - Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree.
 - Use `backlog doc create "New Guide" -p guides` to create a document in a docs subdirectory. The created output includes the persisted docs-relative file path, such as `backlog/docs/guides/doc-1 - New-Guide.md`.
 - Use `backlog doc update doc-1 --content "Updated markdown"` to update document content. Add `--title`, `-t/--type`, `--tags`, or `-p/--path` to update metadata or move the document while preserving omitted fields.
+- Use `backlog doc search "query"` for scoped document search with plain text output that includes document IDs and follow-up `backlog doc view <docId>` commands. Use `--limit <number>` to cap results.
 - Document paths are always relative to the docs directory. Absolute paths and traversal segments such as `..` are rejected.
 
 ## Task Management
@@ -44,13 +47,14 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Add DoD items on create | `backlog task create "Feature" --dod "Run tests"` |
 | Create without DoD defaults | `backlog task create "Feature" --no-dod-defaults` |
 | Create with notes | `backlog task create "Feature" --notes "Started initial research"` |
-| Create with final summary | `backlog task create "Feature" --final-summary "PR-style summary"` |
+| Create with final summary | `backlog task create "Feature" --final-summary "Completion summary"` |
 | Create with deps | `backlog task create "Feature" --dep task-1,task-2` |
 | Create with refs | `backlog task create "Feature" --ref https://docs.example.com --ref src/api.ts` |
 | Create with docs | `backlog task create "Feature" --doc https://design-docs.example.com --doc docs/spec.md` |
 | Create sub task | `backlog task create -p 14 "Add Login with Google"`|
 | Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref src/api.ts --doc docs/spec.md -p 14` |
-| List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>]` |
+| List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>] [--labels <labels>] [--search <query>] [--limit <n>]` |
+| List filtered | `backlog task list --labels frontend,bug --search "login" --limit 10 --plain` |
 | List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
 | View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |
 | View (AI mode) | `backlog task 7 --plain`                           |
@@ -70,7 +74,7 @@ You can rerun the wizard anytime with `backlog config`. All existing CLI flags (
 | Add notes   | `backlog task edit 7 --notes "Completed X, working on Y"` (replaces existing) |
 | Append notes | `backlog task edit 7 --append-notes "New findings"` |
 | Add comment | `backlog task edit 7 --comment "Question for review" --comment-author @sara` |
-| Add final summary | `backlog task edit 7 --final-summary "PR-style summary"` |
+| Add final summary | `backlog task edit 7 --final-summary "Completion summary"` |
 | Append final summary | `backlog task edit 7 --append-final-summary "More details"` |
 | Clear final summary | `backlog task edit 7 --clear-final-summary` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
@@ -120,6 +124,25 @@ The same shape works for `--plan`, `--notes`, `--comment`, `--final-summary`, an
   ```powershell
   backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"
   ```
+
+## Milestone Management
+
+Milestones are managed through milestone files. Use CLI commands instead of editing milestone markdown directly so IDs, filenames, task references, and archive state stay consistent.
+
+| Action | Example |
+|--------|---------|
+| List milestones | `backlog milestone list --plain` |
+| List completed milestones too | `backlog milestone list --show-completed --plain` |
+| Add milestone | `backlog milestone add "Release 1.0"` |
+| Add with description | `backlog milestone add "Beta" --description "Beta scope"` |
+| Rename and update tasks | `backlog milestone rename "Release 1.0" "Release 2.0"` |
+| Rename without task updates | `backlog milestone rename m-1 "Release 2.0" --no-update-tasks` |
+| Remove and clear task milestones | `backlog milestone remove "Release 1.0"` |
+| Remove and keep task values | `backlog milestone remove "Release 1.0" --task-handling keep` |
+| Remove and reassign tasks | `backlog milestone remove "Release 1.0" --task-handling reassign --reassign-to "Release 2.0"` |
+| Archive milestone | `backlog milestone archive m-1` |
+
+`milestone remove` task handling modes are `clear` (default), `keep`, and `reassign`. `--reassign-to` is required when using `--task-handling reassign`, and the target must be an active milestone file.
 
 ## Search
 
@@ -197,6 +220,7 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 | Update content | `backlog doc update doc-1 --content "Updated markdown"` |
 | Update metadata/path | `backlog doc update doc-1 --title "Setup Handbook" -t guide --tags setup,runbook -p guides` |
 | List docs | `backlog doc list` |
+| Search docs | `backlog doc search "architecture" --limit 5` |
 | View doc | `backlog doc view doc-1` |
 
 ## Decisions
@@ -210,7 +234,11 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 
 | Action                                          | Example                                              |
 |-------------------------------------------------|------------------------------------------------------|
-| Update agent legacy CLI agent instruction files | `backlog agents --update-instructions` (updates CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
+| Open the local CLI documentation entry point | `backlog` |
+| List workflow guides | `backlog instructions` |
+| Required first read for task workflow | `backlog instructions overview` |
+| Read a detailed workflow guide | `backlog instructions task-execution` |
+| Update CLI agent instruction files | `backlog agents --update-instructions` (updates CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md) |
 
 ## Maintenance
 
@@ -252,7 +280,7 @@ Perfect for sharing project status, creating reports, or storing snapshots in ve
 
 ## Shell Tab Completion
 
-Backlog.md includes built-in intelligent tab completion for bash, zsh, fish, and PowerShell shells. Completion scripts are embedded in the binary — no external files needed.
+Backlog.md can install tab completion for bash, zsh, fish, and PowerShell.
 
 **Quick Installation:**
 ```bash
