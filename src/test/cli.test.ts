@@ -11,6 +11,7 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const normalizeCliOutput = (output: string) => output.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
 describe("CLI Integration", () => {
 	beforeEach(async () => {
@@ -67,10 +68,12 @@ describe("CLI Integration", () => {
 		});
 
 		it("prints selected instruction guides", async () => {
-			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
-			const taskCreation = await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text();
-			const taskExecution = await $`bun ${CLI_PATH} instructions task-execution`.cwd(TEST_DIR).text();
-			const initRequired = await $`bun ${CLI_PATH} instructions init-required`.cwd(TEST_DIR).text();
+			const overview = normalizeCliOutput(await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text());
+			const taskCreation = normalizeCliOutput(await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text());
+			const taskExecution = normalizeCliOutput(
+				await $`bun ${CLI_PATH} instructions task-execution`.cwd(TEST_DIR).text(),
+			);
+			const initRequired = normalizeCliOutput(await $`bun ${CLI_PATH} instructions init-required`.cwd(TEST_DIR).text());
 
 			expect(overview).toContain("## Backlog.md Overview (CLI)");
 			expect(overview).toContain('backlog search "query" --plain');
