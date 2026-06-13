@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
-import { $, spawn } from "bun";
+import { $ } from "bun";
 import { Command } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
@@ -52,6 +52,13 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import {
+	formatMcpClientSetupCommand,
+	getMcpClientSetupCommand,
+	isMcpClientSetupKey,
+	type McpClientSetupKey,
+	runMcpClientSetupCommand,
+} from "./utils/mcp-client-setup.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
@@ -135,21 +142,17 @@ async function openUrlInBrowser(url: string): Promise<void> {
 	}
 }
 
-async function runMcpClientCommand(label: string, command: string, args: string[]): Promise<string> {
+async function runMcpClientCommand(client: McpClientSetupKey, serverName = MCP_SERVER_NAME): Promise<string> {
+	const { label, command, args } = getMcpClientSetupCommand(client, serverName);
 	console.log(`    Configuring ${label}...`);
 	try {
-		const child = spawn({
-			cmd: [command, ...args],
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		await child.exited;
+		await runMcpClientSetupCommand(command, args, { stdout: "inherit", stderr: "inherit" });
 		console.log(`    ✓ Added Backlog MCP server to ${label}`);
 		return label;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn(`    ⚠️ Unable to configure ${label} automatically (${message}).`);
-		console.warn(`       Run manually: ${command} ${args.join(" ")}`);
+		console.warn(`       Run manually: ${formatMcpClientSetupCommand(command, args)}`);
 		return `${label} (manual setup required)`;
 	}
 }
@@ -973,63 +976,8 @@ program
 							const uniq = (values: string[]) => [...new Set(values)];
 
 							for (const client of selectedClients) {
-								if (client === "claude") {
-									const result = await runMcpClientCommand("Claude Code", "claude", [
-										"mcp",
-										"add",
-										"-s",
-										"user",
-										mcpServerName,
-										"--",
-										"backlog",
-										"mcp",
-										"start",
-									]);
-									results.push(result);
-									await recordGuidelinesForClient(client);
-									continue;
-								}
-								if (client === "codex") {
-									const result = await runMcpClientCommand("OpenAI Codex", "codex", [
-										"mcp",
-										"add",
-										mcpServerName,
-										"backlog",
-										"mcp",
-										"start",
-									]);
-									results.push(result);
-									await recordGuidelinesForClient(client);
-									continue;
-								}
-								if (client === "gemini") {
-									const result = await runMcpClientCommand("Gemini CLI", "gemini", [
-										"mcp",
-										"add",
-										"-s",
-										"user",
-										mcpServerName,
-										"backlog",
-										"mcp",
-										"start",
-									]);
-									results.push(result);
-									await recordGuidelinesForClient(client);
-									continue;
-								}
-								if (client === "kiro") {
-									const result = await runMcpClientCommand("Kiro", "kiro-cli", [
-										"mcp",
-										"add",
-										"--scope",
-										"global",
-										"--name",
-										mcpServerName,
-										"--command",
-										"backlog",
-										"--args",
-										"mcp,start",
-									]);
+								if (isMcpClientSetupKey(client)) {
+									const result = await runMcpClientCommand(client, mcpServerName);
 									results.push(result);
 									await recordGuidelinesForClient(client);
 									continue;
