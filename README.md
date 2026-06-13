@@ -171,7 +171,7 @@ You can run `backlog init` (even if you already initialized Backlog.md) to set u
   <summary><strong>Codex</strong></summary>
 
   ```bash
-  codex mcp add backlog backlog mcp start
+  codex mcp add backlog -- backlog mcp start
   ```
 
 </details>
