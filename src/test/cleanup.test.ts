@@ -79,6 +79,23 @@ describe("Cleanup functionality", () => {
 			expect(completedTasks[0]?.id).toBe("TASK-1");
 			expect(completedTasks[0]?.title).toBe("Test Task");
 		});
+
+		it("does not complete tasks unless they exactly match the configured terminal status", async () => {
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-2",
+					title: "Not Done Task",
+					status: "Not Done",
+				},
+				false,
+			);
+
+			const success = await core.completeTask("task-2", false);
+			expect(success).toBe(false);
+			expect((await core.filesystem.loadTask("task-2"))?.status).toBe("Not Done");
+			expect(await core.filesystem.listCompletedTasks()).toHaveLength(0);
+		});
 	});
 
 	describe("getTerminalStatusTasksByAge", () => {

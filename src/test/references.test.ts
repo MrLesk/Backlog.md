@@ -176,6 +176,7 @@ describe("Task References", () => {
 
 			const { task: completedTask } = await core.createTaskFromInput({
 				title: "Completed referencing task",
+				status: "Done",
 				references: ["task-1", "https://example.com/tasks/task-1"],
 			});
 			await core.completeTask(completedTask.id, false);

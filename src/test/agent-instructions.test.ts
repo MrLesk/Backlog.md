@@ -79,6 +79,37 @@ describe("addAgentInstructions", () => {
 		]);
 	});
 
+	it("replaces stale generated CLI guideline blocks", async () => {
+		const agentsPath = join(TEST_DIR, "AGENTS.md");
+		await Bun.write(
+			agentsPath,
+			[
+				"Existing header",
+				"<!-- BACKLOG.MD GUIDELINES START -->",
+				"Old generated Backlog guidance",
+				"<!-- BACKLOG.MD GUIDELINES END -->",
+				"Existing footer",
+				"",
+			].join("\n"),
+		);
+
+		const results = await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		const agents = await Bun.file(agentsPath).text();
+
+		expect(results).toEqual([
+			{
+				action: "updated",
+				fileName: "AGENTS.md",
+				filePath: agentsPath,
+			},
+		]);
+		expect(agents).toContain("Existing header");
+		expect(agents).toContain("Existing footer");
+		expect(agents).toContain(CLI_AGENT_NUDGE);
+		expect(agents).not.toContain("Old generated Backlog guidance");
+		expect((agents.match(/<!-- BACKLOG\.MD GUIDELINES START -->/g) || []).length).toBe(1);
+	});
+
 	it("creates only selected files", async () => {
 		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md", "README.md"]);
 

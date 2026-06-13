@@ -74,6 +74,27 @@ describe("CLI milestone management", () => {
 		);
 	});
 
+	it("auto-commits added milestone files when autoCommit is enabled", async () => {
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Expected test project config to exist");
+		}
+		config.autoCommit = true;
+		await core.filesystem.saveConfig(config);
+		await core.ensureConfigLoaded();
+
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "baseline"`.cwd(TEST_DIR).quiet();
+
+		const add = await $`bun ${cliPath} milestone add "Committed Release"`.cwd(TEST_DIR).quiet();
+
+		expect(add.exitCode).toBe(0);
+		expect(add.stdout.toString()).toContain('Created milestone "Committed Release" (m-0).');
+		expect((await core.git.getStatus()).trim()).toBe("");
+		expect(await core.git.getLastCommitMessage()).toContain("backlog: Add milestone m-0");
+	});
+
 	it("renames milestones and updates local task references by default", async () => {
 		const core = new Core(TEST_DIR);
 

@@ -155,21 +155,33 @@ export async function addAgentInstructions(
 					existing = await Bun.file(filePath).text();
 				}
 
+				const originalExisting = existing;
 				const mcpStripped = stripGuidelineSection(existing, name, "mcp");
 				if (mcpStripped.removed) {
 					existing = mcpStripped.content;
 				}
 
-				// Check if Backlog.md guidelines are already present
-				if (hasBacklogGuidelines(existing, name)) {
-					// Guidelines already exist, skip this file
+				const defaultStripped = stripGuidelineSection(existing, name, "default");
+				if (defaultStripped.removed) {
+					const insertAt = defaultStripped.firstIndex ?? defaultStripped.content.length;
+					finalContent =
+						defaultStripped.content.slice(0, insertAt) +
+						wrapWithMarkers(content, name) +
+						defaultStripped.content.slice(insertAt);
+				} else if (hasBacklogGuidelines(existing, name)) {
+					// Guidelines already exist but could not be parsed, skip this file.
+					results.push({ action: "unchanged", fileName: name, filePath });
+					continue;
+				} else {
+					// Append Backlog.md guidelines with markers
+					if (!existing.endsWith("\n")) existing += "\n";
+					finalContent = existing + wrapWithMarkers(content, name);
+				}
+
+				if (finalContent === originalExisting) {
 					results.push({ action: "unchanged", fileName: name, filePath });
 					continue;
 				}
-
-				// Append Backlog.md guidelines with markers
-				if (!existing.endsWith("\n")) existing += "\n";
-				finalContent = existing + wrapWithMarkers(content, name);
 			} catch (error) {
 				console.error(`Error reading existing file ${filePath}:`, error);
 				// If we can't read it, just use the new content with markers

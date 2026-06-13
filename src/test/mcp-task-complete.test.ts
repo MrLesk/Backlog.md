@@ -84,15 +84,19 @@ describe("MCP task_complete", () => {
 	});
 
 	it("refuses to complete tasks that are not Done", async () => {
-		await server.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Not done task",
-					status: "To Do",
-				},
+		await server.createTask(
+			{
+				id: "task-1",
+				title: "Not done task",
+				status: "Not Done",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Task is not ready for completion cleanup",
 			},
-		});
+			false,
+		);
 
 		const complete = await server.testInterface.callTool({
 			params: {
@@ -102,5 +106,17 @@ describe("MCP task_complete", () => {
 		});
 		expect(complete.isError).toBe(true);
 		expect(getText(complete.content)).toContain("not Done");
+
+		const activeTask = await server.filesystem.loadTask("task-1");
+		expect(activeTask?.status).toBe("Not Done");
+
+		const archive = await server.testInterface.callTool({
+			params: {
+				name: "task_archive",
+				arguments: { id: "task-1" },
+			},
+		});
+		expect(archive.isError).toBeUndefined();
+		expect(await server.filesystem.loadTask("task-1")).toBeNull();
 	});
 });

@@ -978,7 +978,7 @@ describe("CLI Integration", () => {
 					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
-					labels: ["ui", "bug"],
+					labels: ["UI", "Bug"],
 					dependencies: [],
 					rawContent: "UI bug task",
 				},
@@ -1670,7 +1670,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-4",
 					title: "Not Done CLI Test Task",
-					status: "To Do",
+					status: "Not Done",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["cleanup"],
@@ -1685,9 +1685,9 @@ describe("CLI Integration", () => {
 
 			expect(result.exitCode).not.toBe(0);
 			expect(output).toContain("Task TASK-4 is not Done.");
-			expect(output).toContain("backlog task edit TASK-4 -s Done");
+			expect(output).toContain('backlog task edit TASK-4 -s "Done"');
 			expect(output).toContain("before cleanup");
-			expect((await core.filesystem.loadTask("task-4"))?.status).toBe("To Do");
+			expect((await core.filesystem.loadTask("task-4"))?.status).toBe("Not Done");
 
 			const completedTasks = await core.filesystem.listCompletedTasks();
 			expect(completedTasks.some((task) => task.id === "TASK-4")).toBe(false);

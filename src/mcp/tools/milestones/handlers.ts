@@ -362,6 +362,10 @@ export class MilestoneHandlers {
 
 		// Create milestone file
 		const milestone = await this.core.filesystem.createMilestone(name, args.description);
+		const milestonePath = await this.core.filesystem.getMilestoneFilePath(milestone.id);
+		await this.commitMilestoneMutation(`backlog: Add milestone ${milestone.id}`, {
+			taskFilePaths: milestonePath ? [milestonePath] : [],
+		});
 
 		return {
 			content: [

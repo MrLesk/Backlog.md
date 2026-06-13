@@ -56,6 +56,7 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { labelsToLower } from "./utils/label-filter.ts";
 import {
 	formatMcpClientSetupCommand,
 	getMcpClientSetupCommand,
@@ -226,16 +227,12 @@ function parsePositiveIntegerOption(value: unknown, optionName: string): number 
 }
 
 function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
-	if (labels.length === 0) {
+	const requiredLabels = labelsToLower(labels);
+	if (requiredLabels.length === 0) {
 		return true;
 	}
-	const taskLabels = new Set(task.labels ?? []);
-	return labels.every((label) => taskLabels.has(label));
-}
-
-function isDoneStatusForCleanup(status?: string | null): boolean {
-	const normalized = (status ?? "").trim().toLowerCase();
-	return normalized.includes("done") || normalized.includes("complete");
+	const taskLabels = new Set(labelsToLower(task.labels ?? []));
+	return requiredLabels.every((label) => taskLabels.has(label));
 }
 
 function formatToolResultText(result: CallToolResult): string {
@@ -2815,9 +2812,12 @@ addHelpSchema(taskCmd.command("complete <taskId>"), {
 			return;
 		}
 
-		if (!isDoneStatusForCleanup(task.status)) {
+		const config = await core.filesystem.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
+		if (!isTerminalStatus(task.status, statuses)) {
 			console.error(
-				`Task ${task.id} is not Done. Set status to "Done" with: backlog task edit ${task.id} -s Done before cleanup.`,
+				`Task ${task.id} is not ${terminalStatus}. Set status to "${terminalStatus}" with: backlog task edit ${task.id} -s "${terminalStatus}" before cleanup.`,
 			);
 			process.exitCode = 1;
 			return;
