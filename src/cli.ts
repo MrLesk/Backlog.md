@@ -2210,6 +2210,7 @@ addHelpSchema(taskCmd.command("list"), {
 			priority?: string;
 			sort?: string;
 			labels?: string[];
+			labelMatch?: "all";
 			searchQuery?: string;
 			title?: string;
 			filterDescription?: string;
@@ -2222,6 +2223,7 @@ addHelpSchema(taskCmd.command("list"), {
 			priority: options.priority,
 			sort: options.sort,
 			labels: labelFilters,
+			labelMatch: labelFilters.length > 0 ? "all" : undefined,
 			title,
 			filterDescription,
 			parentTaskId: parentId,
@@ -2759,11 +2761,36 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const success = await core.archiveTask(taskId);
-		if (success) {
-			console.log(`Archived task ${taskId}`);
-		} else {
+		const task = await core.loadTaskById(taskId);
+		if (!task) {
 			console.error(`Task ${taskId} not found.`);
+			process.exitCode = 1;
+			return;
+		}
+
+		if (!isLocalEditableTask(task)) {
+			console.error(`Cannot archive task from another branch: ${task.id}`);
+			process.exitCode = 1;
+			return;
+		}
+
+		const config = await core.filesystem.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
+		if (isTerminalStatus(task.status, statuses)) {
+			console.error(
+				`Task ${task.id} is ${terminalStatus}. ${terminalStatus} tasks should be completed, not archived. Use: backlog task complete ${task.id}`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+
+		const success = await core.archiveTask(task.id);
+		if (success) {
+			console.log(`Archived task ${task.id}`);
+		} else {
+			console.error(`Failed to archive task: ${task.id}`);
+			process.exitCode = 1;
 		}
 	});
 

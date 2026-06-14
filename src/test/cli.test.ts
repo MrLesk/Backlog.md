@@ -1711,6 +1711,35 @@ describe("CLI Integration", () => {
 			expect(success).toBe(false);
 		});
 
+		it("refuses to archive a Done task through the CLI archive command", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-5",
+					title: "Done CLI Archive Test Task",
+					status: "Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["archive"],
+					dependencies: [],
+					rawContent: "Terminal-status task should be completed, not archived",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task archive task-5`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).not.toBe(0);
+			expect(output).toContain("Task TASK-5 is Done.");
+			expect(output).toContain("Use: backlog task complete TASK-5");
+			expect(await core.filesystem.loadTask("task-5")).not.toBeNull();
+
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks.some((task) => task.id === "TASK-5")).toBe(false);
+		});
+
 		it("completes a Done task through the CLI cleanup command", async () => {
 			const core = new Core(TEST_DIR);
 

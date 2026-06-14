@@ -7,7 +7,7 @@ import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
-import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -27,6 +27,7 @@ export interface UnifiedViewOptions {
 		assignee?: string;
 		priority?: string;
 		labels?: string[];
+		labelMatch?: LabelMatchMode;
 		milestone?: string;
 		sort?: string;
 		title?: string;
@@ -58,6 +59,7 @@ export interface UnifiedViewFilters {
 	statusFilter: string;
 	priorityFilter: string;
 	labelFilter: string[];
+	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
 }
 
@@ -65,6 +67,7 @@ export interface KanbanSharedFilters {
 	searchQuery: string;
 	priorityFilter: string;
 	labelFilter: string[];
+	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
 }
 
@@ -73,6 +76,7 @@ export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSh
 		searchQuery: filters.searchQuery,
 		priorityFilter: filters.priorityFilter,
 		labelFilter: [...filters.labelFilter],
+		labelMatch: filters.labelMatch,
 		milestoneFilter: filters.milestoneFilter,
 	};
 }
@@ -98,6 +102,7 @@ export function filterTasksForKanban(
 			query: filters.searchQuery,
 			priority: filters.priorityFilter as "high" | "medium" | "low" | undefined,
 			labels: filters.labelFilter,
+			labelMatch: filters.labelMatch ?? "any",
 			milestone: filters.milestoneFilter || undefined,
 			resolveMilestoneLabel,
 		},
@@ -111,6 +116,7 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 		statusFilter: filter?.status || "",
 		priorityFilter: filter?.priority || "",
 		labelFilter: [...(filter?.labels || [])],
+		labelMatch: filter?.labelMatch ?? "any",
 		milestoneFilter: filter?.milestone || "",
 	};
 }
@@ -122,6 +128,7 @@ export function mergeUnifiedViewFilters(current: UnifiedViewFilters, update: Uni
 		statusFilter: update.statusFilter,
 		priorityFilter: update.priorityFilter,
 		labelFilter: [...update.labelFilter],
+		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
 		milestoneFilter: update.milestoneFilter,
 	};
 }
@@ -328,6 +335,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					statusFilter: currentFilters.statusFilter,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
+					labelMatch: currentFilters.labelMatch,
 					milestoneFilter: currentFilters.milestoneFilter,
 					limit: options.filter?.limit,
 					startWithDetailFocus: currentView === "task-detail",
@@ -383,6 +391,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 							searchQuery: filters.searchQuery,
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
+							labelMatch: "any",
 							milestoneFilter: filters.milestoneFilter,
 						};
 					},

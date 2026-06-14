@@ -12,10 +12,10 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
-import { collectAvailableLabels } from "../utils/label-filter.ts";
+import { collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
-import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
@@ -171,6 +171,7 @@ export async function viewTaskEnhanced(
 		priorityFilter?: string;
 		milestoneFilter?: string;
 		labelFilter?: string[];
+		labelMatch?: LabelMatchMode;
 		limit?: number;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
@@ -253,6 +254,7 @@ export async function viewTaskEnhanced(
 	let priorityFilter = options.priorityFilter || "";
 	let labelFilter: string[] = [];
 	let milestoneFilter = options.milestoneFilter || "";
+	let labelMatch: LabelMatchMode = options.labelMatch ?? "any";
 	const taskLimit = options.limit;
 	let filteredTasks = [...allTasks];
 
@@ -262,7 +264,12 @@ export async function viewTaskEnhanced(
 	}
 
 	const filtersActive = Boolean(
-		searchQuery || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		searchQuery ||
+			statusFilter ||
+			priorityFilter ||
+			labelFilter.length > 0 ||
+			milestoneFilter ||
+			taskLimit !== undefined,
 	);
 	let requireInitialFilterSelection = filtersActive;
 
@@ -331,6 +338,7 @@ export async function viewTaskEnhanced(
 				});
 				if (nextLabels !== null) {
 					labelFilter = nextLabels;
+					labelMatch = "any";
 					filterHeader.setFilters({ labels: nextLabels });
 					applyFilters();
 					notifyFilterChange();
@@ -414,6 +422,7 @@ export async function viewTaskEnhanced(
 			statusFilter = filters.status;
 			priorityFilter = filters.priority;
 			labelFilter = filters.labels;
+			labelMatch = "any";
 			milestoneFilter = filters.milestone;
 			applyFilters();
 			notifyFilterChange();
@@ -594,6 +603,7 @@ export async function viewTaskEnhanced(
 					status: statusFilter || undefined,
 					priority: priorityFilter as "high" | "medium" | "low" | undefined,
 					labels: labelFilter,
+					labelMatch,
 					milestone: milestoneFilter || undefined,
 					resolveMilestoneLabel,
 				},
@@ -618,6 +628,13 @@ export async function viewTaskEnhanced(
 					if (!task.milestone) return false;
 					const taskMilestoneTitle = resolveMilestoneLabel(task.milestone);
 					return taskMilestoneTitle.toLowerCase() === milestoneFilter.toLowerCase();
+				});
+			}
+			if (labelMatch === "all" && labelFilter.length > 0) {
+				const requiredLabels = labelsToLower(labelFilter);
+				nextFilteredTasks = nextFilteredTasks.filter((task) => {
+					const taskLabels = new Set(labelsToLower(task.labels ?? []));
+					return requiredLabels.every((label) => taskLabels.has(label));
 				});
 			}
 		} else {

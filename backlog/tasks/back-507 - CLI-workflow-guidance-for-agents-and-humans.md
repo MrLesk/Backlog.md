@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-13 14:12'
-updated_date: '2026-06-14 16:14'
+updated_date: '2026-06-14 16:43'
 labels: []
 milestone: m-7
 dependencies: []
@@ -42,12 +42,14 @@ modified_files:
   - src/commands/help-schema.ts
   - src/agent-instructions.ts
   - src/index.ts
+  - src/utils/task-search.ts
   - src/test/cli.test.ts
   - src/test/cli-root-entry.test.ts
   - src/test/cli-milestone-management.test.ts
   - src/test/cli-doc-search.test.ts
   - src/test/agent-instructions.test.ts
   - src/test/help-schema.test.ts
+  - src/test/task-search-label-filter.test.ts
   - README.md
   - CLI-INSTRUCTIONS.md
   - AGENTS.md
@@ -157,6 +159,8 @@ Reopened after the user reported remaining unresolved Codex comments. GitHub con
 Addressed the three new PR #686 Codex review threads from 2026-06-14 15:15 UTC: preserved empty argument in doc-search test, removed hard-coded Done wording from task-complete help, and kept interactive task-list from passing an empty searchQuery filter that would focus search unnecessarily. Validation passed with focused tests, affected CLI/doc/unified test files, typecheck, Biome, and diff check.
 
 Latest PR review cleanup completed. The remaining Codex threads were addressed by adding explicit timeouts for multi-process instruction tests, resolving CLI help schemas from the runtime project cwd / BACKLOG_CWD so configured prefixes and statuses render correctly, and keeping the full local task set available to the interactive task-list UI while using search, labels, and limit as initial UI filters. Validation passed with full `bun test` (1315 pass, 2 skip, 0 fail), `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and `git diff --check`.
+
+Heartbeat PR monitor pass addressed three new Codex review threads: CLI-seeded interactive task-list labels now use all-label matching while normal TUI label selection remains any-label matching, interactive task-list limits now apply even when no other filters are active, and `backlog task archive` now rejects terminal-status tasks with a `backlog task complete` hint. Validation passed with focused CLI/filter tests, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, `git diff --check`, and full `bun test` (1317 pass, 2 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -167,6 +171,8 @@ Implemented the CLI-first workflow guidance surface for agents and humans while 
 Addressed PR #686 review feedback across multiple rounds: bare `backlog --plain` remains deterministic and color-free in TTYs, task-list limits apply after global sorting/filtering before regrouping, command-specific status help no longer advertises invalid `Draft` values, finalization/execution guides avoid hard-coded statuses, milestone add honors auto-commit, generated instruction blocks migrate from old markers, label filtering is case-insensitive, slow multi-process tests now have focused coverage or explicit timeouts, doc-search tests preserve empty arguments correctly, task-complete help refers to configured terminal status instead of hard-coded `Done`, and interactive task-list keeps the full local task set while applying search/labels/limit as initial UI filters.
 
 Validation passed: `bun test` (1315 pass, 2 skip, 0 fail), `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and `git diff --check`.
+
+Heartbeat PR monitor follow-up: fixed three additional Codex review comments after commit `ee20e0e`. CLI-provided interactive `--labels` now preserves all-label semantics, bare interactive `--limit` applies on initial render, and CLI archive now rejects configured terminal-status tasks and points users to `backlog task complete`. Validation passed with full `bun test` (1317 pass, 2 skip, 0 fail), typecheck, Biome, build, and diff check.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
