@@ -95,7 +95,7 @@ describe("CLI doc search command", () => {
 
 	it("rejects missing or invalid query and limit inputs", async () => {
 		const missingQuery = await $`bun ${cliPath} doc search`.cwd(TEST_DIR).nothrow().quiet();
-		const emptyQuery = await $`bun ${cliPath} doc search ""`.cwd(TEST_DIR).nothrow().quiet();
+		const emptyQuery = await $`bun ${cliPath} doc search ${""}`.cwd(TEST_DIR).nothrow().quiet();
 		const longQuery = await $`bun ${cliPath} doc search ${"a".repeat(201)}`.cwd(TEST_DIR).nothrow().quiet();
 		const zeroLimit = await $`bun ${cliPath} doc search architecture --limit 0`.cwd(TEST_DIR).nothrow().quiet();
 		const highLimit = await $`bun ${cliPath} doc search architecture --limit 101`.cwd(TEST_DIR).nothrow().quiet();

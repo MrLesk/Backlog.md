@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-13 14:12'
-updated_date: '2026-06-14 14:58'
+updated_date: '2026-06-14 15:22'
 labels: []
 milestone: m-7
 dependencies: []
@@ -42,6 +42,7 @@ modified_files:
   - src/test/cli.test.ts
   - src/test/cli-root-entry.test.ts
   - src/test/cli-milestone-management.test.ts
+  - src/test/cli-doc-search.test.ts
   - src/test/agent-instructions.test.ts
   - src/test/help-schema.test.ts
   - README.md
@@ -114,6 +115,13 @@ Latest Codex review cleanup plan for commit 7f72eb3:
 2. Update CLI task-execution guidance so it does not hard-code `In Progress`; instruct agents to inspect accepted statuses and use the configured active/in-progress status. Update rendered instruction tests.
 3. Split the slow milestone removal CLI test into separate clear, keep, and reassign scenarios so `bun test src/test/cli-milestone-management.test.ts` stays under Bun's default per-test timeout.
 4. Run focused tests, typecheck/check/build as needed, push, then verify/resolve all Codex review threads so PR #686 has no unresolved Codex comments.
+
+Additional PR review cleanup for new Codex threads from 2026-06-14 15:15 UTC:
+
+1. Fix `src/test/cli-doc-search.test.ts` so the empty-query CLI test passes a preserved empty argument through Bun's shell invocation.
+2. Update `src/cli.ts` task-complete help schema to avoid hard-coded `Done` wording and refer to the configured terminal status / archival cleanup semantics.
+3. Fix interactive `backlog task list` option construction so `searchQuery` is only passed when a non-empty search was requested, preserving normal task-list focus.
+4. Run focused tests for doc search, CLI help/task-list behavior, then broader checks if needed; push and resolve the three Codex review threads after verification.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -132,6 +140,10 @@ Addressed PR #686 finalization-guide feedback: CLI finalization instructions now
 Latest PR review cleanup complete. Helmholtz fixed root `--plain` and task-list limit behavior; Zeno fixed command-specific status help; Hegel fixed finalization guide wording. Coordinator normalized status values, reviewed the integrated diff, and validated with focused CLI tests, typecheck, build, Biome, diff check, and full test suite.
 
 Reopened for the latest Codex review on commit 7f72eb3. Current actionable threads: root `--plain` should suppress color in TTY, task-execution guide should avoid hard-coded `In Progress`, and the slow milestone removal test should be split. User explicitly requested no remaining unresolved Codex comments, so after code fixes and push the review threads will be verified and resolved if still open.
+
+Reopened after the user reported remaining unresolved Codex comments. GitHub connector confirmed three new unresolved Codex threads: empty-query doc-search test, task-complete help wording, and task-list focus regression.
+
+Addressed the three new PR #686 Codex review threads from 2026-06-14 15:15 UTC: preserved empty argument in doc-search test, removed hard-coded Done wording from task-complete help, and kept interactive task-list from passing an empty searchQuery filter that would focus search unnecessarily. Validation passed with focused tests, affected CLI/doc/unified test files, typecheck, Biome, and diff check.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -139,9 +151,9 @@ Reopened for the latest Codex review on commit 7f72eb3. Current actionable threa
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Implemented the CLI-first workflow guidance surface for agents and humans while preserving MCP as an optional integration. The branch adds embedded CLI instruction guides, short generated agent nudges, public command help schemas, improved self-correcting CLI errors, root-command local guidance, CLI parity for milestone/document/task-list operations, and configured-prefix/status-aware examples.
 
-Addressed PR #686 review feedback across multiple rounds: bare `backlog --plain` now remains deterministic and color-free in TTYs, task-list limits apply after global sorting/filtering before regrouping, command-specific status help no longer advertises invalid `Draft` values, finalization/execution guides avoid hard-coded statuses, milestone add honors auto-commit, generated instruction blocks migrate from old markers, label filtering is case-insensitive, and the slow milestone removal test was split into focused cases.
+Addressed PR #686 review feedback across multiple rounds: bare `backlog --plain` now remains deterministic and color-free in TTYs, task-list limits apply after global sorting/filtering before regrouping, command-specific status help no longer advertises invalid `Draft` values, finalization/execution guides avoid hard-coded statuses, milestone add honors auto-commit, generated instruction blocks migrate from old markers, label filtering is case-insensitive, the slow milestone removal test was split into focused cases, doc-search tests preserve empty arguments correctly, task-complete help refers to configured terminal status instead of hard-coded `Done`, and interactive task-list no longer focuses search when no search was requested.
 
-Validation passed: focused CLI/root/milestone tests, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, `git diff --check`, and full `bun test`.
+Validation passed: focused CLI/root/milestone/doc-search/unified-view tests, affected CLI/doc/unified test files, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, `git diff --check`, and full `bun test` from the prior review-cleanup pass.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

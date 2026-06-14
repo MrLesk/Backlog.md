@@ -2221,11 +2221,13 @@ addHelpSchema(taskCmd.command("list"), {
 			priority: options.priority,
 			sort: options.sort,
 			labels: labelFilters,
-			searchQuery,
 			title,
 			filterDescription,
 			parentTaskId: parentId,
 		};
+		if (searchQuery) {
+			initialUnifiedFilter.searchQuery = searchQuery;
+		}
 
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
 		const interactiveLoaderFilters: TaskListFilter = {};
@@ -2774,14 +2776,20 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 	});
 
 addHelpSchema(taskCmd.command("complete <taskId>"), {
-	required: [{ name: "taskId", type: "Task ID", description: "Done task to move to completed" }],
+	required: [
+		{
+			name: "taskId",
+			type: "Task ID",
+			description: "Task in the configured terminal status to move to completed",
+		},
+	],
 	optional: [],
 	writes:
-		"WARNING: This is a cleanup procedure. It moves a Done task to completed, removes it from the active Kanban board, and should only be used for cleanup/archive purposes.",
+		"WARNING: This is a cleanup procedure. It moves a terminal-status task to completed, removes it from the active Kanban board, and should only be used for cleanup/archive purposes.",
 	output: "Completion cleanup confirmation and completed file path",
 	examples: ["backlog task complete {{TASK_ID:1}}"],
 })
-	.description("cleanup/archive a Done task into completed")
+	.description("cleanup/archive a terminal-status task into completed")
 	.addHelpText(
 		"before",
 		"\nWarning: This is a cleanup procedure. It will make the task disappear from the active Kanban board and should only be used for cleanup/archive purposes.\n",
