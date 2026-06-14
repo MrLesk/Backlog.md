@@ -2214,6 +2214,7 @@ addHelpSchema(taskCmd.command("list"), {
 			title?: string;
 			filterDescription?: string;
 			parentTaskId?: string;
+			limit?: number;
 		} = {
 			status: options.status,
 			assignee: options.assignee,
@@ -2224,6 +2225,7 @@ addHelpSchema(taskCmd.command("list"), {
 			title,
 			filterDescription,
 			parentTaskId: parentId,
+			limit: taskLimit,
 		};
 		if (searchQuery) {
 			initialUnifiedFilter.searchQuery = searchQuery;
@@ -2237,8 +2239,6 @@ addHelpSchema(taskCmd.command("list"), {
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
 		}
-		const shouldPreFilterInteractiveResults =
-			Boolean(searchQuery) || labelFilters.length > 0 || taskLimit !== undefined;
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
@@ -2254,11 +2254,9 @@ addHelpSchema(taskCmd.command("list"), {
 
 				// Now query with filters - this will use the already-populated ContentStore
 				updateProgress("Applying filters...");
-				const queryFilters = shouldPreFilterInteractiveResults ? baseFilters : interactiveLoaderFilters;
 				const [tasks, allTasksForParentCheck] = await Promise.all([
 					core.queryTasks({
-						query: shouldPreFilterInteractiveResults && searchQuery ? searchQuery : undefined,
-						filters: Object.keys(queryFilters).length > 0 ? queryFilters : undefined,
+						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
 						includeCrossBranch: false,
 					}),
 					parentId ? core.queryTasks() : Promise.resolve(undefined),
@@ -2286,12 +2284,6 @@ addHelpSchema(taskCmd.command("list"), {
 				let filtered = sortedTasks;
 				if (parentId) {
 					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
-				}
-				if (shouldPreFilterInteractiveResults && labelFilters.length > 0) {
-					filtered = filtered.filter((task) => taskMatchesAllLabels(task, labelFilters));
-				}
-				if (taskLimit !== undefined) {
-					filtered = filtered.slice(0, taskLimit);
 				}
 
 				if (options.milestone && filtered.length > 0) {

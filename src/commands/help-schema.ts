@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 
 export interface HelpField {
 	name: string;
@@ -150,6 +151,11 @@ function findBacklogConfigPathSync(startDir: string): string | null {
 	return null;
 }
 
+function getRuntimeConfigStartDir(): string {
+	const override = process.env[BACKLOG_CWD_ENV]?.trim();
+	return override ? resolve(override) : process.cwd();
+}
+
 function includeDraftStatus(statuses: string[]): string[] {
 	const normalizedStatuses = normalizeStatusValues(statuses);
 	const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
@@ -162,7 +168,7 @@ function normalizeStatusValues(statuses: string[]): string[] {
 
 export function getCliStatusValues(options?: { includeDraft?: boolean }): string[] {
 	let configuredStatuses: string[] = [...DEFAULT_STATUSES];
-	const configPath = findBacklogConfigPathSync(process.cwd());
+	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
 	if (configPath) {
 		try {
 			const parsed = parseStatusesFromConfig(readFileSync(configPath, "utf8"));
@@ -179,7 +185,7 @@ export function getCliStatusValues(options?: { includeDraft?: boolean }): string
 }
 
 export function getCliTaskPrefix(): string {
-	const configPath = findBacklogConfigPathSync(process.cwd());
+	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
 	if (configPath) {
 		try {
 			return parseStringValueFromConfig(readFileSync(configPath, "utf8"), ["task_prefix", "taskPrefix"]) ?? "task";

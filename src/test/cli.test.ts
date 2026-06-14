@@ -6,6 +6,7 @@ import { CLI_AGENT_NUDGE, Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
+import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -142,7 +143,7 @@ describe("CLI Integration", () => {
 			expect(taskCreation).not.toContain("task_search");
 			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");
 			expect(initRequired).toContain("backlog init --defaults");
-		});
+		}, 15_000);
 
 		it("renders task ID examples with the configured task prefix", async () => {
 			await mkdir(join(TEST_DIR, "backlog"), { recursive: true });
@@ -173,7 +174,38 @@ describe("CLI Integration", () => {
 			for (const output of [overview, taskCreation, createHelp, listHelp, editHelp]) {
 				expect(output).not.toContain("BACK-");
 			}
-		});
+		}, 15_000);
+
+		it("renders help and instruction examples from BACKLOG_CWD", async () => {
+			await mkdir(join(TEST_DIR, "backlog"), { recursive: true });
+			await Bun.write(
+				join(TEST_DIR, "backlog", "config.yml"),
+				[
+					'project_name: "Runtime Cwd Schema Project"',
+					'statuses: ["Ready", "Review", "Closed"]',
+					"labels: []",
+					"date_format: yyyy-mm-dd",
+					'task_prefix: "feat"',
+					"",
+				].join("\n"),
+			);
+			const outsideDir = join(TEST_DIR, "outside");
+			await mkdir(outsideDir, { recursive: true });
+			const env = { ...process.env, [BACKLOG_CWD_ENV]: TEST_DIR };
+
+			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(outsideDir).env(env).text();
+			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(outsideDir).env(env).text();
+			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(outsideDir).env(env).text();
+
+			expect(overview).toContain("backlog task view FEAT-123 --plain");
+			expect(createHelp).toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
+			expect(createHelp).toContain('backlog task create -p FEAT-1 "Add tests"');
+			expect(editHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			expect(editHelp).toContain('backlog task edit FEAT-1 --status "<active status>" -a @sara');
+			for (const output of [overview, createHelp, editHelp]) {
+				expect(output).not.toContain("BACK-");
+			}
+		}, 10_000);
 
 		it("does not recommend task complete in CLI workflow guides or agent nudge", async () => {
 			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();

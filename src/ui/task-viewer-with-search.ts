@@ -171,6 +171,7 @@ export async function viewTaskEnhanced(
 		priorityFilter?: string;
 		milestoneFilter?: string;
 		labelFilter?: string[];
+		limit?: number;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
@@ -252,6 +253,7 @@ export async function viewTaskEnhanced(
 	let priorityFilter = options.priorityFilter || "";
 	let labelFilter: string[] = [];
 	let milestoneFilter = options.milestoneFilter || "";
+	const taskLimit = options.limit;
 	let filteredTasks = [...allTasks];
 
 	if (options.labelFilter && options.labelFilter.length > 0) {
@@ -581,10 +583,11 @@ export async function viewTaskEnhanced(
 		const hasActiveFilters = Boolean(
 			searchQuery.trim() || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
 		);
+		let nextFilteredTasks: Task[];
 		if (!hasActiveFilters) {
-			filteredTasks = [...allTasks];
+			nextFilteredTasks = [...allTasks];
 		} else if (taskSearchIndex) {
-			filteredTasks = applyTaskFilters(
+			nextFilteredTasks = applyTaskFilters(
 				allTasks,
 				{
 					query: searchQuery,
@@ -606,9 +609,9 @@ export async function viewTaskEnhanced(
 				},
 				types: ["task"],
 			});
-			filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
+			nextFilteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
 			if (milestoneFilter) {
-				filteredTasks = filteredTasks.filter((task) => {
+				nextFilteredTasks = nextFilteredTasks.filter((task) => {
 					if (milestoneFilter === NO_MILESTONE_FILTER_VALUE) {
 						return !task.milestone?.trim();
 					}
@@ -618,8 +621,9 @@ export async function viewTaskEnhanced(
 				});
 			}
 		} else {
-			filteredTasks = [...allTasks];
+			nextFilteredTasks = [...allTasks];
 		}
+		filteredTasks = taskLimit !== undefined ? nextFilteredTasks.slice(0, taskLimit) : nextFilteredTasks;
 
 		// Update the task list label
 		if (taskListPane.setLabel) {

@@ -1,11 +1,11 @@
 ---
 id: BACK-507
-title: CLI workflow guidance for agents and humans
+title: CLI-first agent workflow refactor and local instruction surface
 status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-13 14:12'
-updated_date: '2026-06-14 15:22'
+updated_date: '2026-06-14 16:14'
 labels: []
 milestone: m-7
 dependencies: []
@@ -24,6 +24,9 @@ modified_files:
   - src/cli.ts
   - src/ui/root-entry.ts
   - src/ui/terminal.ts
+  - src/ui/unified-view.ts
+  - src/ui/task-viewer-with-search.ts
+  - src/ui/view-switcher.ts
   - src/guidelines/agent-guidelines.md
   - src/guidelines/agent-instructions.ts
   - src/guidelines/cli-instructions/overview.md
@@ -122,6 +125,14 @@ Additional PR review cleanup for new Codex threads from 2026-06-14 15:15 UTC:
 2. Update `src/cli.ts` task-complete help schema to avoid hard-coded `Done` wording and refer to the configured terminal status / archival cleanup semantics.
 3. Fix interactive `backlog task list` option construction so `searchQuery` is only passed when a non-empty search was requested, preserving normal task-list focus.
 4. Run focused tests for doc search, CLI help/task-list behavior, then broader checks if needed; push and resolve the three Codex review threads after verification.
+
+Additional PR cleanup from latest unresolved Codex comments:
+
+1. Raise timeout for the multi-process CLI instruction guide test in `src/test/cli.test.ts` so documented/full test runs do not fail on slower runners.
+2. Make CLI help schema status/prefix resolution use the runtime cwd instead of `process.cwd()`, so `--cwd` and project-local command execution render configured statuses/prefixes correctly.
+3. Preserve the full local task set for interactive task-list filters when search/labels/limit are requested, so the TUI can still navigate and update against the complete task set while displaying filtered results.
+4. Rename the task and PR to make the CLI-first agent workflow refactor explicit.
+5. Run focused tests, typecheck/check/build as needed, push, and resolve the latest Codex review threads.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -144,6 +155,8 @@ Reopened for the latest Codex review on commit 7f72eb3. Current actionable threa
 Reopened after the user reported remaining unresolved Codex comments. GitHub connector confirmed three new unresolved Codex threads: empty-query doc-search test, task-complete help wording, and task-list focus regression.
 
 Addressed the three new PR #686 Codex review threads from 2026-06-14 15:15 UTC: preserved empty argument in doc-search test, removed hard-coded Done wording from task-complete help, and kept interactive task-list from passing an empty searchQuery filter that would focus search unnecessarily. Validation passed with focused tests, affected CLI/doc/unified test files, typecheck, Biome, and diff check.
+
+Latest PR review cleanup completed. The remaining Codex threads were addressed by adding explicit timeouts for multi-process instruction tests, resolving CLI help schemas from the runtime project cwd / BACKLOG_CWD so configured prefixes and statuses render correctly, and keeping the full local task set available to the interactive task-list UI while using search, labels, and limit as initial UI filters. Validation passed with full `bun test` (1315 pass, 2 skip, 0 fail), `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and `git diff --check`.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -151,9 +164,9 @@ Addressed the three new PR #686 Codex review threads from 2026-06-14 15:15 UTC: 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Implemented the CLI-first workflow guidance surface for agents and humans while preserving MCP as an optional integration. The branch adds embedded CLI instruction guides, short generated agent nudges, public command help schemas, improved self-correcting CLI errors, root-command local guidance, CLI parity for milestone/document/task-list operations, and configured-prefix/status-aware examples.
 
-Addressed PR #686 review feedback across multiple rounds: bare `backlog --plain` now remains deterministic and color-free in TTYs, task-list limits apply after global sorting/filtering before regrouping, command-specific status help no longer advertises invalid `Draft` values, finalization/execution guides avoid hard-coded statuses, milestone add honors auto-commit, generated instruction blocks migrate from old markers, label filtering is case-insensitive, the slow milestone removal test was split into focused cases, doc-search tests preserve empty arguments correctly, task-complete help refers to configured terminal status instead of hard-coded `Done`, and interactive task-list no longer focuses search when no search was requested.
+Addressed PR #686 review feedback across multiple rounds: bare `backlog --plain` remains deterministic and color-free in TTYs, task-list limits apply after global sorting/filtering before regrouping, command-specific status help no longer advertises invalid `Draft` values, finalization/execution guides avoid hard-coded statuses, milestone add honors auto-commit, generated instruction blocks migrate from old markers, label filtering is case-insensitive, slow multi-process tests now have focused coverage or explicit timeouts, doc-search tests preserve empty arguments correctly, task-complete help refers to configured terminal status instead of hard-coded `Done`, and interactive task-list keeps the full local task set while applying search/labels/limit as initial UI filters.
 
-Validation passed: focused CLI/root/milestone/doc-search/unified-view tests, affected CLI/doc/unified test files, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, `git diff --check`, and full `bun test` from the prior review-cleanup pass.
+Validation passed: `bun test` (1315 pass, 2 skip, 0 fail), `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and `git diff --check`.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

@@ -33,6 +33,7 @@ export interface UnifiedViewOptions {
 		filterDescription?: string;
 		searchQuery?: string;
 		parentTaskId?: string;
+		limit?: number;
 	};
 	preloadedKanbanData?: {
 		tasks: Task[];
@@ -328,6 +329,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
 					milestoneFilter: currentFilters.milestoneFilter,
+					limit: options.filter?.limit,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					onTaskChange: (newTask) => {
