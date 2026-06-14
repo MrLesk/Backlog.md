@@ -116,6 +116,15 @@ describe("CLI search command", () => {
 		expect(taskMatches.length).toBeLessThanOrEqual(1);
 	});
 
+	it("rejects invalid result limits with a help hint", async () => {
+		const result = await $`bun ${cliPath} search search --plain --limit 0`.cwd(TEST_DIR).nothrow().quiet();
+		const output = result.stdout.toString() + result.stderr.toString();
+
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("--limit must be a positive integer (1 or greater).");
+		expect(output).toContain("Try 'backlog search --help' for options.");
+	});
+
 	it("finds tasks by modified file path", async () => {
 		const queryResult = await $`bun ${cliPath} search "src/web/App.tsx" --type task --plain`.cwd(TEST_DIR).quiet();
 		expect(queryResult.exitCode).toBe(0);

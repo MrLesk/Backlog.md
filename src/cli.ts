@@ -216,14 +216,29 @@ function printMissingRequiredArgument(argumentName: string): void {
 	process.exitCode = 1;
 }
 
-function parsePositiveIntegerOption(value: unknown, optionName: string): number | null {
+function parsePositiveIntegerOption(value: unknown, optionName: string, helpCommand?: string): number | null {
 	const rawValue = String(value).trim();
 	if (!/^[1-9]\d*$/.test(rawValue)) {
-		console.error(`${optionName} must be a positive integer`);
+		const helpHint = helpCommand ? ` Try '${helpCommand}' for options.` : "";
+		console.error(`${optionName} must be a positive integer (1 or greater).${helpHint}`);
 		process.exitCode = 1;
 		return null;
 	}
 	return Number.parseInt(rawValue, 10);
+}
+
+function formatTaskEditError(error: unknown, taskId: string): string {
+	const message = error instanceof Error ? error.message : String(error);
+	if (message.startsWith("Invalid index:")) {
+		return `${message} Try 'backlog task edit ${taskId} --help' for index options.`;
+	}
+	if (
+		message.includes(" not found") &&
+		(message.startsWith("Acceptance criterion ") || message.startsWith("Definition of Done item "))
+	) {
+		return `${message}\nRun 'backlog task view ${taskId} --plain' to inspect indexes, or 'backlog task edit ${taskId} --help' for edit options.`;
+	}
+	return message;
 }
 
 function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
@@ -533,7 +548,11 @@ addHelpSchema(program.command("init [projectName]"), {
 	required: [],
 	optional: [
 		{ name: "projectName", type: "String", description: "Project name; defaults to current directory name" },
-		{ name: "--integration-mode", type: choiceType(["cli", "mcp", "none"]), description: "AI integration mode" },
+		{
+			name: "--integration-mode",
+			type: `${choiceType(["cli", "mcp", "none"])} (default: cli)`,
+			description: "AI integration mode; CLI instructions are recommended",
+		},
 		{
 			name: "--agent-instructions",
 			type: choiceType(["claude", "agents", "gemini", "copilot", "cursor", "none"], { multiple: true }),
@@ -543,8 +562,12 @@ addHelpSchema(program.command("init [projectName]"), {
 		{ name: "--no-git", type: "Boolean", description: "Initialize without Git integration" },
 	],
 	writes: "Backlog directory, config file, optional agent instruction files, and optional git commit",
-	output: "Initialization summary with selected integration and config",
-	examples: ['backlog init "My Project"', "backlog init --defaults", "backlog init --integration-mode mcp"],
+	output: "Initialization summary with selected integration and config; defaults to CLI instructions",
+	examples: [
+		'backlog init "My Project" --defaults',
+		'backlog init "My Project" --defaults --integration-mode cli',
+		'backlog init "My Project" --defaults --agent-instructions agents,claude',
+	],
 })
 	.description("initialize backlog project in the current directory")
 	.option(
@@ -560,7 +583,10 @@ addHelpSchema(program.command("init [projectName]"), {
 	.option("--web-port <number>", "default web UI port (default: 6420)")
 	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
-	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
+	.option(
+		"--integration-mode <mode>",
+		"choose AI integration mode: cli, mcp, or none (default: cli; cli instructions are recommended)",
+	)
 	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
 	.option("--config-location <location>", "config location for init: folder or root")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
@@ -1763,11 +1789,9 @@ addHelpSchema(program.command("search [query]"), {
 
 		let limit: number | undefined;
 		if (options.limit !== undefined) {
-			const parsed = Number.parseInt(String(options.limit), 10);
-			if (Number.isNaN(parsed) || parsed <= 0) {
-				console.error("--limit must be a positive integer");
+			const parsed = parsePositiveIntegerOption(options.limit, "--limit", "backlog search --help");
+			if (parsed === null) {
 				cleanup();
-				process.exitCode = 1;
 				return;
 			}
 			limit = parsed;
@@ -2056,7 +2080,7 @@ addHelpSchema(taskCmd.command("list"), {
 		const searchQuery = typeof options.search === "string" ? options.search.trim() : "";
 		let taskLimit: number | undefined;
 		if (options.limit !== undefined) {
-			const parsedLimit = parsePositiveIntegerOption(options.limit, "--limit");
+			const parsedLimit = parsePositiveIntegerOption(options.limit, "--limit", "backlog task list --help");
 			if (parsedLimit === null) {
 				cleanup();
 				return;
@@ -2479,7 +2503,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				const updatedTask = await core.editTask(existingTaskForWizard.id, wizardInput);
 				console.log(`Updated task ${updatedTask.id}`);
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : String(error));
+				console.error(formatTaskEditError(error, existingTaskForWizard.id));
 				process.exitCode = 1;
 			}
 			return;
@@ -2577,7 +2601,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				uncheckDod = dodUnchecks;
 			}
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : String(error));
+			console.error(formatTaskEditError(error, canonicalId));
 			process.exitCode = 1;
 			return;
 		}
@@ -2700,7 +2724,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			const updateInput = buildTaskUpdateInput(editArgs);
 			updatedTask = await core.editTask(canonicalId, updateInput);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : String(error));
+			console.error(formatTaskEditError(error, canonicalId));
 			process.exitCode = 1;
 			return;
 		}
@@ -3699,13 +3723,27 @@ decisionCmd
 	});
 
 // Agents command group
-const agentsCmd = program.command("agents");
+const agentsCmd = addHelpSchema(program.command("agents"), {
+	reads: "Project config and existing agent instruction files when updating",
+	required: [],
+	optional: [
+		{
+			name: "--update-instructions",
+			type: "Boolean",
+			description: "Interactively select instruction files and refresh the short Backlog.md CLI nudge",
+		},
+	],
+	writes:
+		"Creates or updates the managed Backlog.md CLI nudge in selected instruction files; preserves existing content outside the managed block",
+	output: "Interactive file selection followed by created, updated, or unchanged file summary",
+	examples: ["backlog agents --update-instructions"],
+});
 
 agentsCmd
-	.description("manage agent instruction files")
+	.description("manage the short Backlog.md CLI nudge in agent instruction files")
 	.option(
 		"--update-instructions",
-		"update agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md)",
+		"update the Backlog.md CLI nudge in agent instruction files while preserving existing content",
 	)
 	.action(async (options) => {
 		if (!options.updateInstructions) {

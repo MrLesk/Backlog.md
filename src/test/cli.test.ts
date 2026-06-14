@@ -97,11 +97,15 @@ describe("CLI Integration", () => {
 			const initRequired = normalizeCliOutput(await $`bun ${CLI_PATH} instructions init-required`.cwd(TEST_DIR).text());
 
 			expect(overview).toContain("## Backlog.md Overview (CLI)");
+			expect(overview).toContain("### Start Every Request Here");
+			expect(overview).toContain(
+				"Use this overview to decide what to read or run next. The detailed guides contain the procedure for creating, executing, and finalizing tasks.",
+			);
 			expect(overview).toContain('backlog search "query" --plain');
 			expect(overview).toContain('backlog task list --search "login" --labels frontend,bug --limit 20 --plain');
 			expect(overview).toContain("backlog task view BACK-123 --plain");
 			expect(overview).toContain(
-				"filter with `--status`, `--assignee`, `--parent`, `--priority`, `--labels`, `--search`, and `--limit`",
+				"Always read the relevant guide before that part of the workflow. Do not rely on this overview alone for these actions:",
 			);
 			expect(overview).toContain(
 				"`backlog instructions task-creation`\n  -> Read before creating tasks: how to search, scope, and create tasks",
@@ -112,8 +116,9 @@ describe("CLI Integration", () => {
 			expect(overview).toContain(
 				"`backlog instructions task-finalization`\n  -> Read before finishing tasks: how to verify, summarize, and finish tasks",
 			);
-			expect(overview).toContain("Inspect accepted statuses if needed: `backlog task edit BACK-123 --help`");
-			expect(overview).toContain('backlog task edit BACK-123 -s "<terminal status>"');
+			expect(overview).not.toContain('backlog task create "Title"');
+			expect(overview).not.toContain("backlog task edit BACK-123 --plan");
+			expect(overview).not.toContain("backlog task edit BACK-123 --check-ac 1");
 			expect(overview).not.toContain("backlog task edit BACK-123 -s Done");
 			expect(overview).toContain(
 				"Important: Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use Backlog commands so automatic metadata stays complete.",
@@ -128,8 +133,6 @@ describe("CLI Integration", () => {
 			);
 			expect(taskCreation).toContain('backlog task list --status "<active status>" --plain');
 			expect(taskCreation).not.toContain('backlog task list --status "In Progress" --plain');
-			expect(overview).toContain('backlog task edit BACK-123 -s "<active status>" -a @your-name');
-			expect(overview).not.toContain('backlog task edit BACK-123 -s "In Progress" -a @your-name');
 			expect(taskExecution).toContain(
 				'backlog task list --status "<active status>" --assignee @your-name --labels backend --search "auth" --limit 20 --plain',
 			);
@@ -239,6 +242,10 @@ describe("CLI Integration", () => {
 			expect(initHelp).toContain("Input schema:");
 			expect(initHelp).toContain("projectName: String");
 			expect(initHelp).toContain("--integration-mode: one of: cli, mcp, none");
+			expect(initHelp).toContain("(default: cli)");
+			expect(initHelp).toContain("CLI instructions are recommended");
+			expect(initHelp).toContain('backlog init "My Project" --defaults --integration-mode cli');
+			expect(initHelp).not.toContain("backlog init --integration-mode mcp");
 			expect(initHelp).toContain("Writes:");
 			expect(instructionsHelp).toContain(
 				"guide: one of: overview, task-creation, task-execution, task-finalization, init-required",
@@ -1253,7 +1260,8 @@ describe("CLI Integration", () => {
 			const out = result.stdout.toString() + result.stderr.toString();
 
 			expect(result.exitCode).toBe(1);
-			expect(out).toContain("--limit must be a positive integer");
+			expect(out).toContain("--limit must be a positive integer (1 or greater).");
+			expect(out).toContain("Try 'backlog task list --help' for options.");
 		});
 	});
 

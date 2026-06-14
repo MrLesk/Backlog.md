@@ -10,7 +10,7 @@ import {
 import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
 import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
-import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
+import { registerTaskTools, taskListSchema } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -96,6 +96,15 @@ describe("McpServer bootstrap", () => {
 		expect(result.contents[0]?.mimeType).toBe("text/markdown");
 
 		await server.stop();
+	});
+
+	it("workflow overview documents task_list schema filters", () => {
+		const taskListLine = MCP_WORKFLOW_OVERVIEW.split("\n").find((line) => line.startsWith("- `task_list`"));
+		expect(taskListLine).toBeDefined();
+
+		for (const filter of Object.keys(taskListSchema.properties ?? {})) {
+			expect(taskListLine).toContain(filter);
+		}
 	});
 
 	it("task creation guide resource returns correct content", async () => {
