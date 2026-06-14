@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-13 14:12'
-updated_date: '2026-06-14 17:19'
+updated_date: '2026-06-14 19:58'
 labels: []
 milestone: m-7
 dependencies: []
@@ -168,6 +168,8 @@ Latest PR review cleanup completed. The remaining Codex threads were addressed b
 Heartbeat PR monitor pass addressed three new Codex review threads: CLI-seeded interactive task-list labels now use all-label matching while normal TUI label selection remains any-label matching, interactive task-list limits now apply even when no other filters are active, and `backlog task archive` now rejects terminal-status tasks with a `backlog task complete` hint. Validation passed with focused CLI/filter tests, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, `git diff --check`, and full `bun test` (1317 pass, 2 skip, 0 fail).
 
 Heartbeat PR monitor follow-up addressed three new Codex review threads after commit `eda299b`: unrelated filter edits now preserve CLI-seeded all-label matching in the task-list TUI, Kanban filter plumbing now carries `labelMatch` through view switching and filtering, and `Core.completeTask` again preserves existing UI caller behavior while CLI/MCP cleanup paths keep their terminal-status validation. Validation passed with focused tests, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, `git diff --check`, and full `bun test` (1319 pass, 2 skip, 0 fail).
+
+Follow-up check found two new Codex review threads after commit `080196e`: unknown CLI-provided labels were being dropped before TUI filtering, and task-list label-mode resets were not propagated back to unified view state. Fixed `viewTaskEnhanced` to include CLI-provided labels in the available-label set and to emit `labelMatch` in filter-change payloads. Validation passed with focused filter tests, task-list CLI tests, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and `git diff --check`. A full `bun test` run had one unrelated 5s timeout in `CLI Priority Filtering > case insensitive priority filtering` (1319 pass, 2 skip, 1 timeout), and that exact test passed on direct rerun in 4.75s.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -182,6 +184,8 @@ Validation passed: `bun test` (1315 pass, 2 skip, 0 fail), `bunx tsc --noEmit`, 
 Heartbeat PR monitor follow-up: fixed three additional Codex review comments after commit `ee20e0e`. CLI-provided interactive `--labels` now preserves all-label semantics, bare interactive `--limit` applies on initial render, and CLI archive now rejects configured terminal-status tasks and points users to `backlog task complete`. Validation passed with full `bun test` (1317 pass, 2 skip, 0 fail), typecheck, Biome, build, and diff check.
 
 Heartbeat PR monitor follow-up after commit `eda299b`: fixed preservation of all-label matching across task-list filter edits and Kanban view switches, restored core completion semantics for existing UI callers while keeping CLI/MCP cleanup validation, and validated with focused tests plus full `bun test` (1319 pass, 2 skip, 0 fail), typecheck, Biome, build, and diff check.
+
+Follow-up check after commit `080196e`: fixed two additional Codex review comments by preserving unknown CLI label filters in the task-list TUI and propagating task-list `labelMatch` updates into unified view state. Focused validation, typecheck, Biome, build, and diff check passed; the only full-suite issue was an unrelated priority-filtering timeout that passed on direct rerun.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

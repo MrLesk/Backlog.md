@@ -183,6 +183,7 @@ export async function viewTaskEnhanced(
 			statusFilter: string;
 			priorityFilter: string;
 			labelFilter: string[];
+			labelMatch?: LabelMatchMode;
 			milestoneFilter: string;
 		}) => void;
 	} = {},
@@ -236,8 +237,8 @@ export async function viewTaskEnhanced(
 		}
 	}
 
-	// Collect available labels from config and tasks
-	availableLabels = collectAvailableLabels(allTasks, labels);
+	// Collect available labels from config, tasks, and CLI-provided filters.
+	availableLabels = collectAvailableLabels(allTasks, [...labels, ...(options.labelFilter ?? [])]);
 
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
@@ -585,6 +586,7 @@ export async function viewTaskEnhanced(
 				statusFilter,
 				priorityFilter,
 				labelFilter,
+				labelMatch,
 				milestoneFilter,
 			});
 		}

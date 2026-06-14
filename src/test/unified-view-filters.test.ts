@@ -74,6 +74,25 @@ describe("unified view filter state", () => {
 		expect(merged.labelMatch).toBe("all");
 	});
 
+	it("uses label match mode from task-list filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			labels: ["frontend", "bug"],
+			labelMatch: "all",
+		});
+
+		const updated: UnifiedViewFilters = {
+			searchQuery: "",
+			statusFilter: "",
+			priorityFilter: "",
+			labelFilter: ["frontend", "bug"],
+			labelMatch: "any",
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.labelMatch).toBe("any");
+	});
+
 	it("excludes status from kanban shared filters", () => {
 		const unified = createUnifiedViewFilters({
 			searchQuery: "sync",
