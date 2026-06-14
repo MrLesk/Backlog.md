@@ -80,7 +80,7 @@ describe("Cleanup functionality", () => {
 			expect(completedTasks[0]?.title).toBe("Test Task");
 		});
 
-		it("does not complete tasks unless they exactly match the configured terminal status", async () => {
+		it("allows core completion callers to move active tasks into completed", async () => {
 			await core.createTask(
 				{
 					...sampleTask,
@@ -92,9 +92,13 @@ describe("Cleanup functionality", () => {
 			);
 
 			const success = await core.completeTask("task-2", false);
-			expect(success).toBe(false);
-			expect((await core.filesystem.loadTask("task-2"))?.status).toBe("Not Done");
-			expect(await core.filesystem.listCompletedTasks()).toHaveLength(0);
+			expect(success).toBe(true);
+			expect(await core.filesystem.loadTask("task-2")).toBeNull();
+
+			const completedTasks = await core.filesystem.listCompletedTasks();
+			expect(completedTasks).toHaveLength(1);
+			expect(completedTasks[0]?.id).toBe("TASK-2");
+			expect(completedTasks[0]?.status).toBe("Not Done");
 		});
 	});
 

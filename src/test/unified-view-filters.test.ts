@@ -18,6 +18,7 @@ describe("unified view filter state", () => {
 			status: "In Progress",
 			priority: "high",
 			labels,
+			labelMatch: "all",
 			milestone: "Release 1",
 		});
 
@@ -25,6 +26,7 @@ describe("unified view filter state", () => {
 		expect(filters.statusFilter).toBe("In Progress");
 		expect(filters.priorityFilter).toBe("high");
 		expect(filters.labelFilter).toEqual(["backend"]);
+		expect(filters.labelMatch).toBe("all");
 		expect(filters.milestoneFilter).toBe("Release 1");
 		expect(filters.labelFilter).not.toBe(labels);
 	});
@@ -52,6 +54,26 @@ describe("unified view filter state", () => {
 		expect(initial.milestoneFilter).toBe("");
 	});
 
+	it("preserves label match mode when merging unrelated filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			searchQuery: "api",
+			priority: "high",
+			labels: ["frontend", "bug"],
+			labelMatch: "all",
+		});
+
+		const updated: UnifiedViewFilters = {
+			searchQuery: "api auth",
+			statusFilter: "",
+			priorityFilter: "high",
+			labelFilter: ["frontend", "bug"],
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.labelMatch).toBe("all");
+	});
+
 	it("excludes status from kanban shared filters", () => {
 		const unified = createUnifiedViewFilters({
 			searchQuery: "sync",
@@ -67,6 +89,39 @@ describe("unified view filter state", () => {
 		expect(shared.labelFilter).toEqual(["ui"]);
 		expect(shared.milestoneFilter).toBe("Sprint 1");
 		expect("statusFilter" in shared).toBe(false);
+	});
+
+	it("preserves all-label matching in kanban shared filters", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Frontend bug",
+				status: "To Do",
+				labels: ["frontend", "bug"],
+				assignee: [],
+				createdDate: "2026-01-01",
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Frontend feature",
+				status: "To Do",
+				labels: ["frontend"],
+				assignee: [],
+				createdDate: "2026-01-02",
+				dependencies: [],
+			},
+		];
+		const unified = createUnifiedViewFilters({
+			labels: ["frontend", "bug"],
+			labelMatch: "all",
+		});
+
+		const shared = createKanbanSharedFilters(unified);
+		const results = filterTasksForKanban(tasks, shared).map((task) => task.id);
+
+		expect(shared.labelMatch).toBe("all");
+		expect(results).toEqual(["task-1"]);
 	});
 
 	it("keeps shared filter results consistent between task list and kanban", () => {

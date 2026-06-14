@@ -59,3 +59,15 @@ export function formatLabelSummary(selected: string[]): string {
 export function labelsToLower(labels: string[]): string[] {
 	return labels.map(normalizeLabel).filter((label) => label.length > 0);
 }
+
+export function areLabelSelectionsEqual(left: string[], right: string[]): boolean {
+	const normalizedLeft = labelsToLower(left);
+	const normalizedRight = labelsToLower(right);
+
+	if (normalizedLeft.length !== normalizedRight.length) {
+		return false;
+	}
+
+	const leftLabels = new Set(normalizedLeft);
+	return normalizedRight.every((label) => leftLabels.has(label));
+}

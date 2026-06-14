@@ -12,7 +12,7 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
-import { collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
+import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
@@ -418,11 +418,14 @@ export async function viewTaskEnhanced(
 			milestone: milestoneFilter,
 		},
 		onFilterChange: (filters: FilterState) => {
+			const labelsChanged = !areLabelSelectionsEqual(labelFilter, filters.labels);
 			searchQuery = filters.search;
 			statusFilter = filters.status;
 			priorityFilter = filters.priority;
 			labelFilter = filters.labels;
-			labelMatch = "any";
+			if (labelsChanged) {
+				labelMatch = "any";
+			}
 			milestoneFilter = filters.milestone;
 			applyFilters();
 			notifyFilterChange();

@@ -391,7 +391,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 							searchQuery: filters.searchQuery,
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
-							labelMatch: "any",
+							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
 							milestoneFilter: filters.milestoneFilter,
 						};
 					},

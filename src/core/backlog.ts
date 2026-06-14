@@ -2164,13 +2164,6 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.fs.loadTask(taskId);
-		if (!task) return false;
-
-		const config = await this.fs.loadConfig();
-		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
-		if (!isTerminalStatus(task.status, statuses)) return false;
-
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
 		const taskPath = await getTaskPath(taskId, this);
