@@ -61,6 +61,7 @@ export interface UnifiedViewFilters {
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
+	limit?: number;
 }
 
 export interface KanbanSharedFilters {
@@ -69,6 +70,7 @@ export interface KanbanSharedFilters {
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
+	limit?: number;
 }
 
 export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSharedFilters {
@@ -78,6 +80,7 @@ export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSh
 		labelFilter: [...filters.labelFilter],
 		labelMatch: filters.labelMatch,
 		milestoneFilter: filters.milestoneFilter,
+		limit: filters.limit,
 	};
 }
 
@@ -92,11 +95,11 @@ export function filterTasksForKanban(
 		filters.labelFilter.length === 0 &&
 		!filters.milestoneFilter
 	) {
-		return [...tasks];
+		return filters.limit !== undefined ? tasks.slice(0, filters.limit) : [...tasks];
 	}
 
 	const searchIndex = createTaskSearchIndex(tasks);
-	return applySharedTaskFilters(
+	const filteredTasks = applySharedTaskFilters(
 		tasks,
 		{
 			query: filters.searchQuery,
@@ -108,6 +111,7 @@ export function filterTasksForKanban(
 		},
 		searchIndex,
 	);
+	return filters.limit !== undefined ? filteredTasks.slice(0, filters.limit) : filteredTasks;
 }
 
 export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | undefined): UnifiedViewFilters {
@@ -118,6 +122,7 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 		labelFilter: [...(filter?.labels || [])],
 		labelMatch: filter?.labelMatch ?? "any",
 		milestoneFilter: filter?.milestone || "",
+		limit: filter?.limit,
 	};
 }
 
@@ -130,6 +135,7 @@ export function mergeUnifiedViewFilters(current: UnifiedViewFilters, update: Uni
 		labelFilter: [...update.labelFilter],
 		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
 		milestoneFilter: update.milestoneFilter,
+		limit: update.limit ?? current.limit,
 	};
 }
 
@@ -337,7 +343,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					labelFilter: currentFilters.labelFilter,
 					labelMatch: currentFilters.labelMatch,
 					milestoneFilter: currentFilters.milestoneFilter,
-					limit: options.filter?.limit,
+					limit: currentFilters.limit,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					onTaskChange: (newTask) => {
@@ -393,6 +399,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 							labelFilter: [...filters.labelFilter],
 							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
 							milestoneFilter: filters.milestoneFilter,
+							limit: filters.limit ?? currentFilters.limit,
 						};
 					},
 					subscribeUpdates: (updater) => {

@@ -192,6 +192,7 @@ export async function renderBoardTui(
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
 			milestoneFilter: string;
+			limit?: number;
 		};
 		availableLabels?: string[];
 		availableMilestones?: string[];
@@ -201,6 +202,7 @@ export async function renderBoardTui(
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
 			milestoneFilter: string;
+			limit?: number;
 		}) => void;
 		milestoneMode?: boolean;
 		milestoneEntities?: Milestone[];
@@ -238,8 +240,8 @@ export async function renderBoardTui(
 
 		let currentTasks = initialTasks;
 		let columns: ColumnView[] = [];
-		let currentColumnsData = initialColumns;
-		let currentStatuses = currentColumnsData.map((column) => column.status);
+		let currentColumnsData: ColumnData[] = [];
+		let currentStatuses = initialColumns.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
@@ -253,6 +255,7 @@ export async function renderBoardTui(
 			labelFilter: [...(options?.filters?.labelFilter ?? [])],
 			labelMatch: options?.filters?.labelMatch ?? "any",
 			milestoneFilter: options?.filters?.milestoneFilter ?? "",
+			limit: options?.filters?.limit,
 		};
 		const runWithModalGuard = async <T>(operation: () => Promise<T>): Promise<T> => {
 			modalOpen = true;
@@ -299,7 +302,8 @@ export async function renderBoardTui(
 				sharedFilters.searchQuery.trim() ||
 					sharedFilters.priorityFilter ||
 					sharedFilters.labelFilter.length > 0 ||
-					sharedFilters.milestoneFilter,
+					sharedFilters.milestoneFilter ||
+					sharedFilters.limit !== undefined,
 			);
 		const emitFilterChange = () => {
 			options?.onFilterChange?.({
@@ -308,25 +312,29 @@ export async function renderBoardTui(
 				labelFilter: [...sharedFilters.labelFilter],
 				labelMatch: sharedFilters.labelMatch,
 				milestoneFilter: sharedFilters.milestoneFilter,
+				limit: sharedFilters.limit,
 			});
 		};
 		const getFilteredTasks = (): Task[] => {
+			let filteredTasks: Task[];
 			if (!hasActiveSharedFilters()) {
-				return [...currentTasks];
+				filteredTasks = [...currentTasks];
+			} else {
+				const searchIndex = createTaskSearchIndex(currentTasks);
+				filteredTasks = applySharedTaskFilters(
+					currentTasks,
+					{
+						query: sharedFilters.searchQuery,
+						priority: sharedFilters.priorityFilter as "high" | "medium" | "low" | undefined,
+						labels: sharedFilters.labelFilter,
+						labelMatch: sharedFilters.labelMatch,
+						milestone: sharedFilters.milestoneFilter || undefined,
+						resolveMilestoneLabel,
+					},
+					searchIndex,
+				);
 			}
-			const searchIndex = createTaskSearchIndex(currentTasks);
-			return applySharedTaskFilters(
-				currentTasks,
-				{
-					query: sharedFilters.searchQuery,
-					priority: sharedFilters.priorityFilter as "high" | "medium" | "low" | undefined,
-					labels: sharedFilters.labelFilter,
-					labelMatch: sharedFilters.labelMatch,
-					milestone: sharedFilters.milestoneFilter || undefined,
-					resolveMilestoneLabel,
-				},
-				searchIndex,
-			);
+			return sharedFilters.limit !== undefined ? filteredTasks.slice(0, sharedFilters.limit) : filteredTasks;
 		};
 
 		// Move mode state
@@ -824,7 +832,7 @@ export async function renderBoardTui(
 			screen.render();
 		};
 
-		rebuildColumns(initialColumns);
+		renderView();
 		const firstColumn = columns[0];
 		if (firstColumn) {
 			currentCol = 0;

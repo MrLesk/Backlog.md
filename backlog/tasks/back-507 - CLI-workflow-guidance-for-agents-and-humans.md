@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-13 14:12'
-updated_date: '2026-06-14 20:56'
+updated_date: '2026-06-14 21:23'
 labels: []
 milestone: m-7
 dependencies: []
@@ -174,6 +174,8 @@ Follow-up check found two new Codex review threads after commit `080196e`: unkno
 Review follow-up: addressing remaining CLI-first public-surface polish items from PR goal review, including init/agents help, validation hints, MCP overview alignment, and overview/detail-guide balance.
 
 Final PR polish validation passed: focused changed-file tests, bunx tsc --noEmit, bun run check ., bun run build, git diff --check, and full bun test (1323 pass, 2 skip, 0 fail).
+
+PR #686 follow-up: addressed new Codex comments by carrying task-list limit through shared task-list/Kanban filters and rendering the initial Kanban board from the seeded filtered task set. Validation passed: focused unified-view/board tests, bunx tsc --noEmit, bun run check ., bun run build, and full bun test (1327 pass, 2 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
