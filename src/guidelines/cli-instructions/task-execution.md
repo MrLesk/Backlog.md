@@ -9,7 +9,8 @@ Before writing code for non-trivial work:
 1. Read the task:
    - `backlog task view {{TASK_ID:123}} --plain`
 2. Mark it in progress and assign yourself:
-   - `backlog task edit {{TASK_ID:123}} -s "In Progress" -a @your-name`
+   - Inspect accepted statuses if needed: `backlog task edit {{TASK_ID:123}} --help`
+   - `backlog task edit {{TASK_ID:123}} -s "<active status>" -a @your-name`
 3. Review description, acceptance criteria, dependencies, references, and documentation.
 4. Inspect relevant code and tests.
 5. Draft an implementation plan.
@@ -50,7 +51,7 @@ Use CLI commands for Backlog changes:
 
 - Read: `backlog task view {{TASK_ID:123}} --plain`
 - Search: `backlog search "query" --plain`
-- List with task filters: `backlog task list --status "In Progress" --assignee @your-name --labels backend --search "auth" --limit 20 --plain`
+- List with task filters: `backlog task list --status "<active status>" --assignee @your-name --labels backend --search "auth" --limit 20 --plain`
 - Update: `backlog task edit {{TASK_ID:123}} ...`
 - Create docs: `backlog doc create "Title"`
 - Update docs: `backlog doc update doc-1 --content "Markdown"`

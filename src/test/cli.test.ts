@@ -42,6 +42,8 @@ describe("CLI Integration", () => {
 			expect(output).toContain("Local instructions:");
 			expect(output).toContain("backlog instructions overview");
 			expect(output).not.toContain("unknown option '--plain'");
+			expect(output).not.toContain("\u001B[");
+			expect(output).not.toContain("\u001B]");
 		});
 	});
 
@@ -123,9 +125,15 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain(
 				'backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain',
 			);
+			expect(taskCreation).toContain('backlog task list --status "<active status>" --plain');
+			expect(taskCreation).not.toContain('backlog task list --status "In Progress" --plain');
+			expect(overview).toContain('backlog task edit BACK-123 -s "<active status>" -a @your-name');
+			expect(overview).not.toContain('backlog task edit BACK-123 -s "In Progress" -a @your-name');
 			expect(taskExecution).toContain(
-				'backlog task list --status "In Progress" --assignee @your-name --labels backend --search "auth" --limit 20 --plain',
+				'backlog task list --status "<active status>" --assignee @your-name --labels backend --search "auth" --limit 20 --plain',
 			);
+			expect(taskExecution).toContain('backlog task edit BACK-123 -s "<active status>" -a @your-name');
+			expect(taskExecution).not.toContain('backlog task edit BACK-123 -s "In Progress" -a @your-name');
 			expect(taskFinalization).toContain("configured terminal status");
 			expect(taskFinalization).toContain("Inspect accepted statuses if needed: `backlog task edit BACK-123 --help`");
 			expect(taskFinalization).toContain('backlog task edit BACK-123 -s "<terminal status>"');
@@ -161,7 +169,7 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain('backlog task create "Add bulk update UI" --dep FEAT-21');
 			expect(createHelp).toContain('backlog task create -p FEAT-1 "Add tests"');
 			expect(listHelp).toContain("backlog task list --parent FEAT-1");
-			expect(editHelp).toContain('backlog task edit FEAT-1 --status "In Progress" -a @sara');
+			expect(editHelp).toContain('backlog task edit FEAT-1 --status "<active status>" -a @sara');
 			for (const output of [overview, taskCreation, createHelp, listHelp, editHelp]) {
 				expect(output).not.toContain("BACK-");
 			}

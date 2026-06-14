@@ -133,7 +133,33 @@ describe("CLI milestone management", () => {
 		expect(task?.milestone).toBe("Legacy Release");
 	});
 
-	it("removes milestones with clear, keep, and reassign task-handling modes", async () => {
+	it("removes milestones and clears matching task values by default", async () => {
+		const core = new Core(TEST_DIR);
+
+		await $`bun ${cliPath} milestone add "Release A"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task create "Task A" --milestone "Release A" --plain`.cwd(TEST_DIR).quiet();
+
+		const clear = await $`bun ${cliPath} milestone remove "Release A"`.cwd(TEST_DIR).quiet();
+
+		expect(clear.exitCode).toBe(0);
+		expect(clear.stdout.toString()).toContain("Cleared milestone for 1 local task: TASK-1");
+		expect((await core.filesystem.loadTask("task-1"))?.milestone).toBeUndefined();
+	});
+
+	it("removes milestones and keeps task values when requested", async () => {
+		const core = new Core(TEST_DIR);
+
+		await $`bun ${cliPath} milestone add "Keep Value"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task create "Task A" --milestone "Keep Value" --plain`.cwd(TEST_DIR).quiet();
+
+		const keep = await $`bun ${cliPath} milestone remove "Keep Value" --task-handling keep`.cwd(TEST_DIR).quiet();
+
+		expect(keep.exitCode).toBe(0);
+		expect(keep.stdout.toString()).toContain("Kept task milestone values unchanged (taskHandling=keep).");
+		expect((await core.filesystem.loadTask("task-1"))?.milestone).toBe("m-0");
+	});
+
+	it("removes milestones and reassigns matching task values when requested", async () => {
 		const core = new Core(TEST_DIR);
 
 		await $`bun ${cliPath} milestone add "Release A"`.cwd(TEST_DIR).quiet();
@@ -149,19 +175,6 @@ describe("CLI milestone management", () => {
 		expect(reassign.stdout.toString()).toContain('Removed milestone "Release A" (m-0).');
 		expect(reassign.stdout.toString()).toContain('Reassigned 1 local task to "Release B" (m-1): TASK-1');
 		expect((await core.filesystem.loadTask("task-1"))?.milestone).toBe("m-1");
-
-		const clear = await $`bun ${cliPath} milestone remove "Release B"`.cwd(TEST_DIR).quiet();
-		expect(clear.exitCode).toBe(0);
-		expect(clear.stdout.toString()).toContain("Cleared milestone for 1 local task: TASK-1");
-		expect((await core.filesystem.loadTask("task-1"))?.milestone).toBeUndefined();
-
-		await $`bun ${cliPath} milestone add "Keep Value"`.cwd(TEST_DIR).quiet();
-		await $`bun ${cliPath} task edit task-1 --milestone "Keep Value" --plain`.cwd(TEST_DIR).quiet();
-
-		const keep = await $`bun ${cliPath} milestone remove "Keep Value" --task-handling keep`.cwd(TEST_DIR).quiet();
-		expect(keep.exitCode).toBe(0);
-		expect(keep.stdout.toString()).toContain("Kept task milestone values unchanged (taskHandling=keep).");
-		expect((await core.filesystem.loadTask("task-1"))?.milestone).toBe("m-2");
 	});
 
 	it("validates remove task-handling flags and required reassign targets", async () => {

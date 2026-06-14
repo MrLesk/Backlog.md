@@ -17,15 +17,16 @@ Create tasks for work like bug fixes that need investigation, feature work, API 
 
 1. Search first:
    - `backlog search "query" --plain`
-   - `backlog task list --status "To Do" --plain`
-   - `backlog task list --status "In Progress" --plain`
+   - `backlog task list --status "<todo status>" --plain`
+   - `backlog task list --status "<active status>" --plain`
    - `backlog task list --search "login" --labels frontend,bug --limit 20 --plain`
 2. Read the relevant task:
    - `backlog task view {{TASK_ID:123}} --plain`
 3. Create a task only when no suitable task exists:
    - `backlog task create "Title" -d "Description" --ac "Acceptance criterion"`
 4. Execute through the task:
-   - `backlog task edit {{TASK_ID:123}} -s "In Progress" -a @your-name`
+   - Inspect accepted statuses if needed: `backlog task edit {{TASK_ID:123}} --help`
+   - `backlog task edit {{TASK_ID:123}} -s "<active status>" -a @your-name`
    - `backlog task edit {{TASK_ID:123}} --plan "Implementation plan"`
    - `backlog task edit {{TASK_ID:123}} --notes "Progress note"`
 5. Finalize:

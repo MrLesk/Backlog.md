@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { formatRootEntry } from "../ui/root-entry.ts";
+import { formatRootEntry, printRootEntry } from "../ui/root-entry.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -36,6 +36,29 @@ describe("CLI root entry (bare run)", () => {
 		expect(out).toContain("Common workflow:");
 		expect(out).not.toContain("\u001B[");
 		expect(out).not.toContain("\u001B]");
+	});
+
+	it("honors explicit color false even when stdout is a TTY", async () => {
+		const originalWrite = process.stdout.write;
+		const originalIsTTY = process.stdout.isTTY;
+		let output = "";
+
+		Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+		process.stdout.write = ((chunk: string | Uint8Array) => {
+			output += chunk.toString();
+			return true;
+		}) as typeof process.stdout.write;
+
+		try {
+			await printRootEntry({ version: "1.2.3", initialized: true, color: false });
+		} finally {
+			process.stdout.write = originalWrite;
+			Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: originalIsTTY });
+		}
+
+		expect(output).toContain("Backlog.md v1.2.3");
+		expect(output).not.toContain("\u001B[");
+		expect(output).not.toContain("\u001B]");
 	});
 
 	it("prints a plain local entry point in non-initialized repo", async () => {

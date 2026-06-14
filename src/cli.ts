@@ -459,6 +459,7 @@ try {
 		await printRootEntry({
 			version,
 			initialized,
+			...(rawArgs.includes("--plain") ? { color: false } : {}),
 		});
 		// Ensure we don't enter Commander command parsing
 		process.exit(0);
@@ -1701,7 +1702,7 @@ addHelpSchema(program.command("search [query]"), {
 		{ name: "limit", type: "Integer", description: "Maximum number of results" },
 	],
 	output: "Interactive search UI or plain text with --plain",
-	examples: ['backlog search "auth" --plain', 'backlog search "api" --type task --status "In Progress"'],
+	examples: ['backlog search "auth" --plain', 'backlog search "api" --type task --status "<active status>"'],
 })
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
@@ -2002,7 +2003,7 @@ addHelpSchema(taskCmd.command("list"), {
 	],
 	output: "Interactive task list or plain text with --plain",
 	examples: [
-		'backlog task list --status "To Do" --plain',
+		'backlog task list --status "<todo status>" --plain',
 		"backlog task list --parent {{TASK_ID:1}}",
 		'backlog task list --labels frontend,bug --search "login" --limit 10 --plain',
 	],
@@ -2336,7 +2337,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	writes: "Updates task metadata and structured task sections through Backlog.md",
 	output: "Updated task details; use --plain for text output",
 	examples: [
-		'backlog task edit {{TASK_ID:1}} --status "In Progress" -a @sara',
+		'backlog task edit {{TASK_ID:1}} --status "<active status>" -a @sara',
 		"backlog task edit {{TASK_ID:1}} --check-ac 1",
 	],
 })

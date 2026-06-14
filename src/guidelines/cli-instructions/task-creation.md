@@ -9,8 +9,8 @@ Always check whether the work is already tracked.
 Recommended CLI commands:
 
 - `backlog search "desktop app" --plain`
-- `backlog task list --status "To Do" --plain`
-- `backlog task list --status "In Progress" --plain`
+- `backlog task list --status "<todo status>" --plain`
+- `backlog task list --status "<active status>" --plain`
 - `backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain`
 
 Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--assignee`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable.

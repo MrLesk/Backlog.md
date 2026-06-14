@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-13 14:12'
-updated_date: '2026-06-14 06:12'
+updated_date: '2026-06-14 14:58'
 labels: []
 milestone: m-7
 dependencies: []
@@ -20,6 +20,33 @@ documentation:
   - src/guidelines/mcp/task-execution.md
   - src/guidelines/mcp/task-finalization.md
   - src/mcp/workflow-guides.ts
+modified_files:
+  - src/cli.ts
+  - src/ui/root-entry.ts
+  - src/ui/terminal.ts
+  - src/guidelines/agent-guidelines.md
+  - src/guidelines/agent-instructions.ts
+  - src/guidelines/cli-instructions/overview.md
+  - src/guidelines/cli-instructions/task-creation.md
+  - src/guidelines/cli-instructions/task-execution.md
+  - src/guidelines/cli-instructions/task-finalization.md
+  - src/guidelines/mcp/overview.md
+  - src/guidelines/mcp/task-creation.md
+  - src/guidelines/mcp/task-execution.md
+  - src/guidelines/mcp/task-finalization.md
+  - src/guidelines/mcp/resources.ts
+  - src/guidelines/shared.ts
+  - src/commands/help-schema.ts
+  - src/agent-instructions.ts
+  - src/index.ts
+  - src/test/cli.test.ts
+  - src/test/cli-root-entry.test.ts
+  - src/test/cli-milestone-management.test.ts
+  - src/test/agent-instructions.test.ts
+  - src/test/help-schema.test.ts
+  - README.md
+  - CLI-INSTRUCTIONS.md
+  - AGENTS.md
 priority: high
 ordinal: 31000
 ---
@@ -80,6 +107,13 @@ PR comment cleanup plan for review on commit 792883c:
 2. Help schema worker: stop advertising synthetic `Draft` where command status values reject it, while preserving `Draft` for task creation help. Add/adjust help-schema or CLI help tests.
 3. Finalization instructions worker: update CLI finalization guide so it does not hard-code `Done`; it must point agents to configured statuses / configured terminal status and remain useful in rendered instruction output. Add/adjust instruction rendering tests if needed.
 4. Coordinator: integrate subagent patches, run focused tests, then `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and full `bun test`; push if clean.
+
+Latest Codex review cleanup plan for commit 7f72eb3:
+
+1. Preserve deterministic plain root output by passing an explicit color override to `printRootEntry` when root is invoked as `backlog --plain`; add/adjust a root-entry CLI test.
+2. Update CLI task-execution guidance so it does not hard-code `In Progress`; instruct agents to inspect accepted statuses and use the configured active/in-progress status. Update rendered instruction tests.
+3. Split the slow milestone removal CLI test into separate clear, keep, and reassign scenarios so `bun test src/test/cli-milestone-management.test.ts` stays under Bun's default per-test timeout.
+4. Run focused tests, typecheck/check/build as needed, push, then verify/resolve all Codex review threads so PR #686 has no unresolved Codex comments.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -96,14 +130,18 @@ PR #686 status-help review fix: split CLI status help so task create advertises 
 Addressed PR #686 finalization-guide feedback: CLI finalization instructions now use the configured terminal status instead of a hard-coded Done command, with rendered-output assertions updated. Validation: bun test src/test/cli.test.ts -t "backlog instructions command" passes; bunx tsc --noEmit passes; focused Biome check on touched instruction files passes. Full bun run check . is currently blocked by a parallel formatting change in src/cli.ts.
 
 Latest PR review cleanup complete. Helmholtz fixed root `--plain` and task-list limit behavior; Zeno fixed command-specific status help; Hegel fixed finalization guide wording. Coordinator normalized status values, reviewed the integrated diff, and validated with focused CLI tests, typecheck, build, Biome, diff check, and full test suite.
+
+Reopened for the latest Codex review on commit 7f72eb3. Current actionable threads: root `--plain` should suppress color in TTY, task-execution guide should avoid hard-coded `In Progress`, and the slow milestone removal test should be split. User explicitly requested no remaining unresolved Codex comments, so after code fixes and push the review threads will be verified and resolved if still open.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Addressed the latest PR #686 review feedback using subagents for the independent fix slices. The branch now preserves bare `backlog --plain` root output, applies `task list --plain --limit` to the globally sorted/filtered task set before regrouping, limits `Draft` status help to task creation, and updates CLI finalization guidance to use the configured terminal status instead of hard-coded `Done`.
+Implemented the CLI-first workflow guidance surface for agents and humans while preserving MCP as an optional integration. The branch adds embedded CLI instruction guides, short generated agent nudges, public command help schemas, improved self-correcting CLI errors, root-command local guidance, CLI parity for milestone/document/task-list operations, and configured-prefix/status-aware examples.
 
-Validation passed: `bun test src/test/cli.test.ts`, `bunx tsc --noEmit`, `bun run build`, `bun run check .`, `git diff --check`, and full `bun test` (1311 pass, 2 skip, 0 fail).
+Addressed PR #686 review feedback across multiple rounds: bare `backlog --plain` now remains deterministic and color-free in TTYs, task-list limits apply after global sorting/filtering before regrouping, command-specific status help no longer advertises invalid `Draft` values, finalization/execution guides avoid hard-coded statuses, milestone add honors auto-commit, generated instruction blocks migrate from old markers, label filtering is case-insensitive, and the slow milestone removal test was split into focused cases.
+
+Validation passed: focused CLI/root/milestone tests, `bunx tsc --noEmit`, `bun run check .`, `bun run build`, `git diff --check`, and full `bun test`.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

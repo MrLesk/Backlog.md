@@ -74,6 +74,6 @@ export function formatRootEntry({ version, initialized, color = false }: RootEnt
 }
 
 export async function printRootEntry(options: RootEntryOptions): Promise<void> {
-	const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+	const color = options.color ?? (Boolean(process.stdout.isTTY) && !process.env.NO_COLOR);
 	process.stdout.write(formatRootEntry({ ...options, color }));
 }
