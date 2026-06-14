@@ -14,10 +14,11 @@ Use this guide when implementation is complete and you are ready to hand off the
    - `backlog task edit {{TASK_ID:123}} --append-notes "Validation passed: bun test ..."`
 5. Write a concise final summary:
    - `backlog task edit {{TASK_ID:123}} --final-summary "Changed X, verified with Y."`
-6. Mark the task Done:
-   - `backlog task edit {{TASK_ID:123}} -s Done`
+6. Mark the task with the configured terminal status:
+   - Inspect accepted statuses if needed: `backlog task edit {{TASK_ID:123}} --help`
+   - `backlog task edit {{TASK_ID:123}} -s "<terminal status>"`
 
-Tasks stay in Done until periodic cleanup moves them to completed. Do not archive completed work.
+Tasks in the terminal status stay there until periodic cleanup moves them to completed. Do not archive completed work.
 
 ### Definition of Done Checklist
 
@@ -26,6 +27,7 @@ Confirm:
 - The implementation plan exists and matches the final solution.
 - Acceptance criteria are checked.
 - Definition of Done items are checked.
+- The task uses the configured terminal status.
 - Relevant tests or checks pass.
 - Documentation/configuration updates are complete when required.
 - Implementation notes contain useful decisions or validation results.

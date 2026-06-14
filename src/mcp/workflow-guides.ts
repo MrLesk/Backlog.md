@@ -59,7 +59,7 @@ export const WORKFLOW_GUIDES: WorkflowGuideDefinition<WorkflowGuideKey>[] = [
 		key: "task-finalization",
 		uri: "backlog://workflow/task-finalization",
 		name: "Task Finalization Guide",
-		description: "How to verify, summarize, and mark work Done",
+		description: "How to verify, summarize, and finish work",
 		mimeType: "text/markdown",
 		resourceText: MCP_TASK_FINALIZATION_GUIDE,
 	},

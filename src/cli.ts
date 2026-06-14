@@ -440,7 +440,8 @@ try {
 	}
 	const wantsHelp = rawArgs.includes("-h") || rawArgs.includes("--help");
 	const wantsVersion = rawArgs.includes("-v") || rawArgs.includes("--version");
-	if (rawArgs.length === 0 && !wantsHelp && !wantsVersion) {
+	const isBareRoot = rawArgs.length === 0 || (rawArgs.length === 1 && rawArgs[0] === "--plain");
+	if (isBareRoot && !wantsHelp && !wantsVersion) {
 		let initialized = false;
 		try {
 			const runtimeCwd = await resolveRuntimeCwd();
@@ -1511,7 +1512,11 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	required: [{ name: "title", type: "String", description: "Task title; prompted when omitted in interactive mode" }],
 	optional: [
 		{ name: "description", type: "Markdown", description: "Task outcome and context" },
-		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
+		{
+			name: "status",
+			type: () => statusType({ includeDraft: true }),
+			description: "Project task status; case-insensitive",
+		},
 		{ name: "assignee", type: "Assignee list", description: "One or more @names" },
 		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
 		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Task priority" },
@@ -2131,11 +2136,11 @@ addHelpSchema(taskCmd.command("list"), {
 				return;
 			}
 
+			const displayTasks = taskLimit !== undefined ? filtered.slice(0, taskLimit) : filtered;
+
 			if (options.sort && options.sort.toLowerCase() === "priority") {
-				const sortedByPriority = sortTasks(filtered, "priority");
-				const limitedByPriority = taskLimit !== undefined ? sortedByPriority.slice(0, taskLimit) : sortedByPriority;
 				console.log("Tasks (sorted by priority):");
-				for (const t of limitedByPriority) {
+				for (const t of displayTasks) {
 					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
 					const statusIndicator = t.status ? ` (${t.status})` : "";
 					console.log(`  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}`);
@@ -2151,7 +2156,7 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			const groups = new Map<string, Task[]>();
-			for (const task of filtered) {
+			for (const task of displayTasks) {
 				const rawStatus = (task.status || "").trim();
 				const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) || rawStatus;
 				const list = groups.get(canonicalStatus) || [];
@@ -2164,26 +2169,11 @@ addHelpSchema(taskCmd.command("list"), {
 				...Array.from(groups.keys()).filter((status) => !statuses.includes(status)),
 			];
 
-			let remainingLimit = taskLimit;
 			for (const status of orderedStatuses) {
 				const list = groups.get(status);
 				if (!list) continue;
-				let sortedList = list;
-				if (options.sort) {
-					sortedList = sortTasks(list, options.sort.toLowerCase());
-				}
-				if (remainingLimit !== undefined) {
-					if (remainingLimit <= 0) {
-						break;
-					}
-					sortedList = sortedList.slice(0, remainingLimit);
-					remainingLimit -= sortedList.length;
-					if (sortedList.length === 0) {
-						continue;
-					}
-				}
 				console.log(`${status || "No Status"}:`);
-				sortedList.forEach((task) => {
+				list.forEach((task) => {
 					const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 					console.log(`  ${priorityIndicator}${task.id} - ${task.title}`);
 				});

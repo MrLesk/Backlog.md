@@ -32,6 +32,19 @@ describe("CLI Integration", () => {
 		}
 	});
 
+	describe("root command", () => {
+		it("prints the root entry when --plain is passed without a subcommand", async () => {
+			const result = await $`bun ${CLI_PATH} --plain`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).toBe(0);
+			expect(output).toContain("Backlog.md v");
+			expect(output).toContain("Local instructions:");
+			expect(output).toContain("backlog instructions overview");
+			expect(output).not.toContain("unknown option '--plain'");
+		});
+	});
+
 	describe("backlog instructions command", () => {
 		it("prints the guide index by default", async () => {
 			const output = await $`bun ${CLI_PATH} instructions`.cwd(TEST_DIR).text();
@@ -44,6 +57,8 @@ describe("CLI Integration", () => {
 			expect(output).toContain("task-execution");
 			expect(output).toContain("task-finalization");
 			expect(output).toContain("init-required");
+			expect(output).toContain("How to verify, summarize, and finish work");
+			expect(output).not.toContain("mark work Done");
 			expect(output).toContain("    'backlog instructions overview'");
 			expect(output).toContain("      -> Required first read before answering any user request");
 			expect(output).not.toContain("--plain");
@@ -73,6 +88,9 @@ describe("CLI Integration", () => {
 			const taskExecution = normalizeCliOutput(
 				await $`bun ${CLI_PATH} instructions task-execution`.cwd(TEST_DIR).text(),
 			);
+			const taskFinalization = normalizeCliOutput(
+				await $`bun ${CLI_PATH} instructions task-finalization`.cwd(TEST_DIR).text(),
+			);
 			const initRequired = normalizeCliOutput(await $`bun ${CLI_PATH} instructions init-required`.cwd(TEST_DIR).text());
 
 			expect(overview).toContain("## Backlog.md Overview (CLI)");
@@ -89,8 +107,11 @@ describe("CLI Integration", () => {
 				"`backlog instructions task-execution`\n  -> Read before planning or updating task work: how to plan, update, and work through tasks",
 			);
 			expect(overview).toContain(
-				"`backlog instructions task-finalization`\n  -> Read before marking work Done: how to verify, summarize, and finish tasks",
+				"`backlog instructions task-finalization`\n  -> Read before finishing tasks: how to verify, summarize, and finish tasks",
 			);
+			expect(overview).toContain("Inspect accepted statuses if needed: `backlog task edit BACK-123 --help`");
+			expect(overview).toContain('backlog task edit BACK-123 -s "<terminal status>"');
+			expect(overview).not.toContain("backlog task edit BACK-123 -s Done");
 			expect(overview).toContain(
 				"Important: Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use Backlog commands so automatic metadata stays complete.",
 			);
@@ -105,6 +126,10 @@ describe("CLI Integration", () => {
 			expect(taskExecution).toContain(
 				'backlog task list --status "In Progress" --assignee @your-name --labels backend --search "auth" --limit 20 --plain',
 			);
+			expect(taskFinalization).toContain("configured terminal status");
+			expect(taskFinalization).toContain("Inspect accepted statuses if needed: `backlog task edit BACK-123 --help`");
+			expect(taskFinalization).toContain('backlog task edit BACK-123 -s "<terminal status>"');
+			expect(taskFinalization).not.toContain("backlog task edit BACK-123 -s Done");
 			expect(taskCreation).not.toContain("task_create");
 			expect(taskCreation).not.toContain("task_search");
 			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");
@@ -192,7 +217,8 @@ describe("CLI Integration", () => {
 			expect(createHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(createHelp).toContain("priority: one of: high, medium, low");
 			expect(createHelp).toContain("ordinal: Integer");
-			expect(listHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(listHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(listHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(listHelp).toContain("priority: one of: high, medium, low");
 			expect(listHelp).toContain("labels: Comma-separated strings");
 			expect(listHelp).toContain("search: String");
@@ -200,7 +226,8 @@ describe("CLI Integration", () => {
 			expect(listHelp).toContain("sort: one of: priority, id");
 			expect(listHelp).toContain('backlog task list --labels frontend,bug --search "login" --limit 10 --plain');
 			expect(editHelp).toContain("taskId: Task ID");
-			expect(editHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(editHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(editHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(editHelp).toContain("plan: Markdown");
 			expect(editHelp).toContain("Writes:");
 			expect(completeHelp).toContain("cleanup procedure");
@@ -222,10 +249,17 @@ describe("CLI Integration", () => {
 			);
 
 			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
+			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
+			const searchHelp = await $`bun ${CLI_PATH} search --help`.cwd(TEST_DIR).text();
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
 
 			expect(createHelp).toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
-			expect(editHelp).toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
+			expect(listHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			expect(searchHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			expect(editHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			for (const output of [listHelp, searchHelp, editHelp]) {
+				expect(output).not.toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
+			}
 		});
 
 		it("shows document, config, search, and cleanup schemas in help", async () => {
@@ -240,7 +274,8 @@ describe("CLI Integration", () => {
 			expect(configHelp).toContain("key: one of: defaultEditor, projectName, defaultStatus");
 			expect(configHelp).toContain("value: String");
 			expect(searchHelp).toContain("type: one or more of: task, document, decision");
-			expect(searchHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(searchHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(searchHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(searchHelp).toContain("priority: one of: high, medium, low");
 			expect(searchHelp).toContain("modified-file: Project-root-relative path");
 			expect(cleanupHelp).toContain("Writes:");
@@ -1058,7 +1093,7 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("TASK-2 - Profile Settings");
 		});
 
-		it("should apply limit after the plain-output sort order", async () => {
+		it("should apply plain limit before regrouping sorted tasks by status", async () => {
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
@@ -1079,7 +1114,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-2",
 					title: "High Priority Later ID",
-					status: "To Do",
+					status: "Done",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -1092,7 +1127,9 @@ describe("CLI Integration", () => {
 
 			const result = await $`bun ${CLI_PATH} task list --plain --limit 1`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
+			expect(out).toContain("Done:");
 			expect(out).toContain("[HIGH] TASK-2 - High Priority Later ID");
+			expect(out).not.toContain("To Do:");
 			expect(out).not.toContain("TASK-1 - Low Priority First ID");
 		});
 

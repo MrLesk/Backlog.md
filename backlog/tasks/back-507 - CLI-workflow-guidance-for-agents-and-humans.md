@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-13 14:12'
-updated_date: '2026-06-13 20:39'
+updated_date: '2026-06-14 06:12'
 labels: []
 milestone: m-7
 dependencies: []
@@ -73,6 +73,13 @@ CLI instructions are the default AI integration path. MCP stays supported as an 
 ## Verification
 
 Run targeted tests for touched areas first, then `bunx tsc --noEmit`, `bun run check .`, and broader `bun test` when shared CLI behavior changes.
+
+PR comment cleanup plan for review on commit 792883c:
+
+1. CLI behavior worker: fix `src/cli.ts` task-list `--limit` semantics so limit is applied to the globally sorted/filtered list before status regrouping, and preserve `backlog --plain` root output. Add/adjust CLI tests for both regressions.
+2. Help schema worker: stop advertising synthetic `Draft` where command status values reject it, while preserving `Draft` for task creation help. Add/adjust help-schema or CLI help tests.
+3. Finalization instructions worker: update CLI finalization guide so it does not hard-code `Done`; it must point agents to configured statuses / configured terminal status and remain useful in rendered instruction output. Add/adjust instruction rendering tests if needed.
+4. Coordinator: integrate subagent patches, run focused tests, then `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and full `bun test`; push if clean.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -81,12 +88,22 @@ Run targeted tests for touched areas first, then `bunx tsc --noEmit`, `bun run c
 Implemented the CLI instructions workflow and review fixes. `backlog instructions` serves CLI-specific guide content from `src/guidelines/cli-instructions`, while MCP resources/tools continue using the MCP guide files. Generated agent files use a short CLI nudge, `backlog init` defaults to CLI instructions while preserving MCP/no-AI choices, command help includes text input schemas, and common CLI errors point users toward help or accepted values.
 
 Follow-up BACK-507.6 is complete. The root command now prints a plain local documentation entry point with the text logo restored, and `backlog instructions` prints a plain guide index by default. Guide-specific commands print guide markdown directly. A copy audit cleaned command output, generated nudges, guide markdown, README, CLI-INSTRUCTIONS, and task copy.
+
+Reopened for latest PR review feedback. Four unresolved review threads found on the latest Codex review: task-list limit ordering, command-specific status help, configured terminal status wording in finalization instructions, and preserving `backlog --plain` root output. Fixes are being delegated to subagents with non-overlapping write ownership where possible.
+
+PR #686 status-help review fix: split CLI status help so task create advertises Draft while task edit/list/search use exact configured active statuses. Verified with bun test src/test/cli.test.ts, bunx tsc --noEmit, bun run check ., and rendered help sanity checks.
+
+Addressed PR #686 finalization-guide feedback: CLI finalization instructions now use the configured terminal status instead of a hard-coded Done command, with rendered-output assertions updated. Validation: bun test src/test/cli.test.ts -t "backlog instructions command" passes; bunx tsc --noEmit passes; focused Biome check on touched instruction files passes. Full bun run check . is currently blocked by a parallel formatting change in src/cli.ts.
+
+Latest PR review cleanup complete. Helmholtz fixed root `--plain` and task-list limit behavior; Zeno fixed command-specific status help; Hegel fixed finalization guide wording. Coordinator normalized status values, reviewed the integrated diff, and validated with focused CLI tests, typecheck, build, Biome, diff check, and full test suite.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented the CLI instructions workflow and review fixes: `backlog instructions` prints CLI-specific workflow guides, generated agent files use a short CLI nudge, `backlog init` defaults to CLI instructions while preserving MCP/no-AI choices, public command help includes text input schemas, and common CLI errors point users toward help or accepted values. MCP workflow resources/tools remain available. The root command follow-up now prints a plain local instruction hub with the text logo restored. Verification passed with focused tests, TypeScript, Biome, and full `bun test` before final copy-only corrections.
+Addressed the latest PR #686 review feedback using subagents for the independent fix slices. The branch now preserves bare `backlog --plain` root output, applies `task list --plain --limit` to the globally sorted/filtered task set before regrouping, limits `Draft` status help to task creation, and updates CLI finalization guidance to use the configured terminal status instead of hard-coded `Done`.
+
+Validation passed: `bun test src/test/cli.test.ts`, `bunx tsc --noEmit`, `bun run build`, `bun run check .`, `git diff --check`, and full `bun test` (1311 pass, 2 skip, 0 fail).
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

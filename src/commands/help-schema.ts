@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Command } from "commander";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { getStatusFieldEnumValues } from "../mcp/utils/schema-generators.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 
 export interface HelpField {
@@ -151,7 +150,17 @@ function findBacklogConfigPathSync(startDir: string): string | null {
 	return null;
 }
 
-export function getCliStatusValues(): string[] {
+function includeDraftStatus(statuses: string[]): string[] {
+	const normalizedStatuses = normalizeStatusValues(statuses);
+	const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
+	return hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
+}
+
+function normalizeStatusValues(statuses: string[]): string[] {
+	return statuses.map((status) => status.trim()).filter(Boolean);
+}
+
+export function getCliStatusValues(options?: { includeDraft?: boolean }): string[] {
 	let configuredStatuses: string[] = [...DEFAULT_STATUSES];
 	const configPath = findBacklogConfigPathSync(process.cwd());
 	if (configPath) {
@@ -165,7 +174,8 @@ export function getCliStatusValues(): string[] {
 		}
 	}
 
-	return getStatusFieldEnumValues({ statuses: configuredStatuses });
+	const normalizedStatuses = normalizeStatusValues(configuredStatuses);
+	return options?.includeDraft ? includeDraftStatus(normalizedStatuses) : normalizedStatuses;
 }
 
 export function getCliTaskPrefix(): string {
@@ -194,6 +204,6 @@ export function choiceType(values: readonly string[], options?: { multiple?: boo
 	return `${options?.multiple ? "one or more of" : "one of"}: ${values.join(", ")}`;
 }
 
-export function statusType(): string {
-	return `one of configured statuses: ${getCliStatusValues().join(", ")}`;
+export function statusType(options?: { includeDraft?: boolean }): string {
+	return `one of configured statuses: ${getCliStatusValues(options).join(", ")}`;
 }

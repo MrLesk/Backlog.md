@@ -32,7 +32,8 @@ Create tasks for work like bug fixes that need investigation, feature work, API 
    - `backlog task edit {{TASK_ID:123}} --check-ac 1`
    - `backlog task edit {{TASK_ID:123}} --check-dod 1`
    - `backlog task edit {{TASK_ID:123}} --final-summary "Summary"`
-   - `backlog task edit {{TASK_ID:123}} -s Done`
+   - Inspect accepted statuses if needed: `backlog task edit {{TASK_ID:123}} --help`
+   - `backlog task edit {{TASK_ID:123}} -s "<terminal status>"`
 
 ### Detailed Guides
 
@@ -43,7 +44,7 @@ Always read the relevant guide before that part of the workflow:
 - `backlog instructions task-execution`
   -> Read before planning or updating task work: how to plan, update, and work through tasks
 - `backlog instructions task-finalization`
-  -> Read before marking work Done: how to verify, summarize, and finish tasks
+  -> Read before finishing tasks: how to verify, summarize, and finish tasks
 
 Use `backlog <command> --help` before unfamiliar operations. Command help includes input fields, read/write behavior, output shape, and examples.
 
