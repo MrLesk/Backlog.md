@@ -2,15 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core, isGitRepository } from "../index.ts";
+import { CLI_AGENT_NUDGE, Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
+import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const normalizeCliOutput = (output: string) => output.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
 describe("CLI Integration", () => {
 	beforeEach(async () => {
@@ -29,6 +31,348 @@ describe("CLI Integration", () => {
 		} catch {
 			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
+	});
+
+	describe("root command", () => {
+		it("prints the root entry when --plain is passed without a subcommand", async () => {
+			const result = await $`bun ${CLI_PATH} --plain`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).toBe(0);
+			expect(output).toContain("Backlog.md v");
+			expect(output).toContain("Local instructions:");
+			expect(output).toContain("backlog instructions overview");
+			expect(output).not.toContain("unknown option '--plain'");
+			expect(output).not.toContain("\u001B[");
+			expect(output).not.toContain("\u001B]");
+		});
+	});
+
+	describe("backlog instructions command", () => {
+		it("prints the guide index by default", async () => {
+			const output = await $`bun ${CLI_PATH} instructions`.cwd(TEST_DIR).text();
+
+			expect(output).toContain("Backlog.md instructions");
+			expect(output).toContain("Start here:");
+			expect(output).toMatch(/'backlog instructions overview'\s+Required first read before answering any user request/);
+			expect(output).not.toMatch(/^\s+'backlog instructions'\s+List workflow guides/m);
+			expect(output).toContain("task-creation");
+			expect(output).toContain("task-execution");
+			expect(output).toContain("task-finalization");
+			expect(output).toContain("init-required");
+			expect(output).toContain("How to verify, summarize, and finish work");
+			expect(output).not.toContain("mark work Done");
+			expect(output).toContain("    'backlog instructions overview'");
+			expect(output).toContain("      -> Required first read before answering any user request");
+			expect(output).not.toContain("--plain");
+			expect(output).not.toContain("\u001B[");
+			expect(output).not.toContain("MCP Tools Quick Reference");
+			expect(output).not.toContain("task_search");
+			expect(output).not.toContain("backlog://workflow/");
+			expect(output).not.toContain("Always operate through MCP tools");
+			expect(output).not.toContain("bundled");
+			expect(output).not.toContain("binary");
+			expect(output).not.toContain("No network documentation");
+		});
+
+		it("lists available instruction guides", async () => {
+			const output = await $`bun ${CLI_PATH} instructions --list`.cwd(TEST_DIR).text();
+
+			expect(output).toContain("overview");
+			expect(output).toContain("task-creation");
+			expect(output).toContain("task-execution");
+			expect(output).toContain("task-finalization");
+			expect(output).toContain("init-required");
+		});
+
+		it("prints selected instruction guides", async () => {
+			const overview = normalizeCliOutput(await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text());
+			const taskCreation = normalizeCliOutput(await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text());
+			const taskExecution = normalizeCliOutput(
+				await $`bun ${CLI_PATH} instructions task-execution`.cwd(TEST_DIR).text(),
+			);
+			const taskFinalization = normalizeCliOutput(
+				await $`bun ${CLI_PATH} instructions task-finalization`.cwd(TEST_DIR).text(),
+			);
+			const initRequired = normalizeCliOutput(await $`bun ${CLI_PATH} instructions init-required`.cwd(TEST_DIR).text());
+
+			expect(overview).toContain("## Backlog.md Overview (CLI)");
+			expect(overview).toContain("### Start Every Request Here");
+			expect(overview).toContain(
+				"Use this overview to decide what to read or run next. The detailed guides contain the procedure for creating, executing, and finalizing tasks.",
+			);
+			expect(overview).toContain('backlog search "query" --plain');
+			expect(overview).toContain('backlog task list --search "login" --labels frontend,bug --limit 20 --plain');
+			expect(overview).toContain("backlog task view BACK-123 --plain");
+			expect(overview).toContain(
+				"Always read the relevant guide before that part of the workflow. Do not rely on this overview alone for these actions:",
+			);
+			expect(overview).toContain(
+				"`backlog instructions task-creation`\n  -> Read before creating tasks: how to search, scope, and create tasks",
+			);
+			expect(overview).toContain(
+				"`backlog instructions task-execution`\n  -> Read before planning or updating task work: how to plan, update, and work through tasks",
+			);
+			expect(overview).toContain(
+				"`backlog instructions task-finalization`\n  -> Read before finishing tasks: how to verify, summarize, and finish tasks",
+			);
+			expect(overview).not.toContain('backlog task create "Title"');
+			expect(overview).not.toContain("backlog task edit BACK-123 --plan");
+			expect(overview).not.toContain("backlog task edit BACK-123 --check-ac 1");
+			expect(overview).not.toContain("backlog task edit BACK-123 -s Done");
+			expect(overview).toContain(
+				"Important: Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use Backlog commands so automatic metadata stays complete.",
+			);
+			expect(overview).not.toContain("MCP Tools Quick Reference");
+			expect(overview).not.toContain("backlog://workflow/");
+			expect(taskCreation).toContain("## Task Creation Guide");
+			expect(taskCreation).toContain('backlog task create "Add project search"');
+			expect(taskCreation).toContain('backlog search "desktop app" --plain');
+			expect(taskCreation).toContain(
+				'backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain',
+			);
+			expect(taskCreation).toContain('backlog task list --status "<active status>" --plain');
+			expect(taskCreation).not.toContain('backlog task list --status "In Progress" --plain');
+			expect(taskExecution).toContain(
+				'backlog task list --status "<active status>" --assignee @your-name --labels backend --search "auth" --limit 20 --plain',
+			);
+			expect(taskExecution).toContain('backlog task edit BACK-123 -s "<active status>" -a @your-name');
+			expect(taskExecution).not.toContain('backlog task edit BACK-123 -s "In Progress" -a @your-name');
+			expect(taskFinalization).toContain("configured terminal status");
+			expect(taskFinalization).toContain("Inspect accepted statuses if needed: `backlog task edit BACK-123 --help`");
+			expect(taskFinalization).toContain('backlog task edit BACK-123 -s "<terminal status>"');
+			expect(taskFinalization).not.toContain("backlog task edit BACK-123 -s Done");
+			expect(taskCreation).not.toContain("task_create");
+			expect(taskCreation).not.toContain("task_search");
+			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");
+			expect(initRequired).toContain("backlog init --defaults");
+		}, 15_000);
+
+		it("renders task ID examples with the configured task prefix", async () => {
+			await mkdir(join(TEST_DIR, "backlog"), { recursive: true });
+			await Bun.write(
+				join(TEST_DIR, "backlog", "config.yml"),
+				[
+					'project_name: "Prefix Project"',
+					'statuses: ["To Do", "In Progress", "Done"]',
+					"labels: []",
+					"date_format: yyyy-mm-dd",
+					'task_prefix: "feat"',
+					"",
+				].join("\n"),
+			);
+
+			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
+			const taskCreation = await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text();
+			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
+			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
+			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
+
+			expect(overview).toContain("backlog task view FEAT-123 --plain");
+			expect(taskCreation).toContain('backlog task create -p FEAT-10 "Set up shell"');
+			expect(taskCreation).toContain('backlog task create "Add bulk update UI" --dep FEAT-21');
+			expect(createHelp).toContain('backlog task create -p FEAT-1 "Add tests"');
+			expect(listHelp).toContain("backlog task list --parent FEAT-1");
+			expect(editHelp).toContain('backlog task edit FEAT-1 --status "<active status>" -a @sara');
+			for (const output of [overview, taskCreation, createHelp, listHelp, editHelp]) {
+				expect(output).not.toContain("BACK-");
+			}
+		}, 15_000);
+
+		it("renders help and instruction examples from BACKLOG_CWD", async () => {
+			await mkdir(join(TEST_DIR, "backlog"), { recursive: true });
+			await Bun.write(
+				join(TEST_DIR, "backlog", "config.yml"),
+				[
+					'project_name: "Runtime Cwd Schema Project"',
+					'statuses: ["Ready", "Review", "Closed"]',
+					"labels: []",
+					"date_format: yyyy-mm-dd",
+					'task_prefix: "feat"',
+					"",
+				].join("\n"),
+			);
+			const outsideDir = join(TEST_DIR, "outside");
+			await mkdir(outsideDir, { recursive: true });
+			const env = { ...process.env, [BACKLOG_CWD_ENV]: TEST_DIR };
+
+			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(outsideDir).env(env).text();
+			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(outsideDir).env(env).text();
+			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(outsideDir).env(env).text();
+
+			expect(overview).toContain("backlog task view FEAT-123 --plain");
+			expect(createHelp).toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
+			expect(createHelp).toContain('backlog task create -p FEAT-1 "Add tests"');
+			expect(editHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			expect(editHelp).toContain('backlog task edit FEAT-1 --status "<active status>" -a @sara');
+			for (const output of [overview, createHelp, editHelp]) {
+				expect(output).not.toContain("BACK-");
+			}
+		}, 10_000);
+
+		it("does not recommend task complete in CLI workflow guides or agent nudge", async () => {
+			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
+			const taskCreation = await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text();
+			const taskExecution = await $`bun ${CLI_PATH} instructions task-execution`.cwd(TEST_DIR).text();
+			const taskFinalization = await $`bun ${CLI_PATH} instructions task-finalization`.cwd(TEST_DIR).text();
+
+			for (const guide of [overview, taskCreation, taskExecution, taskFinalization, CLI_AGENT_NUDGE]) {
+				expect(guide).not.toContain("backlog task complete");
+				expect(guide).not.toContain("task complete");
+				expect(guide).not.toContain("task_complete");
+			}
+		});
+
+		it("rejects unknown instruction guides with valid options", async () => {
+			const result = await $`bun ${CLI_PATH} instructions does-not-exist`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Unknown instruction guide: does-not-exist");
+			expect(output).toContain("Valid guides:");
+			expect(output).toContain("backlog instructions");
+		});
+	});
+
+	describe("command help input schemas", () => {
+		it("shows input schema details for init and instructions", async () => {
+			const initHelp = await $`bun ${CLI_PATH} init --help`.cwd(TEST_DIR).text();
+			const instructionsHelp = await $`bun ${CLI_PATH} instructions --help`.cwd(TEST_DIR).text();
+
+			expect(initHelp).toContain("Input schema:");
+			expect(initHelp).toContain("projectName: String");
+			expect(initHelp).toContain("--integration-mode: one of: cli, mcp, none");
+			expect(initHelp).toContain("(default: cli)");
+			expect(initHelp).toContain("CLI instructions are recommended");
+			expect(initHelp).toContain('backlog init "My Project" --defaults --integration-mode cli');
+			expect(initHelp).not.toContain("backlog init --integration-mode mcp");
+			expect(initHelp).toContain("Writes:");
+			expect(instructionsHelp).toContain(
+				"guide: one of: overview, task-creation, task-execution, task-finalization, init-required",
+			);
+			expect(instructionsHelp).toContain("Output:");
+		});
+
+		it("shows task command field types in help", async () => {
+			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
+			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
+			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
+			const completeHelp = await $`bun ${CLI_PATH} task complete --help`.cwd(TEST_DIR).text();
+
+			expect(createHelp).toContain("title: String");
+			expect(createHelp).toContain("description: Markdown");
+			expect(createHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(createHelp).toContain("priority: one of: high, medium, low");
+			expect(createHelp).toContain("ordinal: Integer");
+			expect(listHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(listHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(listHelp).toContain("priority: one of: high, medium, low");
+			expect(listHelp).toContain("labels: Comma-separated strings");
+			expect(listHelp).toContain("search: String");
+			expect(listHelp).toContain("limit: Positive integer");
+			expect(listHelp).toContain("sort: one of: priority, id");
+			expect(listHelp).toContain('backlog task list --labels frontend,bug --search "login" --limit 10 --plain');
+			expect(editHelp).toContain("taskId: Task ID");
+			expect(editHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(editHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(editHelp).toContain("plan: Markdown");
+			expect(editHelp).toContain("Writes:");
+			expect(completeHelp).toContain("cleanup procedure");
+			expect(completeHelp).toContain("disappear from the active Kanban board");
+			expect(completeHelp).toContain("cleanup/archive purposes");
+		});
+
+		it("shows configured status values in task help", async () => {
+			await mkdir(join(TEST_DIR, "backlog"), { recursive: true });
+			await Bun.write(
+				join(TEST_DIR, "backlog", "config.yml"),
+				[
+					'project_name: "Schema Project"',
+					'statuses: ["Ready", "Review", "Closed"]',
+					"labels: []",
+					"date_format: yyyy-mm-dd",
+					"",
+				].join("\n"),
+			);
+
+			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
+			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
+			const searchHelp = await $`bun ${CLI_PATH} search --help`.cwd(TEST_DIR).text();
+			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
+
+			expect(createHelp).toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
+			expect(listHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			expect(searchHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			expect(editHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			for (const output of [listHelp, searchHelp, editHelp]) {
+				expect(output).not.toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
+			}
+		});
+
+		it("shows document, config, search, and cleanup schemas in help", async () => {
+			const docHelp = await $`bun ${CLI_PATH} doc update --help`.cwd(TEST_DIR).text();
+			const configHelp = await $`bun ${CLI_PATH} config set --help`.cwd(TEST_DIR).text();
+			const searchHelp = await $`bun ${CLI_PATH} search --help`.cwd(TEST_DIR).text();
+			const cleanupHelp = await $`bun ${CLI_PATH} cleanup --help`.cwd(TEST_DIR).text();
+
+			expect(docHelp).toContain("content: Markdown");
+			expect(docHelp).toContain("path: Docs-relative path");
+			expect(docHelp).toContain("type: one of: readme, guide, specification, other");
+			expect(configHelp).toContain("key: one of: defaultEditor, projectName, defaultStatus");
+			expect(configHelp).toContain("value: String");
+			expect(searchHelp).toContain("type: one or more of: task, document, decision");
+			expect(searchHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(searchHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(searchHelp).toContain("priority: one of: high, medium, low");
+			expect(searchHelp).toContain("modified-file: Project-root-relative path");
+			expect(cleanupHelp).toContain("Writes:");
+		});
+	});
+
+	describe("self-correcting CLI errors", () => {
+		it("suggests likely commands and options", async () => {
+			const unknownCommand = await $`bun ${CLI_PATH} tesk list`.cwd(TEST_DIR).nothrow().quiet();
+			const unknownOption = await $`bun ${CLI_PATH} task list --statuz To Do`.cwd(TEST_DIR).nothrow().quiet();
+			const commandOutput = unknownCommand.stdout.toString() + unknownCommand.stderr.toString();
+			const optionOutput = unknownOption.stdout.toString() + unknownOption.stderr.toString();
+
+			expect(unknownCommand.exitCode).not.toBe(0);
+			expect(commandOutput).toContain("unknown command 'tesk'");
+			expect(commandOutput).toContain("Did you mean task?");
+			expect(commandOutput).toContain("Run with --help");
+			expect(unknownOption.exitCode).not.toBe(0);
+			expect(optionOutput).toContain("unknown option '--statuz'");
+			expect(optionOutput).toContain("Did you mean --status?");
+			expect(optionOutput).toContain("Run with --help");
+		});
+
+		it("points missing required arguments to help", async () => {
+			const result = await $`bun ${CLI_PATH} task view`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).not.toBe(0);
+			expect(output).toContain("missing required argument 'taskId'");
+			expect(output).toContain("Run with --help");
+		});
+
+		it("keeps validation errors concise and actionable", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} init ErrorProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
+
+			const priority = await $`bun ${CLI_PATH} task list --priority urgent`.cwd(TEST_DIR).nothrow().quiet();
+			const docPath = await $`bun ${CLI_PATH} doc create "Unsafe" -p ../outside`.cwd(TEST_DIR).nothrow().quiet();
+			const priorityOutput = priority.stdout.toString() + priority.stderr.toString();
+			const docPathOutput = docPath.stdout.toString() + docPath.stderr.toString();
+
+			expect(priority.exitCode).not.toBe(0);
+			expect(priorityOutput).toContain("Invalid priority: urgent. Valid values are: high, medium, low");
+			expect(priorityOutput).not.toContain("Error:");
+			expect(docPath.exitCode).not.toBe(0);
+			expect(docPathOutput).toContain("Document path cannot include traversal segments.");
+			expect(docPathOutput).not.toContain("Error:");
+		});
 	});
 
 	describe("backlog init command", () => {
@@ -182,7 +526,7 @@ describe("CLI Integration", () => {
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			expect(agentsFile).toBe(false);
 			expect(claudeFile).toBe(false);
-			expect(output).toContain("AI Integration: CLI commands (legacy)");
+			expect(output).toContain("AI Integration: CLI instructions");
 			expect(output).toContain("Skipping agent instruction files per selection.");
 		});
 
@@ -197,7 +541,7 @@ describe("CLI Integration", () => {
 
 			expect(output).toContain("Initialization Summary");
 			expect(output).toContain("Project Name: SummaryProj");
-			expect(output).toContain("AI Integration: CLI commands (legacy)");
+			expect(output).toContain("AI Integration: CLI instructions");
 			expect(output).toContain("Advanced settings: unchanged");
 			expect(output).not.toContain("Remote operations:");
 			expect(output).not.toContain("Zero-padded IDs:");
@@ -220,16 +564,42 @@ describe("CLI Integration", () => {
 			expect(claudeFile).toBe(false);
 		});
 
-		it("should default to MCP integration when no mode is specified", async () => {
+		it("should default to CLI instructions when no mode is specified", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			const output = await $`bun ${CLI_PATH} init DefaultMcpProj --defaults`.cwd(TEST_DIR).text();
+			const output = await $`bun ${CLI_PATH} init DefaultCliProj --defaults`.cwd(TEST_DIR).text();
 
-			expect(output).toContain("AI Integration: MCP connector");
-			expect(output).toContain("MCP server name: backlog");
-			expect(output).toContain("MCP client setup: skipped (non-interactive)");
+			expect(output).toContain("AI Integration: CLI instructions");
+			expect(output).toContain("Agent instructions: AGENTS.md");
+			const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+			expect(agents).toContain(CLI_AGENT_NUDGE);
+			expect(agents).toContain(
+				"For every user request in this project, run `backlog instructions overview` before answering or taking action.",
+			);
+			expect(agents).not.toContain("`backlog instructions` to list available guides");
+			expect(agents).not.toContain("# Instructions for the usage of Backlog.md CLI Tool");
+		});
+
+		it("should label created and updated agent instruction files separately", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await Bun.write(join(TEST_DIR, "AGENTS.md"), "Existing instructions\n");
+
+			const output = await $`bun ${CLI_PATH} init MixedAgentFiles --defaults --agent-instructions agents,claude`
+				.cwd(TEST_DIR)
+				.text();
+
+			expect(output).toContain("Created: CLAUDE.md");
+			expect(output).toContain("Updated: AGENTS.md");
+			expect(output).not.toContain("Created: AGENTS.md");
+			const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+			const claude = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+			expect(agents).toContain("Existing instructions");
+			expect(agents).toContain(CLI_AGENT_NUDGE);
+			expect(claude).toContain(CLI_AGENT_NUDGE);
 		});
 
 		it("should allow skipping AI integration via flag", async () => {
@@ -678,6 +1048,220 @@ describe("CLI Integration", () => {
 			const out = result.stdout.toString();
 			expect(out).toContain("TASK-1 - Assigned Task"); // IDs normalized to uppercase
 			expect(out).not.toContain("TASK-2 - Unassigned Task");
+		});
+
+		it("should filter tasks by labels requiring every requested label", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "UI Bug Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["UI", "Bug"],
+					dependencies: [],
+					rawContent: "UI bug task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "UI Only Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["ui"],
+					dependencies: [],
+					rawContent: "UI only task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Bug Only Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["bug"],
+					dependencies: [],
+					rawContent: "Bug only task",
+				},
+				false,
+			);
+
+			const commaResult = await $`bun ${CLI_PATH} task list --plain --labels ui,bug`.cwd(TEST_DIR).quiet();
+			const repeatedResult = await $`bun ${CLI_PATH} task list --plain --labels ui --labels bug`.cwd(TEST_DIR).quiet();
+
+			for (const result of [commaResult, repeatedResult]) {
+				const out = result.stdout.toString();
+				expect(out).toContain("TASK-1 - UI Bug Task");
+				expect(out).not.toContain("TASK-2 - UI Only Task");
+				expect(out).not.toContain("TASK-3 - Bug Only Task");
+			}
+		});
+
+		it("should filter tasks by search query", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Billing Webhook",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "Handle invoice payment callbacks.",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Profile Settings",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					description: "Update account preferences.",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task list --plain --search "invoice payment"`.cwd(TEST_DIR).quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("TASK-1 - Billing Webhook");
+			expect(out).not.toContain("TASK-2 - Profile Settings");
+		});
+
+		it("should apply plain limit before regrouping sorted tasks by status", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Low Priority First ID",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					priority: "low",
+					rawContent: "Low priority task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "High Priority Later ID",
+					status: "Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					priority: "high",
+					rawContent: "High priority task",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task list --plain --limit 1`.cwd(TEST_DIR).quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("Done:");
+			expect(out).toContain("[HIGH] TASK-2 - High Priority Later ID");
+			expect(out).not.toContain("To Do:");
+			expect(out).not.toContain("TASK-1 - Low Priority First ID");
+		});
+
+		it("should combine search, labels, and existing task list filters", async () => {
+			const core = new Core(TEST_DIR);
+			const milestone = await core.filesystem.createMilestone("Release Filters");
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "OAuth Parent",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Parent task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-1.1",
+					title: "OAuth Callback",
+					status: "To Do",
+					assignee: ["alice"],
+					createdDate: "2025-06-08",
+					labels: ["security", "api"],
+					dependencies: [],
+					description: "Implement token exchange callback.",
+					milestone: milestone.id,
+					parentTaskId: "task-1",
+					priority: "high",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-1.2",
+					title: "OAuth Callback Missing Label",
+					status: "To Do",
+					assignee: ["alice"],
+					createdDate: "2025-06-08",
+					labels: ["security"],
+					dependencies: [],
+					description: "Implement token exchange callback.",
+					milestone: milestone.id,
+					parentTaskId: "task-1",
+					priority: "high",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "OAuth Callback Other Parent",
+					status: "To Do",
+					assignee: ["alice"],
+					createdDate: "2025-06-08",
+					labels: ["security", "api"],
+					dependencies: [],
+					description: "Implement token exchange callback.",
+					milestone: milestone.id,
+					priority: "high",
+				},
+				false,
+			);
+
+			const result =
+				await $`bun ${CLI_PATH} task list --plain --status ${"To Do"} --assignee alice --milestone "Release Filters" --parent TASK-1 --priority high --labels security,api --search "OAuth Callback"`
+					.cwd(TEST_DIR)
+					.quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("[HIGH] TASK-1.1 - OAuth Callback");
+			expect(out).not.toContain("TASK-1.2 - OAuth Callback Missing Label");
+			expect(out).not.toContain("TASK-2 - OAuth Callback Other Parent");
+		});
+
+		it("should reject invalid task list limit", async () => {
+			const result = await $`bun ${CLI_PATH} task list --plain --limit 0`.cwd(TEST_DIR).nothrow().quiet();
+			const out = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).toBe(1);
+			expect(out).toContain("--limit must be a positive integer (1 or greater).");
+			expect(out).toContain("Try 'backlog task list --help' for options.");
 		});
 	});
 
@@ -1133,6 +1717,94 @@ describe("CLI Integration", () => {
 
 			const success = await core.archiveTask("task-999", false);
 			expect(success).toBe(false);
+		});
+
+		it("refuses to archive a Done task through the CLI archive command", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-5",
+					title: "Done CLI Archive Test Task",
+					status: "Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["archive"],
+					dependencies: [],
+					rawContent: "Terminal-status task should be completed, not archived",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task archive task-5`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).not.toBe(0);
+			expect(output).toContain("Task TASK-5 is Done.");
+			expect(output).toContain("Use: backlog task complete TASK-5");
+			expect(await core.filesystem.loadTask("task-5")).not.toBeNull();
+
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks.some((task) => task.id === "TASK-5")).toBe(false);
+		});
+
+		it("completes a Done task through the CLI cleanup command", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Complete CLI Test Task",
+					status: "Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["cleanup"],
+					dependencies: [],
+					rawContent: "Task ready for cleanup completion",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task complete task-3`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).toBe(0);
+			expect(output).toContain("Completed task TASK-3.");
+			expect(output).toContain(join(TEST_DIR, "backlog", "completed"));
+			expect(await core.filesystem.loadTask("task-3")).toBeNull();
+
+			const completedTasks = await core.filesystem.listCompletedTasks();
+			expect(completedTasks.some((task) => task.id === "TASK-3")).toBe(true);
+		});
+
+		it("refuses to complete a non-Done task through the CLI cleanup command", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-4",
+					title: "Not Done CLI Test Task",
+					status: "Not Done",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["cleanup"],
+					dependencies: [],
+					rawContent: "Task not ready for cleanup completion",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task complete task-4`.cwd(TEST_DIR).nothrow().quiet();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).not.toBe(0);
+			expect(output).toContain("Task TASK-4 is not Done.");
+			expect(output).toContain('backlog task edit TASK-4 -s "Done"');
+			expect(output).toContain("before cleanup");
+			expect((await core.filesystem.loadTask("task-4"))?.status).toBe("Not Done");
+
+			const completedTasks = await core.filesystem.listCompletedTasks();
+			expect(completedTasks.some((task) => task.id === "TASK-4")).toBe(false);
 		});
 
 		it("should demote task to drafts", async () => {

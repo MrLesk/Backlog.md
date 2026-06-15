@@ -48,6 +48,12 @@ describe("createTaskSearchIndex label filtering", () => {
 		expect(results.map((t) => t.id)).toEqual(["task-2", "task-3"]);
 	});
 
+	test("can require all selected labels", () => {
+		const index = createTaskSearchIndex(tasks);
+		const results = index.search({ labels: ["ui", "docs"], labelMatch: "all" });
+		expect(results.map((t) => t.id)).toEqual(["task-3"]);
+	});
+
 	test("finds tasks by modified file query", () => {
 		const index = createTaskSearchIndex(tasks);
 		const results = index.search({ query: "components/Button.tsx" });
