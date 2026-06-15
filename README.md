@@ -194,7 +194,7 @@ You can run `backlog init` (even if you already initialized Backlog.md) to set u
 
 </details>
 
-Use the shared `backlog` server name everywhere – the MCP server auto-detects whether the current directory is initialized and falls back to `backlog://init-required` when needed.
+Use the shared `backlog` server name everywhere. The server finds the active project from your client's MCP roots, and re-resolves when you switch workspace or worktree. Until it finds one, it serves `backlog://init-required`. A single user-scope server covers every repo.
 
 ### Manual config
 
@@ -212,7 +212,7 @@ Use the shared `backlog` server name everywhere – the MCP server auto-detects 
 }
 ```
 
-If your IDE can't set the process working directory for MCP servers, set `BACKLOG_CWD` as shown above.
+Set `BACKLOG_CWD` to pin the server to one project and stop workspace following. Use it to always target the same backlog, or when your client can't report MCP roots.
 If your IDE supports custom args but not env vars, you can also use `["mcp", "start", "--cwd", "/absolute/path/to/your/project"]`.
 
 > [!IMPORTANT]
