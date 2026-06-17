@@ -38,7 +38,10 @@ function registerStartCommand(mcpCmd: Command): void {
 			try {
 				const runtimeCwd = await resolveRuntimeCwd({ cwd: options.cwd });
 				const projectRoot = (await findBacklogRoot(runtimeCwd.cwd)) ?? runtimeCwd.cwd;
-				const server = await createMcpServer(projectRoot, { debug: options.debug });
+				// An explicit --cwd/BACKLOG_CWD pins the root; an inferred process.cwd()
+				// lets the server follow the client's workspace roots instead.
+				const pinned = runtimeCwd.source !== "process";
+				const server = await createMcpServer(projectRoot, { debug: options.debug, pinned });
 
 				await server.connect();
 				await server.start();
