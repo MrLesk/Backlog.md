@@ -205,6 +205,47 @@ describe("BacklogServer search endpoint", () => {
 		expect(fetched.title).toBe("Immediate fetch");
 	});
 
+	it("appends comments through the task update API and indexes comment text", async () => {
+		const created = await fetchJson<Task>("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Comment API task",
+				status: "To Do",
+			}),
+		});
+
+		const updated = await fetchJson<Task>(`/api/tasks/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				commentsAppend: ["server-comment-token body"],
+				commentAuthor: "@web",
+			}),
+		});
+
+		expect(updated.comments?.[0]?.author).toBe("@web");
+		expect(updated.comments?.[0]?.body).toBe("server-comment-token body");
+
+		const fetched = await fetchJson<Task>(`/api/task/${created.id}`);
+		expect(fetched.comments?.[0]?.body).toBe("server-comment-token body");
+
+		const results = await retry(
+			async () => {
+				const data = await fetchJson<Array<{ type: string; task?: Task }>>(
+					"/api/search?type=task&query=server-comment-token",
+				);
+				if (!data.some((result) => result.task?.id === created.id)) {
+					throw new Error("Comment search not indexed yet");
+				}
+				return data;
+			},
+			20,
+			100,
+		);
+		expect(results.some((result) => result.task?.id === created.id)).toBe(true);
+	});
+
 	it("persists milestone when creating tasks via POST", async () => {
 		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
 			method: "POST",
@@ -619,8 +660,8 @@ Milestone: m-0
 	});
 });
 
-async function fetchJson<T>(path: string): Promise<T> {
-	const response = await fetch(`http://127.0.0.1:${serverPort}${path}`);
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+	const response = await fetch(`http://127.0.0.1:${serverPort}${path}`, init);
 	if (!response.ok) {
 		throw new Error(`Request failed: ${response.status}`);
 	}

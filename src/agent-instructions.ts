@@ -2,15 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	AGENT_GUIDELINES,
-	CLAUDE_AGENT_CONTENT,
-	CLAUDE_GUIDELINES,
-	COPILOT_GUIDELINES,
-	GEMINI_GUIDELINES,
-	MCP_AGENT_NUDGE,
-	README_GUIDELINES,
-} from "./constants/index.ts";
+import { CLAUDE_AGENT_CONTENT, CLI_AGENT_NUDGE, MCP_AGENT_NUDGE, README_GUIDELINES } from "./constants/index.ts";
 import type { GitOperations } from "./git/operations.ts";
 
 export type AgentInstructionFile =
@@ -19,6 +11,14 @@ export type AgentInstructionFile =
 	| "GEMINI.md"
 	| ".github/copilot-instructions.md"
 	| "README.md";
+
+export type AgentInstructionWriteAction = "created" | "updated" | "unchanged";
+
+export interface AgentInstructionWriteResult {
+	action: AgentInstructionWriteAction;
+	fileName: AgentInstructionFile;
+	filePath: string;
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -126,23 +126,26 @@ export async function addAgentInstructions(
 	git?: GitOperations,
 	files: AgentInstructionFile[] = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"],
 	autoCommit = false,
-): Promise<void> {
+): Promise<AgentInstructionWriteResult[]> {
 	const mapping: Record<AgentInstructionFile, string> = {
-		"AGENTS.md": AGENT_GUIDELINES,
-		"CLAUDE.md": CLAUDE_GUIDELINES,
-		"GEMINI.md": GEMINI_GUIDELINES,
-		".github/copilot-instructions.md": COPILOT_GUIDELINES,
+		"AGENTS.md": CLI_AGENT_NUDGE,
+		"CLAUDE.md": CLI_AGENT_NUDGE,
+		"GEMINI.md": CLI_AGENT_NUDGE,
+		".github/copilot-instructions.md": CLI_AGENT_NUDGE,
 		"README.md": README_GUIDELINES,
 	};
 
 	const paths: string[] = [];
+	const results: AgentInstructionWriteResult[] = [];
 	for (const name of files) {
 		const content = await loadContent(mapping[name]);
 		const filePath = join(projectRoot, name);
 		let finalContent = "";
+		const fileExists = existsSync(filePath);
+		const action: AgentInstructionWriteAction = fileExists ? "updated" : "created";
 
 		// Check if file exists first to avoid Windows hanging issue
-		if (existsSync(filePath)) {
+		if (fileExists) {
 			try {
 				// On Windows, use synchronous read to avoid hanging
 				let existing: string;
@@ -152,20 +155,33 @@ export async function addAgentInstructions(
 					existing = await Bun.file(filePath).text();
 				}
 
+				const originalExisting = existing;
 				const mcpStripped = stripGuidelineSection(existing, name, "mcp");
 				if (mcpStripped.removed) {
 					existing = mcpStripped.content;
 				}
 
-				// Check if Backlog.md guidelines are already present
-				if (hasBacklogGuidelines(existing, name)) {
-					// Guidelines already exist, skip this file
+				const defaultStripped = stripGuidelineSection(existing, name, "default");
+				if (defaultStripped.removed) {
+					const insertAt = defaultStripped.firstIndex ?? defaultStripped.content.length;
+					finalContent =
+						defaultStripped.content.slice(0, insertAt) +
+						wrapWithMarkers(content, name) +
+						defaultStripped.content.slice(insertAt);
+				} else if (hasBacklogGuidelines(existing, name)) {
+					// Guidelines already exist but could not be parsed, skip this file.
+					results.push({ action: "unchanged", fileName: name, filePath });
 					continue;
+				} else {
+					// Append Backlog.md guidelines with markers
+					if (!existing.endsWith("\n")) existing += "\n";
+					finalContent = existing + wrapWithMarkers(content, name);
 				}
 
-				// Append Backlog.md guidelines with markers
-				if (!existing.endsWith("\n")) existing += "\n";
-				finalContent = existing + wrapWithMarkers(content, name);
+				if (finalContent === originalExisting) {
+					results.push({ action: "unchanged", fileName: name, filePath });
+					continue;
+				}
 			} catch (error) {
 				console.error(`Error reading existing file ${filePath}:`, error);
 				// If we can't read it, just use the new content with markers
@@ -179,12 +195,15 @@ export async function addAgentInstructions(
 		await mkdir(dirname(filePath), { recursive: true });
 		await Bun.write(filePath, finalContent);
 		paths.push(filePath);
+		results.push({ action, fileName: name, filePath });
 	}
 
 	if (git && paths.length > 0 && autoCommit) {
 		await git.addFiles(paths);
 		await git.commitChanges("Add AI agent instructions");
 	}
+
+	return results;
 }
 
 export { loadContent as _loadAgentGuideline };

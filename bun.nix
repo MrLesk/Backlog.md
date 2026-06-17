@@ -120,35 +120,11 @@
     url = "https://registry.npmjs.org/@bramus/specificity/-/specificity-2.4.2.tgz";
     hash = "sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==";
   };
-  "@chevrotain/cst-dts-gen" = {
-    out_path = "@chevrotain/cst-dts-gen";
-    name = "@chevrotain/cst-dts-gen@12.0.0";
-    url = "https://registry.npmjs.org/@chevrotain/cst-dts-gen/-/cst-dts-gen-12.0.0.tgz";
-    hash = "sha512-fSL4KXjTl7cDgf0B5Rip9Q05BOrYvkJV/RrBTE/bKDN096E4hN/ySpcBK5B24T76dlQ2i32Zc3PAE27jFnFrKg==";
-  };
-  "@chevrotain/gast" = {
-    out_path = "@chevrotain/gast";
-    name = "@chevrotain/gast@12.0.0";
-    url = "https://registry.npmjs.org/@chevrotain/gast/-/gast-12.0.0.tgz";
-    hash = "sha512-1ne/m3XsIT8aEdrvT33so0GUC+wkctpUPK6zU9IlOyJLUbR0rg4G7ZiApiJbggpgPir9ERy3FRjT6T7lpgetnQ==";
-  };
-  "@chevrotain/regexp-to-ast" = {
-    out_path = "@chevrotain/regexp-to-ast";
-    name = "@chevrotain/regexp-to-ast@12.0.0";
-    url = "https://registry.npmjs.org/@chevrotain/regexp-to-ast/-/regexp-to-ast-12.0.0.tgz";
-    hash = "sha512-p+EW9MaJwgaHguhoqwOtx/FwuGr+DnNn857sXWOi/mClXIkPGl3rn7hGNWvo31HA3vyeQxjqe+H36yZJwYU8cA==";
-  };
   "@chevrotain/types" = {
     out_path = "@chevrotain/types";
-    name = "@chevrotain/types@12.0.0";
-    url = "https://registry.npmjs.org/@chevrotain/types/-/types-12.0.0.tgz";
-    hash = "sha512-S+04vjFQKeuYw0/eW3U52LkAHQsB1ASxsPGsLPUyQgrZ2iNNibQrsidruDzjEX2JYfespXMG0eZmXlhA6z7nWA==";
-  };
-  "@chevrotain/utils" = {
-    out_path = "@chevrotain/utils";
-    name = "@chevrotain/utils@12.0.0";
-    url = "https://registry.npmjs.org/@chevrotain/utils/-/utils-12.0.0.tgz";
-    hash = "sha512-lB59uJoaGIfOOL9knQqQRfhl9g7x8/wqFkp13zTdkRu1huG9kg6IJs1O8hqj9rs6h7orGxHJUKb+mX3rPbWGhA==";
+    name = "@chevrotain/types@11.1.2";
+    url = "https://registry.npmjs.org/@chevrotain/types/-/types-11.1.2.tgz";
+    hash = "sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw==";
   };
   "@clack/core" = {
     out_path = "@clack/core";
@@ -440,9 +416,9 @@
   };
   "@mermaid-js/parser" = {
     out_path = "@mermaid-js/parser";
-    name = "@mermaid-js/parser@1.1.0";
-    url = "https://registry.npmjs.org/@mermaid-js/parser/-/parser-1.1.0.tgz";
-    hash = "sha512-gxK9ZX2+Fex5zu8LhRQoMeMPEHbc73UKZ0FQ54YrQtUxE1VVhMwzeNtKRPAu5aXks4FasbMe4xB4bWrmq6Jlxw==";
+    name = "@mermaid-js/parser@1.1.1";
+    url = "https://registry.npmjs.org/@mermaid-js/parser/-/parser-1.1.1.tgz";
+    hash = "sha512-VuHdsYMK1bT6X2JbcAaWAhugTRvRBRyuZgd+c22swUeI9g/ntaxF7CY7dYarhZovofCbUNO0G7JesfmNtjYOCw==";
   };
   "@modelcontextprotocol/sdk" = {
     out_path = "@modelcontextprotocol/sdk";
@@ -1146,6 +1122,12 @@
     url = "https://registry.npmjs.org/backlog.md-linux-x64/-/backlog.md-linux-x64-1.14.4.tgz";
     hash = "sha512-h3RT7jMqFZqQ/Sf49oB7ggqGJ2+p53nIqW544Ue+6RLL7VOmXieLU+hQlG5sh1rACbg22Y5gOhpvdnVvNgfiMA==";
   };
+  "backlog.md-windows-arm64" = {
+    out_path = "backlog.md-windows-arm64";
+    name = "backlog.md-windows-arm64@1.45.1";
+    url = "https://registry.npmjs.org/backlog.md-windows-arm64/-/backlog.md-windows-arm64-1.45.1.tgz";
+    hash = "sha512-LCotlXCwS5b+K3aYeeoIP78jYT3Af9NKOcvLZ9B8J/74MwWWOv3qM5CWwXqxSw2Rat62TtdvAkQfS7pQHyny2w==";
+  };
   "backlog.md-windows-x64" = {
     out_path = "backlog.md-windows-x64";
     name = "backlog.md-windows-x64@1.14.4";
@@ -1265,18 +1247,6 @@
     name = "character-reference-invalid@2.0.1";
     url = "https://registry.npmjs.org/character-reference-invalid/-/character-reference-invalid-2.0.1.tgz";
     hash = "sha512-iBZ4F4wRbyORVsu0jPV7gXkOsGYjGHPmAyv+HiHG8gi5PtC9KI2j1+v8/tlibRvjoWX027ypmG/n0HtO5t7unw==";
-  };
-  "chevrotain" = {
-    out_path = "chevrotain";
-    name = "chevrotain@12.0.0";
-    url = "https://registry.npmjs.org/chevrotain/-/chevrotain-12.0.0.tgz";
-    hash = "sha512-csJvb+6kEiQaqo1woTdSAuOWdN0WTLIydkKrBnS+V5gZz0oqBrp4kQ35519QgK6TpBThiG3V1vNSHlIkv4AglQ==";
-  };
-  "chevrotain-allstar" = {
-    out_path = "chevrotain-allstar";
-    name = "chevrotain-allstar@0.4.1";
-    url = "https://registry.npmjs.org/chevrotain-allstar/-/chevrotain-allstar-0.4.1.tgz";
-    hash = "sha512-PvVJm3oGqrveUVW2Vt/eZGeiAIsJszYweUcYwcskg9e+IubNYKKD+rHHem7A6XVO22eDAL+inxNIGAzZ/VIWlA==";
   };
   "classnames" = {
     out_path = "classnames";
@@ -1807,6 +1777,12 @@
     name = "es-object-atoms@1.1.1";
     url = "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.1.tgz";
     hash = "sha512-FGgH2h8zKNim9ljj7dankFPcICIK9Cp5bm+c2gQSYePhpaG5+esrLODihIorn+Pe6FGJzWhXQotPv73jTaldXA==";
+  };
+  "es-toolkit" = {
+    out_path = "es-toolkit";
+    name = "es-toolkit@1.47.0";
+    url = "https://registry.npmjs.org/es-toolkit/-/es-toolkit-1.47.0.tgz";
+    hash = "sha512-n1GuoD0WEQZMBk5tttoZSqwgyLx01oqa5XsBmCHwPyNe1S9jPBEmtR2pSgp2kJuWE3ciFZ6yRHmY4pM4C3OOkw==";
   };
   "escape-html" = {
     out_path = "escape-html";
@@ -2460,12 +2436,6 @@
     url = "https://registry.npmjs.org/kolorist/-/kolorist-1.8.0.tgz";
     hash = "sha512-Y+60/zizpJ3HRH8DCss+q95yr6145JXZo46OTpFvDZWLfRCE4qChOyk1b26nMaNpfHHgxagk9dXT5OP0Tfe+dQ==";
   };
-  "langium" = {
-    out_path = "langium";
-    name = "langium@4.2.2";
-    url = "https://registry.npmjs.org/langium/-/langium-4.2.2.tgz";
-    hash = "sha512-JUshTRAfHI4/MF9dH2WupvjSXyn8JBuUEWazB8ZVJUtXutT0doDlAv1XKbZ1Pb5sMexa8FF4CFBc0iiul7gbUQ==";
-  };
   "layout-base" = {
     out_path = "layout-base";
     name = "layout-base@1.0.2";
@@ -2732,9 +2702,9 @@
   };
   "mermaid" = {
     out_path = "mermaid";
-    name = "mermaid@11.14.0";
-    url = "https://registry.npmjs.org/mermaid/-/mermaid-11.14.0.tgz";
-    hash = "sha512-GSGloRsBs+JINmmhl0JDwjpuezCsHB4WGI4NASHxL3fHo3o/BRXTxhDLKnln8/Q0lRFRyDdEjmk1/d5Sn1Xz8g==";
+    name = "mermaid@11.15.0";
+    url = "https://registry.npmjs.org/mermaid/-/mermaid-11.15.0.tgz";
+    hash = "sha512-pTMbcf3rWdtLiYGpmoTjHEpeY8seiy6sR+9nD7LOs8KfUbHE4lOUAprTRqRAcWSQ6MQpdX+YEsxShtGsINtPtw==";
   };
   "micromark" = {
     out_path = "micromark";
@@ -3884,45 +3854,6 @@
     name = "vfile-message@4.0.3";
     url = "https://registry.npmjs.org/vfile-message/-/vfile-message-4.0.3.tgz";
     hash = "sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw==";
-  };
-  "vscode-jsonrpc" = {
-    out_path = "vscode-jsonrpc";
-    name = "vscode-jsonrpc@8.2.0";
-    url = "https://registry.npmjs.org/vscode-jsonrpc/-/vscode-jsonrpc-8.2.0.tgz";
-    hash = "sha512-C+r0eKJUIfiDIfwJhria30+TYWPtuHJXHtI7J0YlOmKAo7ogxP20T0zxB7HZQIFhIyvoBPwWskjxrvAtfjyZfA==";
-  };
-  "vscode-languageserver" = {
-    out_path = "vscode-languageserver";
-    binaries = {
-      "installServerIntoExtension" = "../vscode-languageserver/bin/installServerIntoExtension";
-    };
-    name = "vscode-languageserver@9.0.1";
-    url = "https://registry.npmjs.org/vscode-languageserver/-/vscode-languageserver-9.0.1.tgz";
-    hash = "sha512-woByF3PDpkHFUreUa7Hos7+pUWdeWMXRd26+ZX2A8cFx6v/JPTtd4/uN0/jB6XQHYaOlHbio03NTHCqrgG5n7g==";
-  };
-  "vscode-languageserver-protocol" = {
-    out_path = "vscode-languageserver-protocol";
-    name = "vscode-languageserver-protocol@3.17.5";
-    url = "https://registry.npmjs.org/vscode-languageserver-protocol/-/vscode-languageserver-protocol-3.17.5.tgz";
-    hash = "sha512-mb1bvRJN8SVznADSGWM9u/b07H7Ecg0I3OgXDuLdn307rl/J3A9YD6/eYOssqhecL27hK1IPZAsaqh00i/Jljg==";
-  };
-  "vscode-languageserver-textdocument" = {
-    out_path = "vscode-languageserver-textdocument";
-    name = "vscode-languageserver-textdocument@1.0.12";
-    url = "https://registry.npmjs.org/vscode-languageserver-textdocument/-/vscode-languageserver-textdocument-1.0.12.tgz";
-    hash = "sha512-cxWNPesCnQCcMPeenjKKsOCKQZ/L6Tv19DTRIGuLWe32lyzWhihGVJ/rcckZXJxfdKCFvRLS3fpBIsV/ZGX4zA==";
-  };
-  "vscode-languageserver-types" = {
-    out_path = "vscode-languageserver-types";
-    name = "vscode-languageserver-types@3.17.5";
-    url = "https://registry.npmjs.org/vscode-languageserver-types/-/vscode-languageserver-types-3.17.5.tgz";
-    hash = "sha512-Ld1VelNuX9pdF39h2Hgaeb5hEZM2Z3jUrrMgWQAu82jMtZp7p3vJT3BzToKtZI7NgQssZje5o0zryOrhQvzQAg==";
-  };
-  "vscode-uri" = {
-    out_path = "vscode-uri";
-    name = "vscode-uri@3.1.0";
-    url = "https://registry.npmjs.org/vscode-uri/-/vscode-uri-3.1.0.tgz";
-    hash = "sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==";
   };
   "w3c-xmlserializer" = {
     out_path = "w3c-xmlserializer";

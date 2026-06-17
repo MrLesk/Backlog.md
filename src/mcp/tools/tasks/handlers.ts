@@ -1,4 +1,5 @@
 import { basename, join } from "node:path";
+import { DEFAULT_STATUSES } from "../../../constants/index.ts";
 import { isCreateLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
@@ -16,6 +17,7 @@ import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storag
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
+import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -69,9 +71,9 @@ export class TaskHandlers {
 		return resolveMilestoneInputForStorage(milestone, activeMilestones, archivedMilestones);
 	}
 
-	private isDoneStatus(status?: string | null): boolean {
-		const normalized = (status ?? "").trim().toLowerCase();
-		return normalized.includes("done") || normalized.includes("complete");
+	private async getConfiguredStatuses(): Promise<string[]> {
+		const config = await this.core.filesystem.loadConfig();
+		return config?.statuses ?? [...DEFAULT_STATUSES];
 	}
 
 	private isDraftStatus(status?: string | null): boolean {
@@ -418,9 +420,11 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 
-		if (this.isDoneStatus(task.status)) {
+		const statuses = await this.getConfiguredStatuses();
+		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
+		if (isTerminalStatus(task.status, statuses)) {
 			throw new BacklogToolError(
-				`Task ${task.id} is Done. Done tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
+				`Task ${task.id} is ${terminalStatus}. ${terminalStatus} tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
 				"VALIDATION_ERROR",
 			);
 		}
@@ -441,9 +445,11 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Cannot complete task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 
-		if (!this.isDoneStatus(task.status)) {
+		const statuses = await this.getConfiguredStatuses();
+		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
+		if (!isTerminalStatus(task.status, statuses)) {
 			throw new BacklogToolError(
-				`Task ${task.id} is not Done. Set status to "Done" with task_edit before completing it.`,
+				`Task ${task.id} is not ${terminalStatus}. Set status to "${terminalStatus}" with task_edit before completing it.`,
 				"VALIDATION_ERROR",
 			);
 		}

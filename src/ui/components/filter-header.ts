@@ -440,9 +440,7 @@ export class FilterHeader {
 			mouse: true,
 			keys: true,
 			style: {
-				fg: "white",
-				bg: "black",
-				focus: { fg: "black", bg: "cyan", bold: true },
+				focus: { inverse: true, bold: true },
 			},
 		});
 		this.elements.push(this.searchInput);
@@ -536,9 +534,7 @@ export class FilterHeader {
 			mouse: true,
 			keys: true,
 			style: {
-				fg: "white",
-				bg: "black",
-				focus: { fg: "black", bg: "cyan" },
+				focus: { inverse: true, bold: true },
 			},
 		});
 		this.elements.push(button);
@@ -555,16 +551,16 @@ export class FilterHeader {
 		button.on("focus", () => {
 			this.currentFocus = field;
 			this.setBorderColor("yellow");
-			const style = button.style as { bg?: string; fg?: string };
-			style.bg = "blue";
-			style.fg = "white";
+			const style = button.style as { bg?: string; fg?: string; inverse?: boolean; bold?: boolean };
+			style.inverse = true;
+			style.bold = true;
 			this.onFocusChange?.(field);
 		});
 
 		button.on("blur", () => {
-			const style = button.style as { bg?: string; fg?: string };
-			style.bg = "black";
-			style.fg = "white";
+			const style = button.style as { bg?: string; fg?: string; inverse?: boolean; bold?: boolean };
+			style.inverse = false;
+			style.bold = false;
 		});
 
 		button.key(["enter", "space"], () => {

@@ -18,14 +18,18 @@ describe("unified view filter state", () => {
 			status: "In Progress",
 			priority: "high",
 			labels,
+			labelMatch: "all",
 			milestone: "Release 1",
+			limit: 2,
 		});
 
 		expect(filters.searchQuery).toBe("sync");
 		expect(filters.statusFilter).toBe("In Progress");
 		expect(filters.priorityFilter).toBe("high");
 		expect(filters.labelFilter).toEqual(["backend"]);
+		expect(filters.labelMatch).toBe("all");
 		expect(filters.milestoneFilter).toBe("Release 1");
+		expect(filters.limit).toBe(2);
 		expect(filters.labelFilter).not.toBe(labels);
 	});
 
@@ -52,6 +56,64 @@ describe("unified view filter state", () => {
 		expect(initial.milestoneFilter).toBe("");
 	});
 
+	it("preserves label match mode when merging unrelated filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			searchQuery: "api",
+			priority: "high",
+			labels: ["frontend", "bug"],
+			labelMatch: "all",
+		});
+
+		const updated: UnifiedViewFilters = {
+			searchQuery: "api auth",
+			statusFilter: "",
+			priorityFilter: "high",
+			labelFilter: ["frontend", "bug"],
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.labelMatch).toBe("all");
+	});
+
+	it("preserves task limit when merging filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			labels: ["frontend", "bug"],
+			labelMatch: "all",
+			limit: 1,
+		});
+
+		const updated: UnifiedViewFilters = {
+			searchQuery: "auth",
+			statusFilter: "",
+			priorityFilter: "",
+			labelFilter: ["frontend", "bug"],
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.limit).toBe(1);
+	});
+
+	it("uses label match mode from task-list filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			labels: ["frontend", "bug"],
+			labelMatch: "all",
+		});
+
+		const updated: UnifiedViewFilters = {
+			searchQuery: "",
+			statusFilter: "",
+			priorityFilter: "",
+			labelFilter: ["frontend", "bug"],
+			labelMatch: "any",
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.labelMatch).toBe("any");
+	});
+
 	it("excludes status from kanban shared filters", () => {
 		const unified = createUnifiedViewFilters({
 			searchQuery: "sync",
@@ -66,7 +128,128 @@ describe("unified view filter state", () => {
 		expect(shared.priorityFilter).toBe("high");
 		expect(shared.labelFilter).toEqual(["ui"]);
 		expect(shared.milestoneFilter).toBe("Sprint 1");
+		expect(shared.limit).toBeUndefined();
 		expect("statusFilter" in shared).toBe(false);
+	});
+
+	it("carries task limit into kanban shared filters", () => {
+		const unified = createUnifiedViewFilters({
+			searchQuery: "sync",
+			labels: ["ui"],
+			limit: 1,
+		});
+
+		const shared = createKanbanSharedFilters(unified);
+		expect(shared.limit).toBe(1);
+	});
+
+	it("preserves all-label matching in kanban shared filters", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Frontend bug",
+				status: "To Do",
+				labels: ["frontend", "bug"],
+				assignee: [],
+				createdDate: "2026-01-01",
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Frontend feature",
+				status: "To Do",
+				labels: ["frontend"],
+				assignee: [],
+				createdDate: "2026-01-02",
+				dependencies: [],
+			},
+		];
+		const unified = createUnifiedViewFilters({
+			labels: ["frontend", "bug"],
+			labelMatch: "all",
+		});
+
+		const shared = createKanbanSharedFilters(unified);
+		const results = filterTasksForKanban(tasks, shared).map((task) => task.id);
+
+		expect(shared.labelMatch).toBe("all");
+		expect(results).toEqual(["task-1"]);
+	});
+
+	it("applies kanban shared limit without dropping seeded label filters", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Frontend bug",
+				status: "To Do",
+				labels: ["frontend", "bug"],
+				assignee: [],
+				createdDate: "2026-01-01",
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Frontend bug 2",
+				status: "Done",
+				labels: ["frontend", "bug"],
+				assignee: [],
+				createdDate: "2026-01-02",
+				dependencies: [],
+			},
+			{
+				id: "task-3",
+				title: "Frontend only",
+				status: "To Do",
+				labels: ["frontend"],
+				assignee: [],
+				createdDate: "2026-01-03",
+				dependencies: [],
+			},
+		];
+		const shared = createKanbanSharedFilters(
+			createUnifiedViewFilters({
+				labels: ["frontend", "bug"],
+				labelMatch: "all",
+				limit: 1,
+			}),
+		);
+
+		const results = filterTasksForKanban(tasks, shared).map((task) => task.id);
+
+		expect(results).toEqual(["task-1"]);
+	});
+
+	it("applies kanban shared limit when it is the only seeded filter", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "First",
+				status: "To Do",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-01",
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Second",
+				status: "Done",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-02",
+				dependencies: [],
+			},
+		];
+
+		const results = filterTasksForKanban(tasks, {
+			searchQuery: "",
+			priorityFilter: "",
+			labelFilter: [],
+			milestoneFilter: "",
+			limit: 1,
+		}).map((task) => task.id);
+
+		expect(results).toEqual(["task-1"]);
 	});
 
 	it("keeps shared filter results consistent between task list and kanban", () => {

@@ -143,6 +143,18 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.clearImplementationNotes = true;
 	}
 
+	const commentsAppends = sanitizeAppend(args.commentsAppend);
+	if (commentsAppends) {
+		const author =
+			typeof args.commentAuthor === "string" && args.commentAuthor.trim().length > 0
+				? args.commentAuthor.trim()
+				: undefined;
+		updateInput.appendComments = commentsAppends.map((body) => ({
+			body,
+			...(author && { author }),
+		}));
+	}
+
 	if (typeof args.finalSummary === "string") {
 		updateInput.finalSummary = args.finalSummary;
 	}

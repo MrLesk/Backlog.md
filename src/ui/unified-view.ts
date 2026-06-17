@@ -7,7 +7,7 @@ import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
-import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -27,12 +27,14 @@ export interface UnifiedViewOptions {
 		assignee?: string;
 		priority?: string;
 		labels?: string[];
+		labelMatch?: LabelMatchMode;
 		milestone?: string;
 		sort?: string;
 		title?: string;
 		filterDescription?: string;
 		searchQuery?: string;
 		parentTaskId?: string;
+		limit?: number;
 	};
 	preloadedKanbanData?: {
 		tasks: Task[];
@@ -57,14 +59,18 @@ export interface UnifiedViewFilters {
 	statusFilter: string;
 	priorityFilter: string;
 	labelFilter: string[];
+	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
+	limit?: number;
 }
 
 export interface KanbanSharedFilters {
 	searchQuery: string;
 	priorityFilter: string;
 	labelFilter: string[];
+	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
+	limit?: number;
 }
 
 export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSharedFilters {
@@ -72,7 +78,9 @@ export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSh
 		searchQuery: filters.searchQuery,
 		priorityFilter: filters.priorityFilter,
 		labelFilter: [...filters.labelFilter],
+		labelMatch: filters.labelMatch,
 		milestoneFilter: filters.milestoneFilter,
+		limit: filters.limit,
 	};
 }
 
@@ -87,21 +95,23 @@ export function filterTasksForKanban(
 		filters.labelFilter.length === 0 &&
 		!filters.milestoneFilter
 	) {
-		return [...tasks];
+		return filters.limit !== undefined ? tasks.slice(0, filters.limit) : [...tasks];
 	}
 
 	const searchIndex = createTaskSearchIndex(tasks);
-	return applySharedTaskFilters(
+	const filteredTasks = applySharedTaskFilters(
 		tasks,
 		{
 			query: filters.searchQuery,
 			priority: filters.priorityFilter as "high" | "medium" | "low" | undefined,
 			labels: filters.labelFilter,
+			labelMatch: filters.labelMatch ?? "any",
 			milestone: filters.milestoneFilter || undefined,
 			resolveMilestoneLabel,
 		},
 		searchIndex,
 	);
+	return filters.limit !== undefined ? filteredTasks.slice(0, filters.limit) : filteredTasks;
 }
 
 export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | undefined): UnifiedViewFilters {
@@ -110,7 +120,9 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 		statusFilter: filter?.status || "",
 		priorityFilter: filter?.priority || "",
 		labelFilter: [...(filter?.labels || [])],
+		labelMatch: filter?.labelMatch ?? "any",
 		milestoneFilter: filter?.milestone || "",
+		limit: filter?.limit,
 	};
 }
 
@@ -121,7 +133,9 @@ export function mergeUnifiedViewFilters(current: UnifiedViewFilters, update: Uni
 		statusFilter: update.statusFilter,
 		priorityFilter: update.priorityFilter,
 		labelFilter: [...update.labelFilter],
+		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
 		milestoneFilter: update.milestoneFilter,
+		limit: update.limit ?? current.limit,
 	};
 }
 
@@ -327,7 +341,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					statusFilter: currentFilters.statusFilter,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
+					labelMatch: currentFilters.labelMatch,
 					milestoneFilter: currentFilters.milestoneFilter,
+					limit: currentFilters.limit,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					onTaskChange: (newTask) => {
@@ -381,7 +397,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 							searchQuery: filters.searchQuery,
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
+							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
 							milestoneFilter: filters.milestoneFilter,
+							limit: filters.limit ?? currentFilters.limit,
 						};
 					},
 					subscribeUpdates: (updater) => {

@@ -79,6 +79,27 @@ describe("Cleanup functionality", () => {
 			expect(completedTasks[0]?.id).toBe("TASK-1");
 			expect(completedTasks[0]?.title).toBe("Test Task");
 		});
+
+		it("allows core completion callers to move active tasks into completed", async () => {
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-2",
+					title: "Not Done Task",
+					status: "Not Done",
+				},
+				false,
+			);
+
+			const success = await core.completeTask("task-2", false);
+			expect(success).toBe(true);
+			expect(await core.filesystem.loadTask("task-2")).toBeNull();
+
+			const completedTasks = await core.filesystem.listCompletedTasks();
+			expect(completedTasks).toHaveLength(1);
+			expect(completedTasks[0]?.id).toBe("TASK-2");
+			expect(completedTasks[0]?.status).toBe("Not Done");
+		});
 	});
 
 	describe("getTerminalStatusTasksByAge", () => {

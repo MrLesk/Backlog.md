@@ -66,3 +66,6 @@ tmp/
 test-benchmark-report.json
 
 .conductor
+
+# TUI screenshot captures
+.tui-screenshots

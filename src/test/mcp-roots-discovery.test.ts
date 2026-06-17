@@ -246,7 +246,7 @@ describe("MCP roots discovery", () => {
 		}
 	});
 
-	it("normal mode does not issue roots/list requests", async () => {
+	it("confirms an initialized launch directory against client roots exactly once", async () => {
 		const { projectRoot } = await setupDirs();
 
 		const server = await createMcpServer(projectRoot);
@@ -256,6 +256,30 @@ describe("MCP roots discovery", () => {
 		try {
 			const tools = await client.listTools();
 			expect(tools.tools.map((tool) => tool.name)).toContain("task_create");
+			expect(server.filesystem.rootDir).toBe(projectRoot);
+			expect(getRootsRequestCount()).toBe(1);
+
+			// Matching roots keep the same project and the resolution is cached.
+			await client.listResources();
+			expect(server.filesystem.rootDir).toBe(projectRoot);
+			expect(getRootsRequestCount()).toBe(1);
+		} finally {
+			await client.close();
+			await server.stop();
+		}
+	});
+
+	it("pinned server never issues roots/list requests", async () => {
+		const { projectRoot, secondProjectRoot } = await setupDirs();
+
+		const server = await createMcpServer(projectRoot, { pinned: true });
+		const rootsRef = { current: [pathToFileURL(secondProjectRoot).toString()] };
+		const { client, getRootsRequestCount } = await connectRootsClient(server, rootsRef);
+
+		try {
+			const tools = await client.listTools();
+			expect(tools.tools.map((tool) => tool.name)).toContain("task_create");
+			expect(server.filesystem.rootDir).toBe(projectRoot);
 			expect(getRootsRequestCount()).toBe(0);
 		} finally {
 			await client.close();

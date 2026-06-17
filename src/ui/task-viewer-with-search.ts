@@ -12,10 +12,10 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
-import { collectAvailableLabels } from "../utils/label-filter.ts";
+import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
-import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
@@ -32,8 +32,8 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
-import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
-import { createScreen } from "./tui.ts";
+import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
+import { addScrollKeys, createScreen } from "./tui.ts";
 
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	switch (priority) {
@@ -171,6 +171,8 @@ export async function viewTaskEnhanced(
 		priorityFilter?: string;
 		milestoneFilter?: string;
 		labelFilter?: string[];
+		labelMatch?: LabelMatchMode;
+		limit?: number;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
@@ -181,6 +183,7 @@ export async function viewTaskEnhanced(
 			statusFilter: string;
 			priorityFilter: string;
 			labelFilter: string[];
+			labelMatch?: LabelMatchMode;
 			milestoneFilter: string;
 		}) => void;
 	} = {},
@@ -234,8 +237,8 @@ export async function viewTaskEnhanced(
 		}
 	}
 
-	// Collect available labels from config and tasks
-	availableLabels = collectAvailableLabels(allTasks, labels);
+	// Collect available labels from config, tasks, and CLI-provided filters.
+	availableLabels = collectAvailableLabels(allTasks, [...labels, ...(options.labelFilter ?? [])]);
 
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
@@ -252,6 +255,8 @@ export async function viewTaskEnhanced(
 	let priorityFilter = options.priorityFilter || "";
 	let labelFilter: string[] = [];
 	let milestoneFilter = options.milestoneFilter || "";
+	let labelMatch: LabelMatchMode = options.labelMatch ?? "any";
+	const taskLimit = options.limit;
 	let filteredTasks = [...allTasks];
 
 	if (options.labelFilter && options.labelFilter.length > 0) {
@@ -260,7 +265,12 @@ export async function viewTaskEnhanced(
 	}
 
 	const filtersActive = Boolean(
-		searchQuery || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		searchQuery ||
+			statusFilter ||
+			priorityFilter ||
+			labelFilter.length > 0 ||
+			milestoneFilter ||
+			taskLimit !== undefined,
 	);
 	let requireInitialFilterSelection = filtersActive;
 
@@ -329,6 +339,7 @@ export async function viewTaskEnhanced(
 				});
 				if (nextLabels !== null) {
 					labelFilter = nextLabels;
+					labelMatch = "any";
 					filterHeader.setFilters({ labels: nextLabels });
 					applyFilters();
 					notifyFilterChange();
@@ -408,10 +419,14 @@ export async function viewTaskEnhanced(
 			milestone: milestoneFilter,
 		},
 		onFilterChange: (filters: FilterState) => {
+			const labelsChanged = !areLabelSelectionsEqual(labelFilter, filters.labels);
 			searchQuery = filters.search;
 			statusFilter = filters.status;
 			priorityFilter = filters.priority;
 			labelFilter = filters.labels;
+			if (labelsChanged) {
+				labelMatch = "any";
+			}
 			milestoneFilter = filters.milestone;
 			applyFilters();
 			notifyFilterChange();
@@ -571,6 +586,7 @@ export async function viewTaskEnhanced(
 				statusFilter,
 				priorityFilter,
 				labelFilter,
+				labelMatch,
 				milestoneFilter,
 			});
 		}
@@ -581,16 +597,18 @@ export async function viewTaskEnhanced(
 		const hasActiveFilters = Boolean(
 			searchQuery.trim() || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
 		);
+		let nextFilteredTasks: Task[];
 		if (!hasActiveFilters) {
-			filteredTasks = [...allTasks];
+			nextFilteredTasks = [...allTasks];
 		} else if (taskSearchIndex) {
-			filteredTasks = applyTaskFilters(
+			nextFilteredTasks = applyTaskFilters(
 				allTasks,
 				{
 					query: searchQuery,
 					status: statusFilter || undefined,
 					priority: priorityFilter as "high" | "medium" | "low" | undefined,
 					labels: labelFilter,
+					labelMatch,
 					milestone: milestoneFilter || undefined,
 					resolveMilestoneLabel,
 				},
@@ -606,9 +624,9 @@ export async function viewTaskEnhanced(
 				},
 				types: ["task"],
 			});
-			filteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
+			nextFilteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
 			if (milestoneFilter) {
-				filteredTasks = filteredTasks.filter((task) => {
+				nextFilteredTasks = nextFilteredTasks.filter((task) => {
 					if (milestoneFilter === NO_MILESTONE_FILTER_VALUE) {
 						return !task.milestone?.trim();
 					}
@@ -617,9 +635,17 @@ export async function viewTaskEnhanced(
 					return taskMilestoneTitle.toLowerCase() === milestoneFilter.toLowerCase();
 				});
 			}
+			if (labelMatch === "all" && labelFilter.length > 0) {
+				const requiredLabels = labelsToLower(labelFilter);
+				nextFilteredTasks = nextFilteredTasks.filter((task) => {
+					const taskLabels = new Set(labelsToLower(task.labels ?? []));
+					return requiredLabels.every((label) => taskLabels.has(label));
+				});
+			}
 		} else {
-			filteredTasks = [...allTasks];
+			nextFilteredTasks = [...allTasks];
 		}
+		filteredTasks = taskLimit !== undefined ? nextFilteredTasks.slice(0, taskLimit) : nextFilteredTasks;
 
 		// Update the task list label
 		if (taskListPane.setLabel) {
@@ -760,6 +786,7 @@ export async function viewTaskEnhanced(
 			items: filteredTasks,
 			selectedIndex: initialIndex,
 			border: false,
+			scrollbar: false,
 			top: 1,
 			left: 1,
 			width: "100%-4",
@@ -775,7 +802,7 @@ export async function viewTaskEnhanced(
 				const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 				const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 
-				const content = `{${statusColor}-fg}${statusIcon}{/} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+				const content = `${wrapStatusColor(statusIcon, statusColor)} {bold}${task.id}{/bold} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
 				// Dim cross-branch tasks to indicate read-only status
 				return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 			},
@@ -991,6 +1018,8 @@ export async function viewTaskEnhanced(
 			wrap: true,
 			padding: { left: 1, right: 1, top: 0, bottom: 0 },
 			content: detailContent.bodyContent.join("\n"),
+			scrollbar: { ch: " ", inverse: true },
+			style: { scrollbar: { bg: "gray" } },
 		});
 
 		configureDetailBox(bodyContainer);
@@ -1325,7 +1354,7 @@ function generateDetailContent(
 	resolveMilestoneLabel?: (milestone: string) => string,
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
-		` {${getStatusColor(task.status)}-fg}${formatStatusWithIcon(task.status)}{/} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
+		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
 
 	// Add cross-branch indicator if task is from another branch
@@ -1473,6 +1502,19 @@ function generateDetailContent(
 		bodyContent.push("");
 	}
 
+	const comments = (task.comments ?? []).filter((comment) => comment.body.trim().length > 0);
+	if (comments.length > 0) {
+		bodyContent.push(formatHeading("Comments", 2));
+		for (const comment of comments) {
+			const parts = [`#${comment.index}`];
+			if (comment.author) parts.push(comment.author);
+			if (comment.createdDate) parts.push(comment.createdDate);
+			bodyContent.push(`{bold}${parts.join(" - ")}{/bold}`);
+			bodyContent.push(transformCodePaths(comment.body.trim()));
+			bodyContent.push("");
+		}
+	}
+
 	const finalSummary = task.finalSummary?.trim();
 	if (finalSummary) {
 		bodyContent.push(formatHeading("Final Summary", 2));
@@ -1565,7 +1607,7 @@ export async function createTaskPopup(
 		right: 1,
 		width: 5,
 		height: 1,
-		style: { fg: "white", bg: "blue" },
+		style: { inverse: true, bold: true },
 	});
 
 	const contentArea = scrollabletext({
@@ -1581,7 +1623,11 @@ export async function createTaskPopup(
 		wrap: true,
 		padding: { left: 1, right: 1, top: 0, bottom: 0 },
 		content: bodyContent.join("\n"),
+		scrollbar: { ch: " ", inverse: true },
+		style: { scrollbar: { bg: "gray" } },
 	});
+
+	addScrollKeys(contentArea, screen);
 
 	const closePopup = () => {
 		popup.destroy();

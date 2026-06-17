@@ -44,12 +44,13 @@ export interface GenericListOptions<T extends GenericListItem> {
 	};
 	style?: {
 		border?: { fg: string };
-		selected?: { fg: string; bg: string };
-		item?: { fg: string; bg?: string };
+		selected?: { fg?: string; bg?: string; inverse?: boolean; bold?: boolean };
+		item?: { fg?: string; bg?: string };
 		focus?: { border: { fg: string } };
 		bg?: string;
 	};
 	showHelp?: boolean;
+	scrollbar?: boolean;
 }
 
 export interface GenericListController<T extends GenericListItem> {
@@ -140,7 +141,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		// Create screen if not provided
 		if (!this.options.parent) {
 			this.screen = createScreen({
-				style: { fg: "white", bg: "black" },
+				style: {},
 			});
 		}
 
@@ -149,8 +150,8 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		// Default styling
 		const defaultStyle = {
 			border: { fg: "blue" },
-			selected: { fg: "white", bg: "blue" },
-			item: { fg: "white" },
+			selected: { inverse: true, bold: true },
+			item: {},
 			focus: { border: { fg: "yellow" } },
 		};
 
@@ -177,6 +178,7 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			mouse: true,
 			scrollable: true,
 			alwaysScroll: false,
+			...(this.options.scrollbar !== false ? { scrollbar: { ch: " ", inverse: true } } : {}),
 		});
 
 		this.refreshList();
@@ -310,8 +312,30 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			this.setHighlightedIndex(sel < total - 1 ? sel + 1 : 0, { render: true });
 		};
 
+		const moveTo = (nextIndex: number) => {
+			const total = this.filteredItems.length;
+			if (total === 0) return;
+			const clamped = Math.max(0, Math.min(total - 1, nextIndex));
+			this.setHighlightedIndex(clamped, { render: true });
+		};
+
+		const pageAmount = () => {
+			const height = typeof this.listBox.height === "number" ? this.listBox.height : 0;
+			return height > 0 ? Math.max(1, height - 3) : 5;
+		};
+
 		this.listBox.key(["up", "k"], moveUp);
 		this.listBox.key(["down", "j"], moveDown);
+		this.listBox.key(["pageup", "C-u"], () => {
+			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
+			moveTo(sel - pageAmount());
+		});
+		this.listBox.key(["pagedown", "C-d"], () => {
+			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
+			moveTo(sel + pageAmount());
+		});
+		this.listBox.key(["home"], () => moveTo(0));
+		this.listBox.key(["end"], () => moveTo(this.filteredItems.length - 1));
 
 		this.listBox.on("select item", (_item: unknown, displayIndex: unknown) => {
 			if (this.updatingListSelection) return;

@@ -519,6 +519,10 @@ function buildTaskBodyText(task: Task): string {
 		parts.push(task.implementationNotes);
 	}
 
+	if (Array.isArray(task.comments) && task.comments.length > 0) {
+		parts.push(task.comments.map((comment) => comment.body).join("\n\n"));
+	}
+
 	if (task.modifiedFiles?.length) {
 		parts.push(task.modifiedFiles.join("\n"));
 	}

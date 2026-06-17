@@ -5,10 +5,8 @@ import {
 	_loadAgentGuideline,
 	AGENT_GUIDELINES,
 	addAgentInstructions,
-	CLAUDE_GUIDELINES,
-	COPILOT_GUIDELINES,
+	CLI_AGENT_NUDGE,
 	ensureMcpGuidelines,
-	GEMINI_GUIDELINES,
 	README_GUIDELINES,
 } from "../index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -40,29 +38,76 @@ describe("addAgentInstructions", () => {
 		// Check that files contain the markers and content
 		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
-		expect(agents).toContain(await _loadAgentGuideline(AGENT_GUIDELINES));
+		expect(agents).toContain(CLI_AGENT_NUDGE);
+		expect(agents).not.toContain("# Instructions for the usage of Backlog.md CLI Tool");
 
 		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
-		expect(claude).toContain(await _loadAgentGuideline(CLAUDE_GUIDELINES));
+		expect(claude).toContain(CLI_AGENT_NUDGE);
 
 		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
-		expect(gemini).toContain(await _loadAgentGuideline(GEMINI_GUIDELINES));
+		expect(gemini).toContain(CLI_AGENT_NUDGE);
 
 		expect(copilot).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(copilot).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
-		expect(copilot).toContain(await _loadAgentGuideline(COPILOT_GUIDELINES));
+		expect(copilot).toContain(CLI_AGENT_NUDGE);
 	});
 
 	it("appends guideline files when they already exist", async () => {
 		await Bun.write(join(TEST_DIR, "AGENTS.md"), "Existing\n");
-		await addAgentInstructions(TEST_DIR);
+		const results = await addAgentInstructions(TEST_DIR);
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		expect(agents.startsWith("Existing\n")).toBe(true);
 		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
-		expect(agents).toContain(await _loadAgentGuideline(AGENT_GUIDELINES));
+		expect(agents).toContain(CLI_AGENT_NUDGE);
+		expect(results.find((result) => result.fileName === "AGENTS.md")?.action).toBe("updated");
+		expect(results.find((result) => result.fileName === "CLAUDE.md")?.action).toBe("created");
+	});
+
+	it("reports unchanged guideline files when the selected block already exists", async () => {
+		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		const results = await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+
+		expect(results).toEqual([
+			{
+				action: "unchanged",
+				fileName: "AGENTS.md",
+				filePath: join(TEST_DIR, "AGENTS.md"),
+			},
+		]);
+	});
+
+	it("replaces stale generated CLI guideline blocks", async () => {
+		const agentsPath = join(TEST_DIR, "AGENTS.md");
+		await Bun.write(
+			agentsPath,
+			[
+				"Existing header",
+				"<!-- BACKLOG.MD GUIDELINES START -->",
+				"Old generated Backlog guidance",
+				"<!-- BACKLOG.MD GUIDELINES END -->",
+				"Existing footer",
+				"",
+			].join("\n"),
+		);
+
+		const results = await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		const agents = await Bun.file(agentsPath).text();
+
+		expect(results).toEqual([
+			{
+				action: "updated",
+				fileName: "AGENTS.md",
+				filePath: agentsPath,
+			},
+		]);
+		expect(agents).toContain("Existing header");
+		expect(agents).toContain("Existing footer");
+		expect(agents).toContain(CLI_AGENT_NUDGE);
+		expect(agents).not.toContain("Old generated Backlog guidance");
+		expect((agents.match(/<!-- BACKLOG\.MD GUIDELINES START -->/g) || []).length).toBe(1);
 	});
 
 	it("creates only selected files", async () => {

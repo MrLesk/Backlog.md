@@ -58,7 +58,7 @@ describe("Task ID Generation with Archives", () => {
 	it("should consider completed tasks but not archived tasks for ID generation", async () => {
 		// Create tasks 1-3
 		await core.createTaskFromInput({ title: "Task 1", status: "Todo" }, false);
-		await core.createTaskFromInput({ title: "Task 2", status: "Todo" }, false);
+		await core.createTaskFromInput({ title: "Task 2", status: "Done" }, false);
 		await core.createTaskFromInput({ title: "Task 3", status: "Todo" }, false);
 
 		// Archive task-1 (its ID can be reused)

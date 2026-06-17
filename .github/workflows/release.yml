@@ -15,6 +15,7 @@ jobs:
   build:
     name: build-${{ matrix.target }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -27,16 +28,18 @@ jobs:
             target: bun-darwin-arm64
           - os: windows-latest
             target: bun-windows-x64-baseline
+          - os: ubuntu-latest
+            target: bun-windows-arm64
     runs-on: ${{ matrix.os }}
     env:
       BIN: backlog-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
         with:
           # Bun >=1.3 includes stdin pause/subprocess handoff fixes used by TUI editor launch.
           bun-version: ${{ env.BUN_VERSION }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: cache
         with:
           path: ~/.bun/install/cache
@@ -78,7 +81,7 @@ jobs:
           mv dist/${{ env.BIN }} ${{ env.BIN }}
           echo "Final binary size:"
           ls -lh ${{ env.BIN }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: backlog-${{ matrix.target }}
           path: ${{ env.BIN }}
@@ -87,7 +90,7 @@ jobs:
     needs: [build, verify-platform-packages]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Prepare npm package
         shell: bash
         run: |
@@ -106,15 +109,9 @@ jobs:
               .files = ["cli.js","resolveBinary.cjs","postuninstall.cjs","package.json","README.md","LICENSE"] |
               .scripts = {"postuninstall": "node postuninstall.cjs"} |
               .repository = {"type":"git","url":"https://github.com/MrLesk/Backlog.md"} |
-              .optionalDependencies = {
-                "backlog.md-linux-x64"  : "'$TAG'",
-                "backlog.md-linux-arm64": "'$TAG'",
-                "backlog.md-darwin-x64" : "'$TAG'",
-                "backlog.md-darwin-arm64": "'$TAG'",
-                "backlog.md-windows-x64": "'$TAG'"
-              }' package.json > dist/package.json
+              .optionalDependencies |= map_values("'$TAG'")' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
       - name: Configure npm for trusted publishing
@@ -157,10 +154,14 @@ jobs:
             package: backlog.md-windows-x64
             os: win32
             cpu: x64
+          - target: bun-windows-arm64
+            package: backlog.md-windows-arm64
+            os: win32
+            cpu: arm64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           name: backlog-${{ matrix.target }}
         timeout-minutes: 15
@@ -198,7 +199,7 @@ jobs:
         shell: bash
         run: |
           chmod +x pkg/backlog
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
       - name: Configure npm for trusted publishing
@@ -225,7 +226,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -282,6 +283,7 @@ jobs:
             "backlog.md-darwin-x64"
             "backlog.md-darwin-arm64"
             "backlog.md-windows-x64"
+            "backlog.md-windows-arm64"
           )
 
           for pkg in "${PACKAGES[@]}"; do
@@ -365,7 +367,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -467,7 +469,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release-assets
         timeout-minutes: 15
@@ -498,7 +500,7 @@ jobs:
           done
           echo "=== Final binaries ==="
           ls -lh binaries/
-      - uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v3
         with:
           files: binaries/*
 
@@ -506,7 +508,7 @@ jobs:
     needs: [github-release, npm-publish, install-sanity]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: main
       - name: Sync version to tag
@@ -515,7 +517,7 @@ jobs:
           TAG="${GITHUB_REF##refs/tags/v}"
           jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
       - name: Commit version bump
-        uses: stefanzweifel/git-auto-commit-action@v4
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "chore: sync package.json version to ${{ github.ref_name }} [skip ci]"
           branch: main

@@ -37,9 +37,62 @@ function normalizeToError(value: unknown): Error {
 	return new Error(String(value ?? "Unknown screen error"));
 }
 
+/**
+ * Add pageup/pagedown/home/end scroll keybindings to a scrollable widget.
+ * Blessed's built-in `keys: true` / `vi: true` only handle arrow keys and
+ * Ctrl+D/U — this fills in the standard terminal navigation keys.
+ */
+export function addScrollKeys(
+	widget: { height?: number | string; key: (keys: string[], fn: () => boolean | undefined) => void },
+	screen: ScreenInterface,
+): void {
+	const scrollable = widget as unknown as {
+		scroll?: (offset: number) => void;
+		setScroll?: (offset: number) => void;
+		setScrollPerc?: (perc: number) => void;
+	};
+
+	const pageAmount = () => {
+		const height = typeof widget.height === "number" ? widget.height : 0;
+		return height > 0 ? Math.max(1, height - 3) : 0;
+	};
+
+	widget.key(["pageup"], () => {
+		const delta = pageAmount();
+		if (delta > 0) {
+			scrollable.scroll?.(-delta);
+			screen.render();
+		}
+		return false;
+	});
+	widget.key(["pagedown"], () => {
+		const delta = pageAmount();
+		if (delta > 0) {
+			scrollable.scroll?.(delta);
+			screen.render();
+		}
+		return false;
+	});
+	widget.key(["home"], () => {
+		scrollable.setScroll?.(0);
+		screen.render();
+		return false;
+	});
+	widget.key(["end"], () => {
+		scrollable.setScrollPerc?.(100);
+		screen.render();
+		return false;
+	});
+}
+
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
 	const screen = blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
+
+	if (process.env.DEBUG) {
+		const tputColors = (screen as unknown as { tput?: { colors?: number } }).tput?.colors;
+		console.error(`[TUI debug] tput.colors=${tputColors}, TERM=${process.env.TERM}`);
+	}
 
 	// Windows runners occasionally surface file system watcher errors as plain objects
 	// (rather than Error instances). Blessed rethrows unhandled "error" events by
@@ -75,7 +128,7 @@ export async function scrollableViewer(content: string): Promise<void> {
 
 	return new Promise<void>((resolve) => {
 		const screen = createScreen({
-			style: { fg: "white", bg: "black" },
+			style: {},
 		});
 
 		const viewer = box({
@@ -90,7 +143,11 @@ export async function scrollableViewer(content: string): Promise<void> {
 			height: "100%",
 			padding: { left: 1, right: 1 },
 			wrap: true,
+			scrollbar: { ch: " ", inverse: true },
+			style: { scrollbar: { bg: "gray" } },
 		});
+
+		addScrollKeys(viewer, screen);
 
 		screen.key(["escape", "q", "C-c"], () => {
 			screen.destroy();

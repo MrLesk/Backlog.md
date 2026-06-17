@@ -1,6 +1,6 @@
-import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
+	type AgentInstructionWriteResult,
 	addAgentInstructions,
 	ensureMcpGuidelines,
 	installClaudeAgent,
@@ -8,6 +8,13 @@ import {
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
+import {
+	formatMcpClientSetupCommand,
+	getMcpClientSetupCommand,
+	isMcpClientSetupKey,
+	type McpClientSetupKey,
+	runMcpClientSetupCommand,
+} from "../utils/mcp-client-setup.ts";
 import type { Core } from "./backlog.ts";
 
 export const MCP_SERVER_NAME = "backlog";
@@ -15,6 +22,29 @@ export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integrat
 
 export type IntegrationMode = "mcp" | "cli" | "none";
 export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
+
+const MCP_CLIENT_INSTRUCTION_MAP: Record<McpClientSetupKey, AgentInstructionFile> = {
+	claude: "CLAUDE.md",
+	codex: "AGENTS.md",
+	gemini: "GEMINI.md",
+	kiro: "AGENTS.md",
+};
+
+function formatAgentInstructionResults(results: AgentInstructionWriteResult[]): string {
+	const labels: Array<[AgentInstructionWriteResult["action"], string]> = [
+		["created", "Created"],
+		["updated", "Updated"],
+		["unchanged", "Unchanged"],
+	];
+
+	return labels
+		.map(([action, label]) => {
+			const fileNames = results.filter((result) => result.action === action).map((result) => result.fileName);
+			return fileNames.length > 0 ? `${label}: ${fileNames.join(", ")}` : null;
+		})
+		.filter((line): line is string => line !== null)
+		.join("\n");
+}
 
 export interface InitializeProjectOptions {
 	projectName: string;
@@ -52,22 +82,15 @@ export interface InitializeProjectResult {
 	mcpResults?: Record<string, string>;
 }
 
-async function runMcpClientCommand(label: string, command: string, args: string[]): Promise<string> {
+async function runMcpClientCommand(client: McpClientSetupKey): Promise<string> {
+	const { label, command, args } = getMcpClientSetupCommand(client, MCP_SERVER_NAME);
 	try {
-		const child = spawn({
-			cmd: [command, ...args],
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const exitCode = await child.exited;
-		if (exitCode !== 0) {
-			throw new Error(`Command exited with code ${exitCode}`);
-		}
+		await runMcpClientSetupCommand(command, args);
 		return `Added Backlog MCP server to ${label}`;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(
-			`Unable to configure ${label} automatically (${message}). Run manually: ${command} ${args.join(" ")}`,
+			`Unable to configure ${label} automatically (${message}). Run manually: ${formatMcpClientSetupCommand(command, args)}`,
 		);
 	}
 }
@@ -226,62 +249,16 @@ export async function initializeProject(
 	if (integrationMode === "mcp" && mcpClients.length > 0) {
 		for (const client of mcpClients) {
 			try {
-				if (client === "claude") {
-					const result = await runMcpClientCommand("Claude Code", "claude", [
-						"mcp",
-						"add",
-						"-s",
-						"user",
-						MCP_SERVER_NAME,
-						"--",
-						"backlog",
-						"mcp",
-						"start",
-					]);
-					mcpResults.claude = result;
-					await ensureMcpGuidelines(projectRoot, "CLAUDE.md");
-				} else if (client === "codex") {
-					const result = await runMcpClientCommand("OpenAI Codex", "codex", [
-						"mcp",
-						"add",
-						MCP_SERVER_NAME,
-						"backlog",
-						"mcp",
-						"start",
-					]);
-					mcpResults.codex = result;
-					await ensureMcpGuidelines(projectRoot, "AGENTS.md");
-				} else if (client === "gemini") {
-					const result = await runMcpClientCommand("Gemini CLI", "gemini", [
-						"mcp",
-						"add",
-						"-s",
-						"user",
-						MCP_SERVER_NAME,
-						"backlog",
-						"mcp",
-						"start",
-					]);
-					mcpResults.gemini = result;
-					await ensureMcpGuidelines(projectRoot, "GEMINI.md");
-				} else if (client === "kiro") {
-					const result = await runMcpClientCommand("Kiro", "kiro-cli", [
-						"mcp",
-						"add",
-						"--scope",
-						"global",
-						"--name",
-						MCP_SERVER_NAME,
-						"--command",
-						"backlog",
-						"--args",
-						"mcp,start",
-					]);
-					mcpResults.kiro = result;
-					await ensureMcpGuidelines(projectRoot, "AGENTS.md");
-				} else if (client === "guide") {
+				if (client === "guide") {
 					mcpResults.guide = `Setup guide: ${MCP_GUIDE_URL}`;
+					continue;
 				}
+				if (!isMcpClientSetupKey(client)) {
+					continue;
+				}
+
+				mcpResults[client] = await runMcpClientCommand(client);
+				await ensureMcpGuidelines(projectRoot, MCP_CLIENT_INSTRUCTION_MAP[client]);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				mcpResults[client] = `Failed: ${message}`;
@@ -292,8 +269,13 @@ export async function initializeProject(
 	// Handle CLI integration - agent instruction files
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
 		try {
-			await addAgentInstructions(projectRoot, core.gitOps, agentInstructions, config.autoCommit);
-			mcpResults.agentFiles = `Created: ${agentInstructions.join(", ")}`;
+			const agentInstructionResults = await addAgentInstructions(
+				projectRoot,
+				core.gitOps,
+				agentInstructions,
+				config.autoCommit,
+			);
+			mcpResults.agentFiles = formatAgentInstructionResults(agentInstructionResults);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			mcpResults.agentFiles = `Failed: ${message}`;

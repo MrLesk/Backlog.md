@@ -57,6 +57,8 @@ const INSTRUCTIONS =
 
 type ServerInitOptions = {
 	debug?: boolean;
+	/** When true (from --cwd/BACKLOG_CWD), the root is fixed and client roots are never consulted. */
+	pinned?: boolean;
 };
 
 type ServerRequestExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -80,6 +82,9 @@ export class McpServer extends Core {
 
 	/** True when the server has been upgraded from fallback to a real project. */
 	private upgraded = false;
+
+	/** True when the launch directory was itself an initialized project (vs fallback). */
+	private startupHasProject = false;
 
 	private readonly tools = new Map<string, McpToolHandler>();
 	private readonly resources = new Map<string, McpResourceHandler>();
@@ -109,16 +114,20 @@ export class McpServer extends Core {
 	}
 
 	/**
-	 * Enable roots-based project discovery for fallback mode.
+	 * Enable roots-based project discovery so the server follows the client
+	 * workspace. Used from both fallback mode and a normal (initialized) startup;
+	 * pass `startupHasProject` for the latter so an unusable client workspace
+	 * returns to the launch-directory project instead of init-required.
 	 *
 	 * The first request-scoped handler invocation can query MCP roots to look
 	 * for a valid backlog project. If found, the server reinitializes the Core,
 	 * registers the full toolset, and notifies the client. Subsequent requests
 	 * reuse the cached resolution until the client reports roots changes.
 	 */
-	enableRootsDiscovery(options?: { debug?: boolean }): void {
+	enableRootsDiscovery(options?: { debug?: boolean; startupHasProject?: boolean }): void {
 		this.rootsDiscoveryEnabled = true;
-		this.rootsDiscoveryOptions = options ?? {};
+		this.rootsDiscoveryOptions = { debug: options?.debug };
+		this.startupHasProject = options?.startupHasProject ?? false;
 		this.rootsResolutionDirty = true;
 	}
 
@@ -177,7 +186,11 @@ export class McpServer extends Core {
 				}
 			}
 
-			if (this.upgraded) {
+			// No usable client root. A launch-directory (normal) baseline returns to its
+			// own project rather than a now-stale one; a fallback baseline reverts to init-required.
+			if (this.startupHasProject) {
+				await this.upgradeToProject(this.initialProjectRoot, options);
+			} else if (this.upgraded) {
 				await this.downgradeToFallback(options);
 			}
 
@@ -220,7 +233,7 @@ export class McpServer extends Core {
 	 * toolset, replacing fallback-mode registrations.
 	 */
 	private async upgradeToProject(projectRoot: string, options?: { debug?: boolean }): Promise<boolean> {
-		if (this.upgraded && this.filesystem.rootDir === projectRoot) {
+		if (this.filesystem.rootDir === projectRoot && (this.upgraded || this.startupHasProject)) {
 			this.log(`MCP roots still resolve to current project: ${projectRoot}`, options);
 			return true;
 		}
@@ -505,7 +518,12 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	// and enable roots discovery so the server can find the project via MCP roots
 	if (!config) {
 		registerInitRequiredResource(server, projectRoot);
-		server.enableRootsDiscovery({ debug: options.debug });
+		if (!options.pinned) {
+			server.enableRootsDiscovery({
+				debug: options.debug,
+				startupHasProject: false,
+			});
+		}
 
 		if (options.debug) {
 			console.error("MCP server initialised in fallback mode (roots discovery enabled).");
@@ -521,6 +539,15 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	registerMilestoneTools(server);
 	registerDefinitionOfDoneTools(server);
 	registerDocumentTools(server, config);
+
+	// Follow the client workspace roots so a server launched in the main checkout
+	// (or a shared/user-scope server) targets the active project, not a frozen one.
+	if (!options.pinned) {
+		server.enableRootsDiscovery({
+			debug: options.debug,
+			startupHasProject: true,
+		});
+	}
 
 	if (options.debug) {
 		console.error("MCP server initialised (stdio transport only).");

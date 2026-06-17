@@ -187,7 +187,7 @@ export async function withLoadingScreen<T>(message: string, operation: () => Pro
 			height: 1,
 			align: "center",
 			content: message,
-			style: { fg: "white" },
+			style: {},
 		});
 	}
 
@@ -255,7 +255,7 @@ export async function createLoadingScreen(initialMessage: string): Promise<Loadi
 		width: "100%-6", // Account for borders + padding (2 borders + 4 padding)
 		height: "100%-2", // Account for top and bottom borders
 		tags: true,
-		style: { fg: "white" },
+		style: {},
 		wrap: true, // Ensure long lines wrap instead of extending beyond width
 	});
 

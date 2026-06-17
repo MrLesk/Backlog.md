@@ -23,6 +23,19 @@ export interface AcceptanceCriterionInput {
 	checked?: boolean;
 }
 
+export interface TaskComment {
+	index: number;
+	body: string;
+	createdDate: string;
+	author?: string;
+}
+
+export interface TaskCommentInput {
+	body: string;
+	author?: string;
+	createdDate?: string;
+}
+
 export interface Task {
 	id: string;
 	title: string;
@@ -41,6 +54,7 @@ export interface Task {
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
+	comments?: TaskComment[];
 	finalSummary?: string;
 	/** Structured acceptance criteria parsed from body (checked state + text + index) */
 	acceptanceCriteriaItems?: AcceptanceCriterion[];
@@ -136,6 +150,7 @@ export interface TaskUpdateInput {
 	implementationNotes?: string;
 	appendImplementationNotes?: string[];
 	clearImplementationNotes?: boolean;
+	appendComments?: Array<TaskCommentInput | string>;
 	finalSummary?: string;
 	appendFinalSummary?: string[];
 	clearFinalSummary?: boolean;

@@ -9,9 +9,9 @@ import {
 import { Core } from "../core/backlog.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
-import { collectAvailableLabels } from "../utils/label-filter.ts";
+import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
-import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
@@ -190,7 +190,9 @@ export async function renderBoardTui(
 			searchQuery: string;
 			priorityFilter: string;
 			labelFilter: string[];
+			labelMatch?: LabelMatchMode;
 			milestoneFilter: string;
+			limit?: number;
 		};
 		availableLabels?: string[];
 		availableMilestones?: string[];
@@ -198,7 +200,9 @@ export async function renderBoardTui(
 			searchQuery: string;
 			priorityFilter: string;
 			labelFilter: string[];
+			labelMatch?: LabelMatchMode;
 			milestoneFilter: string;
+			limit?: number;
 		}) => void;
 		milestoneMode?: boolean;
 		milestoneEntities?: Milestone[];
@@ -236,8 +240,8 @@ export async function renderBoardTui(
 
 		let currentTasks = initialTasks;
 		let columns: ColumnView[] = [];
-		let currentColumnsData = initialColumns;
-		let currentStatuses = currentColumnsData.map((column) => column.status);
+		let currentColumnsData: ColumnData[] = [];
+		let currentStatuses = initialColumns.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
@@ -249,7 +253,9 @@ export async function renderBoardTui(
 			searchQuery: options?.filters?.searchQuery ?? "",
 			priorityFilter: options?.filters?.priorityFilter ?? "",
 			labelFilter: [...(options?.filters?.labelFilter ?? [])],
+			labelMatch: options?.filters?.labelMatch ?? "any",
 			milestoneFilter: options?.filters?.milestoneFilter ?? "",
+			limit: options?.filters?.limit,
 		};
 		const runWithModalGuard = async <T>(operation: () => Promise<T>): Promise<T> => {
 			modalOpen = true;
@@ -296,32 +302,39 @@ export async function renderBoardTui(
 				sharedFilters.searchQuery.trim() ||
 					sharedFilters.priorityFilter ||
 					sharedFilters.labelFilter.length > 0 ||
-					sharedFilters.milestoneFilter,
+					sharedFilters.milestoneFilter ||
+					sharedFilters.limit !== undefined,
 			);
 		const emitFilterChange = () => {
 			options?.onFilterChange?.({
 				searchQuery: sharedFilters.searchQuery,
 				priorityFilter: sharedFilters.priorityFilter,
 				labelFilter: [...sharedFilters.labelFilter],
+				labelMatch: sharedFilters.labelMatch,
 				milestoneFilter: sharedFilters.milestoneFilter,
+				limit: sharedFilters.limit,
 			});
 		};
 		const getFilteredTasks = (): Task[] => {
+			let filteredTasks: Task[];
 			if (!hasActiveSharedFilters()) {
-				return [...currentTasks];
+				filteredTasks = [...currentTasks];
+			} else {
+				const searchIndex = createTaskSearchIndex(currentTasks);
+				filteredTasks = applySharedTaskFilters(
+					currentTasks,
+					{
+						query: sharedFilters.searchQuery,
+						priority: sharedFilters.priorityFilter as "high" | "medium" | "low" | undefined,
+						labels: sharedFilters.labelFilter,
+						labelMatch: sharedFilters.labelMatch,
+						milestone: sharedFilters.milestoneFilter || undefined,
+						resolveMilestoneLabel,
+					},
+					searchIndex,
+				);
 			}
-			const searchIndex = createTaskSearchIndex(currentTasks);
-			return applySharedTaskFilters(
-				currentTasks,
-				{
-					query: sharedFilters.searchQuery,
-					priority: sharedFilters.priorityFilter as "high" | "medium" | "low" | undefined,
-					labels: sharedFilters.labelFilter,
-					milestone: sharedFilters.milestoneFilter || undefined,
-					resolveMilestoneLabel,
-				},
-				searchIndex,
-			);
+			return sharedFilters.limit !== undefined ? filteredTasks.slice(0, sharedFilters.limit) : filteredTasks;
 		};
 
 		// Move mode state
@@ -440,7 +453,7 @@ export async function renderBoardTui(
 					mouse: true,
 					scrollable: true,
 					tags: true,
-					style: { selected: { fg: "white" } },
+					style: { selected: {} },
 				});
 
 				const renderedItems = getFormattedItems(columnData.tasks);
@@ -487,9 +500,22 @@ export async function renderBoardTui(
 
 		const setColumnActiveState = (column: ColumnView | undefined, active: boolean) => {
 			if (!column) return;
-			const listStyle = column.list.style as { selected?: { bg?: string } };
-			// In move mode, use green highlight for the moving task
-			if (listStyle.selected) listStyle.selected.bg = moveOp && active ? "green" : active ? "blue" : undefined;
+			const listStyle = column.list.style as {
+				selected?: { bg?: string; fg?: string; inverse?: boolean; bold?: boolean };
+			};
+			if (listStyle.selected) {
+				if (active) {
+					listStyle.selected.inverse = true;
+					listStyle.selected.bold = !moveOp;
+					listStyle.selected.bg = moveOp ? "cyan" : undefined;
+					listStyle.selected.fg = moveOp ? "black" : undefined;
+				} else {
+					listStyle.selected.inverse = false;
+					listStyle.selected.bold = false;
+					listStyle.selected.bg = undefined;
+					listStyle.selected.fg = undefined;
+				}
+			}
 			const boxStyle = column.box.style as { border?: { fg?: string } };
 			if (boxStyle.border) boxStyle.border.fg = active ? "yellow" : "gray";
 			syncColumnSelectionDisplay(column, active);
@@ -635,6 +661,7 @@ export async function renderBoardTui(
 					});
 					if (nextLabels !== null) {
 						sharedFilters.labelFilter = nextLabels;
+						sharedFilters.labelMatch = "any";
 						filterHeader.setFilters({ labels: nextLabels });
 						emitFilterChange();
 						renderView();
@@ -698,9 +725,13 @@ export async function renderBoardTui(
 				milestone: sharedFilters.milestoneFilter,
 			},
 			onFilterChange: (filters: FilterState) => {
+				const labelsChanged = !areLabelSelectionsEqual(sharedFilters.labelFilter, filters.labels);
 				sharedFilters.searchQuery = filters.search;
 				sharedFilters.priorityFilter = filters.priority;
 				sharedFilters.labelFilter = filters.labels;
+				if (labelsChanged) {
+					sharedFilters.labelMatch = "any";
+				}
 				sharedFilters.milestoneFilter = filters.milestone;
 				emitFilterChange();
 				renderView();
@@ -801,7 +832,7 @@ export async function renderBoardTui(
 			screen.render();
 		};
 
-		rebuildColumns(initialColumns);
+		renderView();
 		const firstColumn = columns[0];
 		if (firstColumn) {
 			currentCol = 0;
@@ -981,6 +1012,54 @@ export async function renderBoardTui(
 				selectColumnRow(column, nextIndex, true);
 				screen.render();
 			}
+		});
+
+		const lanePageAmount = () => {
+			const column = columns[currentCol];
+			if (!column) return 0;
+			const height = typeof column.list.height === "number" ? column.list.height : 0;
+			return height > 0 ? Math.max(1, height - 1) : 5;
+		};
+
+		const isBoardLaneNavigationBlocked = () =>
+			popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || Boolean(moveOp);
+
+		screen.key(["pageup", "C-u"], () => {
+			if (isBoardLaneNavigationBlocked()) return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const selected = column.list.selected ?? 0;
+			const nextIndex = Math.max(0, selected - lanePageAmount());
+			selectColumnRow(column, nextIndex, true);
+			screen.render();
+		});
+
+		screen.key(["pagedown", "C-d"], () => {
+			if (isBoardLaneNavigationBlocked()) return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const selected = column.list.selected ?? 0;
+			const total = column.tasks.length;
+			if (total === 0) return;
+			const nextIndex = Math.min(total - 1, selected + lanePageAmount());
+			selectColumnRow(column, nextIndex, true);
+			screen.render();
+		});
+
+		screen.key(["home"], () => {
+			if (isBoardLaneNavigationBlocked()) return;
+			const column = columns[currentCol];
+			if (!column || column.tasks.length === 0) return;
+			selectColumnRow(column, 0, true);
+			screen.render();
+		});
+
+		screen.key(["end"], () => {
+			if (isBoardLaneNavigationBlocked()) return;
+			const column = columns[currentCol];
+			if (!column || column.tasks.length === 0) return;
+			selectColumnRow(column, column.tasks.length - 1, true);
+			screen.render();
 		});
 
 		const openTaskEditor = async (task: Task) => {
