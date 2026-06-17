@@ -1,5 +1,5 @@
 ---
-id: BACK-558
+id: BACK-508
 title: Resolve MCP project root from client workspace roots
 status: Done
 assignee:
