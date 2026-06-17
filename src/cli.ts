@@ -9,6 +9,8 @@ import { Command } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
+import { addHelpSchema, choiceType, statusType } from "./commands/help-schema.ts";
+import { registerInstructionsCommand } from "./commands/instructions.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
@@ -28,6 +30,8 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
+import { MilestoneHandlers, type MilestoneRemoveArgs } from "./mcp/tools/milestones/handlers.ts";
+import type { CallToolResult } from "./mcp/types.ts";
 import {
 	type BacklogConfig,
 	type Decision,
@@ -52,6 +56,7 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { labelsToLower } from "./utils/label-filter.ts";
 import {
 	formatMcpClientSetupCommand,
 	getMcpClientSetupCommand,
@@ -78,6 +83,44 @@ import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts"
 import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
+
+const CONFIG_GET_KEYS = [
+	"defaultEditor",
+	"projectName",
+	"defaultStatus",
+	"statuses",
+	"labels",
+	"milestones",
+	"definitionOfDone",
+	"dateFormat",
+	"maxColumnWidth",
+	"defaultPort",
+	"autoOpenBrowser",
+	"remoteOperations",
+	"autoCommit",
+	"filesystemOnly",
+	"bypassGitHooks",
+	"zeroPaddedIds",
+	"checkActiveBranches",
+	"activeBranchDays",
+] as const;
+
+const CONFIG_SET_KEYS = [
+	"defaultEditor",
+	"projectName",
+	"defaultStatus",
+	"dateFormat",
+	"maxColumnWidth",
+	"autoOpenBrowser",
+	"defaultPort",
+	"remoteOperations",
+	"autoCommit",
+	"filesystemOnly",
+	"bypassGitHooks",
+	"zeroPaddedIds",
+	"checkActiveBranches",
+	"activeBranchDays",
+] as const;
 
 function normalizeIntegrationOption(value: string): IntegrationMode | null {
 	const normalized = value.trim().toLowerCase();
@@ -125,6 +168,9 @@ const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
 	guide: "AGENTS.md",
 };
 
+const DOCUMENT_SEARCH_QUERY_MAX_LENGTH = 200;
+const DOCUMENT_SEARCH_LIMIT_MAX = 100;
+
 async function openUrlInBrowser(url: string): Promise<void> {
 	let cmd: string[];
 	if (process.platform === "darwin") {
@@ -168,6 +214,81 @@ function createMultiValueAccumulator() {
 function printMissingRequiredArgument(argumentName: string): void {
 	console.error(`error: missing required argument '${argumentName}'`);
 	process.exitCode = 1;
+}
+
+function parsePositiveIntegerOption(value: unknown, optionName: string, helpCommand?: string): number | null {
+	const rawValue = String(value).trim();
+	if (!/^[1-9]\d*$/.test(rawValue)) {
+		const helpHint = helpCommand ? ` Try '${helpCommand}' for options.` : "";
+		console.error(`${optionName} must be a positive integer (1 or greater).${helpHint}`);
+		process.exitCode = 1;
+		return null;
+	}
+	return Number.parseInt(rawValue, 10);
+}
+
+function formatTaskEditError(error: unknown, taskId: string): string {
+	const message = error instanceof Error ? error.message : String(error);
+	if (message.startsWith("Invalid index:")) {
+		return `${message} Try 'backlog task edit ${taskId} --help' for index options.`;
+	}
+	if (
+		message.includes(" not found") &&
+		(message.startsWith("Acceptance criterion ") || message.startsWith("Definition of Done item "))
+	) {
+		return `${message}\nRun 'backlog task view ${taskId} --plain' to inspect indexes, or 'backlog task edit ${taskId} --help' for edit options.`;
+	}
+	return message;
+}
+
+function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
+	const requiredLabels = labelsToLower(labels);
+	if (requiredLabels.length === 0) {
+		return true;
+	}
+	const taskLabels = new Set(labelsToLower(task.labels ?? []));
+	return requiredLabels.every((label) => taskLabels.has(label));
+}
+
+function formatToolResultText(result: CallToolResult): string {
+	return result.content
+		.map((item) => (item.type === "text" ? item.text : ""))
+		.filter(Boolean)
+		.join("\n");
+}
+
+function printToolResult(result: CallToolResult): void {
+	const text = formatToolResultText(result);
+	if (text) {
+		console.log(text);
+	}
+	if (result.isError) {
+		process.exitCode = 1;
+	}
+}
+
+async function runMilestoneMutation(action: (handlers: MilestoneHandlers) => Promise<CallToolResult>): Promise<void> {
+	const cwd = await requireProjectRoot();
+	const core = new Core(cwd);
+	const handlers = new MilestoneHandlers(core);
+
+	try {
+		printToolResult(await action(handlers));
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	}
+}
+
+function parseMilestoneTaskHandling(value: string | undefined): MilestoneRemoveArgs["taskHandling"] | null {
+	if (value === undefined) {
+		return "clear";
+	}
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "clear" || normalized === "keep" || normalized === "reassign") {
+		return normalized;
+	}
+	return null;
 }
 
 function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
@@ -317,12 +438,12 @@ if (process.env.BUN_OPTIONS) {
 // Get version from package.json
 const version = await getVersion();
 
-// Bare-run splash screen handling (before Commander parses commands)
-// Show a welcome splash when invoked without subcommands, unless help/version requested
+// Bare-run entry handling (before Commander parses commands)
+// Show a plain local help entry when invoked without subcommands, unless help/version requested.
 try {
 	let rawArgs = process.argv.slice(2);
 	// Some package managers (e.g., Bun global shims) may inject the resolved
-	// binary path as the first non-node argument. Strip it if detected.
+	// CLI executable path as the first non-node argument. Strip it if detected.
 	if (rawArgs.length > 0) {
 		const first = rawArgs[0];
 		if (
@@ -334,14 +455,8 @@ try {
 	}
 	const wantsHelp = rawArgs.includes("-h") || rawArgs.includes("--help");
 	const wantsVersion = rawArgs.includes("-v") || rawArgs.includes("--version");
-	// Treat only --plain as allowed flag for splash; any other args means use normal CLI parsing
-	const onlyPlain = rawArgs.length === 1 && rawArgs[0] === "--plain";
-	const isBare = rawArgs.length === 0 || onlyPlain;
-	if (isBare && !wantsHelp && !wantsVersion) {
-		const isTTY = !!process.stdout.isTTY;
-		const forcePlain = rawArgs.includes("--plain");
-		const noColor = !!process.env.NO_COLOR || !isTTY;
-
+	const isBareRoot = rawArgs.length === 0 || (rawArgs.length === 1 && rawArgs[0] === "--plain");
+	if (isBareRoot && !wantsHelp && !wantsVersion) {
 		let initialized = false;
 		try {
 			const runtimeCwd = await resolveRuntimeCwd();
@@ -355,21 +470,17 @@ try {
 			initialized = false;
 		}
 
-		const { printSplash } = await import("./ui/splash.ts");
-		// Auto-fallback to plain when non-TTY, or explicit --plain, or if terminal very narrow
-		const termWidth = Math.max(0, Number(process.stdout.columns || 0));
-		const autoPlain = !isTTY || (termWidth > 0 && termWidth < 60);
-		await printSplash({
+		const { printRootEntry } = await import("./ui/root-entry.ts");
+		await printRootEntry({
 			version,
 			initialized,
-			plain: forcePlain || autoPlain,
-			color: !noColor,
+			...(rawArgs.includes("--plain") ? { color: false } : {}),
 		});
 		// Ensure we don't enter Commander command parsing
 		process.exit(0);
 	}
 } catch {
-	// Fall through to normal CLI parsing on any splash error
+	// Fall through to normal CLI parsing on any root entry error.
 }
 
 function getMcpStartCwdOverrideFromArgv(argv = process.argv): string | undefined {
@@ -429,10 +540,35 @@ const program = new Command();
 program
 	.name("backlog")
 	.description("Backlog.md - Project management CLI")
-	.version(version, "-v, --version", "display version number");
+	.version(version, "-v, --version", "display version number")
+	.showSuggestionAfterError()
+	.showHelpAfterError("Run with --help to see accepted fields and examples.");
 
-program
-	.command("init [projectName]")
+addHelpSchema(program.command("init [projectName]"), {
+	required: [],
+	optional: [
+		{ name: "projectName", type: "String", description: "Project name; defaults to current directory name" },
+		{
+			name: "--integration-mode",
+			type: `${choiceType(["cli", "mcp", "none"])} (default: cli)`,
+			description: "AI integration mode; CLI instructions are recommended",
+		},
+		{
+			name: "--agent-instructions",
+			type: choiceType(["claude", "agents", "gemini", "copilot", "cursor", "none"], { multiple: true }),
+			description: "Instruction files to create; comma-separated",
+		},
+		{ name: "--backlog-dir", type: "Project-relative path", description: "backlog, .backlog, or custom path" },
+		{ name: "--no-git", type: "Boolean", description: "Initialize without Git integration" },
+	],
+	writes: "Backlog directory, config file, optional agent instruction files, and optional git commit",
+	output: "Initialization summary with selected integration and config; defaults to CLI instructions",
+	examples: [
+		'backlog init "My Project" --defaults',
+		'backlog init "My Project" --defaults --integration-mode cli',
+		'backlog init "My Project" --defaults --agent-instructions agents,claude',
+	],
+})
 	.description("initialize backlog project in the current directory")
 	.option(
 		"--agent-instructions <instructions>",
@@ -447,7 +583,10 @@ program
 	.option("--web-port <number>", "default web UI port (default: 6420)")
 	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
-	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
+	.option(
+		"--integration-mode <mode>",
+		"choose AI integration mode: cli, mcp, or none (default: cli; cli instructions are recommended)",
+	)
 	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
 	.option("--config-location <location>", "config location for init: folder or root")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
@@ -786,7 +925,7 @@ program
 					process.exit(1);
 				}
 
-				let integrationMode: IntegrationMode | null = integrationOption ?? (isNonInteractive ? "mcp" : null);
+				let integrationMode: IntegrationMode | null = integrationOption ?? (isNonInteractive ? "cli" : null);
 				const mcpServerName = MCP_SERVER_NAME;
 				type AgentSelection = AgentSelectionValue;
 				let agentFiles: AgentInstructionFile[] = [];
@@ -820,20 +959,20 @@ program
 				mainSelection: while (true) {
 					if (integrationMode === null) {
 						if (!integrationTipShown) {
-							clack.note("MCP connector is recommended for AI tool integration.", "AI setup tip");
+							clack.note("CLI instructions are recommended for AI tool integration.", "AI setup tip");
 							integrationTipShown = true;
 						}
 						const integrationPrompt = await clack.select({
 							message: "How would you like your AI tools to connect to Backlog.md?",
-							initialValue: "mcp",
+							initialValue: "cli",
 							options: [
 								{
-									label: "via MCP connector (recommended for Claude Code, Codex, Gemini CLI, Kiro, Cursor, etc.)",
-									value: "mcp",
+									label: "via CLI instructions (recommended)",
+									value: "cli",
 								},
 								{
-									label: "via CLI commands (broader compatibility)",
-									value: "cli",
+									label: "via MCP connector (optional for Claude Code, Codex, Gemini CLI, Kiro, Cursor, etc.)",
+									value: "mcp",
 								},
 								{
 									label: "Skip for now (I am not using Backlog.md with AI tools)",
@@ -888,7 +1027,7 @@ program
 							agentFiles = files;
 							agentInstructionsSkipped = skipped;
 						} else if (isNonInteractive) {
-							agentFiles = [];
+							agentFiles = ["AGENTS.md"];
 						} else {
 							while (true) {
 								const response = await clack.multiselect({
@@ -1137,7 +1276,7 @@ program
 					`${label("Git integration:")} ${gitIntegrationDisabled ? muted("disabled (filesystem-only)") : good("enabled")}`,
 				);
 				if (integrationMode === "cli") {
-					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
+					summaryLines.push(`${label("AI Integration:")} ${good("CLI instructions")}`);
 					if (agentFiles.length > 0) {
 						summaryLines.push(`${label("Agent instructions:")} ${agentFiles.join(", ")}`);
 					} else if (agentInstructionsSkipped) {
@@ -1396,8 +1535,29 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 
 const taskCmd = program.command("task").aliases(["tasks"]);
 
-taskCmd
-	.command("create [title]")
+addHelpSchema(taskCmd.command("create [title]"), {
+	required: [{ name: "title", type: "String", description: "Task title; prompted when omitted in interactive mode" }],
+	optional: [
+		{ name: "description", type: "Markdown", description: "Task outcome and context" },
+		{
+			name: "status",
+			type: () => statusType({ includeDraft: true }),
+			description: "Project task status; case-insensitive",
+		},
+		{ name: "assignee", type: "Assignee list", description: "One or more @names" },
+		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
+		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Task priority" },
+		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
+		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
+		{ name: "parent", type: "Task ID", description: "Parent task for subtasks" },
+	],
+	writes: "Creates a task or draft markdown file through Backlog.md",
+	output: "Created task details; use --plain for text output",
+	examples: [
+		'backlog task create "Add OAuth" --ac "Login succeeds"',
+		'backlog task create -p {{TASK_ID:1}} "Add tests"',
+	],
+})
 	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
 	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
@@ -1548,8 +1708,28 @@ taskCmd
 		}
 	});
 
-program
-	.command("search [query]")
+addHelpSchema(program.command("search [query]"), {
+	reads: "Tasks, documents, and decisions from the configured backlog directory",
+	required: [],
+	optional: [
+		{ name: "query", type: "String", description: "Fuzzy search text" },
+		{
+			name: "type",
+			type: choiceType(["task", "document", "decision"], { multiple: true }),
+			description: "Result types",
+		},
+		{ name: "status", type: statusType, description: "Filter task results by status; case-insensitive" },
+		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter task results by priority" },
+		{
+			name: "modified-file",
+			type: "Project-root-relative path",
+			description: "Filter by modified file path substring",
+		},
+		{ name: "limit", type: "Integer", description: "Maximum number of results" },
+	],
+	output: "Interactive search UI or plain text with --plain",
+	examples: ['backlog search "auth" --plain', 'backlog search "api" --type task --status "<active status>"'],
+})
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
@@ -1609,11 +1789,9 @@ program
 
 		let limit: number | undefined;
 		if (options.limit !== undefined) {
-			const parsed = Number.parseInt(String(options.limit), 10);
-			if (Number.isNaN(parsed) || parsed <= 0) {
-				console.error("--limit must be a positive integer");
+			const parsed = parsePositiveIntegerOption(options.limit, "--limit", "backlog search --help");
+			if (parsed === null) {
 				cleanup();
-				process.exitCode = 1;
 				return;
 			}
 			limit = parsed;
@@ -1782,18 +1960,91 @@ function formatScore(score: number | null): string {
 	return ` [score ${invertedScore.toFixed(3)}]`;
 }
 
+function parseDocumentSearchLimit(value: unknown): number | undefined | null {
+	if (value === undefined) {
+		return undefined;
+	}
+	const rawValue = String(value).trim();
+	const parsed = Number(rawValue);
+	if (rawValue.length === 0 || !Number.isInteger(parsed) || parsed < 1 || parsed > DOCUMENT_SEARCH_LIMIT_MAX) {
+		console.error(
+			`Invalid limit: ${rawValue || "(empty)"}. Limit must be an integer between 1 and ${DOCUMENT_SEARCH_LIMIT_MAX}.`,
+		);
+		process.exitCode = 1;
+		return null;
+	}
+	return parsed;
+}
+
+function formatDocumentSearchTags(document: DocType): string {
+	return document.tags && document.tags.length > 0 ? document.tags.join(", ") : "(none)";
+}
+
+function printDocumentSearchResults(results: DocumentSearchResult[], query: string): void {
+	if (results.length === 0) {
+		console.log(`No documents found for "${query}".`);
+		return;
+	}
+
+	console.log("Documents:");
+	for (const result of results) {
+		const { document } = result;
+		const scoreText = formatScore(result.score);
+		const pathText = document.path ?? "(unknown)";
+		const tagsText = formatDocumentSearchTags(document);
+		console.log(
+			`  ${document.id} - ${document.title} (path: ${pathText}, type: ${document.type}, tags: ${tagsText})${scoreText}`,
+		);
+		console.log(`    View: backlog doc view ${document.id}`);
+	}
+}
+
 function isTaskSearchResult(result: SearchResult): result is TaskSearchResult {
 	return result.type === "task";
 }
 
-taskCmd
-	.command("list")
+function isDocumentSearchResult(result: SearchResult): result is DocumentSearchResult {
+	return result.type === "document";
+}
+
+addHelpSchema(taskCmd.command("list"), {
+	reads: "Local editable tasks from the configured backlog directory",
+	required: [],
+	optional: [
+		{ name: "status", type: statusType, description: "Filter by task status; case-insensitive" },
+		{ name: "assignee", type: "Assignee", description: "Filter by @name" },
+		{ name: "milestone", type: "Milestone ID or title", description: "Closest case-insensitive match" },
+		{ name: "parent", type: "Task ID", description: "Show subtasks of a parent task" },
+		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter by task priority" },
+		{
+			name: "labels",
+			type: "Comma-separated strings",
+			description: "Require every listed label; repeat --labels or use label1,label2",
+		},
+		{ name: "search", type: "String", description: "Search task title, description, notes, comments, and metadata" },
+		{ name: "limit", type: "Positive integer", description: "Maximum tasks to display after sorting" },
+		{ name: "sort", type: choiceType(["priority", "id"]), description: "Task ordering before applying limit" },
+	],
+	output: "Interactive task list or plain text with --plain",
+	examples: [
+		'backlog task list --status "<todo status>" --plain',
+		"backlog task list --parent {{TASK_ID:1}}",
+		'backlog task list --labels frontend,bug --search "login" --limit 10 --plain',
+	],
+})
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
+	.option(
+		"-l, --labels <labels>",
+		"filter tasks by labels; require every comma-separated label (repeatable)",
+		createMultiValueAccumulator(),
+	)
+	.option("--search <query>", "search task title, description, notes, comments, and metadata")
+	.option("--limit <number>", "limit tasks displayed after sorting")
 	.option("--sort <field>", "sort tasks by field (priority, id)")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
@@ -1825,6 +2076,18 @@ taskCmd
 			baseFilters.priority = priorityLower as (typeof validPriorities)[number];
 		}
 
+		const labelFilters = parseDelimitedStringList(options.labels) ?? [];
+		const searchQuery = typeof options.search === "string" ? options.search.trim() : "";
+		let taskLimit: number | undefined;
+		if (options.limit !== undefined) {
+			const parsedLimit = parsePositiveIntegerOption(options.limit, "--limit", "backlog task list --help");
+			if (parsedLimit === null) {
+				cleanup();
+				return;
+			}
+			taskLimit = parsedLimit;
+		}
+
 		let parentId: string | undefined;
 		if (options.parent) {
 			const parentInput = String(options.parent);
@@ -1845,7 +2108,11 @@ taskCmd
 
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
-			const tasks = await core.queryTasks({ filters: baseFilters, includeCrossBranch: false });
+			const tasks = await core.queryTasks({
+				query: searchQuery || undefined,
+				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
+				includeCrossBranch: false,
+			});
 			const config = await core.filesystem.loadConfig();
 
 			if (parentId) {
@@ -1879,6 +2146,9 @@ taskCmd
 			if (parentId) {
 				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
 			}
+			if (labelFilters.length > 0) {
+				filtered = filtered.filter((task) => taskMatchesAllLabels(task, labelFilters));
+			}
 
 			if (filtered.length === 0) {
 				if (options.parent) {
@@ -1891,10 +2161,11 @@ taskCmd
 				return;
 			}
 
+			const displayTasks = taskLimit !== undefined ? filtered.slice(0, taskLimit) : filtered;
+
 			if (options.sort && options.sort.toLowerCase() === "priority") {
-				const sortedByPriority = sortTasks(filtered, "priority");
 				console.log("Tasks (sorted by priority):");
-				for (const t of sortedByPriority) {
+				for (const t of displayTasks) {
 					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
 					const statusIndicator = t.status ? ` (${t.status})` : "";
 					console.log(`  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}`);
@@ -1910,7 +2181,7 @@ taskCmd
 			}
 
 			const groups = new Map<string, Task[]>();
-			for (const task of filtered) {
+			for (const task of displayTasks) {
 				const rawStatus = (task.status || "").trim();
 				const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) || rawStatus;
 				const list = groups.get(canonicalStatus) || [];
@@ -1926,12 +2197,8 @@ taskCmd
 			for (const status of orderedStatuses) {
 				const list = groups.get(status);
 				if (!list) continue;
-				let sortedList = list;
-				if (options.sort) {
-					sortedList = sortTasks(list, options.sort.toLowerCase());
-				}
 				console.log(`${status || "No Status"}:`);
-				sortedList.forEach((task) => {
+				list.forEach((task) => {
 					const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 					console.log(`  ${priorityIndicator}${task.id} - ${task.title}`);
 				});
@@ -1951,6 +2218,9 @@ taskCmd
 		}
 		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
 		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
+		if (labelFilters.length > 0) activeFilters.push(`Labels: ${labelFilters.join(", ")}`);
+		if (searchQuery) activeFilters.push(`Search: ${searchQuery}`);
+		if (taskLimit !== undefined) activeFilters.push(`Limit: ${taskLimit}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
 
 		if (activeFilters.length > 0) {
@@ -1963,19 +2233,29 @@ taskCmd
 			milestone?: string;
 			priority?: string;
 			sort?: string;
+			labels?: string[];
+			labelMatch?: "all";
+			searchQuery?: string;
 			title?: string;
 			filterDescription?: string;
 			parentTaskId?: string;
+			limit?: number;
 		} = {
 			status: options.status,
 			assignee: options.assignee,
 			milestone: options.milestone,
 			priority: options.priority,
 			sort: options.sort,
+			labels: labelFilters,
+			labelMatch: labelFilters.length > 0 ? "all" : undefined,
 			title,
 			filterDescription,
 			parentTaskId: parentId,
+			limit: taskLimit,
 		};
+		if (searchQuery) {
+			initialUnifiedFilter.searchQuery = searchQuery;
+		}
 
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
 		const interactiveLoaderFilters: TaskListFilter = {};
@@ -2003,6 +2283,7 @@ taskCmd
 				const [tasks, allTasksForParentCheck] = await Promise.all([
 					core.queryTasks({
 						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
+						includeCrossBranch: false,
 					}),
 					parentId ? core.queryTasks() : Promise.resolve(undefined),
 				]);
@@ -2059,8 +2340,27 @@ taskCmd
 		cleanup();
 	});
 
-taskCmd
-	.command("edit [taskId]")
+addHelpSchema(taskCmd.command("edit [taskId]"), {
+	required: [
+		{ name: "taskId", type: "Task ID", description: "Task to update; prompted when omitted in interactive mode" },
+	],
+	optional: [
+		{ name: "title", type: "String", description: "Replacement task title" },
+		{ name: "description", type: "Markdown", description: "Replacement description" },
+		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
+		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
+		{ name: "notes", type: "Markdown", description: "Replacement implementation notes" },
+		{ name: "comment", type: "Markdown", description: "Append a discussion comment" },
+		{ name: "final-summary", type: "Markdown", description: "Completion summary" },
+		{ name: "check-ac", type: "Integer", description: "1-based acceptance criterion index" },
+	],
+	writes: "Updates task metadata and structured task sections through Backlog.md",
+	output: "Updated task details; use --plain for text output",
+	examples: [
+		'backlog task edit {{TASK_ID:1}} --status "<active status>" -a @sara',
+		"backlog task edit {{TASK_ID:1}} --check-ac 1",
+	],
+})
 	.description("edit an existing task")
 	.option("-t, --title <title>")
 	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
@@ -2203,7 +2503,7 @@ taskCmd
 				const updatedTask = await core.editTask(existingTaskForWizard.id, wizardInput);
 				console.log(`Updated task ${updatedTask.id}`);
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : String(error));
+				console.error(formatTaskEditError(error, existingTaskForWizard.id));
 				process.exitCode = 1;
 			}
 			return;
@@ -2301,7 +2601,7 @@ taskCmd
 				uncheckDod = dodUnchecks;
 			}
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : String(error));
+			console.error(formatTaskEditError(error, canonicalId));
 			process.exitCode = 1;
 			return;
 		}
@@ -2424,7 +2724,7 @@ taskCmd
 			const updateInput = buildTaskUpdateInput(editArgs);
 			updatedTask = await core.editTask(canonicalId, updateInput);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : String(error));
+			console.error(formatTaskEditError(error, canonicalId));
 			process.exitCode = 1;
 			return;
 		}
@@ -2440,8 +2740,13 @@ taskCmd
 
 // Note: Implementation notes appending is handled via `task edit --append-notes` only.
 
-taskCmd
-	.command("view <taskId>")
+addHelpSchema(taskCmd.command("view <taskId>"), {
+	reads: "Task metadata, description, plan, notes, comments, final summary, AC, and DoD",
+	required: [{ name: "taskId", type: "Task ID", description: "Task to display" }],
+	optional: [{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" }],
+	output: "Interactive task detail view or plain text with --plain",
+	examples: ["backlog task view {{TASK_ID:1}} --plain"],
+})
 	.description("display task details")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
@@ -2469,17 +2774,108 @@ taskCmd
 		await viewTaskEnhanced(task, { startWithDetailFocus: true, core, tasks: allTasks });
 	});
 
-taskCmd
-	.command("archive <taskId>")
+addHelpSchema(taskCmd.command("archive <taskId>"), {
+	required: [{ name: "taskId", type: "Task ID", description: "Task to archive" }],
+	optional: [],
+	writes: "Moves a task that should not be completed into the archive",
+	output: "Archive confirmation text",
+	examples: ["backlog task archive {{TASK_ID:1}}"],
+})
 	.description("archive a task")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const success = await core.archiveTask(taskId);
-		if (success) {
-			console.log(`Archived task ${taskId}`);
-		} else {
+		const task = await core.loadTaskById(taskId);
+		if (!task) {
 			console.error(`Task ${taskId} not found.`);
+			process.exitCode = 1;
+			return;
+		}
+
+		if (!isLocalEditableTask(task)) {
+			console.error(`Cannot archive task from another branch: ${task.id}`);
+			process.exitCode = 1;
+			return;
+		}
+
+		const config = await core.filesystem.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
+		if (isTerminalStatus(task.status, statuses)) {
+			console.error(
+				`Task ${task.id} is ${terminalStatus}. ${terminalStatus} tasks should be completed, not archived. Use: backlog task complete ${task.id}`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+
+		const success = await core.archiveTask(task.id);
+		if (success) {
+			console.log(`Archived task ${task.id}`);
+		} else {
+			console.error(`Failed to archive task: ${task.id}`);
+			process.exitCode = 1;
+		}
+	});
+
+addHelpSchema(taskCmd.command("complete <taskId>"), {
+	required: [
+		{
+			name: "taskId",
+			type: "Task ID",
+			description: "Task in the configured terminal status to move to completed",
+		},
+	],
+	optional: [],
+	writes:
+		"WARNING: This is a cleanup procedure. It moves a terminal-status task to completed, removes it from the active Kanban board, and should only be used for cleanup/archive purposes.",
+	output: "Completion cleanup confirmation and completed file path",
+	examples: ["backlog task complete {{TASK_ID:1}}"],
+})
+	.description("cleanup/archive a terminal-status task into completed")
+	.addHelpText(
+		"before",
+		"\nWarning: This is a cleanup procedure. It will make the task disappear from the active Kanban board and should only be used for cleanup/archive purposes.\n",
+	)
+	.action(async (taskId: string) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const task = await core.loadTaskById(taskId);
+
+		if (!task) {
+			console.error(`Task ${taskId} not found.`);
+			process.exitCode = 1;
+			return;
+		}
+
+		if (!isLocalEditableTask(task)) {
+			console.error(`Cannot complete task from another branch: ${task.id}`);
+			process.exitCode = 1;
+			return;
+		}
+
+		const config = await core.filesystem.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
+		if (!isTerminalStatus(task.status, statuses)) {
+			console.error(
+				`Task ${task.id} is not ${terminalStatus}. Set status to "${terminalStatus}" with: backlog task edit ${task.id} -s "${terminalStatus}" before cleanup.`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+
+		const completedFilePath = task.filePath ? join(core.filesystem.completedDir, basename(task.filePath)) : undefined;
+		const success = await core.completeTask(task.id);
+		if (!success) {
+			console.error(`Failed to complete task: ${task.id}`);
+			process.exitCode = 1;
+			return;
+		}
+
+		console.log(`Completed task ${task.id}.`);
+		if (completedFilePath) {
+			console.log(`File: ${completedFilePath}`);
 		}
 	});
 
@@ -2510,7 +2906,7 @@ taskCmd
 		const core = new Core(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
-		const reservedCommands = ["create", "list", "edit", "view", "archive", "demote"];
+		const reservedCommands = ["create", "list", "edit", "view", "archive", "complete", "demote"];
 		if (taskId && reservedCommands.includes(taskId)) {
 			console.error(`Unknown command: ${taskId}`);
 			taskCmd.help();
@@ -2749,8 +3145,16 @@ draftCmd
 
 const milestoneCmd = program.command("milestone").aliases(["milestones"]);
 
-milestoneCmd
-	.command("list")
+addHelpSchema(milestoneCmd.command("list"), {
+	reads: "Milestone files and local task milestone values",
+	required: [],
+	optional: [
+		{ name: "show-completed", type: "Boolean", description: "Include completed milestones" },
+		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
+	],
+	output: "Milestone list with completion status",
+	examples: ["backlog milestone list --plain"],
+})
 	.description("list milestones with completion status")
 	.option("--show-completed", "show completed milestones")
 	.option("--plain", "use plain text output")
@@ -2799,23 +3203,102 @@ milestoneCmd
 		}
 	});
 
-milestoneCmd
-	.command("archive <name>")
-	.description("archive a milestone by id or title")
-	.action(async (name: string) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const result = await core.archiveMilestone(name);
+addHelpSchema(milestoneCmd.command("add <name>"), {
+	reads: "Active milestone files for duplicate and alias validation",
+	required: [{ name: "name", type: "String", description: "Milestone name/title, trimmed before storage" }],
+	optional: [{ name: "description", type: "Markdown", description: "Optional milestone description" }],
+	writes: "Creates a milestone markdown file in the active milestones directory",
+	output: "Created milestone title and ID",
+	examples: ['backlog milestone add "Release 1.0"', 'backlog milestone add "Beta" --description "Beta scope"'],
+})
+	.description("add a milestone file")
+	.option("-d, --description <text>", "milestone description")
+	.action(async (name: string, options: { description?: string }) => {
+		await runMilestoneMutation((handlers) => handlers.addMilestone({ name, description: options.description }));
+	});
 
-		if (!result.success) {
-			console.error(`Milestone "${name}" not found.`);
+addHelpSchema(milestoneCmd.command("rename <from> <to>"), {
+	reads: "Active and archived milestone files, plus local tasks when task updates are enabled",
+	required: [
+		{ name: "from", type: "Milestone ID or title", description: "Existing active milestone to rename" },
+		{ name: "to", type: "String", description: "New milestone title; checked for alias conflicts" },
+	],
+	optional: [
+		{
+			name: "update-tasks",
+			type: "Boolean",
+			description: "Update local task milestone references; default true, disable with --no-update-tasks",
+		},
+	],
+	writes: "Renames the milestone file and, by default, updates matching local task milestone values",
+	output: "Rename summary, task update count, and file move path when changed",
+	examples: [
+		'backlog milestone rename "Release 1.0" "Release 2.0"',
+		'backlog milestone rename m-1 "Release 2.0" --no-update-tasks',
+	],
+})
+	.description("rename a milestone file and update local tasks by default")
+	.option("--no-update-tasks", "do not update local tasks that reference the milestone")
+	.action(async (from: string, to: string, options: { updateTasks?: boolean }) => {
+		await runMilestoneMutation((handlers) =>
+			handlers.renameMilestone({ from, to, updateTasks: options.updateTasks !== false }),
+		);
+	});
+
+addHelpSchema(milestoneCmd.command("remove <name>"), {
+	reads: "Active and archived milestone files, plus local tasks unless task handling is keep",
+	required: [{ name: "name", type: "Milestone ID or title", description: "Active milestone to remove" }],
+	optional: [
+		{
+			name: "task-handling",
+			type: choiceType(["clear", "keep", "reassign"]),
+			description: "How to handle matching local task milestone values; default clear",
+		},
+		{
+			name: "reassign-to",
+			type: "Milestone ID or title",
+			description: "Required when task-handling is reassign; target must be an active milestone",
+		},
+	],
+	writes: "Moves the milestone file to the archived milestones directory and may clear or reassign local tasks",
+	output: "Removal summary and task handling count",
+	examples: [
+		'backlog milestone remove "Release 1.0"',
+		'backlog milestone remove "Release 1.0" --task-handling keep',
+		'backlog milestone remove "Release 1.0" --task-handling reassign --reassign-to "Release 2.0"',
+	],
+})
+	.description("remove a milestone file and clear, keep, or reassign matching tasks")
+	.option("--task-handling <mode>", "how to handle matching tasks (clear|keep|reassign)", "clear")
+	.option("--reassign-to <milestone>", "target milestone when --task-handling reassign")
+	.action(async (name: string, options: { taskHandling?: string; reassignTo?: string }) => {
+		const taskHandling = parseMilestoneTaskHandling(options.taskHandling);
+		if (!taskHandling) {
+			console.error(`Invalid task handling: ${options.taskHandling}. Valid values are: clear, keep, reassign`);
 			process.exitCode = 1;
 			return;
 		}
 
-		const label = result.milestone?.title ?? name;
-		const id = result.milestone?.id;
-		console.log(`Archived milestone "${label}"${id ? ` (${id})` : ""}.`);
+		await runMilestoneMutation((handlers) =>
+			handlers.removeMilestone({
+				name,
+				taskHandling,
+				reassignTo: options.reassignTo,
+			}),
+		);
+	});
+
+addHelpSchema(milestoneCmd.command("archive <name>"), {
+	reads: "Active milestone files",
+	required: [{ name: "name", type: "Milestone ID or title", description: "Milestone to archive" }],
+	optional: [],
+	writes: "Moves a milestone file into the archived milestones directory",
+	output: "Archive confirmation text",
+	examples: ["backlog milestone archive m-1"],
+})
+	.description("archive a milestone by id or title")
+	.action(async (name: string) => {
+		await runMilestoneMutation((handlers) => handlers.archiveMilestone({ name }));
 	});
 
 const boardCmd = program.command("board");
@@ -3020,8 +3503,20 @@ boardCmd
 
 const docCmd = program.command("doc");
 
-docCmd
-	.command("create <title>")
+addHelpSchema(docCmd.command("create <title>"), {
+	required: [{ name: "title", type: "String", description: "Document title" }],
+	optional: [
+		{
+			name: "path",
+			type: "Docs-relative path",
+			description: "Subdirectory under backlog/docs; absolute paths and .. are rejected",
+		},
+		{ name: "type", type: choiceType(DOCUMENT_TYPE_VALUES), description: "Document type" },
+	],
+	writes: "Creates a document markdown file under the configured docs directory",
+	output: "Created document ID and path",
+	examples: ['backlog doc create "API Guidelines" -p guides/api'],
+})
 	.option("-p, --path <path>")
 	.option("-t, --type <type>", `document type (${DOCUMENT_TYPE_VALUES.join(", ")})`)
 	.action(async (title: string, options) => {
@@ -3039,8 +3534,19 @@ docCmd
 		}
 	});
 
-docCmd
-	.command("update <docId>")
+addHelpSchema(docCmd.command("update <docId>"), {
+	required: [{ name: "docId", type: "Document ID", description: "Document to update" }],
+	optional: [
+		{ name: "title", type: "String", description: "Replacement title" },
+		{ name: "content", type: "Markdown", description: "Replacement document body" },
+		{ name: "path", type: "Docs-relative path", description: "Move document under backlog/docs" },
+		{ name: "type", type: choiceType(DOCUMENT_TYPE_VALUES), description: "Document type" },
+		{ name: "tags", type: "Comma-separated strings", description: "Replacement tags" },
+	],
+	writes: "Updates document content, metadata, or docs-relative path",
+	output: "Updated document ID and path",
+	examples: ['backlog doc update doc-1 --content "Updated markdown"', "backlog doc update doc-1 -p guides"],
+})
 	.description("update a document")
 	.option("--title <title>", "update document title")
 	.option("--content <content>", "replace document markdown content")
@@ -3070,8 +3576,13 @@ docCmd
 		}
 	});
 
-docCmd
-	.command("list")
+addHelpSchema(docCmd.command("list"), {
+	reads: "Documents under the configured docs directory",
+	required: [],
+	optional: [{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" }],
+	output: "Document list with IDs, titles, types, paths, and tags",
+	examples: ["backlog doc list --plain"],
+})
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
@@ -3109,9 +3620,69 @@ docCmd
 		}
 	});
 
+addHelpSchema(docCmd.command("search <query>"), {
+	reads: "Documents under the configured docs directory using the shared fuzzy search index",
+	writes: "None; this is a read-only command",
+	required: [{ name: "query", type: "String", description: "Search text, 1-200 characters" }],
+	optional: [
+		{
+			name: "limit",
+			type: "Integer",
+			description: `Maximum matching documents to return, 1-${DOCUMENT_SEARCH_LIMIT_MAX}`,
+		},
+	],
+	output: "Plain text Documents list with id, title, path, type, tags, score, and a follow-up doc view command",
+	examples: ['backlog doc search "architecture"', 'backlog doc search "runbook" --limit 5'],
+})
+	.description("search documents using the shared fuzzy index")
+	.option("-l, --limit <number>", `limit results returned (1-${DOCUMENT_SEARCH_LIMIT_MAX})`)
+	.action(async (query: string, options) => {
+		const normalizedQuery = query.trim();
+		if (normalizedQuery.length === 0) {
+			console.error('Query is required. Provide non-empty text, for example: backlog doc search "architecture"');
+			process.exitCode = 1;
+			return;
+		}
+		if (normalizedQuery.length > DOCUMENT_SEARCH_QUERY_MAX_LENGTH) {
+			console.error(`Query must be ${DOCUMENT_SEARCH_QUERY_MAX_LENGTH} characters or fewer.`);
+			process.exitCode = 1;
+			return;
+		}
+
+		const limit = parseDocumentSearchLimit(options.limit);
+		if (limit === null) {
+			return;
+		}
+
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const searchService = await core.getSearchService();
+		const contentStore = await core.getContentStore();
+		const cleanup = () => {
+			searchService.dispose();
+			contentStore.dispose();
+		};
+
+		const results = searchService
+			.search({
+				query: normalizedQuery,
+				limit,
+				types: ["document"],
+			})
+			.filter(isDocumentSearchResult);
+
+		printDocumentSearchResults(results, normalizedQuery);
+		cleanup();
+	});
+
 // Document view command
-docCmd
-	.command("view <docId>")
+addHelpSchema(docCmd.command("view <docId>"), {
+	reads: "Document metadata and markdown body",
+	required: [{ name: "docId", type: "Document ID", description: "Document to display" }],
+	optional: [],
+	output: "Document metadata and markdown content",
+	examples: ["backlog doc view doc-1"],
+})
 	.description("view a document")
 	.action(async (docId: string) => {
 		const cwd = await requireProjectRoot();
@@ -3152,13 +3723,27 @@ decisionCmd
 	});
 
 // Agents command group
-const agentsCmd = program.command("agents");
+const agentsCmd = addHelpSchema(program.command("agents"), {
+	reads: "Project config and existing agent instruction files when updating",
+	required: [],
+	optional: [
+		{
+			name: "--update-instructions",
+			type: "Boolean",
+			description: "Interactively select instruction files and refresh the short Backlog.md CLI nudge",
+		},
+	],
+	writes:
+		"Creates or updates the managed Backlog.md CLI nudge in selected instruction files; preserves existing content outside the managed block",
+	output: "Interactive file selection followed by created, updated, or unchanged file summary",
+	examples: ["backlog agents --update-instructions"],
+});
 
 agentsCmd
-	.description("manage agent instruction files")
+	.description("manage the short Backlog.md CLI nudge in agent instruction files")
 	.option(
 		"--update-instructions",
-		"update agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md)",
+		"update the Backlog.md CLI nudge in agent instruction files while preserving existing content",
 	)
 	.action(async (options) => {
 		if (!options.updateInstructions) {
@@ -3211,8 +3796,14 @@ agentsCmd
 	});
 
 // Config command group
-const configCmd = program
-	.command("config")
+const configCmd = addHelpSchema(program.command("config"), {
+	reads: "Project Backlog.md configuration",
+	required: [],
+	optional: [],
+	writes: "Interactive configuration updates when run without a subcommand",
+	output: "Interactive wizard results or subcommand output",
+	examples: ["backlog config", "backlog config list", "backlog config get defaultEditor"],
+})
 	.description("manage backlog configuration")
 	.action(async () => {
 		try {
@@ -3335,8 +3926,13 @@ sequenceCmd
 		await runSequencesView({ unsequenced, sequences }, core);
 	});
 
-configCmd
-	.command("get <key>")
+addHelpSchema(configCmd.command("get <key>"), {
+	reads: "Project Backlog.md configuration",
+	required: [{ name: "key", type: choiceType(CONFIG_GET_KEYS), description: "Configuration value to print" }],
+	optional: [],
+	output: "The selected configuration value",
+	examples: ["backlog config get defaultEditor"],
+})
 	.description("get a configuration value")
 	.action(async (key: string) => {
 		try {
@@ -3425,8 +4021,16 @@ configCmd
 		}
 	});
 
-configCmd
-	.command("set <key> <value>")
+addHelpSchema(configCmd.command("set <key> <value>"), {
+	required: [
+		{ name: "key", type: choiceType(CONFIG_SET_KEYS), description: "Configuration value to update" },
+		{ name: "value", type: "String", description: "New value; parsed based on key type" },
+	],
+	optional: [],
+	writes: "Updates the project Backlog.md configuration file",
+	output: "Confirmation of the updated config value",
+	examples: ['backlog config set defaultEditor "code --wait"', "backlog config set autoCommit true"],
+})
 	.description("set a configuration value")
 	.action(async (key: string, value: string) => {
 		try {
@@ -3619,8 +4223,13 @@ configCmd
 		}
 	});
 
-configCmd
-	.command("list")
+addHelpSchema(configCmd.command("list"), {
+	reads: "Project Backlog.md configuration",
+	required: [],
+	optional: [],
+	output: "All public configuration values",
+	examples: ["backlog config list"],
+})
 	.description("list all configuration values")
 	.action(async () => {
 		try {
@@ -3661,8 +4270,14 @@ configCmd
 	});
 
 // Cleanup command for managing completed tasks
-program
-	.command("cleanup")
+addHelpSchema(program.command("cleanup"), {
+	reads: "Tasks in terminal status from the configured backlog directory",
+	required: [],
+	optional: [],
+	writes: "Moves selected terminal-status tasks to the completed folder",
+	output: "Interactive cleanup summary",
+	examples: ["backlog cleanup"],
+})
 	.description("move completed tasks to completed folder based on age")
 	.action(async () => {
 		try {
@@ -3870,6 +4485,9 @@ program
 
 // Completion command group
 registerCompletionCommand(program);
+
+// Instructions command group
+registerInstructionsCommand(program);
 
 // MCP command group
 registerMcpCommand(program);

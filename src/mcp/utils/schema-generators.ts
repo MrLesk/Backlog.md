@@ -3,14 +3,24 @@ import type { BacklogConfig } from "../../types/index.ts";
 import type { JsonSchema } from "../validation/validators.ts";
 
 /**
+ * Builds the accepted task status values used by MCP schemas and public CLI help.
+ */
+export function getStatusFieldEnumValues(config: Pick<BacklogConfig, "statuses">): string[] {
+	const configuredStatuses =
+		config.statuses && config.statuses.length > 0 ? [...config.statuses] : [...DEFAULT_STATUSES];
+	const normalizedStatuses = configuredStatuses.map((status) => status.trim());
+	const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
+	return hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
+}
+
+/**
  * Generates a status field schema with dynamic enum values sourced from config.
  */
 export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
 	const configuredStatuses =
 		config.statuses && config.statuses.length > 0 ? [...config.statuses] : [...DEFAULT_STATUSES];
 	const normalizedStatuses = configuredStatuses.map((status) => status.trim());
-	const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
-	const enumStatuses = hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
+	const enumStatuses = getStatusFieldEnumValues(config);
 	const defaultStatus = normalizedStatuses[0] ?? DEFAULT_STATUSES[0];
 
 	return {

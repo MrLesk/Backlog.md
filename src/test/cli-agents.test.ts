@@ -41,8 +41,21 @@ describe("CLI agents command", () => {
 
 	it("should show help text with agents --help", async () => {
 		const result = await $`bun ${cliPath} agents --help`.cwd(TEST_DIR).quiet();
+		const output = result.stdout.toString();
 
 		expect(result.exitCode).toBe(0);
+		expect(output).toContain("manage the short Backlog.md CLI nudge in agent instruction files");
+		expect(output).toContain("--update-instructions");
+		expect(output).toContain("preserving existing content");
+		expect(output).toContain("Input schema:");
+		expect(output).toContain("--update-instructions: Boolean");
+		expect(output).toContain("Reads:");
+		expect(output).toContain("Project config and existing agent instruction files");
+		expect(output).toContain("Writes:");
+		expect(output).toContain("preserves existing content outside the managed block");
+		expect(output).toContain("Output:");
+		expect(output).toContain("Examples:");
+		expect(output).toContain("backlog agents --update-instructions");
 	});
 
 	it("should update selected agent instruction files", async () => {

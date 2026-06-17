@@ -171,6 +171,17 @@ function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTas
 	return ids;
 }
 
+function formatAvailableIndexHint(items: AcceptanceCriterion[], emptyMessage: string): string {
+	if (items.length === 0) {
+		return emptyMessage;
+	}
+	const indexes = items.map((item) => item.index).sort((a, b) => a - b);
+	const first = indexes[0] ?? 1;
+	const last = indexes[indexes.length - 1] ?? first;
+	const range = first === last ? `#${first}` : `#${first}-#${last}`;
+	return `Available indexes: ${range}.`;
+}
+
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
@@ -1557,7 +1568,10 @@ export class Core {
 				throw new Error(
 					`Acceptance criterion ${Array.from(removalSet)
 						.map((index) => `#${index}`)
-						.join(", ")} not found`,
+						.join(", ")} not found. ${formatAvailableIndexHint(
+						acceptanceCriteria,
+						"No acceptance criteria are defined.",
+					)}`,
 				);
 			}
 			mutated = true;
@@ -1580,7 +1594,12 @@ export class Core {
 			}
 			if (missing.length > 0) {
 				const label = missing.map((index) => `#${index}`).join(", ");
-				throw new Error(`Acceptance criterion ${label} not found`);
+				throw new Error(
+					`Acceptance criterion ${label} not found. ${formatAvailableIndexHint(
+						acceptanceCriteria,
+						"No acceptance criteria are defined.",
+					)}`,
+				);
 			}
 		};
 
@@ -1628,7 +1647,12 @@ export class Core {
 			}
 			if (missing.length > 0) {
 				const label = missing.map((index) => `#${index}`).join(", ");
-				throw new Error(`Definition of Done item ${label} not found`);
+				throw new Error(
+					`Definition of Done item ${label} not found. ${formatAvailableIndexHint(
+						definitionOfDone,
+						"No Definition of Done items are defined.",
+					)}`,
+				);
 			}
 		};
 
@@ -1643,7 +1667,10 @@ export class Core {
 				throw new Error(
 					`Definition of Done item ${Array.from(removalSet)
 						.map((index) => `#${index}`)
-						.join(", ")} not found`,
+						.join(", ")} not found. ${formatAvailableIndexHint(
+						definitionOfDone,
+						"No Definition of Done items are defined.",
+					)}`,
 				);
 			}
 			mutated = true;

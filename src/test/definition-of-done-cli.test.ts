@@ -98,4 +98,17 @@ describe("Definition of Done CLI", () => {
 		body = task?.rawContent ?? "";
 		expect(body).toContain("- [ ] #1 Update docs");
 	});
+
+	it("reports available indexes when a Definition of Done index is missing", async () => {
+		await $`bun ${CLI_PATH} task create "DoD invalid index"`.cwd(TEST_DIR).quiet();
+
+		const result = await $`bun ${CLI_PATH} task edit 1 --check-dod 99`.cwd(TEST_DIR).nothrow().quiet();
+		const output = result.stdout.toString() + result.stderr.toString();
+
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Definition of Done item #99 not found");
+		expect(output).toContain("Available indexes: #1-#2.");
+		expect(output).toContain("backlog task view TASK-1 --plain");
+		expect(output).toContain("backlog task edit TASK-1 --help");
+	});
 });

@@ -1,5 +1,6 @@
 import {
 	type AgentInstructionFile,
+	type AgentInstructionWriteResult,
 	addAgentInstructions,
 	ensureMcpGuidelines,
 	installClaudeAgent,
@@ -28,6 +29,22 @@ const MCP_CLIENT_INSTRUCTION_MAP: Record<McpClientSetupKey, AgentInstructionFile
 	gemini: "GEMINI.md",
 	kiro: "AGENTS.md",
 };
+
+function formatAgentInstructionResults(results: AgentInstructionWriteResult[]): string {
+	const labels: Array<[AgentInstructionWriteResult["action"], string]> = [
+		["created", "Created"],
+		["updated", "Updated"],
+		["unchanged", "Unchanged"],
+	];
+
+	return labels
+		.map(([action, label]) => {
+			const fileNames = results.filter((result) => result.action === action).map((result) => result.fileName);
+			return fileNames.length > 0 ? `${label}: ${fileNames.join(", ")}` : null;
+		})
+		.filter((line): line is string => line !== null)
+		.join("\n");
+}
 
 export interface InitializeProjectOptions {
 	projectName: string;
@@ -252,8 +269,13 @@ export async function initializeProject(
 	// Handle CLI integration - agent instruction files
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
 		try {
-			await addAgentInstructions(projectRoot, core.gitOps, agentInstructions, config.autoCommit);
-			mcpResults.agentFiles = `Created: ${agentInstructions.join(", ")}`;
+			const agentInstructionResults = await addAgentInstructions(
+				projectRoot,
+				core.gitOps,
+				agentInstructions,
+				config.autoCommit,
+			);
+			mcpResults.agentFiles = formatAgentInstructionResults(agentInstructionResults);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			mcpResults.agentFiles = `Failed: ${message}`;
