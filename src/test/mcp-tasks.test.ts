@@ -555,6 +555,44 @@ describe("MCP task tools (MVP)", () => {
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
 	});
 
+	it("does not clear labels from blank-only task_edit label arrays", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Label blank input",
+					labels: ["docs", "workflow"],
+				},
+			},
+		});
+
+		const blankEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					labels: ["", "   "],
+				},
+			},
+		});
+
+		expect(getText(blankEdit.content)).toContain("Labels: docs, workflow");
+		expect((await mcpServer.getTask("task-1"))?.labels).toEqual(["docs", "workflow"]);
+
+		const clearEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					labels: [],
+				},
+			},
+		});
+
+		expect(getText(clearEdit.content)).not.toContain("Labels:");
+		expect((await mcpServer.getTask("task-1"))?.labels).toEqual([]);
+	});
+
 	it("creates, edits, lists, and views tasks with ordinal", async () => {
 		const createdA = await mcpServer.testInterface.callTool({
 			params: {

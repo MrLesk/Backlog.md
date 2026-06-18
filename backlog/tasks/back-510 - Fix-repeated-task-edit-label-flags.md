@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-06-18 16:47'
-updated_date: '2026-06-18 16:57'
+updated_date: '2026-06-18 17:26'
 labels: []
 dependencies: []
 references:
@@ -45,12 +45,16 @@ Make task edit label flags consistent and explicit. Repeated --add-label should 
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented repeatable task edit label parsing for --label, --add-label, and --remove-label using the existing accumulator and parser. Added --clear-labels as an explicit empty replacement mode, preserved empty label replacements through buildTaskUpdateInput, and rejected mixed replacement/clear/mutation label modes before mutation. Validation passed: bun test src/test/cli.test.ts; bunx tsc --noEmit; bun run check .; bun run build; git diff --check; full bun test (1340 pass, 2 skip, 0 fail).
+
+Reopened to address PR #693 review feedback: blank-only label arrays must not be interpreted as explicit label clearing; clearing remains reserved for explicit empty arrays / --clear-labels.
+
+Addressed PR #693 review thread PRRT_kwDOO2LIE86Kn8VH by preserving labels on blank-only task_edit label arrays while retaining explicit labels: [] clearing. Validation passed: bun test src/test/mcp-tasks.test.ts; bun test src/test/cli.test.ts; bunx tsc --noEmit; bun run check .; bun run build; git diff --check. Local full bun test hit an unrelated existing timeout in CLI Priority Filtering > case insensitive priority filtering at 5s; the targeted behavior passed with bun test --timeout 15000 src/test/cli-priority-filtering.test.ts -t 'case insensitive priority filtering'.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented repeatable task edit label flags and explicit label clearing. The CLI now collects repeated --label/--add-label/--remove-label values, supports --clear-labels, rejects ambiguous mixed label modes, and documents these semantics in task edit help/schema. Added CLI integration coverage and verified with focused tests, typecheck, Biome, build, diff check, and full bun test.
+Implemented repeatable task edit label flags, explicit label clearing, agent-facing help/schema updates, and the PR review fix ensuring blank-only label arrays do not clear labels. Verified with focused MCP/CLI tests, typecheck, Biome, build, diff check, and a targeted timeout-adjusted rerun of the unrelated priority-filter case.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
