@@ -355,6 +355,43 @@ const Settings: React.FC = () => {
 									</div>
 								</label>
 							</div>
+
+							<label className="flex items-center justify-between">
+								<div>
+									<span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Password Protection</span>
+									<p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+										Enable password protection for Web UI access
+									</p>
+								</div>
+								<div className="relative inline-flex items-center cursor-pointer">
+									<input
+										type="checkbox"
+										checked={config.webAuthEnabled}
+										onChange={(e) => handleInputChange('webAuthEnabled', e.target.checked)}
+										className="sr-only peer"
+									/>
+									<div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-circle peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-circle after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+								</div>
+							</label>
+
+							{config.webAuthEnabled && (
+								<div>
+									<label htmlFor="webPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+										Access Password
+									</label>
+									<input
+										id="webPassword"
+										type="password"
+										value={config.webPassword || ''}
+										onChange={(e) => handleInputChange('webPassword', e.target.value)}
+										className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+										placeholder="Enter Web UI access password"
+									/>
+									<p className="mt-1 text-sm text-amber-600 dark:text-amber-400">
+										Password changes require a web server restart to take effect
+									</p>
+								</div>
+							)}
 						</div>
 					</div>
 

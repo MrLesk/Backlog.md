@@ -1426,6 +1426,12 @@ ${description || `Milestone: ${title}`}`,
 				case "backlogDirectory":
 					config.backlogDirectory = value.replace(/['"]/g, "");
 					break;
+				case "web_auth_enabled":
+					config.webAuthEnabled = value.toLowerCase() === "true";
+					break;
+				case "web_password":
+					config.webPassword = value.replace(/['"]/g, "");
+					break;
 			}
 		}
 
@@ -1452,6 +1458,8 @@ ${description || `Milestone: ${title}`}`,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
+			webAuthEnabled: config.webAuthEnabled,
+			webPassword: config.webPassword,
 		};
 	}
 
@@ -1484,6 +1492,8 @@ ${description || `Milestone: ${title}`}`,
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...(typeof config.webAuthEnabled === "boolean" ? [`web_auth_enabled: ${config.webAuthEnabled}`] : []),
+			...(config.webPassword ? [`web_password: "${config.webPassword}"`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

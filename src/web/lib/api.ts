@@ -541,6 +541,24 @@ export class ApiClient {
 		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
 	}
 
+	async login(password: string): Promise<boolean> {
+		const response = await fetch(`${API_BASE}/auth/login`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password }),
+		});
+		return response.ok;
+	}
+
+	async logout(): Promise<void> {
+		await fetch(`${API_BASE}/auth/logout`, { method: "POST" });
+	}
+
+	async checkAuthStatus(): Promise<{ isAuthenticated: boolean; authEnabled: boolean }> {
+		const response = await fetch(`${API_BASE}/auth/status`);
+		return response.json();
+	}
+
 	async initializeProject(options: {
 		projectName: string;
 		backlogDirectory?: string;

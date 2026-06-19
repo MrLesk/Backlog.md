@@ -11,6 +11,7 @@ import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
+import Login from './components/Login';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import {
@@ -176,6 +177,8 @@ function App() {
   
   // Initialization state
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [authEnabled, setAuthEnabled] = useState(false);
   
   // Centralized data state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -207,12 +210,28 @@ function App() {
         console.error('Failed to check initialization status:', error);
         setIsInitialized(false);
       }
+      // Check auth status
+      try {
+        const authStatus = await apiClient.checkAuthStatus();
+        setAuthEnabled(authStatus.authEnabled);
+        setIsAuthenticated(authStatus.isAuthenticated);
+      } catch {
+        setIsAuthenticated(true); // If auth check fails, allow access
+      }
     };
     checkInitStatus();
   }, []);
 
   const handleInitialized = useCallback(() => {
     setIsInitialized(true);
+  }, []);
+
+  const handleLogin = useCallback(async (password: string): Promise<boolean> => {
+    const success = await apiClient.login(password);
+    if (success) {
+      setIsAuthenticated(true);
+    }
+    return success;
   }, []);
 
   const applySearchResults = useCallback((
@@ -448,6 +467,15 @@ function App() {
       console.error('Failed to archive task:', error);
     }
   };
+
+  // Show login screen if auth is enabled and user is not authenticated
+  if (authEnabled && isAuthenticated === false) {
+    return (
+      <ThemeProvider>
+        <Login onLogin={handleLogin} />
+      </ThemeProvider>
+    );
+  }
 
   // Show loading state while checking initialization
   if (isInitialized === null) {

@@ -197,6 +197,8 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	private cachedWebPassword: string | null = null;
+	private cachedWebAuthEnabled = false;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -280,6 +282,10 @@ export class BacklogServer {
 		// Load config (migration is handled globally by CLI)
 		const config = await this.core.filesystem.loadConfig();
 
+		// Cache web auth config
+		this.cachedWebAuthEnabled = config?.webAuthEnabled ?? false;
+		this.cachedWebPassword = config?.webPassword ?? null;
+
 		// Use config default port if no port specified
 		const finalPort = port ?? config?.defaultPort ?? 6420;
 		this.projectName = config?.projectName || "Untitled Project";
@@ -314,87 +320,125 @@ export class BacklogServer {
 
 					// API Routes using Bun's native route syntax
 					"/api/tasks": {
-						GET: async (req: Request) => await this.handleListTasks(req),
-						POST: async (req: Request) => await this.handleCreateTask(req),
+						GET: this.withAuth(async (req: Request) => await this.handleListTasks(req)),
+						POST: this.withAuth(async (req: Request) => await this.handleCreateTask(req)),
 					},
 					"/api/task/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
+						GET: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
+						),
 					},
 					"/api/tasks/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
+						GET: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
+						),
+						PUT: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
+						),
+						DELETE: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
+						),
 					},
 					"/api/tasks/:id/complete": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+						POST: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+						),
 					},
 					"/api/statuses": {
-						GET: async () => await this.handleGetStatuses(),
+						GET: this.withAuth(async () => await this.handleGetStatuses()),
+					},
+					"/api/auth/login": {
+						POST: async (req: Request) => await this.handleLogin(req),
+					},
+					"/api/auth/logout": {
+						POST: async () => await this.handleLogout(),
+					},
+					"/api/auth/status": {
+						GET: async (req: Request) => await this.handleAuthStatus(req),
 					},
 					"/api/config": {
-						GET: async () => await this.handleGetConfig(),
-						PUT: async (req: Request) => await this.handleUpdateConfig(req),
+						GET: this.withAuth(async () => await this.handleGetConfig()),
+						PUT: this.withAuth(async (req: Request) => await this.handleUpdateConfig(req)),
 					},
 					"/api/docs": {
-						GET: async () => await this.handleListDocs(),
-						POST: async (req: Request) => await this.handleCreateDoc(req),
+						GET: this.withAuth(async () => await this.handleListDocs()),
+						POST: this.withAuth(async (req: Request) => await this.handleCreateDoc(req)),
 					},
 					"/api/doc/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
+						GET: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
+						),
 					},
 					"/api/docs/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
+						GET: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
+						),
+						PUT: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
+						),
 					},
 					"/api/decisions": {
-						GET: async () => await this.handleListDecisions(),
-						POST: async (req: Request) => await this.handleCreateDecision(req),
+						GET: this.withAuth(async () => await this.handleListDecisions()),
+						POST: this.withAuth(async (req: Request) => await this.handleCreateDecision(req)),
 					},
 					"/api/decision/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
+						GET: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
+						),
 					},
 					"/api/decisions/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateDecision(req, req.params.id),
+						GET: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
+						),
+						PUT: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleUpdateDecision(req, req.params.id),
+						),
 					},
 					"/api/drafts": {
-						GET: async () => await this.handleListDrafts(),
+						GET: this.withAuth(async () => await this.handleListDrafts()),
 					},
 					"/api/drafts/:id/promote": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
+						POST: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
+						),
 					},
 					"/api/milestones": {
-						GET: async () => await this.handleListMilestones(),
-						POST: async (req: Request) => await this.handleCreateMilestone(req),
+						GET: this.withAuth(async () => await this.handleListMilestones()),
+						POST: this.withAuth(async (req: Request) => await this.handleCreateMilestone(req)),
 					},
 					"/api/milestones/archived": {
-						GET: async () => await this.handleListArchivedMilestones(),
+						GET: this.withAuth(async () => await this.handleListArchivedMilestones()),
 					},
 					"/api/milestones/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateMilestone(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) =>
-							await this.handleRemoveMilestone(req, req.params.id),
+						GET: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
+						),
+						PUT: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleUpdateMilestone(req, req.params.id),
+						),
+						DELETE: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleRemoveMilestone(req, req.params.id),
+						),
 					},
 					"/api/milestones/:id/archive": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
+						POST: this.withAuth(
+							async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
+						),
 					},
 					"/api/tasks/reorder": {
-						POST: async (req: Request) => await this.handleReorderTask(req),
+						POST: this.withAuth(async (req: Request) => await this.handleReorderTask(req)),
 					},
 					"/api/tasks/cleanup": {
-						GET: async (req: Request) => await this.handleCleanupPreview(req),
+						GET: this.withAuth(async (req: Request) => await this.handleCleanupPreview(req)),
 					},
 					"/api/tasks/cleanup/execute": {
-						POST: async (req: Request) => await this.handleCleanupExecute(req),
+						POST: this.withAuth(async (req: Request) => await this.handleCleanupExecute(req)),
 					},
 					"/api/version": {
-						GET: async () => await this.handleGetVersion(),
+						GET: this.withAuth(async () => await this.handleGetVersion()),
 					},
 					"/api/statistics": {
-						GET: async () => await this.handleGetStatistics(),
+						GET: this.withAuth(async () => await this.handleGetStatistics()),
 					},
 					"/api/status": {
 						GET: async () => await this.handleGetStatus(),
@@ -1242,6 +1286,10 @@ export class BacklogServer {
 				this.projectName = updatedConfig.projectName;
 			}
 
+			// Update cached auth config
+			this.cachedWebAuthEnabled = updatedConfig.webAuthEnabled ?? false;
+			this.cachedWebPassword = updatedConfig.webPassword ?? null;
+
 			// Notify connected clients so that they refresh configuration-dependent data (e.g., statuses)
 			this.broadcastTasksUpdated();
 
@@ -1250,6 +1298,78 @@ export class BacklogServer {
 			console.error("Error updating config:", error);
 			return Response.json({ error: "Failed to update configuration" }, { status: 500 });
 		}
+	}
+
+	private verifyPasswordCookie(req: Request): boolean {
+		if (!this.cachedWebAuthEnabled || !this.cachedWebPassword) {
+			return true; // Auth not enabled
+		}
+		const cookie = req.headers.get("cookie") || "";
+		const authToken = cookie.split(";").find((c) => c.trim().startsWith("backlog_auth="));
+		if (!authToken) return false;
+		const token = authToken.split("=").slice(1).join("=").trim();
+		return token === this.hashPassword(this.cachedWebPassword);
+	}
+
+	/**
+	 * Wrap a route handler with authentication check.
+	 * Public routes (auth, status, init) should NOT be wrapped.
+	 */
+	private withAuth<TReq extends Request>(handler: (req: TReq) => Promise<Response>): (req: TReq) => Promise<Response> {
+		return async (req: TReq) => {
+			if (!this.verifyPasswordCookie(req)) {
+				return Response.json({ error: "Unauthorized" }, { status: 401 });
+			}
+			return handler(req);
+		};
+	}
+
+	private hashPassword(password: string): string {
+		// Simple hash for cookie comparison (not cryptographic, just to avoid plaintext in cookie)
+		let hash = 0;
+		for (let i = 0; i < password.length; i++) {
+			const char = password.charCodeAt(i);
+			hash = (hash << 5) - hash + char;
+			hash = hash & hash; // Convert to 32bit integer
+		}
+		return `h_${Math.abs(hash).toString(36)}`;
+	}
+
+	private async handleLogin(req: Request): Promise<Response> {
+		try {
+			const { password } = (await req.json()) as { password: string };
+			if (!this.cachedWebPassword || password !== this.cachedWebPassword) {
+				return Response.json({ error: "Invalid password" }, { status: 401 });
+			}
+			const token = this.hashPassword(password);
+			return Response.json(
+				{ success: true },
+				{
+					headers: {
+						"Set-Cookie": `backlog_auth=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`,
+					},
+				},
+			);
+		} catch {
+			return Response.json({ error: "Invalid request" }, { status: 400 });
+		}
+	}
+
+	private async handleLogout(): Promise<Response> {
+		return Response.json(
+			{ success: true },
+			{
+				headers: {
+					"Set-Cookie": "backlog_auth=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+				},
+			},
+		);
+	}
+
+	private async handleAuthStatus(req: Request): Promise<Response> {
+		const isAuthenticated = this.verifyPasswordCookie(req);
+		const authEnabled = this.cachedWebAuthEnabled;
+		return Response.json({ isAuthenticated, authEnabled });
 	}
 
 	private handleError(error: Error): Response {

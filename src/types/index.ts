@@ -324,6 +324,10 @@ export interface BacklogConfig {
 	onStatusChange?: string;
 	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
 	prefixes?: PrefixConfig;
+	/** Password for Web UI authentication. Empty/undefined means no auth required. */
+	webPassword?: string;
+	/** Whether to enable Web UI authentication (default: false) */
+	webAuthEnabled?: boolean;
 	mcp?: {
 		http?: {
 			host?: string;
