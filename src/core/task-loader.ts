@@ -60,6 +60,26 @@ interface RemoteIndexEntry {
 	branch: string;
 	path: string; // "backlog/tasks/task-123 - title.md"
 	lastModified: Date;
+	/**
+	 * Immutable commit SHA the branch pointed at when the index was built.
+	 * Hydration uses this instead of the branch name so a branch that is
+	 * deleted/renamed/moved between indexing and hydration does not break
+	 * `git show`. Undefined when the SHA could not be resolved (best effort).
+	 */
+	commit?: string;
+}
+
+/**
+ * Best-effort resolve a ref to its commit SHA, tolerating mocks/older
+ * GitOperations that do not implement resolveCommit.
+ */
+async function resolveCommitSafe(git: GitOperations, ref: string): Promise<string | undefined> {
+	if (typeof git.resolveCommit !== "function") return undefined;
+	try {
+		return (await git.resolveCommit(ref)) ?? undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function normalizeRemoteBranch(branch: string): string | null {
@@ -123,6 +143,10 @@ export async function buildRemoteTaskIndex(
 				const files = await git.listFilesInTree(ref, listPath);
 				if (files.length === 0) continue;
 
+				// Pin the branch tip to an immutable SHA so later hydration survives
+				// the branch being deleted/renamed/moved (see resolveCommit).
+				const commit = await resolveCommitSafe(git, ref);
+
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(ref, listPath, sinceDays);
 
@@ -136,7 +160,7 @@ export async function buildRemoteTaskIndex(
 
 					const id = normalizeId(m[1], prefix);
 					const lastModified = lm.get(f) ?? new Date(0);
-					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
+					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified, commit };
 
 					// Collect full state info when requested
 					const type = getTaskTypeFromPath(f, backlogDir);
@@ -180,7 +204,7 @@ export async function buildRemoteTaskIndex(
  */
 async function hydrateTasks(
 	git: GitOperations,
-	winners: Array<{ id: string; ref: string; path: string }>,
+	winners: Array<{ id: string; ref: string; path: string; commit?: string }>,
 ): Promise<Task[]> {
 	const CONCURRENCY = 8;
 	const result: Task[] = [];
@@ -195,7 +219,11 @@ async function hydrateTasks(
 			if (!w) break;
 
 			try {
-				const content = await git.showFile(w.ref, w.path);
+				// Hydrate from the pinned SHA when available so a branch deleted/renamed
+				// between indexing and now does not break `git show` (falls back to the
+				// branch name for mocks/older callers that did not capture a SHA).
+				const hydrateRef = w.commit ?? w.ref;
+				const content = await git.showFile(hydrateRef, w.path);
 				const task = normalizeTaskIdentity(parseTask(content));
 				if (task) {
 					// Mark as remote source and branch
@@ -252,6 +280,10 @@ export async function buildLocalBranchTaskIndex(
 				const files = await git.listFilesInTree(br, listPath);
 				if (files.length === 0) continue;
 
+				// Pin the branch tip to an immutable SHA so later hydration survives
+				// the branch being deleted/renamed/moved (see resolveCommit).
+				const commit = await resolveCommitSafe(git, br);
+
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(br, listPath, sinceDays);
 
@@ -265,7 +297,7 @@ export async function buildLocalBranchTaskIndex(
 
 					const id = normalizeId(m[1], prefix);
 					const lastModified = lm.get(f) ?? new Date(0);
-					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified };
+					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified, commit };
 
 					// Collect full state info when requested
 					const type = getTaskTypeFromPath(f, backlogDir);
@@ -313,8 +345,8 @@ function chooseWinners(
 	localById: Map<string, Task>,
 	remoteIndex: Map<string, RemoteIndexEntry[]>,
 	strategy: "most_recent" | "most_progressed" = "most_progressed",
-): Array<{ id: string; ref: string; path: string }> {
-	const winners: Array<{ id: string; ref: string; path: string }> = [];
+): Array<{ id: string; ref: string; path: string; commit?: string }> {
+	const winners: Array<{ id: string; ref: string; path: string; commit?: string }> = [];
 
 	for (const [id, entries] of remoteIndex) {
 		const local = localById.get(id);
@@ -322,7 +354,7 @@ function chooseWinners(
 		if (!local) {
 			// No local version - take the newest remote
 			const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-			winners.push({ id, ref: `origin/${best.branch}`, path: best.path });
+			winners.push({ id, ref: `origin/${best.branch}`, path: best.path, commit: best.commit });
 			continue;
 		}
 
@@ -336,6 +368,7 @@ function chooseWinners(
 					id,
 					ref: `origin/${newestRemote.branch}`,
 					path: newestRemote.path,
+					commit: newestRemote.commit,
 				});
 			}
 			continue;
@@ -353,6 +386,7 @@ function chooseWinners(
 				id,
 				ref: `origin/${newestRemote.branch}`,
 				path: newestRemote.path,
+				commit: newestRemote.commit,
 			});
 		}
 	}
@@ -391,9 +425,9 @@ export async function findTaskInRemoteBranches(
 		// Get the newest version
 		const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
 
-		// Hydrate the task
+		// Hydrate the task from the pinned SHA when available (immune to ref movement)
 		const ref = `origin/${best.branch}`;
-		const content = await git.showFile(ref, best.path);
+		const content = await git.showFile(best.commit ?? ref, best.path);
 		const task = normalizeTaskIdentity(parseTask(content));
 		if (task) {
 			task.source = "remote";
@@ -451,8 +485,8 @@ export async function findTaskInLocalBranches(
 		// Get the newest version
 		const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
 
-		// Hydrate the task
-		const content = await git.showFile(best.branch, best.path);
+		// Hydrate the task from the pinned SHA when available (immune to ref movement)
+		const content = await git.showFile(best.commit ?? best.branch, best.path);
 		const task = normalizeTaskIdentity(parseTask(content));
 		if (task) {
 			task.source = "local-branch";
@@ -522,7 +556,7 @@ export async function loadRemoteTasks(
 		onProgress?.(`Found ${remoteIndex.size} unique tasks across remote branches`);
 
 		// If we have local tasks, use them to determine which remote tasks to hydrate
-		let winners: Array<{ id: string; ref: string; path: string }>;
+		let winners: Array<{ id: string; ref: string; path: string; commit?: string }>;
 
 		if (localTasks && localTasks.length > 0) {
 			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
@@ -536,7 +570,7 @@ export async function loadRemoteTasks(
 			winners = [];
 			for (const [id, entries] of remoteIndex) {
 				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-				winners.push({ id, ref: `origin/${best.branch}`, path: best.path });
+				winners.push({ id, ref: `origin/${best.branch}`, path: best.path, commit: best.commit });
 			}
 			onProgress?.(`Hydrating ${winners.length} remote tasks...`);
 		}
@@ -653,7 +687,7 @@ export async function loadLocalBranchTasks(
 		onProgress?.(`Found ${localBranchIndex.size} unique tasks in other local branches`);
 
 		// Determine which tasks to hydrate
-		let winners: Array<{ id: string; ref: string; path: string }>;
+		let winners: Array<{ id: string; ref: string; path: string; commit?: string }>;
 
 		if (localTasks && localTasks.length > 0) {
 			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
@@ -667,7 +701,7 @@ export async function loadLocalBranchTasks(
 				if (!local) {
 					// Task doesn't exist locally - take the newest from other branches
 					const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-					winners.push({ id, ref: best.branch, path: best.path });
+					winners.push({ id, ref: best.branch, path: best.path, commit: best.commit });
 					continue;
 				}
 
@@ -677,7 +711,7 @@ export async function loadLocalBranchTasks(
 					const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
 
 					if (newestOther.lastModified.getTime() > localTs) {
-						winners.push({ id, ref: newestOther.branch, path: newestOther.path });
+						winners.push({ id, ref: newestOther.branch, path: newestOther.path, commit: newestOther.commit });
 					}
 				} else {
 					// For most_progressed, we need to hydrate to check status
@@ -686,7 +720,7 @@ export async function loadLocalBranchTasks(
 
 					if (maybeNewer) {
 						const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-						winners.push({ id, ref: newestOther.branch, path: newestOther.path });
+						winners.push({ id, ref: newestOther.branch, path: newestOther.path, commit: newestOther.commit });
 					}
 				}
 			}
@@ -695,7 +729,7 @@ export async function loadLocalBranchTasks(
 			winners = [];
 			for (const [id, entries] of localBranchIndex) {
 				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-				winners.push({ id, ref: best.branch, path: best.path });
+				winners.push({ id, ref: best.branch, path: best.path, commit: best.commit });
 			}
 		}
 
