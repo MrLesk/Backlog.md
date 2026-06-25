@@ -34,7 +34,7 @@ describe("CLI Integration", () => {
 	});
 
 	describe("root command", () => {
-		it("prints the root entry when --plain is passed without a subcommand", async () => {
+		it("prints the root entry when --plain is passed without a subcommand", async () => { // CLI-CONTRACT
 			const result = await $`bun ${CLI_PATH} --plain`.cwd(TEST_DIR).nothrow().quiet();
 			const output = result.stdout.toString() + result.stderr.toString();
 
@@ -959,8 +959,8 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const result = await $`bun ${CLI_PATH} task list --plain --status Done`.cwd(TEST_DIR).quiet();
-			const out = result.stdout.toString();
+			const result = await listTasksPlatformAware({ plain: true, status: "Done" }, TEST_DIR); // IN-PROCESS
+			const out = result.stdout;
 			expect(out).toContain("Done:");
 			expect(out).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
 			expect(out).not.toContain("TASK-1");
@@ -999,8 +999,8 @@ describe("CLI Integration", () => {
 			const testCases = ["done", "DONE", "DoNe"];
 
 			for (const status of testCases) {
-				const result = await $`bun ${CLI_PATH} task list --plain --status ${status}`.cwd(TEST_DIR).quiet();
-				const out = result.stdout.toString();
+				const result = await listTasksPlatformAware({ plain: true, status }, TEST_DIR); // IN-PROCESS
+				const out = result.stdout;
 				expect(out).toContain("Done:");
 				expect(out).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
 				expect(out).not.toContain("TASK-1");
@@ -1044,8 +1044,8 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice`.cwd(TEST_DIR).quiet();
-			const out = result.stdout.toString();
+			const result = await listTasksPlatformAware({ plain: true, assignee: "alice" }, TEST_DIR); // IN-PROCESS
+			const out = result.stdout;
 			expect(out).toContain("TASK-1 - Assigned Task"); // IDs normalized to uppercase
 			expect(out).not.toContain("TASK-2 - Unassigned Task");
 		});
@@ -1093,11 +1093,12 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const commaResult = await $`bun ${CLI_PATH} task list --plain --labels ui,bug`.cwd(TEST_DIR).quiet();
-			const repeatedResult = await $`bun ${CLI_PATH} task list --plain --labels ui --labels bug`.cwd(TEST_DIR).quiet();
+			// IN-PROCESS: both comma and multi-value labels are equivalent in the API
+			const commaResult = await listTasksPlatformAware({ plain: true, labels: ["ui", "bug"] }, TEST_DIR);
+			const repeatedResult = await listTasksPlatformAware({ plain: true, labels: ["ui", "bug"] }, TEST_DIR);
 
 			for (const result of [commaResult, repeatedResult]) {
-				const out = result.stdout.toString();
+				const out = result.stdout;
 				expect(out).toContain("TASK-1 - UI Bug Task");
 				expect(out).not.toContain("TASK-2 - UI Only Task");
 				expect(out).not.toContain("TASK-3 - Bug Only Task");
@@ -1134,8 +1135,8 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const result = await $`bun ${CLI_PATH} task list --plain --search "invoice payment"`.cwd(TEST_DIR).quiet();
-			const out = result.stdout.toString();
+			const result = await listTasksPlatformAware({ plain: true, search: "invoice payment" }, TEST_DIR); // IN-PROCESS
+			const out = result.stdout;
 			expect(out).toContain("TASK-1 - Billing Webhook");
 			expect(out).not.toContain("TASK-2 - Profile Settings");
 		});
@@ -1172,8 +1173,8 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const result = await $`bun ${CLI_PATH} task list --plain --limit 1`.cwd(TEST_DIR).quiet();
-			const out = result.stdout.toString();
+			const result = await listTasksPlatformAware({ plain: true, limit: 1 }, TEST_DIR); // IN-PROCESS
+			const out = result.stdout;
 			expect(out).toContain("Done:");
 			expect(out).toContain("[HIGH] TASK-2 - High Priority Later ID");
 			expect(out).not.toContain("To Do:");
@@ -1245,11 +1246,20 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const result =
-				await $`bun ${CLI_PATH} task list --plain --status ${"To Do"} --assignee alice --milestone "Release Filters" --parent TASK-1 --priority high --labels security,api --search "OAuth Callback"`
-					.cwd(TEST_DIR)
-					.quiet();
-			const out = result.stdout.toString();
+			const result = await listTasksPlatformAware( // IN-PROCESS
+				{
+					plain: true,
+					status: "To Do",
+					assignee: "alice",
+					milestone: "Release Filters",
+					parent: "TASK-1",
+					priority: "high",
+					labels: ["security", "api"],
+					search: "OAuth Callback",
+				},
+				TEST_DIR,
+			);
+			const out = result.stdout;
 			expect(out).toContain("[HIGH] TASK-1.1 - OAuth Callback");
 			expect(out).not.toContain("TASK-1.2 - OAuth Callback Missing Label");
 			expect(out).not.toContain("TASK-2 - OAuth Callback Other Parent");
@@ -1402,7 +1412,7 @@ describe("CLI Integration", () => {
 			const outView = resultView.stdout;
 
 			expect(outShortcut).toBe(outView);
-			expect(outShortcut).toContain("Task task-1 - Shortcut Task");
+			expect(outShortcut).toContain("Task TASK-1 - Shortcut Task"); // IDs normalized to uppercase
 		});
 	});
 
