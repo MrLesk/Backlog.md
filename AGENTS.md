@@ -21,7 +21,7 @@ If you can simplify the code, do it.
 ### Development
 
 - `bun i` - Install dependencies
-- `bun test` - Run all tests
+- `bun test --parallel` - Run all tests (file-level parallel; implies --isolate, requires bun >= 1.3.13)
 - `bunx tsc --noEmit` - Type-check code
 - `bun run check .` - Run all Biome checks (format + lint)
 - `bun run build` - Build the CLI tool
@@ -29,7 +29,7 @@ If you can simplify the code, do it.
 
 ### Testing
 
-- `bun test` - Run all tests
+- `bun test --parallel` - Run all tests in parallel worker processes (implies --isolate; requires bun >= 1.3.13)
 - `bun test <filename>` - Run specific test file
 
 ### Configuration Management

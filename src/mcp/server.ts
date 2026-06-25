@@ -22,7 +22,7 @@ import {
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import { getVersion } from "../utils/version.ts";
+import { getVersionSync } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
 import { registerDefinitionOfDoneTools } from "./tools/definition-of-done/index.ts";
@@ -51,7 +51,7 @@ import type {
  * (e.g. Claude Code) can interact with a project without network exposure.
  */
 const APP_NAME = getPackageName();
-const APP_VERSION = await getVersion();
+const APP_VERSION = getVersionSync();
 const INSTRUCTIONS =
 	"At the beginning of each session, list the available resources and read the first one to understand how to use Backlog.md for task management. Additional detailed guides are available as resources when needed.";
 
