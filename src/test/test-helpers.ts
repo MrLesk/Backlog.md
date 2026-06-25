@@ -297,6 +297,9 @@ export interface TaskListOptions {
 	plain?: boolean;
 	status?: string;
 	assignee?: string;
+	priority?: string;
+	milestone?: string;
+	sort?: string;
 }
 
 /**
@@ -311,74 +314,121 @@ export async function listTasksPlatformAware(
 	return listTasksViaCore(options, testDir);
 }
 
-async function listTasksViaCore(
+/**
+ * List tasks in-process via Core API, producing plain-text output that matches the CLI.
+ * Supports status, assignee, priority, milestone, and sort options.
+ */
+export async function listTasksViaCore(
 	options: TaskListOptions,
 	testDir: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
 		const core = new Core(testDir);
-		const tasks = await core.filesystem.listTasks();
 
-		// Filter by status if provided
-		let filteredTasks = tasks;
-		if (options.status) {
-			const statusFilter = options.status.toLowerCase();
-			filteredTasks = tasks.filter((task) => task.status.toLowerCase() === statusFilter);
-		}
-
-		// Filter by assignee if provided
-		if (options.assignee) {
-			filteredTasks = filteredTasks.filter((task) =>
-				task.assignee.some((a) => a.toLowerCase().includes(options.assignee?.toLowerCase() ?? "")),
-			);
-		}
-
-		// Format output to match CLI output
-		if (options.plain) {
-			if (filteredTasks.length === 0) {
+		const filters: import("../types/index.ts").TaskListFilter = {};
+		if (options.status) filters.status = options.status;
+		if (options.assignee) filters.assignee = options.assignee;
+		if (options.milestone) filters.milestone = options.milestone;
+		if (options.priority) {
+			const priorityLower = options.priority.toLowerCase();
+			const valid = ["high", "medium", "low"] as const;
+			if (!valid.includes(priorityLower as (typeof valid)[number])) {
 				return {
-					exitCode: 0,
-					stdout: "No tasks found",
-					stderr: "",
+					exitCode: 1,
+					stdout: "",
+					stderr: `Invalid priority: ${options.priority}. Valid values are: high, medium, low`,
 				};
 			}
+			filters.priority = priorityLower as (typeof valid)[number];
+		}
+		if (options.sort) {
+			const validSortFields = ["priority", "id"];
+			if (!validSortFields.includes(options.sort.toLowerCase())) {
+				return {
+					exitCode: 1,
+					stdout: "",
+					stderr: `Invalid sort field: ${options.sort}. Valid values are: priority, id`,
+				};
+			}
+		}
 
-			// Group by status
-			const tasksByStatus = new Map<string, typeof filteredTasks>();
-			for (const task of filteredTasks) {
-				const status = task.status || "No Status";
-				const existing = tasksByStatus.get(status) || [];
-				existing.push(task);
-				tasksByStatus.set(status, existing);
+		const tasks = await core.queryTasks({
+			filters: Object.keys(filters).length > 0 ? filters : undefined,
+			includeCrossBranch: false,
+		});
+
+		const { sortTasks } = await import("../utils/task-sorting.ts");
+		const sortField = options.sort ? options.sort.toLowerCase() : "priority";
+		const sortedTasks = sortTasks(tasks, sortField);
+
+		if (options.plain !== false) {
+			if (sortedTasks.length === 0) {
+				core.disposeSearchService();
+				core.disposeContentStore();
+				return { exitCode: 0, stdout: "No tasks found.\n", stderr: "" };
 			}
 
+			// If explicitly sorted by priority, use the priority-sorted flat list format
+			if (options.sort && options.sort.toLowerCase() === "priority") {
+				let output = "Tasks (sorted by priority):\n";
+				for (const t of sortedTasks) {
+					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
+					const statusIndicator = t.status ? ` (${t.status})` : "";
+					output += `  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}\n`;
+				}
+				core.disposeSearchService();
+				core.disposeContentStore();
+				return { exitCode: 0, stdout: output, stderr: "" };
+			}
+
+			// Default: group by status
+			const config = await core.filesystem.loadConfig();
+			const statuses = config?.statuses || [];
+			const canonicalByLower = new Map<string, string>();
+			for (const s of statuses) {
+				canonicalByLower.set(s.toLowerCase(), s);
+			}
+
+			const groups = new Map<string, typeof sortedTasks>();
+			for (const task of sortedTasks) {
+				const rawStatus = (task.status || "").trim();
+				const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) || rawStatus;
+				const list = groups.get(canonicalStatus) || [];
+				list.push(task);
+				groups.set(canonicalStatus, list);
+			}
+
+			const orderedStatuses = [
+				...statuses.filter((s) => groups.has(s)),
+				...Array.from(groups.keys()).filter((s) => !statuses.includes(s)),
+			];
+
 			let output = "";
-			for (const [status, statusTasks] of tasksByStatus) {
-				output += `${status}:\n`;
-				for (const task of statusTasks) {
-					output += `${task.id} - ${task.title}\n`;
+			for (const status of orderedStatuses) {
+				const list = groups.get(status);
+				if (!list) continue;
+				output += `${status || "No Status"}:\n`;
+				for (const task of list) {
+					const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
+					output += `  ${priorityIndicator}${task.id} - ${task.title}\n`;
 				}
 				output += "\n";
 			}
 
-			return {
-				exitCode: 0,
-				stdout: output.trim(),
-				stderr: "",
-			};
+			core.disposeSearchService();
+			core.disposeContentStore();
+			return { exitCode: 0, stdout: output, stderr: "" };
 		}
 
 		// Non-plain output (basic format)
 		let output = "";
-		for (const task of filteredTasks) {
+		for (const task of sortedTasks) {
 			output += `${task.id} - ${task.title}\n`;
 		}
 
-		return {
-			exitCode: 0,
-			stdout: output,
-			stderr: "",
-		};
+		core.disposeSearchService();
+		core.disposeContentStore();
+		return { exitCode: 0, stdout: output, stderr: "" };
 	} catch (error) {
 		return {
 			exitCode: 1,
