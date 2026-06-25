@@ -3,8 +3,8 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -135,10 +135,7 @@ describe("CLI --ref and --doc flags", () => {
 		it("sets multiple references on existing task", async () => {
 			await createTaskPlatformAware({ title: "Feature" }, TEST_DIR);
 
-			const result = await editTaskPlatformAware(
-				{ taskId: "1", ref: ["file1.ts", "file2.ts"], plain: true },
-				TEST_DIR,
-			);
+			const result = await editTaskPlatformAware({ taskId: "1", ref: ["file1.ts", "file2.ts"], plain: true }, TEST_DIR);
 
 			expect(result.exitCode).toBe(0);
 			expect(result.stdout).toContain("References: file1.ts, file2.ts");
@@ -161,10 +158,7 @@ describe("CLI --ref and --doc flags", () => {
 		it("sets multiple documentation entries on existing task", async () => {
 			await createTaskPlatformAware({ title: "Feature" }, TEST_DIR);
 
-			const result = await editTaskPlatformAware(
-				{ taskId: "1", doc: ["doc1.md", "doc2.md"], plain: true },
-				TEST_DIR,
-			);
+			const result = await editTaskPlatformAware({ taskId: "1", doc: ["doc1.md", "doc2.md"], plain: true }, TEST_DIR);
 
 			expect(result.exitCode).toBe(0);
 			expect(result.stdout).toContain("Documentation: doc1.md, doc2.md");
@@ -187,10 +181,7 @@ describe("CLI --ref and --doc flags", () => {
 
 	describe("persistence in markdown files", () => {
 		it("persists references in task markdown file", async () => {
-			await createTaskPlatformAware(
-				{ title: "Feature", ref: ["https://example.com", "src/index.ts"] },
-				TEST_DIR,
-			);
+			await createTaskPlatformAware({ title: "Feature", ref: ["https://example.com", "src/index.ts"] }, TEST_DIR);
 
 			const taskFile = await Bun.file(join(TEST_DIR, "backlog/tasks/task-1 - Feature.md")).text();
 			expect(taskFile).toContain("references:");
@@ -199,10 +190,7 @@ describe("CLI --ref and --doc flags", () => {
 		});
 
 		it("persists documentation in task markdown file", async () => {
-			await createTaskPlatformAware(
-				{ title: "Feature", doc: ["https://docs.example.com", "spec.md"] },
-				TEST_DIR,
-			);
+			await createTaskPlatformAware({ title: "Feature", doc: ["https://docs.example.com", "spec.md"] }, TEST_DIR);
 
 			const taskFile = await Bun.file(join(TEST_DIR, "backlog/tasks/task-1 - Feature.md")).text();
 			expect(taskFile).toContain("documentation:");
@@ -211,10 +199,7 @@ describe("CLI --ref and --doc flags", () => {
 		});
 
 		it("persists modified files in task markdown file", async () => {
-			await createTaskPlatformAware(
-				{ title: "Feature", modifiedFile: ["src/index.ts", "src/ui.ts"] },
-				TEST_DIR,
-			);
+			await createTaskPlatformAware({ title: "Feature", modifiedFile: ["src/index.ts", "src/ui.ts"] }, TEST_DIR);
 
 			const taskFile = await Bun.file(join(TEST_DIR, "backlog/tasks/task-1 - Feature.md")).text();
 			expect(taskFile).toContain("modified_files:");
