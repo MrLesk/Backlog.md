@@ -50,7 +50,7 @@
     "tailwindcss": "4.2.2"
   },
   "scripts": {
-    "test": "bun test",
+    "test": "bun test --parallel",
     "format": "biome format --write .",
     "lint": "biome lint --write .",
     "check": "biome check .",
