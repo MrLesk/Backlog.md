@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -35,7 +36,7 @@ describe("Definition of Done CLI", () => {
 	});
 
 	it("creates task with Definition of Done defaults", async () => {
-		const result = await $`bun ${CLI_PATH} task create "DoD defaults task"`.cwd(TEST_DIR).quiet();
+		const result = await createTaskPlatformAware({ title: "DoD defaults task" }, TEST_DIR);
 		expect(result.exitCode).toBe(0);
 
 		const core = new Core(TEST_DIR);
@@ -48,7 +49,7 @@ describe("Definition of Done CLI", () => {
 	});
 
 	it("disables Definition of Done defaults when --no-dod-defaults is used", async () => {
-		const result = await $`bun ${CLI_PATH} task create "DoD no defaults" --no-dod-defaults`.cwd(TEST_DIR).quiet();
+		const result = await createTaskPlatformAware({ title: "DoD no defaults", noDodDefaults: true }, TEST_DIR);
 		expect(result.exitCode).toBe(0);
 
 		const core = new Core(TEST_DIR);
@@ -58,9 +59,10 @@ describe("Definition of Done CLI", () => {
 	});
 
 	it("appends Definition of Done items with --dod", async () => {
-		const result = await $`bun ${CLI_PATH} task create "DoD add" --dod "Ship notes" --dod "Sync roadmap"`
-			.cwd(TEST_DIR)
-			.quiet();
+		const result = await createTaskPlatformAware(
+			{ title: "DoD add", dod: ["Ship notes", "Sync roadmap"] },
+			TEST_DIR,
+		);
 		expect(result.exitCode).toBe(0);
 
 		const core = new Core(TEST_DIR);
@@ -73,9 +75,9 @@ describe("Definition of Done CLI", () => {
 	});
 
 	it("edits Definition of Done items with check/uncheck/remove", async () => {
-		await $`bun ${CLI_PATH} task create "DoD edit"`.cwd(TEST_DIR).quiet();
+		await createTaskPlatformAware({ title: "DoD edit" }, TEST_DIR);
 
-		let editResult = await $`bun ${CLI_PATH} task edit 1 --check-dod 2`.cwd(TEST_DIR).quiet();
+		let editResult = await editTaskPlatformAware({ taskId: "1", dodCheck: [2] }, TEST_DIR);
 		expect(editResult.exitCode).toBe(0);
 
 		const core = new Core(TEST_DIR);
@@ -83,7 +85,7 @@ describe("Definition of Done CLI", () => {
 		let body = task?.rawContent ?? "";
 		expect(body).toContain("- [x] #2 Update docs");
 
-		editResult = await $`bun ${CLI_PATH} task edit 1 --remove-dod 1`.cwd(TEST_DIR).quiet();
+		editResult = await editTaskPlatformAware({ taskId: "1", dodRemove: [1] }, TEST_DIR);
 		expect(editResult.exitCode).toBe(0);
 
 		task = await core.filesystem.loadTask("task-1");
@@ -91,7 +93,7 @@ describe("Definition of Done CLI", () => {
 		expect(body).not.toContain("Run tests");
 		expect(body).toContain("- [x] #1 Update docs");
 
-		editResult = await $`bun ${CLI_PATH} task edit 1 --uncheck-dod 1`.cwd(TEST_DIR).quiet();
+		editResult = await editTaskPlatformAware({ taskId: "1", dodUncheck: [1] }, TEST_DIR);
 		expect(editResult.exitCode).toBe(0);
 
 		task = await core.filesystem.loadTask("task-1");
@@ -100,8 +102,9 @@ describe("Definition of Done CLI", () => {
 	});
 
 	it("reports available indexes when a Definition of Done index is missing", async () => {
-		await $`bun ${CLI_PATH} task create "DoD invalid index"`.cwd(TEST_DIR).quiet();
+		await createTaskPlatformAware({ title: "DoD invalid index" }, TEST_DIR);
 
+		// CLI-CONTRACT: verifies exact error message format including hint text and available index range
 		const result = await $`bun ${CLI_PATH} task edit 1 --check-dod 99`.cwd(TEST_DIR).nothrow().quiet();
 		const output = result.stdout.toString() + result.stderr.toString();
 

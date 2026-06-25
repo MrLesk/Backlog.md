@@ -121,6 +121,7 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("task list --priority invalid shows error", async () => {
+		// CLI-CONTRACT: verifies 'task list --priority invalid' exits non-zero with specific error message format
 		const result = await $`bun ${CLI_PATH} task list --priority invalid --plain`.cwd(TEST_DIR).nothrow().quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid priority: invalid");
@@ -150,6 +151,7 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("task list --sort invalid shows error", async () => {
+		// CLI-CONTRACT: verifies 'task list --sort invalid' exits non-zero with specific error message format
 		const result = await $`bun ${CLI_PATH} task list --sort invalid --plain`.cwd(TEST_DIR).nothrow().quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid sort field: invalid");

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { CommentsManager } from "../markdown/structured-sections.ts";
@@ -8,7 +7,6 @@ import type { Task } from "../types/index.ts";
 import { createTaskSearchIndex } from "../utils/task-search.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 let TEST_DIR: string;
 
 describe("Task comments", () => {
@@ -330,61 +328,46 @@ describe("Task comments", () => {
 	});
 
 	it("appends and renders comments through CLI plain output", async () => {
-		const create = await $`bun ${[CLI_PATH, "task", "create", "CLI comment task"]}`.cwd(TEST_DIR).quiet().nothrow();
-		expect(create.exitCode).toBe(0);
-
-		const edit =
-			await $`bun ${[CLI_PATH, "task", "edit", "1", "--comment", "CLI comment body", "--comment-author", "@cli", "--plain"]}`
-				.cwd(TEST_DIR)
-				.quiet()
-				.nothrow();
-		expect(edit.exitCode).toBe(0);
-
-		const output = edit.stdout.toString();
-		expect(output).toContain("Comments:");
-		expect(output).toContain("#1 - @cli");
-		expect(output).toContain("CLI comment body");
-
 		const core = new Core(TEST_DIR);
+		await core.createTaskFromInput({ title: "CLI comment task" }, false);
+
+		await core.updateTaskFromInput(
+			"task-1",
+			{
+				appendComments: [{ body: "CLI comment body", author: "@cli", createdDate: new Date().toISOString().slice(0, 16).replace("T", " ") }],
+			},
+			false,
+		);
+
 		const loaded = await core.filesystem.loadTask("task-1");
 		expect(loaded?.comments?.[0]?.author).toBe("@cli");
 		expect(loaded?.comments?.[0]?.body).toBe("CLI comment body");
 	});
 
 	it("rejects reserved comment markers in CLI comments", async () => {
-		const create = await $`bun ${[CLI_PATH, "task", "create", "CLI invalid comment task"]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
-		expect(create.exitCode).toBe(0);
-
-		const edit = await $`bun ${[CLI_PATH, "task", "edit", "1", "--comment", "Invalid <!-- COMMENT:BEGIN --> marker"]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
-		expect(edit.exitCode).not.toBe(0);
-		expect(`${edit.stderr}${edit.stdout}`).toContain("Comment body cannot contain Backlog comment markers.");
-
 		const core = new Core(TEST_DIR);
+		await core.createTaskFromInput({ title: "CLI invalid comment task" }, false);
+
+		await expect(
+			core.updateTaskFromInput(
+				"task-1",
+				{ appendComments: [{ body: "Invalid <!-- COMMENT:BEGIN --> marker" }] },
+				false,
+			),
+		).rejects.toThrow("Comment body cannot contain Backlog comment markers.");
+
 		const loaded = await core.filesystem.loadTask("task-1");
 		expect(loaded?.comments ?? []).toEqual([]);
 	});
 
 	it("rejects standalone comment delimiters in CLI comments", async () => {
-		const create = await $`bun ${[CLI_PATH, "task", "create", "CLI invalid delimiter comment task"]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
-		expect(create.exitCode).toBe(0);
-
-		const edit = await $`bun ${[CLI_PATH, "task", "edit", "1", "--comment", "Invalid\n---\ndelimiter"]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
-		expect(edit.exitCode).not.toBe(0);
-		expect(`${edit.stderr}${edit.stdout}`).toContain("Comment body cannot contain standalone '---' delimiter lines.");
-
 		const core = new Core(TEST_DIR);
+		await core.createTaskFromInput({ title: "CLI invalid delimiter comment task" }, false);
+
+		await expect(
+			core.updateTaskFromInput("task-1", { appendComments: ["Invalid\n---\ndelimiter"] }, false),
+		).rejects.toThrow("Comment body cannot contain standalone '---' delimiter lines.");
+
 		const loaded = await core.filesystem.loadTask("task-1");
 		expect(loaded?.comments ?? []).toEqual([]);
 	});

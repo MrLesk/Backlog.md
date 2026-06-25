@@ -376,6 +376,7 @@ Test task with acceptance criteria
 
 		it("should error on invalid index for --remove-ac", async () => { // CLI-CONTRACT
 			try {
+				// CLI-CONTRACT: verifies '--remove-ac' with out-of-range index exits non-zero with specific error message including available indexes and help commands
 				await $`bun ${CLI_PATH} task edit 1 --remove-ac 10`.cwd(TEST_DIR).quiet();
 				expect(true).toBe(false); // Should not reach here
 			} catch (error: unknown) {
@@ -391,6 +392,7 @@ Test task with acceptance criteria
 
 		it("should error on invalid index for --check-ac", async () => { // CLI-CONTRACT
 			try {
+				// CLI-CONTRACT: verifies '--check-ac' with out-of-range index exits non-zero with specific error message including available indexes and help commands
 				await $`bun ${CLI_PATH} task edit 1 --check-ac 10`.cwd(TEST_DIR).quiet();
 				expect(true).toBe(false); // Should not reach here
 			} catch (error: unknown) {
@@ -405,18 +407,21 @@ Test task with acceptance criteria
 		});
 
 		it("should error on non-numeric index", async () => { // CLI-CONTRACT
+			// CLI-CONTRACT: verifies '--remove-ac abc' (non-numeric) exits non-zero with 'Invalid index' error message
 			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac abc`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
 		});
 
 		it("should error on zero index", async () => { // CLI-CONTRACT
+			// CLI-CONTRACT: verifies '--remove-ac 0' exits non-zero with 'Invalid index' error message
 			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 0`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
 		});
 
 		it("should error on negative index", async () => { // CLI-CONTRACT
+			// CLI-CONTRACT: verifies '--remove-ac=-1' (negative index) exits non-zero with 'Invalid index' error message
 			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac=-1`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
@@ -630,6 +635,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		});
 
 		it("should handle invalid indices gracefully in multi-value operations", async () => { // CLI-CONTRACT
+			// CLI-CONTRACT: captures TASK-N ID from create output to pass to edit — tests that mixed valid+invalid --check-ac indices fail with specific error message including the task's actual ID
 			// Create task with 2 ACs
 			const createResult = await $`bun run ${CLI_PATH_UNIT} task create "Invalid Test" --ac "First" --ac "Second"`.cwd(
 				TEST_DIR_UNIT,

@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { editTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Append Implementation Notes via task edit --append-notes", () => {
 	beforeEach(async () => {
@@ -49,13 +48,13 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 		);
 
 		// Append twice in one call and once again afterwards
-		let res = await $`bun ${CLI_PATH} task edit 1 --append-notes "First addition" --append-notes "Second addition"`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
+		let res = await editTaskPlatformAware(
+			{ taskId: "1", appendNotes: ["First addition", "Second addition"] },
+			TEST_DIR,
+		);
 		expect(res.exitCode).toBe(0);
 
-		res = await $`bun ${CLI_PATH} task edit 1 --append-notes "Third addition"`.cwd(TEST_DIR).quiet().nothrow();
+		res = await editTaskPlatformAware({ taskId: "1", appendNotes: ["Third addition"] }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		const updatedBody = await core.getTaskContent("task-1");
@@ -83,7 +82,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 			false,
 		);
 
-		const res = await $`bun ${CLI_PATH} task edit 2 --append-notes "Notes after plan"`.cwd(TEST_DIR).quiet().nothrow();
+		const res = await editTaskPlatformAware({ taskId: "2", appendNotes: ["Notes after plan"] }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		const content = (await core.getTaskContent("task-2")) ?? "";
@@ -111,12 +110,9 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 			false,
 		);
 
-		// Pass a JS string containing real newlines as an argument
+		// Pass a string containing real newlines
 		const multiline = "Line1\nLine2\n\nPara2";
-		const res = await $`bun ${[CLI_PATH, "task", "edit", "3", "--append-notes", multiline]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
+		const res = await editTaskPlatformAware({ taskId: "3", appendNotes: [multiline] }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		const updatedBody = await core.getTaskContent("task-3");
@@ -140,10 +136,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 			false,
 		);
 
-		const res = await $`bun ${CLI_PATH} task edit 4 --notes "Replace" --append-notes "Append"`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
+		const res = await editTaskPlatformAware({ taskId: "4", notes: "Replace", appendNotes: ["Append"] }, TEST_DIR);
 
 		// Should succeed: --notes replaces existing, then --append-notes appends
 		expect(res.exitCode).toBe(0);

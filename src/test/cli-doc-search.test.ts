@@ -63,6 +63,7 @@ describe("CLI doc search command", () => {
 	});
 
 	it("searches documents with plain agent-readable identity and follow-up context", async () => {
+		// CLI-CONTRACT: verifies doc search output format with score, path, type, and tags fields
 		const result = await $`bun ${cliPath} doc search architecture`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -77,6 +78,7 @@ describe("CLI doc search command", () => {
 	});
 
 	it("prints a query-specific no-result message", async () => {
+		// CLI-CONTRACT: verifies no-result message format 'No documents found for "query".'
 		const result = await $`bun ${cliPath} doc search zzzzzzzz`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -84,6 +86,7 @@ describe("CLI doc search command", () => {
 	});
 
 	it("limits document search results", async () => {
+		// CLI-CONTRACT: verifies --limit flag restricts result count in doc search
 		const result = await $`bun ${cliPath} doc search architecture --limit 1`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -94,6 +97,7 @@ describe("CLI doc search command", () => {
 	});
 
 	it("rejects missing or invalid query and limit inputs", async () => {
+		// CLI-CONTRACT: verifies error messages for missing/empty/long query and invalid limit values
 		const missingQuery = await $`bun ${cliPath} doc search`.cwd(TEST_DIR).nothrow().quiet();
 		const emptyQuery = await $`bun ${cliPath} doc search ${""}`.cwd(TEST_DIR).nothrow().quiet();
 		const longQuery = await $`bun ${cliPath} doc search ${"a".repeat(201)}`.cwd(TEST_DIR).nothrow().quiet();
@@ -125,6 +129,7 @@ describe("CLI doc search command", () => {
 	});
 
 	it("documents the input schema and output shape in help", async () => {
+		// CLI-CONTRACT: verifies doc search --help output contains schema sections and examples
 		const help = await $`bun ${cliPath} doc search --help`.cwd(TEST_DIR).text();
 
 		expect(help).toContain("Input schema:");

@@ -50,6 +50,7 @@ describe("CLI Integration", () => {
 
 	describe("backlog instructions command", () => {
 		it("prints the guide index by default", async () => {
+			// CLI-CONTRACT: verifies 'backlog instructions' default output format, guide list, and absence of MCP-specific content
 			const output = await $`bun ${CLI_PATH} instructions`.cwd(TEST_DIR).text();
 
 			expect(output).toContain("Backlog.md instructions");
@@ -76,6 +77,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("lists available instruction guides", async () => {
+			// CLI-CONTRACT: verifies 'backlog instructions --list' enumerates available guide names
 			const output = await $`bun ${CLI_PATH} instructions --list`.cwd(TEST_DIR).text();
 
 			expect(output).toContain("overview");
@@ -86,6 +88,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("prints selected instruction guides", async () => {
+			// CLI-CONTRACT: verifies content and structure of all instruction guide pages including example commands with configured prefix
 			const overview = normalizeCliOutput(await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text());
 			const taskCreation = normalizeCliOutput(await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text());
 			const taskExecution = normalizeCliOutput(
@@ -162,6 +165,7 @@ describe("CLI Integration", () => {
 				].join("\n"),
 			);
 
+			// CLI-CONTRACT: verifies instruction/help output renders task ID examples using the project-configured task_prefix (e.g. FEAT-123)
 			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
 			const taskCreation = await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text();
 			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
@@ -196,6 +200,7 @@ describe("CLI Integration", () => {
 			await mkdir(outsideDir, { recursive: true });
 			const env = { ...process.env, [BACKLOG_CWD_ENV]: TEST_DIR };
 
+			// CLI-CONTRACT: verifies BACKLOG_CWD env var overrides cwd for project discovery; help and instructions reflect project config from that path
 			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(outsideDir).env(env).text();
 			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(outsideDir).env(env).text();
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(outsideDir).env(env).text();
@@ -211,6 +216,7 @@ describe("CLI Integration", () => {
 		}, 10_000);
 
 		it("does not recommend task complete in CLI workflow guides or agent nudge", async () => {
+			// CLI-CONTRACT: verifies no guide mentions 'backlog task complete' or 'task complete' to avoid agent confusion
 			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
 			const taskCreation = await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text();
 			const taskExecution = await $`bun ${CLI_PATH} instructions task-execution`.cwd(TEST_DIR).text();
@@ -224,6 +230,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("rejects unknown instruction guides with valid options", async () => {
+			// CLI-CONTRACT: verifies unknown guide name exits non-zero with error message listing valid guide names
 			const result = await $`bun ${CLI_PATH} instructions does-not-exist`.cwd(TEST_DIR).nothrow().quiet();
 			const output = result.stdout.toString() + result.stderr.toString();
 
@@ -236,6 +243,7 @@ describe("CLI Integration", () => {
 
 	describe("command help input schemas", () => {
 		it("shows input schema details for init and instructions", async () => {
+			// CLI-CONTRACT: verifies '--help' output for init and instructions includes structured input schema fields and examples
 			const initHelp = await $`bun ${CLI_PATH} init --help`.cwd(TEST_DIR).text();
 			const instructionsHelp = await $`bun ${CLI_PATH} instructions --help`.cwd(TEST_DIR).text();
 
@@ -254,6 +262,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("shows task command field types in help", async () => {
+			// CLI-CONTRACT: verifies '--help' output for task subcommands includes typed field descriptions with accepted status values from config
 			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
 			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
@@ -295,6 +304,7 @@ describe("CLI Integration", () => {
 				].join("\n"),
 			);
 
+			// CLI-CONTRACT: verifies '--help' output reflects project-configured statuses (not hardcoded defaults) in task create/list/edit/search
 			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
 			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
 			const searchHelp = await $`bun ${CLI_PATH} search --help`.cwd(TEST_DIR).text();
@@ -310,6 +320,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("shows document, config, search, and cleanup schemas in help", async () => {
+			// CLI-CONTRACT: verifies '--help' output for doc/config/search/cleanup commands includes typed field descriptions
 			const docHelp = await $`bun ${CLI_PATH} doc update --help`.cwd(TEST_DIR).text();
 			const configHelp = await $`bun ${CLI_PATH} config set --help`.cwd(TEST_DIR).text();
 			const searchHelp = await $`bun ${CLI_PATH} search --help`.cwd(TEST_DIR).text();
@@ -331,7 +342,9 @@ describe("CLI Integration", () => {
 
 	describe("self-correcting CLI errors", () => {
 		it("suggests likely commands and options", async () => {
+			// CLI-CONTRACT: verifies typo-corrected error message for unknown command ('tesk' → 'task')
 			const unknownCommand = await $`bun ${CLI_PATH} tesk list`.cwd(TEST_DIR).nothrow().quiet();
+			// CLI-CONTRACT: verifies typo-corrected error message for unknown option ('--statuz' → '--status')
 			const unknownOption = await $`bun ${CLI_PATH} task list --statuz To Do`.cwd(TEST_DIR).nothrow().quiet();
 			const commandOutput = unknownCommand.stdout.toString() + unknownCommand.stderr.toString();
 			const optionOutput = unknownOption.stdout.toString() + unknownOption.stderr.toString();
@@ -347,6 +360,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("points missing required arguments to help", async () => {
+			// CLI-CONTRACT: verifies missing required argument error message format ("missing required argument 'taskId'") and help pointer
 			const result = await $`bun ${CLI_PATH} task view`.cwd(TEST_DIR).nothrow().quiet();
 			const output = result.stdout.toString() + result.stderr.toString();
 
@@ -359,9 +373,12 @@ describe("CLI Integration", () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			// CLI-CONTRACT: verifies 'init' CLI output and resulting project state in git repo
 			await $`bun ${CLI_PATH} init ErrorProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'task list --priority urgent' exits non-zero with concise error (no "Error:" prefix)
 			const priority = await $`bun ${CLI_PATH} task list --priority urgent`.cwd(TEST_DIR).nothrow().quiet();
+			// CLI-CONTRACT: verifies 'doc create -p ../outside' exits non-zero with concise error (no "Error:" prefix)
 			const docPath = await $`bun ${CLI_PATH} doc create "Unsafe" -p ../outside`.cwd(TEST_DIR).nothrow().quiet();
 			const priorityOutput = priority.stdout.toString() + priority.stderr.toString();
 			const docPathOutput = docPath.stdout.toString() + docPath.stderr.toString();
@@ -520,6 +537,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --agent-instructions none' skips agent file creation and prints skip message
 			const output = await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`.cwd(TEST_DIR).text();
 
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
@@ -535,6 +553,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --defaults' prints initialization summary with project name and AI integration status
 			const output = await $`bun ${CLI_PATH} init SummaryProj --defaults --agent-instructions none`
 				.cwd(TEST_DIR)
 				.text();
@@ -552,6 +571,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --integration-mode mcp' output format showing MCP server name and skipping agent files
 			const output = await $`bun ${CLI_PATH} init McpProj --defaults --integration-mode mcp`.cwd(TEST_DIR).text();
 
 			expect(output).toContain("AI Integration: MCP connector");
@@ -569,6 +589,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --defaults' without --integration-mode defaults to CLI mode and creates AGENTS.md with nudge content
 			const output = await $`bun ${CLI_PATH} init DefaultCliProj --defaults`.cwd(TEST_DIR).text();
 
 			expect(output).toContain("AI Integration: CLI instructions");
@@ -588,6 +609,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 			await Bun.write(join(TEST_DIR, "AGENTS.md"), "Existing instructions\n");
 
+			// CLI-CONTRACT: verifies init output labels existing files as 'Updated' and new files as 'Created'
 			const output = await $`bun ${CLI_PATH} init MixedAgentFiles --defaults --agent-instructions agents,claude`
 				.cwd(TEST_DIR)
 				.text();
@@ -607,6 +629,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --integration-mode none' output says "AI integration: skipped" and creates no agent files
 			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`.cwd(TEST_DIR).text();
 
 			expect(output).not.toContain("AI Integration:");
@@ -622,6 +645,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --backlog-dir .backlog' output format and that config is placed in .backlog/ instead of backlog/
 			const output = await $`bun ${CLI_PATH} init HiddenProj --defaults --integration-mode none --backlog-dir .backlog`
 				.cwd(TEST_DIR)
 				.text();
@@ -636,6 +660,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --backlog-dir planning/backlog-data' stores directory in root backlog.config.yml and shows "Config location:" in output
 			const output =
 				await $`bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --backlog-dir planning/backlog-data`
 					.cwd(TEST_DIR)
@@ -653,6 +678,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --backlog-dir ../outside' exits non-zero with "Invalid --backlog-dir value" error message
 			const result =
 				await $`bun ${CLI_PATH} init InvalidDirProj --defaults --integration-mode none --backlog-dir ../outside`
 					.cwd(TEST_DIR)
@@ -667,8 +693,10 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init' can reinitialize an existing project
 			await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies re-init with --backlog-dir exits non-zero with "fixed after initialization" error message
 			const result = await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none --backlog-dir .backlog`
 				.cwd(TEST_DIR)
 				.nothrow();
@@ -685,6 +713,7 @@ describe("CLI Integration", () => {
 			let failed = false;
 			let combinedOutput = "";
 			try {
+				// CLI-CONTRACT: verifies 'init --integration-mode mcp --agent-instructions claude' exits non-zero with "cannot be combined" error
 				await $`bun ${CLI_PATH} init ConflictProj --defaults --integration-mode mcp --agent-instructions claude`
 					.cwd(TEST_DIR)
 					.text();
@@ -703,6 +732,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
+			// CLI-CONTRACT: verifies 'init --agent-instructions agents,none' ignores 'none' and still creates AGENTS.md
 			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions agents,none`.cwd(TEST_DIR).quiet();
 
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
@@ -716,6 +746,7 @@ describe("CLI Integration", () => {
 
 			let failed = false;
 			try {
+				// CLI-CONTRACT: verifies 'init --agent-instructions notreal' exits non-zero with 'Invalid agent instruction' error listing valid options
 				await $`bun ${CLI_PATH} init InvalidProj --defaults --agent-instructions notreal`.cwd(TEST_DIR).quiet();
 			} catch (e) {
 				failed = true;
@@ -772,6 +803,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should honor autoCommit config for task create", async () => {
+			// CLI-CONTRACT: verifies 'task create' triggers an auto-commit when autoCommit=true in config; checks commit count and message
 			const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
 			const output = await $`bun ${CLI_PATH} task create "CLI Auto Commit Task"`.cwd(TEST_DIR).text();
 			const afterCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
@@ -789,6 +821,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should honor autoCommit config for draft create", async () => {
+			// CLI-CONTRACT: verifies 'draft create' triggers an auto-commit when autoCommit=true in config; checks commit count and message
 			const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
 			const output = await $`bun ${CLI_PATH} draft create "CLI Auto Commit Draft"`.cwd(TEST_DIR).text();
 			const afterCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
@@ -835,6 +868,7 @@ describe("CLI Integration", () => {
 			const visibleTasks = await core.queryTasks();
 			expect(visibleTasks.some((task) => task.id === "TASK-1")).toBe(true);
 
+			// CLI-CONTRACT: verifies 'task create --depends-on task-1' creates task with dependency on a task visible from a remote branch
 			const output = await $`bun ${CLI_PATH} task create "Depends on feature task" --depends-on task-1`
 				.cwd(TEST_DIR)
 				.text();
@@ -1266,6 +1300,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should reject invalid task list limit", async () => {
+			// CLI-CONTRACT: verifies 'task list --limit 0' exits non-zero with specific error message and help pointer
 			const result = await $`bun ${CLI_PATH} task list --plain --limit 0`.cwd(TEST_DIR).nothrow().quiet();
 			const out = result.stdout.toString() + result.stderr.toString();
 
@@ -1729,7 +1764,7 @@ describe("CLI Integration", () => {
 			expect(success).toBe(false);
 		});
 
-		it("refuses to archive a Done task through the CLI archive command", async () => {
+		it("refuses to archive a Done task through the CLI archive command", async () => { // CLI-CONTRACT
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
@@ -1746,6 +1781,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
+			// CLI-CONTRACT: verifies 'task archive' on a Done task exits non-zero with specific error and redirects to 'task complete'
 			const result = await $`bun ${CLI_PATH} task archive task-5`.cwd(TEST_DIR).nothrow().quiet();
 			const output = result.stdout.toString() + result.stderr.toString();
 
@@ -1758,7 +1794,7 @@ describe("CLI Integration", () => {
 			expect(archivedTasks.some((task) => task.id === "TASK-5")).toBe(false);
 		});
 
-		it("completes a Done task through the CLI cleanup command", async () => {
+		it("completes a Done task through the CLI cleanup command", async () => { // CLI-CONTRACT
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
@@ -1775,6 +1811,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
+			// CLI-CONTRACT: verifies 'task complete' on a Done task exits 0, prints "Completed task TASK-3." with path, and moves file to completed/
 			const result = await $`bun ${CLI_PATH} task complete task-3`.cwd(TEST_DIR).nothrow().quiet();
 			const output = result.stdout.toString() + result.stderr.toString();
 
@@ -1787,7 +1824,7 @@ describe("CLI Integration", () => {
 			expect(completedTasks.some((task) => task.id === "TASK-3")).toBe(true);
 		});
 
-		it("refuses to complete a non-Done task through the CLI cleanup command", async () => {
+		it("refuses to complete a non-Done task through the CLI cleanup command", async () => { // CLI-CONTRACT
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
@@ -1804,6 +1841,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
+			// CLI-CONTRACT: verifies 'task complete' on a non-Done task exits non-zero with "Task TASK-4 is not Done." and edit suggestion
 			const result = await $`bun ${CLI_PATH} task complete task-4`.cwd(TEST_DIR).nothrow().quiet();
 			const output = result.stdout.toString() + result.stderr.toString();
 
@@ -2036,6 +2074,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should create documents in a subpath and print the persisted path", async () => {
+			// CLI-CONTRACT: verifies 'doc create -p guides/setup' output format ("Created document doc-1\nPath: backlog/docs/guides/setup/...")
 			const result = await $`bun ${CLI_PATH} doc create "Setup Guide" -p guides/setup`.cwd(TEST_DIR).quiet();
 			expect(result.exitCode).toBe(0);
 			const stdout = result.stdout.toString();
@@ -2048,6 +2087,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should reject unsafe document paths", async () => {
+			// CLI-CONTRACT: verifies 'doc create -p ../outside' exits non-zero with traversal error message
 			const result = await $`bun ${CLI_PATH} doc create "Unsafe" -p ../outside`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Document path cannot include traversal segments.");
@@ -2069,6 +2109,7 @@ describe("CLI Integration", () => {
 			);
 
 			const updatedContent = "# Updated\n\nRun install steps.";
+			// CLI-CONTRACT: verifies 'doc update' output format ("Updated document doc-1\nPath: ...") and persists all updated fields
 			const result =
 				await $`bun ${CLI_PATH} doc update doc-1 --title "Install Runbook" --content ${updatedContent} -t specification --tags ops,runbook -p runbooks`
 					.cwd(TEST_DIR)
@@ -2101,6 +2142,7 @@ describe("CLI Integration", () => {
 				"guides",
 			);
 
+			// CLI-CONTRACT: verifies 'doc update --title only' preserves existing content, type, tags, and path prefix
 			await $`bun ${CLI_PATH} doc update doc-1 --title "Setup Handbook"`.cwd(TEST_DIR).quiet();
 
 			const docs = await core.filesystem.listDocuments();
@@ -2125,10 +2167,12 @@ describe("CLI Integration", () => {
 				false,
 			);
 
+			// CLI-CONTRACT: verifies 'doc update doc-404' exits non-zero with "Document not found: doc-404" error
 			const missing = await $`bun ${CLI_PATH} doc update doc-404 --content "Nope"`.cwd(TEST_DIR).quiet().nothrow();
 			expect(missing.exitCode).not.toBe(0);
 			expect(missing.stderr.toString()).toContain("Document not found: doc-404");
 
+			// CLI-CONTRACT: verifies 'doc update -t invalid' exits non-zero with type validation error listing valid types
 			const invalidType = await $`bun ${CLI_PATH} doc update doc-1 --content "Nope" -t invalid`
 				.cwd(TEST_DIR)
 				.quiet()
@@ -2138,6 +2182,7 @@ describe("CLI Integration", () => {
 				"Document type must be one of: readme, guide, specification, other.",
 			);
 
+			// CLI-CONTRACT: verifies 'doc update -p ../outside' exits non-zero with traversal error message
 			const unsafePath = await $`bun ${CLI_PATH} doc update doc-1 --content "Nope" -p ../outside`
 				.cwd(TEST_DIR)
 				.quiet()
@@ -2411,7 +2456,9 @@ describe("CLI Integration", () => {
 				false,
 			);
 
+			// CLI-CONTRACT: verifies 'board' (no subcommand) produces identical output to 'board view'
 			const resultDefault = await $`bun ${["src/cli.ts", "board"]}`.cwd(TEST_DIR).quiet().nothrow();
+			// CLI-CONTRACT: 'board view' output used as baseline for comparison with bare 'board' command
 			const resultView = await $`bun ${["src/cli.ts", "board", "view"]}`.cwd(TEST_DIR).quiet().nothrow();
 
 			expect(resultDefault.stdout.toString()).toBe(resultView.stdout.toString());

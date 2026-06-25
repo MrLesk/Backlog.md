@@ -62,6 +62,7 @@ describe("CLI root entry (bare run)", () => {
 	});
 
 	it("prints a plain local entry point in non-initialized repo", async () => {
+		// CLI-CONTRACT: verifies CLI root entry output in non-initialized directory
 		const result = await $`bun ${CLI_PATH}`.cwd(TEST_DIR).quiet();
 		const out = result.stdout.toString();
 		expect(result.exitCode).toBe(0);
@@ -87,6 +88,7 @@ describe("CLI root entry (bare run)", () => {
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Splash Test");
 
+		// CLI-CONTRACT: verifies CLI root entry output in initialized project directory
 		const result = await $`bun ${CLI_PATH}`.cwd(TEST_DIR).quiet();
 		const out = result.stdout.toString();
 		expect(result.exitCode).toBe(0);
@@ -107,6 +109,7 @@ describe("CLI root entry (bare run)", () => {
 	});
 
 	it("--help shows commander help, not the root entry", async () => {
+		// CLI-CONTRACT: verifies --help shows commander usage text rather than the custom root entry
 		const result = await $`bun ${CLI_PATH} --help`.cwd(TEST_DIR).quiet();
 		const out = result.stdout.toString();
 		expect(result.exitCode).toBe(0);

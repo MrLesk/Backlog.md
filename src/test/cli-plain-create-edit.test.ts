@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
 
@@ -34,14 +35,9 @@ describe("CLI --plain for task create/edit", () => {
 	});
 
 	it("prints plain details after task create --plain", async () => {
-		const result = await $`bun ${cliPath} task create "Example" --desc "Hello" --plain`.cwd(TEST_DIR).quiet();
+		const result = await createTaskPlatformAware({ title: "Example", description: "Hello", plain: true }, TEST_DIR);
 
-		if (result.exitCode !== 0) {
-			console.error("STDOUT:", result.stdout.toString());
-			console.error("STDERR:", result.stderr.toString());
-		}
-
-		const out = result.stdout.toString();
+		const out = result.stdout;
 		expect(result.exitCode).toBe(0);
 		// Begins with File: line and contains key sections
 		expect(out).toContain("File: ");
@@ -58,22 +54,24 @@ describe("CLI --plain for task create/edit", () => {
 	});
 
 	it("assigns default tail ordinals and preserves explicit ordinals on CLI create", async () => {
-		const first = await $`bun ${cliPath} task create "First ordinal CLI task" --plain`.cwd(TEST_DIR).quiet();
+		const first = await createTaskPlatformAware({ title: "First ordinal CLI task", plain: true }, TEST_DIR);
 		expect(first.exitCode).toBe(0);
-		expect(first.stdout.toString()).toContain("Ordinal: 1000");
+		expect(first.stdout).toContain("Ordinal: 1000");
 
-		const second = await $`bun ${cliPath} task create "Second ordinal CLI task" --plain`.cwd(TEST_DIR).quiet();
+		const second = await createTaskPlatformAware({ title: "Second ordinal CLI task", plain: true }, TEST_DIR);
 		expect(second.exitCode).toBe(0);
-		expect(second.stdout.toString()).toContain("Ordinal: 2000");
+		expect(second.stdout).toContain("Ordinal: 2000");
 
-		const explicit = await $`bun ${cliPath} task create "Explicit ordinal CLI task" --ordinal 7500 --plain`
-			.cwd(TEST_DIR)
-			.quiet();
+		const explicit = await createTaskPlatformAware(
+			{ title: "Explicit ordinal CLI task", ordinal: 7500, plain: true },
+			TEST_DIR,
+		);
 		expect(explicit.exitCode).toBe(0);
-		expect(explicit.stdout.toString()).toContain("Ordinal: 7500");
+		expect(explicit.stdout).toContain("Ordinal: 7500");
 	});
 
 	it("rejects non-finite ordinals on CLI create", async () => {
+		// CLI-CONTRACT: verifies error message text and exit code for invalid ordinal value
 		const result = await $`bun ${cliPath} task create "Invalid ordinal CLI task" --ordinal Infinity`
 			.cwd(TEST_DIR)
 			.quiet()
@@ -85,16 +83,11 @@ describe("CLI --plain for task create/edit", () => {
 
 	it("prints plain details after task edit --plain", async () => {
 		// Create base task first (without plain)
-		await $`bun ${cliPath} task create "Edit Me" --desc "First"`.cwd(TEST_DIR).quiet();
+		await createTaskPlatformAware({ title: "Edit Me", description: "First" }, TEST_DIR);
 
-		const result = await $`bun ${cliPath} task edit 1 -s "In Progress" --plain`.cwd(TEST_DIR).quiet();
+		const result = await editTaskPlatformAware({ taskId: "1", status: "In Progress", plain: true }, TEST_DIR);
 
-		if (result.exitCode !== 0) {
-			console.error("STDOUT:", result.stdout.toString());
-			console.error("STDERR:", result.stderr.toString());
-		}
-
-		const out = result.stdout.toString();
+		const out = result.stdout;
 		expect(result.exitCode).toBe(0);
 		// Begins with File: line and contains updated details
 		expect(out).toContain("File: ");

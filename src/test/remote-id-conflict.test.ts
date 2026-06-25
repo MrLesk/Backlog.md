@@ -60,6 +60,7 @@ describe("next id across remote branches", () => {
 	});
 
 	it("uses id after highest remote task", async () => {
+		// CLI-CONTRACT: verifies task create picks next ID after highest task in remote branches
 		const result = await $`bun run ${CLI_PATH} task create "Local Task"`.cwd(LOCAL_DIR).quiet();
 		expect(result.stdout.toString()).toContain("Created task TASK-2");
 		const core = new Core(LOCAL_DIR);

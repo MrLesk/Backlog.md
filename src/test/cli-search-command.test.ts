@@ -79,6 +79,7 @@ describe("CLI search command", () => {
 	});
 
 	it("returns matching tasks, documents, and decisions in plain output", async () => {
+		// CLI-CONTRACT: verifies search command output format with Tasks/Documents/Decisions sections
 		const result = await $`bun ${cliPath} search central --plain`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -92,6 +93,7 @@ describe("CLI search command", () => {
 	});
 
 	it("honors status and priority filters for task results", async () => {
+		// CLI-CONTRACT: verifies --type, --status, --priority filter flags in search command
 		const statusResult = await $`bun ${cliPath} search follow-up --type task --status "In Progress" --plain`
 			.cwd(TEST_DIR)
 			.quiet();
@@ -109,6 +111,7 @@ describe("CLI search command", () => {
 	});
 
 	it("applies result limit", async () => {
+		// CLI-CONTRACT: verifies --limit flag restricts result count in search command
 		const result = await $`bun ${cliPath} search search --plain --limit 1`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 		const stdout = result.stdout.toString();
@@ -117,6 +120,7 @@ describe("CLI search command", () => {
 	});
 
 	it("rejects invalid result limits with a help hint", async () => {
+		// CLI-CONTRACT: verifies error message text and help hint for invalid --limit value
 		const result = await $`bun ${cliPath} search search --plain --limit 0`.cwd(TEST_DIR).nothrow().quiet();
 		const output = result.stdout.toString() + result.stderr.toString();
 
@@ -126,6 +130,7 @@ describe("CLI search command", () => {
 	});
 
 	it("finds tasks by modified file path", async () => {
+		// CLI-CONTRACT: verifies search by --modified-file filter flag behavior and output
 		const queryResult = await $`bun ${cliPath} search "src/web/App.tsx" --type task --plain`.cwd(TEST_DIR).quiet();
 		expect(queryResult.exitCode).toBe(0);
 		const queryStdout = queryResult.stdout.toString();

@@ -59,6 +59,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	test("should not commit when creating a task if autoCommit is false", async () => {
 		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
 
+		// CLI-CONTRACT: verifies autoCommit=false suppresses git commit on task create
 		const result = await $`bun ${CLI_PATH} task create "No-commit Task"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -72,6 +73,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	test("should not commit when creating a document if autoCommit is false", async () => {
 		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
 
+		// CLI-CONTRACT: verifies autoCommit=false suppresses git commit on doc create
 		const result = await $`bun ${CLI_PATH} doc create "No-commit Doc"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -85,6 +87,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	test("should not commit when creating a decision if autoCommit is false", async () => {
 		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
 
+		// CLI-CONTRACT: verifies autoCommit=false suppresses git commit on decision create
 		const result = await $`bun ${CLI_PATH} decision create "No-commit Decision"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -138,6 +141,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	test("should commit when creating a task if autoCommit is true", async () => {
 		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
 
+		// CLI-CONTRACT: verifies autoCommit=true triggers git commit on task create
 		const result = await $`bun ${CLI_PATH} task create "Auto-commit Task"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -149,6 +153,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	test("should commit when creating a document if autoCommit is true", async () => {
 		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
 
+		// CLI-CONTRACT: verifies autoCommit=true triggers git commit on doc create
 		const result = await $`bun ${CLI_PATH} doc create "Auto-commit Doc"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -162,6 +167,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	test("should commit when creating a decision if autoCommit is true", async () => {
 		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
 
+		// CLI-CONTRACT: verifies autoCommit=true triggers git commit on decision create
 		const result = await $`bun ${CLI_PATH} decision create "Auto-commit Decision"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 

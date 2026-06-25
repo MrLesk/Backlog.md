@@ -155,11 +155,14 @@ describe("Config commands", () => {
 	});
 
 	it("exposes config list/get/set subcommands", async () => {
+		// CLI-CONTRACT: verifies 'config list' output format ("Configuration:") and CLI-level get/set round-trip
 		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
 		expect(listOutput).toContain("Configuration:");
 
+		// CLI-CONTRACT: verifies 'config set' persists a value and 'config get' retrieves it correctly
 		await $`bun ${CLI_PATH} config set defaultPort 7001`.cwd(TEST_DIR).quiet();
 
+		// CLI-CONTRACT: verifies 'config get <key>' prints only the raw value
 		const portOutput = await $`bun ${CLI_PATH} config get defaultPort`.cwd(TEST_DIR).text();
 		expect(portOutput.trim()).toBe("7001");
 	});
@@ -167,9 +170,11 @@ describe("Config commands", () => {
 	it("surfaces milestones in config get/list from milestone files", async () => {
 		await core.filesystem.createMilestone("Release 1");
 
+		// CLI-CONTRACT: verifies 'config get milestones' returns milestone IDs from filesystem milestone files
 		const milestonesOutput = await $`bun ${CLI_PATH} config get milestones`.cwd(TEST_DIR).text();
 		expect(milestonesOutput.trim()).toBe("m-0");
 
+		// CLI-CONTRACT: verifies 'config list' includes milestone IDs inline in output format
 		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
 		expect(listOutput).toContain("milestones: [m-0]");
 	});

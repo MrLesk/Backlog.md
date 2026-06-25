@@ -46,6 +46,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task list falls back to plain output without --plain", async () => {
+		// CLI-CONTRACT: verifies non-TTY auto-plain fallback behavior — checks absence of ANSI escape codes, which is a CLI output contract
 		const result = await $`bun ${CLI_PATH} task list`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -56,6 +57,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task view falls back to plain output without --plain", async () => {
+		// CLI-CONTRACT: verifies non-TTY auto-plain fallback for view — checks absence of ANSI escape codes, which is a CLI output contract
 		const result = await $`bun ${CLI_PATH} task view 1`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -67,6 +69,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task create preserves legacy concise output without --plain", async () => {
+		// CLI-CONTRACT: verifies legacy concise create output format ("Created task TASK-X\nFile: ...") without --plain in non-TTY
 		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -77,6 +80,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task edit preserves legacy concise output without --plain", async () => {
+		// CLI-CONTRACT: verifies legacy concise edit output format ("Updated task TASK-X") without --plain in non-TTY
 		const result = await $`bun ${CLI_PATH} task edit 1 -s "In Progress"`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Updated task TASK-1");

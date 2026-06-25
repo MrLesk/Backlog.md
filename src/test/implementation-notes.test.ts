@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
-import { editTaskPlatformAware } from "./test-helpers.ts";
+import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
@@ -34,11 +32,10 @@ describe("Implementation Notes CLI", () => {
 	describe("task create with implementation notes", () => {
 		it("should handle all task creation scenarios with implementation notes", async () => {
 			// Test 1: create task with implementation notes using --notes
-			const result1 =
-				await $`bun ${[CLI_PATH, "task", "create", "Test Task 1", "--notes", "Initial implementation completed"]}`
-					.cwd(TEST_DIR)
-					.quiet()
-					.nothrow();
+			const result1 = await createTaskPlatformAware(
+				{ title: "Test Task 1", notes: "Initial implementation completed" },
+				TEST_DIR,
+			);
 			expect(result1.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -50,11 +47,10 @@ describe("Implementation Notes CLI", () => {
 			);
 
 			// Test 2: create task with multi-line implementation notes
-			const result2 =
-				await $`bun ${[CLI_PATH, "task", "create", "Test Task 2", "--notes", "Step 1: Analysis completed\nStep 2: Implementation in progress"]}`
-					.cwd(TEST_DIR)
-					.quiet()
-					.nothrow();
+			const result2 = await createTaskPlatformAware(
+				{ title: "Test Task 2", notes: "Step 1: Analysis completed\nStep 2: Implementation in progress" },
+				TEST_DIR,
+			);
 			expect(result2.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-2");
@@ -64,11 +60,10 @@ describe("Implementation Notes CLI", () => {
 			expect(notes2).toContain("Step 2: Implementation in progress");
 
 			// Test 3: create task with both plan and notes (notes should come after plan)
-			const result3 =
-				await $`bun ${[CLI_PATH, "task", "create", "Test Task 3", "--plan", "1. Design\n2. Build\n3. Test", "--notes", "Following the plan step by step"]}`
-					.cwd(TEST_DIR)
-					.quiet()
-					.nothrow();
+			const result3 = await createTaskPlatformAware(
+				{ title: "Test Task 3", plan: "1. Design\n2. Build\n3. Test", notes: "Following the plan step by step" },
+				TEST_DIR,
+			);
 			expect(result3.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-3");
@@ -85,11 +80,15 @@ describe("Implementation Notes CLI", () => {
 			expect(notesIndex).toBeGreaterThan(planIndex);
 
 			// Test 4: create task with multiple options including notes
-			const result4 =
-				await $`bun ${[CLI_PATH, "task", "create", "Test Task 4", "-d", "Complex task description", "--ac", "Must work correctly,Must be tested", "--notes", "Using TDD approach"]}`
-					.cwd(TEST_DIR)
-					.quiet()
-					.nothrow();
+			const result4 = await createTaskPlatformAware(
+				{
+					title: "Test Task 4",
+					description: "Complex task description",
+					ac: ["Must work correctly", "Must be tested"],
+					notes: "Using TDD approach",
+				},
+				TEST_DIR,
+			);
 			expect(result4.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-4");
@@ -98,7 +97,7 @@ describe("Implementation Notes CLI", () => {
 			expect(extractStructuredSection(task?.rawContent || "", "implementationNotes")).toContain("Using TDD approach");
 
 			// Test 5: create task without notes should not add the section
-			const result5 = await $`bun ${[CLI_PATH, "task", "create", "Test Task 5"]}`.cwd(TEST_DIR).quiet().nothrow();
+			const result5 = await createTaskPlatformAware({ title: "Test Task 5" }, TEST_DIR);
 			expect(result5.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-5");
@@ -316,10 +315,10 @@ Technical decisions:
 			};
 			await core.createTask(task, false);
 
-			const appendResult = await $`bun ${CLI_PATH} task edit 7 --append-notes "Added verification details"`
-				.cwd(TEST_DIR)
-				.quiet()
-				.nothrow();
+			const appendResult = await editTaskPlatformAware(
+				{ taskId: "7", appendNotes: ["Added verification details"] },
+				TEST_DIR,
+			);
 			expect(appendResult.exitCode).toBe(0);
 
 			const updated = await core.filesystem.loadTask("task-7");

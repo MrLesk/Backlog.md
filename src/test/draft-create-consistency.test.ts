@@ -35,7 +35,9 @@ describe("Draft creation consistency", () => {
 	});
 
 	it("keeps IDs and filenames consistent between draft create and task create --draft", async () => {
+		// CLI-CONTRACT: verifies 'draft create' and 'task create --draft' produce consistent DRAFT-N IDs and filenames
 		const first = await $`bun ${CLI_PATH} draft create "Hallo"`.cwd(TEST_DIR).quiet();
+		// CLI-CONTRACT: verifies 'task create --draft' output format matches 'draft create' and avoids 'draft-task-' prefix
 		const second = await $`bun ${CLI_PATH} task create --draft "Goodbye"`.cwd(TEST_DIR).quiet();
 
 		expect(first.stdout.toString()).toContain("Created draft DRAFT-1");
@@ -55,6 +57,7 @@ describe("Draft creation consistency", () => {
 	});
 
 	it("uses DRAFT IDs in plain output for task create --draft", async () => {
+		// CLI-CONTRACT: verifies 'task create --draft --plain' output uses DRAFT-N prefix not TASK-N
 		const result = await $`bun ${CLI_PATH} task create --draft "Plain sample" --plain`.cwd(TEST_DIR).quiet();
 		const output = result.stdout.toString();
 

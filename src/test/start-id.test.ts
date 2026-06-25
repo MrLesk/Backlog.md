@@ -33,6 +33,7 @@ describe("task id generation", () => {
 	});
 
 	it("starts numbering tasks at 1", async () => {
+		// CLI-CONTRACT: verifies task IDs start at 1 via CLI create command
 		const result = await $`bun ${CLI_PATH} task create First`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 
