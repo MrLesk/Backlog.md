@@ -390,9 +390,7 @@ async function viewTaskViaCore(
 		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `${prefix}-${options.taskId}`;
 
 		// Use getTaskWithSubtasks to include subtask summaries (same as CLI view command)
-		const task = options.draft
-			? await core.filesystem.loadDraft(taskId)
-			: await core.getTaskWithSubtasks(taskId);
+		const task = options.draft ? await core.filesystem.loadDraft(taskId) : await core.getTaskWithSubtasks(taskId);
 		if (!task) {
 			return {
 				exitCode: 1,

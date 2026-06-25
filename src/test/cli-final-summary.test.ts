@@ -4,8 +4,8 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 import { createTaskPlatformAware, editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 

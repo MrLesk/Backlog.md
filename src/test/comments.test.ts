@@ -334,7 +334,13 @@ describe("Task comments", () => {
 		await core.updateTaskFromInput(
 			"task-1",
 			{
-				appendComments: [{ body: "CLI comment body", author: "@cli", createdDate: new Date().toISOString().slice(0, 16).replace("T", " ") }],
+				appendComments: [
+					{
+						body: "CLI comment body",
+						author: "@cli",
+						createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+					},
+				],
 			},
 			false,
 		);

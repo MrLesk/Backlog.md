@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 import { createTaskPlatformAware, editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -32,7 +32,8 @@ describe("Acceptance Criteria CLI", () => {
 	});
 
 	describe("task create with acceptance criteria", () => {
-		it("should create task with single acceptance criterion using -ac", async () => { // IN-PROCESS
+		it("should create task with single acceptance criterion using -ac", async () => {
+			// IN-PROCESS
 			const result = await createTaskPlatformAware({ title: "Test Task", ac: "Must work correctly" }, TEST_DIR);
 			expect(result.exitCode).toBe(0);
 
@@ -43,7 +44,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).toContain("- [ ] #1 Must work correctly");
 		});
 
-		it("should create task with multiple criteria using multiple --ac flags", async () => { // IN-PROCESS
+		it("should create task with multiple criteria using multiple --ac flags", async () => {
+			// IN-PROCESS
 			const result = await createTaskPlatformAware(
 				{ title: "Test Task", ac: ["Criterion 1", "Criterion 2", "Criterion 3"] },
 				TEST_DIR,
@@ -58,7 +60,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).toContain("- [ ] #3 Criterion 3");
 		});
 
-		it("should treat comma-separated text as single criterion", async () => { // IN-PROCESS
+		it("should treat comma-separated text as single criterion", async () => {
+			// IN-PROCESS
 			const result = await createTaskPlatformAware(
 				{ title: "Test Task", ac: "Criterion 1, Criterion 2, Criterion 3" },
 				TEST_DIR,
@@ -74,7 +77,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).not.toContain("- [ ] #2");
 		});
 
-		it("should create task with criteria using --acceptance-criteria", async () => { // IN-PROCESS
+		it("should create task with criteria using --acceptance-criteria", async () => {
+			// IN-PROCESS
 			// --acceptance-criteria is the long form of --ac, same behavior
 			const result = await createTaskPlatformAware({ title: "Test Task", ac: "Full flag test" }, TEST_DIR);
 			expect(result.exitCode).toBe(0);
@@ -86,7 +90,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).toContain("- [ ] #1 Full flag test");
 		});
 
-		it("should create task with both description and acceptance criteria", async () => { // IN-PROCESS
+		it("should create task with both description and acceptance criteria", async () => {
+			// IN-PROCESS
 			const result = await createTaskPlatformAware(
 				{ title: "Test Task", description: "Task description", ac: ["Must pass tests", "Must be documented"] },
 				TEST_DIR,
@@ -122,11 +127,9 @@ describe("Acceptance Criteria CLI", () => {
 			);
 		});
 
-		it("should add acceptance criteria to existing task", async () => { // IN-PROCESS
-			const result = await editTaskPlatformAware(
-				{ taskId: "1", ac: ["New criterion 1", "New criterion 2"] },
-				TEST_DIR,
-			);
+		it("should add acceptance criteria to existing task", async () => {
+			// IN-PROCESS
+			const result = await editTaskPlatformAware({ taskId: "1", ac: ["New criterion 1", "New criterion 2"] }, TEST_DIR);
 			expect(result.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -139,7 +142,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).toContain("- [ ] #2 New criterion 2");
 		});
 
-		it("consolidates duplicate Acceptance Criteria sections with markers into one", async () => { // IN-PROCESS
+		it("consolidates duplicate Acceptance Criteria sections with markers into one", async () => {
+			// IN-PROCESS
 			const core = new Core(TEST_DIR);
 			await core.createTask(
 				{
@@ -173,7 +177,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(body).toContain("- [ ] #3 New C");
 		});
 
-		it("consolidates legacy and marked AC sections to a single marked section", async () => { // IN-PROCESS
+		it("consolidates legacy and marked AC sections to a single marked section", async () => {
+			// IN-PROCESS
 			const core = new Core(TEST_DIR);
 			await core.createTask(
 				{
@@ -207,7 +212,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(body).not.toContain("Legacy 2");
 		});
 
-		it("should add to existing acceptance criteria", async () => { // IN-PROCESS
+		it("should add to existing acceptance criteria", async () => {
+			// IN-PROCESS
 			// First add some criteria
 			const res = await editTaskPlatformAware({ taskId: "1", ac: ["Old criterion 1", "Old criterion 2"] }, TEST_DIR);
 			expect(res.exitCode).toBe(0);
@@ -225,7 +231,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).toContain("- [ ] #3 New criterion");
 		});
 
-		it("should update title and add acceptance criteria together", async () => { // IN-PROCESS
+		it("should update title and add acceptance criteria together", async () => {
+			// IN-PROCESS
 			const result = await editTaskPlatformAware(
 				{ taskId: "1", title: "Updated Title", ac: ["Must be updated", "Must work"] },
 				TEST_DIR,
@@ -243,7 +250,8 @@ describe("Acceptance Criteria CLI", () => {
 	});
 
 	describe("acceptance criteria parsing", () => {
-		it("should handle empty criteria gracefully", async () => { // IN-PROCESS
+		it("should handle empty criteria gracefully", async () => {
+			// IN-PROCESS
 			const result = await createTaskPlatformAware({ title: "Test Task" }, TEST_DIR);
 			expect(result.exitCode).toBe(0);
 
@@ -254,7 +262,8 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).not.toContain("## Acceptance Criteria");
 		});
 
-		it("should trim whitespace from criteria", async () => { // IN-PROCESS
+		it("should trim whitespace from criteria", async () => {
+			// IN-PROCESS
 			const result = await createTaskPlatformAware(
 				{ title: "Test Task", ac: ["  Criterion with spaces  ", "  Another one  "] },
 				TEST_DIR,
@@ -296,7 +305,8 @@ Test task with acceptance criteria
 			);
 		});
 
-		it("should add new acceptance criteria with --ac", async () => { // IN-PROCESS
+		it("should add new acceptance criteria with --ac", async () => {
+			// IN-PROCESS
 			const result = await editTaskPlatformAware(
 				{ taskId: "1", ac: ["Fourth criterion", "Fifth criterion"] },
 				TEST_DIR,
@@ -312,7 +322,8 @@ Test task with acceptance criteria
 			expect(task?.rawContent).toContain("- [ ] #5 Fifth criterion");
 		});
 
-		it("should remove acceptance criterion by index with --remove-ac", async () => { // IN-PROCESS
+		it("should remove acceptance criterion by index with --remove-ac", async () => {
+			// IN-PROCESS
 			const result = await editTaskPlatformAware({ taskId: "1", removeAc: [2] }, TEST_DIR);
 			expect(result.exitCode).toBe(0);
 
@@ -323,7 +334,8 @@ Test task with acceptance criteria
 			expect(task?.rawContent).toContain("- [ ] #2 Third criterion"); // Renumbered
 		});
 
-		it("removes acceptance criteria section after deleting all items", async () => { // IN-PROCESS
+		it("removes acceptance criteria section after deleting all items", async () => {
+			// IN-PROCESS
 			const result = await editTaskPlatformAware({ taskId: "1", removeAc: [1, 2, 3] }, TEST_DIR);
 			expect(result.exitCode).toBe(0);
 
@@ -335,7 +347,8 @@ Test task with acceptance criteria
 			expect(body).not.toContain("<!-- AC:END -->");
 		});
 
-		it("should check acceptance criterion by index with --check-ac", async () => { // IN-PROCESS
+		it("should check acceptance criterion by index with --check-ac", async () => {
+			// IN-PROCESS
 			const result = await editTaskPlatformAware({ taskId: "1", checkAc: [2] }, TEST_DIR);
 			expect(result.exitCode).toBe(0);
 
@@ -346,7 +359,8 @@ Test task with acceptance criteria
 			expect(task?.rawContent).toContain("- [ ] #3 Third criterion");
 		});
 
-		it("should uncheck acceptance criterion by index with --uncheck-ac", async () => { // IN-PROCESS
+		it("should uncheck acceptance criterion by index with --uncheck-ac", async () => {
+			// IN-PROCESS
 			// First check a criterion
 			await editTaskPlatformAware({ taskId: "1", checkAc: [1] }, TEST_DIR);
 
@@ -359,7 +373,8 @@ Test task with acceptance criteria
 			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
 		});
 
-		it("should handle multiple operations in one command", async () => { // IN-PROCESS
+		it("should handle multiple operations in one command", async () => {
+			// IN-PROCESS
 			const result = await editTaskPlatformAware(
 				{ taskId: "1", checkAc: [1], removeAc: [2], ac: "New criterion" },
 				TEST_DIR,
@@ -374,7 +389,8 @@ Test task with acceptance criteria
 			expect(task?.rawContent).toContain("- [ ] #3 New criterion");
 		});
 
-		it("should error on invalid index for --remove-ac", async () => { // CLI-CONTRACT
+		it("should error on invalid index for --remove-ac", async () => {
+			// CLI-CONTRACT
 			try {
 				// CLI-CONTRACT: verifies '--remove-ac' with out-of-range index exits non-zero with specific error message including available indexes and help commands
 				await $`bun ${CLI_PATH} task edit 1 --remove-ac 10`.cwd(TEST_DIR).quiet();
@@ -390,7 +406,8 @@ Test task with acceptance criteria
 			}
 		});
 
-		it("should error on invalid index for --check-ac", async () => { // CLI-CONTRACT
+		it("should error on invalid index for --check-ac", async () => {
+			// CLI-CONTRACT
 			try {
 				// CLI-CONTRACT: verifies '--check-ac' with out-of-range index exits non-zero with specific error message including available indexes and help commands
 				await $`bun ${CLI_PATH} task edit 1 --check-ac 10`.cwd(TEST_DIR).quiet();
@@ -406,21 +423,24 @@ Test task with acceptance criteria
 			}
 		});
 
-		it("should error on non-numeric index", async () => { // CLI-CONTRACT
+		it("should error on non-numeric index", async () => {
+			// CLI-CONTRACT
 			// CLI-CONTRACT: verifies '--remove-ac abc' (non-numeric) exits non-zero with 'Invalid index' error message
 			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac abc`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
 		});
 
-		it("should error on zero index", async () => { // CLI-CONTRACT
+		it("should error on zero index", async () => {
+			// CLI-CONTRACT
 			// CLI-CONTRACT: verifies '--remove-ac 0' exits non-zero with 'Invalid index' error message
 			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 0`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
 		});
 
-		it("should error on negative index", async () => { // CLI-CONTRACT
+		it("should error on negative index", async () => {
+			// CLI-CONTRACT
 			// CLI-CONTRACT: verifies '--remove-ac=-1' (negative index) exits non-zero with 'Invalid index' error message
 			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac=-1`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
@@ -429,7 +449,8 @@ Test task with acceptance criteria
 	});
 
 	describe("stable format migration", () => {
-		it("should convert old format to stable format when editing", async () => { // IN-PROCESS
+		it("should convert old format to stable format when editing", async () => {
+			// IN-PROCESS
 			const core = new Core(TEST_DIR);
 			await core.createTask(
 				{
@@ -554,7 +575,8 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 	});
 
 	describe("Multi-value CLI operations", () => {
-		it("should support multiple --ac flags in task create", async () => { // IN-PROCESS
+		it("should support multiple --ac flags in task create", async () => {
+			// IN-PROCESS
 			const result = await createTaskPlatformAware(
 				{ title: "Multi AC Test", ac: ["First", "Second", "Third"] },
 				TEST_DIR_UNIT,
@@ -570,7 +592,8 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 			expect(viewResult.stdout).toContain("- [ ] #3 Third");
 		});
 
-		it("should support multiple --check-ac flags in single command", async () => { // IN-PROCESS
+		it("should support multiple --check-ac flags in single command", async () => {
+			// IN-PROCESS
 			// Create task with multiple ACs
 			const createResult = await createTaskPlatformAware(
 				{ title: "Check Test", ac: ["First", "Second", "Third", "Fourth"] },
@@ -590,7 +613,8 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 			expect(viewResult.stdout).toContain("- [ ] #4 Fourth");
 		});
 
-		it("should support mixed AC operations in single command", async () => { // IN-PROCESS
+		it("should support mixed AC operations in single command", async () => {
+			// IN-PROCESS
 			// Create task with multiple ACs
 			const createResult = await createTaskPlatformAware(
 				{ title: "Mixed Test", ac: ["First", "Second", "Third", "Fourth"] },
@@ -613,7 +637,8 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 			expect(viewResult.stdout).toContain("- [x] #4 Fourth"); // newly checked
 		});
 
-		it("should support multiple --remove-ac flags with proper renumbering", async () => { // IN-PROCESS
+		it("should support multiple --remove-ac flags with proper renumbering", async () => {
+			// IN-PROCESS
 			// Create task with 5 ACs
 			const createResult = await createTaskPlatformAware(
 				{ title: "Remove Test", ac: ["First", "Second", "Third", "Fourth", "Fifth"] },
@@ -634,7 +659,8 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 			expect(viewResult.stdout).not.toContain("Fourth"); // removed
 		});
 
-		it("should handle invalid indices gracefully in multi-value operations", async () => { // CLI-CONTRACT
+		it("should handle invalid indices gracefully in multi-value operations", async () => {
+			// CLI-CONTRACT
 			// CLI-CONTRACT: captures TASK-N ID from create output to pass to edit — tests that mixed valid+invalid --check-ac indices fail with specific error message including the task's actual ID
 			// Create task with 2 ACs
 			const createResult = await $`bun run ${CLI_PATH_UNIT} task create "Invalid Test" --ac "First" --ac "Second"`.cwd(
