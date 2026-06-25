@@ -6,6 +6,7 @@
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { formatTaskPlainText } from "../formatters/task-plain-text.ts";
 import type { TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { normalizeDependencies } from "../utils/task-builders.ts";
@@ -20,12 +21,16 @@ export interface TaskCreateOptions {
 	status?: string;
 	labels?: string;
 	priority?: string;
-	ac?: string;
+	ac?: string | string[];
 	plan?: string;
 	notes?: string;
 	draft?: boolean;
 	parent?: string;
 	dependencies?: string;
+	ref?: string[];
+	doc?: string[];
+	modifiedFile?: string[];
+	plain?: boolean;
 }
 
 /**
@@ -76,10 +81,26 @@ async function createTaskViaCore(
 	}
 
 	if (options.ac) {
-		const trimmed = options.ac.trim();
-		if (trimmed) {
-			createInput.acceptanceCriteria = [{ text: trimmed, checked: false }];
+		const acValues = Array.isArray(options.ac) ? options.ac : [options.ac];
+		const criteria = acValues
+			.map((v) => v.trim())
+			.filter((v) => v.length > 0)
+			.map((text) => ({ text, checked: false as const }));
+		if (criteria.length > 0) {
+			createInput.acceptanceCriteria = criteria;
 		}
+	}
+
+	if (options.ref) {
+		createInput.references = options.ref.flatMap((r) => r.split(",").map((s) => s.trim())).filter(Boolean);
+	}
+
+	if (options.doc) {
+		createInput.documentation = options.doc.flatMap((d) => d.split(",").map((s) => s.trim())).filter(Boolean);
+	}
+
+	if (options.modifiedFile) {
+		createInput.modifiedFiles = options.modifiedFile;
 	}
 
 	if (options.plan) {
@@ -93,9 +114,11 @@ async function createTaskViaCore(
 	try {
 		const { task } = await core.createTaskFromInput(createInput);
 		const isDraft = (task.status ?? "").toLowerCase() === "draft";
+		const header = isDraft ? `Created draft ${task.id}` : `Created task ${task.id}`;
+		const stdout = options.plain ? `${header}\n\n${formatTaskPlainText(task)}` : header;
 		return {
 			exitCode: 0,
-			stdout: isDraft ? `Created draft ${task.id}` : `Created task ${task.id}`,
+			stdout,
 			stderr: "",
 			taskId: task.id,
 		};
@@ -119,6 +142,14 @@ export interface TaskEditOptions {
 	dependencies?: string;
 	notes?: string;
 	plan?: string;
+	ac?: string | string[];
+	checkAc?: number[];
+	removeAc?: number[];
+	uncheckAc?: number[];
+	ref?: string[];
+	doc?: string[];
+	modifiedFile?: string[];
+	plain?: boolean;
 }
 
 /**
@@ -168,7 +199,48 @@ async function editTaskViaCore(
 			...(options.plan && { implementationPlan: options.plan }),
 		};
 
+		if (options.ac) {
+			const acValues = Array.isArray(options.ac) ? options.ac : [options.ac];
+			updateInput.addAcceptanceCriteria = acValues.map((v) => v.trim()).filter((v) => v.length > 0);
+		}
+
+		if (options.checkAc?.length) {
+			updateInput.checkAcceptanceCriteria = options.checkAc;
+		}
+
+		if (options.removeAc?.length) {
+			updateInput.removeAcceptanceCriteria = options.removeAc;
+		}
+
+		if (options.uncheckAc?.length) {
+			updateInput.uncheckAcceptanceCriteria = options.uncheckAc;
+		}
+
+		if (options.ref) {
+			updateInput.references = options.ref.flatMap((r) => r.split(",").map((s) => s.trim())).filter(Boolean);
+		}
+
+		if (options.doc) {
+			updateInput.documentation = options.doc.flatMap((d) => d.split(",").map((s) => s.trim())).filter(Boolean);
+		}
+
+		if (options.modifiedFile) {
+			updateInput.modifiedFiles = options.modifiedFile;
+		}
+
 		await core.updateTaskFromInput(taskId, updateInput, false);
+
+		if (options.plain) {
+			const updatedTask = await core.filesystem.loadTask(taskId);
+			if (updatedTask) {
+				return {
+					exitCode: 0,
+					stdout: `Updated task ${taskId}\n\n${formatTaskPlainText(updatedTask)}`,
+					stderr: "",
+				};
+			}
+		}
+
 		return {
 			exitCode: 0,
 			stdout: `Updated task ${taskId}`,
@@ -219,22 +291,7 @@ async function viewTaskViaCore(
 		}
 
 		// Format output to match CLI output
-		let output = `Task ${taskId} - ${task.title}`;
-		if (options.plain) {
-			output += `\nStatus: ${task.status}`;
-			if (task.assignee?.length > 0) {
-				output += `\nAssignee: ${task.assignee.join(", ")}`;
-			}
-			if (task.labels?.length > 0) {
-				output += `\nLabels: ${task.labels.join(", ")}`;
-			}
-			if (task.dependencies?.length > 0) {
-				output += `\nDependencies: ${task.dependencies.join(", ")}`;
-			}
-			if (task.rawContent) {
-				output += `\n\n${task.rawContent}`;
-			}
-		}
+		const output = options.plain ? formatTaskPlainText(task) : `Task ${taskId} - ${task.title}`;
 
 		return {
 			exitCode: 0,
@@ -300,6 +357,10 @@ export interface TaskListOptions {
 	priority?: string;
 	milestone?: string;
 	sort?: string;
+	labels?: string[];
+	search?: string;
+	limit?: number;
+	parent?: string;
 }
 
 /**
@@ -325,10 +386,20 @@ export async function listTasksViaCore(
 	try {
 		const core = new Core(testDir);
 
+		if (options.limit !== undefined && options.limit < 1) {
+			return {
+				exitCode: 1,
+				stdout: "",
+				stderr: "--limit must be a positive integer (1 or greater). Try 'backlog task list --help' for options.",
+			};
+		}
+
 		const filters: import("../types/index.ts").TaskListFilter = {};
 		if (options.status) filters.status = options.status;
 		if (options.assignee) filters.assignee = options.assignee;
 		if (options.milestone) filters.milestone = options.milestone;
+		if (options.parent) filters.parentTaskId = options.parent;
+		if (options.labels?.length) filters.labels = options.labels;
 		if (options.priority) {
 			const priorityLower = options.priority.toLowerCase();
 			const valid = ["high", "medium", "low"] as const;
@@ -354,12 +425,23 @@ export async function listTasksViaCore(
 
 		const tasks = await core.queryTasks({
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
+			query: options.search,
 			includeCrossBranch: false,
 		});
 
 		const { sortTasks } = await import("../utils/task-sorting.ts");
+		// Apply AND semantics for labels (Core uses OR; CLI requires every label)
+		const filteredByLabels =
+			options.labels && options.labels.length > 0
+				? tasks.filter((task) => {
+						const taskLabels = new Set((task.labels ?? []).map((l) => l.toLowerCase()));
+						return options.labels!.every((l) => taskLabels.has(l.toLowerCase()));
+					})
+				: tasks;
+
 		const sortField = options.sort ? options.sort.toLowerCase() : "priority";
-		const sortedTasks = sortTasks(tasks, sortField);
+		const sortedAll = sortTasks(filteredByLabels, sortField);
+		const sortedTasks = options.limit !== undefined ? sortedAll.slice(0, options.limit) : sortedAll;
 
 		if (options.plain !== false) {
 			if (sortedTasks.length === 0) {

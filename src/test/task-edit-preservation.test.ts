@@ -4,12 +4,11 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
 
 describe("Task edit section preservation", () => {
-	const cliPath = join(process.cwd(), "src", "cli.ts");
-
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-task-edit-preservation");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
@@ -58,7 +57,7 @@ Keep me exactly.
 `,
 		);
 
-		await $`bun ${cliPath} task edit 1 --label foo`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "1", labels: "foo" }, TEST_DIR);
 
 		const files = await readdir(tasksDir);
 		expect(files).toContain("task-1 - hello world.md");
@@ -98,38 +97,38 @@ Keep me exactly.
 		);
 
 		// Add acceptance criteria
-		await $`bun ${cliPath} task edit 1 --ac "Criterion 1,Criterion 2"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "1", ac: "Criterion 1,Criterion 2" }, TEST_DIR);
 
 		// Add implementation plan
-		await $`bun ${cliPath} task edit 1 --plan "Step 1\nStep 2\nStep 3"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "1", plan: "Step 1\nStep 2\nStep 3" }, TEST_DIR);
 
 		// Add implementation notes
-		await $`bun ${cliPath} task edit 1 --notes "Original implementation notes"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "1", notes: "Original implementation notes" }, TEST_DIR);
 
 		// Verify all sections exist
-		let result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();
+		let result = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
 
-		expect(result).toContain("Original description");
-		expect(result).toContain("Criterion 1");
-		expect(result).toContain("Criterion 2");
-		expect(result).toContain("Step 1");
-		expect(result).toContain("Step 2");
-		expect(result).toContain("Step 3");
-		expect(result).toContain("Original implementation notes");
+		expect(result.stdout).toContain("Original description");
+		expect(result.stdout).toContain("Criterion 1");
+		expect(result.stdout).toContain("Criterion 2");
+		expect(result.stdout).toContain("Step 1");
+		expect(result.stdout).toContain("Step 2");
+		expect(result.stdout).toContain("Step 3");
+		expect(result.stdout).toContain("Original implementation notes");
 
 		// Update just the description
-		await $`bun ${cliPath} task edit 1 -d "UPDATED description"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "1", description: "UPDATED description" }, TEST_DIR);
 
 		// Verify ALL sections are preserved
-		result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();
+		result = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
 
-		expect(result).toContain("UPDATED description");
-		expect(result).toContain("Criterion 1");
-		expect(result).toContain("Criterion 2");
-		expect(result).toContain("Step 1");
-		expect(result).toContain("Step 2");
-		expect(result).toContain("Step 3");
-		expect(result).toContain("Original implementation notes");
+		expect(result.stdout).toContain("UPDATED description");
+		expect(result.stdout).toContain("Criterion 1");
+		expect(result.stdout).toContain("Criterion 2");
+		expect(result.stdout).toContain("Step 1");
+		expect(result.stdout).toContain("Step 2");
+		expect(result.stdout).toContain("Step 3");
+		expect(result.stdout).toContain("Original implementation notes");
 	});
 
 	it("should preserve all sections when updating acceptance criteria", async () => {
@@ -150,22 +149,22 @@ Keep me exactly.
 		);
 
 		// Add all sections
-		await $`bun ${cliPath} task edit 2 --ac "Original criterion"`.cwd(TEST_DIR).quiet();
-		await $`bun ${cliPath} task edit 2 --plan "Original plan"`.cwd(TEST_DIR).quiet();
-		await $`bun ${cliPath} task edit 2 --notes "Original notes"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "2", ac: "Original criterion" }, TEST_DIR);
+		await editTaskPlatformAware({ taskId: "2", plan: "Original plan" }, TEST_DIR);
+		await editTaskPlatformAware({ taskId: "2", notes: "Original notes" }, TEST_DIR);
 
 		// Add new acceptance criteria (now adds instead of replacing)
-		await $`bun ${cliPath} task edit 2 --ac "Updated criterion 1" --ac "Updated criterion 2"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "2", ac: ["Updated criterion 1", "Updated criterion 2"] }, TEST_DIR);
 
 		// Verify all sections are preserved
-		const result = await $`bun ${cliPath} task 2 --plain`.cwd(TEST_DIR).text();
+		const result = await viewTaskPlatformAware({ taskId: "2", plain: true }, TEST_DIR);
 
-		expect(result).toContain("Test description");
-		expect(result).toContain("Original criterion"); // Now preserved
-		expect(result).toContain("Updated criterion 1");
-		expect(result).toContain("Updated criterion 2");
-		expect(result).toContain("Original plan");
-		expect(result).toContain("Original notes");
+		expect(result.stdout).toContain("Test description");
+		expect(result.stdout).toContain("Original criterion"); // Now preserved
+		expect(result.stdout).toContain("Updated criterion 1");
+		expect(result.stdout).toContain("Updated criterion 2");
+		expect(result.stdout).toContain("Original plan");
+		expect(result.stdout).toContain("Original notes");
 	});
 
 	it("should preserve all sections when updating implementation plan", async () => {
@@ -186,22 +185,22 @@ Keep me exactly.
 		);
 
 		// Add all sections
-		await $`bun ${cliPath} task edit 3 --ac "Test criterion"`.cwd(TEST_DIR).quiet();
-		await $`bun ${cliPath} task edit 3 --plan "Original plan"`.cwd(TEST_DIR).quiet();
-		await $`bun ${cliPath} task edit 3 --notes "Original notes"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "3", ac: "Test criterion" }, TEST_DIR);
+		await editTaskPlatformAware({ taskId: "3", plan: "Original plan" }, TEST_DIR);
+		await editTaskPlatformAware({ taskId: "3", notes: "Original notes" }, TEST_DIR);
 
 		// Update implementation plan
-		await $`bun ${cliPath} task edit 3 --plan "Updated plan step 1\nUpdated plan step 2"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "3", plan: "Updated plan step 1\nUpdated plan step 2" }, TEST_DIR);
 
 		// Verify all sections are preserved
-		const result = await $`bun ${cliPath} task 3 --plain`.cwd(TEST_DIR).text();
+		const result = await viewTaskPlatformAware({ taskId: "3", plain: true }, TEST_DIR);
 
-		expect(result).toContain("Test description");
-		expect(result).toContain("Test criterion");
-		expect(result).toContain("Updated plan step 1");
-		expect(result).toContain("Updated plan step 2");
-		expect(result).toContain("Original notes");
-		expect(result).not.toContain("Original plan");
+		expect(result.stdout).toContain("Test description");
+		expect(result.stdout).toContain("Test criterion");
+		expect(result.stdout).toContain("Updated plan step 1");
+		expect(result.stdout).toContain("Updated plan step 2");
+		expect(result.stdout).toContain("Original notes");
+		expect(result.stdout).not.toContain("Original plan");
 	});
 
 	it("should preserve all sections when updating implementation notes", async () => {
@@ -222,21 +221,21 @@ Keep me exactly.
 		);
 
 		// Add all sections
-		await $`bun ${cliPath} task edit 4 --ac "Test criterion"`.cwd(TEST_DIR).quiet();
-		await $`bun ${cliPath} task edit 4 --plan "Test plan"`.cwd(TEST_DIR).quiet();
-		await $`bun ${cliPath} task edit 4 --notes "Original notes"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "4", ac: "Test criterion" }, TEST_DIR);
+		await editTaskPlatformAware({ taskId: "4", plan: "Test plan" }, TEST_DIR);
+		await editTaskPlatformAware({ taskId: "4", notes: "Original notes" }, TEST_DIR);
 
 		// Update implementation notes (should overwrite existing)
-		await $`bun ${cliPath} task edit 4 --notes "Additional notes"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "4", notes: "Additional notes" }, TEST_DIR);
 
 		// Verify all sections are preserved and notes are appended
-		const result = await $`bun ${cliPath} task 4 --plain`.cwd(TEST_DIR).text();
+		const result = await viewTaskPlatformAware({ taskId: "4", plain: true }, TEST_DIR);
 
-		expect(result).toContain("Test description");
-		expect(result).toContain("Test criterion");
-		expect(result).toContain("Test plan");
-		expect(result).not.toContain("Original notes");
-		expect(result).toContain("Additional notes");
+		expect(result.stdout).toContain("Test description");
+		expect(result.stdout).toContain("Test criterion");
+		expect(result.stdout).toContain("Test plan");
+		expect(result.stdout).not.toContain("Original notes");
+		expect(result.stdout).toContain("Additional notes");
 	});
 
 	it("should handle tasks with minimal content", async () => {
@@ -257,12 +256,12 @@ Keep me exactly.
 		);
 
 		// Update description
-		await $`bun ${cliPath} task edit 5 -d "Updated minimal description"`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "5", description: "Updated minimal description" }, TEST_DIR);
 
 		// Should have updated description and default AC text
-		const result = await $`bun ${cliPath} task 5 --plain`.cwd(TEST_DIR).text();
+		const result = await viewTaskPlatformAware({ taskId: "5", plain: true }, TEST_DIR);
 
-		expect(result).toContain("Updated minimal description");
-		expect(result).toContain("No acceptance criteria defined");
+		expect(result.stdout).toContain("Updated minimal description");
+		expect(result.stdout).toContain("No acceptance criteria defined");
 	});
 });

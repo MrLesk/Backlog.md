@@ -1,3 +1,4 @@
+// CLI-CONTRACT-ONLY: no Core milestone API for add/remove at this level; all subprocess calls kept
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
