@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 let TEST_DIR: string;
 
 describe("Implementation Notes - append", () => {
@@ -41,9 +40,7 @@ describe("Implementation Notes - append", () => {
 		};
 		await core.createTask(task, false);
 
-		const result = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Second block"]}`
-			.cwd(TEST_DIR)
-			.quiet();
+		const result = await editTaskPlatformAware({ taskId: "1", appendNotes: ["Second block"] }, TEST_DIR);
 		expect(result.exitCode).toBe(0);
 
 		const updatedBody = await core.getTaskContent("task-1");
@@ -66,9 +63,7 @@ describe("Implementation Notes - append", () => {
 		};
 		await core.createTask(t, false);
 
-		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Followed plan"]}`
-			.cwd(TEST_DIR)
-			.quiet();
+		const res = await editTaskPlatformAware({ taskId: "1", appendNotes: ["Followed plan"] }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		const body = (await core.getTaskContent("task-1")) ?? "";
@@ -92,9 +87,7 @@ describe("Implementation Notes - append", () => {
 		};
 		await core.createTask(task, false);
 
-		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "First", "--append-notes", "Second"]}`
-			.cwd(TEST_DIR)
-			.quiet();
+		const res = await editTaskPlatformAware({ taskId: "1", appendNotes: ["First", "Second"] }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		const updatedBody = await core.getTaskContent("task-1");
@@ -102,23 +95,18 @@ describe("Implementation Notes - append", () => {
 	});
 
 	it("edit --append-notes works and allows combining with --notes", async () => {
-		const resOk = await $`bun ${[CLI_PATH, "task", "create", "T", "--plan", "1. A\n2. B"]}`.cwd(TEST_DIR).quiet();
+		const resOk = await createTaskPlatformAware({ title: "T", plan: "1. A\n2. B" }, TEST_DIR);
 		expect(resOk.exitCode).toBe(0);
 
-		const res1 = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Alpha", "--append-notes", "Beta"]}`
-			.cwd(TEST_DIR)
-			.quiet();
+		const res1 = await editTaskPlatformAware({ taskId: "1", appendNotes: ["Alpha", "Beta"] }, TEST_DIR);
 		expect(res1.exitCode).toBe(0);
 
 		const core = new Core(TEST_DIR);
 		let taskBody = await core.getTaskContent("task-1");
 		expect(extractStructuredSection(taskBody ?? "", "implementationNotes")).toBe("Alpha\n\nBeta");
 
-		// Combining --notes (replace) with --append-notes (append) should work
-		const combined = await $`bun ${[CLI_PATH, "task", "edit", "1", "--notes", "Y", "--append-notes", "X"]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
+		// Combining notes (replace) with appendNotes (append) should work
+		const combined = await editTaskPlatformAware({ taskId: "1", notes: "Y", appendNotes: ["X"] }, TEST_DIR);
 		expect(combined.exitCode).toBe(0);
 
 		taskBody = await core.getTaskContent("task-1");

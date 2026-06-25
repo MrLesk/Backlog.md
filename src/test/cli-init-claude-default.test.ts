@@ -22,6 +22,7 @@ describe("init Claude agent default", () => {
 	});
 
 	it("does not install Claude agent by default in non-interactive mode", async () => {
+		// CLI-CONTRACT: verifies 'backlog init --defaults' does not create Claude agent files unless --install-claude-agent is passed
 		// Use defaults, do not pass --install-claude-agent
 		const result = await $`bun ${CLI_PATH} init MyProj --defaults`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
@@ -32,6 +33,7 @@ describe("init Claude agent default", () => {
 	});
 
 	it("installs Claude agent when flag is true", async () => {
+		// CLI-CONTRACT: verifies 'backlog init --defaults --install-claude-agent true' creates Claude agent file at .claude/agents/
 		const result = await $`bun ${CLI_PATH} init MyProj --defaults --install-claude-agent true`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
 

@@ -47,6 +47,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createTask(task1);
 
+		// CLI-CONTRACT: verifies CLI output format "Created task TASK-N" with correct incrementing ID
 		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -67,6 +68,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createDocument(doc1);
 
+		// CLI-CONTRACT: verifies CLI output format "Created document doc-N" with correct incrementing ID
 		const result = await $`bun ${CLI_PATH} doc create "Second Doc"`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -91,6 +93,7 @@ describe("CLI ID Incrementing Behavior", () => {
 		};
 		await core.createDecision(decision1);
 
+		// CLI-CONTRACT: verifies CLI output format "Created decision decision-N" with correct incrementing ID
 		const result = await $`bun ${CLI_PATH} decision create "Second Decision"`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);

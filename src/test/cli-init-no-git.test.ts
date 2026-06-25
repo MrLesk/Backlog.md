@@ -20,6 +20,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function initFilesystemOnlyProject(projectName = "No Git Project"): Promise<Core> {
+	// CLI-CONTRACT: verifies 'backlog init --no-git' initializes a filesystem-only project
 	const result = await $`bun ${CLI_PATH} init ${projectName} --no-git --defaults --integration-mode none`
 		.cwd(TEST_DIR)
 		.quiet();
@@ -42,6 +43,7 @@ describe("CLI init without Git", () => {
 	});
 
 	test("initializes a filesystem-only project without creating a Git repository", async () => {
+		// CLI-CONTRACT: verifies 'init --no-git' output format and resulting config values
 		const result = await $`bun ${CLI_PATH} init "Filesystem Project" --no-git --defaults --integration-mode none`
 			.cwd(TEST_DIR)
 			.quiet();
@@ -93,6 +95,7 @@ describe("CLI init without Git", () => {
 		expect(await core.gitOps.listRecentBranches(30)).toEqual([]);
 		expect(await core.gitOps.hasAnyRemote()).toBe(false);
 
+		// CLI-CONTRACT: verifies task/draft/doc/decision/milestone flows work in filesystem-only mode with correct CLI output
 		const taskResult = await $`bun ${CLI_PATH} task create "No Git Task" --plain`.cwd(TEST_DIR).quiet();
 		expect(taskResult.exitCode).toBe(0);
 		expect(taskResult.stdout.toString()).toContain("Task TASK-1 - No Git Task");
@@ -152,6 +155,7 @@ describe("CLI init without Git", () => {
 		expect(await core.gitOps.listAllBranches()).toEqual([]);
 		expect(await core.gitOps.listRecentBranches(30)).toEqual([]);
 
+		// CLI-CONTRACT: verifies doc/decision create IDs start at 1 even with stale branch content when filesystemOnly=true
 		const docResult = await $`bun ${CLI_PATH} doc create "Fresh Doc"`.cwd(TEST_DIR).quiet();
 		expect(docResult.exitCode).toBe(0);
 		expect(docResult.stdout.toString()).toContain("Created document doc-1");

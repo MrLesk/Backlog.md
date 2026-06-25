@@ -45,6 +45,7 @@ describe("CLI parent task id normalization", () => {
 		};
 		await core.createTask(parent, true);
 
+		// CLI-CONTRACT: verifies short numeric parent ID (--parent 4) is normalized to TASK-4 in stored parentTaskId
 		await $`bun run ${CLI_PATH} task create Child --parent 4`.cwd(TEST_DIR).quiet();
 
 		const child = await core.filesystem.loadTask("task-4.1");

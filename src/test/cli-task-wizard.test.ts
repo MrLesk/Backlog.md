@@ -30,18 +30,21 @@ describe("CLI task wizard integration compatibility", () => {
 	});
 
 	it("preserves non-interactive missing title error for task create", async () => {
+		// CLI-CONTRACT: verifies error message text for missing required 'title' argument
 		const result = await $`bun ${CLI_PATH} task create`.cwd(TEST_DIR).quiet().nothrow();
 		expect(result.exitCode).not.toBe(0);
 		expect(result.stderr.toString()).toContain("error: missing required argument 'title'");
 	});
 
 	it("preserves non-interactive missing taskId error for task edit", async () => {
+		// CLI-CONTRACT: verifies error message text for missing required 'taskId' argument
 		const result = await $`bun ${CLI_PATH} task edit`.cwd(TEST_DIR).quiet().nothrow();
 		expect(result.exitCode).not.toBe(0);
 		expect(result.stderr.toString()).toContain("error: missing required argument 'taskId'");
 	});
 
 	it("keeps legacy non-interactive edit behavior when taskId is provided", async () => {
+		// CLI-CONTRACT: verifies 'task edit <id>' with no options outputs 'Updated task' (no-op edit)
 		await $`bun ${CLI_PATH} task create "Edit target" --desc "Before edit"`.cwd(TEST_DIR).quiet();
 		const result = await $`bun ${CLI_PATH} task edit 1`.cwd(TEST_DIR).quiet().nothrow();
 		expect(result.exitCode).toBe(0);

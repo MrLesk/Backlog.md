@@ -11,6 +11,43 @@ import type { TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { normalizeDependencies } from "../utils/task-builders.ts";
 
+// --- Milestone helpers ---
+
+/**
+ * Create a milestone using the Core filesystem API.
+ */
+export async function addMilestoneViaCore(core: Core, name: string): Promise<void> {
+	await core.filesystem.createMilestone(name);
+}
+
+/**
+ * Rename a milestone using the Core API.
+ */
+export async function renameMilestoneViaCore(core: Core, oldName: string, newName: string): Promise<void> {
+	const milestones = await core.filesystem.listMilestones();
+	const milestone = milestones.find(
+		(m) => m.title.toLowerCase() === oldName.toLowerCase() || m.id.toLowerCase() === oldName.toLowerCase(),
+	);
+	if (!milestone) {
+		throw new Error(`Milestone not found: ${oldName}`);
+	}
+	await core.renameMilestone(milestone.id, newName, false);
+}
+
+/**
+ * Archive a milestone using the Core API.
+ */
+export async function archiveMilestoneViaCore(core: Core, name: string): Promise<void> {
+	const milestones = await core.filesystem.listMilestones();
+	const milestone = milestones.find(
+		(m) => m.title.toLowerCase() === name.toLowerCase() || m.id.toLowerCase() === name.toLowerCase(),
+	);
+	if (!milestone) {
+		throw new Error(`Milestone not found: ${name}`);
+	}
+	await core.archiveMilestone(milestone.id, false);
+}
+
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 const isWindows = process.platform === "win32";
 
@@ -31,6 +68,12 @@ export interface TaskCreateOptions {
 	doc?: string[];
 	modifiedFile?: string[];
 	plain?: boolean;
+	dod?: string[];
+	noDodDefaults?: boolean;
+	milestone?: string;
+	autoCommit?: boolean;
+	ordinal?: number;
+	finalSummary?: string;
 }
 
 /**
@@ -111,8 +154,28 @@ async function createTaskViaCore(
 		createInput.implementationNotes = options.notes;
 	}
 
+	if (options.ordinal !== undefined) {
+		createInput.ordinal = options.ordinal;
+	}
+
+	if (options.finalSummary) {
+		createInput.finalSummary = options.finalSummary;
+	}
+
+	if (options.dod && options.dod.length > 0) {
+		createInput.definitionOfDoneAdd = options.dod;
+	}
+
+	if (options.noDodDefaults) {
+		createInput.disableDefinitionOfDoneDefaults = true;
+	}
+
+	if (options.milestone) {
+		createInput.milestone = options.milestone;
+	}
+
 	try {
-		const { task } = await core.createTaskFromInput(createInput);
+		const { task } = await core.createTaskFromInput(createInput, options.autoCommit);
 		const isDraft = (task.status ?? "").toLowerCase() === "draft";
 		const header = isDraft ? `Created draft ${task.id}` : `Created task ${task.id}`;
 		const stdout = options.plain ? `${header}\n\n${formatTaskPlainText(task)}` : header;
@@ -141,15 +204,24 @@ export interface TaskEditOptions {
 	priority?: string;
 	dependencies?: string;
 	notes?: string;
+	appendNotes?: string[];
 	plan?: string;
 	ac?: string | string[];
 	checkAc?: number[];
 	removeAc?: number[];
 	uncheckAc?: number[];
+	dodAdd?: string[];
+	dodCheck?: number[];
+	dodRemove?: number[];
+	dodUncheck?: number[];
 	ref?: string[];
 	doc?: string[];
 	modifiedFile?: string[];
 	plain?: boolean;
+	milestone?: string | null;
+	finalSummary?: string;
+	appendFinalSummary?: string[];
+	clearFinalSummary?: boolean;
 }
 
 /**
@@ -197,7 +269,12 @@ async function editTaskViaCore(
 			...(options.priority && { priority: options.priority as TaskUpdateInput["priority"] }),
 			...(options.notes && { implementationNotes: options.notes }),
 			...(options.plan && { implementationPlan: options.plan }),
+			...(options.milestone !== undefined && { milestone: options.milestone }),
 		};
+
+		if (options.appendNotes?.length) {
+			updateInput.appendImplementationNotes = options.appendNotes;
+		}
 
 		if (options.ac) {
 			const acValues = Array.isArray(options.ac) ? options.ac : [options.ac];
@@ -214,6 +291,34 @@ async function editTaskViaCore(
 
 		if (options.uncheckAc?.length) {
 			updateInput.uncheckAcceptanceCriteria = options.uncheckAc;
+		}
+
+		if (options.dodAdd?.length) {
+			updateInput.addDefinitionOfDone = options.dodAdd;
+		}
+
+		if (options.dodCheck?.length) {
+			updateInput.checkDefinitionOfDone = options.dodCheck;
+		}
+
+		if (options.dodRemove?.length) {
+			updateInput.removeDefinitionOfDone = options.dodRemove;
+		}
+
+		if (options.dodUncheck?.length) {
+			updateInput.uncheckDefinitionOfDone = options.dodUncheck;
+		}
+
+		if (options.finalSummary !== undefined) {
+			updateInput.finalSummary = options.finalSummary;
+		}
+
+		if (options.appendFinalSummary?.length) {
+			updateInput.appendFinalSummary = options.appendFinalSummary;
+		}
+
+		if (options.clearFinalSummary) {
+			updateInput.clearFinalSummary = true;
 		}
 
 		if (options.ref) {
@@ -259,6 +364,8 @@ export interface TaskViewOptions {
 	taskId: string;
 	plain?: boolean;
 	useViewCommand?: boolean;
+	/** When true, loads from the drafts directory instead of tasks */
+	draft?: boolean;
 }
 
 /**
@@ -279,9 +386,13 @@ async function viewTaskViaCore(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
 		const core = new Core(testDir);
-		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
+		const prefix = options.draft ? "draft" : "task";
+		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `${prefix}-${options.taskId}`;
 
-		const task = await core.filesystem.loadTask(taskId);
+		// Use getTaskWithSubtasks to include subtask summaries (same as CLI view command)
+		const task = options.draft
+			? await core.filesystem.loadDraft(taskId)
+			: await core.getTaskWithSubtasks(taskId);
 		if (!task) {
 			return {
 				exitCode: 1,

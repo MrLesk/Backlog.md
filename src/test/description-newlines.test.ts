@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
 
 describe("CLI description newline handling", () => {
-	const cliPath = join(process.cwd(), "src", "cli.ts");
-
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-desc-newlines");
 		try {
@@ -33,7 +31,7 @@ describe("CLI description newline handling", () => {
 
 	it("should preserve literal newlines when creating task", async () => {
 		const desc = "First line\nSecond line\n\nThird paragraph";
-		await $`bun ${[cliPath, "task", "create", "Multi-line", "--desc", desc]}`.cwd(TEST_DIR).quiet();
+		await createTaskPlatformAware({ title: "Multi-line", description: desc }, TEST_DIR);
 
 		const core = new Core(TEST_DIR);
 		const body = await core.getTaskContent("task-1");
@@ -57,7 +55,7 @@ describe("CLI description newline handling", () => {
 		);
 
 		const desc = "First line\nSecond line\n\nThird paragraph";
-		await $`bun ${[cliPath, "task", "edit", "1", "--desc", desc]}`.cwd(TEST_DIR).quiet();
+		await editTaskPlatformAware({ taskId: "1", description: desc }, TEST_DIR);
 
 		const updatedBody = await core.getTaskContent("task-1");
 		expect(updatedBody).toContain(desc);
@@ -65,7 +63,7 @@ describe("CLI description newline handling", () => {
 
 	it("should not interpret \\n sequences as newlines", async () => {
 		const literal = "First line\\nSecond line";
-		await $`bun ${[cliPath, "task", "create", "Literal", "--desc", literal]}`.cwd(TEST_DIR).quiet();
+		await createTaskPlatformAware({ title: "Literal", description: literal }, TEST_DIR);
 
 		const core = new Core(TEST_DIR);
 		const body = await core.getTaskContent("task-1");

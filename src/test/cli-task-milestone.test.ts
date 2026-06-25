@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
 
@@ -39,12 +40,14 @@ describe("CLI task milestone assignment", () => {
 		const core = new Core(TEST_DIR);
 		const milestone = await core.filesystem.createMilestone("Release CLI");
 
-		const result = await $`bun ${cliPath} task create "Milestone create task" --milestone "Release CLI" --plain`
-			.cwd(TEST_DIR)
-			.quiet();
+		// Use milestone.id directly (Core stores the value as-is; CLI resolves titles → IDs)
+		const result = await createTaskPlatformAware(
+			{ title: "Milestone create task", milestone: milestone.id, plain: true },
+			TEST_DIR,
+		);
 
 		expect(result.exitCode).toBe(0);
-		expect(result.stdout.toString()).toContain(`Milestone: ${milestone.id}`);
+		expect(result.stdout).toContain(`Milestone: ${milestone.id}`);
 
 		const task = await core.filesystem.loadTask("task-1");
 		expect(task?.milestone).toBe(milestone.id);
@@ -55,21 +58,21 @@ describe("CLI task milestone assignment", () => {
 		const first = await core.filesystem.createMilestone("Release Alpha");
 		const second = await core.filesystem.createMilestone("Release Beta");
 
-		const create = await $`bun ${cliPath} task create "Milestone edit task" --milestone ${first.id}`
-			.cwd(TEST_DIR)
-			.quiet();
+		const create = await createTaskPlatformAware({ title: "Milestone edit task", milestone: first.id }, TEST_DIR);
 		expect(create.exitCode).toBe(0);
 
-		const edit = await $`bun ${cliPath} task edit 1 --milestone "Release Beta" --plain`.cwd(TEST_DIR).quiet();
+		// Use milestone.id directly for Core-level edit
+		const edit = await editTaskPlatformAware({ taskId: "1", milestone: second.id, plain: true }, TEST_DIR);
 		expect(edit.exitCode).toBe(0);
-		expect(edit.stdout.toString()).toContain(`Milestone: ${second.id}`);
+		expect(edit.stdout).toContain(`Milestone: ${second.id}`);
 
 		const updated = await core.filesystem.loadTask("task-1");
 		expect(updated?.milestone).toBe(second.id);
 
-		const clear = await $`bun ${cliPath} task edit 1 --clear-milestone --plain`.cwd(TEST_DIR).quiet();
+		// clear-milestone: pass null to milestone field
+		const clear = await editTaskPlatformAware({ taskId: "1", milestone: null, plain: true }, TEST_DIR);
 		expect(clear.exitCode).toBe(0);
-		expect(clear.stdout.toString()).not.toContain("Milestone:");
+		expect(clear.stdout).not.toContain("Milestone:");
 
 		const cleared = await core.filesystem.loadTask("task-1");
 		expect(cleared?.milestone).toBeUndefined();
@@ -78,8 +81,9 @@ describe("CLI task milestone assignment", () => {
 	it("rejects conflicting milestone edit flags", async () => {
 		const core = new Core(TEST_DIR);
 		await core.filesystem.createMilestone("Release CLI");
-		await $`bun ${cliPath} task create "Conflicting milestone flags"`.cwd(TEST_DIR).quiet();
+		await createTaskPlatformAware({ title: "Conflicting milestone flags" }, TEST_DIR);
 
+		// CLI-CONTRACT: verifies --milestone and --clear-milestone conflict error message text
 		const result = await $`bun ${cliPath} task edit 1 --milestone "Release CLI" --clear-milestone`
 			.cwd(TEST_DIR)
 			.quiet()
@@ -90,6 +94,7 @@ describe("CLI task milestone assignment", () => {
 	});
 
 	it("shows milestone create and edit flags in help output", async () => {
+		// CLI-CONTRACT: verifies --milestone and --clear-milestone flags appear in help output
 		const createHelp = await $`bun ${cliPath} task create --help`.cwd(TEST_DIR).quiet();
 		const editHelp = await $`bun ${cliPath} task edit --help`.cwd(TEST_DIR).quiet();
 

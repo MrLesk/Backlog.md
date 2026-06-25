@@ -114,6 +114,7 @@ describe("MCP stdio shutdown", () => {
 	});
 
 	itIfNotWindows("exits when stdin closes", async () => {
+		// CLI-CONTRACT: verifies MCP server subprocess exits cleanly when stdin closes
 		const timeout = getPlatformTimeout(4000);
 		const child = spawn("bun", [CLI_PATH, "mcp", "start", "--debug"], {
 			cwd: TEST_DIR,
@@ -135,6 +136,7 @@ describe("MCP stdio shutdown", () => {
 	});
 
 	it("keeps stdio sessions alive after listing tools so document calls can respond", async () => {
+		// CLI-CONTRACT: verifies MCP stdio transport stays alive for document creation after listTools
 		const timeout = getPlatformTimeout(5000);
 		const core = new Core(TEST_DIR);
 		await initializeProject(core, {

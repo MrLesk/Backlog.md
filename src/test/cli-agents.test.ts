@@ -34,12 +34,14 @@ describe("CLI agents command", () => {
 	});
 
 	it("should show help when no options are provided", async () => {
+		// CLI-CONTRACT: verifies bare 'agents' command exits 0 (shows help without error)
 		const result = await $`bun ${cliPath} agents`.cwd(TEST_DIR).quiet();
 
 		expect(result.exitCode).toBe(0);
 	});
 
 	it("should show help text with agents --help", async () => {
+		// CLI-CONTRACT: verifies agents --help output contains documented options and schema sections
 		const result = await $`bun ${cliPath} agents --help`.cwd(TEST_DIR).quiet();
 		const output = result.stdout.toString();
 
@@ -106,6 +108,7 @@ describe("CLI agents command", () => {
 		await $`git config user.name "Test User"`.cwd(nonBacklogDir).quiet();
 		await $`git config user.email test@example.com`.cwd(nonBacklogDir).quiet();
 
+		// CLI-CONTRACT: verifies 'agents --update-instructions' exits 1 outside a backlog project
 		const result = await $`bun ${cliPath} agents --update-instructions`.cwd(nonBacklogDir).nothrow().quiet();
 
 		expect(result.exitCode).toBe(1);

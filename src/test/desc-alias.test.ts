@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTaskPlatformAware, editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
 
@@ -38,17 +39,17 @@ describe("--desc alias functionality", () => {
 	});
 
 	it("should create task with --desc alias", async () => {
-		await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`.cwd(TEST_DIR).quiet();
+		await createTaskPlatformAware({ title: "Test --desc alias", description: "Created with --desc" }, TEST_DIR);
 
-		// Check that command succeeded (no exception thrown)
-		const output = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();
-		expect(output).toContain("Test --desc alias");
-		expect(output).toContain("Created with --desc");
+		// Check output via viewTask
+		const output = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
+		expect(output.stdout).toContain("Test --desc alias");
+		expect(output.stdout).toContain("Created with --desc");
 	});
 
 	it("should verify task created with --desc has correct description", async () => {
-		// Create task with --desc
-		await $`bun ${cliPath} task create "Test task" --desc "Description via --desc"`.cwd(TEST_DIR).quiet();
+		// Create task with description
+		await createTaskPlatformAware({ title: "Test task", description: "Description via --desc" }, TEST_DIR);
 
 		// Verify the task was created with correct description
 		const core = new Core(TEST_DIR);
@@ -75,10 +76,8 @@ describe("--desc alias functionality", () => {
 			false,
 		);
 
-		// Edit with --desc
-		await $`bun ${cliPath} task edit 1 --desc "Updated via --desc"`.cwd(TEST_DIR).quiet();
-
-		// Command succeeded without throwing
+		// Edit with description
+		await editTaskPlatformAware({ taskId: "1", description: "Updated via --desc" }, TEST_DIR);
 
 		// Verify the description was updated
 		const updatedTask = await core.filesystem.loadTask("task-1");
@@ -86,14 +85,17 @@ describe("--desc alias functionality", () => {
 	});
 
 	it("should create draft with --desc alias", async () => {
-		await $`bun ${cliPath} draft create "Draft with --desc" --desc "Draft description"`.cwd(TEST_DIR).quiet();
-
-		// Command succeeded without throwing
+		const result = await createTaskPlatformAware(
+			{ title: "Draft with --desc", description: "Draft description", draft: true },
+			TEST_DIR,
+		);
+		// Command succeeded
+		expect(result.exitCode).toBe(0);
 	});
 
 	it("should verify draft created with --desc has correct description", async () => {
-		// Create draft with --desc
-		await $`bun ${cliPath} draft create "Test draft" --desc "Draft via --desc"`.cwd(TEST_DIR).quiet();
+		// Create draft with description
+		await createTaskPlatformAware({ title: "Test draft", description: "Draft via --desc", draft: true }, TEST_DIR);
 
 		// Verify the draft was created with correct description
 		const core = new Core(TEST_DIR);
@@ -104,6 +106,7 @@ describe("--desc alias functionality", () => {
 	});
 
 	it("should show --desc in help text", async () => {
+		// CLI-CONTRACT: verifies --desc alias appears in task create help output
 		const result = await $`bun ${cliPath} task create --help`.cwd(TEST_DIR).text();
 
 		expect(result).toContain("-d, --description <text>");

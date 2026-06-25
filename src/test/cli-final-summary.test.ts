@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTaskPlatformAware, editTaskPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Final Summary CLI", () => {
 	beforeEach(async () => {
@@ -27,10 +26,7 @@ describe("Final Summary CLI", () => {
 	});
 
 	it("supports --final-summary on task create", async () => {
-		const result = await $`bun ${[CLI_PATH, "task", "create", "Task A", "--final-summary", "PR-ready summary"]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
+		const result = await createTaskPlatformAware({ title: "Task A", finalSummary: "PR-ready summary" }, TEST_DIR);
 		expect(result.exitCode).toBe(0);
 
 		const core = new Core(TEST_DIR);
@@ -54,34 +50,19 @@ describe("Final Summary CLI", () => {
 		};
 		await core.createTask(base, false);
 
-		let res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--final-summary", "Initial summary"]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
+		let res = await editTaskPlatformAware({ taskId: "1", finalSummary: "Initial summary" }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		let body = await core.getTaskContent("task-1");
 		expect(extractStructuredSection(body ?? "", "finalSummary")).toBe("Initial summary");
 
-		res = await $`bun ${[
-			CLI_PATH,
-			"task",
-			"edit",
-			"1",
-			"--append-final-summary",
-			"Second",
-			"--append-final-summary",
-			"Third",
-		]}`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
+		res = await editTaskPlatformAware({ taskId: "1", appendFinalSummary: ["Second", "Third"] }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		body = await core.getTaskContent("task-1");
 		expect(extractStructuredSection(body ?? "", "finalSummary")).toBe("Initial summary\n\nSecond\n\nThird");
 
-		res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--clear-final-summary"]}`.cwd(TEST_DIR).quiet().nothrow();
+		res = await editTaskPlatformAware({ taskId: "1", clearFinalSummary: true }, TEST_DIR);
 		expect(res.exitCode).toBe(0);
 
 		body = await core.getTaskContent("task-1");
@@ -107,10 +88,10 @@ describe("Final Summary CLI", () => {
 			false,
 		);
 
-		const result = await $`bun ${[CLI_PATH, "task", "view", "1", "--plain"]}`.cwd(TEST_DIR).quiet().nothrow();
+		const result = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
 		expect(result.exitCode).toBe(0);
 
-		const output = result.stdout.toString();
+		const output = result.stdout;
 		expect(output).toContain("Implementation Notes:");
 		expect(output).toContain("Final Summary:");
 		expect(output.indexOf("Final Summary:")).toBeGreaterThan(output.indexOf("Implementation Notes:"));
