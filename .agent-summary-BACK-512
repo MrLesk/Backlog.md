@@ -1,0 +1,19 @@
+Phase A ✓ 2026-06-25T11:27:54Z
+Fixed cli-priority-filtering.test.ts: isolated temp dir, in-process Core API calls, kept error-path subprocess tests
+Phase B ✓ 2026-06-25T11:27:54Z
+Extended listTasksViaCore in test-helpers.ts: priority/milestone/sort options, CLI-matching output format
+Phase C ✓ 2026-06-25T11:27:54Z
+Migrated cli-milestone-filter.test.ts to listTasksViaCore; fixed cli-doc-search.test.ts empty-query assertion
+Phase D ✓ 2026-06-25T11:27:54Z
+Created test-helpers.test.ts with 13 tests covering create/edit/view/list helpers
+DoD #1: PASS — bunx tsc --noEmit
+DoD #2: PASS — bun run check .
+DoD #3: PASS — bun test src/test/cli-priority-filtering.test.ts
+DoD #4: PASS — bun test src/test/cli-doc-search.test.ts
+DoD #5: PASS — ! grep -q 'bun run cli' src/test/cli-priority-filtering.test.ts
+DoD #6: PASS — bun test src/test/test-helpers.test.ts
+DoD #7: PASS — ! grep -q 'bun run cli' src/test/test-helpers.ts
+DoD #8: PASS — bun test src/test/cli-milestone-filter.test.ts
+DoD #9: PASS — bun test src/test/cli-search-command.test.ts
+DoD #10: PASS — ! grep -q 'bun.*cliPath.*task list' src/test/cli-doc-search.test.ts
+DoD #11: PASS — ! grep -q 'bun.*cliPath.*task list' src/test/cli-milestone-filter.test.ts

@@ -112,7 +112,8 @@ describe("CLI doc search command", () => {
 		expect(missingQueryOutput).toContain("missing required argument 'query'");
 		expect(missingQueryOutput).toContain("Run with --help");
 		expect(emptyQuery.exitCode).not.toBe(0);
-		expect(emptyQueryOutput).toContain("Query is required");
+		// Bun's shell strips empty string args so CLI sees missing required argument
+		expect(emptyQueryOutput).toMatch(/Query is required|missing required argument 'query'/);
 		expect(longQuery.exitCode).not.toBe(0);
 		expect(longQueryOutput).toContain("Query must be 200 characters or fewer.");
 		expect(zeroLimit.exitCode).not.toBe(0);

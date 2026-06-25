@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
+import { listTasksViaCore } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
 describe("CLI milestone filtering", () => {
-	const cliPath = join(process.cwd(), "src", "cli.ts");
-
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-milestone-filter");
 		try {
@@ -115,6 +113,9 @@ describe("CLI milestone filtering", () => {
 			},
 			false,
 		);
+
+		core.disposeSearchService();
+		core.disposeContentStore();
 	});
 
 	afterEach(async () => {
@@ -126,10 +127,10 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("filters by milestone with case-insensitive matching", async () => {
-		const result = await $`bun ${cliPath} task list --milestone RELEASE-1 --plain`.cwd(TEST_DIR).quiet();
+		const result = await listTasksViaCore({ milestone: "RELEASE-1", plain: true }, TEST_DIR);
 
 		expect(result.exitCode).toBe(0);
-		const output = result.stdout.toString();
+		const output = result.stdout;
 
 		expect(output).toContain("TASK-1 - Milestone task one");
 		expect(output).toContain("TASK-2 - Milestone task two");
@@ -140,10 +141,10 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("supports -m shorthand and combines milestone with status filter", async () => {
-		const result = await $`bun ${cliPath} task list -m release-1 --status "To Do" --plain`.cwd(TEST_DIR).quiet();
+		const result = await listTasksViaCore({ milestone: "release-1", status: "To Do", plain: true }, TEST_DIR);
 
 		expect(result.exitCode).toBe(0);
-		const output = result.stdout.toString();
+		const output = result.stdout;
 
 		expect(output).toContain("TASK-1 - Milestone task one");
 		expect(output).not.toContain("TASK-2 - Milestone task two");
@@ -154,9 +155,9 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("matches closest milestone for partial and typo inputs", async () => {
-		const typoResult = await $`bun ${cliPath} task list --milestone releas-1 --plain`.cwd(TEST_DIR).quiet();
+		const typoResult = await listTasksViaCore({ milestone: "releas-1", plain: true }, TEST_DIR);
 		expect(typoResult.exitCode).toBe(0);
-		const typoOutput = typoResult.stdout.toString();
+		const typoOutput = typoResult.stdout;
 
 		expect(typoOutput).toContain("TASK-1 - Milestone task one");
 		expect(typoOutput).toContain("TASK-2 - Milestone task two");
@@ -164,9 +165,9 @@ describe("CLI milestone filtering", () => {
 		expect(typoOutput).not.toContain("TASK-4 - No milestone task");
 		expect(typoOutput).not.toContain("TASK-5 - Roadmap milestone task");
 
-		const partialResult = await $`bun ${cliPath} task list --milestone roadmp --plain`.cwd(TEST_DIR).quiet();
+		const partialResult = await listTasksViaCore({ milestone: "roadmp", plain: true }, TEST_DIR);
 		expect(partialResult.exitCode).toBe(0);
-		const partialOutput = partialResult.stdout.toString();
+		const partialOutput = partialResult.stdout;
 
 		expect(partialOutput).toContain("TASK-5 - Roadmap milestone task");
 		expect(partialOutput).not.toContain("TASK-1 - Milestone task one");
@@ -177,9 +178,9 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("matches milestone title when tasks store milestone IDs", async () => {
-		const result = await $`bun ${cliPath} task list -m new --plain`.cwd(TEST_DIR).quiet();
+		const result = await listTasksViaCore({ milestone: "new", plain: true }, TEST_DIR);
 		expect(result.exitCode).toBe(0);
-		const output = result.stdout.toString();
+		const output = result.stdout;
 
 		expect(output).toContain("TASK-6 - ID milestone task");
 		expect(output).not.toContain("TASK-1 - Milestone task one");
@@ -190,10 +191,10 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("preserves existing listing behavior when milestone filter is omitted", async () => {
-		const result = await $`bun ${cliPath} task list --plain`.cwd(TEST_DIR).quiet();
+		const result = await listTasksViaCore({ plain: true }, TEST_DIR);
 
 		expect(result.exitCode).toBe(0);
-		const output = result.stdout.toString();
+		const output = result.stdout;
 
 		expect(output).toContain("TASK-1 - Milestone task one");
 		expect(output).toContain("TASK-2 - Milestone task two");
