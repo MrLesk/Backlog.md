@@ -16,6 +16,9 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		defaultPort: 6420,
 		remoteOperations: true,
 		autoCommit: false,
+		commitAuthorFromProxyHeaders: false,
+		proxyAuthorEmailHeader: "x-forwarded-email",
+		proxyAuthorNameHeader: "x-forwarded-preferred-username",
 		bypassGitHooks: false,
 		checkActiveBranches: true,
 		activeBranchDays: 30,
@@ -50,6 +53,9 @@ export function needsMigration(config: Partial<BacklogConfig>): boolean {
 		{ field: "autoOpenBrowser", hasDefault: true },
 		{ field: "remoteOperations", hasDefault: true },
 		{ field: "autoCommit", hasDefault: true },
+		{ field: "commitAuthorFromProxyHeaders", hasDefault: true },
+		{ field: "proxyAuthorEmailHeader", hasDefault: true },
+		{ field: "proxyAuthorNameHeader", hasDefault: true },
 	];
 
 	return expectedFieldsWithDefaults.some(({ field }) => {

@@ -311,6 +311,12 @@ export interface BacklogConfig {
 	defaultPort?: number;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
+	/** Web server: derive each git commit author from auth-proxy identity headers (opt-in). */
+	commitAuthorFromProxyHeaders?: boolean;
+	/** Header carrying the user email (default oauth2-proxy `x-forwarded-email`). */
+	proxyAuthorEmailHeader?: string;
+	/** Header carrying the user display name (default oauth2-proxy `x-forwarded-preferred-username`). */
+	proxyAuthorNameHeader?: string;
 	/** Disable all Git integration for filesystem-only projects. */
 	filesystemOnly?: boolean;
 	zeroPaddedIds?: number;

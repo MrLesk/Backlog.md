@@ -7,6 +7,7 @@ import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
+import { runWithCommitAuthor } from "../git/commit-context.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import {
@@ -315,18 +316,21 @@ export class BacklogServer {
 					// API Routes using Bun's native route syntax
 					"/api/tasks": {
 						GET: async (req: Request) => await this.handleListTasks(req),
-						POST: async (req: Request) => await this.handleCreateTask(req),
+						POST: async (req: Request) => await this.withCommitContext(req, () => this.handleCreateTask(req)),
 					},
 					"/api/task/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
 					},
 					"/api/tasks/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) =>
+							await this.withCommitContext(req, () => this.handleUpdateTask(req, req.params.id)),
+						DELETE: async (req: Request & { params: { id: string } }) =>
+							await this.withCommitContext(req, () => this.handleDeleteTask(req.params.id)),
 					},
 					"/api/tasks/:id/complete": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.withCommitContext(req, () => this.handleCompleteTask(req.params.id)),
 					},
 					"/api/statuses": {
 						GET: async () => await this.handleGetStatuses(),
@@ -337,18 +341,19 @@ export class BacklogServer {
 					},
 					"/api/docs": {
 						GET: async () => await this.handleListDocs(),
-						POST: async (req: Request) => await this.handleCreateDoc(req),
+						POST: async (req: Request) => await this.withCommitContext(req, () => this.handleCreateDoc(req)),
 					},
 					"/api/doc/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
 					},
 					"/api/docs/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) =>
+							await this.withCommitContext(req, () => this.handleUpdateDoc(req, req.params.id)),
 					},
 					"/api/decisions": {
 						GET: async () => await this.handleListDecisions(),
-						POST: async (req: Request) => await this.handleCreateDecision(req),
+						POST: async (req: Request) => await this.withCommitContext(req, () => this.handleCreateDecision(req)),
 					},
 					"/api/decision/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
@@ -356,17 +361,18 @@ export class BacklogServer {
 					"/api/decisions/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateDecision(req, req.params.id),
+							await this.withCommitContext(req, () => this.handleUpdateDecision(req, req.params.id)),
 					},
 					"/api/drafts": {
 						GET: async () => await this.handleListDrafts(),
 					},
 					"/api/drafts/:id/promote": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.withCommitContext(req, () => this.handlePromoteDraft(req.params.id)),
 					},
 					"/api/milestones": {
 						GET: async () => await this.handleListMilestones(),
-						POST: async (req: Request) => await this.handleCreateMilestone(req),
+						POST: async (req: Request) => await this.withCommitContext(req, () => this.handleCreateMilestone(req)),
 					},
 					"/api/milestones/archived": {
 						GET: async () => await this.handleListArchivedMilestones(),
@@ -374,15 +380,16 @@ export class BacklogServer {
 					"/api/milestones/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateMilestone(req, req.params.id),
+							await this.withCommitContext(req, () => this.handleUpdateMilestone(req, req.params.id)),
 						DELETE: async (req: Request & { params: { id: string } }) =>
-							await this.handleRemoveMilestone(req, req.params.id),
+							await this.withCommitContext(req, () => this.handleRemoveMilestone(req, req.params.id)),
 					},
 					"/api/milestones/:id/archive": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.withCommitContext(req, () => this.handleArchiveMilestone(req.params.id)),
 					},
 					"/api/tasks/reorder": {
-						POST: async (req: Request) => await this.handleReorderTask(req),
+						POST: async (req: Request) => await this.withCommitContext(req, () => this.handleReorderTask(req)),
 					},
 					"/api/tasks/cleanup": {
 						GET: async (req: Request) => await this.handleCleanupPreview(req),
@@ -409,13 +416,13 @@ export class BacklogServer {
 						GET: async () => await this.handleGetSequences(),
 					},
 					"/sequences/move": {
-						POST: async (req: Request) => await this.handleMoveSequence(req),
+						POST: async (req: Request) => await this.withCommitContext(req, () => this.handleMoveSequence(req)),
 					},
 					"/api/sequences": {
 						GET: async () => await this.handleGetSequences(),
 					},
 					"/api/sequences/move": {
-						POST: async (req: Request) => await this.handleMoveSequence(req),
+						POST: async (req: Request) => await this.withCommitContext(req, () => this.handleMoveSequence(req)),
 					},
 					// Serve files placed under backlog/assets at /assets/<relative-path>
 					"/assets/*": {
@@ -795,6 +802,24 @@ export class BacklogServer {
 			console.error("Error performing search:", error);
 			return Response.json({ error: "Search failed" }, { status: 500 });
 		}
+	}
+
+	private async withCommitContext<T>(req: Request, fn: () => Promise<T>): Promise<T> {
+		const author = await this.getProxyCommitAuthor(req);
+		return runWithCommitAuthor(author, fn);
+	}
+
+	/** Build a git author from auth-proxy identity headers (gated by config.commitAuthorFromProxyHeaders; header names configurable, oauth2-proxy defaults). */
+	private async getProxyCommitAuthor(req: Request): Promise<string | undefined> {
+		const config = await this.core.filesystem.loadConfig();
+		if (!config?.commitAuthorFromProxyHeaders) return undefined;
+		const emailHeader = config.proxyAuthorEmailHeader || "x-forwarded-email";
+		const nameHeader = config.proxyAuthorNameHeader || "x-forwarded-preferred-username";
+		const get = (name: string) => req.headers.get(name)?.trim() || undefined;
+		const email = get(emailHeader);
+		const name = get(nameHeader) || email;
+		if (!email && !name) return undefined;
+		return `${name ?? email} <${email ?? "unknown@localhost"}>`;
 	}
 
 	private async handleCreateTask(req: Request): Promise<Response> {

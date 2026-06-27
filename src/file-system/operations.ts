@@ -1398,6 +1398,15 @@ ${description || `Milestone: ${title}`}`,
 				case "auto_commit":
 					config.autoCommit = value.toLowerCase() === "true";
 					break;
+				case "commit_author_from_proxy_headers":
+					config.commitAuthorFromProxyHeaders = value.toLowerCase() === "true";
+					break;
+				case "proxy_author_email_header":
+					config.proxyAuthorEmailHeader = value;
+					break;
+				case "proxy_author_name_header":
+					config.proxyAuthorNameHeader = value;
+					break;
 				case "filesystem_only":
 				case "filesystemOnly":
 					config.filesystemOnly = value.toLowerCase() === "true";
@@ -1444,6 +1453,9 @@ ${description || `Milestone: ${title}`}`,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
+			commitAuthorFromProxyHeaders: config.commitAuthorFromProxyHeaders,
+			proxyAuthorEmailHeader: config.proxyAuthorEmailHeader,
+			proxyAuthorNameHeader: config.proxyAuthorNameHeader,
 			filesystemOnly: config.filesystemOnly,
 			zeroPaddedIds: config.zeroPaddedIds,
 			bypassGitHooks: config.bypassGitHooks,
@@ -1474,6 +1486,11 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
+			...(typeof config.commitAuthorFromProxyHeaders === "boolean"
+				? [`commit_author_from_proxy_headers: ${config.commitAuthorFromProxyHeaders}`]
+				: []),
+			...(config.proxyAuthorEmailHeader ? [`proxy_author_email_header: ${config.proxyAuthorEmailHeader}`] : []),
+			...(config.proxyAuthorNameHeader ? [`proxy_author_name_header: ${config.proxyAuthorNameHeader}`] : []),
 			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),

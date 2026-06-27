@@ -2,6 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
+import { commitAuthorArgs } from "./commit-context.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -74,6 +75,7 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
+		args.push(...commitAuthorArgs());
 		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
 		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
 			return;
@@ -89,6 +91,7 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
+		args.push(...commitAuthorArgs());
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
@@ -128,6 +131,7 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
+		args.push(...commitAuthorArgs());
 		args.push("--", ...uniqueRelativePaths);
 		await this.execGit(args, { cwd: resolvedRepoRoot });
 	}
@@ -180,6 +184,7 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
+		args.push(...commitAuthorArgs());
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 

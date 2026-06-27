@@ -3993,6 +3993,15 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "autoCommit":
 					console.log(config.autoCommit?.toString() || "");
 					break;
+				case "commitAuthorFromProxyHeaders":
+					console.log(config.commitAuthorFromProxyHeaders?.toString() || "false");
+					break;
+				case "proxyAuthorEmailHeader":
+					console.log(config.proxyAuthorEmailHeader || "");
+					break;
+				case "proxyAuthorNameHeader":
+					console.log(config.proxyAuthorNameHeader || "");
+					break;
 				case "filesystemOnly":
 					console.log(config.filesystemOnly?.toString() || "false");
 					break;
@@ -4120,6 +4129,24 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 					}
 					break;
 				}
+				case "commitAuthorFromProxyHeaders": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.commitAuthorFromProxyHeaders = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.commitAuthorFromProxyHeaders = false;
+					} else {
+						console.error("commitAuthorFromProxyHeaders must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
+				case "proxyAuthorEmailHeader":
+					config.proxyAuthorEmailHeader = value;
+					break;
+				case "proxyAuthorNameHeader":
+					config.proxyAuthorNameHeader = value;
+					break;
 				case "filesystemOnly": {
 					const boolValue = value.toLowerCase();
 					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
