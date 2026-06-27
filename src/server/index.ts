@@ -197,9 +197,59 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	/** Timestamp (ms) of the last auto-pull, used to throttle read-triggered pulls. */
+	private lastAutoPullAt = 0;
+	/** Reads pull at most once per this window so UI polling can't hammer the remote. */
+	private static readonly AUTO_PULL_READ_THROTTLE_MS = 2000;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
+	}
+
+	/**
+	 * Pull (rebase) from the remote before serving a request when config.autoPull
+	 * is enabled. Mutations always pull (to avoid committing/pushing on top of a
+	 * stale base); reads are throttled to AUTO_PULL_READ_THROTTLE_MS so frequent
+	 * UI polling does not flood the remote. Never throws.
+	 */
+	private async maybeAutoPull(force: boolean): Promise<void> {
+		try {
+			const config = await this.core.filesystem.loadConfig();
+			if (!config?.autoPull) return;
+			if (!force && Date.now() - this.lastAutoPullAt < BacklogServer.AUTO_PULL_READ_THROTTLE_MS) {
+				return;
+			}
+			this.lastAutoPullAt = Date.now();
+			this.core.gitOps.setConfig(config);
+			await this.core.gitOps.pull();
+		} catch {
+			// auto-pull must never block a request
+		}
+	}
+
+	/**
+	 * Wrap every API route method handler so it auto-pulls before running (opt-in
+	 * via config.autoPull). Mutations (POST/PUT/DELETE/PATCH) force a pull; GET is
+	 * throttled. Non-API routes (SPA HTML, etc.) are left untouched.
+	 */
+	private applyAutoPullToRoutes(routes: Record<string, unknown>): void {
+		const MUTATING = new Set(["POST", "PUT", "DELETE", "PATCH"]);
+		const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+		for (const key of Object.keys(routes)) {
+			const handlers = routes[key];
+			if (!handlers || typeof handlers !== "object") continue;
+			const methodMap = handlers as Record<string, unknown>;
+			for (const method of METHODS) {
+				const original = methodMap[method];
+				if (typeof original !== "function") continue;
+				const force = MUTATING.has(method);
+				const fn = original as (...callArgs: unknown[]) => unknown;
+				methodMap[method] = async (...callArgs: unknown[]) => {
+					await this.maybeAutoPull(force);
+					return fn(...callArgs);
+				};
+			}
+		}
 	}
 
 	private async resolveMilestoneInput(milestone: string): Promise<string> {
@@ -446,6 +496,7 @@ export class BacklogServer {
 				},
 				/* biome-ignore format: keep cast on single line below for type narrowing */
 			};
+			this.applyAutoPullToRoutes(serveOptions.routes as unknown as Record<string, unknown>);
 			this.server = Bun.serve(serveOptions as unknown as Parameters<typeof Bun.serve>[0]);
 
 			const url = `http://localhost:${finalPort}`;

@@ -250,7 +250,7 @@ Backlog.md merges the following layers (highest → lowest):
 
 Run `backlog config` with no arguments to launch the full interactive wizard. This is the same experience triggered from `backlog init` when you opt into advanced settings, and it walks through the complete configuration surface:
 - Cross-branch accuracy: `checkActiveBranches`, `remoteOperations`, and `activeBranchDays`.
-- Git workflow: `autoCommit` and `bypassGitHooks`.
+- Git workflow: `autoCommit`, `autoPull` (run `git pull --rebase` before each operation so reads/writes use the latest — works from the CLI, web UI and MCP), and `bypassGitHooks`.
 - ID formatting: enable or size `zeroPaddedIds`.
 - Editor integration: pick a `defaultEditor` with availability checks.
 - Definition of Done defaults: interactively add/remove/reorder/clear project-level `definition_of_done` checklist items.
@@ -258,7 +258,7 @@ Run `backlog config` with no arguments to launch the full interactive wizard. Th
 
 Skipping the wizard (answering "No" during init) applies the safe defaults that ship with Backlog.md:
 - `checkActiveBranches=true`, `remoteOperations=true`, `activeBranchDays=30`.
-- `autoCommit=false`, `bypassGitHooks=false`.
+- `autoCommit=false`, `autoPull=false`, `bypassGitHooks=false`.
 - `zeroPaddedIds` disabled.
 - `defaultEditor` unset (falls back to your environment).
 - `defaultPort=6420`, `autoOpenBrowser=true`.

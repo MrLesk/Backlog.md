@@ -118,6 +118,17 @@ describe("Config commands", () => {
 		expect(reloadedConfig?.autoCommit).toBe(true);
 	});
 
+	it("persists autoPull through save/reload and defaults to false", async () => {
+		const config = await core.filesystem.loadConfig();
+		expect(config).not.toBeNull();
+		if (!config) return;
+		expect(config.autoPull ?? false).toBe(false);
+		config.autoPull = true;
+		await core.filesystem.saveConfig(config);
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.autoPull).toBe(true);
+	});
+
 	it("configureAdvancedSettings supports add/remove/reorder/clear actions for Definition of Done defaults", async () => {
 		const promptStub = createPromptStub([
 			{ installCompletions: false },

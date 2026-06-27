@@ -278,6 +278,20 @@ export class GitOperations {
 		}
 	}
 
+	/** Pull (rebase, autostash) from remote into the working tree. Gated by remoteOperations; never throws. */
+	async pull(remote = "origin"): Promise<void> {
+		await this.loadConfigIfNeeded();
+		if (this.config?.remoteOperations === false) return;
+		const hasRemotes = await this.hasAnyRemote();
+		if (!hasRemotes) return;
+		try {
+			await this.execGit(["pull", "--rebase", "--autostash", "--quiet", remote]);
+		} catch (error) {
+			// Auto-pull must never block a command; swallow (network / no upstream / conflicts).
+			if (process.env.DEBUG) console.warn(`Pull skipped: ${error}`);
+		}
+	}
+
 	private isNetworkError(error: unknown): boolean {
 		if (typeof error === "string") {
 			return this.containsNetworkErrorPattern(error);

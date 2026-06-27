@@ -1398,6 +1398,9 @@ ${description || `Milestone: ${title}`}`,
 				case "auto_commit":
 					config.autoCommit = value.toLowerCase() === "true";
 					break;
+				case "auto_pull":
+					config.autoPull = value.toLowerCase() === "true";
+					break;
 				case "filesystem_only":
 				case "filesystemOnly":
 					config.filesystemOnly = value.toLowerCase() === "true";
@@ -1444,6 +1447,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
+			autoPull: config.autoPull,
 			filesystemOnly: config.filesystemOnly,
 			zeroPaddedIds: config.zeroPaddedIds,
 			bypassGitHooks: config.bypassGitHooks,
@@ -1474,6 +1478,7 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
+			...(typeof config.autoPull === "boolean" ? [`auto_pull: ${config.autoPull}`] : []),
 			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),

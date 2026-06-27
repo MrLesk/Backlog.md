@@ -311,6 +311,8 @@ export interface BacklogConfig {
 	defaultPort?: number;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
+	/** Auto-pull (rebase, autostash) from remote before each command. */
+	autoPull?: boolean;
 	/** Disable all Git integration for filesystem-only projects. */
 	filesystemOnly?: boolean;
 	zeroPaddedIds?: number;

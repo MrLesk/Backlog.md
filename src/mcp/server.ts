@@ -402,6 +402,9 @@ export class McpServer extends Core {
 		extra?: ServerRequestExtra,
 	): Promise<CallToolResult> {
 		await this.ensureRootsResolved(extra);
+		// Pull before serving the tool so the AI reads/writes against the latest
+		// remote state (opt-in via config.autoPull). Mirrors the CLI preAction hook.
+		await this.maybeAutoPull();
 		const { name, arguments: args = {} } = request.params;
 		const tool = this.tools.get(name);
 
@@ -410,6 +413,18 @@ export class McpServer extends Core {
 		}
 
 		return await tool.handler(args);
+	}
+
+	/** Pull (rebase) from the remote before a tool call when config.autoPull is enabled. Never throws. */
+	private async maybeAutoPull(): Promise<void> {
+		try {
+			const config = await this.filesystem.loadConfig();
+			if (!config?.autoPull) return;
+			this.gitOps.setConfig(config);
+			await this.gitOps.pull();
+		} catch {
+			// auto-pull must never block a tool call
+		}
 	}
 
 	protected async listResources(extra?: ServerRequestExtra): Promise<ListResourcesResult> {

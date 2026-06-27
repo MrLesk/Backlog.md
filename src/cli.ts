@@ -537,6 +537,21 @@ if (shouldRunMigration) {
 }
 
 const program = new Command();
+
+// Auto-pull (rebase) from remote before every command when config.autoPull is enabled.
+program.hook("preAction", async () => {
+	try {
+		const c = new Core(process.cwd());
+		const cfg = await c.filesystem.loadConfig();
+		if (cfg?.autoPull) {
+			c.gitOps.setConfig(cfg);
+			await c.gitOps.pull();
+		}
+	} catch {
+		// auto-pull must never block a command
+	}
+});
+
 program
 	.name("backlog")
 	.description("Backlog.md - Project management CLI")
@@ -3993,6 +4008,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "autoCommit":
 					console.log(config.autoCommit?.toString() || "");
 					break;
+				case "autoPull":
+					console.log(config.autoPull?.toString() || "false");
+					break;
 				case "filesystemOnly":
 					console.log(config.filesystemOnly?.toString() || "false");
 					break;
@@ -4116,6 +4134,18 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 						config.autoCommit = false;
 					} else {
 						console.error("autoCommit must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
+				case "autoPull": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.autoPull = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.autoPull = false;
+					} else {
+						console.error("autoPull must be true or false");
 						process.exit(1);
 					}
 					break;
