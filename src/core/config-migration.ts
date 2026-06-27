@@ -17,6 +17,7 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		remoteOperations: true,
 		autoCommit: false,
 		autoPull: false,
+		autoPush: false,
 		bypassGitHooks: false,
 		checkActiveBranches: true,
 		activeBranchDays: 30,
@@ -51,8 +52,8 @@ export function needsMigration(config: Partial<BacklogConfig>): boolean {
 		{ field: "autoOpenBrowser", hasDefault: true },
 		{ field: "remoteOperations", hasDefault: true },
 		{ field: "autoCommit", hasDefault: true },
-		// NB: autoPull is intentionally omitted here (like bypassGitHooks/filesystemOnly):
-		// it must not force a config rewrite on existing projects. Absent => treated as false.
+		// NB: autoPull/autoPush are intentionally omitted here (like bypassGitHooks/filesystemOnly):
+		// they must not force a config rewrite on existing projects. Absent => treated as false.
 	];
 
 	return expectedFieldsWithDefaults.some(({ field }) => {
