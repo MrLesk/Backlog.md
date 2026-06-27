@@ -1,11 +1,13 @@
 /**
  * MCP Command Group - Model Context Protocol CLI commands.
  *
- * This simplified command set focuses on the stdio transport, which is the
- * only supported transport for Backlog.md's local MCP integration.
+ * `mcp start` serves over stdio by default (local editor integration). With
+ * `--http` it serves over Streamable HTTP as a single shared server, intended to
+ * run behind an authenticating reverse proxy that forwards the end-user identity.
  */
 
 import type { Command } from "commander";
+import { startHttpMcpServer } from "../mcp/http-server.ts";
 import { createMcpServer } from "../mcp/server.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
@@ -13,6 +15,9 @@ import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
 type StartOptions = {
 	debug?: boolean;
 	cwd?: string;
+	http?: boolean;
+	port?: string;
+	host?: string;
 };
 
 /**
@@ -26,18 +31,45 @@ export function registerMcpCommand(program: Command): void {
 }
 
 /**
- * Register 'mcp start' command for stdio transport.
+ * Register 'mcp start' command (stdio by default, Streamable HTTP with --http).
  */
 function registerStartCommand(mcpCmd: Command): void {
 	mcpCmd
 		.command("start")
-		.description("Start the MCP server using stdio transport")
+		.description("Start the MCP server (stdio by default, or Streamable HTTP with --http)")
 		.option("-d, --debug", "Enable debug logging", false)
 		.option("--cwd <path>", "Directory to resolve Backlog root from (overrides BACKLOG_CWD)")
+		.option(
+			"--http",
+			"Serve over Streamable HTTP instead of stdio (single shared server behind a reverse proxy)",
+			false,
+		)
+		.option("--port <port>", "HTTP port (with --http)", "6421")
+		.option("--host <host>", "HTTP bind address (with --http)", "127.0.0.1")
 		.action(async (options: StartOptions) => {
 			try {
 				const runtimeCwd = await resolveRuntimeCwd({ cwd: options.cwd });
 				const projectRoot = (await findBacklogRoot(runtimeCwd.cwd)) ?? runtimeCwd.cwd;
+
+				// HTTP transport: a single long-lived server; identity comes per-request
+				// from auth-proxy headers (see commit_author_from_proxy_headers).
+				if (options.http) {
+					const port = Number.parseInt(options.port ?? "6421", 10);
+					if (!Number.isFinite(port) || port <= 0) {
+						console.error(`Invalid --port value: ${options.port}`);
+						process.exit(1);
+					}
+					startHttpMcpServer(projectRoot, { port, host: options.host, debug: options.debug });
+					console.error(`Backlog.md MCP server (Streamable HTTP) running on http://${options.host}:${port}/mcp`);
+					const shutdownHttp = (signal: string) => {
+						if (options.debug) console.error(`Received ${signal}, shutting down MCP HTTP server...`);
+						process.exit(0);
+					};
+					process.once("SIGINT", () => shutdownHttp("SIGINT"));
+					process.once("SIGTERM", () => shutdownHttp("SIGTERM"));
+					return;
+				}
+
 				// An explicit --cwd/BACKLOG_CWD pins the root; an inferred process.cwd()
 				// lets the server follow the client's workspace roots instead.
 				const pinned = runtimeCwd.source !== "process";

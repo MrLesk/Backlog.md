@@ -8,6 +8,7 @@ import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
 import { runWithCommitAuthor } from "../git/commit-context.ts";
+import { authorFromProxyHeaders } from "../git/proxy-identity.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import {
@@ -809,17 +810,10 @@ export class BacklogServer {
 		return runWithCommitAuthor(author, fn);
 	}
 
-	/** Build a git author from auth-proxy identity headers (gated by config.commitAuthorFromProxyHeaders; header names configurable, oauth2-proxy defaults). */
+	/** Build a git author from auth-proxy identity headers (shared with the MCP HTTP transport). */
 	private async getProxyCommitAuthor(req: Request): Promise<string | undefined> {
 		const config = await this.core.filesystem.loadConfig();
-		if (!config?.commitAuthorFromProxyHeaders) return undefined;
-		const emailHeader = config.proxyAuthorEmailHeader || "x-forwarded-email";
-		const nameHeader = config.proxyAuthorNameHeader || "x-forwarded-preferred-username";
-		const get = (name: string) => req.headers.get(name)?.trim() || undefined;
-		const email = get(emailHeader);
-		const name = get(nameHeader) || email;
-		if (!email && !name) return undefined;
-		return `${name ?? email} <${email ?? "unknown@localhost"}>`;
+		return authorFromProxyHeaders(req.headers, config);
 	}
 
 	private async handleCreateTask(req: Request): Promise<Response> {
