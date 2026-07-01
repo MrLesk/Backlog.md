@@ -19,6 +19,7 @@ import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./compo
 import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
+import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import {
 	createTaskPopup,
 	resolveSearchExitTargetIndex,
@@ -1164,15 +1165,16 @@ export async function renderBoardTui(
 				if (confirmed) {
 					try {
 						const core = new Core(process.cwd(), { enableWatchers: true });
-						const config = await core.fs.loadConfig();
-						const success = await core.completeTask(task.id, config?.autoCommit ?? false);
+						const result = await completeTaskFromTui(core, task);
 
-						if (success) {
+						if (result.success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
 							showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
 							close();
 							popupOpen = false;
 							renderView();
+						} else if (result.reason === "not-terminal") {
+							showTransientFooter(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
 						} else {
 							showTransientFooter(` {red-fg}Failed to complete ${task.id}{/}`);
 						}
@@ -1408,13 +1410,14 @@ export async function renderBoardTui(
 			if (confirmed) {
 				try {
 					const core = new Core(process.cwd(), { enableWatchers: true });
-					const config = await core.fs.loadConfig();
-					const success = await core.completeTask(task.id, config?.autoCommit ?? false);
+					const result = await completeTaskFromTui(core, task);
 
-					if (success) {
+					if (result.success) {
 						currentTasks = currentTasks.filter((t) => t.id !== task.id);
 						showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
 						renderView();
+					} else if (result.reason === "not-terminal") {
+						showTransientFooter(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
 					} else {
 						showTransientFooter(` {red-fg}Failed to complete ${task.id}{/}`);
 					}
