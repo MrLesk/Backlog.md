@@ -3,15 +3,16 @@ import type { ChecklistItem } from "../ui/checklist.ts";
 import { transformCodePathsPlain } from "../ui/code-path.ts";
 import { formatStatusWithIcon } from "../ui/status-icon.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
+import { formatUtcDateForDisplay, type UtcDateDisplayOptions } from "../utils/utc-date-display.ts";
 
 export type TaskPlainTextOptions = {
 	filePathOverride?: string;
 };
 
-export function formatDateForDisplay(dateStr: string): string {
-	if (!dateStr) return "";
-	const hasTime = dateStr.includes(" ") || dateStr.includes("T");
-	return hasTime ? dateStr : dateStr;
+const plainDateDisplayOptions: UtcDateDisplayOptions = { appendUtcLabel: true };
+
+export function formatDateForDisplay(dateStr: string, options: UtcDateDisplayOptions = {}): string {
+	return formatUtcDateForDisplay(dateStr, options);
 }
 
 function buildChecklistItems(items: Task["acceptanceCriteriaItems"]): ChecklistItem[] {
@@ -58,13 +59,16 @@ function formatSubtaskLines(subtasks: Array<{ id: string; title: string }>): str
 	return sorted.map((subtask) => `- ${subtask.id} - ${subtask.title}`);
 }
 
-function formatCommentHeader(comment: NonNullable<Task["comments"]>[number]): string {
+function formatCommentHeader(
+	comment: NonNullable<Task["comments"]>[number],
+	dateOptions: UtcDateDisplayOptions = {},
+): string {
 	const parts = [`#${comment.index}`];
 	if (comment.author) {
 		parts.push(comment.author);
 	}
 	if (comment.createdDate) {
-		parts.push(comment.createdDate);
+		parts.push(formatDateForDisplay(comment.createdDate, dateOptions));
 	}
 	return parts.join(" - ");
 }
@@ -101,9 +105,9 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push(`Reporter: ${reporter}`);
 	}
 
-	lines.push(`Created: ${formatDateForDisplay(task.createdDate)}`);
+	lines.push(`Created: ${formatDateForDisplay(task.createdDate, plainDateDisplayOptions)}`);
 	if (task.updatedDate) {
-		lines.push(`Updated: ${formatDateForDisplay(task.updatedDate)}`);
+		lines.push(`Updated: ${formatDateForDisplay(task.updatedDate, plainDateDisplayOptions)}`);
 	}
 
 	if (task.labels?.length) {
@@ -195,7 +199,7 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push("Comments:");
 		lines.push("-".repeat(50));
 		for (const comment of comments) {
-			lines.push(formatCommentHeader(comment));
+			lines.push(formatCommentHeader(comment, plainDateDisplayOptions));
 			lines.push(transformCodePathsPlain(comment.body.trim()));
 			lines.push("");
 		}

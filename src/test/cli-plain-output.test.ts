@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -112,7 +112,7 @@ describe("CLI plain output for AI agents", () => {
 		// Should contain the formatted task output
 		expect(result.stdout.toString()).toContain("Task TASK-1 - Test task for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ To Do");
-		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
+		expect(result.stdout.toString()).toContain("Created: 2025-06-18 (UTC)");
 		expect(result.stdout.toString()).toContain("Subtasks (2):");
 		const [subtask1, subtask2] = SUBTASKS;
 		if (subtask1 && subtask2) {
@@ -128,6 +128,10 @@ describe("CLI plain output for AI agents", () => {
 		// Should not contain TUI escape codes
 		expect(result.stdout.toString()).not.toContain("[?1049h");
 		expect(result.stdout.toString()).not.toContain("\x1b");
+
+		const taskFile = await readFile(join(TEST_DIR, "backlog/tasks/task-1 - Test-task-for-plain-output.md"), "utf8");
+		expect(taskFile).toContain("created_date: '2025-06-18'");
+		expect(taskFile).not.toContain("(UTC)");
 	});
 
 	it("should output plain text with task <id> --plain shortcut", async () => {
@@ -151,7 +155,7 @@ describe("CLI plain output for AI agents", () => {
 		// Should contain the formatted task output
 		expect(result.stdout.toString()).toContain("Task TASK-1 - Test task for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ To Do");
-		expect(result.stdout.toString()).toContain("Created: 2025-06-18");
+		expect(result.stdout.toString()).toContain("Created: 2025-06-18 (UTC)");
 		expect(result.stdout.toString()).toContain("Description:");
 		expect(result.stdout.toString()).toContain("Test description");
 		expect(result.stdout.toString()).toContain("Definition of Done:");
@@ -189,7 +193,7 @@ describe("CLI plain output for AI agents", () => {
 		// Should contain the formatted draft output
 		expect(result.stdout.toString()).toContain("Task DRAFT-1 - Test draft for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ Draft");
-		expect(result.stdout.toString()).toMatch(/Created:\s+\d{4}-\d{2}-\d{2}/);
+		expect(result.stdout.toString()).toMatch(/Created:\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2} \(UTC\)/);
 		expect(result.stdout.toString()).toContain("Description:");
 		expect(result.stdout.toString()).toContain("Test draft description");
 		expect(result.stdout.toString()).toContain("Definition of Done:");
@@ -219,7 +223,7 @@ describe("CLI plain output for AI agents", () => {
 		// Should contain the formatted draft output
 		expect(result.stdout.toString()).toContain("Task DRAFT-1 - Test draft for plain output");
 		expect(result.stdout.toString()).toContain("Status: ○ Draft");
-		expect(result.stdout.toString()).toMatch(/Created:\s+\d{4}-\d{2}-\d{2}/);
+		expect(result.stdout.toString()).toMatch(/Created:\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2} \(UTC\)/);
 		expect(result.stdout.toString()).toContain("Description:");
 		expect(result.stdout.toString()).toContain("Test draft description");
 		expect(result.stdout.toString()).toContain("Definition of Done:");
