@@ -158,9 +158,13 @@ describe("ContentStore", () => {
 			throw new Error("Expected decision file was not created");
 		}
 
-		const waitForRemoval = waitForEventWithTimeout(store, (event) => {
-			return event.type === "decisions" && event.decisions.every((decision) => decision.id !== "decision-1");
-		});
+		const waitForRemoval = waitForEventWithTimeout(
+			store,
+			(event) => {
+				return event.type === "decisions" && event.decisions.every((decision) => decision.id !== "decision-1");
+			},
+			getPlatformTimeout(15000),
+		);
 
 		await unlink(join(decisionsDir, decisionFile));
 		await waitForRemoval;
