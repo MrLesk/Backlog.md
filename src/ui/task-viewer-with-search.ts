@@ -33,6 +33,7 @@ import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
+import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { addScrollKeys, createScreen } from "./tui.ts";
 
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
@@ -1158,16 +1159,21 @@ export async function viewTaskEnhanced(
 		}
 
 		try {
-			const config = await core.fs.loadConfig();
-			const success =
+			const config = action === "archive" ? await core.fs.loadConfig() : null;
+			const result =
 				action === "complete"
-					? await core.completeTask(task.id, config?.autoCommit ?? false)
-					: await core.archiveTask(task.id, config?.autoCommit ?? false);
+					? await completeTaskFromTui(core, task)
+					: {
+							success: await core.archiveTask(task.id, config?.autoCommit ?? false),
+							reason: "failed" as const,
+						};
 
-			if (success) {
+			if (result.success) {
 				removeTaskFromCurrentView(task.id);
 				const label = action === "complete" ? "Completed" : "Archived";
 				showTransientHelp(` {green-fg}${label} ${task.id}{/}`);
+			} else if (action === "complete" && result.reason === "not-terminal") {
+				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
 			} else {
 				const verb = action === "complete" ? "complete" : "archive";
 				showTransientHelp(` {red-fg}Failed to ${verb} ${task.id}{/}`);
