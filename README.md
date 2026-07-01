@@ -44,6 +44,9 @@
 
 ```bash
 # Install
+
+[![Listed on TakoAPI](https://takoapi.com/api/badge/mrlesk-backlog-md)](https://takoapi.com/agents/mrlesk-backlog-md)
+
 bun i -g backlog.md
 # or: npm i -g backlog.md
 # or: brew install backlog-md
