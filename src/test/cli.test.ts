@@ -257,6 +257,7 @@ describe("CLI Integration", () => {
 			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
 			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
+			const editHelpCompact = editHelp.replace(/\s+/g, " ");
 			const completeHelp = await $`bun ${CLI_PATH} task complete --help`.cwd(TEST_DIR).text();
 
 			expect(createHelp).toContain("title: String");
@@ -275,6 +276,20 @@ describe("CLI Integration", () => {
 			expect(editHelp).toContain("taskId: Task ID");
 			expect(editHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
 			expect(editHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(editHelp).toContain(
+				"label: Comma-separated strings - Replace all labels; repeat --label or use label1,label2",
+			);
+			expect(editHelp).toContain(
+				"add-label: Comma-separated strings - Add labels; repeat --add-label or use label1,label2",
+			);
+			expect(editHelp).toContain(
+				"remove-label: Comma-separated strings - Remove labels; repeat --remove-label or use label1,label2",
+			);
+			expect(editHelp).toContain("clear-labels: Boolean - Remove all labels; cannot combine with other label flags");
+			expect(editHelpCompact).toContain("replace all task labels");
+			expect(editHelpCompact).toContain("add task labels without replacing existing labels");
+			expect(editHelpCompact).toContain("remove task labels without replacing others");
+			expect(editHelpCompact).toContain("remove all task labels");
 			expect(editHelp).toContain("plan: Markdown");
 			expect(editHelp).toContain("Writes:");
 			expect(completeHelp).toContain("cleanup procedure");
@@ -1560,6 +1575,142 @@ describe("CLI Integration", () => {
 			// Verify label was removed
 			const updatedTask = await core.filesystem.loadTask("task-5");
 			expect(updatedTask?.labels).toEqual(["keep1", "keep2"]);
+		});
+
+		it("should replace labels from repeated CLI label flags", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-6",
+					title: "Repeated Label Replace Test",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["old1", "old2"],
+					dependencies: [],
+					rawContent: "Testing repeated label replacement",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-6 --label new1 --label new2,new3 --plain`.cwd(TEST_DIR).quiet();
+
+			const updatedTask = await core.filesystem.loadTask("task-6");
+			expect(updatedTask?.labels).toEqual(["new1", "new2", "new3"]);
+		});
+
+		it("should add labels from repeated CLI add-label flags", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-7",
+					title: "Repeated Label Add Test",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["existing"],
+					dependencies: [],
+					rawContent: "Testing repeated label additions",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-7 --add-label video --add-label test,bug --plain`.cwd(TEST_DIR).quiet();
+
+			const updatedTask = await core.filesystem.loadTask("task-7");
+			expect(updatedTask?.labels).toEqual(["existing", "video", "test", "bug"]);
+		});
+
+		it("should remove labels from repeated CLI remove-label flags", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-8",
+					title: "Repeated Label Remove Test",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["keep", "drop1", "drop2", "drop3"],
+					dependencies: [],
+					rawContent: "Testing repeated label removals",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-8 --remove-label drop1 --remove-label drop2,drop3 --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			const updatedTask = await core.filesystem.loadTask("task-8");
+			expect(updatedTask?.labels).toEqual(["keep"]);
+		});
+
+		it("should clear labels from CLI clear-labels flag", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-9",
+					title: "Clear Labels Test",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["old1", "old2"],
+					dependencies: [],
+					rawContent: "Testing label clearing",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-9 --clear-labels --plain`.cwd(TEST_DIR).quiet();
+
+			const updatedTask = await core.filesystem.loadTask("task-9");
+			expect(updatedTask?.labels).toEqual([]);
+		});
+
+		it("should reject mixing CLI label replacement with label mutations", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-10",
+					title: "Mixed Label Mode Test",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: ["old"],
+					dependencies: [],
+					rawContent: "Testing mixed label mode rejection",
+				},
+				false,
+			);
+
+			const addResult = await $`bun ${CLI_PATH} task edit task-10 --label replacement --add-label extra --plain`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+			const removeResult = await $`bun ${CLI_PATH} task edit task-10 --label replacement --remove-label old --plain`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+			const clearResult = await $`bun ${CLI_PATH} task edit task-10 --clear-labels --add-label extra --plain`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+
+			for (const result of [addResult, removeResult]) {
+				expect(result.exitCode).toBe(1);
+				expect(result.stderr.toString()).toContain("Cannot combine --label with --add-label or --remove-label");
+			}
+			expect(clearResult.exitCode).toBe(1);
+			expect(clearResult.stderr.toString()).toContain(
+				"Cannot combine --clear-labels with --label, --add-label, or --remove-label",
+			);
+			const updatedTask = await core.filesystem.loadTask("task-10");
+			expect(updatedTask?.labels).toEqual(["old"]);
 		});
 
 		it("should handle non-existent task gracefully", async () => {

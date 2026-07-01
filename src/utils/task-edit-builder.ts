@@ -55,9 +55,13 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.ordinal = args.ordinal;
 	}
 
-	const labels = normalizeStringList(args.labels);
-	if (labels) {
-		updateInput.labels = labels;
+	if (args.labels !== undefined) {
+		const labels = normalizeStringList(args.labels);
+		if (labels) {
+			updateInput.labels = labels;
+		} else if (args.labels.length === 0) {
+			updateInput.labels = [];
+		}
 	}
 
 	const addLabels = normalizeStringList(args.addLabels);

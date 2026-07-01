@@ -331,6 +331,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.ordinal !== undefined ||
 			options.milestone !== undefined ||
 			options.clearMilestone ||
+			options.clearLabels ||
 			options.plain ||
 			options.addLabel !== undefined ||
 			options.removeLabel !== undefined ||
@@ -2348,6 +2349,26 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		{ name: "title", type: "String", description: "Replacement task title" },
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
+		{
+			name: "label",
+			type: "Comma-separated strings",
+			description: "Replace all labels; repeat --label or use label1,label2",
+		},
+		{
+			name: "add-label",
+			type: "Comma-separated strings",
+			description: "Add labels; repeat --add-label or use label1,label2",
+		},
+		{
+			name: "remove-label",
+			type: "Comma-separated strings",
+			description: "Remove labels; repeat --remove-label or use label1,label2",
+		},
+		{
+			name: "clear-labels",
+			type: "Boolean",
+			description: "Remove all labels; cannot combine with other label flags",
+		},
 		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
 		{ name: "notes", type: "Markdown", description: "Replacement implementation notes" },
 		{ name: "comment", type: "Markdown", description: "Append a discussion comment" },
@@ -2367,14 +2388,27 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	.option("--desc <text>", "alias for --description")
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
-	.option("-l, --label <labels>")
+	.option(
+		"-l, --label <labels>",
+		"replace all task labels (comma-separated or repeatable; cannot combine with --add-label/--remove-label)",
+		createMultiValueAccumulator(),
+	)
 	.option("--priority <priority>", "set task priority (high, medium, low)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--clear-milestone", "clear task milestone assignment")
 	.option("--plain", "use plain text output after editing")
-	.option("--add-label <label>")
-	.option("--remove-label <label>")
+	.option(
+		"--add-label <labels>",
+		"add task labels without replacing existing labels (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--remove-label <labels>",
+		"remove task labels without replacing others (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
+	.option("--clear-labels", "remove all task labels (cannot combine with --label/--add-label/--remove-label)")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
 	.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
 	.option(
@@ -2606,6 +2640,25 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			return;
 		}
 
+		if (
+			options.clearLabels &&
+			(options.label !== undefined || options.addLabel !== undefined || options.removeLabel !== undefined)
+		) {
+			console.error(
+				"Cannot combine --clear-labels with --label, --add-label, or --remove-label. Use --clear-labels by itself, or --label a,b for the final full label set.",
+			);
+			process.exitCode = 1;
+			return;
+		}
+
+		if (options.label !== undefined && (options.addLabel !== undefined || options.removeLabel !== undefined)) {
+			console.error(
+				"Cannot combine --label with --add-label or --remove-label. Use --label a,b for the final full label set, or use add/remove flags without --label.",
+			);
+			process.exitCode = 1;
+			return;
+		}
+
 		const labelValues = parseDelimitedStringList(options.label) ?? [];
 		const addLabelValues = parseDelimitedStringList(options.addLabel) ?? [];
 		const removeLabelValues = parseDelimitedStringList(options.removeLabel) ?? [];
@@ -2648,6 +2701,8 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		}
 		if (labelValues.length > 0) {
 			editArgs.labels = labelValues;
+		} else if (options.clearLabels) {
+			editArgs.labels = [];
 		}
 		if (addLabelValues.length > 0) {
 			editArgs.addLabels = addLabelValues;
