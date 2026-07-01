@@ -1,5 +1,5 @@
 ---
-id: BACK-511
+id: BACK-514
 title: 'Investigate issue #684 updated_date bump on ordinal-only edits'
 status: Done
 assignee:
