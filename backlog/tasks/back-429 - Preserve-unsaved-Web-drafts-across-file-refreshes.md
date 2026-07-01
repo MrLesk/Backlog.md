@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-01 18:10'
+updated_date: '2026-07-01 18:58'
 labels:
   - web-ui
   - state
@@ -44,13 +44,15 @@ Track GitHub issue #578: unsaved Web UI form state should not reset when task fi
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented a same-open modal refresh merge: refreshed task data updates untouched fields while preserving locally edited create/edit fields across filesystem-triggered UI refreshes. Added regression coverage for dirty edit fields, clean external updates, and unsaved create fields during refreshed props. Validation passed: bun test src/test/web-task-details-modal-final-summary.test.tsx src/test/web-task-details-modal-documentation.test.tsx src/test/web-board-filters.test.tsx src/test/web-task-list-labels-menu.test.tsx src/test/web-milestones-page-search.test.tsx; bun test src/test/cli-priority-filtering.test.ts; bunx tsc --noEmit; bun run check . Full bun test was attempted but stopped after stale pre-fix modal failures and unrelated priority CLI timeouts; the affected suites passed on rerun.
+Implemented a same-open modal refresh merge: refreshed task data updates untouched fields while preserving locally edited create/edit fields across filesystem-triggered UI refreshes. Added regression coverage for dirty edit fields, clean external updates, and unsaved create fields during refreshed props.
+
+PR #705 follow-up: stabilized the JSDOM regression harness so controlled create/edit inputs update React state before simulating refreshed props. Validation passed: bun test src/test/web-task-details-modal-final-summary.test.tsx; bun test src/test/web-task-details-modal-final-summary.test.tsx src/test/web-task-details-modal-documentation.test.tsx src/test/web-board-filters.test.tsx src/test/web-task-list-labels-menu.test.tsx src/test/web-milestones-page-search.test.tsx; bunx tsc --noEmit; bun run check .; bun test (1343 pass, 2 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Fixed Web task modal refresh handling so background file updates no longer wipe unsaved create/edit fields, while untouched fields still receive refreshed task data. Verified with focused Web regression tests, the previously timed-out priority CLI file, TypeScript, and Biome.
+Fixed Web task modal refresh handling so background file updates no longer wipe unsaved create/edit fields, while untouched fields still receive refreshed task data. Stabilized the regression harness and verified with focused Web tests, TypeScript, Biome, and the full Bun test suite.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

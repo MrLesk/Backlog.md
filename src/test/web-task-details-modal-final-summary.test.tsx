@@ -10,14 +10,25 @@ import { apiClient } from "../web/lib/api.ts";
 
 let activeRoot: Root | null = null;
 
+type ControlledFormElement = HTMLInputElement | HTMLTextAreaElement;
+type MountedReactProps = {
+	onChange?: (event: { target: ControlledFormElement; currentTarget: ControlledFormElement }) => void;
+};
+
 const setFormValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
 	const ownerWindow = element.ownerDocument.defaultView ?? window;
 	globalThis.HTMLElement = ownerWindow.HTMLElement;
+	globalThis.HTMLInputElement = ownerWindow.HTMLInputElement;
 	globalThis.HTMLTextAreaElement = ownerWindow.HTMLTextAreaElement;
 	const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
+	element.focus();
 	valueSetter?.call(element, value);
-	element.dispatchEvent(new ownerWindow.Event("input", { bubbles: true }));
+	element.dispatchEvent(new ownerWindow.InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
 	element.dispatchEvent(new ownerWindow.Event("change", { bubbles: true }));
+	const reactPropsKey = Object.keys(element).find((key) => key.startsWith("__reactProps$"));
+	if (!reactPropsKey) return;
+	const reactProps = (element as unknown as Record<string, MountedReactProps>)[reactPropsKey];
+	reactProps?.onChange?.({ target: element, currentTarget: element });
 };
 
 const clickElement = (element: Element) => {
@@ -34,6 +45,22 @@ const findInputByValue = (container: HTMLElement, value: string): HTMLInputEleme
 const findTextareaByValue = (container: HTMLElement, value: string): HTMLTextAreaElement | undefined =>
 	Array.from(container.querySelectorAll("textarea")).find((textarea) => textarea.value === value);
 
+const waitFor = async (predicate: () => boolean) => {
+	for (let attempt = 0; attempt < 10; attempt += 1) {
+		if (predicate()) return;
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
+	}
+};
+
+const flushReact = async () => {
+	await act(async () => {
+		await Promise.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+};
+
 const setupDom = () => {
 	const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost" });
 	(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,6 +69,7 @@ const setupDom = () => {
 	globalThis.navigator = dom.window.navigator as Navigator;
 	globalThis.localStorage = dom.window.localStorage;
 	globalThis.HTMLElement = dom.window.HTMLElement;
+	globalThis.HTMLInputElement = dom.window.HTMLInputElement;
 	globalThis.HTMLTextAreaElement = dom.window.HTMLTextAreaElement;
 	globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
 	globalThis.cancelAnimationFrame = (handle: number) => window.clearTimeout(handle);
@@ -355,6 +383,8 @@ describe("Web task popup Final Summary display", () => {
 			);
 			await Promise.resolve();
 		});
+		await flushReact();
+		await waitFor(() => Boolean(findInputByValue(container as HTMLElement, "Original title")));
 
 		const editButton = findButton(container as HTMLElement, "Edit");
 		expect(editButton).toBeTruthy();
@@ -362,6 +392,7 @@ describe("Web task popup Final Summary display", () => {
 			clickElement(editButton as HTMLButtonElement);
 			await Promise.resolve();
 		});
+		await flushReact();
 
 		const titleInput = findInputByValue(container as HTMLElement, "Original title");
 		const descriptionTextarea = findTextareaByValue(container as HTMLElement, "Original description");
@@ -372,6 +403,9 @@ describe("Web task popup Final Summary display", () => {
 			setFormValue(descriptionTextarea!, "Local description");
 			await Promise.resolve();
 		});
+		await flushReact();
+		await waitFor(() => Boolean(findInputByValue(container as HTMLElement, "Local title")));
+		await waitFor(() => Boolean(findTextareaByValue(container as HTMLElement, "Local description")));
 
 		await act(async () => {
 			activeRoot?.render(
@@ -409,6 +443,8 @@ describe("Web task popup Final Summary display", () => {
 			);
 			await Promise.resolve();
 		});
+		await flushReact();
+		await waitFor(() => Boolean((container as HTMLElement).querySelector("input[placeholder='Enter task title']")));
 
 		const titleInput = (container as HTMLElement).querySelector(
 			"input[placeholder='Enter task title']",
@@ -421,6 +457,13 @@ describe("Web task popup Final Summary display", () => {
 			setFormValue(descriptionTextarea!, "Local draft description");
 			await Promise.resolve();
 		});
+		await flushReact();
+		await waitFor(
+			() =>
+				((container as HTMLElement).querySelector("input[placeholder='Enter task title']") as HTMLInputElement | null)
+					?.value === "Local draft title",
+		);
+		await waitFor(() => ((container as HTMLElement).querySelector("textarea") as HTMLTextAreaElement | null)?.value === "Local draft description");
 
 		await act(async () => {
 			activeRoot?.render(
