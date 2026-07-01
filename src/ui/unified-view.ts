@@ -5,6 +5,7 @@
 import type { Core } from "../core/backlog.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
+import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
@@ -191,6 +192,14 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			tasksLoader: options.tasksLoader,
 			loadingScreenFactory: options.loadingScreenFactory,
 		});
+
+		const rawLocalTasks = await options.core.filesystem.listTasks();
+		const duplicateGroups = detectDuplicateTaskIds(rawLocalTasks);
+		let startupWarning: string | undefined;
+		if (duplicateGroups.length > 0) {
+			const ids = duplicateGroups.map((g) => g.id).join(", ");
+			startupWarning = `⚠ Duplicate task IDs detected: ${ids} — use web UI for AI fix prompt`;
+		}
 
 		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		if (baseTasks.length === 0) {
@@ -408,6 +417,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					},
 					milestoneMode: options.milestoneMode,
 					milestoneEntities,
+					startupWarning,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
