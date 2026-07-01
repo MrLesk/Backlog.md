@@ -240,6 +240,19 @@ export class Core {
 		return this.searchService;
 	}
 
+	private async refreshCachedTasksForCrossBranchRead(includeCrossBranch: boolean): Promise<void> {
+		if (!this.enableWatchers || !includeCrossBranch || !this.contentStore) {
+			return;
+		}
+
+		const config = await this.fs.loadConfig();
+		if (config?.checkActiveBranches === false) {
+			return;
+		}
+
+		await this.contentStore.refreshTasks();
+	}
+
 	private applyTaskFilters(
 		tasks: Task[],
 		filters?: TaskListFilter,
@@ -384,10 +397,13 @@ export class Core {
 
 		if (!trimmedQuery) {
 			const store = await this.getContentStore();
+			await this.refreshCachedTasksForCrossBranchRead(includeCrossBranch);
 			const tasks = store.getTasks();
 			return await applyFiltersAndLimit(tasks);
 		}
 
+		await this.getContentStore();
+		await this.refreshCachedTasksForCrossBranchRead(includeCrossBranch);
 		const searchService = await this.getSearchService();
 		const searchFilters: SearchFilters = {};
 		if (filters?.status) {
