@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import * as fsPromises from "node:fs/promises";
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
@@ -40,6 +41,82 @@ describe("FileSystem", () => {
 			for (const dir of expectedDirs) {
 				const stats = await stat(dir);
 				expect(stats.isDirectory()).toBe(true);
+			}
+		});
+
+		it("should ignore EEXIST for existing directories", async () => {
+			const projectDir = join(TEST_DIR, "onedrive-project");
+			const expectedDirs = [
+				join(projectDir, "backlog"),
+				join(projectDir, "backlog", "tasks"),
+				join(projectDir, "backlog", "drafts"),
+				join(projectDir, "backlog", "completed"),
+				join(projectDir, "backlog", "archive", "tasks"),
+				join(projectDir, "backlog", "archive", "drafts"),
+				join(projectDir, "backlog", "milestones"),
+				join(projectDir, "backlog", "archive", "milestones"),
+				join(projectDir, "backlog", "docs"),
+				join(projectDir, "backlog", "decisions"),
+			];
+
+			for (const dir of expectedDirs) {
+				await mkdir(dir, { recursive: true });
+			}
+
+			const realMkdir = fsPromises.mkdir;
+			const existingDirs = new Set(expectedDirs);
+			const mkdirSpy = spyOn(fsPromises, "mkdir").mockImplementation(async (path, options) => {
+				if (existingDirs.has(String(path))) {
+					const error = new Error("file already exists") as NodeJS.ErrnoException;
+					error.code = "EEXIST";
+					throw error;
+				}
+
+				await realMkdir(path, options);
+			});
+
+			try {
+				const { FileSystem: MockedFileSystem } = await import(
+					`../file-system/operations.ts?eexist-directories=${Date.now()}`
+				);
+				const oneDriveFilesystem = new MockedFileSystem(projectDir);
+
+				await oneDriveFilesystem.ensureBacklogStructure();
+
+				for (const dir of expectedDirs) {
+					const stats = await stat(dir);
+					expect(stats.isDirectory()).toBe(true);
+				}
+			} finally {
+				mkdirSpy.mockRestore();
+			}
+		});
+
+		it("should not ignore EEXIST when the path is not a directory", async () => {
+			const projectDir = join(TEST_DIR, "file-conflict-project");
+			const backlogDir = join(projectDir, "backlog");
+			const tasksPath = join(backlogDir, "tasks");
+			await mkdir(backlogDir, { recursive: true });
+			await Bun.write(tasksPath, "not a directory");
+
+			const realMkdir = fsPromises.mkdir;
+			const mkdirSpy = spyOn(fsPromises, "mkdir").mockImplementation(async (path, options) => {
+				if (String(path) === tasksPath) {
+					const error = new Error("file already exists") as NodeJS.ErrnoException;
+					error.code = "EEXIST";
+					throw error;
+				}
+
+				await realMkdir(path, options);
+			});
+
+			try {
+				const { FileSystem: MockedFileSystem } = await import(`../file-system/operations.ts?eexist-file=${Date.now()}`);
+				const conflictFilesystem = new MockedFileSystem(projectDir);
+
+				await expect(conflictFilesystem.ensureBacklogStructure()).rejects.toMatchObject({ code: "EEXIST" });
+			} finally {
+				mkdirSpy.mockRestore();
 			}
 		});
 	});

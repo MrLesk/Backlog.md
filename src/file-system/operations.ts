@@ -1,4 +1,4 @@
-import { mkdir, rename, unlink } from "node:fs/promises";
+import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
@@ -211,13 +211,13 @@ export class FileSystem {
 			join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS),
 		];
 
-		//		for (const dir of directories) {
-		//			await mkdir(dir, { recursive: true });
-		//		}
 		for (const dir of directories) {
-			await mkdir(dir, { recursive: true }).catch((err: NodeJS.ErrnoException) => {
-				if (err.code !== "EEXIST") throw err;
-			});
+			try {
+				await mkdir(dir, { recursive: true });
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+				if (!(await stat(dir)).isDirectory()) throw error;
+			}
 		}
 	}
 
