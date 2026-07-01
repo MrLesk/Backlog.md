@@ -11,11 +11,28 @@ import { apiClient } from "../web/lib/api.ts";
 let activeRoot: Root | null = null;
 
 const setFormValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+	const ownerWindow = element.ownerDocument.defaultView ?? window;
+	globalThis.HTMLElement = ownerWindow.HTMLElement;
+	globalThis.HTMLTextAreaElement = ownerWindow.HTMLTextAreaElement;
 	const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
 	valueSetter?.call(element, value);
-	element.dispatchEvent(new window.Event("input", { bubbles: true }));
-	element.dispatchEvent(new window.Event("change", { bubbles: true }));
+	element.dispatchEvent(new ownerWindow.Event("input", { bubbles: true }));
+	element.dispatchEvent(new ownerWindow.Event("change", { bubbles: true }));
 };
+
+const clickElement = (element: Element) => {
+	const ownerWindow = element.ownerDocument.defaultView ?? window;
+	element.dispatchEvent(new ownerWindow.MouseEvent("click", { bubbles: true }));
+};
+
+const findButton = (container: HTMLElement, text: string): HTMLButtonElement | undefined =>
+	Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes(text));
+
+const findInputByValue = (container: HTMLElement, value: string): HTMLInputElement | undefined =>
+	Array.from(container.querySelectorAll("input")).find((input) => input.value === value);
+
+const findTextareaByValue = (container: HTMLElement, value: string): HTMLTextAreaElement | undefined =>
+	Array.from(container.querySelectorAll("textarea")).find((textarea) => textarea.value === value);
 
 const setupDom = () => {
 	const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost" });
@@ -24,6 +41,8 @@ const setupDom = () => {
 	globalThis.document = dom.window.document as Document;
 	globalThis.navigator = dom.window.navigator as Navigator;
 	globalThis.localStorage = dom.window.localStorage;
+	globalThis.HTMLElement = dom.window.HTMLElement;
+	globalThis.HTMLTextAreaElement = dom.window.HTMLTextAreaElement;
 	globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
 	globalThis.cancelAnimationFrame = (handle: number) => window.clearTimeout(handle);
 
@@ -203,7 +222,7 @@ describe("Web task popup Final Summary display", () => {
 		);
 		expect(editButton).toBeTruthy();
 		await act(async () => {
-			editButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			clickElement(editButton as HTMLButtonElement);
 			await Promise.resolve();
 		});
 
@@ -258,7 +277,7 @@ describe("Web task popup Final Summary display", () => {
 			);
 			expect(editButton).toBeTruthy();
 			await act(async () => {
-				editButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				clickElement(editButton as HTMLButtonElement);
 				await Promise.resolve();
 			});
 
@@ -279,7 +298,7 @@ describe("Web task popup Final Summary display", () => {
 			);
 			expect(addButton).toBeTruthy();
 			await act(async () => {
-				addButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				clickElement(addButton as HTMLButtonElement);
 				await Promise.resolve();
 			});
 
@@ -298,6 +317,133 @@ describe("Web task popup Final Summary display", () => {
 		} finally {
 			apiClient.updateTask = originalUpdateTask;
 		}
+	});
+
+	it("preserves dirty edit fields and applies clean refreshed fields while the modal stays open", async () => {
+		setupDom();
+
+		const task: Task = {
+			id: "TASK-13",
+			title: "Original title",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-01-01",
+			labels: [],
+			dependencies: [],
+			description: "Original description",
+			implementationPlan: "Original plan",
+			implementationNotes: "Original notes",
+			finalSummary: "Original final summary",
+		};
+		const refreshedTask: Task = {
+			...task,
+			title: "External title",
+			description: "External description",
+			implementationPlan: "External plan",
+			implementationNotes: "External notes",
+			finalSummary: "External final summary",
+		};
+		const container = document.getElementById("root");
+		expect(container).toBeTruthy();
+		activeRoot = createRoot(container as HTMLElement);
+
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+
+		const editButton = findButton(container as HTMLElement, "Edit");
+		expect(editButton).toBeTruthy();
+		await act(async () => {
+			clickElement(editButton as HTMLButtonElement);
+			await Promise.resolve();
+		});
+
+		const titleInput = findInputByValue(container as HTMLElement, "Original title");
+		const descriptionTextarea = findTextareaByValue(container as HTMLElement, "Original description");
+		expect(titleInput).toBeTruthy();
+		expect(descriptionTextarea).toBeTruthy();
+		await act(async () => {
+			setFormValue(titleInput!, "Local title");
+			setFormValue(descriptionTextarea!, "Local description");
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal task={refreshedTask} isOpen={true} onClose={() => {}} />
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(findInputByValue(container as HTMLElement, "Local title")).toBeTruthy();
+		expect(findTextareaByValue(container as HTMLElement, "Local description")).toBeTruthy();
+		expect(findTextareaByValue(container as HTMLElement, "External plan")).toBeTruthy();
+		expect(findTextareaByValue(container as HTMLElement, "External notes")).toBeTruthy();
+		expect(container?.textContent).toContain("Save");
+	});
+
+	it("preserves unsaved create fields when refreshed props change while the modal stays open", async () => {
+		setupDom();
+
+		const container = document.getElementById("root");
+		expect(container).toBeTruthy();
+		activeRoot = createRoot(container as HTMLElement);
+
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal
+						isOpen={true}
+						onClose={() => {}}
+						availableStatuses={["To Do", "In Progress", "Done"]}
+						definitionOfDoneDefaults={["Initial default"]}
+					/>
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+
+		const titleInput = (container as HTMLElement).querySelector(
+			"input[placeholder='Enter task title']",
+		) as HTMLInputElement | null;
+		const descriptionTextarea = (container as HTMLElement).querySelector("textarea") as HTMLTextAreaElement | null;
+		expect(titleInput).toBeTruthy();
+		expect(descriptionTextarea).toBeTruthy();
+		await act(async () => {
+			setFormValue(titleInput!, "Local draft title");
+			setFormValue(descriptionTextarea!, "Local draft description");
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal
+						isOpen={true}
+						onClose={() => {}}
+						availableStatuses={["Backlog", "To Do", "In Progress", "Done"]}
+						definitionOfDoneDefaults={["Refreshed default"]}
+					/>
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+
+		expect((container as HTMLElement).querySelector("input[placeholder='Enter task title']")).toHaveProperty(
+			"value",
+			"Local draft title",
+		);
+		expect((container as HTMLElement).querySelector("textarea")).toHaveProperty(
+			"value",
+			"Local draft description",
+		);
 	});
 
 	it("hides Final Summary section in preview when empty", () => {
