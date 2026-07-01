@@ -83,6 +83,23 @@ describe("CLI --plain for task create/edit", () => {
 		expect(result.stderr.toString()).toContain("Invalid ordinal: Infinity. Must be a non-negative number.");
 	});
 
+	it("does not add updated_date when CLI edit only changes ordinal", async () => {
+		await $`bun ${cliPath} task create "Ordinal-only edit" --plain`.cwd(TEST_DIR).quiet();
+
+		const result = await $`bun ${cliPath} task edit 1 --ordinal 500 --plain`.cwd(TEST_DIR).quiet();
+
+		const out = result.stdout.toString();
+		expect(result.exitCode).toBe(0);
+		expect(out).toContain("Task TASK-1 - Ordinal-only edit");
+		expect(out).toContain("Ordinal: 500");
+		expect(out).not.toContain("Updated:");
+
+		const core = new Core(TEST_DIR);
+		const task = await core.filesystem.loadTask("task-1");
+		expect(task?.ordinal).toBe(500);
+		expect(task?.updatedDate).toBeUndefined();
+	});
+
 	it("prints plain details after task edit --plain", async () => {
 		// Create base task first (without plain)
 		await $`bun ${cliPath} task create "Edit Me" --desc "First"`.cwd(TEST_DIR).quiet();

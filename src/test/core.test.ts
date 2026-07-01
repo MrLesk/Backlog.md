@@ -272,6 +272,59 @@ describe("Core", () => {
 			);
 		});
 
+		it("preserves updated_date when update input only changes ordinal", async () => {
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-30",
+					title: "Ordinal-only without updated date",
+					ordinal: 1000,
+				},
+				false,
+			);
+			await core.updateTaskFromInput("task-30", { ordinal: 500 }, false);
+
+			const freshTask = await core.filesystem.loadTask("task-30");
+			expect(freshTask?.ordinal).toBe(500);
+			expect(freshTask?.updatedDate).toBeUndefined();
+
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-31",
+					title: "Ordinal-only with updated date",
+					updatedDate: "2025-06-08 09:30",
+					ordinal: 1000,
+				},
+				false,
+			);
+			await core.updateTaskFromInput("task-31", { ordinal: 500 }, false);
+
+			const datedTask = await core.filesystem.loadTask("task-31");
+			expect(datedTask?.ordinal).toBe(500);
+			expect(datedTask?.updatedDate).toBe("2025-06-08 09:30");
+		});
+
+		it("sets updated_date when an ordinal edit also changes task content", async () => {
+			await core.createTask(
+				{
+					...sampleTask,
+					id: "task-32",
+					title: "Ordinal plus content",
+					ordinal: 1000,
+				},
+				false,
+			);
+
+			await core.updateTaskFromInput("task-32", { title: "Updated ordinal plus content", ordinal: 500 }, false);
+
+			const updatedTask = await core.filesystem.loadTask("task-32");
+			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
+			expect(updatedTask?.title).toBe("Updated ordinal plus content");
+			expect(updatedTask?.ordinal).toBe(500);
+			expect(updatedTask?.updatedDate).toBe(today);
+		});
+
 		it("should NOT match numeric ID with typos when using custom prefix (BACK-364)", async () => {
 			// Configure custom prefix
 			const config = await core.filesystem.loadConfig();

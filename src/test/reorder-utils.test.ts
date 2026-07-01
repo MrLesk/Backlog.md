@@ -15,7 +15,7 @@ let core: Core;
 
 const FIXED_DATE = "2025-01-01 00:00";
 
-const buildTask = (id: string, status: string, ordinal?: number): Task => ({
+const buildTask = (id: string, status: string, ordinal?: number, updatedDate?: string): Task => ({
 	id,
 	title: `Task ${id}`,
 	status,
@@ -24,6 +24,7 @@ const buildTask = (id: string, status: string, ordinal?: number): Task => ({
 	labels: [],
 	dependencies: [],
 	...(ordinal !== undefined ? { ordinal } : {}),
+	...(updatedDate !== undefined ? { updatedDate } : {}),
 });
 
 beforeEach(async () => {
@@ -105,9 +106,9 @@ describe("resolveOrdinalConflicts", () => {
 });
 
 describe("Core.reorderTask", () => {
-	const createTasks = async (tasks: Array<[string, string, number?]>) => {
-		for (const [id, status, ordinal] of tasks) {
-			await core.createTask(buildTask(id, status, ordinal), false);
+	const createTasks = async (tasks: Array<[string, string, number?, string?]>) => {
+		for (const [id, status, ordinal, updatedDate] of tasks) {
+			await core.createTask(buildTask(id, status, ordinal, updatedDate), false);
 		}
 	};
 
@@ -154,6 +155,29 @@ describe("Core.reorderTask", () => {
 		expect(task1?.ordinal).toBe(1000);
 		expect(task2?.ordinal).toBe(3000);
 		expect(task3?.ordinal).toBe(2000);
+	});
+
+	it("preserves updatedDate when reorder only changes ordinals", async () => {
+		await createTasks([
+			["task-1", "To Do", 1000, "2025-01-02 10:00"],
+			["task-2", "To Do", 1000, "2025-01-03 10:00"],
+			["task-3", "To Do", 1000, "2025-01-04 10:00"],
+		]);
+
+		const result = await core.reorderTask({
+			taskId: "task-3",
+			targetStatus: "To Do",
+			orderedTaskIds: ["task-1", "task-3", "task-2"],
+		});
+
+		expect(result.changedTasks.map((task) => task.id).sort()).toEqual(["TASK-2", "TASK-3"]);
+
+		const task2 = await core.filesystem.loadTask("task-2");
+		const task3 = await core.filesystem.loadTask("task-3");
+		expect(task2?.ordinal).toBe(3000);
+		expect(task2?.updatedDate).toBe("2025-01-03 10:00");
+		expect(task3?.ordinal).toBe(2000);
+		expect(task3?.updatedDate).toBe("2025-01-04 10:00");
 	});
 
 	it("updates status and ordinal when moving across columns", async () => {

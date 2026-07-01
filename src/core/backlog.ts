@@ -99,6 +99,14 @@ interface TaskQueryOptions {
 	includeCrossBranch?: boolean;
 }
 
+interface TaskSaveOptions {
+	touchUpdatedDate?: boolean;
+}
+
+interface BulkTaskSaveOptions {
+	touchUpdatedDate?: boolean | ((task: Task) => boolean);
+}
+
 export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed";
 
 export interface TuiTaskEditResult {
@@ -180,6 +188,40 @@ function formatAvailableIndexHint(items: AcceptanceCriterion[], emptyMessage: st
 	const last = indexes[indexes.length - 1] ?? first;
 	const range = first === last ? `#${first}` : `#${first}-#${last}`;
 	return `Available indexes: ${range}.`;
+}
+
+function snapshotTaskWithoutOrderingDate(task: Task): string {
+	const {
+		ordinal: _ordinal,
+		updatedDate: _updatedDate,
+		filePath: _filePath,
+		lastModified: _lastModified,
+		source: _source,
+		branch: _branch,
+		parentTaskTitle: _parentTaskTitle,
+		subtaskSummaries: _subtaskSummaries,
+		...comparable
+	} = task;
+
+	return JSON.stringify(comparable);
+}
+
+function isOrdinalOnlyTaskChange(original: Task, updated: Task): boolean {
+	return (
+		(original.ordinal ?? null) !== (updated.ordinal ?? null) &&
+		snapshotTaskWithoutOrderingDate(original) === snapshotTaskWithoutOrderingDate(updated)
+	);
+}
+
+function isOrdinalOnlyTaskChangeFromSnapshot(
+	originalSnapshot: string,
+	originalOrdinal: number | undefined,
+	updated: Task,
+): boolean {
+	return (
+		(originalOrdinal ?? null) !== (updated.ordinal ?? null) &&
+		originalSnapshot === snapshotTaskWithoutOrderingDate(updated)
+	);
 }
 
 export class Core {
@@ -1086,7 +1128,7 @@ export class Core {
 		return filepath;
 	}
 
-	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
+	async updateTask(task: Task, autoCommit?: boolean, options: TaskSaveOptions = {}): Promise<void> {
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
@@ -1095,8 +1137,9 @@ export class Core {
 		const newStatus = task.status ?? "";
 		const statusChanged = oldStatus !== newStatus;
 
-		// Always set updatedDate when updating a task
-		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		if (options.touchUpdatedDate !== false) {
+			task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		}
 
 		await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
@@ -1687,6 +1730,8 @@ export class Core {
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
+		const originalSnapshot = snapshotTaskWithoutOrderingDate(task);
+		const originalOrdinal = task.ordinal;
 
 		const requestedStatus = input.status?.trim().toLowerCase();
 		if (requestedStatus === "draft") {
@@ -1701,7 +1746,9 @@ export class Core {
 			return task;
 		}
 
-		await this.updateTask(task, autoCommit);
+		await this.updateTask(task, autoCommit, {
+			touchUpdatedDate: !isOrdinalOnlyTaskChangeFromSnapshot(originalSnapshot, originalOrdinal, task),
+		});
 		const refreshed = await this.fs.loadTask(taskId);
 		return refreshed ?? task;
 	}
@@ -1902,10 +1949,17 @@ export class Core {
 		return await this.updateTaskFromInput(taskId, input, autoCommit);
 	}
 
-	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+	async updateTasksBulk(
+		tasks: Task[],
+		commitMessage?: string,
+		autoCommit?: boolean,
+		options: BulkTaskSaveOptions = {},
+	): Promise<void> {
 		// Update all tasks without committing individually
 		for (const task of tasks) {
-			await this.updateTask(task, false); // Don't auto-commit each one
+			const touchUpdatedDate =
+				typeof options.touchUpdatedDate === "function" ? options.touchUpdatedDate(task) : options.touchUpdatedDate;
+			await this.updateTask(task, false, { touchUpdatedDate }); // Don't auto-commit each one
 		}
 
 		// Commit all changes at once if auto-commit is enabled
@@ -2032,6 +2086,12 @@ export class Core {
 				changedTasks,
 				params.commitMessage ?? `Reorder tasks in ${targetStatus}`,
 				params.autoCommit,
+				{
+					touchUpdatedDate: (task) => {
+						const original = originalMap.get(task.id);
+						return original ? !isOrdinalOnlyTaskChange(original, task) : true;
+					},
+				},
 			);
 		}
 
