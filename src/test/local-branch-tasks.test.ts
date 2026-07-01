@@ -317,23 +317,25 @@ New task from feature branch`,
 			expect(task456?.source).toBe("local-branch");
 		});
 
-		it("should hydrate via pinned SHA when the branch is deleted between indexing and hydration", async () => {
-			// Regression for the "fatal: failed to stat '<branch>:<path>'" race: the
-			// branch resolves while the index is built (ls-tree) but is gone by the time
-			// `git show` runs. Hydrating from the SHA captured at index time must succeed.
+		it("should index and hydrate via pinned SHA when the branch is deleted after resolving", async () => {
+			// Regression for the "fatal: failed to stat '<branch>:<path>'" race:
+			// once the branch resolves to a SHA, every later index/hydrate operation
+			// must use the SHA so branch deletion cannot suppress hydration.
 			const SHA = "deadbeefcafe0000deadbeefcafe0000deadbeef";
 			let showFileCalls = 0;
 			const mockGit = {
 				getCurrentBranch: async () => "main",
 				listRecentBranches: async () => ["main", "feature-gone"],
 				listFilesInTree: async (ref: string) => {
-					// At index time the branch still resolves.
-					if (ref === "feature-gone") {
-						return ["backlog/tasks/task-741 - Long Title.md"];
+					if (ref !== SHA) {
+						throw new Error(`unexpected list ref ${ref}`);
 					}
-					return [];
+					return ["backlog/tasks/task-741 - Long Title.md"];
 				},
-				getBranchLastModifiedMap: async () => {
+				getBranchLastModifiedMap: async (ref: string) => {
+					if (ref !== SHA) {
+						throw new Error(`unexpected timestamp ref ${ref}`);
+					}
 					const map = new Map<string, Date>();
 					map.set("backlog/tasks/task-741 - Long Title.md", new Date("2025-06-13"));
 					return map;
@@ -360,7 +362,21 @@ dependencies: []
 				},
 			} as unknown as GitOperations;
 
-			const tasks = await loadLocalBranchTasks(mockGit, null);
+			const localTasks: Task[] = [
+				{
+					id: "TASK-741",
+					title: "Local Long Title",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-01",
+					updatedDate: "2025-06-01",
+					labels: [],
+					dependencies: [],
+					source: "local",
+				},
+			];
+
+			const tasks = await loadLocalBranchTasks(mockGit, null, undefined, localTasks);
 
 			const task741 = tasks.find((t) => t.id === "TASK-741");
 			expect(task741).toBeDefined();
@@ -375,8 +391,7 @@ dependencies: []
 			const mockGit = {
 				getCurrentBranch: async () => "main",
 				listRecentBranches: async () => ["main", "feature-a"],
-				listFilesInTree: async (ref: string) =>
-					ref === "feature-a" ? ["backlog/tasks/task-9 - Plain.md"] : [],
+				listFilesInTree: async (ref: string) => (ref === "feature-a" ? ["backlog/tasks/task-9 - Plain.md"] : []),
 				getBranchLastModifiedMap: async () => {
 					const map = new Map<string, Date>();
 					map.set("backlog/tasks/task-9 - Plain.md", new Date("2025-06-13"));

@@ -139,16 +139,17 @@ export async function buildRemoteTaskIndex(
 			try {
 				const listPath = stateCollector ? backlogDir : `${backlogDir}/tasks`;
 
+				// Pin the branch tip before indexing so list/log/show all read the same
+				// immutable tree even if the branch is deleted/renamed/moved mid-load.
+				const commit = await resolveCommitSafe(git, ref);
+				const indexRef = commit ?? ref;
+
 				// Get backlog files for this branch
-				const files = await git.listFilesInTree(ref, listPath);
+				const files = await git.listFilesInTree(indexRef, listPath);
 				if (files.length === 0) continue;
 
-				// Pin the branch tip to an immutable SHA so later hydration survives
-				// the branch being deleted/renamed/moved (see resolveCommit).
-				const commit = await resolveCommitSafe(git, ref);
-
 				// Get last modified times for all files in one pass
-				const lm = await git.getBranchLastModifiedMap(ref, listPath, sinceDays);
+				const lm = await git.getBranchLastModifiedMap(indexRef, listPath, sinceDays);
 
 				// Build regex for configured prefix (no ^ anchor for path matching)
 				const idRegex = buildPathIdRegex(prefix);
@@ -276,16 +277,17 @@ export async function buildLocalBranchTaskIndex(
 			try {
 				const listPath = stateCollector ? backlogDir : `${backlogDir}/tasks`;
 
+				// Pin the branch tip before indexing so list/log/show all read the same
+				// immutable tree even if the branch is deleted/renamed/moved mid-load.
+				const commit = await resolveCommitSafe(git, br);
+				const indexRef = commit ?? br;
+
 				// Get backlog files in this branch
-				const files = await git.listFilesInTree(br, listPath);
+				const files = await git.listFilesInTree(indexRef, listPath);
 				if (files.length === 0) continue;
 
-				// Pin the branch tip to an immutable SHA so later hydration survives
-				// the branch being deleted/renamed/moved (see resolveCommit).
-				const commit = await resolveCommitSafe(git, br);
-
 				// Get last modified times for all files in one pass
-				const lm = await git.getBranchLastModifiedMap(br, listPath, sinceDays);
+				const lm = await git.getBranchLastModifiedMap(indexRef, listPath, sinceDays);
 
 				// Build regex for configured prefix (no ^ anchor for path matching)
 				const idRegex = buildPathIdRegex(prefix);

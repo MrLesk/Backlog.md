@@ -566,9 +566,12 @@ export class GitOperations {
 			return null;
 		}
 		try {
-			const { stdout } = await this.execGit(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
-				readOnly: true,
-			});
+			const { stdout } = await this.execGit(
+				["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`],
+				{
+					readOnly: true,
+				},
+			);
 			const sha = stdout.trim();
 			return sha || null;
 		} catch {
