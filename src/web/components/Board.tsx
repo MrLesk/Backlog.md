@@ -29,6 +29,7 @@ interface BoardProps {
   filterLabels?: string[];
   filterPriority?: string;
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
+  hideEmptyColumns?: boolean;
 }
 
 const PRIORITY_OPTIONS = [
@@ -62,6 +63,7 @@ const Board: React.FC<BoardProps> = ({
   filterLabels = [],
   filterPriority = '',
   onFiltersChange,
+  hideEmptyColumns = false,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
@@ -392,6 +394,19 @@ const Board: React.FC<BoardProps> = ({
     return lanes.filter(l => laneTaskCount(l.key) > 0);
   }, [laneMode, lanes, laneMetadataTasksByLane]);
 
+  // When hideEmptyColumns is on, filter out status columns with no tasks across all visible lanes.
+  // While a task is being dragged we keep every column visible so empty statuses remain drop targets.
+  const isDragging = dragSourceStatus !== null;
+  const visibleStatuses = useMemo(() => {
+    if (!hideEmptyColumns || isDragging) return statuses;
+    return statuses.filter(status => {
+      for (const statusMap of displayTasksByLane.values()) {
+        if ((statusMap.get(status) ?? []).length > 0) return true;
+      }
+      return false;
+    });
+  }, [hideEmptyColumns, isDragging, statuses, displayTasksByLane]);
+
   // Only show lane headers when multiple lanes exist
   const shouldShowLaneHeaders = useMemo(() => {
     if (laneMode !== 'milestone') return false;
@@ -583,8 +598,8 @@ const Board: React.FC<BoardProps> = ({
                 {/* Lane content - columns */}
                 {!isCollapsed && (
                   <div className="p-4">
-                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${statuses.length}, minmax(0, 1fr))` }}>
-                      {statuses.map((status) => (
+                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}>
+                      {visibleStatuses.map((status) => (
                         <div key={`${lane.key}-${status}`} className="min-w-0">
                           <TaskColumn
                             title={status}
@@ -618,7 +633,7 @@ const Board: React.FC<BoardProps> = ({
       ) : (
         <div className="overflow-x-auto pb-2">
           <div className="flex flex-row flex-nowrap gap-4 w-full">
-            {statuses.map((status) => (
+            {visibleStatuses.map((status) => (
               <div key={status} className="flex-1 min-w-[16rem]">
                 <TaskColumn
                   title={status}

@@ -164,6 +164,19 @@ describe("Config commands", () => {
 		expect(portOutput.trim()).toBe("7001");
 	});
 
+	it("round-trips hideEmptyColumns through config get/set/list", async () => {
+		const defaultGet = await $`bun ${CLI_PATH} config get hideEmptyColumns`.cwd(TEST_DIR).text();
+		expect(defaultGet.trim()).toBe("false");
+
+		await $`bun ${CLI_PATH} config set hideEmptyColumns true`.cwd(TEST_DIR).quiet();
+
+		const afterSet = await $`bun ${CLI_PATH} config get hideEmptyColumns`.cwd(TEST_DIR).text();
+		expect(afterSet.trim()).toBe("true");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("hideEmptyColumns: true");
+	});
+
 	it("surfaces milestones in config get/list from milestone files", async () => {
 		await core.filesystem.createMilestone("Release 1");
 
