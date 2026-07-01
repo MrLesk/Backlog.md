@@ -94,6 +94,14 @@ export class ContentStore {
 		return this.getSnapshot();
 	}
 
+	async refreshTasks(): Promise<void> {
+		if (!this.initialized) {
+			await this.ensureInitialized();
+			return;
+		}
+		await this.refreshTasksFromDisk();
+	}
+
 	getTasks(filter?: TaskListFilter): Task[] {
 		if (!this.initialized) {
 			throw new Error("ContentStore not initialized. Call ensureInitialized() first.");
@@ -662,6 +670,18 @@ export class ContentStore {
 		return JSON.stringify(previous) !== JSON.stringify(next);
 	}
 
+	private hasTaskCollectionChanged(nextTasks: Task[]): boolean {
+		const nextCachedTasks = sortByTaskId(nextTasks);
+		if (this.cachedTasks.length !== nextCachedTasks.length) {
+			return true;
+		}
+
+		return nextCachedTasks.some((task, index) => {
+			const previous = this.cachedTasks[index];
+			return !previous || this.hasTaskChanged(previous, task);
+		});
+	}
+
 	private async refreshTasksFromDisk(expectedId?: string, previous?: Task): Promise<void> {
 		const tasks = await this.retryRead(
 			async () => this.loadTasksWithLoader(),
@@ -680,6 +700,9 @@ export class ContentStore {
 			},
 		);
 		if (!tasks) {
+			return;
+		}
+		if (!this.hasTaskCollectionChanged(tasks)) {
 			return;
 		}
 		this.replaceTasks(tasks);
