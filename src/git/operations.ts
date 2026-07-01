@@ -549,6 +549,35 @@ export class GitOperations {
 		const { stdout } = await this.execGit(["show", `${ref}:${filePath}`], { readOnly: true });
 		return stdout;
 	}
+
+	/**
+	 * Resolve a ref (branch name, tag, remote-tracking ref, ...) to its immutable
+	 * commit SHA. Returns null when the ref cannot be resolved.
+	 *
+	 * Used to pin cross-branch task hydration to a fixed commit: the task index is
+	 * built (ls-tree) and the content fetched (git show) in two separate steps that
+	 * can be seconds apart on large repos. If the branch is deleted, renamed or moved
+	 * in between, `git show <branch>:<path>` fails ("failed to stat ...") and the task
+	 * is silently dropped. Resolving the SHA up front and hydrating via
+	 * `git show <sha>:<path>` makes the second step immune to ref movement.
+	 */
+	async resolveCommit(ref: string): Promise<string | null> {
+		if (!(await this.isRepository())) {
+			return null;
+		}
+		try {
+			const { stdout } = await this.execGit(
+				["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`],
+				{
+					readOnly: true,
+				},
+			);
+			const sha = stdout.trim();
+			return sha || null;
+		} catch {
+			return null;
+		}
+	}
 	/**
 	 * Build a map of file -> last modified date for all files in a directory in one git log pass
 	 * Much more efficient than individual getFileLastModifiedTime calls

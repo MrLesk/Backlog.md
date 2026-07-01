@@ -316,5 +316,103 @@ New task from feature branch`,
 			expect(task456?.title).toBe("New Remote Task");
 			expect(task456?.source).toBe("local-branch");
 		});
+
+		it("should index and hydrate via pinned SHA when the branch is deleted after resolving", async () => {
+			// Regression for the "fatal: failed to stat '<branch>:<path>'" race:
+			// once the branch resolves to a SHA, every later index/hydrate operation
+			// must use the SHA so branch deletion cannot suppress hydration.
+			const SHA = "deadbeefcafe0000deadbeefcafe0000deadbeef";
+			let showFileCalls = 0;
+			const mockGit = {
+				getCurrentBranch: async () => "main",
+				listRecentBranches: async () => ["main", "feature-gone"],
+				listFilesInTree: async (ref: string) => {
+					if (ref !== SHA) {
+						throw new Error(`unexpected list ref ${ref}`);
+					}
+					return ["backlog/tasks/task-741 - Long Title.md"];
+				},
+				getBranchLastModifiedMap: async (ref: string) => {
+					if (ref !== SHA) {
+						throw new Error(`unexpected timestamp ref ${ref}`);
+					}
+					const map = new Map<string, Date>();
+					map.set("backlog/tasks/task-741 - Long Title.md", new Date("2025-06-13"));
+					return map;
+				},
+				resolveCommit: async (ref: string) => (ref === "feature-gone" ? SHA : null),
+				showFile: async (ref: string, _file: string) => {
+					showFileCalls++;
+					// Simulate the branch having been deleted: only the SHA still resolves.
+					if (ref === "feature-gone") {
+						throw new Error("fatal: failed to stat 'feature-gone:backlog/tasks/task-741 - Long Title.md'");
+					}
+					if (ref !== SHA) {
+						throw new Error(`unexpected ref ${ref}`);
+					}
+					return `---
+id: task-741
+title: Long Title
+status: To Do
+assignee: []
+created_date: 2025-06-13
+labels: []
+dependencies: []
+---\n\n## Description\n\nPinned task`;
+				},
+			} as unknown as GitOperations;
+
+			const localTasks: Task[] = [
+				{
+					id: "TASK-741",
+					title: "Local Long Title",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-01",
+					updatedDate: "2025-06-01",
+					labels: [],
+					dependencies: [],
+					source: "local",
+				},
+			];
+
+			const tasks = await loadLocalBranchTasks(mockGit, null, undefined, localTasks);
+
+			const task741 = tasks.find((t) => t.id === "TASK-741");
+			expect(task741).toBeDefined();
+			expect(task741?.title).toBe("Long Title");
+			// Display branch must remain the human-readable name, not the SHA.
+			expect(task741?.branch).toBe("feature-gone");
+			expect(showFileCalls).toBe(1);
+		});
+
+		it("should still hydrate via branch name when resolveCommit is unavailable (fallback)", async () => {
+			// Older GitOperations / mocks without resolveCommit must keep working.
+			const mockGit = {
+				getCurrentBranch: async () => "main",
+				listRecentBranches: async () => ["main", "feature-a"],
+				listFilesInTree: async (ref: string) => (ref === "feature-a" ? ["backlog/tasks/task-9 - Plain.md"] : []),
+				getBranchLastModifiedMap: async () => {
+					const map = new Map<string, Date>();
+					map.set("backlog/tasks/task-9 - Plain.md", new Date("2025-06-13"));
+					return map;
+				},
+				showFile: async (ref: string) => {
+					if (ref !== "feature-a") throw new Error(`unexpected ref ${ref}`);
+					return `---
+id: task-9
+title: Plain
+status: To Do
+assignee: []
+created_date: 2025-06-13
+labels: []
+dependencies: []
+---\n\n## Description\n\nPlain task`;
+				},
+			} as unknown as GitOperations;
+
+			const tasks = await loadLocalBranchTasks(mockGit, null);
+			expect(tasks.find((t) => t.id === "TASK-9")?.title).toBe("Plain");
+		});
 	});
 });

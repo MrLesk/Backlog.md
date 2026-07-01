@@ -140,6 +140,63 @@ describe("Parallel remote task loading", () => {
 		expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to fetch remote tasks:", expect.any(Error));
 	});
 
+	it("should index and hydrate remote tasks via pinned SHA when the branch moves after resolving", async () => {
+		const SHA = "feedfacecafe0000feedfacecafe0000feedface";
+		const mockGitOperations = {
+			fetch: async () => {},
+			listRecentRemoteBranches: async () => ["feature-gone"],
+			resolveCommit: async (ref: string) => (ref === "origin/feature-gone" ? SHA : null),
+			listFilesInTree: async (ref: string) => {
+				if (ref !== SHA) {
+					throw new Error(`unexpected list ref ${ref}`);
+				}
+				return ["backlog/tasks/task-8 - Remote Task.md"];
+			},
+			getBranchLastModifiedMap: async (ref: string) => {
+				if (ref !== SHA) {
+					throw new Error(`unexpected timestamp ref ${ref}`);
+				}
+				return new Map([["backlog/tasks/task-8 - Remote Task.md", new Date("2025-06-13")]]);
+			},
+			showFile: async (ref: string) => {
+				if (ref !== SHA) {
+					throw new Error(`unexpected show ref ${ref}`);
+				}
+				return `---
+id: task-8
+title: Remote Task
+status: In Progress
+assignee: []
+created_date: 2025-06-13
+labels: []
+dependencies: []
+---\n\n## Description\n\nPinned remote task`;
+			},
+		} as unknown as GitOperations;
+
+		const localTasks: Task[] = [
+			{
+				id: "TASK-8",
+				title: "Local Remote Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-01",
+				updatedDate: "2025-06-01",
+				labels: [],
+				dependencies: [],
+				source: "local",
+			},
+		];
+
+		const remoteTasks = await loadRemoteTasks(mockGitOperations, null, undefined, localTasks);
+
+		const task8 = remoteTasks.find((task) => task.id === "TASK-8");
+		expect(task8).toBeDefined();
+		expect(task8?.title).toBe("Remote Task");
+		expect(task8?.source).toBe("remote");
+		expect(task8?.branch).toBe("feature-gone");
+	});
+
 	it("should resolve task conflicts correctly", async () => {
 		const statuses = ["To Do", "In Progress", "Done"];
 

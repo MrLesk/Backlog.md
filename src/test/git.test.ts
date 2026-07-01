@@ -27,6 +27,30 @@ describe("Git Operations", () => {
 		});
 	});
 
+	describe("resolveCommit", () => {
+		it("should terminate rev-parse options before the ref", async () => {
+			const git = new GitOperations(process.cwd());
+			let capturedArgs: string[] = [];
+			const internals = git as unknown as {
+				isRepository: () => Promise<boolean>;
+				execGit: (args: string[], options?: unknown) => Promise<{ stdout: string; stderr: string }>;
+			};
+			internals.isRepository = async () => true;
+			internals.execGit = async (args: string[]) => {
+				capturedArgs = args;
+				return {
+					stdout: "abc123\n",
+					stderr: "",
+				};
+			};
+
+			const sha = await git.resolveCommit("-raw-ref");
+
+			expect(sha).toBe("abc123");
+			expect(capturedArgs).toEqual(["rev-parse", "--verify", "--quiet", "--end-of-options", "-raw-ref^{commit}"]);
+		});
+	});
+
 	// Note: Skipping integration tests that require git repository setup
 	// These tests can be enabled for local development but may timeout in CI
 });
