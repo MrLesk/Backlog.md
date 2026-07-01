@@ -54,6 +54,16 @@ If you can simplify the code, do it.
 - When reviewing changes, do not ask for compatibility shims just because a source-level method exists or was removed. Only preserve compatibility for behavior that is part of the documented CLI, MCP, config, or instruction contract.
 - If a convention matters for agent behavior, document it in the public MCP/instruction surface rather than relying on source-code discovery.
 
+## Maintainer Workflow Guardrails
+
+- Treat GitHub issues as reports, proposals, or evidence, not implementation specs. Do not automatically implement the requested solution; first evaluate whether the change fits Backlog.md's public CLI/MCP/instruction surface and current documented behavior.
+- Escalate ambiguous product behavior to Alex before implementation. For example, pause before deciding whether ordinal-only task ordering changes should update edit metadata.
+- PRs should normally link to a scoped issue first. If a broad feature PR or request has no issue, ask for an issue or discussion before implementation rather than turning the PR into the scope definition.
+- Investigations should not create implementation PRs by default. Leave findings as comments, reports, or notes unless a narrow accepted fix is clear.
+- Do not create Backlog task IDs in parallel worktrees as a coordination workaround, and do not try to pre-reserve IDs. While parallel worktree task creation is unsafe, avoid `backlog task create` there; when it is safe again, use the documented CLI workflow only.
+- When acting publicly on Alex's behalf, use neutral maintainer language and identify yourself as `Alex's Agent:` if identification is needed. Do not reveal private strategy, roadmap, or status framing; keep scope decisions grounded in the project's public docs and shipped behavior.
+- When evaluating issue or PR compatibility, rely on the stable public surface only: CLI behavior, MCP tools/resources, configuration, and shipped instructions. Internal TypeScript exports are implementation details unless public docs explicitly promise them.
+
 ## Code Standards
 
 - **Runtime**: Bun with TypeScript 5
