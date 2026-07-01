@@ -1,6 +1,6 @@
 ---
-id: BACK-465
-title: 'Detect and warn about duplicate task IDs in web, TUI, and MCP interfaces'
+id: BACK-516
+title: Detect and warn about duplicate task IDs
 status: In Progress
 assignee:
   - claude
