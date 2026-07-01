@@ -144,6 +144,11 @@ describe("CLI Integration", () => {
 			expect(taskFinalization).not.toContain("backlog task edit BACK-123 -s Done");
 			expect(taskCreation).not.toContain("task_create");
 			expect(taskCreation).not.toContain("task_search");
+			expect(taskCreation).toContain("### Shell Quoting for Literal Backticks");
+			expect(taskCreation).toContain("backlog task create 'Document `backlog init` setup'");
+			expect(taskCreation).toContain(
+				"Backlog.md cannot recover the original text after the shell has already executed it",
+			);
 			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");
 			expect(initRequired).toContain("backlog init --defaults");
 		}, 15_000);

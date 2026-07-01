@@ -125,6 +125,19 @@ The same shape works for `--plan`, `--notes`, `--comment`, `--final-summary`, an
   backlog task create "Feature" --desc "Line1`nLine2`n`nFinal paragraph"
   ```
 
+### Literal backticks in task text
+
+When task text includes Markdown code spans, quote it so the shell passes the backticks literally. Unescaped backticks in double-quoted or unquoted arguments are command substitution in many shells, and Backlog.md cannot recover the original text after the shell has already executed it.
+
+Use single-quoted CLI arguments for values that contain literal backticks:
+
+```bash
+backlog task create 'Document `backlog init` setup' \
+  --ac 'Instructions mention `backlog init --defaults` literally'
+```
+
+If single quotes are not practical in your shell, escape each literal backtick before running the command. Do not rely on Backlog.md to sanitize accidental command output after substitution.
+
 ## Milestone Management
 
 Milestones are managed through milestone files. Use CLI commands instead of editing milestone markdown directly so IDs, filenames, task references, and archive state stay consistent.

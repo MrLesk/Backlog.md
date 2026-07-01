@@ -77,6 +77,19 @@ backlog task create "Add settings docs" \
   --ref https://example.com/spec
 ```
 
+### Shell Quoting for Literal Backticks
+
+When task text includes Markdown code spans, quote it so the shell passes the backticks literally. Unescaped backticks in double-quoted or unquoted arguments are command substitution in many shells, and Backlog.md cannot recover the original text after the shell has already executed it.
+
+Use single-quoted CLI arguments for values that contain literal backticks:
+
+```bash
+backlog task create 'Document `backlog init` setup' \
+  --ac 'Instructions mention `backlog init --defaults` literally'
+```
+
+If single quotes are not practical in your shell, escape each literal backtick before running the command. Do not rely on Backlog.md to sanitize accidental command output after substitution.
+
 ### Acceptance Criteria
 
 Acceptance criteria define the expected behavior, not implementation steps.
