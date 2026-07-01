@@ -1,10 +1,12 @@
 ## Summary
 Briefly explain the purpose of this pull request.
 
-## Related Tasks
-List task IDs this PR closes, e.g. `closes task-29`.
+## Related Issue or Task
+Link the issue or task this PR closes, e.g. `closes #123` or `closes task-29`.
 
-> **📋 Important:** All PRs must have an associated task in the backlog.
+> **📋 Important:** Please discuss the change in an issue before opening a PR.
+> - If no issue exists, open one first so maintainers and contributors can agree that the proposal fits the current project scope before implementation.
+> - All PRs must have an associated task in the backlog.
 > - If no task exists, create one first using: `backlog task create "Your task title"`
 > - Follow the [task guidelines](../src/guidelines/agent-guidelines.md) when creating tasks
 > - Tasks should be atomic, testable, and well-defined with clear acceptance criteria
