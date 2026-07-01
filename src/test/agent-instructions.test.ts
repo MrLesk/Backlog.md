@@ -229,6 +229,17 @@ describe("addAgentInstructions", () => {
 		expect(ansiCIdx).toBeGreaterThan(appendIdx);
 	});
 
+	it("agent guidelines document literal backtick shell quoting (BACK-270)", async () => {
+		const guideline = await _loadAgentGuideline(AGENT_GUIDELINES);
+		const sectionMatch = guideline.match(/### Literal Backticks in CLI Task Text[\s\S]*?(?=\n### |\n## |$)/);
+		expect(sectionMatch).not.toBeNull();
+		const section = sectionMatch?.[0] ?? "";
+
+		expect(section).toContain("single-quoted CLI arguments");
+		expect(section).toContain("backlog task create 'Document `backlog init` setup'");
+		expect(section).toContain("Backlog.md cannot recover the original text after the shell has already executed it");
+	});
+
 	// BACK-431 / issue #595: option help text must not advertise shell forms that AI
 	// agent sandboxes reject. Help text is what `--help` surfaces and what agents echo
 	// when reasoning about how to call the CLI.

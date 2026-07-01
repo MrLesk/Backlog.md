@@ -602,6 +602,19 @@ Prefer forms **1** and **2** when running under Claude Code, Codex, or any agent
 
 Do not expect the literal sequence `\n` inside double quotes to become a newline. The CLI stores the backslash and `n` as written.
 
+### Literal Backticks in CLI Task Text
+
+When a task title, description, acceptance criterion, note, comment, or summary needs Markdown code spans, quote the value so the shell passes the backticks literally. Unescaped backticks in double-quoted or unquoted arguments are command substitution in many shells, and Backlog.md cannot recover the original text after the shell has already executed it.
+
+Prefer single-quoted CLI arguments for values that contain literal backticks:
+
+```bash
+backlog task create 'Document `backlog init` setup' \
+  --ac 'Instructions mention `backlog init --defaults` literally'
+```
+
+If single quotes are not practical in your shell, escape each literal backtick before running the command. Do not rely on Backlog.md to sanitize accidental command output after substitution.
+
 ### Implementation Notes Formatting
 
 - Keep implementation notes concise and time-ordered; focus on progress, decisions, and blockers.
