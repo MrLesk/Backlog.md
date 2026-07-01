@@ -60,7 +60,7 @@ If you can simplify the code, do it.
 - Escalate ambiguous product behavior to Alex before implementation. For example, pause before deciding whether ordinal-only task ordering changes should update edit metadata.
 - PRs should normally link to a scoped issue first. If a broad feature PR or request has no issue, ask for an issue or discussion before implementation rather than turning the PR into the scope definition.
 - Investigations should not create implementation PRs by default. Leave findings as comments, reports, or notes unless a narrow accepted fix is clear.
-- Do not create Backlog task IDs in parallel worktrees as a coordination workaround, and do not try to pre-reserve IDs. While parallel worktree task creation is unsafe, avoid `backlog task create` there; when it is safe again, use the documented CLI workflow only.
+- Use the documented `backlog task create` workflow for task creation. Do not manually edit task files, pick IDs, pre-reserve IDs, or create coordination-only IDs as a workaround; rely on the CLI allocator and lock to assign task IDs.
 - When acting publicly on Alex's behalf, use neutral maintainer language and identify yourself as `Alex's Agent:` if identification is needed. Do not reveal private strategy, roadmap, or status framing; keep scope decisions grounded in the project's public docs and shipped behavior.
 - When evaluating issue or PR compatibility, rely on the stable public surface only: CLI behavior, MCP tools/resources, configuration, and shipped instructions. Internal TypeScript exports are implementation details unless public docs explicitly promise them.
 
