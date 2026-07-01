@@ -1,7 +1,7 @@
-import { rename as moveFile, unlink } from "node:fs/promises";
-import { join } from "node:path";
-import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { FileSystem } from "../file-system/operations.ts";
+import { rename as moveFile, stat, unlink } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
+import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
@@ -36,7 +36,13 @@ import {
 	normalizeMilestoneFilterValue,
 	resolveClosestMilestoneFilterValue,
 } from "../utils/milestone-filter.ts";
-import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
+import {
+	buildGlobPattern,
+	buildIdRegex,
+	extractAnyPrefix,
+	getPrefixForType,
+	normalizeId,
+} from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -850,8 +856,71 @@ export class Core {
 	 *
 	 * This is used for ID generation to determine the next available ID.
 	 */
+	private async loadWorktreeTaskStateEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
+		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
+		if (!repoRoot || worktreeRoots.length === 0) {
+			return [];
+		}
+
+		const projectRelativePath = relative(repoRoot, this.fs.rootDir);
+		if (projectRelativePath.startsWith("..") || isAbsolute(projectRelativePath)) {
+			return [];
+		}
+
+		const backlogDir = await this.getBacklogDirectoryName();
+		const entries: BranchTaskStateEntry[] = [];
+		for (const worktreeRoot of worktreeRoots) {
+			const projectRoot = projectRelativePath ? join(worktreeRoot, projectRelativePath) : worktreeRoot;
+			entries.push(...(await this.loadTaskStateEntriesFromWorktree(projectRoot, backlogDir, taskPrefix, worktreeRoot)));
+		}
+
+		return entries;
+	}
+
+	private async loadTaskStateEntriesFromWorktree(
+		projectRoot: string,
+		backlogDir: string,
+		taskPrefix: string,
+		worktreeRoot: string,
+	): Promise<BranchTaskStateEntry[]> {
+		const idRegex = buildIdRegex(taskPrefix);
+		const globPattern = buildGlobPattern(taskPrefix.toLowerCase());
+		const directories: Array<{ path: string; type: "task" | "completed" }> = [
+			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.TASKS), type: "task" },
+			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.COMPLETED), type: "completed" },
+		];
+		const entries: BranchTaskStateEntry[] = [];
+
+		for (const { path, type } of directories) {
+			let files: string[];
+			try {
+				files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: path, followSymlinks: true }));
+			} catch {
+				continue;
+			}
+
+			for (const file of files) {
+				const match = file.match(idRegex);
+				if (!match?.[1]) continue;
+
+				const filePath = join(path, file);
+				const stats = await stat(filePath).catch(() => null);
+				entries.push({
+					id: normalizeId(match[1], taskPrefix),
+					type,
+					branch: `worktree:${worktreeRoot}`,
+					path: filePath,
+					lastModified: stats?.mtime ?? new Date(0),
+				});
+			}
+		}
+
+		return entries;
+	}
+
 	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
 		const config = await this.fs.loadConfig();
+		const taskPrefix = config?.prefixes?.task ?? "task";
 
 		// Load local active and completed tasks
 		const localTasks = await this.listTasksWithMetadata();
@@ -885,6 +954,10 @@ export class Core {
 				lastModified,
 			});
 		}
+
+		// Same-repository worktrees share the task ID namespace even before their
+		// task files are committed, so include their filesystem state for allocation.
+		stateEntries.push(...(await this.loadWorktreeTaskStateEntries(taskPrefix)));
 
 		// If cross-branch checking is enabled, scan other branches for task states
 		if (config?.checkActiveBranches !== false) {
@@ -2244,7 +2317,43 @@ export class Core {
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.promoteDraft(draftId);
+		let success = false;
+		try {
+			success = await this.withCreateLock(async () => {
+				const draft = await this.fs.loadDraft(draftId);
+				if (!draft?.filePath) return false;
+
+				const config = await this.fs.loadConfig();
+				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				const promotedStatus =
+					!draft.status || draft.status.trim().toLowerCase() === "draft"
+						? config?.defaultStatus || FALLBACK_STATUS
+						: draft.status;
+
+				const promotedTask: Task = {
+					...draft,
+					id: newTaskId,
+					status: promotedStatus,
+					filePath: undefined,
+				};
+
+				normalizeAssignee(promotedTask);
+				await this.fs.saveTask(promotedTask);
+				await unlink(draft.filePath);
+
+				const savedTask = await this.fs.loadTask(promotedTask.id);
+				if (this.contentStore && savedTask) {
+					this.contentStore.upsertTask(savedTask);
+				}
+
+				return true;
+			});
+		} catch (error) {
+			if (isCreateLockError(error)) {
+				throw error;
+			}
+			return false;
+		}
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();

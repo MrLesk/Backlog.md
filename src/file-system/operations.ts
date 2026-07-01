@@ -1,5 +1,5 @@
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
@@ -31,6 +31,11 @@ interface CreateLockOptions {
 	timeoutMs?: number;
 	retryDelayMs?: number;
 	staleMs?: number;
+}
+
+interface CreateLockTarget {
+	targetPath: string;
+	locksDir: string;
 }
 
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
@@ -236,6 +241,50 @@ export class FileSystem {
 		return error instanceof Error ? error : new Error(String(error));
 	}
 
+	private async getGitCommonDir(): Promise<string | null> {
+		try {
+			const config = await this.loadConfig();
+			if (config?.filesystemOnly) {
+				return null;
+			}
+		} catch {
+			// If config cannot be read, still try git and fall back to the backlog directory on failure.
+		}
+
+		try {
+			const subprocess = Bun.spawn(["git", "rev-parse", "--git-common-dir"], {
+				cwd: this.projectRoot,
+				stdin: "ignore",
+				stdout: "pipe",
+				stderr: "ignore",
+				env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>,
+			});
+			const stdoutPromise = subprocess.stdout ? new Response(subprocess.stdout).text() : Promise.resolve("");
+			const [exitCode, stdout] = await Promise.all([subprocess.exited, stdoutPromise]);
+			if (exitCode !== 0) return null;
+			const commonDir = stdout.trim();
+			if (!commonDir) return null;
+			return isAbsolute(commonDir) ? commonDir : resolve(this.projectRoot, commonDir);
+		} catch {
+			return null;
+		}
+	}
+
+	private async getCreateLockTarget(backlogDir: string): Promise<CreateLockTarget> {
+		const commonGitDir = await this.getGitCommonDir();
+		if (commonGitDir) {
+			return {
+				targetPath: commonGitDir,
+				locksDir: join(commonGitDir, "backlog.md", "locks"),
+			};
+		}
+
+		return {
+			targetPath: backlogDir,
+			locksDir: join(backlogDir, ".locks"),
+		};
+	}
+
 	// Uses a maintained lockfile with stale-lock recovery; USE_GLOBAL_TASK_ID_LOCK=false restores legacy behavior.
 	async withCreateLock<T>(fn: () => Promise<T>, options: CreateLockOptions = {}): Promise<T> {
 		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") {
@@ -243,7 +292,8 @@ export class FileSystem {
 		}
 
 		const backlogDir = await this.getBacklogDir();
-		const locksDir = join(backlogDir, ".locks");
+		const lockTarget = await this.getCreateLockTarget(backlogDir);
+		const locksDir = lockTarget.locksDir;
 		const lockDir = join(locksDir, "create");
 		const timeoutMs = options.timeoutMs ?? DEFAULT_CREATE_LOCK_TIMEOUT_MS;
 		const retryDelayMs = options.retryDelayMs ?? DEFAULT_CREATE_LOCK_RETRY_DELAY_MS;
@@ -254,7 +304,7 @@ export class FileSystem {
 
 		let release: (() => Promise<void>) | undefined;
 		try {
-			release = await lockfile.lock(backlogDir, {
+			release = await lockfile.lock(lockTarget.targetPath, {
 				lockfilePath: lockDir,
 				realpath: true,
 				stale: staleMs,
