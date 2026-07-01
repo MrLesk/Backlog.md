@@ -232,6 +232,28 @@ export class GitOperations {
 		const { stdout } = await this.execGit(["branch", "--show-current"], { readOnly: true });
 		return stdout.trim();
 	}
+
+	async getRepositoryRoot(cwd = this.projectRoot): Promise<string | null> {
+		return await this.resolveRepoRoot(cwd);
+	}
+
+	async listWorktreePaths(): Promise<string[]> {
+		if (!(await this.isRepository())) {
+			return [];
+		}
+		try {
+			const { stdout } = await this.execGit(["worktree", "list", "--porcelain"], { readOnly: true });
+			return stdout
+				.split("\n")
+				.map((line) => line.trimEnd())
+				.filter((line) => line.startsWith("worktree "))
+				.map((line) => line.slice("worktree ".length))
+				.filter(Boolean);
+		} catch {
+			return [];
+		}
+	}
+
 	async hasUncommittedChanges(): Promise<boolean> {
 		const status = await this.getStatus();
 		return status.trim() !== "";
