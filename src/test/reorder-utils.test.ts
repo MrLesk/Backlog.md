@@ -15,7 +15,7 @@ let core: Core;
 
 const FIXED_DATE = "2025-01-01 00:00";
 
-const buildTask = (id: string, status: string, ordinal?: number): Task => ({
+const buildTask = (id: string, status: string, ordinal?: number, overrides: Partial<Task> = {}): Task => ({
 	id,
 	title: `Task ${id}`,
 	status,
@@ -24,6 +24,7 @@ const buildTask = (id: string, status: string, ordinal?: number): Task => ({
 	labels: [],
 	dependencies: [],
 	...(ordinal !== undefined ? { ordinal } : {}),
+	...overrides,
 });
 
 beforeEach(async () => {
@@ -105,17 +106,104 @@ describe("resolveOrdinalConflicts", () => {
 });
 
 describe("Core.reorderTask", () => {
-	const createTasks = async (tasks: Array<[string, string, number?]>) => {
-		for (const [id, status, ordinal] of tasks) {
-			await core.createTask(buildTask(id, status, ordinal), false);
+	const createTasks = async (tasks: Array<[string, string, number?, Partial<Task>?]>) => {
+		for (const [id, status, ordinal, overrides] of tasks) {
+			await core.createTask(buildTask(id, status, ordinal, overrides), false);
 		}
 	};
+
+	it("preserves updatedDate when editing only ordinal", async () => {
+		await core.createTask(
+			buildTask("task-1", "To Do", 1000, {
+				updatedDate: "2025-01-02 12:00",
+			}),
+			false,
+		);
+
+		await core.updateTaskFromInput("task-1", { ordinal: 2000 }, false);
+
+		const updatedTask = await core.filesystem.loadTask("task-1");
+		expect(updatedTask?.ordinal).toBe(2000);
+		expect(updatedTask?.updatedDate).toBe("2025-01-02 12:00");
+	});
+
+	it("does not add updatedDate when editing only ordinal on a task without one", async () => {
+		await core.createTask(buildTask("task-1", "To Do", 1000), false);
+
+		await core.updateTaskFromInput("task-1", { ordinal: 2000 }, false);
+
+		const updatedTask = await core.filesystem.loadTask("task-1");
+		expect(updatedTask?.ordinal).toBe(2000);
+		expect(updatedTask?.updatedDate).toBeUndefined();
+	});
+
+	it("updates updatedDate when ordinal changes with another task field", async () => {
+		await core.createTask(
+			buildTask("task-1", "To Do", 1000, {
+				updatedDate: "2025-01-02 12:00",
+			}),
+			false,
+		);
+
+		await core.updateTaskFromInput("task-1", { ordinal: 2000, title: "Updated Task" }, false);
+
+		const updatedTask = await core.filesystem.loadTask("task-1");
+		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+		expect(updatedTask?.title).toBe("Updated Task");
+		expect(updatedTask?.ordinal).toBe(2000);
+		expect(updatedTask?.updatedDate).toBe(now);
+	});
+
+	it("preserves updatedDate for ordinal-only bulk updates", async () => {
+		await createTasks([
+			[
+				"task-1",
+				"To Do",
+				1000,
+				{
+					updatedDate: "2025-01-02 12:00",
+				},
+			],
+			["task-2", "To Do", 2000],
+		]);
+
+		const task1 = await core.filesystem.loadTask("task-1");
+		const task2 = await core.filesystem.loadTask("task-2");
+		expect(task1).not.toBeNull();
+		expect(task2).not.toBeNull();
+		if (!task1 || !task2) {
+			throw new Error("Expected tasks to exist");
+		}
+
+		await core.updateTasksBulk(
+			[
+				{ ...task1, ordinal: 3000 },
+				{ ...task2, ordinal: 4000 },
+			],
+			"Sort To Do",
+			false,
+		);
+
+		const updatedTask1 = await core.filesystem.loadTask("task-1");
+		const updatedTask2 = await core.filesystem.loadTask("task-2");
+		expect(updatedTask1?.ordinal).toBe(3000);
+		expect(updatedTask1?.updatedDate).toBe("2025-01-02 12:00");
+		expect(updatedTask2?.ordinal).toBe(4000);
+		expect(updatedTask2?.updatedDate).toBeUndefined();
+	});
 
 	it("reorders within a column without touching unaffected tasks", async () => {
 		await createTasks([
 			["task-1", "To Do", 1000],
 			["task-2", "To Do", 2000],
-			["task-3", "To Do", 3000],
+			[
+				"task-3",
+				"To Do",
+				3000,
+				{
+					updatedDate: "2025-01-02 12:00",
+				},
+			],
 		]);
 
 		const result = await core.reorderTask({
@@ -130,7 +218,9 @@ describe("Core.reorderTask", () => {
 		expect(result.changedTasks.map((task) => task.id)).toEqual(["TASK-3"]);
 
 		const task2 = await core.filesystem.loadTask("task-2");
+		const task3 = await core.filesystem.loadTask("task-3");
 		expect(task2?.ordinal).toBe(2000);
+		expect(task3?.updatedDate).toBe("2025-01-02 12:00");
 	});
 
 	it("rebalances ordinals when collisions exist", async () => {
