@@ -1002,6 +1002,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       onChange={(e) => void handleToggleCriterion(c.index, e.target.checked)}
                       className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
+                    <span className="mt-0.5 w-8 shrink-0 text-right font-mono text-xs font-semibold text-gray-500 dark:text-gray-400">
+                      {`#${c.index}`}
+                    </span>
                     <div className="text-sm text-gray-800 dark:text-gray-100">{c.text}</div>
                   </li>
                 ))}
