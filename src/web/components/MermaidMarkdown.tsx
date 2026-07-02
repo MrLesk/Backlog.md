@@ -19,6 +19,14 @@ function sanitizeMarkdownSource(source: string): string {
 	});
 }
 
+function keepHashLinksInCurrentRoute(url: string, key: string): string {
+	if (key !== "href" || !url.startsWith("#") || typeof window === "undefined") {
+		return url;
+	}
+
+	return `${window.location.pathname}${window.location.search}${url}`;
+}
+
 export default function MermaidMarkdown({ source }: Props) {
 	const ref = useRef<HTMLDivElement | null>(null);
 	const safeSource = sanitizeMarkdownSource(source);
@@ -39,7 +47,7 @@ export default function MermaidMarkdown({ source }: Props) {
 
 	return (
 		<div ref={ref} className="wmde-markdown">
-			<MDEditor.Markdown source={safeSource} />
+			<MDEditor.Markdown source={safeSource} urlTransform={keepHashLinksInCurrentRoute} />
 		</div>
 	);
 }
