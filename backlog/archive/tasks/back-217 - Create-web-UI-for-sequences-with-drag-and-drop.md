@@ -4,7 +4,7 @@ title: Create web UI for sequences with drag-and-drop
 status: To Do
 assignee: []
 created_date: '2025-07-27'
-updated_date: '2025-08-26 16:46'
+updated_date: '2026-07-04 17:40'
 labels:
   - sequences
   - web-ui
@@ -15,7 +15,9 @@ dependencies:
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 Implement sequences in the web UI together with minimal local server endpoints so the feature can be exercised end-to-end. The server acts as a thin bridge to the core sequence computation (task-213); all logic remains in core and UI.
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -30,4 +32,8 @@ Implement sequences in the web UI together with minimal local server endpoints s
 
 ## Implementation Notes
 
+<!-- SECTION:NOTES:BEGIN -->
 Align web UI with TUI/CLI: Unsequenced bucket, join semantics, blocked moves to Unsequenced unless isolated. Insert-between drop zones tracked separately.
+
+sequences feature removed by owner decision
+<!-- SECTION:NOTES:END -->

@@ -281,13 +281,6 @@ export interface DecisionSearchResult {
 
 export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult;
 
-export interface Sequence {
-	/** 1-based sequence index */
-	index: number;
-	/** Tasks that can be executed in parallel within this sequence */
-	tasks: Task[];
-}
-
 /**
  * Configuration for ID prefixes used in task files.
  * Allows customization of task prefix (e.g., "JIRA-", "issue-", "bug-").

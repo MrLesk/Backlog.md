@@ -16,7 +16,6 @@ import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from ".
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
-import { computeSequences } from "./core/sequences.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
@@ -3958,46 +3957,6 @@ const configCmd = addHelpSchema(program.command("config"), {
 			console.error("Failed to update configuration", err);
 			process.exitCode = 1;
 		}
-	});
-
-// Sequences command group
-const sequenceCmd = program.command("sequence");
-
-sequenceCmd
-	.description("list and inspect execution sequences computed from task dependencies")
-	.command("list")
-	.description("list sequences (interactive by default; use --plain for text output)")
-	.option("--plain", "use plain text output instead of interactive UI")
-	.action(async (options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const tasks = await core.queryTasks();
-		// Exclude tasks marked as Done from sequences (case-insensitive)
-		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
-		const { unsequenced, sequences } = computeSequences(activeTasks);
-
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			if (unsequenced.length > 0) {
-				console.log("Unsequenced:");
-				for (const t of unsequenced) {
-					console.log(`  ${t.id} - ${t.title}`);
-				}
-				console.log("");
-			}
-			for (const seq of sequences) {
-				console.log(`Sequence ${seq.index}:`);
-				for (const t of seq.tasks) {
-					console.log(`  ${t.id} - ${t.title}`);
-				}
-				console.log("");
-			}
-			return;
-		}
-
-		// Interactive default: TUI view (215.01 + 215.02 navigation/detail)
-		const { runSequencesView } = await import("./ui/sequences.ts");
-		await runSequencesView({ unsequenced, sequences }, core);
 	});
 
 addHelpSchema(configCmd.command("get <key>"), {

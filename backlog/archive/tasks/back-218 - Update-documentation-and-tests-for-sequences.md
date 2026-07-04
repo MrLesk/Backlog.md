@@ -4,7 +4,7 @@ title: Update documentation and tests for sequences
 status: To Do
 assignee: []
 created_date: '2025-07-27'
-updated_date: '2025-08-26 16:47'
+updated_date: '2026-07-04 17:40'
 labels:
   - sequences
   - documentation
@@ -18,7 +18,9 @@ dependencies:
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 Ensure users and developers understand how sequences work across all interfaces and that the new feature is covered by tests and documentation.
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -31,3 +33,9 @@ Ensure users and developers understand how sequences work across all interfaces 
 - [ ] #7 CLI/TUI docs: --plain prints Unsequenced first; TUI move mode uses join semantics; blocked moves to Unsequenced unless isolated
 - [ ] #8 Web UI docs: endpoints shape ({ unsequenced, sequences }), join semantics, error handling; update examples/screenshots
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+sequences feature removed by owner decision
+<!-- SECTION:NOTES:END -->
