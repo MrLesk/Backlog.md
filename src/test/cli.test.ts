@@ -98,14 +98,13 @@ describe("CLI Integration", () => {
 
 			expect(overview).toContain("## Backlog.md Overview (CLI)");
 			expect(overview).toContain("### Start Every Request Here");
-			expect(overview).toContain(
-				"Use this overview to decide what to read or run next. The detailed guides contain the procedure for creating, executing, and finalizing tasks.",
-			);
+			expect(overview).toContain("Use this overview to decide what to read or run next.");
+			expect(overview).not.toContain("The detailed guides contain the procedure");
 			expect(overview).toContain('backlog search "query" --plain');
 			expect(overview).toContain('backlog task list --search "login" --labels frontend,bug --limit 20 --plain');
 			expect(overview).toContain("backlog task view BACK-123 --plain");
 			expect(overview).toContain(
-				"Always read the relevant guide before that part of the workflow. Do not rely on this overview alone for these actions:",
+				"**Required: read the matching guide below before creating, executing, or finalizing tasks. Do not rely on this overview alone for these actions.** The overview only tells you when to act; the guides define the required procedure, and skipping them produces inconsistent tasks and metadata.",
 			);
 			expect(overview).toContain(
 				"`backlog instructions task-creation`\n  -> Read before creating tasks: how to search, scope, and create tasks",
