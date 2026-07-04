@@ -1,6 +1,6 @@
 import { rename as moveFile, stat, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, DEFAULT_TASK_TYPES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -138,6 +138,7 @@ function buildUpdatedDateComparableTask(task: Task): Record<string, unknown> {
 		parentTaskId: task.parentTaskId,
 		subtasks: task.subtasks ?? [],
 		priority: task.priority,
+		type: task.type,
 		onStatusChange: task.onStatusChange,
 	};
 }
@@ -372,6 +373,20 @@ export class Core {
 			throw new Error(`Invalid priority: ${value}. Valid values are: high, medium, low`);
 		}
 		return normalized as "high" | "medium" | "low";
+	}
+
+	private async normalizeTaskType(value: string | undefined): Promise<string | undefined> {
+		if (value === undefined || value === "") {
+			return undefined;
+		}
+		const config = await this.fs.loadConfig();
+		const allowed = config?.types?.length ? config.types : [...DEFAULT_TASK_TYPES];
+		const normalized = value.trim().toLowerCase();
+		const canonical = allowed.find((type) => type.toLowerCase() === normalized);
+		if (!canonical) {
+			throw new Error(`Invalid type: ${value}. Valid types are: ${allowed.join(", ")}`);
+		}
+		return canonical;
 	}
 
 	private isExactTaskReference(reference: string, taskId: string): boolean {
@@ -1140,6 +1155,7 @@ export class Core {
 		}
 
 		const priority = this.normalizePriority(input.priority);
+		const type = await this.normalizeTaskType(input.type);
 		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 		if (
 			input.ordinal !== undefined &&
@@ -1182,6 +1198,7 @@ export class Core {
 				createdDate,
 				...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
 				...(priority && { priority }),
+				...(type && { type }),
 				...(typeof ordinal === "number" && { ordinal }),
 				...(typeof input.milestone === "string" &&
 					input.milestone.trim().length > 0 && {
@@ -1302,6 +1319,14 @@ export class Core {
 			const normalizedPriority = this.normalizePriority(String(input.priority));
 			if (task.priority !== normalizedPriority) {
 				task.priority = normalizedPriority;
+				mutated = true;
+			}
+		}
+
+		if (input.type !== undefined) {
+			const normalizedType = await this.normalizeTaskType(String(input.type));
+			if (task.type !== normalizedType) {
+				task.type = normalizedType;
 				mutated = true;
 			}
 		}

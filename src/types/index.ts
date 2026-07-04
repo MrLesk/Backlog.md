@@ -65,6 +65,8 @@ export interface Task {
 	subtasks?: string[];
 	subtaskSummaries?: Array<{ id: string; title: string }>;
 	priority?: "high" | "medium" | "low";
+	/** Semantic task type (e.g. bug, feature). Allowed values come from config `types` (defaults to DEFAULT_TASK_TYPES); absent means untyped. */
+	type?: string;
 	branch?: string;
 	ordinal?: number;
 	filePath?: string;
@@ -105,6 +107,7 @@ export interface TaskCreateInput {
 	description?: string;
 	status?: TaskStatus;
 	priority?: "high" | "medium" | "low";
+	type?: string;
 	ordinal?: number;
 	milestone?: string;
 	labels?: string[];
@@ -128,6 +131,7 @@ export interface TaskUpdateInput {
 	description?: string;
 	status?: TaskStatus;
 	priority?: "high" | "medium" | "low";
+	type?: string;
 	milestone?: string | null;
 	labels?: string[];
 	addLabels?: string[];
@@ -299,6 +303,8 @@ export interface BacklogConfig {
 	defaultReporter?: string;
 	statuses: string[];
 	labels: string[];
+	/** Allowed task types. Defaults to DEFAULT_TASK_TYPES when not configured. */
+	types?: string[];
 	/** @deprecated Milestones are sourced from milestone files, not config. */
 	milestones?: string[];
 	definitionOfDone?: string[];
