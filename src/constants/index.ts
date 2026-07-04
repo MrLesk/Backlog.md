@@ -51,6 +51,11 @@ export const DEFAULT_STATUSES = ["To Do", "In Progress", "Done"] as const;
 export const FALLBACK_STATUS = "To Do";
 
 /**
+ * Default task types, used when no `types` are configured
+ */
+export const DEFAULT_TASK_TYPES = ["bug", "feature", "enhancement", "task", "chore", "docs", "spike"] as const;
+
+/**
  * Maximum width for wrapped text lines in UI components
  */
 export const WRAP_LIMIT = 72;
