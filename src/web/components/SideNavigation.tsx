@@ -17,6 +17,7 @@ import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
+import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -142,6 +143,11 @@ const Icons = {
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
 		</svg>
 	),
+	Folder: () => (
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+		</svg>
+	),
 	Statistics: () => (
 		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -155,6 +161,68 @@ const Icons = {
 		</svg>
 	),
 };
+
+// Shared render path for sidebar document links (search results, folder tree, and flat list).
+const DocLink = ({ doc, depth = 0 }: { doc: Document; depth?: number }) => (
+	<NavLink
+		to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
+		className={({ isActive }) =>
+			`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
+				isActive
+					? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+					: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+			}`
+		}
+		style={depth > 0 ? { paddingLeft: `${12 + depth * 12}px` } : undefined}
+	>
+		<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
+		<span className="truncate">{doc.title}</span>
+	</NavLink>
+);
+
+interface FolderNodeProps {
+	node: DocsTreeNode;
+	depth: number;
+	folderExpanded: Record<string, boolean>;
+	onToggleFolder: (path: string) => void;
+}
+
+const FolderNode = memo(function FolderNode({ node, depth, folderExpanded, onToggleFolder }: FolderNodeProps) {
+	const isExpanded = folderExpanded[node.path] ?? true;
+
+	return (
+		<div>
+			<button
+				onClick={() => onToggleFolder(node.path)}
+				aria-label={`${node.name} folder`}
+				aria-expanded={isExpanded}
+				title={node.name}
+				className="flex items-center px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 w-full"
+				style={{ paddingLeft: `${12 + depth * 12}px` }}
+			>
+				<span className="shrink-0">{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}</span>
+				<span className="text-gray-500 dark:text-gray-400 ml-1 shrink-0"><Icons.Folder /></span>
+				<span className="ml-2 font-medium truncate">{node.name}</span>
+			</button>
+			{isExpanded && (
+				<div>
+					{node.children.map(child => (
+						<FolderNode
+							key={child.path}
+							node={child}
+							depth={depth + 1}
+							folderExpanded={folderExpanded}
+							onToggleFolder={onToggleFolder}
+						/>
+					))}
+					{node.docs.map(doc => (
+						<DocLink key={doc.id} doc={doc} depth={depth + 1} />
+					))}
+				</div>
+			)}
+		</div>
+	);
+});
 
 interface SideNavigationProps {
 	tasks: Task[];
@@ -190,6 +258,10 @@ const SideNavigation = memo(function SideNavigation({
 		}
 		// Auto-collapse if more than 6 documents
 		return docs.length > 6;
+	});
+	const [folderExpanded, setFolderExpanded] = useState<Record<string, boolean>>(() => {
+		const saved = localStorage.getItem('docsFolderExpanded');
+		return saved ? JSON.parse(saved) : {};
 	});
 	const [isDecisionsCollapsed, setIsDecisionsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('decisionsCollapsed');
@@ -230,6 +302,10 @@ const SideNavigation = memo(function SideNavigation({
 	useEffect(() => {
 		localStorage.setItem('decisionsCollapsed', JSON.stringify(isDecisionsCollapsed));
 	}, [isDecisionsCollapsed]);
+
+	useEffect(() => {
+		localStorage.setItem('docsFolderExpanded', JSON.stringify(folderExpanded));
+	}, [folderExpanded]);
 
 	// Auto-collapse when data loads/changes if no saved preference exists
 	useEffect(() => {
@@ -338,6 +414,12 @@ const SideNavigation = memo(function SideNavigation({
 	// Always show full lists in their sections, search results are separate
 	const filteredDocs = docs;
 	const filteredDecisions = decisions;
+
+	const { tree, ungroupedDocs } = useMemo(() => buildDocsTree(filteredDocs), [filteredDocs]);
+
+	const toggleFolder = useCallback((path: string) => {
+		setFolderExpanded(prev => ({ ...prev, [path]: !(prev[path] ?? true) }));
+	}, []);
 
 	const toggleCollapse = useCallback(() => {
 		setIsCollapsed((prev: any) => !prev);
@@ -618,23 +700,26 @@ const SideNavigation = memo(function SideNavigation({
 								<div className="space-y-1">
 									{filteredDocs.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
-									) : (
-										filteredDocs.map((doc) => (
-											<NavLink
-												key={doc.id}
-												to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
-												className={({ isActive }) =>
-													`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
-														isActive
-															? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-															: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-													}`
-												}
-											>
-												<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
-												<span className="truncate">{doc.title}</span>
-											</NavLink>
+									) : searchQuery.trim() ? (
+										// Search results stay flat, bypassing folder grouping
+										filteredDocs.map(doc => (
+											<DocLink key={doc.id} doc={doc} />
 										))
+									) : (
+										<>
+											{tree.map(node => (
+												<FolderNode
+													key={node.path}
+													node={node}
+													depth={0}
+													folderExpanded={folderExpanded}
+													onToggleFolder={toggleFolder}
+												/>
+											))}
+											{ungroupedDocs.map(doc => (
+												<DocLink key={doc.id} doc={doc} />
+											))}
+										</>
 									)}
 								</div>
 							)}
