@@ -2,6 +2,8 @@
 
 Full command reference for Backlog.md. For getting started, see [README.md](README.md).
 
+All examples use the `backlog` command, which is available after a global install (`npm i -g backlog.md`). To run one-off commands without installing, use `npx` with the full package name — `npx backlog.md <command>`, e.g. `npx backlog.md board` (`npx backlog` fails because the npm package is named `backlog.md`).
+
 ## Project Setup
 
 | Action      | Example                                              |

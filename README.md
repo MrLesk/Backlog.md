@@ -89,6 +89,11 @@ backlog init "My Awesome Project"
 backlog init "Personal Planning" --no-git
 ```
 
+> [!TIP]
+> **Running one-off with `npx`?** Use the full package name: `npx backlog.md init "My Project"`, `npx backlog.md board`.
+> `npx backlog <command>` fails with "could not determine executable to run" because the npm package is `backlog.md`;
+> the short `backlog` command is available after a global install.
+
 The init wizard will ask how you want to connect AI tools:
 - **CLI instructions** (recommended): creates a short instruction file that tells agents to run `backlog instructions overview`.
 - **MCP connector**: optionally auto-configures Claude Code, Codex, Gemini CLI, Kiro or Cursor for teams that prefer MCP.
