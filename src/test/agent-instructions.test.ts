@@ -254,6 +254,59 @@ describe("addAgentInstructions", () => {
 		}
 	});
 
+	// BACK-267: every installed instruction block carries a machine-readable version
+	// marker derived from the running binary/package version, so tooling can compare
+	// a project's local instructions against the bundled ones.
+	it("writes a version marker matching package.json inside the guidelines block (BACK-267)", async () => {
+		const { version } = await Bun.file(join(__dirname, "../../package.json")).json();
+		const versionMarker = `<!-- backlog.md-instructions-version: ${version} -->`;
+
+		await addAgentInstructions(TEST_DIR);
+		for (const fileName of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"]) {
+			const content = await Bun.file(join(TEST_DIR, fileName)).text();
+			expect(content).toContain(versionMarker);
+			// Marker lives inside the managed block, right after the start marker
+			expect(content.indexOf(versionMarker)).toBeGreaterThan(content.indexOf("<!-- BACKLOG.MD GUIDELINES START -->"));
+			expect(content.indexOf(versionMarker)).toBeLessThan(content.indexOf("<!-- BACKLOG.MD GUIDELINES END -->"));
+			expect((content.match(/<!-- backlog\.md-instructions-version: /g) || []).length).toBe(1);
+		}
+	});
+
+	it("refreshes a stale version marker when updating an existing block (BACK-267)", async () => {
+		const { version } = await Bun.file(join(__dirname, "../../package.json")).json();
+		const agentsPath = join(TEST_DIR, "AGENTS.md");
+		await Bun.write(
+			agentsPath,
+			[
+				"Existing header",
+				"<!-- BACKLOG.MD GUIDELINES START -->",
+				"<!-- backlog.md-instructions-version: 0.0.1 -->",
+				"Old generated Backlog guidance",
+				"<!-- BACKLOG.MD GUIDELINES END -->",
+				"",
+			].join("\n"),
+		);
+
+		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		const agents = await Bun.file(agentsPath).text();
+
+		expect(agents).not.toContain("backlog.md-instructions-version: 0.0.1");
+		expect(agents).toContain(`<!-- backlog.md-instructions-version: ${version} -->`);
+		expect(agents).toContain("Existing header");
+	});
+
+	it("writes the version marker in MCP guideline blocks (BACK-267)", async () => {
+		const { version } = await Bun.file(join(__dirname, "../../package.json")).json();
+
+		await ensureMcpGuidelines(TEST_DIR, "AGENTS.md");
+		const content = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+		const versionMarker = `<!-- backlog.md-instructions-version: ${version} -->`;
+
+		expect(content).toContain(versionMarker);
+		expect(content.indexOf(versionMarker)).toBeGreaterThan(content.indexOf("<!-- BACKLOG.MD MCP GUIDELINES START -->"));
+		expect(content.indexOf(versionMarker)).toBeLessThan(content.indexOf("<!-- BACKLOG.MD MCP GUIDELINES END -->"));
+	});
+
 	it("replaces MCP nudge with CLI guidelines when switching modes", async () => {
 		const agentsPath = join(TEST_DIR, "AGENTS.md");
 		const mcpBlock = [
