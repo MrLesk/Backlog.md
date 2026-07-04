@@ -310,7 +310,8 @@ export async function runSequencesView(
 		if (popupOpen) return;
 		popupOpen = true;
 
-		const popup = await createTaskPopup(screen, task);
+		const config = await core.filesystem.loadConfig();
+		const popup = await createTaskPopup(screen, task, undefined, config?.dateFormat);
 		if (!popup) {
 			popupOpen = false;
 			return;

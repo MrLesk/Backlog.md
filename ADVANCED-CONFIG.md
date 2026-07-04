@@ -24,7 +24,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `defaultStatus`   | First column       | `To Do`                       |
 | `definition_of_done` | Default DoD checklist items for new tasks | `(not set)` |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
-| `dateFormat`      | Date/time format   | `yyyy-mm-dd hh:mm`            |
+| `dateFormat`      | Display-only date format | `yyyy-mm-dd`            |
 | `includeDatetimeInDates` | Add time to new dates | `true`              |
 | `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
 | `defaultPort`     | Web UI port        | `6420`                        |
@@ -52,3 +52,5 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 > **Status Change Callbacks**: Set `onStatusChange` to run a shell command whenever a task's status changes. Available variables: `$TASK_ID`, `$OLD_STATUS`, `$NEW_STATUS`, `$TASK_TITLE`. Per-task override via `onStatusChange` in task frontmatter. Example: `'if [ "$NEW_STATUS" = "In Progress" ]; then claude "Task $TASK_ID ($TASK_TITLE) has been assigned to you. Please implement it." & fi'`
 
 > **Date/Time Support**: Backlog.md now supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility. Use the migration script `bun src/scripts/migrate-dates.ts` to optionally add time to existing items.
+
+> **Date Display Format**: `dateFormat` only changes how dates are *displayed* in the web UI and TUI; markdown files always store dates in the canonical `yyyy-mm-dd [hh:mm]` UTC format. The format string is split at the first whitespace into a date part and an optional time part. Date part tokens (case-insensitive, each exactly once): `yyyy`, `mm` (month), `dd`; any other characters are kept literally. Time part tokens: `hh` and `mm` (minutes) — `mm` means month in the date part and minutes in the time part. If a stored value includes a time it is always shown: through the format's time part when present, otherwise appended as ` hh:mm`. Date-only values never invent a time. Invalid formats fall back to the canonical display. Agent-facing output (`--plain` CLI output and MCP responses) always stays canonical regardless of this setting. Example: `dateFormat: dd/mm/yyyy` renders `2026-07-04 21:54` as `04/07/2026 21:54`.

@@ -210,12 +210,15 @@ export async function viewTaskEnhanced(
 	const milestoneEntities = await core.filesystem.listMilestones();
 	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(milestoneEntities);
 
+	let dateFormat: string | undefined;
+
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
 		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		const config = await core.filesystem.loadConfig();
 		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
 		labels = config?.labels || [];
+		dateFormat = config?.dateFormat;
 		taskSearchIndex = createTaskSearchIndex(allTasks);
 	} else {
 		// Need to load tasks - show loading screen
@@ -225,6 +228,7 @@ export async function viewTaskEnhanced(
 			const config = await core.filesystem.loadConfig();
 			statuses = config?.statuses || ["To Do", "In Progress", "Done"];
 			labels = config?.labels || [];
+			dateFormat = config?.dateFormat;
 
 			loadingScreen?.update("Loading tasks from branches...");
 			contentStore = await core.getContentStore();
@@ -971,7 +975,7 @@ export async function viewTaskEnhanced(
 
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel);
+		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel, dateFormat);
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1358,6 +1362,7 @@ export async function viewTaskEnhanced(
 function generateDetailContent(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
+	dateFormat?: string,
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -1376,9 +1381,9 @@ function generateDetailContent(
 	bodyContent.push(formatHeading("Details", 2));
 
 	const metadata: string[] = [];
-	metadata.push(`{bold}Created:{/bold} ${formatDateForDisplay(task.createdDate)}`);
+	metadata.push(`{bold}Created:{/bold} ${formatDateForDisplay(task.createdDate, { dateFormat })}`);
 	if (task.updatedDate && task.updatedDate !== task.createdDate) {
-		metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(task.updatedDate)}`);
+		metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(task.updatedDate, { dateFormat })}`);
 	}
 	if (task.priority) {
 		const priorityDisplay = getPriorityDisplay(task.priority);
@@ -1514,7 +1519,7 @@ function generateDetailContent(
 		for (const comment of comments) {
 			const parts = [`#${comment.index}`];
 			if (comment.author) parts.push(comment.author);
-			if (comment.createdDate) parts.push(formatDateForDisplay(comment.createdDate));
+			if (comment.createdDate) parts.push(formatDateForDisplay(comment.createdDate, { dateFormat }));
 			bodyContent.push(`{bold}${parts.join(" - ")}{/bold}`);
 			bodyContent.push(transformCodePaths(comment.body.trim()));
 			bodyContent.push("");
@@ -1535,6 +1540,7 @@ export async function createTaskPopup(
 	screen: ScreenInterface,
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
+	dateFormat?: string,
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1571,7 +1577,7 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(task, resolveMilestoneLabel);
+	const { headerContent, bodyContent } = generateDetailContent(task, resolveMilestoneLabel, dateFormat);
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;

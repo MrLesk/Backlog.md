@@ -8,6 +8,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
+import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 
 // Utility function for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -68,9 +69,10 @@ const addDecisionPrefix = (id: string): string => {
 interface DecisionDetailProps {
 	decisions: Decision[];
 	onRefreshData: () => Promise<void>;
+	dateFormat?: string;
 }
 
-export default function DecisionDetail({ decisions, onRefreshData }: DecisionDetailProps) {
+export default function DecisionDetail({ decisions, onRefreshData, dateFormat }: DecisionDetailProps) {
 	const { id, title } = useParams<{ id: string; title: string }>();
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -284,7 +286,7 @@ export default function DecisionDetail({ decisions, onRefreshData }: DecisionDet
 										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
 										</svg>
-										<span>Date: {decision.date}</span>
+										<span>Date: {formatStoredUtcDateForDisplay(decision.date, dateFormat)}</span>
 									</div>
 								)}
 								{decision?.status && (

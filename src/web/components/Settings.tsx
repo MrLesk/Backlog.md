@@ -182,6 +182,9 @@ const Settings: React.FC = () => {
 									<option value="dd/mm/yyyy">dd/mm/yyyy</option>
 									<option value="mm/dd/yyyy">mm/dd/yyyy</option>
 								</select>
+								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									Controls how dates are displayed in the web UI and TUI. Dates in markdown files are always stored as yyyy-mm-dd.
+								</p>
 							</div>
 						</div>
 					</div>

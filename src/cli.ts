@@ -80,6 +80,7 @@ import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
+import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
 import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -4413,7 +4414,9 @@ addHelpSchema(program.command("cleanup"), {
 				`\nFound ${tasksToMove.length} tasks older than ${ageOptions.find((o) => o.value === selectedAge)?.title}:`,
 			);
 			for (const task of tasksToMove.slice(0, 5)) {
-				const date = task.updatedDate || task.createdDate;
+				const date = formatUtcDateForDisplay(task.updatedDate || task.createdDate, {
+					dateFormat: config.dateFormat,
+				});
 				console.log(`  - ${task.id}: ${task.title} (${date})`);
 			}
 			if (tasksToMove.length > 5) {

@@ -3,6 +3,7 @@ import { apiClient } from '../lib/api';
 import type { TaskStatistics } from '../../core/statistics';
 import type { Task } from '../../types';
 import LoadingSpinner from './LoadingSpinner';
+import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 
 interface StatisticsData extends Omit<TaskStatistics, 'statusCounts' | 'priorityCounts'> {
 	statusCounts: Record<string, number>;
@@ -14,6 +15,7 @@ interface StatisticsProps {
 	isLoading?: boolean;
 	onEditTask?: (task: Task) => void;
 	projectName?: string;
+	dateFormat?: string;
 }
 
 const Statistics: React.FC<StatisticsProps> = ({
@@ -21,6 +23,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 	isLoading: externalLoading,
 	onEditTask,
 	projectName,
+	dateFormat,
 }) => {
 	const [statistics, setStatistics] = useState<StatisticsData | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -132,22 +135,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 	}
 
 	const TaskPreview = ({ task, showDate, onClick }: { task: Task; showDate: 'created' | 'updated'; onClick?: () => void }) => {
-		const formatDate = (dateStr: string) => {
-			const hasTime = dateStr.includes(" ") || dateStr.includes("T");
-			const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
-			
-			if (hasTime) {
-				return date.toLocaleString(undefined, {
-					year: 'numeric',
-					month: 'short',
-					day: 'numeric',
-					hour: '2-digit',
-					minute: '2-digit'
-				});
-			} else {
-				return date.toLocaleDateString();
-			}
-		};
+		const formatDate = (dateStr: string) => formatStoredUtcDateForDisplay(dateStr, dateFormat);
 
 		const displayDate = showDate === 'created' ? task.createdDate : task.updatedDate || task.createdDate;
 

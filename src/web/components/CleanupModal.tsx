@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
 import { apiClient } from '../lib/api';
+import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 
 interface CleanupModalProps {
 	isOpen: boolean;
 	onClose: () => void;
 	onSuccess: (movedCount: number) => void;
+	dateFormat?: string;
 }
 
 interface TaskPreview {
@@ -25,7 +27,7 @@ const AGE_OPTIONS = [
 	{ label: "1 year", value: 365 },
 ];
 
-const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess }) => {
+const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess, dateFormat }) => {
 	const [selectedAge, setSelectedAge] = useState<number | null>(null);
 	const [previewTasks, setPreviewTasks] = useState<TaskPreview[]>([]);
 	const [previewCount, setPreviewCount] = useState(0);
@@ -86,12 +88,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess 
 
 	const formatDate = (dateStr?: string) => {
 		if (!dateStr) return '';
-		const date = new Date(dateStr);
-		return date.toLocaleDateString(undefined, {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric',
-		});
+		return formatStoredUtcDateForDisplay(dateStr, dateFormat);
 	};
 
 	return (
