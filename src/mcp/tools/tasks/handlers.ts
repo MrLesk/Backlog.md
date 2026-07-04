@@ -30,6 +30,7 @@ export type TaskCreateArgs = {
 	labels?: string[];
 	assignee?: string[];
 	priority?: "high" | "medium" | "low";
+	type?: string;
 	ordinal?: number;
 	status?: string;
 	milestone?: string;
@@ -83,9 +84,10 @@ export class TaskHandlers {
 
 	private formatTaskSummaryLine(task: Task, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
+		const typeIndicator = task.type ? `[${task.type}] ` : "";
 		const status = task.status || (task.source === "completed" ? "Done" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
-		return `  ${priorityIndicator}${task.id} - ${task.title}${statusText}`;
+		return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusText}`;
 	}
 
 	private async loadTaskOrThrow(id: string): Promise<Task> {
@@ -117,6 +119,7 @@ export class TaskHandlers {
 				description: args.description,
 				status: args.status,
 				priority: args.priority,
+				type: args.type,
 				...(typeof rawOrdinal === "number" ? { ordinal: rawOrdinal } : {}),
 				milestone,
 				labels: args.labels,

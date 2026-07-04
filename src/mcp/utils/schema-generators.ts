@@ -1,4 +1,4 @@
-import { DEFAULT_STATUSES } from "../../constants/index.ts";
+import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "../../constants/index.ts";
 import type { BacklogConfig } from "../../types/index.ts";
 import type { JsonSchema } from "../validation/validators.ts";
 
@@ -35,6 +35,22 @@ export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
 }
 
 /**
+ * Generates a task type field schema with dynamic enum values sourced from config.
+ * No default is set: tasks without a type stay untyped.
+ */
+function generateTypeFieldSchema(config: BacklogConfig): JsonSchema {
+	const types = config.types?.length ? config.types.map((type) => type.trim()) : [...DEFAULT_TASK_TYPES];
+
+	return {
+		type: "string",
+		maxLength: 50,
+		enum: types,
+		enumCaseInsensitive: true,
+		description: `Optional task type (case-insensitive). Valid values: ${types.join(", ")}`,
+	};
+}
+
+/**
  * Generates the task_create input schema with dynamic status enum
  */
 export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
@@ -55,6 +71,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				enum: ["high", "medium", "low"],
 			},
+			type: generateTypeFieldSchema(config),
 			ordinal: {
 				type: "number",
 				minimum: 0,
@@ -173,6 +190,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				enum: ["high", "medium", "low"],
 			},
+			type: generateTypeFieldSchema(config),
 			ordinal: {
 				type: "number",
 				minimum: 0,
