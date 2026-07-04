@@ -173,6 +173,7 @@ export interface TaskUpdateInput {
 export interface TaskListFilter {
 	status?: string;
 	assignee?: string;
+	unassigned?: boolean;
 	priority?: "high" | "medium" | "low";
 	milestone?: string;
 	parentTaskId?: string;

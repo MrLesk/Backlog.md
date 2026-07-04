@@ -1069,6 +1069,51 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("TASK-2 - Unassigned Task");
 		});
 
+		it("should filter tasks without an assignee using --unassigned", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Assigned Task",
+					status: "To Do",
+					assignee: ["alice"],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Assigned task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Unassigned Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Other task",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task list --plain --unassigned`.cwd(TEST_DIR).quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("TASK-2 - Unassigned Task");
+			expect(out).not.toContain("TASK-1 - Assigned Task");
+		});
+
+		it("should reject combining --unassigned with --assignee", async () => {
+			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice --unassigned`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("--unassigned cannot be combined with --assignee");
+		});
+
 		it("should filter tasks by labels requiring every requested label", async () => {
 			const core = new Core(TEST_DIR);
 

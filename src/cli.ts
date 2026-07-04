@@ -2014,6 +2014,11 @@ addHelpSchema(taskCmd.command("list"), {
 	optional: [
 		{ name: "status", type: statusType, description: "Filter by task status; case-insensitive" },
 		{ name: "assignee", type: "Assignee", description: "Filter by @name" },
+		{
+			name: "unassigned",
+			type: "Boolean",
+			description: "Only tasks without an assignee; cannot be combined with --assignee",
+		},
 		{ name: "milestone", type: "Milestone ID or title", description: "Closest case-insensitive match" },
 		{ name: "parent", type: "Task ID", description: "Show subtasks of a parent task" },
 		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter by task priority" },
@@ -2036,6 +2041,7 @@ addHelpSchema(taskCmd.command("list"), {
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
+	.option("--unassigned", "filter tasks without an assignee (cannot be combined with --assignee)")
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
@@ -2055,12 +2061,21 @@ addHelpSchema(taskCmd.command("list"), {
 			core.disposeSearchService();
 			core.disposeContentStore();
 		};
+		if (options.assignee && options.unassigned) {
+			console.error("--unassigned cannot be combined with --assignee.");
+			process.exitCode = 1;
+			cleanup();
+			return;
+		}
 		const baseFilters: TaskListFilter = {};
 		if (options.status) {
 			baseFilters.status = options.status;
 		}
 		if (options.assignee) {
 			baseFilters.assignee = options.assignee;
+		}
+		if (options.unassigned) {
+			baseFilters.unassigned = true;
 		}
 		if (options.milestone) {
 			baseFilters.milestone = options.milestone;
@@ -2214,6 +2229,7 @@ addHelpSchema(taskCmd.command("list"), {
 		const activeFilters: string[] = [];
 		if (options.status) activeFilters.push(`Status: ${options.status}`);
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
+		if (options.unassigned) activeFilters.push("Unassigned");
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
@@ -2262,6 +2278,9 @@ addHelpSchema(taskCmd.command("list"), {
 		const interactiveLoaderFilters: TaskListFilter = {};
 		if (options.assignee) {
 			interactiveLoaderFilters.assignee = options.assignee;
+		}
+		if (options.unassigned) {
+			interactiveLoaderFilters.unassigned = true;
 		}
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
