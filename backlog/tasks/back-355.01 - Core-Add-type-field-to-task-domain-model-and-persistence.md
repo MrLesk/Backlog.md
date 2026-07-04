@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-01-01 23:37'
-updated_date: '2026-07-04 14:15'
+updated_date: '2026-07-04 17:49'
 labels:
   - core
 dependencies: []
@@ -21,13 +21,13 @@ Add the foundational type field to the Task interface and implement persistence 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Task interface includes optional 'type' field with union type: 'bug' | 'feature' | 'enhancement' | 'task' | 'chore' | 'docs' | 'spike'
-- [x] #2 TaskCreateInput and TaskUpdateInput interfaces include type field
-- [x] #3 Task parser reads type from YAML frontmatter (defaults to 'task' if missing)
-- [x] #4 Task writer persists type to YAML frontmatter
-- [x] #5 BacklogConfig interface includes 'types' array for project-level customization
-- [x] #6 Default types array is defined in config defaults
-- [x] #7 Unit tests verify type field CRUD operations
+- [x] #1 TaskCreateInput and TaskUpdateInput interfaces include type field
+- [x] #2 Task writer persists type to YAML frontmatter
+- [x] #3 BacklogConfig interface includes 'types' array for project-level customization
+- [x] #4 Default types array is defined in config defaults
+- [x] #5 Unit tests verify type field CRUD operations
+- [x] #6 Task interface includes optional 'type' field as a string validated on write against the configured allowed set (default DEFAULT_TASK_TYPES: bug, feature, enhancement, task, chore, docs, spike)
+- [x] #7 Task parser reads 'type' from YAML frontmatter; an absent key stays undefined (untyped) - no default injection and no migration of existing tasks
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -48,6 +48,8 @@ Add the foundational type field to the Task interface and implement persistence 
 Core implementation complete: Task/TaskCreateInput/TaskUpdateInput.type (optional string), DEFAULT_TASK_TYPES constant, BacklogConfig.types + config.yml 'types' key (parse/serialize), frontmatter 'type' parse/serialize next to priority, normalizeTaskType write validation (canonical casing, clear error listing allowed values, empty string clears), type included in updated_date relevance check. 12 unit tests in src/test/task-type.test.ts covering CRUD round-trip, validation failure, config override, and absent-field back-compat.
 
 Validation: bunx tsc --noEmit clean; biome check clean; full bun test 1390 pass / 1 fail - the single failure (CLI Priority Filtering > case insensitive priority filtering, 5s timeout) reproduces identically on a pristine origin/main worktree, so it is a pre-existing flake unrelated to this change. End-to-end sanity check against a real scratch project confirmed create/edit/reject and config.yml 'types' override behavior.
+
+Config edge-case note: an empty 'types: []' in config.yml behaves as 'use DEFAULT_TASK_TYPES' (validation falls back to defaults and serializeConfig omits the empty key), unlike 'statuses: []' which is preserved as configured. Intentional: an empty allowed-type set would make every typed write invalid. AC texts for #1/#3 (now #6/#7 after amendment) were updated to match the approved design (validated string + absent-stays-untyped) instead of the original closed-union/default-to-task wording.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
