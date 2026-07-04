@@ -38,8 +38,21 @@ describe("getPackageName", () => {
 
 describe("getCandidatePackageNames", () => {
 	it("tries the sibling darwin arch after the native one on macOS", () => {
-		expect(getCandidatePackageNames("darwin", "arm64")).toEqual(["backlog.md-darwin-arm64", "backlog.md-darwin-x64"]);
-		expect(getCandidatePackageNames("darwin", "x64")).toEqual(["backlog.md-darwin-x64", "backlog.md-darwin-arm64"]);
+		expect(getCandidatePackageNames("darwin", "arm64", false)).toEqual([
+			"backlog.md-darwin-arm64",
+			"backlog.md-darwin-x64",
+		]);
+		expect(getCandidatePackageNames("darwin", "x64", false)).toEqual([
+			"backlog.md-darwin-x64",
+			"backlog.md-darwin-arm64",
+		]);
+	});
+
+	it("prefers the arm64 hardware arch when the process runs under Rosetta", () => {
+		expect(getCandidatePackageNames("darwin", "x64", true)).toEqual([
+			"backlog.md-darwin-arm64",
+			"backlog.md-darwin-x64",
+		]);
 	});
 
 	it("does not add fallbacks on other platforms", () => {

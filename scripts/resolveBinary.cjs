@@ -5,24 +5,28 @@ function getPackageName(platform = process.platform, arch = process.arch) {
 }
 
 /**
- * Package names to try, in order. On macOS the native arch comes first and the
- * sibling arch is a fallback: Rosetta can make Node/Bun report x64 on Apple
- * Silicon (or install only one variant), and macOS can still run whichever
- * darwin binary is actually present.
+ * Package names to try, in order. On macOS both darwin variants are candidates
+ * because the OS can run whichever one is actually installed (natively or via
+ * Rosetta 2). A Rosetta-translated process reports x64 while the hardware is
+ * arm64, so under Rosetta the arm64 (hardware) package comes first.
  */
-function getCandidatePackageNames(platform = process.platform, arch = process.arch) {
-	const candidates = [getPackageName(platform, arch)];
-	if (platform === "darwin" && (arch === "arm64" || arch === "x64")) {
-		candidates.push(getPackageName(platform, arch === "arm64" ? "x64" : "arm64"));
+function getCandidatePackageNames(
+	platform = process.platform,
+	arch = process.arch,
+	rosetta = isRosettaTranslated(platform),
+) {
+	if (platform !== "darwin" || (arch !== "arm64" && arch !== "x64")) {
+		return [getPackageName(platform, arch)];
 	}
-	return candidates;
+	const primary = rosetta ? "arm64" : arch;
+	return [getPackageName(platform, primary), getPackageName(platform, primary === "arm64" ? "x64" : "arm64")];
 }
 
 /** True when the current process runs under Rosetta 2 translation on macOS. */
 function isRosettaTranslated(platform = process.platform) {
 	if (platform !== "darwin") return false;
 	try {
-		return execFileSync("sysctl", ["-in", "sysctl.proc_translated"], { encoding: "utf8" }).trim() === "1";
+		return execFileSync("/usr/sbin/sysctl", ["-in", "sysctl.proc_translated"], { encoding: "utf8" }).trim() === "1";
 	} catch {
 		return false;
 	}

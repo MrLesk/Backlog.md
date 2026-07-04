@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { spawn } = require("node:child_process");
+const { constants: osConstants } = require("node:os");
 const { getCandidatePackageNames, isRosettaTranslated, resolveBinaryPath } = require("./resolveBinary.cjs");
 
 function printInstallHelp() {
@@ -26,57 +27,80 @@ function printInstallHelp() {
 	}
 }
 
-let binaryPath;
-try {
-	binaryPath = resolveBinaryPath();
-} catch {
-	console.error(`Binary package not installed for ${process.platform}-${process.arch}.`);
-	console.error(`Tried packages: ${getCandidatePackageNames().join(", ")}`);
-	printInstallHelp();
+/**
+ * Spawn/exec failures that indicate a missing or wrong-architecture binary.
+ * macOS reports a wrong-arch Mach-O as EBADARCH (errno 86), which libuv has no
+ * name for, so it surfaces as errno -86 ("Unknown system error -86").
+ */
+function isBinaryInstallError(error) {
+	return error?.errno === -86 || error?.code === "EBADARCH" || error?.code === "ENOEXEC" || error?.code === "ENOENT";
+}
+
+function handleSpawnError(binaryPath, error) {
+	if (isBinaryInstallError(error)) {
+		console.error(`Cannot execute ${binaryPath} (${error.code ?? error.errno}).`);
+		console.error("The binary is missing or was built for a different CPU architecture.");
+		printInstallHelp();
+	} else {
+		console.error("Failed to start backlog:", error);
+	}
 	process.exit(1);
 }
 
-// Clean up unexpected args some global shims pass (e.g. bun) like the binary path itself
-const rawArgs = process.argv.slice(2);
-const cleanedArgs = rawArgs.filter((arg) => {
-	if (arg === binaryPath) return false;
-	// Filter any accidental deep path to our platform package binary
+function main() {
+	let binaryPath;
 	try {
-		const pattern = /node_modules[/\\]backlog\.md-(darwin|linux|windows)-[^/\\]+[/\\]backlog(\.exe)?$/i;
-		return !pattern.test(arg);
+		binaryPath = resolveBinaryPath();
 	} catch {
-		return true;
-	}
-});
-
-// Spawn the binary with cleaned arguments
-const child = spawn(binaryPath, cleanedArgs, {
-	stdio: "inherit",
-	windowsHide: true,
-});
-
-// Handle exit
-child.on("exit", (code, signal) => {
-	if (signal === "SIGILL" || signal === "SIGTRAP") {
-		// Typical symptom of running a binary built for the other CPU architecture
-		console.error(`\nbacklog crashed with ${signal} (illegal instruction): ${binaryPath}`);
-		console.error("The installed binary was likely built for a different CPU architecture.");
+		console.error(`Binary package not installed for ${process.platform}-${process.arch}.`);
+		console.error(`Tried packages: ${getCandidatePackageNames().join(", ")}`);
 		printInstallHelp();
 		process.exit(1);
 	}
-	process.exit(code ?? 1);
-});
 
-// Handle errors
-child.on("error", (err) => {
-	if (err.code === "ENOENT") {
-		console.error(`Binary not found: ${binaryPath}`);
-		printInstallHelp();
-	} else if (err.code === "EBADARCH" || err.code === "ENOEXEC") {
-		console.error(`Cannot execute ${binaryPath} (${err.code}): the binary targets a different CPU architecture.`);
-		printInstallHelp();
-	} else {
-		console.error("Failed to start backlog:", err);
+	// Clean up unexpected args some global shims pass (e.g. bun) like the binary path itself
+	const rawArgs = process.argv.slice(2);
+	const cleanedArgs = rawArgs.filter((arg) => {
+		if (arg === binaryPath) return false;
+		// Filter any accidental deep path to our platform package binary
+		try {
+			const pattern = /node_modules[/\\]backlog\.md-(darwin|linux|windows)-[^/\\]+[/\\]backlog(\.exe)?$/i;
+			return !pattern.test(arg);
+		} catch {
+			return true;
+		}
+	});
+
+	// Spawn failures can surface as a synchronous throw (e.g. ENOEXEC) or as an 'error' event
+	let child;
+	try {
+		child = spawn(binaryPath, cleanedArgs, {
+			stdio: "inherit",
+			windowsHide: true,
+		});
+	} catch (error) {
+		handleSpawnError(binaryPath, error);
+		return;
 	}
-	process.exit(1);
-});
+
+	child.on("exit", (code, signal) => {
+		if (signal === "SIGILL" || signal === "SIGTRAP") {
+			// Typical symptom of running a binary built for the other CPU architecture
+			console.error(`\nbacklog crashed with ${signal} (illegal instruction): ${binaryPath}`);
+			console.error("The installed binary was likely built for a different CPU architecture.");
+			printInstallHelp();
+			process.exit(1);
+		}
+		if (signal) {
+			const signalNumber = osConstants.signals[signal];
+			process.exit(signalNumber ? 128 + signalNumber : 1);
+		}
+		process.exit(code ?? 1);
+	});
+
+	child.on("error", (error) => handleSpawnError(binaryPath, error));
+}
+
+if (require.main === module) main();
+
+module.exports = { isBinaryInstallError };

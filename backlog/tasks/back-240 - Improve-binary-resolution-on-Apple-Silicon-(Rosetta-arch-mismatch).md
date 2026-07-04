@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2025-08-17 17:00'
-updated_date: '2026-07-04 14:18'
+updated_date: '2026-07-04 17:54'
 labels:
   - packaging
   - bug
@@ -57,6 +57,8 @@ Out of scope: universal binaries.
 Implementation: scripts/resolveBinary.cjs now builds an ordered candidate list (native darwin arch first, sibling darwin arch as fallback; no fallback on linux/windows or unknown darwin arches), exposes getCandidatePackageNames + isRosettaTranslated (sysctl -in sysctl.proc_translated), and resolveBinaryPath accepts an injectable resolver for tests. scripts/cli.cjs prints detected platform-arch, Node version, Rosetta yes/no, tried package names, and macOS remediation commands (node -p process.arch vs uname -m, /opt/homebrew vs /usr/local brew reinstall, arch -arm64 npm/bun reinstall) on resolution failure, ENOENT, EBADARCH/ENOEXEC spawn errors, and SIGILL/SIGTRAP child crashes; child signal deaths now exit 1 instead of 0. README gained Troubleshooting > Apple Silicon (macOS) (anchor #apple-silicon-macos referenced by the error output). Simplified legacy mapPlatform/mapArch switches into getPackageName.
 
 Validation: bun test src/test/resolveBinary.test.ts (15 pass, resolution matrix incl. both fallback directions, linux/win32 no-fallback, .exe suffix, both-missing error, Rosetta short-circuit). Full bun test: 1390 pass / 1 fail - the failing 'CLI Priority Filtering > case insensitive priority filtering' 5s timeout also fails on untouched main at the same commit (pre-existing flake, unrelated). bunx tsc --noEmit clean; biome check clean on changed files (bun run check . cannot run from this worktree because its path is under .claude/, which biome.json excludes). Manual smoke tests: missing packages -> guidance + exit 1; arm64 host with only darwin-x64 package -> fallback binary spawned with args, exit code propagated; SIGILL child -> arch guidance + exit 1; happy path spawns installed darwin-arm64 binary.
+
+Review fixes on PR #721 (independent review): 1) spawn() failures can throw synchronously (verified: both Node and Bun throw sync ENOEXEC) - wrapped spawn in try/catch and routed sync throws and 'error' events through one handleSpawnError/isBinaryInstallError path matching errno -86 (macOS EBADARCH, unmapped by libuv), EBADARCH, ENOEXEC, ENOENT. 2) Added src/test/cli-launcher.test.ts integration tests spawning the copied launcher against fixture node_modules (missing packages -> guidance + exit 1; args/exit-code passthrough; SIGILL -> guidance + exit 1; SIGTERM -> exit 143; ENOEXEC fixture -> guidance + exit 1) plus unit tests for the exported isBinaryInstallError classifier; cli.cjs main is now guarded by require.main === module. Fixture dirs include package.json + node_modules to disable Bun auto-install. 3) Nits: sysctl called via absolute /usr/sbin/sysctl; non-SIGILL/SIGTRAP signal deaths exit 128+signal via os.constants.signals; getCandidatePackageNames now takes rosetta (default isRosettaTranslated) and orders darwin-arm64 first when a translated x64 process runs on arm64 hardware. Gates re-run: tsc clean, biome clean on changed files, scoped suites 31 pass (launcher/resolver/packaging/cli-root-entry/build).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
