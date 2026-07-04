@@ -80,7 +80,7 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Archive     | `backlog task archive 7`                             |
 
-Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes.
+Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
 
 ### Multi-line input (description/plan/notes/comments/final summary)
 
@@ -168,9 +168,11 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 | Filter by priority | `backlog search "bug" --priority high`        |
 | Combine filters    | `backlog search "web" --status "To Do" --priority medium` |
 | Plain text output  | `backlog search "feature" --plain` (for scripts/AI) |
+| Find by modified file | `backlog search --modified-file src/path.ts --plain` |
 
 **Search features:**
 - **Fuzzy matching** -- finds "authentication" when searching for "auth"
+- **Modified-file lookup** -- tasks can record project-root-relative modified files; find them later with `--modified-file`
 - **Interactive filters** -- refine your search in real-time with the TUI
 - **Live filtering** -- see results update as you type (no Enter needed)
 
