@@ -36,13 +36,11 @@ Searching first avoids duplicate tasks and helps you understand existing context
 
 ### Detailed Guidance (Required)
 
-Read these resources to get essential instructions when:
+**Read the matching resource below before creating, executing, or finalizing tasks — do not act from this overview alone.** The overview only tells you when to act; these resources define the required procedure, and skipping them produces inconsistent tasks and metadata.
 
 - **Creating tasks** → `backlog://workflow/task-creation` - Scope assessment, acceptance criteria, parent/subtasks structure
 - **Planning & executing work** → `backlog://workflow/task-execution` - Planning workflow, implementation discipline, scope changes
 - **Finalizing tasks** → `backlog://workflow/task-finalization` - Definition of Done, finalization checklist, next steps
-
-These guides contain critical workflows you need to follow for proper task management.
 
 ### Core Principle
 

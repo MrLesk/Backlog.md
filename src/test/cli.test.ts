@@ -105,7 +105,7 @@ describe("CLI Integration", () => {
 			expect(overview).toContain('backlog task list --search "login" --labels frontend,bug --limit 20 --plain');
 			expect(overview).toContain("backlog task view BACK-123 --plain");
 			expect(overview).toContain(
-				"Always read the relevant guide before that part of the workflow. Do not rely on this overview alone for these actions:",
+				"**Required: read the matching guide below before creating, executing, or finalizing tasks. Do not rely on this overview alone for these actions.**",
 			);
 			expect(overview).toContain(
 				"`backlog instructions task-creation`\n  -> Read before creating tasks: how to search, scope, and create tasks",

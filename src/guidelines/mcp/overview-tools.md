@@ -29,6 +29,8 @@ Use this tool to retrieve the required Backlog.md guidance in markdown form:
 
 The tool returns the same content that resource-capable clients read via `backlog://workflow/...` URIs. The overview response is tool-oriented when `instruction` is omitted or set to `overview`.
 
+**Required: fetch and read the matching guide (`task-creation`, `task-execution`, `task-finalization`) before creating, executing, or finalizing tasks — do not act from this overview alone.** The guides define the required procedure; skipping them produces inconsistent tasks and metadata.
+
 ### Typical Workflow (Tools)
 
 1. **Search first:** call `task_search` or `task_list` with filters to find existing work

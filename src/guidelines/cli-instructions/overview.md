@@ -27,7 +27,7 @@ Search and read before changing anything:
 
 ### Detailed Guides
 
-Always read the relevant guide before that part of the workflow. Do not rely on this overview alone for these actions:
+**Required: read the matching guide below before creating, executing, or finalizing tasks. Do not rely on this overview alone for these actions.** The overview only tells you when to act; the guides define the required procedure, and skipping them produces inconsistent tasks and metadata.
 
 - `backlog instructions task-creation`
   -> Read before creating tasks: how to search, scope, and create tasks
