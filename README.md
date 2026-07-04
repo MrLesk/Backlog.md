@@ -90,9 +90,9 @@ backlog init "Personal Planning" --no-git
 ```
 
 > [!TIP]
-> **Running one-off with `npx`?** Use the full package name: `npx backlog.md init "My Project"`, `npx backlog.md board`.
-> `npx backlog <command>` fails with "could not determine executable to run" because the npm package is `backlog.md`;
-> the short `backlog` command is available after a global install.
+> **Running one-off with `npx`?** This tool's npm package is named `backlog.md`, so use the full name: `npx backlog.md init "My Project"`, `npx backlog.md board`.
+> Without an install, `npx backlog` resolves to an unrelated third-party npm package — not this tool.
+> (With `backlog.md` installed as a project dependency, `npx backlog` runs the local binary as usual.)
 
 The init wizard will ask how you want to connect AI tools:
 - **CLI instructions** (recommended): creates a short instruction file that tells agents to run `backlog instructions overview`.
