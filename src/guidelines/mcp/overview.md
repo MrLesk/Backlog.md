@@ -54,7 +54,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 **Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.
 
-- `task_list` — list tasks with optional filtering by status, assignee, milestone, labels, search, or limit
+- `task_list` — list tasks with optional filtering by status, assignee (or `unassigned: true`), milestone, labels, search, or limit
 - `task_search` — search tasks by title and description, or use `modifiedFiles` to filter by project-root-relative modified file path substrings
 - `task_view` — read full task context (description, plan, notes, comments, final summary, acceptance criteria, Definition of Done)
 - `definition_of_done_defaults_get` — read project-level Definition of Done defaults from config
