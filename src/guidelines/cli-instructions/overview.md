@@ -15,7 +15,7 @@ Create tasks for work like bug fixes that need investigation, feature work, API 
 
 ### Start Every Request Here
 
-Use this overview to decide what to read or run next. The detailed guides contain the procedure for creating, executing, and finalizing tasks.
+Use this overview to decide what to read or run next.
 
 Search and read before changing anything:
 
