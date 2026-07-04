@@ -15,7 +15,6 @@ import {
 	isLocalEditableTask,
 	type Milestone,
 	type SearchFilters,
-	type Sequence,
 	type Task,
 	type TaskCommentInput,
 	type TaskCreateInput,
@@ -64,7 +63,6 @@ import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
-import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
 import {
 	type BranchTaskStateEntry,
 	findTaskInLocalBranches,
@@ -2171,48 +2169,6 @@ export class Core {
 
 		const updatedTask = updatesMap.get(taskId) ?? updatedMoved;
 		return { updatedTask, changedTasks };
-	}
-
-	// Sequences operations (business logic lives in core, not server)
-	async listActiveSequences(): Promise<{ unsequenced: Task[]; sequences: Sequence[] }> {
-		const all = await this.fs.listTasks();
-		const active = all.filter((t) => (t.status || "").toLowerCase() !== "done");
-		return computeSequences(active);
-	}
-
-	async moveTaskInSequences(params: {
-		taskId: string;
-		unsequenced?: boolean;
-		targetSequenceIndex?: number;
-	}): Promise<{ unsequenced: Task[]; sequences: Sequence[] }> {
-		const taskId = String(params.taskId || "").trim();
-		if (!taskId) throw new Error("taskId is required");
-
-		const allTasks = await this.fs.listTasks();
-		const exists = allTasks.some((t) => t.id === taskId);
-		if (!exists) throw new Error(`Task ${taskId} not found`);
-
-		const active = allTasks.filter((t) => (t.status || "").toLowerCase() !== "done");
-		const { sequences } = computeSequences(active);
-
-		if (params.unsequenced) {
-			const res = planMoveToUnsequenced(allTasks, taskId);
-			if (!res.ok) throw new Error(res.error);
-			await this.updateTasksBulk(res.changed, `Move ${taskId} to Unsequenced`);
-		} else {
-			const targetSequenceIndex = params.targetSequenceIndex;
-			if (targetSequenceIndex === undefined || Number.isNaN(targetSequenceIndex)) {
-				throw new Error("targetSequenceIndex must be a number");
-			}
-			if (targetSequenceIndex < 1) throw new Error("targetSequenceIndex must be >= 1");
-			const changed = planMoveToSequence(allTasks, sequences, taskId, targetSequenceIndex);
-			if (changed.length > 0) await this.updateTasksBulk(changed, `Update deps/order for ${taskId}`);
-		}
-
-		// Return updated sequences
-		const afterAll = await this.fs.listTasks();
-		const afterActive = afterAll.filter((t) => (t.status || "").toLowerCase() !== "done");
-		return computeSequences(afterActive);
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {

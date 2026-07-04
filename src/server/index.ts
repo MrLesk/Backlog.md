@@ -409,18 +409,6 @@ export class BacklogServer {
 					"/api/search": {
 						GET: async (req: Request) => await this.handleSearch(req),
 					},
-					"/sequences": {
-						GET: async () => await this.handleGetSequences(),
-					},
-					"/sequences/move": {
-						POST: async (req: Request) => await this.handleMoveSequence(req),
-					},
-					"/api/sequences": {
-						GET: async () => await this.handleGetSequences(),
-					},
-					"/api/sequences/move": {
-						POST: async (req: Request) => await this.handleMoveSequence(req),
-					},
 					// Serve files placed under backlog/assets at /assets/<relative-path>
 					"/assets/*": {
 						GET: async (req: Request) => await this.handleAssetRequest(req),
@@ -1648,33 +1636,6 @@ export class BacklogServer {
 		} catch (error) {
 			console.error("Error executing cleanup:", error);
 			return Response.json({ error: "Failed to execute cleanup" }, { status: 500 });
-		}
-	}
-
-	// Sequences handlers
-	private async handleGetSequences(): Promise<Response> {
-		const data = await this.core.listActiveSequences();
-		return Response.json(data);
-	}
-
-	private async handleMoveSequence(req: Request): Promise<Response> {
-		try {
-			const body = await req.json();
-			const taskId = String(body.taskId || "").trim();
-			const moveToUnsequenced = Boolean(body.unsequenced === true);
-			const targetSequenceIndex = body.targetSequenceIndex !== undefined ? Number(body.targetSequenceIndex) : undefined;
-
-			if (!taskId) return Response.json({ error: "taskId is required" }, { status: 400 });
-
-			const next = await this.core.moveTaskInSequences({
-				taskId,
-				unsequenced: moveToUnsequenced,
-				targetSequenceIndex,
-			});
-			return Response.json(next);
-		} catch (error) {
-			const message = (error as Error)?.message || "Invalid request";
-			return Response.json({ error: message }, { status: 400 });
 		}
 	}
 

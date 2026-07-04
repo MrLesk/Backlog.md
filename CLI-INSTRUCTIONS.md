@@ -186,7 +186,7 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 
 ## Dependency Management
 
-Manage task dependencies to create execution sequences and prevent circular relationships:
+Manage task dependencies to express execution order and prevent circular relationships:
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
@@ -199,7 +199,6 @@ Manage task dependencies to create execution sequences and prevent circular rela
 **Dependency Features:**
 - **Automatic validation**: Prevents circular dependencies and validates task existence
 - **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
-- **Visual sequences**: Dependencies create visual execution sequences in board view
 - **Completion tracking**: See which dependencies are blocking task progress
 
 ## Board Operations
