@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
@@ -162,41 +162,47 @@ const Icons = {
 	),
 };
 
+// Shared render path for sidebar document links (search results, folder tree, and flat list).
+const DocLink = ({ doc, depth = 0 }: { doc: Document; depth?: number }) => (
+	<NavLink
+		to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
+		className={({ isActive }) =>
+			`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
+				isActive
+					? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+					: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+			}`
+		}
+		style={depth > 0 ? { paddingLeft: `${12 + depth * 12}px` } : undefined}
+	>
+		<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
+		<span className="truncate">{doc.title}</span>
+	</NavLink>
+);
+
 interface FolderNodeProps {
 	node: DocsTreeNode;
 	depth: number;
 	folderExpanded: Record<string, boolean>;
-	setFolderExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-	stripIdPrefix: (id: string) => string;
-	sanitizeUrlTitle: (title: string) => string;
+	onToggleFolder: (path: string) => void;
 }
 
-const FolderNode = memo(function FolderNode({
-	node,
-	depth,
-	folderExpanded,
-	setFolderExpanded,
-	stripIdPrefix,
-	sanitizeUrlTitle,
-}: FolderNodeProps) {
+const FolderNode = memo(function FolderNode({ node, depth, folderExpanded, onToggleFolder }: FolderNodeProps) {
 	const isExpanded = folderExpanded[node.path] ?? true;
-	
-	const toggle = useCallback(() => {
-		setFolderExpanded(prev => ({ ...prev, [node.path]: !isExpanded }));
-	}, [node.path, isExpanded, setFolderExpanded]);
 
 	return (
 		<div>
 			<button
-				onClick={toggle}
-				aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+				onClick={() => onToggleFolder(node.path)}
+				aria-label={`${node.name} folder`}
 				aria-expanded={isExpanded}
+				title={node.name}
 				className="flex items-center px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200 w-full"
 				style={{ paddingLeft: `${12 + depth * 12}px` }}
 			>
-				{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
-				<span className="text-gray-500 dark:text-gray-400 ml-1"><Icons.Folder /></span>
-				<span className="ml-2 font-medium">{node.name}</span>
+				<span className="shrink-0">{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}</span>
+				<span className="text-gray-500 dark:text-gray-400 ml-1 shrink-0"><Icons.Folder /></span>
+				<span className="ml-2 font-medium truncate">{node.name}</span>
 			</button>
 			{isExpanded && (
 				<div>
@@ -206,27 +212,11 @@ const FolderNode = memo(function FolderNode({
 							node={child}
 							depth={depth + 1}
 							folderExpanded={folderExpanded}
-							setFolderExpanded={setFolderExpanded}
-							stripIdPrefix={stripIdPrefix}
-							sanitizeUrlTitle={sanitizeUrlTitle}
+							onToggleFolder={onToggleFolder}
 						/>
 					))}
 					{node.docs.map(doc => (
-						<NavLink
-							key={doc.id}
-							to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
-							className={({ isActive }) =>
-								`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-							style={{ paddingLeft: `${12 + (depth + 1) * 12}px` }}
-						>
-							<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
-							<span className="truncate">{doc.title}</span>
-						</NavLink>
+						<DocLink key={doc.id} doc={doc} depth={depth + 1} />
 					))}
 				</div>
 			)}
@@ -426,6 +416,10 @@ const SideNavigation = memo(function SideNavigation({
 	const filteredDecisions = decisions;
 
 	const { tree, ungroupedDocs } = useMemo(() => buildDocsTree(filteredDocs), [filteredDocs]);
+
+	const toggleFolder = useCallback((path: string) => {
+		setFolderExpanded(prev => ({ ...prev, [path]: !(prev[path] ?? true) }));
+	}, []);
 
 	const toggleCollapse = useCallback(() => {
 		setIsCollapsed((prev: any) => !prev);
@@ -704,62 +698,27 @@ const SideNavigation = memo(function SideNavigation({
 							{/* Document List */}
 							{!isDocsCollapsed && (
 								<div className="space-y-1">
-									{searchQuery.trim() ? (
-										filteredDocs.length === 0 ? (
-											<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
-										) : (
-											filteredDocs.map(doc => (
-												<NavLink
-													key={doc.id}
-													to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
-													className={({ isActive }) =>
-														`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
-															isActive
-																? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-																: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-														}`
-													}
-												>
-													<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
-													<span className="truncate">{doc.title}</span>
-												</NavLink>
-											))
-										)
+									{filteredDocs.length === 0 ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
+									) : searchQuery.trim() ? (
+										// Search results stay flat, bypassing folder grouping
+										filteredDocs.map(doc => (
+											<DocLink key={doc.id} doc={doc} />
+										))
 									) : (
 										<>
-											{tree.length === 0 && ungroupedDocs.length === 0 ? (
-												<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
-											) : (
-												<>
-													{tree.map(node => (
-														<FolderNode
-															key={node.path}
-															node={node}
-															depth={0}
-															folderExpanded={folderExpanded}
-															setFolderExpanded={setFolderExpanded}
-															stripIdPrefix={stripIdPrefix}
-															sanitizeUrlTitle={sanitizeUrlTitle}
-														/>
-													))}
-													{ungroupedDocs.map(doc => (
-														<NavLink
-															key={doc.id}
-															to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
-															className={({ isActive }) =>
-																`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
-																	isActive
-																		? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-																		: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-																}`
-															}
-														>
-															<span className="text-gray-400 dark:text-gray-500"><Icons.DocumentPage /></span>
-															<span className="truncate">{doc.title}</span>
-														</NavLink>
-													))}
-												</>
-											)}
+											{tree.map(node => (
+												<FolderNode
+													key={node.path}
+													node={node}
+													depth={0}
+													folderExpanded={folderExpanded}
+													onToggleFolder={toggleFolder}
+												/>
+											))}
+											{ungroupedDocs.map(doc => (
+												<DocLink key={doc.id} doc={doc} />
+											))}
 										</>
 									)}
 								</div>
