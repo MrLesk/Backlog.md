@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLAUDE_AGENT_CONTENT, CLI_AGENT_NUDGE, MCP_AGENT_NUDGE, README_GUIDELINES } from "./constants/index.ts";
 import type { GitOperations } from "./git/operations.ts";
+import { getVersion } from "./utils/version.ts";
 
 export type AgentInstructionFile =
 	| "AGENTS.md"
@@ -62,11 +63,30 @@ function hasBacklogGuidelines(content: string, fileName: string): boolean {
 }
 
 /**
+ * Builds the machine-readable version marker line embedded in every installed
+ * instruction block. Written at install/update time from the running binary's
+ * version so local instructions can later be compared against the bundled ones.
+ */
+function versionMarkerLine(fileName: string, version: string): string {
+	const marker = `backlog.md-instructions-version: ${version}`;
+	if (fileName === ".cursorrules") {
+		// .cursorrules doesn't support HTML comments, use markdown-style comments
+		return `# ${marker}`;
+	}
+	return `<!-- ${marker} -->`;
+}
+
+/**
  * Wraps the Backlog.md guidelines with appropriate markers
  */
-function wrapWithMarkers(content: string, fileName: string, kind: GuidelineMarkerKind = "default"): string {
+function wrapWithMarkers(
+	content: string,
+	fileName: string,
+	version: string,
+	kind: GuidelineMarkerKind = "default",
+): string {
 	const { start, end } = getMarkers(fileName, kind);
-	return `\n${start}\n${content}\n${end}\n`;
+	return `\n${start}\n${versionMarkerLine(fileName, version)}\n${content}\n${end}\n`;
 }
 
 function stripGuidelineSection(
@@ -135,6 +155,7 @@ export async function addAgentInstructions(
 		"README.md": README_GUIDELINES,
 	};
 
+	const version = await getVersion();
 	const paths: string[] = [];
 	const results: AgentInstructionWriteResult[] = [];
 	for (const name of files) {
@@ -166,7 +187,7 @@ export async function addAgentInstructions(
 					const insertAt = defaultStripped.firstIndex ?? defaultStripped.content.length;
 					finalContent =
 						defaultStripped.content.slice(0, insertAt) +
-						wrapWithMarkers(content, name) +
+						wrapWithMarkers(content, name, version) +
 						defaultStripped.content.slice(insertAt);
 				} else if (hasBacklogGuidelines(existing, name)) {
 					// Guidelines already exist but could not be parsed, skip this file.
@@ -175,7 +196,7 @@ export async function addAgentInstructions(
 				} else {
 					// Append Backlog.md guidelines with markers
 					if (!existing.endsWith("\n")) existing += "\n";
-					finalContent = existing + wrapWithMarkers(content, name);
+					finalContent = existing + wrapWithMarkers(content, name, version);
 				}
 
 				if (finalContent === originalExisting) {
@@ -185,11 +206,11 @@ export async function addAgentInstructions(
 			} catch (error) {
 				console.error(`Error reading existing file ${filePath}:`, error);
 				// If we can't read it, just use the new content with markers
-				finalContent = wrapWithMarkers(content, name);
+				finalContent = wrapWithMarkers(content, name, version);
 			}
 		} else {
 			// File doesn't exist, create with markers
-			finalContent = wrapWithMarkers(content, name);
+			finalContent = wrapWithMarkers(content, name, version);
 		}
 
 		await mkdir(dirname(filePath), { recursive: true });
@@ -252,7 +273,7 @@ export async function ensureMcpGuidelines(
 		}
 	}
 
-	const nudgeBlock = wrapWithMarkers(MCP_AGENT_NUDGE, fileName, "mcp");
+	const nudgeBlock = wrapWithMarkers(MCP_AGENT_NUDGE, fileName, await getVersion(), "mcp");
 	let nextContent: string;
 	if (insertIndex !== null) {
 		const normalizedIndex = Math.max(0, Math.min(insertIndex, existing.length));
@@ -286,6 +307,7 @@ export async function installClaudeAgent(projectRoot: string): Promise<void> {
 	// Create the directory if it doesn't exist
 	await mkdir(agentDir, { recursive: true });
 
-	// Write the agent content
-	await Bun.write(agentPath, CLAUDE_AGENT_CONTENT);
+	// Write the agent content with the version marker appended
+	const versionLine = versionMarkerLine("project-manager-backlog.md", await getVersion());
+	await Bun.write(agentPath, `${CLAUDE_AGENT_CONTENT.trimEnd()}\n\n${versionLine}\n`);
 }
