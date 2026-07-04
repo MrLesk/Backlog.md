@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-04 14:11'
+updated_date: '2026-07-04 17:52'
 labels:
   - cli
   - task-view
@@ -33,6 +33,8 @@ Track GitHub issue #289: add an output mode for viewing full task content when -
 
 <!-- SECTION:NOTES:BEGIN -->
 Already implemented on main as of commit d0f3cff; closing with evidence instead of re-implementing. Evidence: 'backlog task view <id> --plain' outputs all structured sections in full with no truncation via formatTaskPlainText (src/formatters/task-plain-text.ts): metadata header, description, acceptance criteria, Definition of Done, implementation plan, implementation notes, comments, and final summary. Markdown headings inside section content are preserved because structured-section extraction (src/markdown/structured-sections.ts) only stops at known structured section headers, so custom '## ...'/'### ...' headings stay inside their section. Tests covering markdown headings inside content sections: src/test/update-task-description.test.ts ('### Subsection' preserved in implementation notes while editing description), src/test/implementation-notes.test.ts ('preserves nested H2 headings when migrating legacy implementation notes'), src/test/acceptance-criteria.test.ts ('preserves markdown headings inside acceptance criteria when updating'). Plain output shape is asserted stable in src/test/cli.test.ts. DoD: no code touched for this closure; tsc/biome/tests verified passing on main during triage.
+
+Citation correction (review): plain output shape stability is asserted in src/test/cli-plain-output.test.ts (CLI plain output for AI agents, incl. 'task view --plain'), not src/test/cli.test.ts as previously written.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
