@@ -316,6 +316,9 @@ export class Core {
 			const assigneeLower = filters.assignee.toLowerCase();
 			result = result.filter((task) => (task.assignee ?? []).some((value) => value.toLowerCase() === assigneeLower));
 		}
+		if (filters.unassigned) {
+			result = result.filter((task) => !(task.assignee ?? []).some((value) => value.trim().length > 0));
+		}
 		if (filters.priority) {
 			const priorityLower = String(filters.priority).toLowerCase();
 			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);

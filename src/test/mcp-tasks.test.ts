@@ -327,6 +327,68 @@ describe("MCP task tools (MVP)", () => {
 		expect(draftText).not.toContain("DRAFT-2 - Draft Milestone Two");
 	});
 
+	it("filters task_list to unassigned tasks and rejects combining with assignee", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Assigned Task",
+					assignee: ["alice"],
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Unassigned Task",
+				},
+			},
+		});
+
+		const unassignedResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { unassigned: true } },
+		});
+		const unassignedText = getText(unassignedResult.content);
+		expect(unassignedText).toContain("TASK-2 - Unassigned Task");
+		expect(unassignedText).not.toContain("TASK-1 - Assigned Task");
+
+		const conflictResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { assignee: "alice", unassigned: true } },
+		});
+		expect(conflictResult.isError).toBe(true);
+		expect(getText(conflictResult.content)).toContain("unassigned cannot be combined with assignee");
+	});
+
+	it("applies unassigned filtering in task_list draft status path", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Assigned Draft",
+					status: "Draft",
+					assignee: ["alice"],
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Unassigned Draft",
+					status: "Draft",
+				},
+			},
+		});
+
+		const draftResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { status: "Draft", unassigned: true } },
+		});
+		const draftText = getText(draftResult.content);
+		expect(draftText).toContain("DRAFT-2 - Unassigned Draft");
+		expect(draftText).not.toContain("DRAFT-1 - Assigned Draft");
+	});
+
 	it("includes completed tasks in task_search results and excludes archived tasks", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
