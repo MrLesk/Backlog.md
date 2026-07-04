@@ -3752,18 +3752,24 @@ addHelpSchema(docCmd.command("search <query>"), {
 addHelpSchema(docCmd.command("view <docId>"), {
 	reads: "Document metadata and markdown body",
 	required: [{ name: "docId", type: "Document ID", description: "Document to display" }],
-	optional: [],
+	optional: [{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" }],
 	output: "Document metadata and markdown content",
-	examples: ["backlog doc view doc-1"],
+	examples: ["backlog doc view doc-1", "backlog doc view doc-1 --plain"],
 })
 	.description("view a document")
-	.action(async (docId: string) => {
+	.option("--plain", "use plain text output instead of interactive UI")
+	.action(async (docId: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
 			const content = await core.getDocumentContent(docId);
 			if (content === null) {
 				console.error(`Document ${docId} not found.`);
+				return;
+			}
+			const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+			if (usePlainOutput) {
+				console.log(content);
 				return;
 			}
 			await scrollableViewer(content);
