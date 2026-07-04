@@ -308,6 +308,38 @@ For the full configuration reference (all options, default values, commands, and
 
 ---
 
+## Troubleshooting
+
+### Apple Silicon (macOS)
+
+On M-series Macs, `backlog` can fail with `illegal hardware instruction` or `Binary package not installed for darwin-...` when Node, Bun, or Homebrew run under Rosetta (x64 emulation) and install the Intel binary instead of the arm64 one — or the other way around. The launcher runs whichever darwin variant (arm64 or x64) is actually installed, but a clean native-arch install is the reliable fix.
+
+Check what your tools report:
+
+```bash
+uname -m                            # arm64 = Apple Silicon hardware; x86_64 = Intel or a Rosetta shell
+node -p process.arch                # architecture of your Node/Bun runtime
+sysctl -in sysctl.proc_translated   # 1 = current shell runs under Rosetta
+which brew                          # /opt/homebrew = arm64 brew, /usr/local = Intel brew
+```
+
+If the architectures disagree, reinstall with the native one:
+
+```bash
+# Homebrew: make sure `which brew` prints /opt/homebrew, then
+brew reinstall backlog-md
+
+# npm
+arch -arm64 npm i -g backlog.md
+
+# Bun
+arch -arm64 bun add -g backlog.md
+```
+
+Running an x64 Node under Rosetta on purpose also works: `backlog` falls back to whichever `backlog.md-darwin-*` package is present.
+
+---
+
 ## 📺 Talks & Community
 
 Watch Backlog.md in action:
