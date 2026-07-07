@@ -56,6 +56,8 @@ If the work requires multiple tasks, proceed to choose the appropriate task stru
 
 **Concrete example**: If a request spans multiple layers—say an API change, a client update, and documentation—create one parent task ("Launch bulk-edit mode") with subtasks for each layer. Note cross-layer dependencies (e.g., "UI waits on API schema") so different collaborators can work in parallel without blocking each other.
 
+Use `parentTaskId` only with an existing task ID returned by `task_create`, `task_list`, or `task_view`. Do not pass milestone IDs such as `m-0` as `parentTaskId`; assign a task to a milestone with the `milestone` field.
+
 ### Step 4: Create multi-task structure
 
 When scope requires multiple tasks:
@@ -96,6 +98,8 @@ Create all tasks in the same session to maintain consistency and context.
 ### Step 6: Report created tasks
 
 After creation, show the user each new task's ID, title, description, and acceptance criteria (e.g., "Created task-290 – API endpoint: …"). This provides visibility into what was created and allows the user to request corrections if needed.
+
+If you will continue from task creation into implementation in the same session, stop and read `backlog://workflow/task-execution` before viewing, assigning, planning, editing, or implementing a task. Task creation is complete once the work is tracked; execution uses a separate workflow.
 
 ### Common Anti-patterns to Avoid
 

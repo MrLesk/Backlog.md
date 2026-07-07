@@ -50,4 +50,17 @@ describe("CLI parent task id normalization", () => {
 		const child = await core.filesystem.loadTask("task-4.1");
 		expect(child?.parentTaskId).toBe("TASK-4");
 	});
+
+	it("rejects milestone IDs as parent task IDs when creating subtasks", async () => {
+		const core = new Core(TEST_DIR);
+		await initializeTestProject(core, "Parent Validation Test", true);
+		await $`bun run ${CLI_PATH} milestone add "Release"`.cwd(TEST_DIR).quiet();
+
+		const result = await $`bun run ${CLI_PATH} task create Child --parent m-0`.cwd(TEST_DIR).nothrow().quiet();
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr.toString()).toContain("Parent task M-0 not found");
+		expect(result.stderr.toString()).toContain("--milestone");
+		expect(await core.filesystem.listTasks()).toHaveLength(0);
+	});
 });

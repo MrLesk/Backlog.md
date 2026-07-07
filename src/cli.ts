@@ -1549,7 +1549,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Task priority" },
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
-		{ name: "parent", type: "Task ID", description: "Parent task for subtasks" },
+		{ name: "parent", type: "Task ID", description: "Existing parent task for subtasks; not a milestone ID" },
 	],
 	writes: "Creates a task or draft markdown file through Backlog.md",
 	output: "Created task details; use --plain for text output",
@@ -1579,7 +1579,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--draft")
-	.option("-p, --parent <taskId>", "specify parent task ID")
+	.option("-p, --parent <taskId>", "specify existing parent task ID, not a milestone ID")
 	.option(
 		"--depends-on <taskIds>",
 		"specify task dependencies (comma-separated or use multiple times)",

@@ -141,6 +141,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 			parentTaskId: {
 				type: "string",
 				maxLength: 50,
+				description: "Existing parent task ID for a subtask. Do not pass milestone IDs here; use milestone instead.",
 			},
 		},
 		required: ["title"],

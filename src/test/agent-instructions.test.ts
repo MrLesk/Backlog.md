@@ -54,6 +54,20 @@ describe("addAgentInstructions", () => {
 		expect(copilot).toContain(CLI_AGENT_NUDGE);
 	});
 
+	it("generated CLI nudge requires phase-specific workflow guides", async () => {
+		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+
+		expect(agents).toContain("Before task lifecycle actions, read the matching detailed guide:");
+		expect(agents).toContain(
+			"`backlog instructions task-execution` before planning, changing status or assignee, adding a plan or implementation notes, or implementing task work",
+		);
+		expect(agents).toContain(
+			"`backlog instructions task-finalization` before checking acceptance criteria, writing final summaries, or moving tasks to terminal statuses",
+		);
+		expect(agents).not.toContain("Use the detailed guides when needed:");
+	});
+
 	it("appends guideline files when they already exist", async () => {
 		await Bun.write(join(TEST_DIR, "AGENTS.md"), "Existing\n");
 		const results = await addAgentInstructions(TEST_DIR);

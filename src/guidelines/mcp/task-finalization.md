@@ -2,12 +2,14 @@
 
 ### Finalization Workflow
 
-1. **Verify all acceptance criteria and Definition of Done items** - Confirm every checklist item is satisfied (use `task_view` to see current status; use `definitionOfDoneCheck/Uncheck` as needed)
-2. **Run the Definition of Done checklist** (see below)
-3. **Write the Final Summary** - Use `task_edit` (`finalSummary` field) to capture a PR-style summary of what changed and why. Avoid one-line summaries unless the change is trivial; include tests and key scope for reviewers.
-4. **Confirm the implementation plan is captured and current** - Update the plan in Backlog if the executed approach deviated
-5. **Update task status** - Set status to "Done" via `task_edit`
-6. **Propose next steps** - Never autonomously create or start new tasks
+1. **Review all acceptance criteria and Definition of Done items** - Use `task_view` to see current status and identify what evidence each unchecked item needs.
+2. **Run objective verification before checking acceptance criteria** - Use automated tests, command output, scripted UI checks, or explicit manual verification of the behavior. For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result. Do not check acceptance criteria from code presence, grep output, or implementation intent alone.
+3. **Check only proven acceptance criteria and Definition of Done items** - Use `task_edit` with `acceptanceCriteriaCheck` and `definitionOfDoneCheck/Uncheck` as needed.
+4. **Run the Definition of Done checklist** (see below)
+5. **Write the Final Summary** - Use `task_edit` (`finalSummary` field) to capture a PR-style summary of what changed and why. Avoid one-line summaries unless the change is trivial; include tests and key scope for reviewers.
+6. **Confirm the implementation plan is captured and current** - Update the plan in Backlog if the executed approach deviated
+7. **Update task status** - Set status to "Done" via `task_edit`
+8. **Propose next steps** - Never autonomously create or start new tasks
 
 **Note:** Tasks stay in "Done" status until periodic cleanup. Moving to the completed folder (`task_complete` or CLI cleanup) is a batch operation run occasionally, not part of finishing each task.
 
@@ -16,7 +18,7 @@
 ### Definition of Done Checklist
 
 - Implementation plan exists in the task record (`task_edit` planSet/planAppend) and reflects the final solution
-- Acceptance criteria are all checked via `task_edit` (acceptanceCriteriaCheck field)
+- Acceptance criteria are all checked via `task_edit` (acceptanceCriteriaCheck field) only after objective verification evidence proves the behavior
 - Definition of Done items are all checked via `task_edit` (definitionOfDoneCheck field)
 - Automated and relevant manual tests pass; no new warnings or regressions introduced
 - Documentation or configuration updates completed when required

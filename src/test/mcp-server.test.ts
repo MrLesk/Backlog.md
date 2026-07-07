@@ -116,6 +116,9 @@ describe("McpServer bootstrap", () => {
 
 		expect(result.contents).toHaveLength(1);
 		expect(getContentsText(result.contents)).toBe(MCP_TASK_CREATION_GUIDE);
+		expect(getContentsText(result.contents)).toContain(
+			"If you will continue from task creation into implementation in the same session, stop and read `backlog://workflow/task-execution` before viewing, assigning, planning, editing, or implementing a task.",
+		);
 
 		await server.stop();
 	});
@@ -144,6 +147,33 @@ describe("McpServer bootstrap", () => {
 		expect(getContentsText(result.contents)).toBe(MCP_TASK_FINALIZATION_GUIDE);
 
 		await server.stop();
+	});
+
+	it("workflow guides require objective evidence before finalizing acceptance criteria", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		expect(MCP_TASK_EXECUTION_GUIDE).toContain(
+			"Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone",
+		);
+		expect(MCP_TASK_EXECUTION_GUIDE).toContain("verify each acceptance criterion with objective evidence");
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Run objective verification before checking acceptance criteria");
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
+			"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result.",
+		);
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
+			"Do not check acceptance criteria from code presence, grep output, or implementation intent alone.",
+		);
+	});
+
+	it("task creation guide keeps parent task IDs distinct from milestone IDs", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Use `parentTaskId` only with an existing task ID returned by `task_create`, `task_list`, or `task_view`.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Do not pass milestone IDs such as `m-0` as `parentTaskId`; assign a task to a milestone with the `milestone` field.",
+		);
 	});
 
 	it("workflow tool returns overview by default and selected guide content when requested", async () => {
