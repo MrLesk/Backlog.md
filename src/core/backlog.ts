@@ -1125,6 +1125,7 @@ export class Core {
 		// Determine if this is a draft BEFORE generating the ID
 		const requestedStatus = input.status?.trim();
 		const isDraft = requestedStatus?.toLowerCase() === "draft";
+		const requestedParentTaskId = input.parentTaskId?.trim();
 
 		// Generate ID with appropriate entity type - drafts get DRAFT-X, tasks get TASK-X
 		const entityType = isDraft ? EntityType.Draft : EntityType.Task;
@@ -1183,7 +1184,10 @@ export class Core {
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
 
 		const { task, filePath } = await this.withCreateLock(async () => {
-			const id = await this.generateNextId(entityType, isDraft ? undefined : input.parentTaskId);
+			const parentTaskId = requestedParentTaskId
+				? await this.resolveParentTaskIdForCreate(requestedParentTaskId)
+				: undefined;
+			const id = await this.generateNextId(entityType, isDraft ? undefined : parentTaskId);
 			const ordinal = await this.resolveCreateOrdinal(input.ordinal, isDraft);
 			const task: Task = {
 				id,
@@ -1197,7 +1201,7 @@ export class Core {
 				modifiedFiles: normalizedModifiedFiles,
 				rawContent: input.rawContent ?? "",
 				createdDate,
-				...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
+				...(parentTaskId && { parentTaskId }),
 				...(priority && { priority }),
 				...(type && { type }),
 				...(typeof ordinal === "number" && { ordinal }),
@@ -1219,6 +1223,17 @@ export class Core {
 
 		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
 		return { task: savedTask ?? task, filePath };
+	}
+
+	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
+		const parentTask = await this.loadTaskById(parentTaskId);
+		if (!parentTask) {
+			const normalizedParent = normalizeTaskId(parentTaskId);
+			throw new Error(
+				`Parent task ${normalizedParent} not found. Use an existing task ID with --parent; use --milestone to assign a task to a milestone.`,
+			);
+		}
+		return parentTask.id;
 	}
 
 	async createTask(task: Task, autoCommit?: boolean): Promise<string> {

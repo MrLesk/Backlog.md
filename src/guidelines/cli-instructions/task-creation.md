@@ -42,6 +42,8 @@ backlog task create -p {{TASK_ID:10}} "Set up shell"
 backlog task create -p {{TASK_ID:10}} "Wire IPC"
 ```
 
+Use `--parent`/`-p` only with an existing task ID returned by `backlog task create`, `backlog task list`, or `backlog task view`. Do not pass milestone IDs such as `m-0` to `--parent`; assign a task to a milestone with `--milestone`/`-m`.
+
 Use separate tasks with dependencies when work spans independent components:
 
 ```bash
@@ -113,3 +115,5 @@ backlog task create "Ship audit export" --dod "Manual export checked with sample
 ### After Creation
 
 Report the created task IDs, titles, and key acceptance criteria to the user. If the user asks for changes, update tasks through `backlog task edit`.
+
+If you will continue from task creation into implementation in the same session, stop and read `backlog instructions task-execution` before viewing, assigning, planning, editing, or implementing a task. Task creation is complete once the work is tracked; execution uses a separate workflow.

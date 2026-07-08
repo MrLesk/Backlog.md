@@ -37,7 +37,7 @@
 - **IMPORTANT**: Do not touch the codebase until the implementation plan is approved _and_ recorded in the task via `task_edit`
 - The recorded plan must stay accurate; if the approach shifts, update it first and get confirmation before continuing
 - If feedback requires changes, revise the plan first via `task_edit` (planSet or planAppend fields)
-- Work in short loops: implement, run the relevant tests, and immediately check off acceptance criteria with `task_edit` (acceptanceCriteriaCheck field) when they are met
+- Work in short loops: implement, run the relevant tests, and record progress. Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone; first follow the Task Finalization Guide and verify each acceptance criterion with objective evidence.
 - Log progress with `task_edit` (notesAppend field) to document decisions, blockers, or learnings
 - Use `task_edit` (`commentsAppend` with optional `commentAuthor`) for task discussion, review questions, or handoff notes that are not part of the execution log
 - Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters
@@ -71,4 +71,4 @@ If new work appears during implementation that wasn't in the original acceptance
 
 ### Finalizing the Task
 
-When implementation is finished, follow the **Task Finalization Guide** (`backlog://workflow/task-finalization`) to finalize your work. This ensures acceptance criteria are verified, implementation is documented, and the task is properly closed.
+When implementation is finished, follow the **Task Finalization Guide** (`backlog://workflow/task-finalization`) to finalize your work. This ensures acceptance criteria are verified with behavior-level evidence, implementation is documented, and the task is properly closed.

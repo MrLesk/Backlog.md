@@ -79,7 +79,8 @@ describe("CLI parent shorthand option", () => {
 		const helpResult = await getCliHelpPlatformAware(["task", "create", "--help"], testDir);
 
 		expect(helpResult.stdout).toContain("-p, --parent <taskId>");
-		expect(helpResult.stdout).toContain("specify parent task ID");
+		expect(helpResult.stdout).toContain("specify existing parent task ID, not a");
+		expect(helpResult.stdout).toContain("milestone ID");
 	});
 
 	it("should show Definition of Done options in help text", async () => {

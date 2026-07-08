@@ -132,15 +132,32 @@ describe("CLI Integration", () => {
 			);
 			expect(taskCreation).toContain('backlog task list --status "<active status>" --plain');
 			expect(taskCreation).not.toContain('backlog task list --status "In Progress" --plain');
+			expect(taskCreation).toContain(
+				"Do not pass milestone IDs such as `m-0` to `--parent`; assign a task to a milestone with `--milestone`/`-m`.",
+			);
+			expect(taskCreation).toContain(
+				"If you will continue from task creation into implementation in the same session, stop and read `backlog instructions task-execution` before viewing, assigning, planning, editing, or implementing a task.",
+			);
 			expect(taskExecution).toContain(
 				'backlog task list --status "<active status>" --assignee @your-name --labels backend --search "auth" --limit 20 --plain',
 			);
 			expect(taskExecution).toContain('backlog task edit BACK-123 -s "<active status>" -a @your-name');
 			expect(taskExecution).not.toContain('backlog task edit BACK-123 -s "In Progress" -a @your-name');
+			expect(taskExecution).toContain(
+				"Do not check acceptance criteria, write the final summary, or move the task to the terminal status from this guide alone.",
+			);
+			expect(taskExecution).toContain("verify each acceptance criterion with objective evidence before checking it");
 			expect(taskFinalization).toContain("configured terminal status");
 			expect(taskFinalization).toContain("Inspect accepted statuses if needed: `backlog task edit BACK-123 --help`");
 			expect(taskFinalization).toContain('backlog task edit BACK-123 -s "<terminal status>"');
 			expect(taskFinalization).not.toContain("backlog task edit BACK-123 -s Done");
+			expect(taskFinalization).toContain("Run objective verification before checking acceptance criteria.");
+			expect(taskFinalization).toContain(
+				"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result.",
+			);
+			expect(taskFinalization).toContain(
+				"Do not check acceptance criteria from code presence, grep output, or implementation intent alone.",
+			);
 			expect(taskCreation).not.toContain("task_create");
 			expect(taskCreation).not.toContain("task_search");
 			expect(taskCreation).toContain("### Shell Quoting for Literal Backticks");
@@ -176,6 +193,8 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain('backlog task create -p FEAT-10 "Set up shell"');
 			expect(taskCreation).toContain('backlog task create "Add bulk update UI" --dep FEAT-21');
 			expect(createHelp).toContain('backlog task create -p FEAT-1 "Add tests"');
+			expect(createHelp).toContain("specify existing parent task ID, not a");
+			expect(createHelp).toContain("milestone ID");
 			expect(listHelp).toContain("backlog task list --parent FEAT-1");
 			expect(editHelp).toContain('backlog task edit FEAT-1 --status "<active status>" -a @sara');
 			for (const output of [overview, taskCreation, createHelp, listHelp, editHelp]) {

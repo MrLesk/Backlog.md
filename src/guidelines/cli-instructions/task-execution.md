@@ -28,12 +28,12 @@ Work in short loops:
 2. Run relevant tests or checks.
 3. Record useful progress:
    - `backlog task edit {{TASK_ID:123}} --append-notes "Implemented parser and added tests."`
-4. Check acceptance criteria as they become true:
-   - `backlog task edit {{TASK_ID:123}} --check-ac 1`
-5. Add comments for discussion or review questions:
+4. Add comments for discussion or review questions:
    - `backlog task edit {{TASK_ID:123}} --comment "Question for review" --comment-author @your-name`
 
 Use `backlog task edit {{TASK_ID:123}} --help` before changing unfamiliar fields.
+
+Do not check acceptance criteria, write the final summary, or move the task to the terminal status from this guide alone. When implementation appears complete, read the finalization guide and verify each acceptance criterion with objective evidence before checking it.
 
 ### Scope Changes
 
