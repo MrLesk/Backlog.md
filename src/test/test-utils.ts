@@ -5,6 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
+import net from "node:net";
 import { join } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import { initializeProject as initializeProjectShared } from "../core/init.ts";
@@ -83,6 +84,34 @@ export function getPlatformTimeout(baseTimeout = 5000): number {
  */
 export function getExitCode(result: { status: number | null; error?: Error }): number {
 	return result.status ?? (result.error ? 1 : 0);
+}
+
+export async function listenOnEphemeralPort(): Promise<{ server: net.Server; port: number }> {
+	const server = net.createServer();
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", () => {
+			server.off("error", reject);
+			resolve();
+		});
+	});
+	const address = server.address();
+	if (!address || typeof address === "string") {
+		throw new Error("Expected TCP server address");
+	}
+	return { server, port: address.port };
+}
+
+export async function closeServer(server: net.Server): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		server.close((error) => {
+			if (error) {
+				reject(error);
+				return;
+			}
+			resolve();
+		});
+	});
 }
 
 /**

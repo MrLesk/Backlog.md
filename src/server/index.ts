@@ -187,9 +187,11 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 }
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
+const MIN_PORT = 1;
+const MAX_PORT = 65535;
 
 export async function isPortAvailable(port: number): Promise<boolean> {
-	if (port < 1 || port > 65535) return false;
+	if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) return false;
 	return new Promise((resolve) => {
 		const srv = net.createServer();
 		srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
@@ -197,10 +199,17 @@ export async function isPortAvailable(port: number): Promise<boolean> {
 	});
 }
 
-export async function findNextAvailablePort(startPort: number): Promise<number> {
-	let port = startPort;
-	while (!(await isPortAvailable(port))) port++;
-	return port;
+export async function findNextAvailablePort(startPort: number, maxPort = MAX_PORT): Promise<number | null> {
+	if (!Number.isInteger(startPort) || !Number.isInteger(maxPort)) return null;
+
+	const firstPort = Math.max(startPort, MIN_PORT);
+	const lastPort = Math.min(maxPort, MAX_PORT);
+	for (let port = firstPort; port <= lastPort; port++) {
+		if (await isPortAvailable(port)) {
+			return port;
+		}
+	}
+	return null;
 }
 
 export class BacklogServer {

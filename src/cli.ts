@@ -3859,7 +3859,13 @@ program
 			// Pre-check port availability and offer interactive retry
 			if (!(await isPortAvailable(port))) {
 				const nextPort = await findNextAvailablePort(port + 1);
-				if (options.nonInteractive) {
+				if (nextPort === null) {
+					console.error(`No available port found after ${port}. Use --port to specify an available port.`);
+					process.exit(1);
+				}
+
+				const shouldPromptForPort = !options.nonInteractive && hasInteractiveTTY;
+				if (!shouldPromptForPort) {
 					console.log(`⚠️  Port ${port} is already in use. Using port ${nextPort} instead.`);
 					port = nextPort;
 				} else {

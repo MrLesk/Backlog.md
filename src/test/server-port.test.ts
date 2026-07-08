@@ -1,21 +1,23 @@
 import { describe, expect, it } from "bun:test";
-import net from "node:net";
 import { findNextAvailablePort, isPortAvailable } from "../server/index.ts";
+import { closeServer, listenOnEphemeralPort } from "./test-utils.ts";
 
 describe("isPortAvailable", () => {
 	it("returns true for a free port", async () => {
-		const result = await isPortAvailable(49999);
+		const { server, port } = await listenOnEphemeralPort();
+		await closeServer(server);
+
+		const result = await isPortAvailable(port);
 		expect(result).toBe(true);
 	});
 
 	it("returns false when a server already occupies the port", async () => {
-		const srv = net.createServer();
-		await new Promise<void>((resolve) => srv.listen(50001, "127.0.0.1", () => resolve()));
+		const { server, port } = await listenOnEphemeralPort();
 		try {
-			const result = await isPortAvailable(50001);
+			const result = await isPortAvailable(port);
 			expect(result).toBe(false);
 		} finally {
-			await new Promise<void>((resolve) => srv.close(() => resolve()));
+			await closeServer(server);
 		}
 	});
 
@@ -27,18 +29,36 @@ describe("isPortAvailable", () => {
 
 describe("findNextAvailablePort", () => {
 	it("returns startPort when it is free", async () => {
-		const port = await findNextAvailablePort(49990);
-		expect(port).toBe(49990);
+		const { server, port } = await listenOnEphemeralPort();
+		await closeServer(server);
+
+		const result = await findNextAvailablePort(port);
+		expect(result).toBe(port);
 	});
 
 	it("skips occupied ports and returns first free one", async () => {
-		const srv = net.createServer();
-		await new Promise<void>((resolve) => srv.listen(49985, "127.0.0.1", () => resolve()));
+		const { server, port } = await listenOnEphemeralPort();
 		try {
-			const port = await findNextAvailablePort(49985);
-			expect(port).toBeGreaterThan(49985);
+			const result = await findNextAvailablePort(port, Math.min(port + 50, 65535));
+			expect(result).not.toBeNull();
+			expect(result).toBeGreaterThan(port);
 		} finally {
-			await new Promise<void>((resolve) => srv.close(() => resolve()));
+			await closeServer(server);
 		}
+	});
+
+	it("returns null when every port in the bounded range is occupied", async () => {
+		const { server, port } = await listenOnEphemeralPort();
+		try {
+			const result = await findNextAvailablePort(port, port);
+			expect(result).toBeNull();
+		} finally {
+			await closeServer(server);
+		}
+	});
+
+	it("returns null when the scan would start beyond the maximum browser port", async () => {
+		const result = await findNextAvailablePort(65536);
+		expect(result).toBeNull();
 	});
 });
