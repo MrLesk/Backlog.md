@@ -157,8 +157,6 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
 	return undefined;
 }
 
-// @ts-expect-error
-import favicon from "../web/favicon.png" with { type: "file" };
 import indexHtml from "../web/index.html";
 
 const NO_STORE_HEADERS = {
@@ -613,9 +611,6 @@ export class BacklogServer {
 	}
 
 	private async handleRequest(req: Request, server: Server<unknown>): Promise<Response> {
-		const url = new URL(req.url);
-		const pathname = url.pathname;
-
 		// Handle WebSocket upgrade
 		if (req.headers.get("upgrade") === "websocket") {
 			const success = server.upgrade(req, { data: undefined });
@@ -623,14 +618,6 @@ export class BacklogServer {
 				return new Response(null, { status: 101 }); // WebSocket upgrade response
 			}
 			return new Response("WebSocket upgrade failed", { status: 400 });
-		}
-
-		// Workaround as Bun doesn't support images imported from link tags in HTML
-		if (pathname.startsWith("/favicon")) {
-			const faviconFile = Bun.file(favicon);
-			return new Response(faviconFile, {
-				headers: { "Content-Type": "image/png" },
-			});
 		}
 
 		// For all other routes, return 404 since routes should handle all valid paths

@@ -100,11 +100,10 @@ jobs:
         run: |
           VER="$(jq -r .version package.json)"
           OUT="backlog-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
-          bun build src/cli.ts \
-            --compile --minify \
-            --target=${{ matrix.target }} \
-            --define __EMBEDDED_VERSION__="\"${VER}\"" \
-            --outfile="$OUT"
+          BACKLOG_BUILD_VERSION="$VER" \
+            BACKLOG_BUILD_TARGET="${{ matrix.target }}" \
+            BACKLOG_BUILD_OUTFILE="$OUT" \
+            bun scripts/build.ts
       - name: Smoke-test binary
         shell: bash
         run: |

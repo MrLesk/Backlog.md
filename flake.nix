@@ -25,12 +25,12 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = if system == "x86_64-linux" then
-            let bunVersion = "1.2.23"; in [
+            let bunVersion = "1.3.14"; in [
               (final: prev: {
                 bun = prev.bun.overrideAttrs (oldAttrs: {
                   src = prev.fetchurl {
                     url = "https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/bun-linux-x64-baseline.zip";
-                    sha256 = "017f89e19e1b40aa4c11a7cf671d3990cb51cc12288a43473238a019a8cafffc";
+                    sha256 = "a063908ae08b7852ca10939bbdc6ceed3ddabce8fb9402dce83d65d73b36e6c7";
                   };
                 });
               })
@@ -67,9 +67,8 @@
           buildPhase = ''
             runHook preBuild
 
-            # Build the CLI tool with embedded version
-            # Note: CSS is pre-compiled and committed to git, no need to build here
-            bun build --compile --minify --define "__EMBEDDED_VERSION__=${version}" --outfile=dist/backlog src/cli.ts
+            # Build the CLI tool with the browser UI bundled from source.
+            BACKLOG_BUILD_VERSION="${version}" BACKLOG_BUILD_OUTFILE=dist/backlog bun scripts/build.ts
 
             runHook postBuild
           '';
