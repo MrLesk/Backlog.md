@@ -1,3 +1,4 @@
+import net from "node:net";
 import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
@@ -187,6 +188,30 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 }
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
+const MIN_PORT = 1;
+const MAX_PORT = 65535;
+
+export async function isPortAvailable(port: number): Promise<boolean> {
+	if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) return false;
+	return new Promise((resolve) => {
+		const srv = net.createServer();
+		srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
+		srv.on("error", () => resolve(false));
+	});
+}
+
+export async function findNextAvailablePort(startPort: number, maxPort = MAX_PORT): Promise<number | null> {
+	if (!Number.isInteger(startPort) || !Number.isInteger(maxPort)) return null;
+
+	const firstPort = Math.max(startPort, MIN_PORT);
+	const lastPort = Math.min(maxPort, MAX_PORT);
+	for (let port = firstPort; port <= lastPort; port++) {
+		if (await isPortAvailable(port)) {
+			return port;
+		}
+	}
+	return null;
+}
 
 export class BacklogServer {
 	private core: Core;
@@ -457,16 +482,7 @@ export class BacklogServer {
 			const errorCode = (error as { code?: string })?.code;
 			const errorMessage = (error as Error)?.message;
 			if (errorCode === "EADDRINUSE" || errorMessage?.includes("address already in use")) {
-				console.error(`\n❌ Error: Port ${finalPort} is already in use.\n`);
-				console.log("💡 Suggestions:");
-				console.log(`   1. Try a different port: backlog browser --port ${finalPort + 1}`);
-				console.log(`   2. Find what's using port ${finalPort}:`);
-				if (process.platform === "darwin" || process.platform === "linux") {
-					console.log(`      Run: lsof -i :${finalPort}`);
-				} else if (process.platform === "win32") {
-					console.log(`      Run: netstat -ano | findstr :${finalPort}`);
-				}
-				console.log("   3. Or kill the process using the port and try again\n");
+				console.error(`\n❌ Error: Port ${finalPort} is already in use. Use --port to specify a different port.\n`);
 				process.exit(1);
 			}
 
