@@ -25,6 +25,7 @@ interface TaskListProps {
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	onRefreshData?: () => Promise<void>;
+	dateFormat?: string;
 }
 
 const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter }> = [
@@ -89,6 +90,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	milestoneEntities,
 	archivedMilestones,
 	onRefreshData,
+	dateFormat,
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
@@ -744,7 +746,7 @@ const TaskList: React.FC<TaskListProps> = ({
 									const visibleAssignees = task.assignee.slice(0, 2);
 									const assigneeOverflow = Math.max(task.assignee.length - visibleAssignees.length, 0);
 									const milestoneLabel = task.milestone ? getMilestoneLabel(task.milestone, milestoneEntities) : "—";
-									const createdLabel = formatStoredUtcDateForCompactDisplay(task.createdDate ?? "");
+									const createdLabel = formatStoredUtcDateForCompactDisplay(task.createdDate ?? "", dateFormat);
 
 									return (
 										<tr
@@ -857,6 +859,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				isOpen={showCleanupModal}
 				onClose={() => setShowCleanupModal(false)}
 				onSuccess={handleCleanupSuccess}
+				dateFormat={dateFormat}
 			/>
 
 			{/* Cleanup Success Toast */}

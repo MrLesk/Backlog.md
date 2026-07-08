@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import BoardPage from "../web/components/BoardPage.tsx";
+import { apiClient } from "../web/lib/api.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -89,7 +90,7 @@ const setupDom = (url = "http://localhost/board") => {
 
 const renderBoardPage = (
 	url?: string,
-	options: { tasks?: Task[]; statuses?: string[]; availableLabels?: string[] } = {},
+	options: { tasks?: Task[]; statuses?: string[]; availableLabels?: string[]; dateFormat?: string } = {},
 ): HTMLElement => {
 	setupDom(url);
 	const container = document.getElementById("root");
@@ -110,6 +111,7 @@ const renderBoardPage = (
 					isLoading={false}
 					onEditTask={() => {}}
 					onNewTask={() => {}}
+					dateFormat={options.dateFormat}
 				/>
 			</BrowserRouter>,
 		);
@@ -139,6 +141,16 @@ const clickElement = async (element: Element) => {
 		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 		await Promise.resolve();
 	});
+};
+
+const waitFor = async (predicate: () => boolean) => {
+	for (let attempts = 0; attempts < 20; attempts += 1) {
+		if (predicate()) return;
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
+	}
+	expect(predicate()).toBe(true);
 };
 
 const toggleCheckbox = async (checkbox: HTMLInputElement) => {
@@ -299,5 +311,45 @@ describe("Web board filters", () => {
 			button.textContent?.includes("Clean Up Old Tasks"),
 		);
 		expect(cleanupButtons).toHaveLength(1);
+	});
+
+	it("uses the configured date format in the board cleanup preview", async () => {
+		const originalGetCleanupPreview = apiClient.getCleanupPreview.bind(apiClient);
+		apiClient.getCleanupPreview = async (age) => {
+			expect(age).toBe(1);
+			return {
+				count: 1,
+				tasks: [
+					{
+						id: "task-200",
+						title: "Closed task",
+						createdDate: "2026-02-09 06:01",
+					},
+				],
+			};
+		};
+
+		try {
+			const container = renderBoardPage(undefined, {
+				statuses: ["To Do", "Review", "Closed"],
+				tasks: [createTask({ id: "task-200", title: "Closed task", status: "Closed" })],
+				dateFormat: "dd/mm/yyyy",
+			});
+
+			const cleanupButton = Array.from(container.querySelectorAll("button")).find((button) =>
+				button.textContent?.includes("Clean Up Old Tasks"),
+			);
+			expect(cleanupButton).toBeTruthy();
+			await clickElement(cleanupButton as Element);
+
+			const oneDayButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "1 day");
+			expect(oneDayButton).toBeTruthy();
+			await clickElement(oneDayButton as Element);
+
+			await waitFor(() => (container.textContent ?? "").includes("09/02/2026 06:01"));
+			expect(container.textContent).not.toContain("2026-02-09 06:01");
+		} finally {
+			apiClient.getCleanupPreview = originalGetCleanupPreview;
+		}
 	});
 });

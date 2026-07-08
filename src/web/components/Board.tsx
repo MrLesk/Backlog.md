@@ -30,6 +30,7 @@ interface BoardProps {
   filterPriority?: string;
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
   hideEmptyColumns?: boolean;
+  dateFormat?: string;
 }
 
 const PRIORITY_OPTIONS = [
@@ -64,6 +65,7 @@ const Board: React.FC<BoardProps> = ({
   filterPriority = '',
   onFiltersChange,
   hideEmptyColumns = false,
+  dateFormat,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
@@ -665,6 +667,7 @@ const Board: React.FC<BoardProps> = ({
         isOpen={showCleanupModal}
         onClose={() => setShowCleanupModal(false)}
         onSuccess={handleCleanupSuccess}
+        dateFormat={dateFormat}
       />
 
       {/* Cleanup Success Toast */}

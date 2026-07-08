@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { type Task } from '../../types';
+import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 
 interface DraftsListProps {
   onEditTask: (task: Task) => void;
   onNewDraft: () => void;
+  dateFormat?: string;
 }
 
-const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
+const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFormat }) => {
   const [drafts, setDrafts] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -145,9 +147,9 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft }) => {
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
                       <span>{draft.id}</span>
-                      <span>Created: {new Date(draft.createdDate).toLocaleDateString()}</span>
+                      <span>Created: {formatStoredUtcDateForDisplay(draft.createdDate, dateFormat)}</span>
                       {draft.updatedDate && (
-                        <span>Updated: {new Date(draft.updatedDate).toLocaleDateString()}</span>
+                        <span>Updated: {formatStoredUtcDateForDisplay(draft.updatedDate, dateFormat)}</span>
                       )}
                     </div>
                     {draft.assignee && draft.assignee.length > 0 && (

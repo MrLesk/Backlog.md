@@ -508,6 +508,7 @@ function App() {
                 archivedMilestones={archivedMilestones}
                 isLoading={isLoading}
                 hideEmptyColumns={config?.hideEmptyColumns ?? false}
+                dateFormat={config?.dateFormat}
               />
             }
           />
@@ -524,6 +525,7 @@ function App() {
 	                  milestoneEntities={milestoneEntities}
 	                  archivedMilestones={archivedMilestones}
 	                  onRefreshData={refreshData}
+	                  dateFormat={config?.dateFormat}
 	                />
 	              }
 	            />
@@ -540,14 +542,14 @@ function App() {
               />
             }
           />
-            <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
-            <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-            <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-            <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-            <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-            <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-            <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-            <Route path="statistics" element={<Statistics tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} />} />
+            <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
+            <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
+            <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
+            <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
+            <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
+            <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
+            <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
+            <Route path="statistics" element={<Statistics tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
@@ -565,6 +567,7 @@ function App() {
           archivedMilestoneEntities={archivedMilestones}
           isDraftMode={isDraftMode}
           definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+          dateFormat={config?.dateFormat}
         />
 
         {/* Task Creation Confirmation Toast */}

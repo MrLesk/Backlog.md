@@ -1,3 +1,5 @@
+import { formatUtcDateForDisplay } from "../../utils/utc-date-display.ts";
+
 const DATE_ONLY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DATE_TIME_REGEX = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/;
 
@@ -58,21 +60,15 @@ export function parseStoredUtcDate(dateStr: string): Date | null {
 	return null;
 }
 
-export function formatStoredUtcDateForDisplay(dateStr: string): string {
-	const parsed = parseStoredUtcDate(dateStr);
-	if (!parsed) return dateStr;
-
-	if (DATE_TIME_REGEX.test(dateStr.trim())) {
-		return parsed.toLocaleString(undefined, {
-			dateStyle: "medium",
-			timeStyle: "short",
-		});
-	}
-
-	return parsed.toLocaleDateString();
+export function formatStoredUtcDateForDisplay(dateStr: string, dateFormat?: string): string {
+	return formatUtcDateForDisplay(dateStr, { dateFormat });
 }
 
-export function formatStoredUtcDateForCompactDisplay(dateStr: string, now: Date = new Date()): string {
+export function formatStoredUtcDateForCompactDisplay(
+	dateStr: string,
+	dateFormat?: string,
+	now: Date = new Date(),
+): string {
 	const normalized = dateStr.trim();
 	if (!normalized) return "—";
 
@@ -88,5 +84,6 @@ export function formatStoredUtcDateForCompactDisplay(dateStr: string, now: Date 
 		if (diffDays < 7) return `${diffDays}d ago`;
 	}
 
-	return parsed.toLocaleDateString();
+	// Absolute fallback stays compact: format only the date portion of the stored value.
+	return formatUtcDateForDisplay(normalized.slice(0, 10), { dateFormat });
 }

@@ -8,6 +8,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import {SuccessToast} from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
+import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 
 // Custom MDEditor wrapper for proper height handling
 const MarkdownEditor = memo(function MarkdownEditor({
@@ -69,9 +70,10 @@ const getDocumentDirectory = (path?: string): string => {
 interface DocumentationDetailProps {
     docs: Document[];
     onRefreshData: () => Promise<void>;
+    dateFormat?: string;
 }
 
-export default function DocumentationDetail({docs, onRefreshData}: DocumentationDetailProps) {
+export default function DocumentationDetail({docs, onRefreshData, dateFormat}: DocumentationDetailProps) {
     const {id, title} = useParams<{ id: string; title: string }>();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -346,7 +348,7 @@ export default function DocumentationDetail({docs, onRefreshData}: Documentation
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                       d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                                             </svg>
-                                            <span>Created: {document.createdDate}</span>
+                                            <span>Created: {formatStoredUtcDateForDisplay(document.createdDate, dateFormat)}</span>
                                         </div>
                                     )}
                                 </div>

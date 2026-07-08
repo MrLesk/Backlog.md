@@ -20,6 +20,48 @@ describe("UTC date display", () => {
 		expect(formatUtcDateForDisplay("2026-06-07 21:54", { appendUtcLabel: true })).toBe("2026-06-07 21:54 (UTC)");
 	});
 
+	it("rearranges dates using a custom display format", () => {
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "dd/mm/yyyy" })).toBe("04/07/2026 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "mm/dd/yyyy hh:mm" })).toBe("07/04/2026 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04", { dateFormat: "dd/mm/yyyy" })).toBe("04/07/2026");
+		expect(formatUtcDateForDisplay("2026-07-04", { dateFormat: "dd.mm.yyyy" })).toBe("04.07.2026");
+	});
+
+	it("keeps canonical output for canonical-equivalent formats", () => {
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "yyyy-mm-dd" })).toBe("2026-07-04 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "YYYY-MM-DD" })).toBe("2026-07-04 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "yyyy-mm-dd hh:mm" })).toBe("2026-07-04 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04", { dateFormat: "yyyy-mm-dd" })).toBe("2026-07-04");
+		expect(formatUtcDateForDisplay("2026-07-04", { dateFormat: undefined })).toBe("2026-07-04");
+	});
+
+	it("never invents a time for date-only values but always shows stored times", () => {
+		expect(formatUtcDateForDisplay("2026-07-04", { dateFormat: "dd/mm/yyyy hh:mm" })).toBe("04/07/2026");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "dd/mm/yyyy" })).toBe("04/07/2026 21:54");
+	});
+
+	it("falls back to canonical output for invalid formats without throwing", () => {
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "banana" })).toBe("2026-07-04 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "dd-mm" })).toBe("2026-07-04 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "yyyy" })).toBe("2026-07-04 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "" })).toBe("2026-07-04 21:54");
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "dd/mm/yyyy hh" })).toBe("2026-07-04 21:54");
+	});
+
+	it("returns unparseable stored values as-is even with a format", () => {
+		expect(formatUtcDateForDisplay("not a date", { dateFormat: "dd/mm/yyyy" })).toBe("not a date");
+	});
+
+	it("normalizes explicit-offset values to UTC before applying the format", () => {
+		expect(formatUtcDateForDisplay("2026-07-04T23:54+02:00", { dateFormat: "dd/mm/yyyy" })).toBe("04/07/2026 21:54");
+	});
+
+	it("combines the UTC label with a custom format", () => {
+		expect(formatUtcDateForDisplay("2026-07-04 21:54", { dateFormat: "dd/mm/yyyy", appendUtcLabel: true })).toBe(
+			"04/07/2026 21:54 (UTC)",
+		);
+	});
+
 	it("adds UTC labels to plain task and comment date fields", () => {
 		const task: Task = {
 			id: "TASK-1",

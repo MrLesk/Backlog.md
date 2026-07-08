@@ -16,6 +16,7 @@ interface BoardPageProps {
 	archivedMilestones: Milestone[];
 	isLoading: boolean;
 	hideEmptyColumns?: boolean;
+	dateFormat?: string;
 }
 
 export default function BoardPage({
@@ -30,6 +31,7 @@ export default function BoardPage({
 	archivedMilestones,
 	isLoading,
 	hideEmptyColumns,
+	dateFormat,
 }: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
@@ -142,6 +144,7 @@ export default function BoardPage({
 				filterPriority={filterPriority}
 				onFiltersChange={handleFiltersChange}
 				hideEmptyColumns={hideEmptyColumns}
+				dateFormat={dateFormat}
 			/>
 		</div>
 	);

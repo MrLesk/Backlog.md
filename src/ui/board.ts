@@ -208,6 +208,7 @@ export async function renderBoardTui(
 		milestoneMode?: boolean;
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
+		dateFormat?: string;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -1122,7 +1123,7 @@ export async function renderBoardTui(
 			if (!task) return;
 			popupOpen = true;
 
-			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel);
+			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat);
 			if (!popup) {
 				popupOpen = false;
 				return;

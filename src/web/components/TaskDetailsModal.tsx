@@ -23,6 +23,7 @@ interface Props {
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
+  dateFormat?: string;
 }
 
 type Mode = "preview" | "edit" | "create";
@@ -122,6 +123,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   archivedMilestoneEntities,
   isDraftMode,
   definitionOfDoneDefaults,
+  dateFormat,
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
@@ -1112,7 +1114,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                         <span className="font-semibold text-gray-700 dark:text-gray-200">#{comment.index}</span>
                         {comment.author ? <span>{comment.author}</span> : null}
-                        {comment.createdDate ? <span>{formatStoredUtcDateForDisplay(comment.createdDate)}</span> : null}
+                        {comment.createdDate ? <span>{formatStoredUtcDateForDisplay(comment.createdDate, dateFormat)}</span> : null}
                       </div>
                       <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
                         <MermaidMarkdown source={comment.body} />
@@ -1185,9 +1187,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Dates */}
 	          {task && (
 	            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
-	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.createdDate)}</span></div>
+	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.createdDate, dateFormat)}</span></div>
 	              {task.updatedDate && (
-	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.updatedDate)}</span></div>
+	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.updatedDate, dateFormat)}</span></div>
 	              )}
 	            </div>
 	          )}
