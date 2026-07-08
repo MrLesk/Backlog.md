@@ -171,6 +171,13 @@ describe("Web milestones page search", () => {
 		expect(document.activeElement).toBe(input);
 	});
 
+	it("renders milestone cards in ascending milestone ID order", () => {
+		const container = renderPage();
+		const text = container.textContent ?? "";
+
+		expect(text.indexOf("Release 1")).toBeLessThan(text.indexOf("Release 2"));
+	});
+
 	it("searching one milestone still renders other milestone sections", () => {
 		const container = renderPage();
 		const initialText = container.textContent ?? "";
@@ -233,7 +240,7 @@ describe("Web milestones page search", () => {
 		expect(container.textContent).toContain("Edit milestone");
 		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
 		expect(input).toBeTruthy();
-		expect(input?.value).toBe("Release 2");
+		expect(input?.value).toBe("Release 1");
 	});
 
 	it("opens a remove confirmation with clear and reassign choices", () => {
@@ -252,7 +259,7 @@ describe("Web milestones page search", () => {
 
 		const select = container.querySelector("select") as HTMLSelectElement | null;
 		expect(select).toBeTruthy();
-		expect(Array.from(select?.options ?? []).map((option) => option.value)).toContain("m-1");
+		expect(Array.from(select?.options ?? []).map((option) => option.value)).toContain("m-2");
 	});
 
 	it("submits milestone edits through the API and refreshes data", async () => {
@@ -260,7 +267,7 @@ describe("Web milestones page search", () => {
 		let refreshCount = 0;
 		apiClient.updateMilestone = async (id: string, title: string) => {
 			updateArgs = [id, title];
-			return { success: true, milestone: { ...milestoneEntities[1]!, title } };
+			return { success: true, milestone: { ...milestoneEntities[0]!, title } };
 		};
 
 		const container = renderPage(baseTasks, {
@@ -275,11 +282,11 @@ describe("Web milestones page search", () => {
 
 		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
 		expect(input).toBeTruthy();
-		setInputValue(input as HTMLInputElement, "Release 2.1");
+		setInputValue(input as HTMLInputElement, "Release 1.1");
 		await submitForm(input?.closest("form") as HTMLFormElement);
 
-		expect(updateArgs?.[0]).toBe("m-2");
-		expect(updateArgs?.[1]).toBe("Release 2.1");
+		expect(updateArgs?.[0]).toBe("m-1");
+		expect(updateArgs?.[1]).toBe("Release 1.1");
 		expect(refreshCount).toBe(1);
 	});
 
@@ -311,7 +318,7 @@ describe("Web milestones page search", () => {
 		expect(select).toBeTruthy();
 		act(() => {
 			if (select) {
-				select.value = "m-1";
+				select.value = "m-2";
 				select.dispatchEvent(new window.Event("change", { bubbles: true }));
 			}
 		});
@@ -321,8 +328,8 @@ describe("Web milestones page search", () => {
 		expect(submitButton).toBeTruthy();
 		await clickElementAsync(submitButton as HTMLButtonElement);
 
-		expect(removeArgs?.[0]).toBe("m-2");
-		expect(removeArgs?.[1]).toEqual({ taskHandling: "reassign", reassignTo: "m-1" });
+		expect(removeArgs?.[0]).toBe("m-1");
+		expect(removeArgs?.[1]).toEqual({ taskHandling: "reassign", reassignTo: "m-2" });
 		expect(refreshCount).toBe(1);
 	});
 
