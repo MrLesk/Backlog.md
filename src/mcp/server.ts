@@ -51,7 +51,6 @@ import type {
  * (e.g. Claude Code) can interact with a project without network exposure.
  */
 const APP_NAME = getPackageName();
-const APP_VERSION = await getVersion();
 const INSTRUCTIONS =
 	"At the beginning of each session, list the available resources and read the first one to understand how to use Backlog.md for task management. Additional detailed guides are available as resources when needed.";
 
@@ -90,14 +89,14 @@ export class McpServer extends Core {
 	private readonly resources = new Map<string, McpResourceHandler>();
 	private readonly prompts = new Map<string, McpPromptHandler>();
 
-	constructor(projectRoot: string, instructions: string) {
+	constructor(projectRoot: string, instructions: string, version = "0.0.0") {
 		super(projectRoot, { enableWatchers: true });
 		this.initialProjectRoot = projectRoot;
 
 		this.server = new Server(
 			{
 				name: APP_NAME,
-				version: APP_VERSION,
+				version,
 			},
 			{
 				capabilities: {
@@ -510,9 +509,9 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	// We need to check config first to determine which instructions to use
 	const tempCore = new Core(projectRoot);
 	await tempCore.ensureConfigLoaded();
-	const config = await tempCore.filesystem.loadConfig();
+	const [config, version] = await Promise.all([tempCore.filesystem.loadConfig(), getVersion()]);
 
-	const server = new McpServer(projectRoot, INSTRUCTIONS);
+	const server = new McpServer(projectRoot, INSTRUCTIONS, version);
 
 	// Graceful fallback: if config doesn't exist, provide init-required resource
 	// and enable roots discovery so the server can find the project via MCP roots
