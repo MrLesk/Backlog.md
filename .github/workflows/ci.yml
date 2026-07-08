@@ -34,6 +34,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.os }}-bun-${{ env.BUN_VERSION }}-
       - run: bun install --frozen-lockfile --linker=isolated
+      - run: bun run check:types
       - run: bun run lint
       - name: Run tests
         run: |

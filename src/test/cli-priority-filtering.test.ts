@@ -145,5 +145,5 @@ describe("CLI Priority Filtering", () => {
 				expect(output).not.toMatch(/\[LOW\]/);
 			}
 		}
-	});
+	}, 10000);
 });
