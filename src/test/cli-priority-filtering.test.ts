@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { $ } from "bun";
+import { getPlatformTimeout } from "./test-utils.ts";
 
 describe("CLI Priority Filtering", () => {
 	test("task list --priority high shows only high priority tasks", async () => {
@@ -116,34 +117,38 @@ describe("CLI Priority Filtering", () => {
 		}
 	});
 
-	test("case insensitive priority filtering", async () => {
-		const upperResult = await $`bun run cli task list --priority HIGH --plain`.quiet();
-		const lowerResult = await $`bun run cli task list --priority high --plain`.quiet();
-		const mixedResult = await $`bun run cli task list --priority High --plain`.quiet();
+	test(
+		"case insensitive priority filtering",
+		async () => {
+			const upperResult = await $`bun run cli task list --priority HIGH --plain`.quiet();
+			const lowerResult = await $`bun run cli task list --priority high --plain`.quiet();
+			const mixedResult = await $`bun run cli task list --priority High --plain`.quiet();
 
-		expect(upperResult.exitCode).toBe(0);
-		expect(lowerResult.exitCode).toBe(0);
-		expect(mixedResult.exitCode).toBe(0);
+			expect(upperResult.exitCode).toBe(0);
+			expect(lowerResult.exitCode).toBe(0);
+			expect(mixedResult.exitCode).toBe(0);
 
-		const [upperOutput, lowerOutput, mixedOutput] = [
-			upperResult.stdout.toString(),
-			lowerResult.stdout.toString(),
-			mixedResult.stdout.toString(),
-		];
-		const listUpper = upperOutput.split("\n").filter((line) => line.includes("task-"));
-		const listLower = lowerOutput.split("\n").filter((line) => line.includes("task-"));
-		const listMixed = mixedOutput.split("\n").filter((line) => line.includes("task-"));
-		if (listLower.length > 0) {
-			expect(listUpper).toEqual(listLower);
-			expect(listMixed).toEqual(listLower);
-		}
-
-		for (const output of [upperOutput, lowerOutput, mixedOutput]) {
-			if (output.includes("task-")) {
-				expect(output).toMatch(/\[HIGH\]/);
-				expect(output).not.toMatch(/\[MEDIUM\]/);
-				expect(output).not.toMatch(/\[LOW\]/);
+			const [upperOutput, lowerOutput, mixedOutput] = [
+				upperResult.stdout.toString(),
+				lowerResult.stdout.toString(),
+				mixedResult.stdout.toString(),
+			];
+			const listUpper = upperOutput.split("\n").filter((line) => line.includes("task-"));
+			const listLower = lowerOutput.split("\n").filter((line) => line.includes("task-"));
+			const listMixed = mixedOutput.split("\n").filter((line) => line.includes("task-"));
+			if (listLower.length > 0) {
+				expect(listUpper).toEqual(listLower);
+				expect(listMixed).toEqual(listLower);
 			}
-		}
-	}, 10000);
+
+			for (const output of [upperOutput, lowerOutput, mixedOutput]) {
+				if (output.includes("task-")) {
+					expect(output).toMatch(/\[HIGH\]/);
+					expect(output).not.toMatch(/\[MEDIUM\]/);
+					expect(output).not.toMatch(/\[LOW\]/);
+				}
+			}
+		},
+		getPlatformTimeout(10000),
+	);
 });

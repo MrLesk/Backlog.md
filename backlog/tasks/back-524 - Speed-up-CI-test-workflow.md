@@ -5,12 +5,13 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-08 20:25'
-updated_date: '2026-07-08 21:47'
+updated_date: '2026-07-08 22:10'
 labels: []
 dependencies: []
 modified_files:
   - .github/workflows/ci.yml
   - scripts/list-test-shard.ts
+  - src/test/cli-priority-filtering.test.ts
 priority: medium
 ordinal: 167000
 ---
@@ -63,6 +64,8 @@ Rebased tasks/back-524-speed-up-ci onto PR #737 (tasks/back-525-browser-bundling
 Post-rebase validation on Bun 1.3.14: bun install --frozen-lockfile --linker=isolated passed; shard helper covers all 173 test files exactly once across three shards (58/58/57); bun run check:types passed; bun run check . passed; full isolated test command passed with 1445 pass, 2 skip, 0 fail across 173 files in 163.86s; CI-style local build smoke using bun scripts/build.ts produced /tmp/backlog-ci-build and --version reported 1.47.1.
 
 Second rebase per request: moved tasks/back-524-speed-up-ci onto updated PR #737 head 765bb22 using git rebase --onto, then reapplied the BACK-524 patch cleanly. Validation on the updated stack: bun install --frozen-lockfile --linker=isolated passed; shard helper still covers all 173 tests exactly once across shards 58/58/57; bun run check:types passed; bun run check . passed; git diff --check passed. Full isolated test run completed with 1444 pass, 2 skip, and one timeout in ContentStore > removes decisions when files are deleted after 187.32s; rerunning src/test/content-store.test.ts directly with the same 10000ms timeout passed all 5 tests in 61ms, indicating an isolated watcher timing flake rather than a deterministic regression.
+
+CI follow-up from main run 28978320635: Windows shard 1/3 failed because CLI Priority Filtering > case insensitive priority filtering kept a hardcoded 10000ms per-test timeout while Windows shards now rely on a 30000ms command timeout. Updated that test to use getPlatformTimeout(10000), preserving the 10s timeout off Windows and giving Windows the standard platform headroom. Verified with bun test src/test/cli-priority-filtering.test.ts --timeout=30000, bunx tsc --noEmit, bun run check ., and git diff --check.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
