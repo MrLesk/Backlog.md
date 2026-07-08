@@ -35,7 +35,7 @@ const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter 
 	{ label: "Low", value: "low" },
 ];
 
-type TaskSortColumn = "id" | "title" | "status" | "priority" | "milestone" | "created";
+type TaskSortColumn = "id" | "title" | "status" | "priority" | "ordinal" | "milestone" | "created";
 type SortDirection = "asc" | "desc";
 
 const PRIORITY_RANK: Record<string, number> = {
@@ -510,6 +510,7 @@ const TaskList: React.FC<TaskListProps> = ({
 			<col style={{ width: "28rem" }} />
 			<col style={{ width: "8rem" }} />
 			<col style={{ width: "7rem" }} />
+			<col style={{ width: "7rem" }} />
 			<col style={{ width: "11rem" }} />
 			<col style={{ width: "11rem" }} />
 			<col style={{ width: "11rem" }} />
@@ -543,6 +544,18 @@ const TaskList: React.FC<TaskListProps> = ({
 					result = withDirection(rankA - rankB);
 					break;
 				}
+				case "ordinal": {
+					const aOrd = a.ordinal;
+					const bOrd = b.ordinal;
+					if (typeof aOrd === "number" && typeof bOrd === "number") {
+						result = withDirection(aOrd - bOrd);
+					} else if (typeof aOrd === "number") {
+						result = -1;
+					} else if (typeof bOrd === "number") {
+						result = 1;
+					}
+					break;
+				}
 				case "milestone": {
 					const milestoneA = getMilestoneLabel(a.milestone, milestoneEntities);
 					const milestoneB = getMilestoneLabel(b.milestone, milestoneEntities);
@@ -566,6 +579,7 @@ const TaskList: React.FC<TaskListProps> = ({
 			}
 
 			if (result !== 0) return result;
+			if (sortColumn === "ordinal") return compareTaskIdsAscending(a, b);
 			return compareTaskIdsAscending(b, a);
 		});
 	}, [displayTasks, milestoneEntities, sortColumn, sortDirection]);
@@ -726,6 +740,7 @@ const TaskList: React.FC<TaskListProps> = ({
 										{renderSortableHeader("Title", "title")}
 										{renderSortableHeader("Status", "status")}
 										{renderSortableHeader("Priority", "priority")}
+										{renderSortableHeader("Ordinal", "ordinal")}
 										<th className="px-3 py-2">Labels</th>
 										<th className="px-3 py-2">Assignee</th>
 										{renderSortableHeader("Milestone", "milestone")}
@@ -798,6 +813,9 @@ const TaskList: React.FC<TaskListProps> = ({
 												) : (
 													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
 												)}
+											</td>
+											<td className="px-3 py-2.5 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
+												{task.ordinal !== undefined ? task.ordinal : <span className="text-gray-300 dark:text-gray-600">—</span>}
 											</td>
 											<td className="px-3 py-2.5">
 												{visibleLabels.length > 0 ? (
