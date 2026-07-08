@@ -1419,6 +1419,7 @@ ${description || `Milestone: ${title}`}`,
 					break;
 				case "statuses":
 				case "labels":
+				case "types":
 					if (value.startsWith("[") && value.endsWith("]")) {
 						const arrayContent = value.slice(1, -1);
 						config[key] = arrayContent
@@ -1493,6 +1494,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultReporter: config.defaultReporter,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
 			labels: config.labels || [],
+			types: config.types,
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
@@ -1523,6 +1525,7 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
+			...(config.types && config.types.length > 0 ? [`types: [${config.types.map((t) => `"${t}"`).join(", ")}]`] : []),
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
 				: []),

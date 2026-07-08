@@ -4,7 +4,7 @@ title: 'Sequences web UI: move tasks and update dependencies'
 status: To Do
 assignee: []
 created_date: '2025-08-23 19:13'
-updated_date: '2025-08-26 16:47'
+updated_date: '2026-07-04 17:40'
 labels:
   - sequences
 dependencies: []
@@ -13,7 +13,9 @@ parent_task_id: BACK-217
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 Enable moving tasks within/between sequences; call the move endpoint to update dependencies and refresh state.
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -21,3 +23,9 @@ Enable moving tasks within/between sequences; call the move endpoint to update d
 - [ ] #2 Moving to Unsequenced allowed only if task is isolated; otherwise show clear error and do not move
 - [ ] #3 After move, refresh state from server and preserve scroll/focus; provide success feedback
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+sequences feature removed by owner decision
+<!-- SECTION:NOTES:END -->

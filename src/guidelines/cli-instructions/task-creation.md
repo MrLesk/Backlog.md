@@ -13,7 +13,7 @@ Recommended CLI commands:
 - `backlog task list --status "<active status>" --plain`
 - `backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain`
 
-Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--assignee`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable.
+Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable.
 
 Use `backlog task view {{TASK_ID:123}} --plain` to read full context for likely matches.
 

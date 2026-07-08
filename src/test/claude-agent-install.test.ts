@@ -32,11 +32,21 @@ describe("installClaudeAgent", () => {
 		const agentPath = join(TEST_PROJECT, ".claude", "agents", "project-manager-backlog.md");
 		const content = await Bun.file(agentPath).text();
 
-		expect(content).toBe(CLAUDE_AGENT_CONTENT);
+		expect(content).toContain(CLAUDE_AGENT_CONTENT.trimEnd());
 		expect(content).toContain("name: project-manager-backlog");
 		expect(content).toContain(
 			"You are an expert project manager specializing in the backlog.md task management system",
 		);
+	});
+
+	it("appends a version marker matching package.json (BACK-267)", async () => {
+		await installClaudeAgent(TEST_PROJECT);
+
+		const agentPath = join(TEST_PROJECT, ".claude", "agents", "project-manager-backlog.md");
+		const content = await Bun.file(agentPath).text();
+		const { version } = await Bun.file(join(__dirname, "../../package.json")).json();
+
+		expect(content.trimEnd().endsWith(`<!-- backlog.md-instructions-version: ${version} -->`)).toBe(true);
 	});
 
 	it("overwrites existing agent file", async () => {
@@ -49,7 +59,7 @@ describe("installClaudeAgent", () => {
 		await installClaudeAgent(TEST_PROJECT);
 
 		const content = await Bun.file(agentPath).text();
-		expect(content).toBe(CLAUDE_AGENT_CONTENT);
+		expect(content).toContain(CLAUDE_AGENT_CONTENT.trimEnd());
 		expect(content).not.toContain("Old content");
 	});
 

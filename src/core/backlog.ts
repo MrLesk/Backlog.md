@@ -1,6 +1,6 @@
 import { rename as moveFile, stat, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, DEFAULT_TASK_TYPES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -15,7 +15,6 @@ import {
 	isLocalEditableTask,
 	type Milestone,
 	type SearchFilters,
-	type Sequence,
 	type Task,
 	type TaskCommentInput,
 	type TaskCreateInput,
@@ -64,7 +63,6 @@ import { ContentStore } from "./content-store.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
-import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
 import {
 	type BranchTaskStateEntry,
 	findTaskInLocalBranches,
@@ -138,6 +136,7 @@ function buildUpdatedDateComparableTask(task: Task): Record<string, unknown> {
 		parentTaskId: task.parentTaskId,
 		subtasks: task.subtasks ?? [],
 		priority: task.priority,
+		type: task.type,
 		onStatusChange: task.onStatusChange,
 	};
 }
@@ -316,6 +315,9 @@ export class Core {
 			const assigneeLower = filters.assignee.toLowerCase();
 			result = result.filter((task) => (task.assignee ?? []).some((value) => value.toLowerCase() === assigneeLower));
 		}
+		if (filters.unassigned) {
+			result = result.filter((task) => !(task.assignee ?? []).some((value) => value.trim().length > 0));
+		}
 		if (filters.priority) {
 			const priorityLower = String(filters.priority).toLowerCase();
 			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
@@ -372,6 +374,20 @@ export class Core {
 			throw new Error(`Invalid priority: ${value}. Valid values are: high, medium, low`);
 		}
 		return normalized as "high" | "medium" | "low";
+	}
+
+	private async normalizeTaskType(value: string | undefined): Promise<string | undefined> {
+		if (value === undefined || value === "") {
+			return undefined;
+		}
+		const config = await this.fs.loadConfig();
+		const allowed = config?.types?.length ? config.types : [...DEFAULT_TASK_TYPES];
+		const normalized = value.trim().toLowerCase();
+		const canonical = allowed.find((type) => type.toLowerCase() === normalized);
+		if (!canonical) {
+			throw new Error(`Invalid type: ${value}. Valid types are: ${allowed.join(", ")}`);
+		}
+		return canonical;
 	}
 
 	private isExactTaskReference(reference: string, taskId: string): boolean {
@@ -1140,6 +1156,7 @@ export class Core {
 		}
 
 		const priority = this.normalizePriority(input.priority);
+		const type = await this.normalizeTaskType(input.type);
 		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 		if (
 			input.ordinal !== undefined &&
@@ -1182,6 +1199,7 @@ export class Core {
 				createdDate,
 				...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
 				...(priority && { priority }),
+				...(type && { type }),
 				...(typeof ordinal === "number" && { ordinal }),
 				...(typeof input.milestone === "string" &&
 					input.milestone.trim().length > 0 && {
@@ -1302,6 +1320,14 @@ export class Core {
 			const normalizedPriority = this.normalizePriority(String(input.priority));
 			if (task.priority !== normalizedPriority) {
 				task.priority = normalizedPriority;
+				mutated = true;
+			}
+		}
+
+		if (input.type !== undefined) {
+			const normalizedType = await this.normalizeTaskType(String(input.type));
+			if (task.type !== normalizedType) {
+				task.type = normalizedType;
 				mutated = true;
 			}
 		}
@@ -2171,48 +2197,6 @@ export class Core {
 
 		const updatedTask = updatesMap.get(taskId) ?? updatedMoved;
 		return { updatedTask, changedTasks };
-	}
-
-	// Sequences operations (business logic lives in core, not server)
-	async listActiveSequences(): Promise<{ unsequenced: Task[]; sequences: Sequence[] }> {
-		const all = await this.fs.listTasks();
-		const active = all.filter((t) => (t.status || "").toLowerCase() !== "done");
-		return computeSequences(active);
-	}
-
-	async moveTaskInSequences(params: {
-		taskId: string;
-		unsequenced?: boolean;
-		targetSequenceIndex?: number;
-	}): Promise<{ unsequenced: Task[]; sequences: Sequence[] }> {
-		const taskId = String(params.taskId || "").trim();
-		if (!taskId) throw new Error("taskId is required");
-
-		const allTasks = await this.fs.listTasks();
-		const exists = allTasks.some((t) => t.id === taskId);
-		if (!exists) throw new Error(`Task ${taskId} not found`);
-
-		const active = allTasks.filter((t) => (t.status || "").toLowerCase() !== "done");
-		const { sequences } = computeSequences(active);
-
-		if (params.unsequenced) {
-			const res = planMoveToUnsequenced(allTasks, taskId);
-			if (!res.ok) throw new Error(res.error);
-			await this.updateTasksBulk(res.changed, `Move ${taskId} to Unsequenced`);
-		} else {
-			const targetSequenceIndex = params.targetSequenceIndex;
-			if (targetSequenceIndex === undefined || Number.isNaN(targetSequenceIndex)) {
-				throw new Error("targetSequenceIndex must be a number");
-			}
-			if (targetSequenceIndex < 1) throw new Error("targetSequenceIndex must be >= 1");
-			const changed = planMoveToSequence(allTasks, sequences, taskId, targetSequenceIndex);
-			if (changed.length > 0) await this.updateTasksBulk(changed, `Update deps/order for ${taskId}`);
-		}
-
-		// Return updated sequences
-		const afterAll = await this.fs.listTasks();
-		const afterActive = afterAll.filter((t) => (t.status || "").toLowerCase() !== "done");
-		return computeSequences(afterActive);
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {

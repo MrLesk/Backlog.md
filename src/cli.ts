@@ -16,7 +16,6 @@ import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from ".
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
-import { computeSequences } from "./core/sequences.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
@@ -2015,6 +2014,11 @@ addHelpSchema(taskCmd.command("list"), {
 	optional: [
 		{ name: "status", type: statusType, description: "Filter by task status; case-insensitive" },
 		{ name: "assignee", type: "Assignee", description: "Filter by @name" },
+		{
+			name: "unassigned",
+			type: "Boolean",
+			description: "Only tasks without an assignee; cannot be combined with --assignee",
+		},
 		{ name: "milestone", type: "Milestone ID or title", description: "Closest case-insensitive match" },
 		{ name: "parent", type: "Task ID", description: "Show subtasks of a parent task" },
 		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter by task priority" },
@@ -2037,6 +2041,7 @@ addHelpSchema(taskCmd.command("list"), {
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
+	.option("--unassigned", "filter tasks without an assignee (cannot be combined with --assignee)")
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
@@ -2056,12 +2061,21 @@ addHelpSchema(taskCmd.command("list"), {
 			core.disposeSearchService();
 			core.disposeContentStore();
 		};
+		if (options.assignee && options.unassigned) {
+			console.error("--unassigned cannot be combined with --assignee.");
+			process.exitCode = 1;
+			cleanup();
+			return;
+		}
 		const baseFilters: TaskListFilter = {};
 		if (options.status) {
 			baseFilters.status = options.status;
 		}
 		if (options.assignee) {
 			baseFilters.assignee = options.assignee;
+		}
+		if (options.unassigned) {
+			baseFilters.unassigned = true;
 		}
 		if (options.milestone) {
 			baseFilters.milestone = options.milestone;
@@ -2215,6 +2229,7 @@ addHelpSchema(taskCmd.command("list"), {
 		const activeFilters: string[] = [];
 		if (options.status) activeFilters.push(`Status: ${options.status}`);
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
+		if (options.unassigned) activeFilters.push("Unassigned");
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
@@ -2263,6 +2278,9 @@ addHelpSchema(taskCmd.command("list"), {
 		const interactiveLoaderFilters: TaskListFilter = {};
 		if (options.assignee) {
 			interactiveLoaderFilters.assignee = options.assignee;
+		}
+		if (options.unassigned) {
+			interactiveLoaderFilters.unassigned = true;
 		}
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
@@ -3940,46 +3958,6 @@ const configCmd = addHelpSchema(program.command("config"), {
 			console.error("Failed to update configuration", err);
 			process.exitCode = 1;
 		}
-	});
-
-// Sequences command group
-const sequenceCmd = program.command("sequence");
-
-sequenceCmd
-	.description("list and inspect execution sequences computed from task dependencies")
-	.command("list")
-	.description("list sequences (interactive by default; use --plain for text output)")
-	.option("--plain", "use plain text output instead of interactive UI")
-	.action(async (options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const tasks = await core.queryTasks();
-		// Exclude tasks marked as Done from sequences (case-insensitive)
-		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
-		const { unsequenced, sequences } = computeSequences(activeTasks);
-
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			if (unsequenced.length > 0) {
-				console.log("Unsequenced:");
-				for (const t of unsequenced) {
-					console.log(`  ${t.id} - ${t.title}`);
-				}
-				console.log("");
-			}
-			for (const seq of sequences) {
-				console.log(`Sequence ${seq.index}:`);
-				for (const t of seq.tasks) {
-					console.log(`  ${t.id} - ${t.title}`);
-				}
-				console.log("");
-			}
-			return;
-		}
-
-		// Interactive default: TUI view (215.01 + 215.02 navigation/detail)
-		const { runSequencesView } = await import("./ui/sequences.ts");
-		await runSequencesView({ unsequenced, sequences }, core);
 	});
 
 addHelpSchema(configCmd.command("get <key>"), {

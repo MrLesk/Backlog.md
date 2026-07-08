@@ -58,7 +58,7 @@ Backlog.md itself. The full task ledger lives in this repo's [backlog folder](ba
 
 * ✅ **Acceptance criteria & Definition of Done** -- verifiable scope per task, plus a reusable DoD checklist for every new task
 
-* 🎯 **Milestones, dependencies & sequences** -- structure bigger efforts and inspect execution order with `backlog sequence`
+* 🎯 **Milestones & dependencies** -- structure bigger efforts and make execution order reviewable
 
 * 📊 **Terminal Kanban** -- `backlog board` paints a live board in your shell; `backlog board export` creates shareable markdown reports
 
@@ -88,6 +88,11 @@ backlog init "My Awesome Project"
 # Or initialize without Git for local/non-code projects
 backlog init "Personal Planning" --no-git
 ```
+
+> [!TIP]
+> **Running one-off with `npx`?** This tool's npm package is named `backlog.md`, so use the full name: `npx backlog.md init "My Project"`, `npx backlog.md board`.
+> Without an install, `npx backlog` resolves to an unrelated third-party npm package — not this tool.
+> (With `backlog.md` installed as a project dependency, `npx backlog` runs the local binary as usual.)
 
 The init wizard will ask how you want to connect AI tools:
 - **CLI instructions** (recommended): creates a short instruction file that tells agents to run `backlog instructions overview`.
@@ -305,6 +310,38 @@ When a project uses root config discovery, edit `backlog.config.yml` instead of 
 These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`.
 
 For the full configuration reference (all options, default values, commands, and detailed notes), see **[ADVANCED-CONFIG.md](ADVANCED-CONFIG.md)**.
+
+---
+
+## Troubleshooting
+
+### Apple Silicon (macOS)
+
+On M-series Macs, `backlog` can fail with `illegal hardware instruction` or `Binary package not installed for darwin-...` when Node, Bun, or Homebrew run under Rosetta (x64 emulation) and install the Intel binary instead of the arm64 one — or the other way around. The launcher runs whichever darwin variant (arm64 or x64) is actually installed, but a clean native-arch install is the reliable fix.
+
+Check what your tools report:
+
+```bash
+uname -m                            # arm64 = Apple Silicon hardware; x86_64 = Intel or a Rosetta shell
+node -p process.arch                # architecture of your Node/Bun runtime
+sysctl -in sysctl.proc_translated   # 1 = current shell runs under Rosetta
+which brew                          # /opt/homebrew = arm64 brew, /usr/local = Intel brew
+```
+
+If the architectures disagree, reinstall with the native one:
+
+```bash
+# Homebrew: make sure `which brew` prints /opt/homebrew, then
+brew reinstall backlog-md
+
+# npm
+arch -arm64 npm i -g backlog.md
+
+# Bun
+arch -arm64 bun add -g backlog.md
+```
+
+Running an x64 Node under Rosetta on purpose also works: `backlog` falls back to whichever `backlog.md-darwin-*` package is present.
 
 ---
 

@@ -36,13 +36,11 @@ Searching first avoids duplicate tasks and helps you understand existing context
 
 ### Detailed Guidance (Required)
 
-Read these resources to get essential instructions when:
+**Read the matching resource below before creating, executing, or finalizing tasks — do not act from this overview alone.** The overview only tells you when to act; these resources define the required procedure, and skipping them produces inconsistent tasks and metadata.
 
 - **Creating tasks** → `backlog://workflow/task-creation` - Scope assessment, acceptance criteria, parent/subtasks structure
 - **Planning & executing work** → `backlog://workflow/task-execution` - Planning workflow, implementation discipline, scope changes
 - **Finalizing tasks** → `backlog://workflow/task-finalization` - Definition of Done, finalization checklist, next steps
-
-These guides contain critical workflows you need to follow for proper task management.
 
 ### Core Principle
 
@@ -54,7 +52,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 **Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.
 
-- `task_list` — list tasks with optional filtering by status, assignee, milestone, labels, search, or limit
+- `task_list` — list tasks with optional filtering by status, assignee (or `unassigned: true`), milestone, labels, search, or limit
 - `task_search` — search tasks by title and description, or use `modifiedFiles` to filter by project-root-relative modified file path substrings
 - `task_view` — read full task context (description, plan, notes, comments, final summary, acceptance criteria, Definition of Done)
 - `definition_of_done_defaults_get` — read project-level Definition of Done defaults from config

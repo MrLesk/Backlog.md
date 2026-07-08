@@ -27,7 +27,8 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	const listTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_list",
-			description: "List Backlog.md tasks from with optional filtering",
+			description:
+				"List Backlog.md tasks with optional filtering by status, assignee (or unassigned: true for tasks with no assignee), milestone, labels, and search",
 			inputSchema: taskListSchema,
 			annotations: { title: "List Tasks", readOnlyHint: true, destructiveHint: false },
 		},
@@ -50,7 +51,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		{
 			name: "task_edit",
 			description:
-				"Edit a Backlog.md task, including metadata, implementation plan/notes, dependencies, acceptance criteria, and task-specific Definition of Done items",
+				"Edit a Backlog.md task, including metadata (status, priority, type), implementation plan/notes, dependencies, acceptance criteria, and task-specific Definition of Done items",
 			inputSchema: taskEditSchema,
 			annotations: { title: "Edit Task", destructiveHint: false },
 		},

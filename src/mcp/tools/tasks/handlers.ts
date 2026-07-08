@@ -30,6 +30,7 @@ export type TaskCreateArgs = {
 	labels?: string[];
 	assignee?: string[];
 	priority?: "high" | "medium" | "low";
+	type?: string;
 	ordinal?: number;
 	status?: string;
 	milestone?: string;
@@ -47,6 +48,7 @@ export type TaskCreateArgs = {
 export type TaskListArgs = {
 	status?: string;
 	assignee?: string;
+	unassigned?: boolean;
 	milestone?: string;
 	labels?: string[];
 	search?: string;
@@ -83,9 +85,10 @@ export class TaskHandlers {
 
 	private formatTaskSummaryLine(task: Task, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
+		const typeIndicator = task.type ? `[${task.type}] ` : "";
 		const status = task.status || (task.source === "completed" ? "Done" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
-		return `  ${priorityIndicator}${task.id} - ${task.title}${statusText}`;
+		return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusText}`;
 	}
 
 	private async loadTaskOrThrow(id: string): Promise<Task> {
@@ -117,6 +120,7 @@ export class TaskHandlers {
 				description: args.description,
 				status: args.status,
 				priority: args.priority,
+				type: args.type,
 				...(typeof rawOrdinal === "number" ? { ordinal: rawOrdinal } : {}),
 				milestone,
 				labels: args.labels,
@@ -145,6 +149,9 @@ export class TaskHandlers {
 	}
 
 	async listTasks(args: TaskListArgs = {}): Promise<CallToolResult> {
+		if (args.assignee && args.unassigned) {
+			throw new BacklogToolError("unassigned cannot be combined with assignee.", "VALIDATION_ERROR");
+		}
 		if (this.isDraftStatus(args.status)) {
 			let drafts = await this.core.filesystem.listDrafts();
 			if (args.search) {
@@ -154,6 +161,9 @@ export class TaskHandlers {
 
 			if (args.assignee) {
 				drafts = drafts.filter((draft) => (draft.assignee ?? []).includes(args.assignee ?? ""));
+			}
+			if (args.unassigned) {
+				drafts = drafts.filter((draft) => !(draft.assignee ?? []).some((value) => value.trim().length > 0));
 			}
 			if (args.milestone) {
 				const [activeMilestones, archivedMilestones] = await Promise.all([
@@ -218,6 +228,9 @@ export class TaskHandlers {
 		}
 		if (args.assignee) {
 			filters.assignee = args.assignee;
+		}
+		if (args.unassigned) {
+			filters.unassigned = true;
 		}
 		if (args.milestone) {
 			filters.milestone = args.milestone;

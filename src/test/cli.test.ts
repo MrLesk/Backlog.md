@@ -98,14 +98,13 @@ describe("CLI Integration", () => {
 
 			expect(overview).toContain("## Backlog.md Overview (CLI)");
 			expect(overview).toContain("### Start Every Request Here");
-			expect(overview).toContain(
-				"Use this overview to decide what to read or run next. The detailed guides contain the procedure for creating, executing, and finalizing tasks.",
-			);
+			expect(overview).toContain("Use this overview to decide what to read or run next.");
+			expect(overview).not.toContain("The detailed guides contain the procedure");
 			expect(overview).toContain('backlog search "query" --plain');
 			expect(overview).toContain('backlog task list --search "login" --labels frontend,bug --limit 20 --plain');
 			expect(overview).toContain("backlog task view BACK-123 --plain");
 			expect(overview).toContain(
-				"Always read the relevant guide before that part of the workflow. Do not rely on this overview alone for these actions:",
+				"**Required: read the matching guide below before creating, executing, or finalizing tasks. Do not rely on this overview alone for these actions.** The overview only tells you when to act; the guides define the required procedure, and skipping them produces inconsistent tasks and metadata.",
 			);
 			expect(overview).toContain(
 				"`backlog instructions task-creation`\n  -> Read before creating tasks: how to search, scope, and create tasks",
@@ -1068,6 +1067,51 @@ describe("CLI Integration", () => {
 			const out = result.stdout.toString();
 			expect(out).toContain("TASK-1 - Assigned Task"); // IDs normalized to uppercase
 			expect(out).not.toContain("TASK-2 - Unassigned Task");
+		});
+
+		it("should filter tasks without an assignee using --unassigned", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Assigned Task",
+					status: "To Do",
+					assignee: ["alice"],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Assigned task",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Unassigned Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Other task",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task list --plain --unassigned`.cwd(TEST_DIR).quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("TASK-2 - Unassigned Task");
+			expect(out).not.toContain("TASK-1 - Assigned Task");
+		});
+
+		it("should reject combining --unassigned with --assignee", async () => {
+			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice --unassigned`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("--unassigned cannot be combined with --assignee");
 		});
 
 		it("should filter tasks by labels requiring every requested label", async () => {

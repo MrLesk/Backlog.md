@@ -2,6 +2,8 @@
 
 Full command reference for Backlog.md. For getting started, see [README.md](README.md).
 
+All examples use the `backlog` command, available after installing the `backlog.md` package globally (`npm i -g backlog.md`) or as a project dependency. For one-off runs without installing, use the full package name — `npx backlog.md <command>`, e.g. `npx backlog.md board`; without an install, `npx backlog` resolves to an unrelated third-party npm package, not this tool.
+
 ## Project Setup
 
 | Action      | Example                                              |
@@ -186,7 +188,7 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 
 ## Dependency Management
 
-Manage task dependencies to create execution sequences and prevent circular relationships:
+Manage task dependencies to express execution order:
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
@@ -197,9 +199,8 @@ Manage task dependencies to create execution sequences and prevent circular rela
 | Validate dependencies | Use task commands to automatically validate dependencies |
 
 **Dependency Features:**
-- **Automatic validation**: Prevents circular dependencies and validates task existence
+- **Automatic validation**: verifies that referenced dependency tasks exist
 - **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
-- **Visual sequences**: Dependencies create visual execution sequences in board view
 - **Completion tracking**: See which dependencies are blocking task progress
 
 ## Board Operations

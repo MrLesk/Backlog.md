@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-08 19:48'
+updated_date: '2026-07-08 19:52'
 labels:
   - config
   - bug
@@ -47,6 +47,8 @@ Track GitHub issue #461: dateFormat/date_format is configurable but inconsistent
 Implemented dateFormat as a display-only formatter. Core: extended formatUtcDateForDisplay (src/utils/utc-date-display.ts) with a dateFormat option — canonical normalization first, then single-pass token rearrangement (date part: yyyy/mm/dd each exactly once, case-insensitive, other chars literal; time part after first whitespace: hh/mm). Stored times are always rendered (via format time part or appended canonical HH:mm); date-only values never invent a time; invalid formats and unparseable values fall back gracefully. Storage stays canonical yyyy-mm-dd[ hh:mm]; --plain CLI and MCP output remain canonical (agent contract untouched). TUI: threaded config dateFormat through viewTaskEnhanced/generateDetailContent/createTaskPopup, board (renderBoardTui option), sequences view, and cli cleanup preview. Web: formatStoredUtcDateForDisplay/formatStoredUtcDateForCompactDisplay now delegate to the shared helper (as-stored UTC reformatting instead of browser-locale rendering; compact relative labels kept, absolute fallback stays date-only); dateFormat passed from App config to TaskDetailsModal, TaskList/CleanupModal, DraftsList, DocumentationDetail, DecisionDetail, Statistics. Settings gained helper text (display-only). ADVANCED-CONFIG.md documents default yyyy-mm-dd and the token/time rules. Validation: bunx tsc --noEmit clean, biome check clean, bun test 1389 pass / 0 fail.
 
 PR review follow-up: threaded dateFormat from App through BoardPage and Board into the board CleanupModal path, matching the Tasks page cleanup behavior. Added a board cleanup preview regression test for dd/mm/yyyy formatting. Validation: bun test src/test/web-board-filters.test.tsx; bunx tsc --noEmit; bun run check .
+
+Merge from latest main: BACK-520 removed the sequences feature, so the prior dateFormat wiring for src/ui/sequences.ts is no longer applicable. Resolved the merge conflict by keeping main's deletion of the sequences UI path.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
