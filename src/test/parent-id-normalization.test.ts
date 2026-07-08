@@ -51,6 +51,44 @@ describe("CLI parent task id normalization", () => {
 		expect(child?.parentTaskId).toBe("TASK-4");
 	});
 
+	it("accepts parent task IDs from other active branches", async () => {
+		const core = new Core(TEST_DIR);
+		await initializeTestProject(core, "Cross Branch Parent Test", true);
+
+		const remoteDir = join(TEST_DIR, "remote.git");
+		await $`git init --bare -b main ${remoteDir}`.quiet();
+		await $`git remote add origin ${remoteDir}`.cwd(TEST_DIR).quiet();
+		await $`git push -u origin main`.cwd(TEST_DIR).quiet();
+
+		await $`git checkout -b feature-parent`.cwd(TEST_DIR).quiet();
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Cross-branch parent",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Created on feature branch",
+			},
+			true,
+		);
+		await $`git push -u origin feature-parent`.cwd(TEST_DIR).quiet();
+		await $`git remote update origin --prune`.cwd(TEST_DIR).quiet();
+		await $`git checkout main`.cwd(TEST_DIR).quiet();
+		await core.gitOps.fetch();
+
+		const viewResult = await $`bun run ${CLI_PATH} task view task-1 --plain`.cwd(TEST_DIR).quiet();
+		expect(viewResult.stdout.toString()).toContain("Cross-branch parent");
+
+		const createResult = await $`bun run ${CLI_PATH} task create Child --parent task-1`.cwd(TEST_DIR).quiet();
+
+		expect(createResult.stdout.toString()).toContain("Created task TASK-1.1");
+		const child = await core.filesystem.loadTask("task-1.1");
+		expect(child?.parentTaskId).toBe("TASK-1");
+	});
+
 	it("rejects milestone IDs as parent task IDs when creating subtasks", async () => {
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Parent Validation Test", true);

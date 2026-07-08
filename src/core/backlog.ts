@@ -1226,7 +1226,7 @@ export class Core {
 	}
 
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
-		const parentTask = await this.fs.loadTask(parentTaskId);
+		const parentTask = await this.loadTaskById(parentTaskId);
 		if (!parentTask) {
 			const normalizedParent = normalizeTaskId(parentTaskId);
 			throw new Error(

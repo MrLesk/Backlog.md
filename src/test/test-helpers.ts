@@ -275,7 +275,8 @@ Options:
   --no-dod-defaults               disable Definition of Done defaults
   --plan <plan>                   implementation plan
   --draft                         create as draft
-  -p, --parent <taskId>           specify parent task ID
+  -p, --parent <taskId>           specify existing parent task ID, not a
+                                  milestone ID
   --dep <dependencies>            task dependencies (comma-separated)
   --depends-on <dependencies>     task dependencies (comma-separated)
   -h, --help                      display help for command`,
