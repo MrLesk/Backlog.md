@@ -18,7 +18,7 @@ jobs:
     name: lint-and-unit-test
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -38,13 +38,8 @@ jobs:
       - run: bun run lint
       - name: Run tests
         run: |
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            # Windows runners hit Bun/file-system resource pressure under the default parallelism.
-            bun test --isolate --timeout=30000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
-          else
-            # Isolate test files because some suites intentionally mutate global process state.
-            bun test --isolate --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
-          fi
+          # Isolate test files because some suites intentionally mutate global process state.
+          bun test --isolate --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
         shell: bash
       - name: Run interactive TUI regression tests
         if: matrix.os == 'ubuntu-latest'
@@ -56,6 +51,63 @@ jobs:
           name: tui-interactive-transcripts-${{ matrix.os }}
           path: tmp/tui-interactive-transcripts/*.log
           if-no-files-found: ignore
+
+  test-windows:
+    name: unit-test-windows (${{ matrix.shard }}/${{ matrix.total_shards }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+        total_shards: [3]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Bun >=1.3 includes stdin pause/subprocess handoff fixes used by TUI editor launch.
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/cache@v6
+        id: cache
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-windows-latest-bun-${{ env.BUN_VERSION }}-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-windows-latest-bun-${{ env.BUN_VERSION }}-
+      - run: bun install --frozen-lockfile --linker=isolated
+      - run: bun run check:types
+        if: matrix.shard == 1
+      - run: bun run lint
+        if: matrix.shard == 1
+      - name: Run Windows test shard
+        shell: bash
+        run: |
+          test_files=()
+          while IFS= read -r test_file; do
+            test_files+=("$test_file")
+          done < <(bun scripts/list-test-shard.ts "${{ matrix.shard }}" "${{ matrix.total_shards }}")
+
+          if (( ${#test_files[@]} == 0 )); then
+            echo "No test files selected for shard ${{ matrix.shard }}/${{ matrix.total_shards }}."
+            exit 1
+          fi
+
+          echo "Running Windows test shard ${{ matrix.shard }}/${{ matrix.total_shards }} with ${#test_files[@]} files."
+          # Windows runners hit Bun/file-system resource pressure under in-process concurrency, so shard by CI job instead.
+          bun test --isolate --timeout=30000 --max-concurrency=4 --reporter=junit --reporter-outfile="test-results-${{ matrix.shard }}.xml" "${test_files[@]}"
+
+  test-windows-complete:
+    name: lint-and-unit-test (windows-latest)
+    needs: test-windows
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Windows test shards
+        shell: bash
+        run: |
+          if [[ "${{ needs.test-windows.result }}" != "success" ]]; then
+            echo "Windows test shards finished with result: ${{ needs.test-windows.result }}"
+            exit 1
+          fi
 
   build-test:
     name: compile-and-smoke-test
