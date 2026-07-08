@@ -91,6 +91,9 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	if (priorityLabel) {
 		lines.push(`Priority: ${priorityLabel}`);
 	}
+	if (task.type) {
+		lines.push(`Type: ${task.type}`);
+	}
 	if (task.ordinal !== undefined) {
 		lines.push(`Ordinal: ${task.ordinal}`);
 	}

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
-import { DEFAULT_STATUSES } from "../constants/index.ts";
+import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "../constants/index.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
@@ -965,5 +965,151 @@ describe("MCP task tools (MVP)", () => {
 		const standaloneText = getText(standaloneView.content);
 		expect(standaloneText).not.toContain("Subtasks (");
 		expect(standaloneText).not.toContain("Subtasks:");
+	});
+
+	it("creates and edits tasks with a semantic type and shows it in view and list output", async () => {
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Typed task",
+					type: "BUG",
+					priority: "high",
+				},
+			},
+		});
+		expect(getText(createResult.content)).toContain("Type: bug");
+
+		const createdTask = await mcpServer.getTask("task-1");
+		expect(createdTask?.type).toBe("bug");
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Untyped task",
+				},
+			},
+		});
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: {} },
+		});
+		const listText = (listResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
+		expect(listText).toContain("[HIGH] [bug] TASK-1 - Typed task");
+		expect(listText).toContain("  TASK-2 - Untyped task");
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					type: "Feature",
+				},
+			},
+		});
+		expect(getText(editResult.content)).toContain("Type: feature");
+
+		const editedTask = await mcpServer.getTask("task-1");
+		expect(editedTask?.type).toBe("feature");
+
+		const untypedView = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "task-2" } },
+		});
+		expect(getText(untypedView.content)).not.toContain("Type:");
+	});
+
+	it("rejects invalid task types through task_create and task_edit", async () => {
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Invalid type task",
+					type: "banana",
+				},
+			},
+		});
+		expect(createResult.isError).toBe(true);
+		expect(getText(createResult.content)).toContain(`must be one of: ${DEFAULT_TASK_TYPES.join(", ")}`);
+
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Valid task",
+				},
+			},
+		});
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					type: "banana",
+				},
+			},
+		});
+		expect(editResult.isError).toBe(true);
+		expect(getText(editResult.content)).toContain(`must be one of: ${DEFAULT_TASK_TYPES.join(", ")}`);
+
+		const task = await mcpServer.getTask("task-1");
+		expect(task?.type).toBeUndefined();
+	});
+
+	it("exposes task type enums from configuration without a default", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createTypeSchema = (toolByName.get("task_create")?.inputSchema as JsonSchema | undefined)?.properties?.type;
+		const editTypeSchema = (toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined)?.properties?.type;
+
+		expect(createTypeSchema?.enum).toEqual([...DEFAULT_TASK_TYPES]);
+		expect(createTypeSchema?.enumCaseInsensitive).toBe(true);
+		expect(createTypeSchema?.default).toBeUndefined();
+		expect(createTypeSchema?.description).toContain(`Valid values: ${DEFAULT_TASK_TYPES.join(", ")}`);
+
+		expect(editTypeSchema?.enum).toEqual([...DEFAULT_TASK_TYPES]);
+		expect(editTypeSchema?.enumCaseInsensitive).toBe(true);
+		expect(editTypeSchema?.default).toBeUndefined();
+
+		const config = await loadConfig(mcpServer);
+		config.types = ["Bug", "Epic"];
+		await mcpServer.filesystem.saveConfig(config);
+
+		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		try {
+			registerTaskTools(customServer, await loadConfig(customServer));
+
+			const customTools = await customServer.testInterface.listTools();
+			const customCreateSchema = customTools.tools.find((tool) => tool.name === "task_create")?.inputSchema as
+				| JsonSchema
+				| undefined;
+			expect(customCreateSchema?.properties?.type?.enum).toEqual(["Bug", "Epic"]);
+
+			const createResult = await customServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Configured type task",
+						type: "bug",
+					},
+				},
+			});
+			expect(getText(createResult.content)).toContain("Type: Bug");
+
+			const invalidResult = await customServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Rejected type task",
+						type: "feature",
+					},
+				},
+			});
+			expect(invalidResult.isError).toBe(true);
+			expect(getText(invalidResult.content)).toContain("must be one of: Bug, Epic");
+		} finally {
+			await customServer.stop().catch(() => {});
+		}
 	});
 });
