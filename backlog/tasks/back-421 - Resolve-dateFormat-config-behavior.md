@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-04 14:19'
+updated_date: '2026-07-08 19:48'
 labels:
   - config
   - bug
@@ -45,12 +45,14 @@ Track GitHub issue #461: dateFormat/date_format is configurable but inconsistent
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented dateFormat as a display-only formatter. Core: extended formatUtcDateForDisplay (src/utils/utc-date-display.ts) with a dateFormat option — canonical normalization first, then single-pass token rearrangement (date part: yyyy/mm/dd each exactly once, case-insensitive, other chars literal; time part after first whitespace: hh/mm). Stored times are always rendered (via format time part or appended canonical HH:mm); date-only values never invent a time; invalid formats and unparseable values fall back gracefully. Storage stays canonical yyyy-mm-dd[ hh:mm]; --plain CLI and MCP output remain canonical (agent contract untouched). TUI: threaded config dateFormat through viewTaskEnhanced/generateDetailContent/createTaskPopup, board (renderBoardTui option), sequences view, and cli cleanup preview. Web: formatStoredUtcDateForDisplay/formatStoredUtcDateForCompactDisplay now delegate to the shared helper (as-stored UTC reformatting instead of browser-locale rendering; compact relative labels kept, absolute fallback stays date-only); dateFormat passed from App config to TaskDetailsModal, TaskList/CleanupModal, DraftsList, DocumentationDetail, DecisionDetail, Statistics. Settings gained helper text (display-only). ADVANCED-CONFIG.md documents default yyyy-mm-dd and the token/time rules. Validation: bunx tsc --noEmit clean, biome check clean, bun test 1389 pass / 0 fail.
+
+PR review follow-up: threaded dateFormat from App through BoardPage and Board into the board CleanupModal path, matching the Tasks page cleanup behavior. Added a board cleanup preview regression test for dd/mm/yyyy formatting. Validation: bun test src/test/web-board-filters.test.tsx; bunx tsc --noEmit; bun run check .
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-dateFormat is now a working display-only formatter: the web UI and TUI rearrange canonical UTC dates per the configured format (e.g. dd/mm/yyyy), while task/doc/decision markdown storage, --plain CLI output, and MCP responses stay canonical yyyy-mm-dd[ hh:mm]. Invalid formats fall back to canonical output; stored times are always shown; date-only values never gain a time. Docs and Settings describe the display-only semantics. Verified with new unit tests (core + web), bunx tsc --noEmit, biome, and the full bun test suite (1389 pass).
+dateFormat is now a working display-only formatter: the web UI and TUI rearrange canonical UTC dates per the configured format (for example, dd/mm/yyyy), while task/doc/decision markdown storage, --plain CLI output, and MCP responses stay canonical yyyy-mm-dd[ hh:mm]. The PR review follow-up also wires dateFormat into the default board cleanup preview, matching the Tasks page cleanup path. Verified with focused unit tests, bunx tsc --noEmit, and bun run check .
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

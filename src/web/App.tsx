@@ -508,6 +508,7 @@ function App() {
                 archivedMilestones={archivedMilestones}
                 isLoading={isLoading}
                 hideEmptyColumns={config?.hideEmptyColumns ?? false}
+                dateFormat={config?.dateFormat}
               />
             }
           />
