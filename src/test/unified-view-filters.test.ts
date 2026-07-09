@@ -98,6 +98,25 @@ describe("unified view filter state", () => {
 		expect(merged.excludeStatus).toEqual(["Done"]);
 	});
 
+	it("uses explicitly updated excluded statuses when merging filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			searchQuery: "api",
+			excludeStatus: ["Done"],
+		});
+
+		const updated: UnifiedViewFilters = {
+			searchQuery: "api",
+			statusFilter: "",
+			excludeStatus: [],
+			priorityFilter: "",
+			labelFilter: [],
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.excludeStatus).toEqual([]);
+	});
+
 	it("preserves task limit when merging filter updates", () => {
 		const initial = createUnifiedViewFilters({
 			labels: ["frontend", "bug"],

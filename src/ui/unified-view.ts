@@ -416,16 +416,16 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					availableLabels: getBoardAvailableLabels(),
 					availableMilestones: getBoardAvailableMilestones(),
 					onFilterChange: (filters) => {
-						currentFilters = {
-							...currentFilters,
+						currentFilters = mergeUnifiedViewFilters(currentFilters, {
 							searchQuery: filters.searchQuery,
-							excludeStatus: currentFilters.excludeStatus,
+							statusFilter: currentFilters.statusFilter,
+							excludeStatus: filters.excludeStatus,
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
 							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
 							milestoneFilter: filters.milestoneFilter,
-							limit: filters.limit ?? currentFilters.limit,
-						};
+							limit: filters.limit,
+						});
 					},
 					subscribeUpdates: (updater) => {
 						boardUpdater = updater;
