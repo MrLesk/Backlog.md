@@ -12,6 +12,7 @@ type Shortcut = {
 const BOARD_SHORTCUTS: Shortcut[] = [
 	{ key: "Tab", desc: "Switch View (Kanban/List)" },
 	{ key: "/", desc: "Search tasks" },
+	{ key: "T", desc: "Filter by Type" },
 	{ key: "P", desc: "Filter by Priority" },
 	{ key: "F", desc: "Filter by Labels" },
 	{ key: "I", desc: "Filter by Milestone" },
@@ -31,6 +32,7 @@ const TASK_LIST_SHORTCUTS: Shortcut[] = [
 	{ key: "Tab", desc: "Switch View (Kanban/List)" },
 	{ key: "/", desc: "Search tasks" },
 	{ key: "s", desc: "Filter by Status" },
+	{ key: "t", desc: "Filter by Type" },
 	{ key: "p", desc: "Filter by Priority" },
 	{ key: "l", desc: "Filter by Labels" },
 	{ key: "i", desc: "Filter by Milestone" },

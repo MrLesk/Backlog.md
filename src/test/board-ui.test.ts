@@ -62,6 +62,7 @@ describe("Board TUI Logic", () => {
 			searchQuery: "",
 			excludeStatus: [],
 			priorityFilter: "",
+			typeFilter: [],
 			labelFilter: [],
 			milestoneFilter: "",
 		};
@@ -72,6 +73,7 @@ describe("Board TUI Logic", () => {
 
 		it("blocks moves when visible board filters are active", () => {
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, searchQuery: "auth" })).toBe(true);
+			expect(hasMoveBlockingBoardFilters({ ...baseFilters, typeFilter: ["bug"] })).toBe(true);
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, labelFilter: ["bug"] })).toBe(true);
 		});
 	});
