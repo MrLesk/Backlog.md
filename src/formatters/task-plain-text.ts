@@ -2,6 +2,7 @@ import type { Task } from "../types/index.ts";
 import type { ChecklistItem } from "../ui/checklist.ts";
 import { transformCodePathsPlain } from "../ui/code-path.ts";
 import { formatStatusWithIcon } from "../ui/status-icon.ts";
+import { formatPriorityLabel } from "../utils/priority-config.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { formatUtcDateForDisplay, type UtcDateDisplayOptions } from "../utils/utc-date-display.ts";
 
@@ -42,10 +43,9 @@ export function formatAcceptanceCriteriaLines(items: ChecklistItem[]): string[] 
 	});
 }
 
-function formatPriority(priority?: "high" | "medium" | "low"): string | null {
+function formatPriority(priority?: string): string | null {
 	if (!priority) return null;
-	const label = priority.charAt(0).toUpperCase() + priority.slice(1);
-	return label;
+	return formatPriorityLabel(priority);
 }
 
 function formatAssignees(assignee?: string[]): string | null {

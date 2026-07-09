@@ -11,6 +11,7 @@ import type { Milestone, Task } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
+import { getPriorityOptions } from "../utils/priority-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
@@ -197,6 +198,7 @@ export async function renderBoardTui(
 		};
 		availableLabels?: string[];
 		availableMilestones?: string[];
+		priorities?: string[];
 		onFilterChange?: (filters: {
 			searchQuery: string;
 			priorityFilter: string;
@@ -269,6 +271,7 @@ export async function renderBoardTui(
 			}
 		};
 		let configuredLabels = collectAvailableLabels(initialTasks, options?.availableLabels ?? []);
+		const priorityOptions = getPriorityOptions(options?.priorities);
 		let availableMilestones = [...(options?.availableMilestones ?? [])];
 		const milestoneLabelByKey = new Map<string, string>();
 		for (const milestone of options?.milestoneEntities ?? []) {
@@ -328,7 +331,7 @@ export async function renderBoardTui(
 					currentTasks,
 					{
 						query: sharedFilters.searchQuery,
-						priority: sharedFilters.priorityFilter as "high" | "medium" | "low" | undefined,
+						priority: sharedFilters.priorityFilter || undefined,
 						labels: sharedFilters.labelFilter,
 						labelMatch: sharedFilters.labelMatch,
 						milestone: sharedFilters.milestoneFilter || undefined,
@@ -673,14 +676,13 @@ export async function renderBoardTui(
 				}
 
 				if (filterId === "priority") {
-					const priorities = ["high", "medium", "low"];
 					const selected = await openSingleSelectFilterPopup({
 						screen,
 						title: "Priority Filter",
 						selectedValue: sharedFilters.priorityFilter,
 						choices: [
 							{ label: "All", value: "" },
-							...priorities.map((priority) => ({ label: priority, value: priority })),
+							...priorityOptions.map((priority) => ({ label: priority.label, value: priority.value })),
 						],
 					});
 					if (selected !== null) {

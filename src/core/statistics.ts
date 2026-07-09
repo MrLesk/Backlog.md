@@ -1,4 +1,5 @@
 import type { Task } from "../types/index.ts";
+import { getPriorityValues, normalizePriorityValue } from "../utils/priority-config.ts";
 
 export interface TaskStatistics {
 	statusCounts: Map<string, number>;
@@ -21,7 +22,12 @@ export interface TaskStatistics {
 /**
  * Calculate comprehensive task statistics for the overview
  */
-export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: string[]): TaskStatistics {
+export function getTaskStatistics(
+	tasks: Task[],
+	drafts: Task[],
+	statuses: string[],
+	priorityOrder?: readonly string[],
+): TaskStatistics {
 	const statusCounts = new Map<string, number>();
 	const priorityCounts = new Map<string, number>();
 
@@ -31,9 +37,9 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 	}
 
 	// Initialize priority counts
-	priorityCounts.set("high", 0);
-	priorityCounts.set("medium", 0);
-	priorityCounts.set("low", 0);
+	for (const priority of getPriorityValues(priorityOrder)) {
+		priorityCounts.set(priority, 0);
+	}
 	priorityCounts.set("none", 0);
 
 	let completedTasks = 0;
@@ -65,7 +71,7 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		}
 
 		// Count by priority
-		const priority = task.priority || "none";
+		const priority = normalizePriorityValue(task.priority) || "none";
 		const priorityCount = priorityCounts.get(priority) || 0;
 		priorityCounts.set(priority, priorityCount + 1);
 

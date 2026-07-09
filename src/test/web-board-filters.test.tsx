@@ -90,7 +90,13 @@ const setupDom = (url = "http://localhost/board") => {
 
 const renderBoardPage = (
 	url?: string,
-	options: { tasks?: Task[]; statuses?: string[]; availableLabels?: string[]; dateFormat?: string } = {},
+	options: {
+		tasks?: Task[];
+		statuses?: string[];
+		availableLabels?: string[];
+		availablePriorities?: string[];
+		dateFormat?: string;
+	} = {},
 ): HTMLElement => {
 	setupDom(url);
 	const container = document.getElementById("root");
@@ -106,6 +112,7 @@ const renderBoardPage = (
 					statuses={renderedStatuses}
 					milestones={[]}
 					availableLabels={options.availableLabels ?? ["bug", "docs", "enhancement"]}
+					availablePriorities={options.availablePriorities}
 					milestoneEntities={[]}
 					archivedMilestones={[]}
 					isLoading={false}
@@ -250,6 +257,38 @@ describe("Web board filters", () => {
 		await setSelectValue(getSelectByFirstOption(container, "All priorities"), "high");
 		expect(new URLSearchParams(window.location.search).get("priority")).toBe("high");
 		expectVisibleTasks(container, ["Fix login bug"]);
+	});
+
+	it("renders and filters configured custom priorities", async () => {
+		const customTasks = [
+			...tasks,
+			createTask({
+				id: "task-105",
+				title: "Escalate production incident",
+				priority: "very high",
+			}),
+		];
+		const container = renderBoardPage(undefined, {
+			tasks: customTasks,
+			availablePriorities: ["Very High", "High", "Medium", "Low", "Very Low"],
+		});
+
+		const prioritySelect = getSelectByFirstOption(container, "All priorities");
+		expect(Array.from(prioritySelect.options).map((option) => option.textContent)).toEqual([
+			"All priorities",
+			"Very High",
+			"High",
+			"Medium",
+			"Low",
+			"Very Low",
+		]);
+
+		await setSelectValue(prioritySelect, "very high");
+		const text = container.textContent ?? "";
+		expect(new URLSearchParams(window.location.search).get("priority")).toBe("very high");
+		expect(text).toContain("Escalate production incident");
+		expect(text).toContain("Very High");
+		expect(text).not.toContain("Fix login bug");
 	});
 
 	it("matches configured label casing against task labels", async () => {

@@ -286,11 +286,11 @@ describe("CLI Integration", () => {
 			expect(createHelp).toContain("title: String");
 			expect(createHelp).toContain("description: Markdown");
 			expect(createHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
-			expect(createHelp).toContain("priority: one of: high, medium, low");
+			expect(createHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(createHelp).toContain("ordinal: Integer");
 			expect(listHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
 			expect(listHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
-			expect(listHelp).toContain("priority: one of: high, medium, low");
+			expect(listHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(listHelp).toContain("labels: Comma-separated strings");
 			expect(listHelp).toContain("search: String");
 			expect(listHelp).toContain("limit: Positive integer");
@@ -361,7 +361,7 @@ describe("CLI Integration", () => {
 			expect(searchHelp).toContain("type: one or more of: task, document, decision");
 			expect(searchHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
 			expect(searchHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
-			expect(searchHelp).toContain("priority: one of: high, medium, low");
+			expect(searchHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(searchHelp).toContain("modified-file: Project-root-relative path");
 			expect(cleanupHelp).toContain("Writes:");
 		});
@@ -405,7 +405,7 @@ describe("CLI Integration", () => {
 			const docPathOutput = docPath.stdout.toString() + docPath.stderr.toString();
 
 			expect(priority.exitCode).not.toBe(0);
-			expect(priorityOutput).toContain("Invalid priority: urgent. Valid values are: high, medium, low");
+			expect(priorityOutput).toContain("Invalid priority: urgent. Valid values are: High, Medium, Low");
 			expect(priorityOutput).not.toContain("Error:");
 			expect(docPath.exitCode).not.toBe(0);
 			expect(docPathOutput).toContain("Document path cannot include traversal segments.");
@@ -1261,6 +1261,40 @@ describe("CLI Integration", () => {
 			expect(out).toContain("[HIGH] TASK-2 - High Priority Later ID");
 			expect(out).not.toContain("To Do:");
 			expect(out).not.toContain("TASK-1 - Low Priority First ID");
+		});
+
+		it("should use configured custom priorities for create, list, search, and help", async () => {
+			const core = new Core(TEST_DIR);
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected test config to exist");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				priorities: ["Very High", "High", "Medium", "Low", "Very Low"],
+			});
+
+			await $`bun ${CLI_PATH} task create "Custom priority urgent task" --priority "Very High" --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+			await $`bun ${CLI_PATH} task create "Custom priority later task" --priority "Very Low" --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			const listResult = await $`bun ${CLI_PATH} task list --plain --priority "very high"`.cwd(TEST_DIR).quiet();
+			const listOutput = listResult.stdout.toString();
+			expect(listOutput).toContain("[VERY HIGH] TASK-1 - Custom priority urgent task");
+			expect(listOutput).not.toContain("Custom priority later task");
+
+			const searchResult = await $`bun ${CLI_PATH} search "Custom priority" --priority "VERY HIGH" --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+			const searchOutput = searchResult.stdout.toString();
+			expect(searchOutput).toContain("TASK-1 - Custom priority urgent task");
+			expect(searchOutput).not.toContain("TASK-2 - Custom priority later task");
+
+			const helpOutput = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
+			expect(helpOutput).toContain("priority: one of configured priorities: Very High, High, Medium, Low, Very Low");
 		});
 
 		it("should combine search, labels, and existing task list filters", async () => {

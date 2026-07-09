@@ -113,7 +113,7 @@ async function getFlagValueCompletions(flagName: string): Promise<string[]> {
 		case "status":
 			return await getStatuses();
 		case "priority":
-			return getPriorities();
+			return await getPriorities();
 		case "labels":
 		case "label":
 			return await getLabels();

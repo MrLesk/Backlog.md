@@ -9,7 +9,7 @@ import { Command } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
-import { addHelpSchema, choiceType, statusType } from "./commands/help-schema.ts";
+import { addHelpSchema, choiceType, priorityType, statusType } from "./commands/help-schema.ts";
 import { registerInstructionsCommand } from "./commands/instructions.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
@@ -66,6 +66,7 @@ import {
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import {
@@ -90,6 +91,7 @@ const CONFIG_GET_KEYS = [
 	"defaultStatus",
 	"statuses",
 	"labels",
+	"priorities",
 	"milestones",
 	"definitionOfDone",
 	"dateFormat",
@@ -250,6 +252,17 @@ function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
 	}
 	const taskLabels = new Set(labelsToLower(task.labels ?? []));
 	return requiredLabels.every((label) => taskLabels.has(label));
+}
+
+async function normalizeCliPriority(core: Core, value: string): Promise<string | null> {
+	const config = await core.filesystem.loadConfig();
+	const normalized = resolvePriorityValue(value, config);
+	if (!normalized) {
+		console.error(`Invalid priority: ${value}. Valid values are: ${formatValidPriorityValues(config)}`);
+		process.exitCode = 1;
+		return null;
+	}
+	return normalized;
 }
 
 function formatToolResultText(result: CallToolResult): string {
@@ -1549,7 +1562,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		},
 		{ name: "assignee", type: "Assignee list", description: "One or more @names" },
 		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
-		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Task priority" },
+		{ name: "priority", type: priorityType, description: "Task priority" },
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
 		{ name: "parent", type: "Task ID", description: "Existing parent task for subtasks; not a milestone ID" },
@@ -1566,7 +1579,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
-	.option("--priority <priority>", "set task priority (high, medium, low)")
+	.option("--priority <priority>", "set task priority (configured priorities)")
 	.option("--plain", "use plain text output after creating")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
 	.option(
@@ -1628,7 +1641,8 @@ addHelpSchema(taskCmd.command("create [title]"), {
 
 		if (shouldUseWizard) {
 			const statuses = await getValidStatuses(core);
-			const wizardInput = await runTaskCreateWizard({ statuses });
+			const config = await core.filesystem.loadConfig();
+			const wizardInput = await runTaskCreateWizard({ statuses, priorities: config?.priorities });
 			if (!wizardInput) {
 				clack.cancel("Task create cancelled.");
 				return;
@@ -1681,7 +1695,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				documentation: parseDelimitedStringList(options.doc),
 				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
 				parentTaskId: options.parent ? String(options.parent) : undefined,
-				priority: options.priority ? (String(options.priority).toLowerCase() as "high" | "medium" | "low") : undefined,
+				priority: options.priority ? String(options.priority) : undefined,
 				...(ordinalValue !== undefined ? { ordinal: ordinalValue } : {}),
 				milestone,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
@@ -1722,7 +1736,7 @@ addHelpSchema(program.command("search [query]"), {
 			description: "Result types",
 		},
 		{ name: "status", type: statusType, description: "Filter task results by status; case-insensitive" },
-		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter task results by priority" },
+		{ name: "priority", type: priorityType, description: "Filter task results by priority" },
 		{
 			name: "modified-file",
 			type: "Project-root-relative path",
@@ -1736,7 +1750,7 @@ addHelpSchema(program.command("search [query]"), {
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
-	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
+	.option("--priority <priority>", "filter task results by priority (configured priorities)")
 	.option(
 		"--modified-file <path>",
 		"filter task results by modified file path substring",
@@ -1776,15 +1790,12 @@ addHelpSchema(program.command("search [query]"), {
 			filters.status = options.status;
 		}
 		if (options.priority) {
-			const priorityLower = String(options.priority).toLowerCase();
-			const validPriorities: SearchPriorityFilter[] = ["high", "medium", "low"];
-			if (!validPriorities.includes(priorityLower as SearchPriorityFilter)) {
-				console.error("Invalid priority. Valid values: high, medium, low");
+			const priority = await normalizeCliPriority(core, String(options.priority));
+			if (!priority) {
 				cleanup();
-				process.exitCode = 1;
 				return;
 			}
-			filters.priority = priorityLower as SearchPriorityFilter;
+			filters.priority = priority;
 		}
 		if (modifiedFileFilters?.length) {
 			filters.modifiedFiles = modifiedFileFilters;
@@ -2023,7 +2034,7 @@ addHelpSchema(taskCmd.command("list"), {
 		},
 		{ name: "milestone", type: "Milestone ID or title", description: "Closest case-insensitive match" },
 		{ name: "parent", type: "Task ID", description: "Show subtasks of a parent task" },
-		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter by task priority" },
+		{ name: "priority", type: priorityType, description: "Filter by task priority" },
 		{
 			name: "labels",
 			type: "Comma-separated strings",
@@ -2046,7 +2057,7 @@ addHelpSchema(taskCmd.command("list"), {
 	.option("--unassigned", "filter tasks without an assignee (cannot be combined with --assignee)")
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
-	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
+	.option("--priority <priority>", "filter tasks by priority (configured priorities)")
 	.option(
 		"-l, --labels <labels>",
 		"filter tasks by labels; require every comma-separated label (repeatable)",
@@ -2083,15 +2094,12 @@ addHelpSchema(taskCmd.command("list"), {
 			baseFilters.milestone = options.milestone;
 		}
 		if (options.priority) {
-			const priorityLower = options.priority.toLowerCase();
-			const validPriorities = ["high", "medium", "low"] as const;
-			if (!validPriorities.includes(priorityLower as (typeof validPriorities)[number])) {
-				console.error(`Invalid priority: ${options.priority}. Valid values are: high, medium, low`);
-				process.exitCode = 1;
+			const priority = await normalizeCliPriority(core, String(options.priority));
+			if (!priority) {
 				cleanup();
 				return;
 			}
-			baseFilters.priority = priorityLower as (typeof validPriorities)[number];
+			baseFilters.priority = priority;
 		}
 
 		const labelFilters = parseDelimitedStringList(options.labels) ?? [];
@@ -2153,9 +2161,9 @@ addHelpSchema(taskCmd.command("list"), {
 					cleanup();
 					return;
 				}
-				sortedTasks = sortTasks(tasks, sortField);
+				sortedTasks = sortTasks(tasks, sortField, config?.priorities);
 			} else {
-				sortedTasks = sortTasks(tasks, "priority");
+				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
 			}
 
 			let filtered = sortedTasks;
@@ -2234,7 +2242,7 @@ addHelpSchema(taskCmd.command("list"), {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
 		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
-		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
+		if (baseFilters.priority) activeFilters.push(`Priority: ${baseFilters.priority}`);
 		if (labelFilters.length > 0) activeFilters.push(`Labels: ${labelFilters.join(", ")}`);
 		if (searchQuery) activeFilters.push(`Search: ${searchQuery}`);
 		if (taskLimit !== undefined) activeFilters.push(`Limit: ${taskLimit}`);
@@ -2261,7 +2269,7 @@ addHelpSchema(taskCmd.command("list"), {
 			status: options.status,
 			assignee: options.assignee,
 			milestone: options.milestone,
-			priority: options.priority,
+			priority: baseFilters.priority,
 			sort: options.sort,
 			labels: labelFilters,
 			labelMatch: labelFilters.length > 0 ? "all" : undefined,
@@ -2321,9 +2329,9 @@ addHelpSchema(taskCmd.command("list"), {
 					if (!TASK_SORT_FIELDS.includes(sortField)) {
 						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
 					}
-					sortedTasks = sortTasks(tasks, sortField);
+					sortedTasks = sortTasks(tasks, sortField, config?.priorities);
 				} else {
-					sortedTasks = sortTasks(tasks, "priority");
+					sortedTasks = sortTasks(tasks, "priority", config?.priorities);
 				}
 
 				let filtered = sortedTasks;
@@ -2411,7 +2419,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		"replace all task labels (comma-separated or repeatable; cannot combine with --add-label/--remove-label)",
 		createMultiValueAccumulator(),
 	)
-	.option("--priority <priority>", "set task priority (high, medium, low)")
+	.option("--priority <priority>", "set task priority (configured priorities)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--clear-milestone", "clear task milestone assignment")
@@ -2545,7 +2553,12 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			}
 
 			const statuses = await getValidStatuses(core);
-			const wizardInput = await runTaskEditWizard({ task: existingTaskForWizard, statuses });
+			const config = await core.filesystem.loadConfig();
+			const wizardInput = await runTaskEditWizard({
+				task: existingTaskForWizard,
+				statuses,
+				priorities: config?.priorities,
+			});
 			if (!wizardInput) {
 				clack.cancel("Task edit cancelled.");
 				return;
@@ -2584,16 +2597,13 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			canonicalStatus = canonical;
 		}
 
-		let normalizedPriority: "high" | "medium" | "low" | undefined;
+		let normalizedPriority: string | undefined;
 		if (options.priority) {
-			const priority = String(options.priority).toLowerCase();
-			const validPriorities = ["high", "medium", "low"] as const;
-			if (!validPriorities.includes(priority as (typeof validPriorities)[number])) {
-				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
-				process.exitCode = 1;
+			const priority = await normalizeCliPriority(core, String(options.priority));
+			if (!priority) {
 				return;
 			}
-			normalizedPriority = priority as "high" | "medium" | "low";
+			normalizedPriority = priority;
 		}
 
 		let ordinalValue: number | undefined;
@@ -3040,6 +3050,7 @@ draftCmd
 
 		// Apply sorting - default to priority sorting like the web UI
 		const { sortTasks } = await import("./utils/task-sorting.ts");
+		const config = await core.filesystem.loadConfig();
 		let sortedDrafts = drafts;
 
 		if (options.sort) {
@@ -3049,10 +3060,10 @@ draftCmd
 				process.exitCode = 1;
 				return;
 			}
-			sortedDrafts = sortTasks(drafts, sortField);
+			sortedDrafts = sortTasks(drafts, sortField, config?.priorities);
 		} else {
 			// Default to priority sorting to match web UI behavior
-			sortedDrafts = sortTasks(drafts, "priority");
+			sortedDrafts = sortTasks(drafts, "priority", config?.priorities);
 		}
 
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
@@ -4005,6 +4016,13 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "labels":
 					console.log(config.labels.join(", "));
 					break;
+				case "priorities":
+					console.log(
+						getPriorityOptions(config)
+							.map((priority) => priority.label)
+							.join(", "),
+					);
+					break;
 				case "milestones": {
 					const milestones = await core.filesystem.listMilestones();
 					console.log(milestones.map((milestone) => milestone.id).join(", "));
@@ -4052,7 +4070,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -4234,6 +4252,7 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 				}
 				case "statuses":
 				case "labels":
+				case "priorities":
 				case "milestones":
 				case "definitionOfDone":
 					if (key === "milestones") {
@@ -4301,6 +4320,11 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
+			console.log(
+				`  priorities: [${getPriorityOptions(config)
+					.map((priority) => priority.label)
+					.join(", ")}]`,
+			);
 			const milestones = await core.filesystem.listMilestones();
 			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);

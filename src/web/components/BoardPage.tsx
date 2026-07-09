@@ -17,6 +17,7 @@ interface BoardPageProps {
 	isLoading: boolean;
 	hideEmptyColumns?: boolean;
 	dateFormat?: string;
+	availablePriorities?: string[];
 }
 
 export default function BoardPage({
@@ -32,6 +33,7 @@ export default function BoardPage({
 	isLoading,
 	hideEmptyColumns,
 	dateFormat,
+	availablePriorities,
 }: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
@@ -142,6 +144,7 @@ export default function BoardPage({
 				filterAssignee={filterAssignee}
 				filterLabels={filterLabels}
 				filterPriority={filterPriority}
+				availablePriorities={availablePriorities}
 				onFiltersChange={handleFiltersChange}
 				hideEmptyColumns={hideEmptyColumns}
 				dateFormat={dateFormat}

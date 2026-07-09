@@ -47,8 +47,8 @@ describe("parseSearchCommandQuery", () => {
 	});
 
 	it("keeps malformed and unsupported tokens in the text query", () => {
-		expect(parseSearchCommandQuery('status: priority:urgent type:note status:"In Progress fix')).toEqual({
-			query: 'status: priority:urgent type:note status:"In Progress fix',
+		expect(parseSearchCommandQuery('status: type:note status:"In Progress fix')).toEqual({
+			query: 'status: type:note status:"In Progress fix',
 		});
 	});
 

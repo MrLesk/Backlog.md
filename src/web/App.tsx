@@ -509,6 +509,7 @@ function App() {
                 isLoading={isLoading}
                 hideEmptyColumns={config?.hideEmptyColumns ?? false}
                 dateFormat={config?.dateFormat}
+                availablePriorities={config?.priorities}
               />
             }
           />
@@ -522,6 +523,7 @@ function App() {
 	                  availableStatuses={statuses}
 	                  availableLabels={availableLabels}
 	                  availableMilestones={milestones}
+	                  availablePriorities={config?.priorities}
 	                  milestoneEntities={milestoneEntities}
 	                  archivedMilestones={archivedMilestones}
 	                  onRefreshData={refreshData}
@@ -563,6 +565,7 @@ function App() {
           onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
           availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
           availableMilestones={milestones}
+          availablePriorities={config?.priorities}
           milestoneEntities={milestoneEntities}
           archivedMilestoneEntities={archivedMilestones}
           isDraftMode={isDraftMode}

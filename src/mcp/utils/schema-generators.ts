@@ -1,5 +1,6 @@
 import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "../../constants/index.ts";
 import type { BacklogConfig } from "../../types/index.ts";
+import { getPriorityLabels } from "../../utils/priority-config.ts";
 import type { JsonSchema } from "../validation/validators.ts";
 
 /**
@@ -51,6 +52,21 @@ function generateTypeFieldSchema(config: BacklogConfig): JsonSchema {
 }
 
 /**
+ * Generates a priority field schema with dynamic enum values sourced from config.
+ */
+function generatePriorityFieldSchema(config: BacklogConfig): JsonSchema {
+	const priorities = getPriorityLabels(config);
+
+	return {
+		type: "string",
+		maxLength: 50,
+		enum: priorities,
+		enumCaseInsensitive: true,
+		description: `Optional task priority (case-insensitive). Valid values: ${priorities.join(", ")}`,
+	};
+}
+
+/**
  * Generates the task_create input schema with dynamic status enum
  */
 export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
@@ -67,10 +83,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
-			priority: {
-				type: "string",
-				enum: ["high", "medium", "low"],
-			},
+			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			ordinal: {
 				type: "number",
@@ -187,10 +200,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
-			priority: {
-				type: "string",
-				enum: ["high", "medium", "low"],
-			},
+			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			ordinal: {
 				type: "number",
@@ -425,6 +435,35 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			},
 		},
 		required: ["id"],
+		additionalProperties: false,
+	};
+}
+
+export function generateTaskSearchSchema(config: BacklogConfig): JsonSchema {
+	return {
+		type: "object",
+		properties: {
+			query: {
+				type: "string",
+				maxLength: 200,
+			},
+			status: {
+				type: "string",
+				maxLength: 100,
+			},
+			priority: generatePriorityFieldSchema(config),
+			modifiedFiles: {
+				type: "array",
+				items: { type: "string", maxLength: 500 },
+				description: "Filter tasks by case-insensitive substring match against modified file paths",
+			},
+			limit: {
+				type: "number",
+				minimum: 1,
+				maximum: 100,
+			},
+		},
+		required: [],
 		additionalProperties: false,
 	};
 }

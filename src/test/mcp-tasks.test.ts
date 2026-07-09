@@ -473,6 +473,49 @@ describe("MCP task tools (MVP)", () => {
 		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
 	});
 
+	it("exposes configured priority enums and accepts custom priority values", async () => {
+		const config = await loadConfig(mcpServer);
+		config.priorities = ["Very High", "High", "Medium", "Low", "Very Low"];
+		await mcpServer.filesystem.saveConfig(config);
+
+		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		try {
+			registerTaskTools(customServer, config);
+			const tools = await customServer.testInterface.listTools();
+			const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+
+			const createPrioritySchema = (toolByName.get("task_create")?.inputSchema as JsonSchema | undefined)?.properties
+				?.priority;
+			const editPrioritySchema = (toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined)?.properties
+				?.priority;
+			const searchPrioritySchema = (toolByName.get("task_search")?.inputSchema as JsonSchema | undefined)?.properties
+				?.priority;
+
+			const expected = ["Very High", "High", "Medium", "Low", "Very Low"];
+			expect(createPrioritySchema?.enum).toEqual(expected);
+			expect(createPrioritySchema?.enumCaseInsensitive).toBe(true);
+			expect(editPrioritySchema?.enum).toEqual(expected);
+			expect(editPrioritySchema?.enumCaseInsensitive).toBe(true);
+			expect(searchPrioritySchema?.enum).toEqual(expected);
+			expect(searchPrioritySchema?.enumCaseInsensitive).toBe(true);
+
+			const createResult = await customServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Custom priority MCP task",
+						priority: "VERY HIGH",
+					},
+				},
+			});
+			expect(createResult.isError).not.toBe(true);
+			const task = await customServer.getTask("task-1");
+			expect(task?.priority).toBe("very high");
+		} finally {
+			await customServer.stop();
+		}
+	});
+
 	it("describes Definition of Done fields as task-level in schemas", async () => {
 		const tools = await mcpServer.testInterface.listTools();
 		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));

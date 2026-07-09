@@ -11,6 +11,7 @@ import type {
 	Task,
 } from "../types/index.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "../utils/modified-files.ts";
+import { normalizePriorityValue } from "../utils/priority-config.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
 
 interface BaseSearchEntity {
@@ -226,7 +227,7 @@ export class SearchService {
 			bodyText: buildTaskBodyText(task),
 			task,
 			statusLower: task.status.toLowerCase(),
-			priorityLower: task.priority ? (task.priority.toLowerCase() as SearchPriorityFilter) : undefined,
+			priorityLower: normalizePriorityValue(task.priority),
 			assigneesLower: (task.assignee ?? []).map((assignee) => assignee.toLowerCase()),
 			labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 			idVariants: createTaskIdVariants(task.id),
@@ -447,10 +448,8 @@ export class SearchService {
 
 		const values = Array.isArray(value) ? value : [value];
 		const normalized = values
-			.map((item) => item.trim().toLowerCase())
-			.filter((item): item is SearchPriorityFilter => {
-				return item === "high" || item === "medium" || item === "low";
-			});
+			.map((item) => normalizePriorityValue(item))
+			.filter((item): item is SearchPriorityFilter => Boolean(item));
 
 		return normalized.length > 0 ? normalized : undefined;
 	}

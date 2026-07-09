@@ -17,6 +17,7 @@ interface TaskColumnProps {
   onCleanup?: () => void;
   laneId?: string;
   targetMilestone?: string | null;
+  priorityOrder?: string[];
 }
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
@@ -31,7 +32,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onDragEnd,
   onCleanup,
   laneId,
-  targetMilestone
+  targetMilestone,
+  priorityOrder,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -59,7 +61,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       return;
     }
 
-    const sortedTasks = sortByPriority(tasks);
+    const sortedTasks = sortByPriority(tasks, priorityOrder);
     const orderedTaskIds = sortedTasks.map(t => t.id);
 
     const currentIds = tasks.map(t => t.id);

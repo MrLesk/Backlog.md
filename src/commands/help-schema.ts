@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import { getPriorityLabels } from "../utils/priority-config.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 
 export interface HelpField {
@@ -80,14 +81,14 @@ function parseFlowList(value: string): string[] | null {
 	return trimmed.slice(1, -1).split(",").map(stripYamlScalar).filter(Boolean);
 }
 
-function parseStatusesFromConfig(content: string): string[] | null {
+function parseArrayFromConfig(content: string, keyName: string): string[] | null {
 	const lines = content.split(/\r?\n/);
 	for (let index = 0; index < lines.length; index++) {
 		const line = lines[index]?.trim() ?? "";
 		if (!line || line.startsWith("#")) {
 			continue;
 		}
-		const match = line.match(/^statuses\s*:\s*(.*)$/);
+		const match = line.match(new RegExp(`^${keyName}\\s*:\\s*(.*)$`));
 		if (!match) {
 			continue;
 		}
@@ -117,6 +118,14 @@ function parseStatusesFromConfig(content: string): string[] | null {
 	}
 
 	return null;
+}
+
+function parseStatusesFromConfig(content: string): string[] | null {
+	return parseArrayFromConfig(content, "statuses");
+}
+
+function parsePrioritiesFromConfig(content: string): string[] | null {
+	return parseArrayFromConfig(content, "priorities");
 }
 
 function parseStringValueFromConfig(content: string, keys: string[]): string | null {
@@ -184,6 +193,21 @@ export function getCliStatusValues(options?: { includeDraft?: boolean }): string
 	return options?.includeDraft ? includeDraftStatus(normalizedStatuses) : normalizedStatuses;
 }
 
+export function getCliPriorityValues(): string[] {
+	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
+	if (configPath) {
+		try {
+			const parsed = parsePrioritiesFromConfig(readFileSync(configPath, "utf8"));
+			if (parsed && parsed.length > 0) {
+				return getPriorityLabels(parsed);
+			}
+		} catch {
+			return getPriorityLabels();
+		}
+	}
+	return getPriorityLabels();
+}
+
 export function getCliTaskPrefix(): string {
 	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
 	if (configPath) {
@@ -212,4 +236,8 @@ export function choiceType(values: readonly string[], options?: { multiple?: boo
 
 export function statusType(options?: { includeDraft?: boolean }): string {
 	return `one of configured statuses: ${getCliStatusValues(options).join(", ")}`;
+}
+
+export function priorityType(): string {
+	return `one of configured priorities: ${getCliPriorityValues().join(", ")}`;
 }

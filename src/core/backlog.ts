@@ -42,6 +42,7 @@ import {
 	getPrefixForType,
 	normalizeId,
 } from "../utils/prefix-config.ts";
+import { formatValidPriorityValues, normalizePriorityValue, resolvePriorityValue } from "../utils/priority-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -319,8 +320,8 @@ export class Core {
 			result = result.filter((task) => !(task.assignee ?? []).some((value) => value.trim().length > 0));
 		}
 		if (filters.priority) {
-			const priorityLower = String(filters.priority).toLowerCase();
-			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
+			const priorityLower = normalizePriorityValue(String(filters.priority));
+			result = result.filter((task) => normalizePriorityValue(task.priority) === priorityLower);
 		}
 		if (filters.milestone) {
 			const milestoneFilter = resolveClosestMilestoneFilterValue(
@@ -364,16 +365,16 @@ export class Core {
 		throw new Error(`Invalid status: ${status}. Valid statuses are: ${validStatuses.join(", ")}`);
 	}
 
-	private normalizePriority(value: string | undefined): ("high" | "medium" | "low") | undefined {
-		if (value === undefined || value === "") {
+	private async normalizePriority(value: string | undefined): Promise<string | undefined> {
+		if (value === undefined || value.trim() === "") {
 			return undefined;
 		}
-		const normalized = value.toLowerCase();
-		const allowed = ["high", "medium", "low"] as const;
-		if (!allowed.includes(normalized as (typeof allowed)[number])) {
-			throw new Error(`Invalid priority: ${value}. Valid values are: high, medium, low`);
+		const config = await this.fs.loadConfig();
+		const normalized = resolvePriorityValue(value, config);
+		if (!normalized) {
+			throw new Error(`Invalid priority: ${value}. Valid values are: ${formatValidPriorityValues(config)}`);
 		}
-		return normalized as "high" | "medium" | "low";
+		return normalized;
 	}
 
 	private async normalizeTaskType(value: string | undefined): Promise<string | undefined> {
@@ -1156,7 +1157,7 @@ export class Core {
 			}
 		}
 
-		const priority = this.normalizePriority(input.priority);
+		const priority = await this.normalizePriority(input.priority);
 		const type = await this.normalizeTaskType(input.type);
 		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 		if (
@@ -1332,7 +1333,7 @@ export class Core {
 		}
 
 		if (input.priority !== undefined) {
-			const normalizedPriority = this.normalizePriority(String(input.priority));
+			const normalizedPriority = await this.normalizePriority(String(input.priority));
 			if (task.priority !== normalizedPriority) {
 				task.priority = normalizedPriority;
 				mutated = true;
@@ -2850,9 +2851,10 @@ export class Core {
 	 */
 	async loadAllTasksForStatistics(
 		progressCallback?: (msg: string) => void,
-	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[] }> {
+	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[]; priorities: string[] }> {
 		const config = await this.fs.loadConfig();
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
+		const priorities = config?.priorities ?? [];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
 		// Load local and completed tasks first
@@ -2926,7 +2928,7 @@ export class Core {
 		progressCallback?.("Loading drafts...");
 		const drafts = await this.fs.listDrafts();
 
-		return { tasks: activeTasks, drafts, statuses: statuses as string[] };
+		return { tasks: activeTasks, drafts, statuses: statuses as string[], priorities };
 	}
 
 	/**
