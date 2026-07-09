@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Board from './Board';
 import { type Milestone, type Task } from '../../types';
+import { resolvePriorityValue } from '../../utils/priority-config';
 import { type LaneMode } from '../lib/lanes';
 
 interface BoardPageProps {
@@ -17,6 +18,7 @@ interface BoardPageProps {
 	isLoading: boolean;
 	hideEmptyColumns?: boolean;
 	dateFormat?: string;
+	availablePriorities?: string[];
 }
 
 export default function BoardPage({
@@ -32,6 +34,7 @@ export default function BoardPage({
 	isLoading,
 	hideEmptyColumns,
 	dateFormat,
+	availablePriorities,
 }: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
@@ -120,7 +123,22 @@ export default function BoardPage({
 		...searchParams.getAll('label'),
 		...searchParams.getAll('labels').flatMap((value) => value.split(',')),
 	].map((label) => label.trim()).filter((label) => label.length > 0);
-	const filterPriority = searchParams.get('priority') ?? '';
+	const rawFilterPriority = searchParams.get('priority') ?? '';
+	const filterPriority = resolvePriorityValue(rawFilterPriority, availablePriorities) ?? '';
+
+	useEffect(() => {
+		if (isLoading || rawFilterPriority === filterPriority) {
+			return;
+		}
+		setSearchParams(params => {
+			if (filterPriority) {
+				params.set('priority', filterPriority);
+			} else {
+				params.delete('priority');
+			}
+			return params;
+		}, { replace: true });
+	}, [filterPriority, isLoading, rawFilterPriority, setSearchParams]);
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
@@ -142,6 +160,7 @@ export default function BoardPage({
 				filterAssignee={filterAssignee}
 				filterLabels={filterLabels}
 				filterPriority={filterPriority}
+				availablePriorities={availablePriorities}
 				onFiltersChange={handleFiltersChange}
 				hideEmptyColumns={hideEmptyColumns}
 				dateFormat={dateFormat}

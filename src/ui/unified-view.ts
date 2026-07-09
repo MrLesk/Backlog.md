@@ -104,7 +104,7 @@ export function filterTasksForKanban(
 		tasks,
 		{
 			query: filters.searchQuery,
-			priority: filters.priorityFilter as "high" | "medium" | "low" | undefined,
+			priority: filters.priorityFilter || undefined,
 			labels: filters.labelFilter,
 			labelMatch: filters.labelMatch ?? "any",
 			milestone: filters.milestoneFilter || undefined,
@@ -419,6 +419,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					milestoneEntities,
 					startupWarning,
 					dateFormat: config?.dateFormat,
+					priorities: config?.priorities,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

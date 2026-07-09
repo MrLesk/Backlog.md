@@ -1,17 +1,22 @@
 import type { BacklogConfig } from "../../../types/index.ts";
 import type { McpServer } from "../../server.ts";
 import type { McpToolHandler } from "../../types.ts";
-import { generateTaskCreateSchema, generateTaskEditSchema } from "../../utils/schema-generators.ts";
+import {
+	generateTaskCreateSchema,
+	generateTaskEditSchema,
+	generateTaskSearchSchema,
+} from "../../utils/schema-generators.ts";
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
 
 	const taskCreateSchema = generateTaskCreateSchema(config);
 	const taskEditSchema = generateTaskEditSchema(config);
+	const taskSearchSchema = generateTaskSearchSchema(config);
 
 	const createTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{

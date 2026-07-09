@@ -1,5 +1,6 @@
 import React from 'react';
 import { type Task } from '../../types';
+import { formatPriorityLabel } from '../../utils/priority-config';
 
 interface TaskCardProps {
   task: Task;
@@ -74,7 +75,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
       case 'medium': return { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', label: 'Med' };
       case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: 'Low' };
-      default: return null;
+      default:
+        return priority
+          ? {
+              bg: 'bg-gray-100 dark:bg-gray-600',
+              text: 'text-gray-700 dark:text-gray-200',
+              label: formatPriorityLabel(priority),
+            }
+          : null;
     }
   };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { type Task } from '../../types';
 import { formatStoredUtcDateForDisplay } from '../utils/date-display';
+import { formatPriorityLabel } from '../../utils/priority-config';
 
 interface DraftsListProps {
   onEditTask: (task: Task) => void;
@@ -141,7 +142,7 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFor
                       <h3 className="text-lg font-medium text-gray-900 dark:text-white">{draft.title}</h3>
                       {draft.priority && (
                         <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getPriorityColor(draft.priority)}`}>
-                          {draft.priority}
+                          {formatPriorityLabel(draft.priority)}
                         </span>
                       )}
                     </div>

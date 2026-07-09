@@ -5,6 +5,7 @@ import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode 
 import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter';
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
+import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority-config';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
 import LabelFilterDropdown from './LabelFilterDropdown';
@@ -28,17 +29,11 @@ interface BoardProps {
   filterAssignee?: string;
   filterLabels?: string[];
   filterPriority?: string;
+  availablePriorities?: string[];
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
   hideEmptyColumns?: boolean;
   dateFormat?: string;
 }
-
-const PRIORITY_OPTIONS = [
-  { label: 'All priorities', value: '' },
-  { label: 'High', value: 'high' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'Low', value: 'low' },
-] as const;
 
 const BOARD_FILTER_SELECT_CLASS =
   'min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200';
@@ -63,6 +58,7 @@ const Board: React.FC<BoardProps> = ({
   filterAssignee = '',
   filterLabels = [],
   filterPriority = '',
+  availablePriorities,
   onFiltersChange,
   hideEmptyColumns = false,
   dateFormat,
@@ -74,6 +70,10 @@ const Board: React.FC<BoardProps> = ({
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
   const terminalStatus = getTerminalStatus(statuses);
+  const priorityOptions = useMemo(
+    () => [{ label: 'All priorities', value: '' }, ...getPriorityOptions(availablePriorities)],
+    [availablePriorities]
+  );
   const archivedMilestoneIds = useMemo(
     () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
     [archivedMilestones, milestoneEntities]
@@ -249,7 +249,8 @@ const Board: React.FC<BoardProps> = ({
       result = result.filter(task => labelsToLower(task.labels).some(label => selectedLabels.has(label)));
     }
     if (filterPriority) {
-      result = result.filter(task => task.priority === filterPriority);
+      const normalizedFilterPriority = normalizePriorityValue(filterPriority);
+      result = result.filter(task => normalizePriorityValue(task.priority) === normalizedFilterPriority);
     }
     return result;
   }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, normalizedFilterLabels, filterPriority]);
@@ -523,7 +524,7 @@ const Board: React.FC<BoardProps> = ({
                   onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: e.target.value })}
                   className={BOARD_FILTER_SELECT_CLASS}
                 >
-                  {PRIORITY_OPTIONS.map(opt => (
+                  {priorityOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
@@ -613,6 +614,7 @@ const Board: React.FC<BoardProps> = ({
                             dragSourceLane={dragSourceLane}
                             laneId={lane.key}
                             targetMilestone={lane.milestone ?? null}
+                            priorityOrder={availablePriorities}
                             onDragStart={({ status: draggedStatus, laneId }) => {
                               setDragSourceStatus(draggedStatus);
                               setDragSourceLane(laneId ?? null);
@@ -646,6 +648,7 @@ const Board: React.FC<BoardProps> = ({
                   dragSourceStatus={dragSourceStatus}
                   dragSourceLane={dragSourceLane}
                   laneId={DEFAULT_LANE_KEY}
+                  priorityOrder={availablePriorities}
                   onDragStart={({ status: draggedStatus, laneId }) => {
                     setDragSourceStatus(draggedStatus);
                     setDragSourceLane(laneId ?? null);

@@ -3,7 +3,6 @@ import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../lib/api";
 import type {
 	Milestone,
-	SearchPriorityFilter,
 	Task,
 	TaskSearchResult,
 } from "../../types";
@@ -12,6 +11,12 @@ import { compareTaskIds, compareTaskIdsDescending } from "../../utils/task-sorti
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
 import { formatStoredUtcDateForCompactDisplay, parseStoredUtcDate } from "../utils/date-display";
+import {
+	formatPriorityLabel,
+	getPriorityOptions,
+	getPriorityRank,
+	resolvePriorityValue,
+} from "../../utils/priority-config.ts";
 import CleanupModal from "./CleanupModal";
 import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
@@ -23,27 +28,16 @@ interface TaskListProps {
 	availableStatuses: string[];
 	availableLabels: string[];
 	availableMilestones: string[];
+	availablePriorities?: string[];
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	onRefreshData?: () => Promise<void>;
 	dateFormat?: string;
+	isLoading?: boolean;
 }
-
-const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter }> = [
-	{ label: "All priorities", value: "" },
-	{ label: "High", value: "high" },
-	{ label: "Medium", value: "medium" },
-	{ label: "Low", value: "low" },
-];
 
 type TaskSortColumn = "id" | "title" | "status" | "priority" | "ordinal" | "milestone" | "created";
 type SortDirection = "asc" | "desc";
-
-const PRIORITY_RANK: Record<string, number> = {
-	high: 3,
-	medium: 2,
-	low: 1,
-};
 
 function compareTaskIdsAscending(a: Task, b: Task): number {
 	return compareTaskIds(a.id, b.id);
@@ -74,15 +68,17 @@ const TaskList: React.FC<TaskListProps> = ({
 	availableStatuses,
 	availableLabels,
 	availableMilestones,
+	availablePriorities,
 	milestoneEntities,
 	archivedMilestones,
 	onRefreshData,
 	dateFormat,
+	isLoading = false,
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
-	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
-		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
+	const [priorityFilter, setPriorityFilter] = useState<string>(() =>
+		isLoading ? "" : (resolvePriorityValue(searchParams.get("priority"), availablePriorities) ?? ""),
 	);
 	const [milestoneFilter, setMilestoneFilter] = useState(() => searchParams.get("milestone") ?? "");
 	const initialLabelParams = useMemo(() => {
@@ -98,6 +94,10 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
 	const [sortColumn, setSortColumn] = useState<TaskSortColumn>("id");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+	const priorityOptions = useMemo(
+		() => [{ label: "All priorities", value: "" }, ...getPriorityOptions(availablePriorities)],
+		[availablePriorities],
+	);
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
@@ -251,7 +251,8 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	useEffect(() => {
 		const paramStatus = searchParams.get("status") ?? "";
-		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
+		const rawParamPriority = searchParams.get("priority") ?? "";
+		const paramPriority = resolvePriorityValue(rawParamPriority, availablePriorities) ?? "";
 		const paramMilestone = searchParams.get("milestone") ?? "";
 		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
 		const labelsCsv = searchParams.get("labels");
@@ -263,7 +264,17 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (paramStatus !== statusFilter) {
 			setStatusFilter(paramStatus);
 		}
-		if (paramPriority !== priorityFilter) {
+		if (!isLoading && rawParamPriority !== paramPriority) {
+			setSearchParams(params => {
+				if (paramPriority) {
+					params.set("priority", paramPriority);
+				} else {
+					params.delete("priority");
+				}
+				return params;
+			}, { replace: true });
+		}
+		if (!isLoading && paramPriority !== priorityFilter) {
 			setPriorityFilter(paramPriority);
 		}
 		if (paramMilestone !== milestoneFilter) {
@@ -272,7 +283,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (normalizedLabels.join("|") !== labelFilter.join("|")) {
 			setLabelFilter(normalizedLabels);
 		}
-	}, [searchParams]);
+	}, [availablePriorities, isLoading, searchParams, setSearchParams]);
 
 	useEffect(() => {
 		if (!hasActiveFilters) {
@@ -316,7 +327,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				const results = await apiClient.search({
 					types: ["task"],
 					status: statusFilter || undefined,
-					priority: (priorityFilter || undefined) as SearchPriorityFilter | undefined,
+					priority: priorityFilter || undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				});
 				if (cancelled) {
@@ -353,7 +364,7 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const syncUrl = (
 		nextStatus: string,
-		nextPriority: "" | SearchPriorityFilter,
+		nextPriority: string,
 		nextLabels: string[],
 		nextMilestone: string,
 	) => {
@@ -380,7 +391,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		syncUrl(value, priorityFilter, labelFilter, milestoneFilter);
 	};
 
-	const handlePriorityChange = (value: "" | SearchPriorityFilter) => {
+	const handlePriorityChange = (value: string) => {
 		setPriorityFilter(value);
 		syncUrl(statusFilter, value, labelFilter, milestoneFilter);
 	};
@@ -527,8 +538,8 @@ const TaskList: React.FC<TaskListProps> = ({
 					break;
 				}
 				case "priority": {
-					const rankA = PRIORITY_RANK[(a.priority ?? "").toLowerCase()] ?? 0;
-					const rankB = PRIORITY_RANK[(b.priority ?? "").toLowerCase()] ?? 0;
+					const rankA = getPriorityRank(a.priority, availablePriorities);
+					const rankB = getPriorityRank(b.priority, availablePriorities);
 					result = withDirection(rankA - rankB);
 					break;
 				}
@@ -570,7 +581,7 @@ const TaskList: React.FC<TaskListProps> = ({
 			if (sortColumn === "ordinal") return compareTaskIdsAscending(a, b);
 			return compareTaskIdsDescending(a.id, b.id);
 		});
-	}, [displayTasks, milestoneEntities, sortColumn, sortDirection]);
+	}, [availablePriorities, displayTasks, milestoneEntities, sortColumn, sortDirection]);
 
 	const currentCount = sortedDisplayTasks.length;
 
@@ -629,10 +640,10 @@ const TaskList: React.FC<TaskListProps> = ({
 
 						<select
 							value={priorityFilter}
-							onChange={(event) => handlePriorityChange(event.target.value as "" | SearchPriorityFilter)}
+							onChange={(event) => handlePriorityChange(event.target.value)}
 							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
-							{PRIORITY_OPTIONS.map((option) => (
+							{priorityOptions.map((option) => (
 								<option key={option.value || "all"} value={option.value}>
 									{option.label}
 								</option>
@@ -796,7 +807,7 @@ const TaskList: React.FC<TaskListProps> = ({
 													<span
 														className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getPriorityColor(task.priority)}`}
 													>
-														{task.priority}
+														{formatPriorityLabel(task.priority, availablePriorities)}
 													</span>
 												) : (
 													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>

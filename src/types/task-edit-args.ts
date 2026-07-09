@@ -2,7 +2,7 @@ export interface TaskEditArgs {
 	title?: string;
 	description?: string;
 	status?: string;
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	type?: string;
 	milestone?: string | null;
 	labels?: string[];

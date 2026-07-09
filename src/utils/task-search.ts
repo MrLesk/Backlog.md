@@ -8,13 +8,14 @@ import type { Task } from "../types/index.ts";
 import { labelsToLower } from "./label-filter.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
+import { normalizePriorityValue } from "./priority-config.ts";
 
 export type LabelMatchMode = "any" | "all";
 
 export interface TaskSearchOptions {
 	query?: string;
 	status?: string;
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string[];
@@ -22,7 +23,7 @@ export interface TaskSearchOptions {
 
 export interface SharedTaskFilterOptions {
 	query?: string;
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string[];
@@ -130,7 +131,7 @@ function buildSearchableTask(task: Task): SearchableTask {
 		idVariants: createTaskIdVariants(task.id),
 		dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
 		statusLower: (task.status || "").toLowerCase(),
-		priorityLower: task.priority?.toLowerCase(),
+		priorityLower: normalizePriorityValue(task.priority),
 		labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 		modifiedFiles: task.modifiedFiles ?? [],
 	};
@@ -178,7 +179,7 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 
 			// Apply priority filter
 			if (options.priority) {
-				const priorityLower = options.priority.toLowerCase();
+				const priorityLower = normalizePriorityValue(options.priority);
 				results = results.filter((t) => t.priorityLower === priorityLower);
 			}
 

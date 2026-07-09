@@ -29,7 +29,7 @@ export type TaskCreateArgs = {
 	description?: string;
 	labels?: string[];
 	assignee?: string[];
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	type?: string;
 	ordinal?: number;
 	status?: string;
@@ -152,6 +152,8 @@ export class TaskHandlers {
 		if (args.assignee && args.unassigned) {
 			throw new BacklogToolError("unassigned cannot be combined with assignee.", "VALIDATION_ERROR");
 		}
+		const config = await this.core.filesystem.loadConfig();
+		const priorities = config?.priorities;
 		if (this.isDraftStatus(args.status)) {
 			let drafts = await this.core.filesystem.listDrafts();
 			if (args.search) {
@@ -203,7 +205,7 @@ export class TaskHandlers {
 				};
 			}
 
-			let sortedDrafts = sortByOrdinalAndPriority(drafts);
+			let sortedDrafts = sortByOrdinalAndPriority(drafts, priorities);
 			if (typeof args.limit === "number" && args.limit >= 0) {
 				sortedDrafts = sortedDrafts.slice(0, args.limit);
 			}
@@ -262,7 +264,6 @@ export class TaskHandlers {
 			};
 		}
 
-		const config = await this.core.filesystem.loadConfig();
 		const statuses = config?.statuses ?? [];
 
 		const canonicalByLower = new Map<string, string>();
@@ -289,7 +290,7 @@ export class TaskHandlers {
 		let remaining = typeof args.limit === "number" && args.limit >= 0 ? args.limit : undefined;
 		for (const status of orderedStatuses) {
 			const bucket = grouped.get(status) ?? [];
-			const sortedBucket = sortByOrdinalAndPriority(bucket);
+			const sortedBucket = sortByOrdinalAndPriority(bucket, priorities);
 			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
 			if (remaining !== undefined) {
 				remaining -= limitedBucket.length;

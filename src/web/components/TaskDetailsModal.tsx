@@ -9,6 +9,7 @@ import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
+import { getPriorityOptions } from "../../utils/priority-config";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -20,6 +21,7 @@ interface Props {
   availableStatuses?: string[]; // Available statuses for new tasks
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
+  availablePriorities?: string[];
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
@@ -119,6 +121,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onArchive,
   availableStatuses,
   availableMilestones: _availableMilestones,
+  availablePriorities,
   milestoneEntities,
   archivedMilestoneEntities,
   isDraftMode,
@@ -157,6 +160,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   );
   const initialDefinitionOfDone = task?.definitionOfDoneItems ?? (isCreateMode ? defaultDefinitionOfDone : []);
   const [definitionOfDone, setDefinitionOfDone] = useState<AcceptanceCriterion[]>(initialDefinitionOfDone);
+  const priorityOptions = useMemo(() => getPriorityOptions(availablePriorities), [availablePriorities]);
   const resolveMilestoneToId = useCallback((value?: string | null): string => {
     const normalized = (value ?? "").trim();
     if (!normalized) return "";
@@ -601,7 +605,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         status,
         assignee,
         labels,
-        priority: (priority === "" ? undefined : priority) as "high" | "medium" | "low" | undefined,
+        priority: priority === "" ? undefined : priority,
         dependencies,
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
       };
@@ -1261,9 +1265,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
               disabled={isFromOtherBranch}
             >
               <option value="">No Priority</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
+              {priorityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 

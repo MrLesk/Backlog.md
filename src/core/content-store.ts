@@ -5,6 +5,7 @@ import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
+import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -117,8 +118,8 @@ export class ContentStore {
 			tasks = tasks.filter((task) => task.assignee.includes(assignee));
 		}
 		if (filter?.priority) {
-			const priority = filter.priority.toLowerCase();
-			tasks = tasks.filter((task) => (task.priority ?? "").toLowerCase() === priority);
+			const priority = normalizePriorityValue(filter.priority);
+			tasks = tasks.filter((task) => normalizePriorityValue(task.priority) === priority);
 		}
 		if (filter?.parentTaskId) {
 			const parentFilter = filter.parentTaskId;

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +32,35 @@ afterEach(async () => {
 });
 
 describe("installCompletion", () => {
+	test("preserves multi-word Bash completion candidates", async () => {
+		if (!existsSync("/bin/bash")) {
+			return;
+		}
+
+		const tempDir = await makeTempDir();
+		const result = await installCompletion("bash", { homeDir: tempDir });
+		const shellScript = [
+			'backlog() { printf "%s\\n" "very high" "very low"; }',
+			'source "$1"',
+			'COMP_WORDS=(backlog task create --priority "")',
+			"COMP_CWORD=4",
+			'COMP_LINE="backlog task create --priority "',
+			"COMP_POINT=31",
+			"_backlog",
+			"declare -p COMPREPLY",
+		].join("\n");
+
+		const execution = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", shellScript, "bash", result.installPath], {
+			encoding: "utf-8",
+		});
+
+		expect(execution.status).toBe(0);
+		expect(execution.stderr).toBe("");
+		expect(execution.stdout).toContain('[0]="very high"');
+		expect(execution.stdout).toContain('[1]="very low"');
+		expect(execution.stdout).not.toContain("[2]=");
+	});
+
 	test("installs PowerShell completions relative to CurrentUserAllHosts profile", async () => {
 		const tempDir = await makeTempDir();
 		const profilePath = join(tempDir, "PowerShell", "profile.ps1");

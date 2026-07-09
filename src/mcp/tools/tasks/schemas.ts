@@ -1,3 +1,4 @@
+import { getPriorityLabels } from "../../../utils/priority-config.ts";
 import type { JsonSchema } from "../../validation/validators.ts";
 
 export const taskListSchema: JsonSchema = {
@@ -50,7 +51,8 @@ export const taskSearchSchema: JsonSchema = {
 		},
 		priority: {
 			type: "string",
-			enum: ["high", "medium", "low"],
+			enum: getPriorityLabels(),
+			enumCaseInsensitive: true,
 		},
 		modifiedFiles: {
 			type: "array",

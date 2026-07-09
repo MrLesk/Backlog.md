@@ -30,7 +30,7 @@ const setupDom = () => {
 const renderTaskColumn = (
 	tasks: Task[],
 	onTaskReorder: (payload: ReorderTaskPayload) => void,
-	options: { title?: string; onCleanup?: () => void } = {},
+	options: { title?: string; onCleanup?: () => void; priorityOrder?: string[] } = {},
 ): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
@@ -45,6 +45,7 @@ const renderTaskColumn = (
 				onEditTask={() => {}}
 				onTaskReorder={onTaskReorder}
 				onCleanup={options.onCleanup}
+				priorityOrder={options.priorityOrder}
 			/>,
 		);
 	});
@@ -122,6 +123,30 @@ describe("TaskColumn priority sorting", () => {
 		await clickElement(findMenuButton(container, "Sort by Priority"));
 
 		expect(payloads).toEqual([]);
+	});
+
+	it("uses the configured custom priority order", async () => {
+		const payloads: ReorderTaskPayload[] = [];
+		const container = renderTaskColumn(
+			[
+				createTask({ id: "TASK-1", title: "Very low", priority: "very low" }),
+				createTask({ id: "TASK-2", title: "Medium", priority: "medium" }),
+				createTask({ id: "TASK-3", title: "Very high", priority: "very high" }),
+			],
+			(payload) => payloads.push(payload),
+			{ priorityOrder: ["Very High", "Medium", "Very Low"] },
+		);
+
+		await openActionsMenu(container);
+		await clickElement(findMenuButton(container, "Sort by Priority"));
+
+		expect(payloads).toEqual([
+			{
+				taskId: "TASK-3",
+				targetStatus: "To Do",
+				orderedTaskIds: ["TASK-3", "TASK-2", "TASK-1"],
+			},
+		]);
 	});
 });
 

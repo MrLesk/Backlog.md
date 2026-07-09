@@ -21,6 +21,7 @@ import {
 import { watchConfig } from "../utils/config-watcher.ts";
 import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
+import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -639,14 +640,17 @@ export class BacklogServer {
 		}
 		const labels = labelParams.map((label) => label.trim()).filter((label) => label.length > 0);
 
-		let priority: "high" | "medium" | "low" | undefined;
+		const config = await this.core.filesystem.loadConfig();
+		let priority: string | undefined;
 		if (priorityParam) {
-			const normalizedPriority = priorityParam.toLowerCase();
-			const allowed = ["high", "medium", "low"];
-			if (!allowed.includes(normalizedPriority)) {
-				return Response.json({ error: "Invalid priority filter" }, { status: 400 });
+			const normalizedPriority = resolvePriorityValue(priorityParam, config);
+			if (!normalizedPriority) {
+				return Response.json(
+					{ error: `Invalid priority filter. Valid values are: ${formatValidPriorityValues(config)}` },
+					{ status: 400 },
+				);
 			}
-			priority = normalizedPriority as "high" | "medium" | "low";
+			priority = normalizedPriority;
 		}
 
 		// Resolve parent task ID if provided
@@ -745,18 +749,18 @@ export class BacklogServer {
 			}
 
 			if (priorityParamsRaw.length > 0) {
-				const allowedPriorities: SearchPriorityFilter[] = ["high", "medium", "low"];
-				const normalizedPriorities = priorityParamsRaw.map((value) => value.toLowerCase());
-				const invalidPriority = normalizedPriorities.find(
-					(value) => !allowedPriorities.includes(value as SearchPriorityFilter),
-				);
+				const config = await this.core.filesystem.loadConfig();
+				const normalizedPriorities = priorityParamsRaw.map((value) => resolvePriorityValue(value, config));
+				const invalidPriority = priorityParamsRaw[normalizedPriorities.findIndex((value) => !value)];
 				if (invalidPriority) {
 					return Response.json(
-						{ error: `Unsupported priority '${invalidPriority}'. Use high, medium, or low.` },
+						{
+							error: `Unsupported priority '${invalidPriority}'. Use ${formatValidPriorityValues(config)}.`,
+						},
 						{ status: 400 },
 					);
 				}
-				const casted = normalizedPriorities as SearchPriorityFilter[];
+				const casted = normalizedPriorities.filter((value): value is SearchPriorityFilter => Boolean(value));
 				filters.priority = casted.length === 1 ? casted[0] : casted;
 			}
 
@@ -1645,10 +1649,10 @@ export class BacklogServer {
 	private async handleGetStatistics(): Promise<Response> {
 		try {
 			// Load tasks using the same logic as CLI overview
-			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+			const { tasks, drafts, statuses, priorities } = await this.core.loadAllTasksForStatistics();
 
 			// Calculate statistics using the exact same function as CLI
-			const statistics = getTaskStatistics(tasks, drafts, statuses);
+			const statistics = getTaskStatistics(tasks, drafts, statuses, priorities);
 
 			// Convert Maps to objects for JSON serialization
 			const response = {
