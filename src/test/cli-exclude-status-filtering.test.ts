@@ -103,6 +103,23 @@ describe("CLI exclude-status filtering", () => {
 		expect(stdout).not.toContain("TASK-3 - Done visible");
 	});
 
+	it("falls back to default statuses when configured statuses are empty", async () => {
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Config not loaded");
+		}
+		await core.filesystem.saveConfig({ ...config, statuses: [] });
+
+		const result = await $`bun ${cliPath} task list --exclude-status Done --plain`.cwd(TEST_DIR).quiet();
+
+		expect(result.exitCode).toBe(0);
+		const stdout = result.stdout.toString();
+		expect(stdout).toContain("TASK-1 - Todo visible");
+		expect(stdout).toContain("TASK-2 - Progress visible");
+		expect(stdout).not.toContain("TASK-3 - Done visible");
+	});
+
 	it("rejects invalid excluded statuses", async () => {
 		const result = await $`bun ${cliPath} task list --exclude-status Blocked --plain`.cwd(TEST_DIR).nothrow().quiet();
 		const output = result.stdout.toString() + result.stderr.toString();

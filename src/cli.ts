@@ -1865,8 +1865,7 @@ addHelpSchema(program.command("search [query]"), {
 		}
 
 		const hasModifiedFileFilter = Boolean(modifiedFileFilters?.length);
-		const hasExcludeStatusFilter = Boolean(filters.excludeStatus?.length);
-		const interactiveTasks = hasModifiedFileFilter || hasExcludeStatusFilter ? searchResultTasks : allTasks;
+		const interactiveTasks = hasModifiedFileFilter ? searchResultTasks : allTasks;
 		if (interactiveTasks.length === 0) {
 			printSearchResults(searchResults);
 			cleanup();

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:58'
-updated_date: '2026-07-09 17:11'
+updated_date: '2026-07-09 17:30'
 labels: []
 dependencies: []
 references:
@@ -78,6 +78,8 @@ PR #745 second review follow-up: carried excludeStatus through board shared filt
 PR #745 third review follow-up: seeded excludeStatus into the interactive search runUnifiedView filter state so live task watcher updates continue honoring --exclude-status after the initial filtered task list is loaded. Validation passed: bun test src/test/cli-exclude-status-filtering.test.ts src/test/unified-view-filters.test.ts; bunx tsc --noEmit; bun run check .; bun run build.
 
 PR #745 fourth review follow-up: routed board filter-change state through mergeUnifiedViewFilters so emitted excludeStatus values update unified task-list/kanban state instead of being forced to the previous value. Added regression coverage for explicit excludeStatus updates. Validation passed: bun test src/test/unified-view-filters.test.ts src/test/cli-exclude-status-filtering.test.ts; bunx tsc --noEmit; bun run check .; git diff --check.
+
+PR #745 fifth review follow-up: kept interactive search source tasks unfiltered by the clearable exclude-status filter while still seeding excludeStatus into TUI filter state, and made status canonicalization fall back to default statuses when config statuses are empty. Added regression coverage for empty configured statuses. Validation passed: bun test src/test/cli-exclude-status-filtering.test.ts src/test/unified-view-filters.test.ts; bunx tsc --noEmit; bun run check .; git diff --check.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
