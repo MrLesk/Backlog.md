@@ -1,6 +1,7 @@
 import { Core } from "../index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { getPriorityValues } from "../utils/priority-config.ts";
+import { getTaskTypeValues } from "../utils/task-type-config.ts";
 
 type CoreCallback<T> = (core: Core) => Promise<T>;
 
@@ -59,6 +60,16 @@ export async function getPriorities(): Promise<string[]> {
 		const config: BacklogConfig | null = await core.filesystem.loadConfig();
 		return getPriorityValues(config);
 	}, getPriorityValues());
+}
+
+/**
+ * Get configured task type values.
+ */
+export async function getTaskTypes(): Promise<string[]> {
+	return await withCore(async (core) => {
+		const config: BacklogConfig | null = await core.filesystem.loadConfig();
+		return getTaskTypeValues(config);
+	}, getTaskTypeValues());
 }
 
 /**

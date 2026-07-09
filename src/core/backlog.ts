@@ -1,6 +1,6 @@
 import { rename as moveFile, stat, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, DEFAULT_TASK_TYPES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -57,6 +57,7 @@ import {
 } from "../utils/task-builders.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
+import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
@@ -391,11 +392,9 @@ export class Core {
 			return undefined;
 		}
 		const config = await this.fs.loadConfig();
-		const allowed = config?.types?.length ? config.types : [...DEFAULT_TASK_TYPES];
-		const normalized = value.trim().toLowerCase();
-		const canonical = allowed.find((type) => type.toLowerCase() === normalized);
+		const canonical = resolveTaskTypeValue(value, config);
 		if (!canonical) {
-			throw new Error(`Invalid type: ${value}. Valid types are: ${allowed.join(", ")}`);
+			throw new Error(`Invalid type: ${value}. Valid types are: ${formatValidTaskTypeValues(config)}`);
 		}
 		return canonical;
 	}

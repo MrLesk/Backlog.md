@@ -5,6 +5,7 @@ import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { getPriorityLabels } from "../utils/priority-config.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
+import { getTaskTypeValues } from "../utils/task-type-config.ts";
 
 export interface HelpField {
 	name: string;
@@ -128,6 +129,10 @@ function parsePrioritiesFromConfig(content: string): string[] | null {
 	return parseArrayFromConfig(content, "priorities");
 }
 
+function parseTaskTypesFromConfig(content: string): string[] | null {
+	return parseArrayFromConfig(content, "types");
+}
+
 function parseStringValueFromConfig(content: string, keys: string[]): string | null {
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -208,6 +213,19 @@ export function getCliPriorityValues(): string[] {
 	return getPriorityLabels();
 }
 
+export function getCliTaskTypeValues(): string[] {
+	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
+	if (configPath) {
+		try {
+			const parsed = parseTaskTypesFromConfig(readFileSync(configPath, "utf8"));
+			return getTaskTypeValues(parsed);
+		} catch {
+			return getTaskTypeValues();
+		}
+	}
+	return getTaskTypeValues();
+}
+
 export function getCliTaskPrefix(): string {
 	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
 	if (configPath) {
@@ -240,4 +258,8 @@ export function statusType(options?: { includeDraft?: boolean }): string {
 
 export function priorityType(): string {
 	return `one of configured priorities: ${getCliPriorityValues().join(", ")}`;
+}
+
+export function taskType(): string {
+	return `one of configured task types: ${getCliTaskTypeValues().join(", ")}`;
 }

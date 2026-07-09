@@ -9,7 +9,14 @@ import { Command } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
-import { addHelpSchema, choiceType, priorityType, statusType } from "./commands/help-schema.ts";
+import {
+	addHelpSchema,
+	choiceType,
+	getCliTaskTypeValues,
+	priorityType,
+	statusType,
+	taskType,
+} from "./commands/help-schema.ts";
 import { registerInstructionsCommand } from "./commands/instructions.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
@@ -79,6 +86,7 @@ import {
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
+import { getTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
 import { getVersion } from "./utils/version.ts";
@@ -92,6 +100,7 @@ const CONFIG_GET_KEYS = [
 	"statuses",
 	"labels",
 	"priorities",
+	"types",
 	"milestones",
 	"definitionOfDone",
 	"dateFormat",
@@ -174,6 +183,7 @@ const DOCUMENT_SEARCH_QUERY_MAX_LENGTH = 200;
 const DOCUMENT_SEARCH_LIMIT_MAX = 100;
 const TASK_SORT_FIELDS = ["priority", "id", "ordinal"];
 const TASK_SORT_FIELD_LIST = TASK_SORT_FIELDS.join(", ");
+const TASK_TYPE_EXAMPLE = JSON.stringify(getCliTaskTypeValues()[0] ?? "<configured-type>");
 
 async function openUrlInBrowser(url: string): Promise<void> {
 	let cmd: string[];
@@ -254,6 +264,13 @@ function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
 	return requiredLabels.every((label) => taskLabels.has(label));
 }
 
+function formatPlainTaskListRow(task: Task, options: { includeStatus?: boolean } = {}): string {
+	const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
+	const typeIndicator = task.type ? `[${task.type}] ` : "";
+	const statusIndicator = options.includeStatus && task.status ? ` (${task.status})` : "";
+	return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusIndicator}`;
+}
+
 async function normalizeCliStatusList(core: Core, values: string[], optionName: string): Promise<string[] | null> {
 	const { values: canonicalStatuses, invalid, validStatuses } = await getCanonicalStatuses(values, core);
 	if (invalid.length > 0) {
@@ -326,6 +343,7 @@ function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
 			options.status !== undefined ||
 			options.labels !== undefined ||
 			options.priority !== undefined ||
+			options.type !== undefined ||
 			options.ordinal !== undefined ||
 			options.milestone !== undefined ||
 			options.plain ||
@@ -355,6 +373,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.status !== undefined ||
 			options.label !== undefined ||
 			options.priority !== undefined ||
+			options.type !== undefined ||
 			options.ordinal !== undefined ||
 			options.milestone !== undefined ||
 			options.clearMilestone ||
@@ -1575,6 +1594,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		{ name: "assignee", type: "Assignee list", description: "One or more @names" },
 		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
 		{ name: "priority", type: priorityType, description: "Task priority" },
+		{ name: "type", type: taskType, description: "Task type; case-insensitive" },
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
 		{ name: "parent", type: "Task ID", description: "Existing parent task for subtasks; not a milestone ID" },
@@ -1583,6 +1603,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	output: "Created task details; use --plain for text output",
 	examples: [
 		'backlog task create "Add OAuth" --ac "Login succeeds"',
+		`backlog task create "Fix session expiry" --type ${TASK_TYPE_EXAMPLE}`,
 		'backlog task create -p {{TASK_ID:1}} "Add tests"',
 	],
 })
@@ -1592,6 +1613,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.option("--priority <priority>", "set task priority (configured priorities)")
+	.option("--type <type>", "set task type (configured task types)")
 	.option("--plain", "use plain text output after creating")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
 	.option(
@@ -1654,7 +1676,11 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		if (shouldUseWizard) {
 			const statuses = await getValidStatuses(core);
 			const config = await core.filesystem.loadConfig();
-			const wizardInput = await runTaskCreateWizard({ statuses, priorities: config?.priorities });
+			const wizardInput = await runTaskCreateWizard({
+				statuses,
+				priorities: config?.priorities,
+				types: config?.types,
+			});
 			if (!wizardInput) {
 				clack.cancel("Task create cancelled.");
 				return;
@@ -1708,6 +1734,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
 				parentTaskId: options.parent ? String(options.parent) : undefined,
 				priority: options.priority ? String(options.priority) : undefined,
+				type: options.type !== undefined ? String(options.type) : undefined,
 				...(ordinalValue !== undefined ? { ordinal: ordinalValue } : {}),
 				milestone,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
@@ -2251,9 +2278,7 @@ addHelpSchema(taskCmd.command("list"), {
 			if (options.sort && options.sort.toLowerCase() === "priority") {
 				console.log("Tasks (sorted by priority):");
 				for (const t of displayTasks) {
-					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
-					const statusIndicator = t.status ? ` (${t.status})` : "";
-					console.log(`  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}`);
+					console.log(formatPlainTaskListRow(t, { includeStatus: true }));
 				}
 				cleanup();
 				return;
@@ -2284,8 +2309,7 @@ addHelpSchema(taskCmd.command("list"), {
 				if (!list) continue;
 				console.log(`${status || "No Status"}:`);
 				list.forEach((task) => {
-					const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
-					console.log(`  ${priorityIndicator}${task.id} - ${task.title}`);
+					console.log(formatPlainTaskListRow(task));
 				});
 				console.log();
 			}
@@ -2444,6 +2468,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		{ name: "title", type: "String", description: "Replacement task title" },
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
+		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
 		{
 			name: "label",
 			type: "Comma-separated strings",
@@ -2474,6 +2499,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	output: "Updated task details; use --plain for text output",
 	examples: [
 		'backlog task edit {{TASK_ID:1}} --status "<active status>" -a @sara',
+		`backlog task edit {{TASK_ID:1}} --type ${TASK_TYPE_EXAMPLE}`,
 		"backlog task edit {{TASK_ID:1}} --check-ac 1",
 	],
 })
@@ -2489,6 +2515,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		createMultiValueAccumulator(),
 	)
 	.option("--priority <priority>", "set task priority (configured priorities)")
+	.option("--type <type>", "set task type (configured task types; pass an empty value to clear)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--clear-milestone", "clear task milestone assignment")
@@ -2627,6 +2654,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				task: existingTaskForWizard,
 				statuses,
 				priorities: config?.priorities,
+				types: config?.types,
 			});
 			if (!wizardInput) {
 				clack.cancel("Task edit cancelled.");
@@ -2789,6 +2817,9 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		}
 		if (normalizedPriority) {
 			editArgs.priority = normalizedPriority;
+		}
+		if (options.type !== undefined) {
+			editArgs.type = String(options.type);
 		}
 		if (ordinalValue !== undefined) {
 			editArgs.ordinal = ordinalValue;
@@ -4049,7 +4080,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 	required: [{ name: "key", type: choiceType(CONFIG_GET_KEYS), description: "Configuration value to print" }],
 	optional: [],
 	output: "The selected configuration value",
-	examples: ["backlog config get defaultEditor"],
+	examples: ["backlog config get defaultEditor", "backlog config get types"],
 })
 	.description("get a configuration value")
 	.action(async (key: string) => {
@@ -4091,6 +4122,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 							.map((priority) => priority.label)
 							.join(", "),
 					);
+					break;
+				case "types":
+					console.log(getTaskTypeValues(config).join(", "));
 					break;
 				case "milestones": {
 					const milestones = await core.filesystem.listMilestones();
@@ -4139,7 +4173,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -4394,6 +4428,7 @@ addHelpSchema(configCmd.command("list"), {
 					.map((priority) => priority.label)
 					.join(", ")}]`,
 			);
+			console.log(`  types: [${getTaskTypeValues(config).join(", ")}]`);
 			const milestones = await core.filesystem.listMilestones();
 			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);
