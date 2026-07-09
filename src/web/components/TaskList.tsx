@@ -8,6 +8,7 @@ import type {
 	TaskSearchResult,
 } from "../../types";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
+import { compareTaskIds } from "../../utils/task-sorting.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
 import { formatStoredUtcDateForCompactDisplay, parseStoredUtcDate } from "../utils/date-display";
@@ -44,22 +45,8 @@ const PRIORITY_RANK: Record<string, number> = {
 	low: 1,
 };
 
-function extractTaskNumericId(taskId: string): number | null {
-	const match = taskId.trim().match(/(\d+)$/);
-	if (!match?.[1]) return null;
-	return Number.parseInt(match[1], 10);
-}
-
 function compareTaskIdsAscending(a: Task, b: Task): number {
-	const idA = extractTaskNumericId(a.id);
-	const idB = extractTaskNumericId(b.id);
-
-	if (idA !== null && idB !== null) {
-		return idA - idB;
-	}
-	if (idA !== null) return -1;
-	if (idB !== null) return 1;
-	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+	return compareTaskIds(a.id, b.id);
 }
 
 function sortTasksByIdDescending(list: Task[]): Task[] {

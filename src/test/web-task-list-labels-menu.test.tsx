@@ -155,6 +155,26 @@ describe("TaskList labels filter menu", () => {
 		expect(container.querySelector("input[placeholder='Search tasks']")).toBeNull();
 	});
 
+	it("sorts dotted subtask IDs under their parent when sorting by ID", async () => {
+		const container = renderTaskList(undefined, {
+			tasks: [
+				createTask({ id: "task-1", title: "First task" }),
+				createTask({ id: "task-2", title: "Second task" }),
+				createTask({ id: "task-3", title: "Parent task" }),
+				createTask({ id: "task-3.01", title: "First subtask" }),
+				createTask({ id: "task-3.02", title: "Second subtask" }),
+			],
+		});
+
+		const idButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("ID"));
+		expect(idButton).toBeTruthy();
+
+		await clickElement(idButton as HTMLButtonElement);
+		await waitFor(() => getRenderedTaskIds(container)[0] === "task-1");
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-1", "task-2", "task-3", "task-3.01", "task-3.02"]);
+	});
+
 	it("renders and sorts by ordinal with task ID as the tie-breaker", async () => {
 		const container = renderTaskList(undefined, {
 			tasks: [
