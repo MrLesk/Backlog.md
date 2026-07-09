@@ -4,9 +4,15 @@ function normalizeLabel(label: string): string {
 	return label.trim().toLowerCase();
 }
 
+function compareCodeUnits(left: string, right: string): number {
+	if (left < right) return -1;
+	if (left > right) return 1;
+	return 0;
+}
+
 /**
- * Collect available labels from configuration and tasks, de-duplicated but preserving
- * the first-seen casing so UI surfaces familiar labels.
+ * Collect available labels from configuration and tasks, de-duplicated and sorted
+ * alphabetically while preserving the first-seen casing so UI surfaces familiar labels.
  */
 export function collectAvailableLabels(tasks: Task[], configured: string[] = []): string[] {
 	const seen = new Set<string>();
@@ -31,7 +37,12 @@ export function collectAvailableLabels(tasks: Task[], configured: string[] = [])
 		}
 	}
 
-	return ordered;
+	return ordered.sort((left, right) => {
+		const leftKey = normalizeLabel(left).normalize("NFD");
+		const rightKey = normalizeLabel(right).normalize("NFD");
+		const result = compareCodeUnits(leftKey, rightKey);
+		return result !== 0 ? result : compareCodeUnits(left, right);
+	});
 }
 
 /**

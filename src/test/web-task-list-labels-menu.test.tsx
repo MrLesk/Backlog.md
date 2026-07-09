@@ -66,13 +66,14 @@ const setupDom = () => {
 
 const renderTaskList = (
 	initialEntries?: string[],
-	options: { tasks?: Task[]; availableStatuses?: string[] } = {},
+	options: { tasks?: Task[]; availableStatuses?: string[]; availableLabels?: string[] } = {},
 ): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
 	const renderedTasks = options.tasks ?? tasks;
 	const renderedStatuses = options.availableStatuses ?? ["To Do", "In Progress", "Done"];
+	const renderedLabels = options.availableLabels ?? ["bug", "docs"];
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
@@ -80,7 +81,7 @@ const renderTaskList = (
 				<TaskList
 					tasks={renderedTasks}
 					availableStatuses={renderedStatuses}
-					availableLabels={["bug", "docs"]}
+					availableLabels={renderedLabels}
 					availableMilestones={[]}
 					milestoneEntities={[]}
 					archivedMilestones={[]}
@@ -141,6 +142,11 @@ const getExcludeStatusButton = (container: HTMLElement): HTMLButtonElement => {
 	return button as HTMLButtonElement;
 };
 
+const getLabelOptions = (container: HTMLElement): string[] =>
+	Array.from(container.querySelectorAll("#task-list-labels-menu label span")).map(
+		(element) => element.textContent?.trim() ?? "",
+	);
+
 const getZIndexClass = (element: Element): number | null => {
 	const match = element.className.match(/\bz-(\d+)\b/);
 	const value = match?.[1];
@@ -165,6 +171,71 @@ describe("TaskList labels filter menu", () => {
 		const container = renderTaskList(["/?query=docs"]);
 
 		expect(container.querySelector("input[placeholder='Search tasks']")).toBeNull();
+	});
+
+	it("renders label filter options alphabetically", async () => {
+		const container = renderTaskList(undefined, {
+			availableLabels: ["zeta", "Alpha"],
+			tasks: [
+				createTask({ id: "task-101", labels: ["beta"] }),
+				createTask({ id: "task-102", labels: ["delta"] }),
+			],
+		});
+
+		await clickElement(getLabelsButton(container));
+
+		expect(getLabelOptions(container)).toEqual(["Alpha", "beta", "delta", "zeta"]);
+	});
+
+	it("sorts dotted subtask IDs under their parent when sorting by ID", async () => {
+		const container = renderTaskList(undefined, {
+			tasks: [
+				createTask({ id: "task-1", title: "First task" }),
+				createTask({ id: "task-2", title: "Second task" }),
+				createTask({ id: "task-3", title: "Parent task" }),
+				createTask({ id: "task-3.01", title: "First subtask" }),
+				createTask({ id: "task-3.02", title: "Second subtask" }),
+			],
+		});
+
+		const idButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("ID"));
+		expect(idButton).toBeTruthy();
+
+		await clickElement(idButton as HTMLButtonElement);
+		await waitFor(() => getRenderedTaskIds(container)[0] === "task-1");
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-1", "task-2", "task-3", "task-3.01", "task-3.02"]);
+	});
+
+	it("keeps parent tasks before subtasks in the default ID descending sort", () => {
+		const container = renderTaskList(undefined, {
+			tasks: [
+				createTask({ id: "task-1", title: "First task" }),
+				createTask({ id: "task-2", title: "Second task" }),
+				createTask({ id: "task-3.01", title: "First subtask" }),
+				createTask({ id: "task-3.02", title: "Second subtask" }),
+				createTask({ id: "task-3", title: "Parent task" }),
+			],
+		});
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-3", "task-3.02", "task-3.01", "task-2", "task-1"]);
+	});
+
+	it("sorts distinct nonnumeric task IDs deterministically when sorting by ID", async () => {
+		const container = renderTaskList(undefined, {
+			tasks: [
+				createTask({ id: "task-beta", title: "Beta task" }),
+				createTask({ id: "task-alpha", title: "Alpha task" }),
+			],
+		});
+
+		const idButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("ID"));
+		expect(idButton).toBeTruthy();
+
+		await clickElement(idButton as HTMLButtonElement);
+		await waitFor(() => getRenderedTaskIds(container)[0] === "task-alpha");
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-alpha", "task-beta"]);
 	});
 
 	it("renders and sorts by ordinal with task ID as the tie-breaker", async () => {

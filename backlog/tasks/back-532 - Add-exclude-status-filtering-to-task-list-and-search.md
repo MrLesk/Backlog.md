@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:58'
-updated_date: '2026-07-09 20:55'
+updated_date: '2026-07-09 21:14'
 labels: []
 dependencies: []
 references:
@@ -57,7 +57,7 @@ GitHub issue #690 bundles board sorting and status filtering requests. The sorti
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Preserve shared exclude-status filtering for CLI, server, Web, TUI, and core search plumbing. 2. Remove the PR-added MCP excludeStatus schemas, handler branches, regression test, and MCP workflow guidance. 3. Add canonical CLI --exclude-status guidance to the shipped task-creation workflow and verify focused plus full project checks.
+1. Merge origin/main at 219f733 normally into the existing PR branch. 2. Resolve the shared TaskList Web test conflict by retaining #741 ID sorting, #742 deterministic label ordering, and #745 exclude-status coverage while accepting #744 column sorting from main. 3. Verify the auto-merged production code preserves CLI-first exclude-status behavior and exposes no MCP excludeStatus surface. 4. Run the focused exclude-status, task-sorting, label, TaskList, and TaskColumn suites plus TypeScript, Biome, and build; then finalize and push the merge commit.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -82,12 +82,16 @@ PR #745 sixth review follow-up: kept hidden exclude-status filters from blocking
 PR #745 specification correction: keep the shared exclude-status implementation for CLI, server, Web, TUI, and core search behavior, but remove the net-new MCP tool surface and MCP workflow guidance. The shipped CLI task-creation guide is now the canonical public workflow documentation for --exclude-status.
 
 PR #745 specification-correction validation: focused coverage passed with 185 tests and 0 failures; bunx tsc --noEmit passed; bun run check . passed; bun run build passed; full bun test passed on the exact staged tree in a disposable worktree with 1461 pass, 2 skip, and 0 fail. The disposable run was used after an initial live-worktree run triggered a transient worktree cleanup race; the branch ref remained intact and the narrow patch was restored and reverified.
+
+Reopened for integration after #741, #742, and #744 merged to main. Context review found one expected conflict in src/test/web-task-list-labels-menu.test.tsx; resolution will combine both test helpers and retain all regression blocks without adding new implementation layers.
+
+Integrated origin/main at 219f733 after #741, #742, and #744 merged. The sole content conflict in src/test/web-task-list-labels-menu.test.tsx was resolved by retaining both the deterministic label-order helper/regression block and the exclude-status URL/API helper/regressions; hierarchical and nonnumeric ID tests also remain. Audited the merged tree: task-sorting, label-filter, TaskColumn, and their focused tests match main exactly; TaskList combines main's shared ID comparators with #745 exclude-status behavior; MCP task schemas, handlers, tests, and guidance match main with no excludeStatus surface. Validation passed: 243 focused tests across 13 files with 0 failures; bunx tsc --noEmit; bun run check .; bun run build. Per integration instructions, the full suite was not run from the live worktree.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Kept exclude-status filtering CLI-first across shared core, server, Web, TUI, and search behavior; removed the net-new MCP tool surface and MCP workflow guidance; and documented canonical --exclude-status CLI usage. Verified with focused tests, TypeScript, Biome, build, and the full Bun test suite.
+Merged current main into PR #745 normally, preserving #741 hierarchical/nonnumeric ID sorting, #742 locale-independent label ordering, #744 creation-date column sorting, and CLI-first #745 exclude-status behavior with no MCP surface. Verified with 243 focused tests, TypeScript, Biome, and build; full live-worktree suite intentionally skipped.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
