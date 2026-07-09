@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, unlink } from "node:fs/promises";
+import { chmod, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -117,6 +117,33 @@ describe("backlog doctor", () => {
 		expect(output).toContain("feature:backlog/tasks/task-20 - Branch Beta.md");
 		expect(output).toContain("will not edit another branch");
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"reports an incomplete reference scan instead of claiming no references",
+		async () => {
+			const docsDir = join(core.filesystem.backlogDir, "docs");
+			const unreadablePath = join(docsDir, "unreadable.md");
+			await mkdir(docsDir, { recursive: true });
+			await Bun.write(unreadablePath, "See TASK-1");
+			await chmod(unreadablePath, 0o000);
+
+			const result = await (async () => {
+				try {
+					return await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+				} finally {
+					await chmod(unreadablePath, 0o600);
+				}
+			})();
+
+			const output = `${result.stdout}${result.stderr}`;
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Reference scan incomplete; repair is blocked");
+			expect(output).toContain("Reference scan could not read backlog/docs/unreadable.md");
+			expect(output).not.toContain("No textual references");
+			expect(output).toContain("Resolve the blocked reasons above");
+			expect(output).not.toContain("backlog doctor --fix");
+		},
+	);
 });
 
 describe("CLI collision safety", () => {
@@ -149,5 +176,18 @@ describe("CLI collision safety", () => {
 		}
 		expect(await Bun.file(alphaPath).text()).toBe(alphaBefore);
 		expect(await Bun.file(betaPath).text()).toBe(betaBefore);
+	});
+
+	it("blocks board export before a collapsed view can overwrite the destination", async () => {
+		const outputPath = join(testDir, "Collision-board.md");
+		await Bun.write(outputPath, "sentinel board content");
+
+		const result = await $`bun ${cliPath} board export Collision-board.md --force`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("duplicate task ID");
+		expect(output).toContain("backlog/tasks/task-1 - Alpha.md");
+		expect(output).toContain("backlog/completed/task-001 - Gamma.md");
+		expect(await Bun.file(outputPath).text()).toBe("sentinel board content");
 	});
 });

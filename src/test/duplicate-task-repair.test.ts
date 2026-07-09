@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, readdir, rmdir, unlink } from "node:fs/promises";
+import { chmod, mkdir, readdir, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { findLocalDuplicateTaskIds } from "../core/duplicate-task-repair.ts";
+import { findLocalDuplicateTaskIds, installFileNoReplace } from "../core/duplicate-task-repair.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { AmbiguousTaskIdError } from "../utils/task-path.ts";
@@ -82,9 +82,10 @@ describe("duplicate task diagnosis", () => {
 		try {
 			await core.filesystem.loadTask("TASK-1");
 		} catch (error) {
-			expect(String(error)).toContain("backlog/tasks/task-1 - Active.md");
-			expect(String(error)).toContain("backlog/completed/task-01 - Completed.md");
-			expect(String(error)).toContain("backlog doctor");
+			const message = String(error).replaceAll("\\", "/");
+			expect(message).toContain("backlog/tasks/task-1 - Active.md");
+			expect(message).toContain("backlog/completed/task-01 - Completed.md");
+			expect(message).toContain("backlog doctor");
 		}
 	});
 
@@ -140,6 +141,44 @@ describe("duplicate task diagnosis", () => {
 });
 
 describe("duplicate task repair", () => {
+	it("preserves dotted subtask identity with parent-aware allocation", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1 - Parent.md", makeTask("TASK-1", "Parent"));
+		await writeTask(core.filesystem.tasksDir, "task-1.1 - Plain.md", {
+			...makeTask("TASK-1.1", "Plain"),
+			parentTaskId: "TASK-1",
+		});
+		await writeTask(core.filesystem.tasksDir, "task-1.01 - Padded.md", {
+			...makeTask("TASK-1.01", "Padded"),
+			parentTaskId: "TASK-1",
+		});
+
+		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.repairable).toBe(true);
+		expect(plan.changes).toHaveLength(1);
+		expect(plan.changes[0]).toMatchObject({
+			oldId: "TASK-1.01",
+			newId: "TASK-1.2",
+			targetPath: "backlog/tasks/task-1.2 - Padded.md",
+		});
+		await core.repairDuplicateTaskIds(plan.fingerprint);
+		const repaired = await core.filesystem.loadTask("TASK-1.2");
+		expect(repaired?.parentTaskId).toBe("TASK-1");
+	});
+
+	it("blocks dotted repair when parent identity is missing or mismatched", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1.1 - Missing.md", makeTask("TASK-1.1", "Missing"));
+		await writeTask(core.filesystem.tasksDir, "task-1.01 - Mismatched.md", {
+			...makeTask("TASK-1.01", "Mismatched"),
+			parentTaskId: "TASK-9",
+		});
+
+		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.repairable).toBe(false);
+		expect(plan.changes).toEqual([]);
+		expect(plan.blockedReasons.join("\n")).toContain("has no parent_task_id");
+		expect(plan.blockedReasons.join("\n")).toContain("expected TASK-1");
+	});
+
 	it("keeps the ID spelling that matches the configured padding style", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Plain.md", makeTask("TASK-1", "Plain"));
 		await writeTask(core.filesystem.tasksDir, "task-01 - Padded.md", makeTask("TASK-01", "Padded"));
@@ -266,5 +305,46 @@ describe("duplicate task repair", () => {
 			const files = await readdir(directory);
 			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
 		}
+	});
+
+	it("atomically refuses a destination that appears after preflight", async () => {
+		const stagedPath = join(core.filesystem.tasksDir, "late-target.tmp");
+		const targetPath = join(core.filesystem.tasksDir, "late-target.md");
+		await Bun.write(stagedPath, "staged repair content");
+		expect(await Bun.file(targetPath).exists()).toBe(false);
+
+		// Models an external writer winning after the preview/preflight check.
+		await Bun.write(targetPath, "external content");
+		try {
+			await installFileNoReplace(stagedPath, targetPath);
+			throw new Error("Expected no-replace install to fail");
+		} catch (error) {
+			expect((error as NodeJS.ErrnoException).code).toBe("EEXIST");
+		}
+
+		expect(await Bun.file(targetPath).text()).toBe("external content");
+		expect(await Bun.file(stagedPath).text()).toBe("staged repair content");
+	});
+
+	it.skipIf(process.platform === "win32")("blocks repair when a reference file cannot be read", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		const docsDir = join(core.filesystem.backlogDir, "docs");
+		const unreadablePath = join(docsDir, "unreadable.md");
+		await mkdir(docsDir, { recursive: true });
+		await Bun.write(unreadablePath, "See TASK-1");
+		await chmod(unreadablePath, 0o000);
+
+		const plan = await (async () => {
+			try {
+				return await core.previewDuplicateTaskIdRepair();
+			} finally {
+				await chmod(unreadablePath, 0o600);
+			}
+		})();
+
+		expect(plan.referenceScanComplete).toBe(false);
+		expect(plan.repairable).toBe(false);
+		expect(plan.blockedReasons.join("\n")).toContain("Reference scan could not read backlog/docs/unreadable.md");
 	});
 });

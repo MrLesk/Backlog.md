@@ -362,7 +362,10 @@ function printDuplicateRepairPlan(plan: DuplicateRepairPlan): void {
 				if (reference.text) console.log(`    ${reference.text}`);
 			}
 			console.log("These references are not changed automatically because the original ID is ambiguous.");
-		} else {
+		}
+		if (!plan.referenceScanComplete) {
+			console.log("\nReference scan incomplete; repair is blocked. See the failures below.");
+		} else if (plan.references.length === 0) {
 			console.log("\nNo textual references to the duplicate IDs were found in backlog Markdown files.");
 		}
 	}
@@ -3755,6 +3758,7 @@ boardCmd
 		const core = new Core(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
+		if (await printDuplicateIntegrityWarning(core)) return;
 
 		// Load tasks with progress tracking
 		const loadingScreen = await createLoadingScreen("Loading tasks for export");
@@ -4608,8 +4612,10 @@ addHelpSchema(program.command("doctor"), {
 
 			printDuplicateRepairPlan(plan);
 			if (!options.fix) {
-				if (plan.groups.length > 0) {
+				if (plan.groups.length > 0 && plan.repairable) {
 					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
+				} else if (plan.groups.length > 0) {
+					console.log("\nResolve the blocked reasons above, then run 'backlog doctor' again.");
 				}
 				process.exitCode = 1;
 				return;

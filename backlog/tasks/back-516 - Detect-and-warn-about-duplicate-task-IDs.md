@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex-duplicate'
 created_date: '2026-05-03 20:54'
-updated_date: '2026-07-09 22:44'
+updated_date: '2026-07-09 23:22'
 labels:
   - enhancement
   - ux
@@ -35,6 +35,7 @@ modified_files:
   - src/web/components/DuplicateIdRepairModal.tsx
   - src/web/components/DuplicateIdWarning.tsx
   - src/web/components/Layout.tsx
+  - src/web/components/Modal.tsx
   - src/web/lib/api.ts
 priority: medium
 ---
@@ -68,12 +69,13 @@ Implement a human-first, CLI-canonical diagnosis and repair workflow. The CLI mu
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Trace task loading, exact lookup, mutation, CLI rendering, server endpoints, and duplicate warning paths; record shared invariants and reusable operations.
-2. Introduce one shared collision model using canonical numeric IDs and explicit task file paths, covering active and completed tasks while excluding intentional archived-only reuse.
-3. Make ID-based reads and mutations reject ambiguous matches and make list/search/board surface collision diagnostics.
-4. Add a CLI-canonical doctor command that diagnoses collisions, previews deterministic renames and reference-review findings, and applies only after explicit confirmation or a safe noninteractive flag.
-5. Reuse the same core preview/apply operations from the desktop Web UI, replacing agent-oriented copied instructions with a human recovery flow.
-6. Add focused tests across utility/core/CLI/server/Web boundaries, then run typecheck, Biome, build, targeted tests, and the full suite.
+1. Replace destination rename with one atomic no-replace install primitive and add a deterministic late-destination regression that proves rollback preserves external content.
+2. Run the shared duplicate preflight before board export loads or writes any collapsed task view, with a CLI regression for untouched output.
+3. Preserve dotted duplicate identity with validated parent-aware allocation; block malformed or mismatched subtask groups.
+4. Make reference scanning return explicit completeness state, block repair on glob/read failures, and propagate human-readable incomplete copy through CLI and Web.
+5. Add shared Modal focus containment/restoration and destructive-flow stage focus, Escape, close, and keyboard regressions.
+6. Normalize platform-sensitive assertions and run the focused Windows-relevant tests locally where possible.
+7. Rerun focused boundary tests, full suite, typecheck, Biome, build, compiled CLI/doctor/board smokes, and desktop Browser keyboard/console QA before updating the task and PR.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -129,4 +131,52 @@ Validation evidence:
 - bunx tsc --noEmit, bun run check ., and bun run build pass.
 - Desktop browser QA used a disposable 3-file TASK-1/TASK-01/TASK-001 fixture spanning active and completed tasks. Verified compact warning, canonical TASK-1 keeper, exact source/destination paths, two ambiguous reference lines, second confirmation, successful repair, immediate board refresh, warning removal, and zero console warnings/errors.
 - Post-repair CLI verification reported no duplicate active/completed IDs and showed TASK-1, TASK-2, TASK-3, plus completed TASK-4 with task bodies preserved.
+
+CHANGES_REQUESTED remediation context brief (2026-07-10)
+
+Complexity: L2. Six independently reproduced findings cross filesystem transaction semantics, CLI export integrity, task hierarchy, reference completeness, Windows portability, and Web accessibility.
+
+Analogous files and patterns reviewed:
+- src/core/duplicate-task-repair.ts and its rollback tests: one staged transaction already owns source backups and cleanup; add one no-replace install primitive rather than another transaction layer.
+- src/utils/prefix-config.ts and Core.generateNextId: existing generateNextSubtaskId and parent-aware allocation preserve dotted namespaces and configured padding.
+- src/cli.ts task list/search duplicate preflight and board export: printDuplicateIntegrityWarning is the shared path-qualified guard and must run before core.loadTasks collapses IDs.
+- src/web/components/Modal.tsx, CleanupModal.tsx, and DuplicateIdRepairModal.tsx: Modal already owns Escape/backdrop/body-lock behavior, so focus containment/restoration belongs there; destructive stage focus remains local to DuplicateIdRepairModal.
+- src/test/web-duplicate-id-repair.test.tsx and JSDOM modal tests: interaction-level focus assertions fit the existing Web boundary suite.
+- Existing Windows-safe test patterns use platform-neutral normalization or skip only filesystem-permission probes that cannot be expressed portably.
+
+Risks and decisions:
+- Atomic install must never replace a path created after preview; external content wins and the entire repair rolls back.
+- Dotted IDs are repaired only when every duplicate has a canonical parent matching the ID namespace; otherwise the preview is explicitly blocked.
+- Reference scan completeness is a first-class plan field and part of the fingerprint so a failed or changed scan requires a fresh preview.
+- Board export aborts before loading the collapsible view or touching the target file.
+- Modal listeners use stable callback refs; initial focus chooses the safe Cancel action, confirmation focuses the final Repair action, Tab is trapped, and close restores the trigger.
+- Mobile remains out of scope.
+
+CHANGES_REQUESTED remediation complete (2026-07-10)
+
+Delivered:
+- Destination installation now uses one atomic no-replace hard-link claim; EEXIST preserves the external file and enters the existing full rollback path.
+- Board export runs the shared duplicate preflight before loading or writing a collapsed view.
+- Dotted duplicates retain their parent namespace through parent-aware allocation; missing or mismatched parents block the full group.
+- Reference scan completeness and failures are explicit, fingerprinted, human-readable, and repair-blocking across CLI and Web.
+- The shared desktop Modal now owns safe initial focus, two-way Tab containment, Escape handling, close restoration, and disabled close state; the destructive confirmation stage focuses its Repair action.
+- Platform-sensitive path assertions are normalized; permission-only probes are skipped on Windows.
+
+Objective validation:
+- Focused eight-boundary matrix: 76 passed, 0 failed, 362 assertions.
+- Full suite: 1540 passed, 2 intentional skips, 0 failed across 1542 tests and 182 files; 5363 assertions.
+- bunx tsc --noEmit, bun run check ., bun run build, and git diff --check pass.
+- Compiled CLI board-export smoke exited nonzero and preserved sentinel output; doctor preview/fix/verify exited 1/0/0; compiled dotted-subtask smoke preserved TASK-1 parent identity and allocated TASK-1.2.
+- Desktop Chrome keyboard QA verified Cancel initial focus, forward/backward Tab wrapping, Repair stage focus, Escape and header-close restoration to Review repair, visible focus treatment, and zero console warnings/errors. Evidence: /tmp/backlog-back-516-focus-qa/initial-cancel-focus.png, confirmation-repair-focus.png, restored-review-focus.png.
+- Rebased on required main 7a9497698e1a3183b6459715d4675ed9f7ef45e5; task intentionally remains In Progress pending fresh exact-head review and CI.
+
+Final exact-base validation (2026-07-10)
+
+The branch was rebased again after main advanced. This supersedes the earlier base reference: exact origin/main is f48225bd01247e78409abd3965ccc443e0793648. After that rebase, the focused matrix remained 76 passed / 0 failed / 362 assertions; the full suite is 1544 passed / 2 intentional skips / 0 failed across 1546 tests and 183 files with 5377 assertions. TypeScript, Biome (319 files), build, and diff-check all pass.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented the human-first, CLI-canonical duplicate-ID diagnosis and recovery flow across CLI, core, server, MCP adapter, TUI, and desktop Web. Review remediation makes destination install no-clobber, blocks board export before collapse, preserves subtask identity, fails closed on incomplete reference scans, and completes keyboard focus containment/restoration. On exact main f48225bd, verification passes with 76 focused tests, the 1544-pass full suite, typecheck, Biome, build, compiled CLI smokes, and desktop Chrome keyboard/console QA.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -53,6 +53,7 @@ function makePlan(overrides: Partial<DuplicateRepairPlan> = {}): DuplicateRepair
 				ids: ["TASK-1"],
 			},
 		],
+		referenceScanComplete: true,
 		blockedReasons: [],
 		repairable: true,
 		fingerprint: "preview-fingerprint",
@@ -77,6 +78,13 @@ function renderWarning(plan = makePlan(), onRepaired = async () => {}): HTMLElem
 async function click(button: Element): Promise<void> {
 	await act(async () => {
 		button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		await Promise.resolve();
+	});
+}
+
+async function pressKey(key: string, options: KeyboardEventInit = {}): Promise<void> {
+	await act(async () => {
+		document.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, ...options }));
 		await Promise.resolve();
 	});
 }
@@ -136,6 +144,39 @@ describe("DuplicateIdWarning", () => {
 		expect(repairedCalls).toBe(1);
 	});
 
+	it("traps focus, advances it for confirmation, closes with Escape, and restores the trigger", async () => {
+		const container = renderWarning();
+		const reviewButton = buttonWithText(container, "Review repair");
+		reviewButton.focus();
+		await click(reviewButton);
+
+		const dialog = container.querySelector('[role="dialog"]');
+		const cancelButton = buttonWithText(container, "Cancel");
+		const continueButton = buttonWithText(container, "Continue");
+		const closeButton = container.querySelector('[aria-label="Close modal"]') as HTMLButtonElement;
+		expect(dialog?.contains(document.activeElement)).toBe(true);
+		expect(document.activeElement).toBe(cancelButton);
+
+		closeButton.focus();
+		await pressKey("Tab", { shiftKey: true });
+		expect(document.activeElement).toBe(continueButton);
+		await pressKey("Tab");
+		expect(document.activeElement).toBe(closeButton);
+
+		await click(continueButton);
+		const repairButton = buttonWithText(container, "Repair 1 file");
+		expect(document.activeElement).toBe(repairButton);
+		await pressKey("Escape");
+		expect(container.querySelector('[role="dialog"]')).toBeNull();
+		expect(document.activeElement).toBe(reviewButton);
+
+		await click(reviewButton);
+		const reopenedCloseButton = container.querySelector('[aria-label="Close modal"]') as HTMLButtonElement;
+		await click(reopenedCloseButton);
+		expect(container.querySelector('[role="dialog"]')).toBeNull();
+		expect(document.activeElement).toBe(reviewButton);
+	});
+
 	it("shows blocked reasons and does not offer a repair confirmation", async () => {
 		const container = renderWarning(
 			makePlan({
@@ -147,5 +188,20 @@ describe("DuplicateIdWarning", () => {
 		expect(container.textContent).toContain("Automatic repair is blocked");
 		expect(container.textContent).toContain("Target path already exists.");
 		expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent === "Continue")).toBe(false);
+	});
+
+	it("explains an incomplete reference scan without claiming zero references", async () => {
+		const container = renderWarning(
+			makePlan({
+				references: [],
+				referenceScanComplete: false,
+				repairable: false,
+				blockedReasons: ["Reference scan could not read backlog/docs/private.md"],
+			}),
+		);
+		await click(buttonWithText(container, "Review repair"));
+		expect(container.textContent).toContain("Reference scan incomplete");
+		expect(container.textContent).toContain("could not inspect every Markdown file");
+		expect(container.textContent).not.toContain("References requiring review: 0");
 	});
 });
