@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 05:56'
-updated_date: '2026-07-09 07:24'
+updated_date: '2026-07-09 07:36'
 labels: []
 dependencies: []
 references:
@@ -47,6 +47,8 @@ Reproduced issue #734 with a focused TaskList Web UI test: before the fix, ascen
 PR #741 review follow-up: preserved the locale/numeric fallback when compareTaskIds returns equality for distinct task IDs, so nonnumeric IDs like task-alpha/task-beta sort deterministically without regressing dotted subtask ordering. Added a focused nonnumeric ID regression test. Additional validation passed: bun test src/test/web-task-list-labels-menu.test.tsx src/test/task-sorting.test.ts; bun test src/test/build.test.ts; bun run check .; bunx tsc --noEmit.
 
 Simplification pass moved the deterministic fallback into the shared compareTaskIds helper so TaskList and other task ID sort paths use one implementation. Revalidated with bun test src/test/web-task-list-labels-menu.test.tsx src/test/task-sorting.test.ts src/test/build.test.ts; bunx tsc --noEmit; bun run check .
+
+PR #741 second review follow-up: fixed default ID-desc sorting so root task groups still sort descending while parent tasks remain before dotted subtasks. Added shared compareTaskIdsDescending coverage and a TaskList default-sort regression. Validation passed: bun test src/test/web-task-list-labels-menu.test.tsx src/test/task-sorting.test.ts; bun test src/test/build.test.ts; bunx tsc --noEmit; bun run check .
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

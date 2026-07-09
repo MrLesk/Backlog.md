@@ -175,6 +175,20 @@ describe("TaskList labels filter menu", () => {
 		expect(getRenderedTaskIds(container)).toEqual(["task-1", "task-2", "task-3", "task-3.01", "task-3.02"]);
 	});
 
+	it("keeps parent tasks before subtasks in the default ID descending sort", () => {
+		const container = renderTaskList(undefined, {
+			tasks: [
+				createTask({ id: "task-1", title: "First task" }),
+				createTask({ id: "task-2", title: "Second task" }),
+				createTask({ id: "task-3.01", title: "First subtask" }),
+				createTask({ id: "task-3.02", title: "Second subtask" }),
+				createTask({ id: "task-3", title: "Parent task" }),
+			],
+		});
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-3", "task-3.02", "task-3.01", "task-2", "task-1"]);
+	});
+
 	it("sorts distinct nonnumeric task IDs deterministically when sorting by ID", async () => {
 		const container = renderTaskList(undefined, {
 			tasks: [

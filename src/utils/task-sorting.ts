@@ -61,6 +61,30 @@ export function compareTaskIds(a: string, b: string): number {
 	return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
 }
 
+function isAncestorTaskId(parentId: string, childId: string): boolean {
+	const parentParts = parseTaskId(parentId);
+	const childParts = parseTaskId(childId);
+
+	if (parentParts.length >= childParts.length) {
+		return false;
+	}
+
+	return parentParts.every((part, index) => part === childParts[index]);
+}
+
+/**
+ * Compare two task IDs in descending order while keeping parents before children.
+ */
+export function compareTaskIdsDescending(a: string, b: string): number {
+	if (isAncestorTaskId(a, b)) {
+		return -1;
+	}
+	if (isAncestorTaskId(b, a)) {
+		return 1;
+	}
+	return compareTaskIds(b, a);
+}
+
 /**
  * Sort an array of objects by their task ID property numerically.
  * Returns a new sorted array without mutating the original.
