@@ -6,7 +6,15 @@ import {
 	getSubcommandNames,
 	getTopLevelCommands,
 } from "./command-structure.ts";
-import { getAssignees, getDocumentIds, getLabels, getPriorities, getStatuses, getTaskIds } from "./data-providers.ts";
+import {
+	getAssignees,
+	getDocumentIds,
+	getLabels,
+	getPriorities,
+	getStatuses,
+	getTaskIds,
+	getTaskTypes,
+} from "./data-providers.ts";
 
 export interface CompletionContext {
 	words: string[];
@@ -106,7 +114,7 @@ async function getArgumentCompletions(argumentName: string): Promise<string[]> {
 /**
  * Get completions for flag values based on flag name
  */
-async function getFlagValueCompletions(flagName: string): Promise<string[]> {
+async function getFlagValueCompletions(flagName: string, context: CompletionContext): Promise<string[]> {
 	const cleanFlag = flagName.replace(/^-+/, "");
 
 	switch (cleanFlag) {
@@ -114,6 +122,10 @@ async function getFlagValueCompletions(flagName: string): Promise<string[]> {
 			return await getStatuses();
 		case "priority":
 			return await getPriorities();
+		case "type":
+			return context.command === "task" && (context.subcommand === "create" || context.subcommand === "edit")
+				? await getTaskTypes()
+				: [];
 		case "labels":
 		case "label":
 			return await getLabels();
@@ -135,7 +147,7 @@ export async function getCompletions(program: Command, line: string, point: numb
 
 	// If completing a flag value
 	if (context.lastFlag) {
-		const flagCompletions = await getFlagValueCompletions(context.lastFlag);
+		const flagCompletions = await getFlagValueCompletions(context.lastFlag, context);
 		return filterCompletions(flagCompletions, context.partial);
 	}
 

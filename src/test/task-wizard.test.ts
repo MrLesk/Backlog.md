@@ -40,6 +40,7 @@ describe("task wizard", () => {
 			description: "Wizard description",
 			status: "In Progress",
 			priority: "medium",
+			type: "epic",
 			assignee: "alice, @bob",
 			labels: "cli, wizard",
 			acceptanceCriteria: "[x] First criterion, Second criterion",
@@ -53,6 +54,7 @@ describe("task wizard", () => {
 
 		const input = await runTaskCreateWizard({
 			statuses: ["To Do", "In Progress", "Done"],
+			types: ["Bug", "Epic"],
 			promptImpl: prompt,
 		});
 
@@ -61,6 +63,7 @@ describe("task wizard", () => {
 		expect(input?.description).toBe("Wizard description");
 		expect(input?.status).toBe("In Progress");
 		expect(input?.priority).toBe("medium");
+		expect(input?.type).toBe("Epic");
 		expect(input?.assignee).toEqual(["alice", "@bob"]);
 		expect(input?.labels).toEqual(["cli", "wizard"]);
 		expect(input?.acceptanceCriteria).toEqual([
@@ -81,6 +84,7 @@ describe("task wizard", () => {
 			title: "Old title",
 			status: "To Do",
 			priority: "low",
+			type: "Bug",
 			assignee: ["alice"],
 			createdDate: "2026-02-20 12:00",
 			labels: ["existing"],
@@ -105,6 +109,7 @@ describe("task wizard", () => {
 			description: "New description",
 			status: "In Progress",
 			priority: "high",
+			type: "Epic",
 			assignee: "alice, bob",
 			labels: "existing, cli",
 			acceptanceCriteria: "[x] New AC 1, [ ] New AC 2",
@@ -119,6 +124,7 @@ describe("task wizard", () => {
 		const updateInput = await runTaskEditWizard({
 			task: existingTask,
 			statuses: ["To Do", "In Progress", "Done"],
+			types: ["Bug", "Epic"],
 			promptImpl: prompt,
 		});
 
@@ -127,6 +133,7 @@ describe("task wizard", () => {
 		expect(updateInput?.description).toBe("New description");
 		expect(updateInput?.status).toBe("In Progress");
 		expect(updateInput?.priority).toBe("high");
+		expect(updateInput?.type).toBe("Epic");
 		expect(updateInput?.assignee).toEqual(["alice", "bob"]);
 		expect(updateInput?.labels).toEqual(["existing", "cli"]);
 		expect(updateInput?.dependencies).toEqual(["TASK-2", "TASK-3"]);
@@ -254,7 +261,7 @@ describe("task wizard", () => {
 		expect(input?.status).toBe("To Do");
 	});
 
-	it("uses select prompts for status and priority with create defaults", async () => {
+	it("uses select prompts for status, priority, and type with create defaults", async () => {
 		const questions: Record<
 			string,
 			{ type: string; message: string; initial?: string; optionsCount: number; optionValues: string[] }
@@ -272,6 +279,7 @@ describe("task wizard", () => {
 
 		const input = await runTaskCreateWizard({
 			statuses: ["Backlog", "To Do", "In Progress", "Done"],
+			types: ["Bug", "Epic"],
 			promptImpl: prompt,
 		});
 
@@ -285,6 +293,33 @@ describe("task wizard", () => {
 		expect(questions.priority?.type).toBe("select");
 		expect(questions.priority?.initial).toBe("");
 		expect((questions.priority?.optionsCount ?? 0) > 0).toBe(true);
+		expect(questions.type?.type).toBe("select");
+		expect(questions.type?.initial).toBe("");
+		expect(questions.type?.optionValues).toEqual(["", "Bug", "Epic"]);
+	});
+
+	it("clears an existing type when None is selected", async () => {
+		const existingTask: Task = {
+			id: "task-9",
+			title: "Typed task",
+			status: "To Do",
+			type: "Epic",
+			assignee: [],
+			createdDate: "2026-02-20 12:00",
+			labels: [],
+			dependencies: [],
+			rawContent: "",
+		};
+		const prompt = createPromptRunner({ type: "" });
+
+		const updateInput = await runTaskEditWizard({
+			task: existingTask,
+			statuses: ["To Do", "In Progress", "Done"],
+			types: ["Bug", "Epic"],
+			promptImpl: prompt,
+		});
+
+		expect(updateInput?.type).toBe("");
 	});
 
 	it("falls back to default statuses and keeps create default on To Do", async () => {
