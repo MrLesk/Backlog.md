@@ -57,7 +57,7 @@ import {
 } from "../utils/task-builders.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
-import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
+import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
@@ -322,6 +322,9 @@ export class Core {
 				result = result.filter((task) => !excluded.has((task.status ?? "").toLowerCase()));
 			}
 		}
+		if (filters.type) {
+			result = result.filter((task) => matchesTaskTypeFilter(task.type, filters.type));
+		}
 		if (filters.assignee) {
 			const assigneeLower = filters.assignee.toLowerCase();
 			result = result.filter((task) => (task.assignee ?? []).some((value) => value.toLowerCase() === assigneeLower));
@@ -482,6 +485,9 @@ export class Core {
 		}
 		if (filters?.excludeStatus) {
 			searchFilters.excludeStatus = filters.excludeStatus;
+		}
+		if (filters?.type) {
+			searchFilters.type = filters.type;
 		}
 		if (filters?.priority) {
 			searchFilters.priority = filters.priority;

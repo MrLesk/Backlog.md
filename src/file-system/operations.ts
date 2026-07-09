@@ -19,6 +19,7 @@ import {
 } from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
+import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -460,6 +461,9 @@ export class FileSystem {
 			if (excluded.size > 0) {
 				tasks = tasks.filter((t) => !excluded.has(t.status.toLowerCase()));
 			}
+		}
+		if (filter?.type) {
+			tasks = tasks.filter((task) => matchesTaskTypeFilter(task.type, filter.type));
 		}
 
 		if (filter?.assignee) {

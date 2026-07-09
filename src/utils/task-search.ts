@@ -9,6 +9,7 @@ import { labelsToLower } from "./label-filter.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
 import { normalizePriorityValue } from "./priority-config.ts";
+import { matchesTaskTypeFilter } from "./task-type-config.ts";
 
 export type LabelMatchMode = "any" | "all";
 
@@ -16,6 +17,7 @@ export interface TaskSearchOptions {
 	query?: string;
 	status?: string;
 	excludeStatus?: string | string[];
+	type?: string | string[];
 	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
@@ -25,6 +27,7 @@ export interface TaskSearchOptions {
 export interface SharedTaskFilterOptions {
 	query?: string;
 	excludeStatus?: string | string[];
+	type?: string | string[];
 	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
@@ -188,6 +191,9 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 					results = results.filter((t) => !excluded.has(t.statusLower));
 				}
 			}
+			if (options.type) {
+				results = results.filter((task) => matchesTaskTypeFilter(task.task.type, options.type));
+			}
 
 			// Apply priority filter
 			if (options.priority) {
@@ -249,6 +255,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 		query ||
 			options.status ||
 			options.excludeStatus ||
+			options.type ||
 			options.priority ||
 			(options.labels && options.labels.length > 0) ||
 			(options.modifiedFiles && options.modifiedFiles.length > 0),
@@ -259,6 +266,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 				query,
 				status: options.status,
 				excludeStatus: options.excludeStatus,
+				type: options.type,
 				priority: options.priority,
 				labels: options.labels,
 				labelMatch: options.labelMatch,
@@ -283,6 +291,7 @@ export function applySharedTaskFilters(
 		{
 			query: options.query,
 			excludeStatus: options.excludeStatus,
+			type: options.type,
 			priority: options.priority,
 			labels: options.labels,
 			labelMatch: options.labelMatch,

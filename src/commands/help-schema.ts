@@ -243,7 +243,11 @@ export function taskIdExample(body: string): string {
 }
 
 export function renderConfiguredTaskIds(text: string): string {
+	const taskTypes = getCliTaskTypeValues();
 	return text
+		.replace(/\{\{TASK_TYPE:(\d+)\}\}/g, (_match, index: string) => {
+			return JSON.stringify(taskTypes[Number(index) - 1] ?? "<configured task type>");
+		})
 		.replace(/\{\{TASK_ID:(\d+(?:\.\d+)*)\}\}/g, (_match, body: string) => taskIdExample(body))
 		.replace(/\b(?:BACK|TASK)-(\d+(?:\.\d+)*)\b/g, (_match, body: string) => taskIdExample(body));
 }
@@ -260,6 +264,7 @@ export function priorityType(): string {
 	return `one of configured priorities: ${getCliPriorityValues().join(", ")}`;
 }
 
-export function taskType(): string {
-	return `one of configured task types: ${getCliTaskTypeValues().join(", ")}`;
+export function taskType(options?: { multiple?: boolean }): string {
+	const cardinality = options?.multiple ? "one or more of" : "one of";
+	return `${cardinality} configured task types: ${getCliTaskTypeValues().join(", ")}`;
 }

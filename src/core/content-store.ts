@@ -8,6 +8,7 @@ import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
+import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 
 interface ContentSnapshot {
 	tasks: Task[];
@@ -121,6 +122,9 @@ export class ContentStore {
 			if (excluded.size > 0) {
 				tasks = tasks.filter((task) => !excluded.has(task.status.toLowerCase()));
 			}
+		}
+		if (filter?.type) {
+			tasks = tasks.filter((task) => matchesTaskTypeFilter(task.type, filter.type));
 		}
 		if (filter?.assignee) {
 			const assignee = filter.assignee;

@@ -12,9 +12,10 @@ Recommended CLI commands:
 - `backlog task list --status "<todo status>" --plain`
 - `backlog task list --status "<active status>" --plain`
 - `backlog task list --exclude-status "<terminal status>" --plain`
+- `backlog task list --type {{TASK_TYPE:1}} --plain`
 - `backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain`
 
-Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states.
+Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types.
 
 Use `backlog task view {{TASK_ID:123}} --plain` to read full context for likely matches.
 
