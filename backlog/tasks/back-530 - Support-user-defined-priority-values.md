@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:18'
-updated_date: '2026-07-09 21:02'
+updated_date: '2026-07-09 21:08'
 labels: []
 dependencies: []
 references:
@@ -32,10 +32,10 @@ GitHub issue #732 requests configurable task priority values beyond the built-in
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Fix canonical Bash completion generation so configured multi-word priorities remain single candidates on Bash 3.2+, regenerate committed completion artifacts through the existing script, and add regression coverage.
-2. Centralize Web priority query canonicalization against configured priorities for Board and All Tasks, clear unsupported URL values using existing filter-state patterns, and test mixed-case valid plus unsupported values.
-3. Make statistics represent configured priority "None" separately from missing priority without changing MCP guidance, and add collision regressions.
-4. Run focused tests, type-check, Biome, build, and targeted simplification; update task notes/final summary and return to Done.
+1. Fetch current origin/main and inspect #741/#744 changes plus predicted conflicts against the custom-priority branch.
+2. Merge origin/main normally with the requested merge commit message and resolve conflicts by preserving hierarchical ID sorting, creation-date sorting, and custom-priority behavior/tests.
+3. Run custom-priority focused tests plus relevant TaskList, TaskColumn, and task-sorting suites; then type-check, Biome, and build.
+4. Simplify/review the merged result, update BACK-530 notes and final summary, return it to Done, push, and verify the remote SHA.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -50,12 +50,18 @@ PR #743 review follow-up started from 1dea690: addressing completion quoting, We
 PR #743 review follow-up completed. Bash completion now preserves newline-delimited multi-word priorities as single candidates with Bash 3.2-compatible syntax in both committed and embedded scripts. Board and All Tasks canonicalize configured priority URL values case-insensitively after config loads and clear unsupported values without invalid searches. Statistics now stores missing priorities in noPriorityCount, leaving configured None and other custom values distinct.
 
 Validation: bun test src/commands/completion.test.ts src/test/statistics.test.ts src/test/web-board-filters.test.tsx src/test/web-task-list-labels-menu.test.tsx (32 pass, 0 fail); bunx tsc --noEmit; bun run check .; bun run build; compiled-binary Bash completion smoke test on Bash 3.2.
+
+PR #743 conflict-resolution follow-up started from 27a2390; merging current main after #741/#744 without rebasing or force-pushing.
+
+PR #743 conflict resolution completed against origin/main 6226251. TaskList now uses the shared hierarchical ascending/descending ID comparators while retaining configured priority filtering, display, and ranking. TaskColumn retains configured priority ordering through the shared reorder emitter and includes #744 oldest/newest creation-date actions. Added a direct custom-priority TaskColumn regression and included availablePriorities in TaskList sort memo dependencies.
+
+Merge validation: bun test src/commands/completion.test.ts src/test/priority.test.ts src/test/statistics.test.ts src/test/task-sorting.test.ts src/test/web-board-filters.test.tsx src/test/web-task-list-labels-menu.test.tsx src/test/web-task-column-sort.test.tsx (79 pass, 0 fail); bun test src/web/lib/lanes.test.ts src/test/board.test.ts src/test/board-ui.test.ts (27 pass, 0 fail); bunx tsc --noEmit; bun run check .; bun run build.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed configurable priority support and closed the PR #743 edge cases: multi-word Bash completions remain atomic on Bash 3.2+, Board and All Tasks normalize or clear priority URL filters consistently, and statistics distinguish configured None from tasks with no priority. Focused regressions, type checking, Biome, the production build, and the compiled completion smoke test all pass.
+Completed configurable priority support, fixed its Bash/Web/statistics edge cases, and merged current main without rebasing. The merged branch preserves hierarchical All Tasks ID sorting, board creation-date sorting, and every custom-priority behavior, with focused regressions and all requested static/build checks passing.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
