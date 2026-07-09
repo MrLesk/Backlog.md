@@ -528,6 +528,7 @@ function App() {
 	                  archivedMilestones={archivedMilestones}
 	                  onRefreshData={refreshData}
 	                  dateFormat={config?.dateFormat}
+	                  isLoading={isLoading}
 	                />
 	              }
 	            />

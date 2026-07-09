@@ -146,7 +146,7 @@ function getEmbeddedCompletionScript(shell: Shell): string {
 #   - Or source directly in ~/.bashrc: source /path/to/backlog.bash
 #
 # Requirements:
-#   - Bash 4.x or 5.x
+#   - Bash 3.2 or later
 #   - bash-completion package (optional but recommended)
 
 # Main completion function for backlog CLI
@@ -181,11 +181,13 @@ _backlog() {
 		return 0
 	fi
 
-	# Generate completion replies using compgen
-	# -W: wordlist - splits completions by whitespace
-	# --: end of options
-	# "$cur": current word being completed
-	COMPREPLY=( $(compgen -W "$completions" -- "$cur") )
+	# Preserve each newline-delimited result as one completion candidate.
+	# This loop is compatible with Bash 3.2 (which does not provide mapfile).
+	COMPREPLY=()
+	local completion
+	while IFS= read -r completion; do
+		[[ -n "$completion" && "$completion" == "$cur"* ]] && COMPREPLY+=("$completion")
+	done <<< "$completions"
 
 	# Return success
 	return 0

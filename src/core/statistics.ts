@@ -4,6 +4,7 @@ import { getPriorityValues, normalizePriorityValue } from "../utils/priority-con
 export interface TaskStatistics {
 	statusCounts: Map<string, number>;
 	priorityCounts: Map<string, number>;
+	noPriorityCount: number;
 	totalTasks: number;
 	completedTasks: number;
 	completionPercentage: number;
@@ -40,9 +41,9 @@ export function getTaskStatistics(
 	for (const priority of getPriorityValues(priorityOrder)) {
 		priorityCounts.set(priority, 0);
 	}
-	priorityCounts.set("none", 0);
 
 	let completedTasks = 0;
+	let noPriorityCount = 0;
 	const now = new Date();
 	const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 	const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -71,9 +72,13 @@ export function getTaskStatistics(
 		}
 
 		// Count by priority
-		const priority = normalizePriorityValue(task.priority) || "none";
-		const priorityCount = priorityCounts.get(priority) || 0;
-		priorityCounts.set(priority, priorityCount + 1);
+		const priority = normalizePriorityValue(task.priority);
+		if (priority) {
+			const priorityCount = priorityCounts.get(priority) || 0;
+			priorityCounts.set(priority, priorityCount + 1);
+		} else {
+			noPriorityCount++;
+		}
 
 		// Track recent activity
 		if (task.createdDate) {
@@ -151,6 +156,7 @@ export function getTaskStatistics(
 	return {
 		statusCounts,
 		priorityCounts,
+		noPriorityCount,
 		totalTasks,
 		completedTasks,
 		completionPercentage,

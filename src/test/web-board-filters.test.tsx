@@ -291,6 +291,36 @@ describe("Web board filters", () => {
 		expect(text).not.toContain("Fix login bug");
 	});
 
+	it("canonicalizes mixed-case configured priority URL values", async () => {
+		const customTasks = [
+			...tasks,
+			createTask({
+				id: "task-105",
+				title: "Escalate production incident",
+				priority: "very high",
+			}),
+		];
+		const container = renderBoardPage("http://localhost/board?priority=VeRy%20HiGh", {
+			tasks: customTasks,
+			availablePriorities: ["Very High", "High", "Medium", "Low"],
+		});
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("priority") === "very high");
+
+		expect(getSelectByFirstOption(container, "All priorities").value).toBe("very high");
+		expect(container.textContent).toContain("Escalate production incident");
+		expect(container.textContent).not.toContain("Fix login bug");
+	});
+
+	it("clears unsupported priority URL values", async () => {
+		const container = renderBoardPage("http://localhost/board?priority=urgent");
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("priority") === null);
+
+		expect(getSelectByFirstOption(container, "All priorities").value).toBe("");
+		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
+	});
+
 	it("matches configured label casing against task labels", async () => {
 		const container = renderBoardPage(undefined, {
 			availableLabels: ["Bug", "Docs", "enhancement"],

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:18'
-updated_date: '2026-07-09 06:48'
+updated_date: '2026-07-09 21:02'
 labels: []
 dependencies: []
 references:
@@ -32,11 +32,10 @@ GitHub issue #732 requests configurable task priority values beyond the built-in
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add a shared priority configuration helper that normalizes configured values, preserves the default high/medium/low list, formats labels, and provides ordering/rank checks.
-2. Extend Backlog config load/save/types/help to support a priorities array without requiring existing projects to change.
-3. Replace fixed priority validation in core, parser, CLI, MCP schemas, API filters, completions, and task wizard with config-aware normalization.
-4. Pass configured priorities through web and TUI list/board/edit surfaces so filters, display, and sort-by-priority use the same ordered list.
-5. Add regression tests for custom configured priorities across config parsing, CLI create/list/search, sorting, MCP schema generation, API filters, and web filters.
+1. Fix canonical Bash completion generation so configured multi-word priorities remain single candidates on Bash 3.2+, regenerate committed completion artifacts through the existing script, and add regression coverage.
+2. Centralize Web priority query canonicalization against configured priorities for Board and All Tasks, clear unsupported URL values using existing filter-state patterns, and test mixed-case valid plus unsupported values.
+3. Make statistics represent configured priority "None" separately from missing priority without changing MCP guidance, and add collision regressions.
+4. Run focused tests, type-check, Biome, build, and targeted simplification; update task notes/final summary and return to Done.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -45,12 +44,18 @@ GitHub issue #732 requests configurable task priority values beyond the built-in
 Implemented custom priority configuration across config parsing, core validation, CLI/help/search/list/edit flows, MCP schemas/handlers, server API filters, statistics, TUI/web filters, display, and sorting. Parser now preserves arbitrary stored priorities, while write/filter paths validate against the configured ordered list.
 
 Validation passed: bunx tsc --noEmit; bun run check .; bun run build; bun test src/test/search-command-query.test.ts src/test/cli-priority-filtering.test.ts; bun test (1453 pass, 2 skip, 0 fail).
+
+PR #743 review follow-up started from 1dea690: addressing completion quoting, Web URL canonicalization, and configured priority None statistics collision in a dedicated clean worktree.
+
+PR #743 review follow-up completed. Bash completion now preserves newline-delimited multi-word priorities as single candidates with Bash 3.2-compatible syntax in both committed and embedded scripts. Board and All Tasks canonicalize configured priority URL values case-insensitively after config loads and clear unsupported values without invalid searches. Statistics now stores missing priorities in noPriorityCount, leaving configured None and other custom values distinct.
+
+Validation: bun test src/commands/completion.test.ts src/test/statistics.test.ts src/test/web-board-filters.test.tsx src/test/web-task-list-labels-menu.test.tsx (32 pass, 0 fail); bunx tsc --noEmit; bun run check .; bun run build; compiled-binary Bash completion smoke test on Bash 3.2.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added configurable ordered priority values with defaults preserved for existing projects. CLI, MCP, server API, web/TUI surfaces, completions, sorting, statistics, parsing, docs, and regression tests now use the configured priority list and accept values case-insensitively.
+Completed configurable priority support and closed the PR #743 edge cases: multi-word Bash completions remain atomic on Bash 3.2+, Board and All Tasks normalize or clear priority URL filters consistently, and statistics distinguish configured None from tasks with no priority. Focused regressions, type checking, Biome, the production build, and the compiled completion smoke test all pass.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
