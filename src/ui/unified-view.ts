@@ -198,7 +198,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let startupWarning: string | undefined;
 		if (duplicateGroups.length > 0) {
 			const ids = duplicateGroups.map((g) => g.id).join(", ");
-			startupWarning = `⚠ Duplicate task IDs detected: ${ids} — use web UI for AI fix prompt`;
+			startupWarning = `⚠ Duplicate task IDs detected: ${ids} — open the web UI for repair instructions`;
 		}
 
 		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
