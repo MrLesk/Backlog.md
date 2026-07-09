@@ -21,7 +21,7 @@ import {
 import { watchConfig } from "../utils/config-watcher.ts";
 import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
-import { formatValidStatuses, getCanonicalStatuses } from "../utils/status.ts";
+import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -1072,8 +1072,7 @@ export class BacklogServer {
 	}
 
 	private async handleGetStatuses(): Promise<Response> {
-		const config = await this.core.filesystem.loadConfig();
-		const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+		const statuses = await getValidStatuses(this.core);
 		return Response.json(statuses);
 	}
 

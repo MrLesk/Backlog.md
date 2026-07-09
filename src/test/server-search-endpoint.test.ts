@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Decision, Document, Milestone, Task } from "../types/index.ts";
@@ -163,6 +164,27 @@ describe("BacklogServer search endpoint", () => {
 	it("rejects unsupported excluded statuses with 400", async () => {
 		await expect(fetchJson<Task[]>("/api/tasks?excludeStatus=Blocked")).rejects.toThrow();
 		await expect(fetchJson<Array<{ type: string }>>("/api/search?type=task&excludeStatus=Blocked")).rejects.toThrow();
+	});
+
+	it("returns default statuses from the statuses endpoint when configured statuses are empty", async () => {
+		if (server) {
+			await server.stop();
+			server = null;
+		}
+		const config = await filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Config not loaded");
+		}
+		await filesystem.saveConfig({ ...config, statuses: [] });
+
+		server = new BacklogServer(TEST_DIR);
+		await server.start(0, false);
+		const port = server.getPort();
+		expect(port).not.toBeNull();
+		serverPort = port ?? 0;
+
+		const statuses = await fetchJson<string[]>("/api/statuses");
+		expect(statuses).toEqual(Array.from(DEFAULT_STATUSES));
 	});
 
 	it("supports zero-padded ids and dependency-aware search", async () => {

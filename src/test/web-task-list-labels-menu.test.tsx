@@ -292,6 +292,20 @@ describe("TaskList labels filter menu", () => {
 		expect(container.textContent).not.toContain("Done hidden");
 	});
 
+	it("uses default statuses for the exclude menu when no statuses are provided", async () => {
+		const container = renderTaskList(undefined, { availableStatuses: [] });
+		const excludeStatusButton = getExcludeStatusButton(container);
+
+		await clickElement(excludeStatusButton);
+
+		const menu = container.querySelector("#task-list-exclude-status-menu");
+		expect(menu).toBeTruthy();
+		expect(menu?.textContent).toContain("To Do");
+		expect(menu?.textContent).toContain("In Progress");
+		expect(menu?.textContent).toContain("Done");
+		expect(menu?.textContent).not.toContain("No statuses");
+	});
+
 	it("shows cleanup when filtering by the final configured status", async () => {
 		const closedTask = createTask({ id: "task-201", title: "Closed task", status: "Closed" });
 		const fetchCalls: string[] = [];

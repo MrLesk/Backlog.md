@@ -33,6 +33,25 @@ export type ColumnData = {
 	tasks: Task[];
 };
 
+type BoardSharedFilters = {
+	searchQuery: string;
+	excludeStatus?: string[];
+	priorityFilter: string;
+	labelFilter: string[];
+	milestoneFilter: string;
+	limit?: number;
+};
+
+export function hasMoveBlockingBoardFilters(filters: BoardSharedFilters): boolean {
+	return Boolean(
+		filters.searchQuery.trim() ||
+			filters.priorityFilter ||
+			filters.labelFilter.length > 0 ||
+			filters.milestoneFilter ||
+			filters.limit !== undefined,
+	);
+}
+
 type MutableList = ListInterface & {
 	selected?: number;
 	setItem?: (index: number, content: string) => void;
@@ -312,6 +331,7 @@ export async function renderBoardTui(
 					sharedFilters.milestoneFilter ||
 					sharedFilters.limit !== undefined,
 			);
+		const hasMoveBlockingSharedFilters = () => hasMoveBlockingBoardFilters(sharedFilters);
 		const emitFilterChange = () => {
 			options?.onFilterChange?.({
 				searchQuery: sharedFilters.searchQuery,
@@ -1311,7 +1331,7 @@ export async function renderBoardTui(
 
 		screen.key(["m", "M", "S-m"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-			if (hasActiveSharedFilters()) {
+			if (hasMoveBlockingSharedFilters()) {
 				showTransientFooter(" {yellow-fg}Clear filters before moving tasks.{/}");
 				return;
 			}

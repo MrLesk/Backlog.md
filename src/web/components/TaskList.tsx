@@ -7,6 +7,7 @@ import type {
 	Task,
 	TaskSearchResult,
 } from "../../types";
+import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
@@ -121,7 +122,8 @@ const TaskList: React.FC<TaskListProps> = ({
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
-	const isFilteringTerminalStatus = isTerminalStatus(statusFilter, availableStatuses);
+	const statusOptions = availableStatuses.length > 0 ? availableStatuses : [...DEFAULT_STATUSES];
+	const isFilteringTerminalStatus = isTerminalStatus(statusFilter, statusOptions);
 	const milestoneAliasToCanonical = useMemo(() => {
 		const aliasMap = new Map<string, string>();
 		const collectIdAliasKeys = (value: string): string[] => {
@@ -658,27 +660,27 @@ const TaskList: React.FC<TaskListProps> = ({
 				</div>
 
 				<div className="flex flex-wrap items-center gap-3 justify-between">
-					<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
-						<select
-							value={statusFilter}
-							onChange={(event) => handleStatusChange(event.target.value)}
-							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-						>
-							<option value="">All statuses</option>
-							{availableStatuses.map((status) => (
-								<option key={status} value={status}>
-									{status}
-								</option>
-							))}
-						</select>
+						<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+							<select
+								value={statusFilter}
+								onChange={(event) => handleStatusChange(event.target.value)}
+								className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+							>
+								<option value="">All statuses</option>
+								{statusOptions.map((status) => (
+									<option key={status} value={status}>
+										{status}
+									</option>
+								))}
+							</select>
 
-						<LabelFilterDropdown
-							availableLabels={availableStatuses}
-							selectedLabels={excludedStatusFilter}
-							onChange={handleExcludeStatusChange}
-							menuId="task-list-exclude-status-menu"
-							label="Exclude status"
-							emptyLabel="None"
+							<LabelFilterDropdown
+								availableLabels={statusOptions}
+								selectedLabels={excludedStatusFilter}
+								onChange={handleExcludeStatusChange}
+								menuId="task-list-exclude-status-menu"
+								label="Exclude status"
+								emptyLabel="None"
 							noOptionsLabel="No statuses"
 							clearLabel="Clear excluded statuses"
 							className="min-w-[210px]"
