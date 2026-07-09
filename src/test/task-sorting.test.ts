@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { compareTaskIds, parseTaskId, sortByPriority, sortByTaskId, sortTasks } from "../utils/task-sorting.ts";
+import {
+	compareTaskIds,
+	compareTaskIdsDescending,
+	parseTaskId,
+	sortByPriority,
+	sortByTaskId,
+	sortTasks,
+} from "../utils/task-sorting.ts";
 
 describe("parseTaskId", () => {
 	test("parses simple task IDs", () => {
@@ -60,6 +67,28 @@ describe("compareTaskIds", () => {
 		expect(compareTaskIds("task-draft", "task-draft2")).toBeLessThan(0);
 		expect(compareTaskIds("task-draft2", "task-draft10")).toBeLessThan(0);
 		expect(compareTaskIds("task-draft10", "task-draft2")).toBeGreaterThan(0);
+	});
+
+	test("sorts distinct nonnumeric IDs deterministically", () => {
+		expect(compareTaskIds("task-alpha", "task-beta")).toBeLessThan(0);
+		expect(compareTaskIds("task-beta", "task-alpha")).toBeGreaterThan(0);
+		expect(compareTaskIds("task-alpha", "task-alpha")).toBe(0);
+	});
+});
+
+describe("compareTaskIdsDescending", () => {
+	test("sorts root task groups descending while keeping parents before subtasks", () => {
+		const ids = ["task-1", "task-3.01", "task-2", "task-3.02", "task-3"];
+
+		const sorted = [...ids].sort(compareTaskIdsDescending);
+
+		expect(sorted).toEqual(["task-3", "task-3.02", "task-3.01", "task-2", "task-1"]);
+	});
+
+	test("sorts distinct nonnumeric IDs deterministically", () => {
+		expect(compareTaskIdsDescending("task-alpha", "task-beta")).toBeGreaterThan(0);
+		expect(compareTaskIdsDescending("task-beta", "task-alpha")).toBeLessThan(0);
+		expect(compareTaskIdsDescending("task-alpha", "task-alpha")).toBe(0);
 	});
 });
 
