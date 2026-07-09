@@ -8,6 +8,7 @@ describe("help popup shortcuts", () => {
 		const keys = keysFor("board");
 
 		expect(keys).toContain("F");
+		expect(keys).toContain("T");
 		expect(keys).toContain("M");
 		expect(keys).toContain("←→");
 	});
@@ -16,6 +17,7 @@ describe("help popup shortcuts", () => {
 		const keys = keysFor("task-list");
 
 		expect(keys).toContain("s");
+		expect(keys).toContain("t");
 		expect(keys).toContain("l");
 		expect(keys).not.toContain("F");
 		expect(keys).not.toContain("M");

@@ -11,6 +11,46 @@ import { NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 
 describe("unified view filter state", () => {
+	it("carries task type filters into kanban and applies them to typed tasks only", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Epic task",
+				status: "To Do",
+				type: "Epic",
+				assignee: [],
+				createdDate: "2026-07-10",
+				labels: [],
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Bug task",
+				status: "To Do",
+				type: "Bug",
+				assignee: [],
+				createdDate: "2026-07-10",
+				labels: [],
+				dependencies: [],
+			},
+			{
+				id: "task-3",
+				title: "Untyped task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-10",
+				labels: [],
+				dependencies: [],
+			},
+		];
+		const unified = createUnifiedViewFilters({ type: ["Epic"] });
+		const shared = createKanbanSharedFilters(unified);
+
+		expect(unified.typeFilter).toEqual(["Epic"]);
+		expect(shared.typeFilter).toEqual(["Epic"]);
+		expect(filterTasksForKanban(tasks, shared).map((task) => task.id)).toEqual(["task-1"]);
+	});
+
 	it("initializes milestone filter from options", () => {
 		const labels = ["backend"];
 		const filters = createUnifiedViewFilters({
@@ -47,6 +87,7 @@ describe("unified view filter state", () => {
 			searchQuery: "api",
 			statusFilter: "To Do",
 			excludeStatus: [],
+			typeFilter: [],
 			priorityFilter: "",
 			labelFilter: ["infra"],
 			milestoneFilter: "Sprint 7",
@@ -71,6 +112,7 @@ describe("unified view filter state", () => {
 			searchQuery: "api auth",
 			statusFilter: "",
 			excludeStatus: [],
+			typeFilter: [],
 			priorityFilter: "high",
 			labelFilter: ["frontend", "bug"],
 			milestoneFilter: "",
@@ -108,6 +150,7 @@ describe("unified view filter state", () => {
 			searchQuery: "api",
 			statusFilter: "",
 			excludeStatus: [],
+			typeFilter: [],
 			priorityFilter: "",
 			labelFilter: [],
 			milestoneFilter: "",
@@ -128,6 +171,7 @@ describe("unified view filter state", () => {
 			searchQuery: "auth",
 			statusFilter: "",
 			excludeStatus: [],
+			typeFilter: [],
 			priorityFilter: "",
 			labelFilter: ["frontend", "bug"],
 			milestoneFilter: "",
@@ -147,6 +191,7 @@ describe("unified view filter state", () => {
 			searchQuery: "",
 			statusFilter: "",
 			excludeStatus: [],
+			typeFilter: [],
 			priorityFilter: "",
 			labelFilter: ["frontend", "bug"],
 			labelMatch: "any",

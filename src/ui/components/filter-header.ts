@@ -8,11 +8,12 @@ import { box, textbox } from "neo-neo-bblessed";
 import { formatLabelSummary } from "../../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../../utils/milestone-filter.ts";
 
-export type FilterControlId = "search" | "status" | "priority" | "labels" | "milestone";
+export type FilterControlId = "search" | "status" | "type" | "priority" | "labels" | "milestone";
 
 export interface FilterState {
 	search: string;
 	status: string;
+	taskTypes: string[];
 	priority: string;
 	labels: string[];
 	milestone: string;
@@ -50,6 +51,7 @@ interface LayoutResult {
 const ALL_FILTER_ITEMS: FilterItem[] = [
 	{ id: "search", labelText: "Search:", labelWidth: 8, minWidth: 28, flexGrow: true },
 	{ id: "status", labelText: "Status:", labelWidth: 8, minWidth: 22, flexGrow: false },
+	{ id: "type", labelText: "Type:", labelWidth: 6, minWidth: 18, flexGrow: false },
 	{ id: "priority", labelText: "Priority:", labelWidth: 9, minWidth: 20, flexGrow: false },
 	{ id: "milestone", labelText: "Milestone:", labelWidth: 10, minWidth: 22, flexGrow: false },
 	{ id: "labels", labelText: "Labels:", labelWidth: 8, minWidth: 18, flexGrow: false },
@@ -130,6 +132,7 @@ export class FilterHeader {
 	// Element references for focus management and updates
 	private searchInput: TextboxInterface | null = null;
 	private statusButton: BoxInterface | null = null;
+	private typeButton: BoxInterface | null = null;
 	private priorityButton: BoxInterface | null = null;
 	private milestoneButton: BoxInterface | null = null;
 	private labelsButton: BoxInterface | null = null;
@@ -148,6 +151,7 @@ export class FilterHeader {
 		this.state = {
 			search: options.initialFilters?.search ?? "",
 			status: options.initialFilters?.status ?? "",
+			taskTypes: options.initialFilters?.taskTypes ?? [],
 			priority: options.initialFilters?.priority ?? "",
 			labels: options.initialFilters?.labels ?? [],
 			milestone: options.initialFilters?.milestone ?? "",
@@ -197,6 +201,10 @@ export class FilterHeader {
 			this.state.status = filters.status;
 			this.updateStatusButton();
 		}
+		if (filters.taskTypes !== undefined) {
+			this.state.taskTypes = filters.taskTypes;
+			this.updateTypeButton();
+		}
 		if (filters.priority !== undefined) {
 			this.state.priority = filters.priority;
 			this.updatePriorityButton();
@@ -235,6 +243,10 @@ export class FilterHeader {
 
 	focusStatus(): void {
 		this.statusButton?.focus();
+	}
+
+	focusType(): void {
+		this.typeButton?.focus();
 	}
 
 	focusPriority(): void {
@@ -339,6 +351,9 @@ export class FilterHeader {
 			case "status":
 				this.focusStatus();
 				break;
+			case "type":
+				this.focusType();
+				break;
 			case "priority":
 				this.focusPriority();
 				break;
@@ -358,6 +373,7 @@ export class FilterHeader {
 		this.elements = [];
 		this.searchInput = null;
 		this.statusButton = null;
+		this.typeButton = null;
 		this.priorityButton = null;
 		this.milestoneButton = null;
 		this.labelsButton = null;
@@ -415,6 +431,9 @@ export class FilterHeader {
 				break;
 			case "status":
 				this.buildPopupButton("status", controlX, y, controlWidth);
+				break;
+			case "type":
+				this.buildPopupButton("type", controlX, y, controlWidth);
 				break;
 			case "priority":
 				this.buildPopupButton("priority", controlX, y, controlWidth);
@@ -540,6 +559,7 @@ export class FilterHeader {
 		this.elements.push(button);
 
 		if (field === "status") this.statusButton = button;
+		if (field === "type") this.typeButton = button;
 		if (field === "priority") this.priorityButton = button;
 		if (field === "milestone") this.milestoneButton = button;
 		if (field === "labels") this.labelsButton = button;
@@ -599,6 +619,10 @@ export class FilterHeader {
 		switch (field) {
 			case "status":
 				return this.state.status ? `${this.state.status} ▼` : "All ▼";
+			case "type":
+				if (this.state.taskTypes.length === 0) return "All ▼";
+				if (this.state.taskTypes.length === 1) return `${this.state.taskTypes[0]} ▼`;
+				return `${this.state.taskTypes.length} selected ▼`;
 			case "priority":
 				return this.state.priority ? `${this.state.priority} ▼` : "All ▼";
 			case "milestone":
@@ -616,6 +640,11 @@ export class FilterHeader {
 	private updateStatusButton(): void {
 		if (!this.statusButton) return;
 		this.statusButton.setContent(this.getPopupButtonContent("status"));
+	}
+
+	private updateTypeButton(): void {
+		if (!this.typeButton) return;
+		this.typeButton.setContent(this.getPopupButtonContent("type"));
 	}
 
 	private updatePriorityButton(): void {

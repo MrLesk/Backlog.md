@@ -14,6 +14,7 @@ import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/m
 import { getPriorityOptions } from "../utils/priority-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
+import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -21,6 +22,7 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
+import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
 	resolveSearchExitTargetIndex,
@@ -37,6 +39,7 @@ export type ColumnData = {
 type BoardSharedFilters = {
 	searchQuery: string;
 	excludeStatus?: string[];
+	typeFilter?: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	milestoneFilter: string;
@@ -46,6 +49,7 @@ type BoardSharedFilters = {
 export function hasMoveBlockingBoardFilters(filters: BoardSharedFilters): boolean {
 	return Boolean(
 		filters.searchQuery.trim() ||
+			(filters.typeFilter?.length ?? 0) > 0 ||
 			filters.priorityFilter ||
 			filters.labelFilter.length > 0 ||
 			filters.milestoneFilter ||
@@ -138,11 +142,13 @@ export function formatTaskListItem(task: Task, isMoving = false): string {
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
 	const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+	const typeBadge = formatTaskTypeBadge(task.type);
+	const type = typeBadge ? ` ${typeBadge}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 
 	// Cross-branch tasks are dimmed to indicate read-only status
-	const content = `{bold}${task.id}{/bold} - ${task.title}${assignee}${labels}${branch}`;
+	const content = `{bold}${task.id}{/bold}${type} - ${task.title}${assignee}${labels}${branch}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
@@ -165,7 +171,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
@@ -210,6 +216,7 @@ export async function renderBoardTui(
 		filters?: {
 			searchQuery: string;
 			excludeStatus?: string[];
+			typeFilter?: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -219,9 +226,11 @@ export async function renderBoardTui(
 		availableLabels?: string[];
 		availableMilestones?: string[];
 		priorities?: string[];
+		types?: string[];
 		onFilterChange?: (filters: {
 			searchQuery: string;
 			excludeStatus?: string[];
+			typeFilter: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -275,9 +284,11 @@ export async function renderBoardTui(
 		let modalOpen = false;
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
 		let programmaticColumnSelection = false;
+		const configuredTaskTypes = getTaskTypeValues(options?.types);
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
 			excludeStatus: [...(options?.filters?.excludeStatus ?? [])],
+			typeFilter: resolveTaskTypeValues(options?.filters?.typeFilter ?? [], configuredTaskTypes).values,
 			priorityFilter: options?.filters?.priorityFilter ?? "",
 			labelFilter: [...(options?.filters?.labelFilter ?? [])],
 			labelMatch: options?.filters?.labelMatch ?? "any",
@@ -329,6 +340,7 @@ export async function renderBoardTui(
 			Boolean(
 				sharedFilters.searchQuery.trim() ||
 					sharedFilters.excludeStatus.length > 0 ||
+					sharedFilters.typeFilter.length > 0 ||
 					sharedFilters.priorityFilter ||
 					sharedFilters.labelFilter.length > 0 ||
 					sharedFilters.milestoneFilter ||
@@ -339,6 +351,7 @@ export async function renderBoardTui(
 			options?.onFilterChange?.({
 				searchQuery: sharedFilters.searchQuery,
 				excludeStatus: [...sharedFilters.excludeStatus],
+				typeFilter: [...sharedFilters.typeFilter],
 				priorityFilter: sharedFilters.priorityFilter,
 				labelFilter: [...sharedFilters.labelFilter],
 				labelMatch: sharedFilters.labelMatch,
@@ -357,6 +370,7 @@ export async function renderBoardTui(
 					{
 						query: sharedFilters.searchQuery,
 						excludeStatus: sharedFilters.excludeStatus,
+						type: sharedFilters.typeFilter,
 						priority: sharedFilters.priorityFilter || undefined,
 						labels: sharedFilters.labelFilter,
 						labelMatch: sharedFilters.labelMatch,
@@ -660,11 +674,14 @@ export async function renderBoardTui(
 			return columns;
 		};
 
-		const focusFilterControl = (filterId: "search" | "priority" | "milestone" | "labels") => {
+		const focusFilterControl = (filterId: "search" | "type" | "priority" | "milestone" | "labels") => {
 			if (!filterHeader) return;
 			switch (filterId) {
 				case "search":
 					filterHeader.focusSearch();
+					break;
+				case "type":
+					filterHeader.focusType();
 					break;
 				case "priority":
 					filterHeader.focusPriority();
@@ -678,12 +695,28 @@ export async function renderBoardTui(
 			}
 		};
 
-		const openFilterPicker = async (filterId: "priority" | "milestone" | "labels") => {
+		const openFilterPicker = async (filterId: "type" | "priority" | "milestone" | "labels") => {
 			if (filterPopupOpen || modalOpen || moveOp || !filterHeader) {
 				return;
 			}
 			filterPopupOpen = true;
 			try {
+				if (filterId === "type") {
+					const nextTypes = await openMultiSelectFilterPopup({
+						screen,
+						title: "Task Type Filter",
+						items: configuredTaskTypes,
+						selectedItems: sharedFilters.typeFilter,
+					});
+					if (nextTypes !== null) {
+						sharedFilters.typeFilter = nextTypes;
+						filterHeader.setFilters({ taskTypes: nextTypes });
+						emitFilterChange();
+						renderView();
+					}
+					return;
+				}
+
 				if (filterId === "labels") {
 					const nextLabels = await openMultiSelectFilterPopup({
 						screen,
@@ -748,9 +781,10 @@ export async function renderBoardTui(
 			statuses: [],
 			availableLabels: configuredLabels,
 			availableMilestones,
-			visibleFilters: ["search", "priority", "milestone", "labels"],
+			visibleFilters: ["search", "type", "priority", "milestone", "labels"],
 			initialFilters: {
 				search: sharedFilters.searchQuery,
+				taskTypes: sharedFilters.typeFilter,
 				priority: sharedFilters.priorityFilter,
 				labels: sharedFilters.labelFilter,
 				milestone: sharedFilters.milestoneFilter,
@@ -758,6 +792,7 @@ export async function renderBoardTui(
 			onFilterChange: (filters: FilterState) => {
 				const labelsChanged = !areLabelSelectionsEqual(sharedFilters.labelFilter, filters.labels);
 				sharedFilters.searchQuery = filters.search;
+				sharedFilters.typeFilter = filters.taskTypes;
 				sharedFilters.priorityFilter = filters.priority;
 				sharedFilters.labelFilter = filters.labels;
 				if (labelsChanged) {
@@ -928,6 +963,11 @@ export async function renderBoardTui(
 		screen.key(["p", "P"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
 			void openFilterPicker("priority");
+		});
+
+		screen.key(["t", "T"], () => {
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
+			void openFilterPicker("type");
 		});
 
 		screen.key(["f", "F"], () => {

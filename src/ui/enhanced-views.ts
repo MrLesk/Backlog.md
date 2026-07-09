@@ -187,6 +187,7 @@ async function renderBoardTuiWithSwitching(
 	return renderBoardTui(tasks, statuses, layout, maxColumnWidth, {
 		dateFormat: config?.dateFormat,
 		priorities: config?.priorities,
+		types: config?.types,
 	});
 }
 

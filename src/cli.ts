@@ -1945,7 +1945,7 @@ addHelpSchema(program.command("search [query]"), {
 			return;
 		}
 
-		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length || filters.type?.length);
+		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length);
 		const interactiveTasks = requiresPrefilteredTaskSet ? searchResultTasks : allTasks;
 		if (interactiveTasks.length === 0) {
 			printSearchResults(searchResults);
@@ -1976,6 +1976,7 @@ addHelpSchema(program.command("search [query]"), {
 				}),
 				status: statusFilter,
 				excludeStatus: filters.excludeStatus,
+				type: filters.type,
 				priority: priorityFilter,
 				searchQuery: query ?? "", // Pre-populate search with the query
 			},
@@ -2420,6 +2421,7 @@ addHelpSchema(taskCmd.command("list"), {
 			excludeStatus?: string[];
 			assignee?: string;
 			milestone?: string;
+			type?: string[];
 			priority?: string;
 			sort?: string;
 			labels?: string[];
@@ -2434,6 +2436,7 @@ addHelpSchema(taskCmd.command("list"), {
 			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
 			assignee: options.assignee,
 			milestone: options.milestone,
+			type: Array.isArray(baseFilters.type) ? baseFilters.type : baseFilters.type ? [baseFilters.type] : undefined,
 			priority: baseFilters.priority,
 			sort: options.sort,
 			labels: labelFilters,
@@ -2457,9 +2460,6 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
-		}
-		if (baseFilters.type) {
-			interactiveLoaderFilters.type = baseFilters.type;
 		}
 		await runUnifiedView({
 			core,

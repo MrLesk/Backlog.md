@@ -26,6 +26,7 @@ export interface UnifiedViewOptions {
 	filter?: {
 		status?: string;
 		assignee?: string;
+		type?: string[];
 		priority?: string;
 		labels?: string[];
 		labelMatch?: LabelMatchMode;
@@ -60,6 +61,7 @@ export interface UnifiedViewFilters {
 	searchQuery: string;
 	statusFilter: string;
 	excludeStatus: string[];
+	typeFilter: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -67,12 +69,13 @@ export interface UnifiedViewFilters {
 	limit?: number;
 }
 
-type UnifiedViewFilterUpdate = Omit<UnifiedViewFilters, "excludeStatus"> &
-	Partial<Pick<UnifiedViewFilters, "excludeStatus">>;
+type UnifiedViewFilterUpdate = Omit<UnifiedViewFilters, "excludeStatus" | "typeFilter"> &
+	Partial<Pick<UnifiedViewFilters, "excludeStatus" | "typeFilter">>;
 
 export interface KanbanSharedFilters {
 	searchQuery: string;
 	excludeStatus: string[];
+	typeFilter?: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -84,6 +87,7 @@ export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSh
 	return {
 		searchQuery: filters.searchQuery,
 		excludeStatus: [...filters.excludeStatus],
+		typeFilter: [...filters.typeFilter],
 		priorityFilter: filters.priorityFilter,
 		labelFilter: [...filters.labelFilter],
 		labelMatch: filters.labelMatch,
@@ -100,6 +104,7 @@ export function filterTasksForKanban(
 	if (
 		!filters.searchQuery.trim() &&
 		filters.excludeStatus.length === 0 &&
+		(filters.typeFilter?.length ?? 0) === 0 &&
 		!filters.priorityFilter &&
 		filters.labelFilter.length === 0 &&
 		!filters.milestoneFilter
@@ -113,6 +118,7 @@ export function filterTasksForKanban(
 		{
 			query: filters.searchQuery,
 			excludeStatus: filters.excludeStatus,
+			type: filters.typeFilter,
 			priority: filters.priorityFilter || undefined,
 			labels: filters.labelFilter,
 			labelMatch: filters.labelMatch ?? "any",
@@ -129,6 +135,7 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 		searchQuery: filter?.searchQuery || "",
 		statusFilter: filter?.status || "",
 		excludeStatus: [...(filter?.excludeStatus || [])],
+		typeFilter: [...(filter?.type || [])],
 		priorityFilter: filter?.priority || "",
 		labelFilter: [...(filter?.labels || [])],
 		labelMatch: filter?.labelMatch ?? "any",
@@ -146,6 +153,7 @@ export function mergeUnifiedViewFilters(
 		searchQuery: update.searchQuery,
 		statusFilter: update.statusFilter,
 		excludeStatus: [...(update.excludeStatus ?? current.excludeStatus)],
+		typeFilter: [...(update.typeFilter ?? current.typeFilter)],
 		priorityFilter: update.priorityFilter,
 		labelFilter: [...update.labelFilter],
 		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
@@ -363,6 +371,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					searchQuery: currentFilters.searchQuery,
 					statusFilter: currentFilters.statusFilter,
 					excludeStatus: currentFilters.excludeStatus,
+					typeFilter: currentFilters.typeFilter,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
 					labelMatch: currentFilters.labelMatch,
@@ -420,6 +429,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 							searchQuery: filters.searchQuery,
 							statusFilter: currentFilters.statusFilter,
 							excludeStatus: filters.excludeStatus,
+							typeFilter: [...filters.typeFilter],
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
 							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
@@ -436,6 +446,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					startupWarning,
 					dateFormat: config?.dateFormat,
 					priorities: config?.priorities,
+					types: config?.types,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
