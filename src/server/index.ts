@@ -19,10 +19,10 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
-import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
+import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -285,6 +285,17 @@ export class BacklogServer {
 		return this.searchService;
 	}
 
+	private async reloadContentServices(): Promise<void> {
+		this.unsubscribeContentStore?.();
+		this.unsubscribeContentStore = undefined;
+		this.core.disposeSearchService();
+		this.core.disposeContentStore();
+		this.searchService = null;
+		this.contentStore = null;
+		this.storeReadyBroadcasted = false;
+		await this.ensureServicesReady();
+	}
+
 	getPort(): number | null {
 		return this.server?.port ?? null;
 	}
@@ -423,6 +434,7 @@ export class BacklogServer {
 					},
 					"/api/tasks/duplicates": {
 						GET: async () => await this.handleGetDuplicateTasks(),
+						POST: async (req: Request) => await this.handleRepairDuplicateTasks(req),
 					},
 					"/api/tasks/cleanup/execute": {
 						POST: async (req: Request) => await this.handleCleanupExecute(req),
@@ -686,15 +698,20 @@ export class BacklogServer {
 		let parentTaskId: string | undefined;
 		if (parent) {
 			const store = await this.getContentStoreInstance();
-			const allTasks = store.getTasks();
-			let parentTask = findTaskByLooseId(allTasks, parent);
-			if (!parentTask) {
-				const fallbackId = ensurePrefix(parent);
-				const fallback = await this.core.filesystem.loadTask(fallbackId);
-				if (fallback) {
-					store.upsertTask(fallback);
-					parentTask = fallback;
+			let parentTask: Task | undefined;
+			try {
+				const localTask = await this.core.filesystem.loadTask(parent);
+				if (localTask) {
+					store.upsertTask(localTask);
+					parentTask = localTask;
+				} else {
+					parentTask = findTaskByLooseId(store.getTasks(), parent);
 				}
+			} catch (error) {
+				if (isAmbiguousTaskIdError(error)) {
+					return Response.json({ error: error.message }, { status: 409 });
+				}
+				throw error;
 			}
 			if (!parentTask) {
 				const normalizedParent = ensurePrefix(parent);
@@ -909,25 +926,40 @@ export class BacklogServer {
 	}
 
 	private async handleGetTask(taskId: string): Promise<Response> {
-		const store = await this.getContentStoreInstance();
+		try {
+			const store = await this.getContentStoreInstance();
 
-		const localTask = await this.core.filesystem.loadTask(taskId);
-		if (localTask) {
-			store.upsertTask(localTask);
-			return Response.json(localTask);
+			const localTask = await this.core.filesystem.loadTask(taskId);
+			if (localTask) {
+				store.upsertTask(localTask);
+				return Response.json(localTask);
+			}
+
+			const task = findTaskByLooseId(store.getTasks(), taskId);
+			if (task) {
+				return Response.json(task);
+			}
+
+			return Response.json({ error: "Task not found" }, { status: 404 });
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
 		}
-
-		const task = findTaskByLooseId(store.getTasks(), taskId);
-		if (task) {
-			return Response.json(task);
-		}
-
-		return Response.json({ error: "Task not found" }, { status: 404 });
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
 		const updates = await req.json();
-		const existingTask = await this.core.filesystem.loadTask(taskId);
+		let existingTask: Task | null;
+		try {
+			existingTask = await this.core.filesystem.loadTask(taskId);
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
+		}
 		if (!existingTask) {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
@@ -1046,11 +1078,18 @@ export class BacklogServer {
 	}
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
-		const success = await this.core.archiveTask(taskId);
-		if (!success) {
-			return Response.json({ error: "Task not found" }, { status: 404 });
+		try {
+			const success = await this.core.archiveTask(taskId);
+			if (!success) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+			return Response.json({ success: true });
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
 		}
-		return Response.json({ success: true });
 	}
 
 	private async handleCompleteTask(taskId: string): Promise<Response> {
@@ -1070,8 +1109,10 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to complete task";
-			console.error("Error completing task:", error);
-			return Response.json({ error: message }, { status: 500 });
+			if (!isAmbiguousTaskIdError(error)) {
+				console.error("Error completing task:", error);
+			}
+			return Response.json({ error: message }, { status: isAmbiguousTaskIdError(error) ? 409 : 500 });
 		}
 	}
 
@@ -1602,11 +1643,27 @@ export class BacklogServer {
 
 	private async handleGetDuplicateTasks(): Promise<Response> {
 		try {
-			const tasks = await this.core.filesystem.listTasks();
-			const groups = detectDuplicateTaskIds(tasks);
-			return Response.json(groups);
+			return Response.json(await this.core.previewDuplicateTaskIdRepair());
 		} catch (error) {
 			return Response.json({ error: String(error) }, { status: 500 });
+		}
+	}
+
+	private async handleRepairDuplicateTasks(req: Request): Promise<Response> {
+		try {
+			const body = (await req.json()) as { fingerprint?: unknown };
+			const fingerprint = typeof body.fingerprint === "string" ? body.fingerprint.trim() : "";
+			if (!fingerprint) {
+				return Response.json({ error: "A repair preview fingerprint is required." }, { status: 400 });
+			}
+			const result = await this.core.repairDuplicateTaskIds(fingerprint);
+			await this.reloadContentServices();
+			this.broadcastTasksUpdated();
+			return Response.json(result);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const status = message.includes("changed after the preview") ? 409 : 400;
+			return Response.json({ error: message }, { status });
 		}
 	}
 

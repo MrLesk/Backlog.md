@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
-import { buildDuplicateCleanupPrompt, detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
+import {
+	detectDuplicateTaskIds,
+	formatDuplicateTaskIdSummary,
+	formatDuplicateTaskIdWarning,
+} from "../utils/duplicate-detection.ts";
 
 function makeTask(id: string, title: string): Task {
 	return {
@@ -61,6 +65,14 @@ describe("detectDuplicateTaskIds", () => {
 		expect(groups[0]?.tasks).toHaveLength(2);
 	});
 
+	it("treats zero-padded numeric IDs as the same identity", () => {
+		const tasks = [makeTask("TASK-1", "Plain"), makeTask("TASK-01", "Padded")];
+		const groups = detectDuplicateTaskIds(tasks);
+		expect(groups).toHaveLength(1);
+		expect(groups[0]?.id).toBe("TASK-1");
+		expect(groups[0]?.tasks).toHaveLength(2);
+	});
+
 	it("does not flag three unique tasks as duplicates", () => {
 		const tasks = [makeTask("TASK-1", "A"), makeTask("TASK-2", "B"), makeTask("TASK-3", "C")];
 		expect(detectDuplicateTaskIds(tasks)).toHaveLength(0);
@@ -74,28 +86,8 @@ describe("detectDuplicateTaskIds", () => {
 	});
 });
 
-describe("buildDuplicateCleanupPrompt", () => {
-	it("includes all duplicate group IDs and titles in the prompt", () => {
-		const groups = [
-			{ id: "TASK-81", tasks: [makeTask("TASK-81", "Foo"), makeTask("TASK-81", "Bar")] },
-			{ id: "TASK-123", tasks: [makeTask("TASK-123", "Baz"), makeTask("TASK-123", "Qux")] },
-		];
-		const prompt = buildDuplicateCleanupPrompt(groups);
-		expect(prompt).toContain("TASK-81");
-		expect(prompt).toContain("Foo");
-		expect(prompt).toContain("Bar");
-		expect(prompt).toContain("TASK-123");
-		expect(prompt).toContain("Baz");
-		expect(prompt).toContain("Qux");
-	});
-
-	it("mentions assigning new IDs in the prompt", () => {
-		const groups = [{ id: "TASK-1", tasks: [makeTask("TASK-1", "A"), makeTask("TASK-1", "B")] }];
-		const prompt = buildDuplicateCleanupPrompt(groups);
-		expect(prompt.toLowerCase()).toContain("assign new unused ids");
-	});
-
-	it("includes file paths and repair workflow guidance in the prompt", () => {
+describe("formatDuplicateTaskIdWarning", () => {
+	it("lists exact paths and points humans to the canonical CLI repair", () => {
 		const groups = [
 			{
 				id: "TASK-1",
@@ -105,11 +97,19 @@ describe("buildDuplicateCleanupPrompt", () => {
 				],
 			},
 		];
-		const prompt = buildDuplicateCleanupPrompt(groups);
-		expect(prompt).toContain("backlog instructions overview");
-		expect(prompt).toContain("/repo/backlog/tasks/task-1 - A.md");
-		expect(prompt).toContain("/repo/backlog/tasks/task-1 - B.md");
-		expect(prompt).toContain("dependencies");
-		expect(prompt).toContain("Do not delete");
+		const warning = formatDuplicateTaskIdWarning(groups);
+		expect(warning).toContain("TASK-1");
+		expect(warning).toContain("/repo/backlog/tasks/task-1 - A.md");
+		expect(warning).toContain("/repo/backlog/tasks/task-1 - B.md");
+		expect(warning).toContain("backlog doctor");
+		expect(warning).not.toContain("prompt");
+		expect(warning).not.toContain("agent");
+	});
+
+	it("provides a concise TUI summary", () => {
+		const groups = [{ id: "TASK-1", tasks: [makeTask("TASK-1", "A"), makeTask("TASK-01", "B")] }];
+		expect(formatDuplicateTaskIdSummary(groups)).toBe(
+			"Duplicate task IDs detected: TASK-1. Run 'backlog doctor' to preview a safe repair.",
+		);
 	});
 });

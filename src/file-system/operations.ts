@@ -17,7 +17,14 @@ import {
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	getTaskFilename,
+	getTaskPath,
+	isAmbiguousTaskIdError,
+	normalizeTaskIdentity,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 
@@ -25,6 +32,7 @@ import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
+		completedDir?: string;
 	};
 }
 
@@ -389,7 +397,8 @@ export class FileSystem {
 				if (existingPath && !existingPath.endsWith(filename)) {
 					await unlink(existingPath);
 				}
-			} catch {
+			} catch (error) {
+				if (isAmbiguousTaskIdError(error)) throw error;
 				// Ignore errors if no existing files found
 			}
 		}
@@ -402,7 +411,19 @@ export class FileSystem {
 	async loadTask(taskId: string): Promise<Task | null> {
 		try {
 			const tasksDir = await this.getTasksDir();
-			const core = { filesystem: { tasksDir } };
+			const [activeTasks, completedTasks] = await Promise.all([this.listTasks(), this.listCompletedTasks()]);
+			const identityMatches = [...activeTasks, ...completedTasks].filter((task) => taskIdsEqual(taskId, task.id));
+			if (identityMatches.length > 1) {
+				throw new AmbiguousTaskIdError(
+					taskId,
+					identityMatches.map((task) => task.filePath ?? task.id),
+				);
+			}
+			const activeMatch = activeTasks.find((task) => taskIdsEqual(taskId, task.id));
+			if (activeMatch?.filePath) return activeMatch;
+			if (identityMatches.length === 1) return null;
+
+			const core = { filesystem: { tasksDir, completedDir: this.completedDir } };
 			const filepath = await getTaskPath(taskId, core as TaskPathContext);
 
 			if (!filepath) return null;
@@ -410,7 +431,8 @@ export class FileSystem {
 			const content = await Bun.file(filepath).text();
 			const task = normalizeTaskIdentity(parseTask(content));
 			return { ...task, filePath: filepath };
-		} catch (_error) {
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) throw error;
 			return null;
 		}
 	}
@@ -552,7 +574,7 @@ export class FileSystem {
 		try {
 			const tasksDir = await this.getTasksDir();
 			const archiveTasksDir = await this.getArchiveTasksDir();
-			const core = { filesystem: { tasksDir } };
+			const core = { filesystem: { tasksDir, completedDir: this.completedDir } };
 			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
 			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
@@ -567,7 +589,8 @@ export class FileSystem {
 			await rename(sourcePath, targetPath);
 
 			return true;
-		} catch (_error) {
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) throw error;
 			return false;
 		}
 	}
@@ -576,7 +599,7 @@ export class FileSystem {
 		try {
 			const tasksDir = await this.getTasksDir();
 			const completedDir = await this.getCompletedDir();
-			const core = { filesystem: { tasksDir } };
+			const core = { filesystem: { tasksDir, completedDir } };
 			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
 			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
@@ -591,7 +614,8 @@ export class FileSystem {
 			await rename(sourcePath, targetPath);
 
 			return true;
-		} catch (_error) {
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) throw error;
 			return false;
 		}
 	}
@@ -667,7 +691,7 @@ export class FileSystem {
 				return true;
 			});
 		} catch (error) {
-			if (isCreateLockError(error)) {
+			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
 				throw error;
 			}
 			return false;
@@ -705,7 +729,7 @@ export class FileSystem {
 				return true;
 			});
 		} catch (error) {
-			if (isCreateLockError(error)) {
+			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
 				throw error;
 			}
 			return false;

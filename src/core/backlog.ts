@@ -1,5 +1,5 @@
 import { rename as moveFile, stat, unlink } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -55,13 +55,25 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	getTaskFilename,
+	getTaskPath,
+	normalizeTaskId,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
+import {
+	applyDuplicateTaskIdRepair,
+	type DuplicateRepairPlan,
+	type DuplicateRepairResult,
+	previewDuplicateTaskIdRepair,
+} from "./duplicate-task-repair.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
@@ -247,6 +259,14 @@ export class Core {
 
 	async withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
 		return await this.fs.withCreateLock(fn);
+	}
+
+	async previewDuplicateTaskIdRepair(options: { includeBranches?: boolean } = {}): Promise<DuplicateRepairPlan> {
+		return await previewDuplicateTaskIdRepair(this, options);
+	}
+
+	async repairDuplicateTaskIds(expectedFingerprint: string): Promise<DuplicateRepairResult> {
+		return await applyDuplicateTaskIdRepair(this, expectedFingerprint);
 	}
 
 	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
@@ -520,15 +540,19 @@ export class Core {
 	}
 
 	async getTask(taskId: string): Promise<Task | null> {
+		const localMatch = await this.fs.loadTask(taskId);
+		if (localMatch) return localMatch;
+
 		const store = await this.getContentStore();
 		const tasks = store.getTasks();
-		const match = tasks.find((task) => taskIdsEqual(taskId, task.id));
-		if (match) {
-			return match;
+		const matches = tasks.filter((task) => taskIdsEqual(taskId, task.id));
+		if (matches.length > 1) {
+			throw new AmbiguousTaskIdError(
+				taskId,
+				matches.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
+			);
 		}
-
-		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
-		return await this.fs.loadTask(taskId);
+		return matches[0] ?? null;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
@@ -580,7 +604,8 @@ export class Core {
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
-		const filePath = await getTaskPath(taskId, this);
+		const task = await this.fs.loadTask(taskId);
+		const filePath = task?.filePath ?? null;
 		if (!filePath) return null;
 		return await Bun.file(filePath).text();
 	}
@@ -2342,10 +2367,12 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
-		const taskPath = await getTaskPath(taskId, this);
-		const taskFilename = await getTaskFilename(taskId, this);
+		const taskPath = task.filePath ?? (await getTaskPath(task.id, this));
+		const taskFilename = taskPath ? basename(taskPath) : null;
 
 		if (!taskPath || !taskFilename) return false;
 
@@ -2724,7 +2751,7 @@ export class Core {
 		const tasks = await this.fs.listTasks();
 		return await Promise.all(
 			tasks.map(async (task) => {
-				const filePath = await getTaskPath(task.id, this);
+				const filePath = task.filePath ?? (await getTaskPath(task.id, this));
 
 				if (filePath) {
 					const bunFile = Bun.file(filePath);

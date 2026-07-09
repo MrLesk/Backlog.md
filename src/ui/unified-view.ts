@@ -3,9 +3,10 @@
  */
 
 import type { Core } from "../core/backlog.ts";
+import { findLocalDuplicateTaskIds } from "../core/duplicate-task-repair.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
-import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
+import { formatDuplicateTaskIdSummary } from "../utils/duplicate-detection.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
@@ -202,6 +203,11 @@ export async function loadTasksForUnifiedView(
 	}
 }
 
+export async function getDuplicateTaskStartupWarning(core: Core): Promise<string | undefined> {
+	const groups = await findLocalDuplicateTaskIds(core);
+	return groups.length > 0 ? formatDuplicateTaskIdSummary(groups) : undefined;
+}
+
 type ViewResult = "switch" | "exit";
 
 /**
@@ -215,13 +221,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			loadingScreenFactory: options.loadingScreenFactory,
 		});
 
-		const rawLocalTasks = await options.core.filesystem.listTasks();
-		const duplicateGroups = detectDuplicateTaskIds(rawLocalTasks);
-		let startupWarning: string | undefined;
-		if (duplicateGroups.length > 0) {
-			const ids = duplicateGroups.map((g) => g.id).join(", ");
-			startupWarning = `⚠ Duplicate task IDs detected: ${ids} — open the web UI for repair instructions`;
-		}
+		const startupWarning = await getDuplicateTaskStartupWarning(options.core);
 
 		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		if (baseTasks.length === 0) {

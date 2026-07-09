@@ -25,7 +25,7 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { apiClient } from './lib/api';
-import type { DuplicateGroup } from '../utils/duplicate-detection';
+import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
@@ -183,7 +183,7 @@ function App() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [duplicateRepairPlan, setDuplicateRepairPlan] = useState<DuplicateRepairPlan | null>(null);
   
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
@@ -260,20 +260,20 @@ function App() {
   const loadAllData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, duplicates] = await Promise.all([
+      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, duplicatePlan] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
         apiClient.search(),
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
-        apiClient.fetchDuplicateTasks(),
+        apiClient.fetchDuplicateTaskRepairPlan().catch(() => null),
       ]);
 
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
       const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys, milestoneAliases);
 
-      setDuplicateGroups(duplicates);
+      setDuplicateRepairPlan(duplicatePlan);
       setStatuses(statusesData);
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
@@ -489,7 +489,7 @@ function App() {
                 decisions={decisions}
                 isLoading={isLoading}
                 onRefreshData={refreshData}
-                duplicateGroups={duplicateGroups}
+                duplicateRepairPlan={duplicateRepairPlan}
               />
             }
           >
