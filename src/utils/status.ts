@@ -1,9 +1,11 @@
 import { Core } from "../core/backlog.ts";
 
+type StatusConfigReader = Pick<Core, "filesystem">;
+
 /**
  * Load valid statuses from project configuration.
  */
-export async function getValidStatuses(core?: Core): Promise<string[]> {
+export async function getValidStatuses(core?: StatusConfigReader): Promise<string[]> {
 	const c = core ?? new Core(process.cwd());
 	const config = await c.filesystem.loadConfig();
 	return config?.statuses || [];
@@ -19,7 +21,7 @@ export async function getValidStatuses(core?: Core): Promise<string[]> {
  * - "in progress" matches "In Progress"
  * - "DONE" matches "Done"
  */
-export async function getCanonicalStatus(input: string | undefined, core?: Core): Promise<string | null> {
+export async function getCanonicalStatus(input: string | undefined, core?: StatusConfigReader): Promise<string | null> {
 	if (!input) return null;
 	const statuses = await getValidStatuses(core);
 	// Normalize: lowercase, trim, and remove all whitespace
@@ -31,6 +33,50 @@ export async function getCanonicalStatus(input: string | undefined, core?: Core)
 		if (configNormalized === normalized) return s; // preserve configured casing
 	}
 	return null;
+}
+
+export async function getCanonicalStatuses(
+	inputs: readonly string[],
+	core?: StatusConfigReader,
+	options: { extraStatuses?: readonly string[] } = {},
+): Promise<{ values: string[]; invalid: string[]; validStatuses: string[] }> {
+	const configuredStatuses = await getValidStatuses(core);
+	const statuses: string[] = [];
+	const seenValidStatuses = new Set<string>();
+	for (const status of [...(options.extraStatuses ?? []), ...configuredStatuses]) {
+		const key = status.toLowerCase().replace(/\s+/g, "");
+		if (seenValidStatuses.has(key)) {
+			continue;
+		}
+		seenValidStatuses.add(key);
+		statuses.push(status);
+	}
+	const canonicalByNormalized = new Map(
+		statuses.map((status) => [status.toLowerCase().replace(/\s+/g, ""), status] as const),
+	);
+	const values: string[] = [];
+	const invalid: string[] = [];
+	const seen = new Set<string>();
+
+	for (const input of inputs) {
+		const raw = String(input ?? "").trim();
+		if (!raw) {
+			continue;
+		}
+		const canonical = canonicalByNormalized.get(raw.toLowerCase().replace(/\s+/g, ""));
+		if (!canonical) {
+			invalid.push(raw);
+			continue;
+		}
+		const key = canonical.toLowerCase();
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		values.push(canonical);
+	}
+
+	return { values, invalid, validStatuses: statuses };
 }
 
 /**

@@ -446,6 +446,57 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("TASK-3 - Archived task");
 	});
 
+	it("excludes configured statuses in task_list and task_search", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Active visible task",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Completed hidden task",
+					status: "Done",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Progress visible task",
+					status: "In Progress",
+				},
+			},
+		});
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { excludeStatus: ["done"] } },
+		});
+		const listText = (listResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
+		expect(listText).toContain("TASK-1 - Active visible task");
+		expect(listText).toContain("TASK-3 - Progress visible task");
+		expect(listText).not.toContain("TASK-2 - Completed hidden task");
+
+		const searchResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_search", arguments: { query: "task", excludeStatus: ["Done"] } },
+		});
+		const searchText = getText(searchResult.content);
+		expect(searchText).toContain("TASK-1 - Active visible task");
+		expect(searchText).toContain("TASK-3 - Progress visible task");
+		expect(searchText).not.toContain("TASK-2 - Completed hidden task");
+
+		const invalidResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { excludeStatus: ["Blocked"] } },
+		});
+		expect(invalidResult.isError).toBe(true);
+		expect(getText(invalidResult.content)).toContain("Invalid excludeStatus: Blocked");
+	});
+
 	it("exposes status enums and defaults from configuration", async () => {
 		const config = await loadConfig(mcpServer);
 		const configuredStatuses =

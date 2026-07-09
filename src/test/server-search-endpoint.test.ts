@@ -132,6 +132,16 @@ describe("BacklogServer search endpoint", () => {
 		expect(results[0]?.task?.id).toBe(baseTask.id);
 	});
 
+	it("excludes configured statuses from task listings and search results", async () => {
+		const tasks = await fetchJson<Task[]>("/api/tasks?excludeStatus=In%20Progress");
+		expect(tasks).toHaveLength(0);
+
+		const results = await fetchJson<Array<{ type: string; task?: Task }>>(
+			"/api/search?type=task&query=search&excludeStatus=In%20Progress",
+		);
+		expect(results).toHaveLength(0);
+	});
+
 	it("filters search results by assignee and labels", async () => {
 		const url = "/api/search?type=task&query=Alpha&status=In%20Progress&priority=high&label=search&assignee=%40codex";
 		const results = await fetchJson<Array<{ type: string; task?: Task }>>(url);
@@ -148,6 +158,11 @@ describe("BacklogServer search endpoint", () => {
 
 	it("rejects unsupported priority filters with 400", async () => {
 		await expect(fetchJson<Task[]>("/api/tasks?priority=urgent")).rejects.toThrow();
+	});
+
+	it("rejects unsupported excluded statuses with 400", async () => {
+		await expect(fetchJson<Task[]>("/api/tasks?excludeStatus=Blocked")).rejects.toThrow();
+		await expect(fetchJson<Array<{ type: string }>>("/api/search?type=task&excludeStatus=Blocked")).rejects.toThrow();
 	});
 
 	it("supports zero-padded ids and dependency-aware search", async () => {

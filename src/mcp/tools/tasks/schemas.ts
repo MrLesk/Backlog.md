@@ -7,6 +7,11 @@ export const taskListSchema: JsonSchema = {
 			type: "string",
 			maxLength: 100,
 		},
+		excludeStatus: {
+			type: "array",
+			items: { type: "string", maxLength: 100 },
+			description: "Exclude tasks with any of these statuses",
+		},
 		assignee: {
 			type: "string",
 			maxLength: 100,
@@ -47,6 +52,11 @@ export const taskSearchSchema: JsonSchema = {
 		status: {
 			type: "string",
 			maxLength: 100,
+		},
+		excludeStatus: {
+			type: "array",
+			items: { type: "string", maxLength: 100 },
+			description: "Exclude tasks with any of these statuses",
 		},
 		priority: {
 			type: "string",

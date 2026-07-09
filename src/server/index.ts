@@ -21,6 +21,7 @@ import {
 import { watchConfig } from "../utils/config-watcher.ts";
 import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
+import { formatValidStatuses, getCanonicalStatuses } from "../utils/status.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -79,6 +80,14 @@ function parseUpdateDocumentPath(value: unknown): string | null | undefined {
 		return value;
 	}
 	throw new DocumentPayloadValidationError("Document path must be a string or null.");
+}
+
+function collectDelimitedSearchParams(url: URL, names: string[]): string[] {
+	const values = names.flatMap((name) => url.searchParams.getAll(name));
+	return values
+		.flatMap((value) => value.split(","))
+		.map((value) => value.trim())
+		.filter((value) => value.length > 0);
 }
 
 function isDocumentValidationError(error: Error): boolean {
@@ -632,6 +641,12 @@ export class BacklogServer {
 		const parent = url.searchParams.get("parent") || undefined;
 		const priorityParam = url.searchParams.get("priority") || undefined;
 		const crossBranch = url.searchParams.get("crossBranch") === "true";
+		const excludeStatusParams = collectDelimitedSearchParams(url, [
+			"excludeStatus",
+			"exclude-status",
+			"excludeStatuses",
+			"exclude-statuses",
+		]);
 		const labelParams = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
 		const labelsCsv = url.searchParams.get("labels");
 		if (labelsCsv) {
@@ -647,6 +662,20 @@ export class BacklogServer {
 				return Response.json({ error: "Invalid priority filter" }, { status: 400 });
 			}
 			priority = normalizedPriority as "high" | "medium" | "low";
+		}
+
+		let excludeStatus: string[] | undefined;
+		if (excludeStatusParams.length > 0) {
+			const { values, invalid, validStatuses } = await getCanonicalStatuses(excludeStatusParams, this.core);
+			if (invalid.length > 0) {
+				return Response.json(
+					{
+						error: `Invalid excludeStatus filter: ${invalid.join(", ")}. Valid statuses are: ${formatValidStatuses(validStatuses)}`,
+					},
+					{ status: 400 },
+				);
+			}
+			excludeStatus = values.length > 0 ? values : undefined;
 		}
 
 		// Resolve parent task ID if provided
@@ -672,7 +701,14 @@ export class BacklogServer {
 
 		// Use Core.queryTasks which handles all filtering and cross-branch logic
 		const tasks = await this.core.queryTasks({
-			filters: { status, assignee, priority, parentTaskId, labels: labels.length > 0 ? labels : undefined },
+			filters: {
+				status,
+				excludeStatus,
+				assignee,
+				priority,
+				parentTaskId,
+				labels: labels.length > 0 ? labels : undefined,
+			},
 			includeCrossBranch: crossBranch,
 		});
 
@@ -687,6 +723,12 @@ export class BacklogServer {
 			const limitParam = url.searchParams.get("limit");
 			const typeParams = [...url.searchParams.getAll("type"), ...url.searchParams.getAll("types")];
 			const statusParams = url.searchParams.getAll("status");
+			const excludeStatusParams = collectDelimitedSearchParams(url, [
+				"excludeStatus",
+				"exclude-status",
+				"excludeStatuses",
+				"exclude-statuses",
+			]);
 			const priorityParamsRaw = url.searchParams.getAll("priority");
 			const assigneeParamsRaw = [...url.searchParams.getAll("assignee"), ...url.searchParams.getAll("assignees")];
 			const labelParamsRaw = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
@@ -732,6 +774,7 @@ export class BacklogServer {
 
 			const filters: {
 				status?: string | string[];
+				excludeStatus?: string | string[];
 				priority?: SearchPriorityFilter | SearchPriorityFilter[];
 				assignee?: string | string[];
 				labels?: string | string[];
@@ -742,6 +785,19 @@ export class BacklogServer {
 				filters.status = statusParams[0];
 			} else if (statusParams.length > 1) {
 				filters.status = statusParams;
+			}
+
+			if (excludeStatusParams.length > 0) {
+				const { values, invalid, validStatuses } = await getCanonicalStatuses(excludeStatusParams, this.core);
+				if (invalid.length > 0) {
+					return Response.json(
+						{
+							error: `Invalid excludeStatus filter: ${invalid.join(", ")}. Valid statuses are: ${formatValidStatuses(validStatuses)}`,
+						},
+						{ status: 400 },
+					);
+				}
+				filters.excludeStatus = values.length === 1 ? values[0] : values;
 			}
 
 			if (priorityParamsRaw.length > 0) {

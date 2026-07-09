@@ -311,6 +311,15 @@ export class Core {
 			const statusLower = filters.status.toLowerCase();
 			result = result.filter((task) => (task.status ?? "").toLowerCase() === statusLower);
 		}
+		if (filters.excludeStatus) {
+			const excludedStatuses = Array.isArray(filters.excludeStatus) ? filters.excludeStatus : [filters.excludeStatus];
+			const excluded = new Set(
+				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
+			);
+			if (excluded.size > 0) {
+				result = result.filter((task) => !excluded.has((task.status ?? "").toLowerCase()));
+			}
+		}
 		if (filters.assignee) {
 			const assigneeLower = filters.assignee.toLowerCase();
 			result = result.filter((task) => (task.assignee ?? []).some((value) => value.toLowerCase() === assigneeLower));
@@ -470,6 +479,9 @@ export class Core {
 		const searchFilters: SearchFilters = {};
 		if (filters?.status) {
 			searchFilters.status = filters.status;
+		}
+		if (filters?.excludeStatus) {
+			searchFilters.excludeStatus = filters.excludeStatus;
 		}
 		if (filters?.priority) {
 			searchFilters.priority = filters.priority;

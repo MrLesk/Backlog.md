@@ -15,6 +15,7 @@ import {
 	resolveClosestMilestoneFilterValue,
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
+import { formatValidStatuses, getCanonicalStatuses } from "../../../utils/status.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
@@ -47,6 +48,7 @@ export type TaskCreateArgs = {
 
 export type TaskListArgs = {
 	status?: string;
+	excludeStatus?: string[];
 	assignee?: string;
 	unassigned?: boolean;
 	milestone?: string;
@@ -58,6 +60,7 @@ export type TaskListArgs = {
 export type TaskSearchArgs = {
 	query?: string;
 	status?: string;
+	excludeStatus?: string[];
 	priority?: SearchPriorityFilter;
 	modifiedFiles?: string[];
 	limit?: number;
@@ -77,6 +80,22 @@ export class TaskHandlers {
 	private async getConfiguredStatuses(): Promise<string[]> {
 		const config = await this.core.filesystem.loadConfig();
 		return config?.statuses ?? [...DEFAULT_STATUSES];
+	}
+
+	private async normalizeExcludedStatuses(statuses?: string[]): Promise<string[] | undefined> {
+		if (!statuses || statuses.length === 0) {
+			return undefined;
+		}
+		const { values, invalid, validStatuses } = await getCanonicalStatuses(statuses, this.core, {
+			extraStatuses: ["Draft"],
+		});
+		if (invalid.length > 0) {
+			throw new BacklogToolError(
+				`Invalid excludeStatus: ${invalid.join(", ")}. Valid statuses are: ${formatValidStatuses(validStatuses)}`,
+				"VALIDATION_ERROR",
+			);
+		}
+		return values.length > 0 ? values : undefined;
 	}
 
 	private isDraftStatus(status?: string | null): boolean {
@@ -152,7 +171,18 @@ export class TaskHandlers {
 		if (args.assignee && args.unassigned) {
 			throw new BacklogToolError("unassigned cannot be combined with assignee.", "VALIDATION_ERROR");
 		}
+		const excludeStatus = await this.normalizeExcludedStatuses(args.excludeStatus);
 		if (this.isDraftStatus(args.status)) {
+			if (excludeStatus?.some((status) => this.isDraftStatus(status))) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "No tasks found.",
+						},
+					],
+				};
+			}
 			let drafts = await this.core.filesystem.listDrafts();
 			if (args.search) {
 				const draftSearch = createTaskSearchIndex(drafts);
@@ -225,6 +255,9 @@ export class TaskHandlers {
 		const filters: TaskListFilter = {};
 		if (args.status) {
 			filters.status = args.status;
+		}
+		if (excludeStatus && excludeStatus.length > 0) {
+			filters.excludeStatus = excludeStatus;
 		}
 		if (args.assignee) {
 			filters.assignee = args.assignee;
@@ -342,13 +375,25 @@ export class TaskHandlers {
 		if (!query && (!modifiedFiles || modifiedFiles.length === 0)) {
 			throw new BacklogToolError("Search query or modifiedFiles filter is required", "VALIDATION_ERROR");
 		}
+		const excludeStatus = await this.normalizeExcludedStatuses(args.excludeStatus);
 
 		if (this.isDraftStatus(args.status)) {
+			if (excludeStatus?.some((status) => this.isDraftStatus(status))) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `No tasks found for "${query || modifiedFiles?.join(", ")}".`,
+						},
+					],
+				};
+			}
 			const drafts = await this.core.filesystem.listDrafts();
 			const searchIndex = createTaskSearchIndex(drafts);
 			let draftMatches = searchIndex.search({
 				query,
 				status: "Draft",
+				excludeStatus,
 				priority: args.priority,
 				modifiedFiles,
 			});
@@ -387,6 +432,7 @@ export class TaskHandlers {
 		let taskMatches = searchIndex.search({
 			query,
 			status: args.status,
+			excludeStatus,
 			priority: args.priority,
 			modifiedFiles,
 		});

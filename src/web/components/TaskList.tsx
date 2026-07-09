@@ -94,6 +94,13 @@ const TaskList: React.FC<TaskListProps> = ({
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
+	const initialExcludeStatusParams = useMemo(() => {
+		const statuses = [...searchParams.getAll("excludeStatus")];
+		const statusesCsv = searchParams.get("excludeStatuses");
+		if (statusesCsv) statuses.push(...statusesCsv.split(","));
+		return statuses.map((status) => status.trim()).filter((status) => status.length > 0);
+	}, []);
+	const [excludedStatusFilter, setExcludedStatusFilter] = useState<string[]>(initialExcludeStatusParams);
 	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
 		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
 	);
@@ -258,12 +265,20 @@ const TaskList: React.FC<TaskListProps> = ({
 		return uniqueMilestones;
 	}, [availableMilestones]);
 	const hasActiveFilters = Boolean(
-		statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		statusFilter || excludedStatusFilter.length > 0 || priorityFilter || labelFilter.length > 0 || milestoneFilter,
 	);
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
 		const paramStatus = searchParams.get("status") ?? "";
+		const paramExcludedStatuses = [...searchParams.getAll("excludeStatus")];
+		const excludedStatusesCsv = searchParams.get("excludeStatuses");
+		if (excludedStatusesCsv) {
+			paramExcludedStatuses.push(...excludedStatusesCsv.split(","));
+		}
+		const normalizedExcludedStatuses = paramExcludedStatuses
+			.map((status) => status.trim())
+			.filter((status) => status.length > 0);
 		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
 		const paramMilestone = searchParams.get("milestone") ?? "";
 		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
@@ -275,6 +290,9 @@ const TaskList: React.FC<TaskListProps> = ({
 
 		if (paramStatus !== statusFilter) {
 			setStatusFilter(paramStatus);
+		}
+		if (normalizedExcludedStatuses.join("|") !== excludedStatusFilter.join("|")) {
+			setExcludedStatusFilter(normalizedExcludedStatuses);
 		}
 		if (paramPriority !== priorityFilter) {
 			setPriorityFilter(paramPriority);
@@ -310,7 +328,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 
 		const shouldUseApi =
-			Boolean(statusFilter) || Boolean(priorityFilter) || labelFilter.length > 0;
+			Boolean(statusFilter) || excludedStatusFilter.length > 0 || Boolean(priorityFilter) || labelFilter.length > 0;
 
 		if (!hasActiveFilters) {
 			return;
@@ -329,6 +347,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				const results = await apiClient.search({
 					types: ["task"],
 					status: statusFilter || undefined,
+					excludeStatus: excludedStatusFilter.length > 0 ? excludedStatusFilter : undefined,
 					priority: (priorityFilter || undefined) as SearchPriorityFilter | undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				});
@@ -354,6 +373,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 	}, [
 		hasActiveFilters,
+		excludedStatusFilter,
 		priorityFilter,
 		statusFilter,
 		labelFilter,
@@ -366,6 +386,7 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const syncUrl = (
 		nextStatus: string,
+		nextExcludedStatuses: string[],
 		nextPriority: "" | SearchPriorityFilter,
 		nextLabels: string[],
 		nextMilestone: string,
@@ -373,6 +394,11 @@ const TaskList: React.FC<TaskListProps> = ({
 		const params = new URLSearchParams();
 		if (nextStatus) {
 			params.set("status", nextStatus);
+		}
+		for (const status of nextExcludedStatuses) {
+			if (status.trim()) {
+				params.append("excludeStatus", status.trim());
+			}
 		}
 		if (nextPriority) {
 			params.set("priority", nextPriority);
@@ -390,31 +416,38 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const handleStatusChange = (value: string) => {
 		setStatusFilter(value);
-		syncUrl(value, priorityFilter, labelFilter, milestoneFilter);
+		syncUrl(value, excludedStatusFilter, priorityFilter, labelFilter, milestoneFilter);
+	};
+
+	const handleExcludeStatusChange = (next: string[]) => {
+		const normalized = next.map((status) => status.trim()).filter((status) => status.length > 0);
+		setExcludedStatusFilter(normalized);
+		syncUrl(statusFilter, normalized, priorityFilter, labelFilter, milestoneFilter);
 	};
 
 	const handlePriorityChange = (value: "" | SearchPriorityFilter) => {
 		setPriorityFilter(value);
-		syncUrl(statusFilter, value, labelFilter, milestoneFilter);
+		syncUrl(statusFilter, excludedStatusFilter, value, labelFilter, milestoneFilter);
 	};
 
 	const handleLabelChange = (next: string[]) => {
 		const normalized = next.map((label) => label.trim()).filter((label) => label.length > 0);
 		setLabelFilter(normalized);
-		syncUrl(statusFilter, priorityFilter, normalized, milestoneFilter);
+		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, normalized, milestoneFilter);
 	};
 
 	const handleMilestoneChange = (value: string) => {
 		setMilestoneFilter(value);
-		syncUrl(statusFilter, priorityFilter, labelFilter, value);
+		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, labelFilter, value);
 	};
 
 	const handleClearFilters = () => {
 		setStatusFilter("");
+		setExcludedStatusFilter([]);
 		setPriorityFilter("");
 		setLabelFilter([]);
 		setMilestoneFilter("");
-		syncUrl("", "", [], "");
+		syncUrl("", [], "", [], "");
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
@@ -638,6 +671,18 @@ const TaskList: React.FC<TaskListProps> = ({
 								</option>
 							))}
 						</select>
+
+						<LabelFilterDropdown
+							availableLabels={availableStatuses}
+							selectedLabels={excludedStatusFilter}
+							onChange={handleExcludeStatusChange}
+							menuId="task-list-exclude-status-menu"
+							label="Exclude status"
+							emptyLabel="None"
+							noOptionsLabel="No statuses"
+							clearLabel="Clear excluded statuses"
+							className="min-w-[210px]"
+						/>
 
 						<select
 							value={priorityFilter}
