@@ -131,6 +131,10 @@ describe("CLI Integration", () => {
 				'backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain',
 			);
 			expect(taskCreation).toContain('backlog task list --status "<active status>" --plain');
+			expect(taskCreation).toContain('backlog task list --exclude-status "<terminal status>" --plain');
+			expect(taskCreation).toContain(
+				"Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states.",
+			);
 			expect(taskCreation).not.toContain('backlog task list --status "In Progress" --plain');
 			expect(taskCreation).toContain(
 				"Do not pass milestone IDs such as `m-0` to `--parent`; assign a task to a milestone with `--milestone`/`-m`.",

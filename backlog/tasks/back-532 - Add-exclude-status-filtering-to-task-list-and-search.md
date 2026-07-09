@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:58'
-updated_date: '2026-07-09 17:53'
+updated_date: '2026-07-09 20:55'
 labels: []
 dependencies: []
 references:
@@ -57,11 +57,7 @@ GitHub issue #690 bundles board sorting and status filtering requests. The sorti
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add excludeStatus to shared task/search filter types and apply it in ContentStore, SearchService, and the in-memory task search helper.
-2. Expose exclude-status in CLI task list and search with configured-status validation and help text.
-3. Expose excludeStatus through server API/search client and MCP task list/search schemas/handlers.
-4. Add an Exclude status control to Web All Tasks that persists in URL params and combines with existing filters.
-5. Add focused regression tests for CLI/search, server/search service, MCP, and Web All Tasks.
+1. Preserve shared exclude-status filtering for CLI, server, Web, TUI, and core search plumbing. 2. Remove the PR-added MCP excludeStatus schemas, handler branches, regression test, and MCP workflow guidance. 3. Add canonical CLI --exclude-status guidance to the shipped task-creation workflow and verify focused plus full project checks.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -82,12 +78,16 @@ PR #745 fourth review follow-up: routed board filter-change state through mergeU
 PR #745 fifth review follow-up: kept interactive search source tasks unfiltered by the clearable exclude-status filter while still seeding excludeStatus into TUI filter state, and made status canonicalization fall back to default statuses when config statuses are empty. Added regression coverage for empty configured statuses. Validation passed: bun test src/test/cli-exclude-status-filtering.test.ts src/test/unified-view-filters.test.ts; bunx tsc --noEmit; bun run check .; git diff --check.
 
 PR #745 sixth review follow-up: kept hidden exclude-status filters from blocking Kanban move mode, while retaining them as active display filters, and made Web status loading/menu options fall back to default statuses when configured statuses are empty. Added regressions for board move blocking, /api/statuses fallback, and the exclude-status menu fallback. Validation passed: bun test src/test/board-ui.test.ts src/test/web-task-list-labels-menu.test.tsx src/test/server-search-endpoint.test.ts src/test/cli-exclude-status-filtering.test.ts src/test/unified-view-filters.test.ts; bunx tsc --noEmit; bun run check .; git diff --check.
+
+PR #745 specification correction: keep the shared exclude-status implementation for CLI, server, Web, TUI, and core search behavior, but remove the net-new MCP tool surface and MCP workflow guidance. The shipped CLI task-creation guide is now the canonical public workflow documentation for --exclude-status.
+
+PR #745 specification-correction validation: focused coverage passed with 185 tests and 0 failures; bunx tsc --noEmit passed; bun run check . passed; bun run build passed; full bun test passed on the exact staged tree in a disposable worktree with 1461 pass, 2 skip, and 0 fail. The disposable run was used after an initial live-worktree run triggered a transient worktree cleanup race; the branch ref remained intact and the narrow patch was restored and reverified.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented narrow #690 exclude-status filtering across CLI, server/search plumbing, MCP, and Web All Tasks, with configured-status validation and regression coverage. Verified with TypeScript, Biome, build, and the full Bun test suite.
+Kept exclude-status filtering CLI-first across shared core, server, Web, TUI, and search behavior; removed the net-new MCP tool surface and MCP workflow guidance; and documented canonical --exclude-status CLI usage. Verified with focused tests, TypeScript, Biome, build, and the full Bun test suite.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

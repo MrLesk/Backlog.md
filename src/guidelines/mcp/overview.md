@@ -27,7 +27,7 @@ Ask yourself: "Do I need to think about HOW to do this?"
 ### Typical Workflow
 
 When the user requests non-trivial work:
-1. **Search first:** Use `task_search` or `task_list` (with status or `excludeStatus` filters) - work might already be tracked
+1. **Search first:** Use `task_search` or `task_list` (with status filters) - work might already be tracked
 2. **If found:** Work on the existing task. Check task-execution workflow to know how to proceed
 3. **If not found:** Create task(s) based on scope (single task or present breakdown for approval). Check task-creation workflow for details
 4. **Execute:** Follow task-execution guidelines
@@ -52,8 +52,8 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 **Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.
 
-- `task_list` — list tasks with optional filtering by status, excludeStatus, assignee (or `unassigned: true`), milestone, labels, search, or limit
-- `task_search` — search tasks by title and description with optional status, excludeStatus, priority, and modifiedFiles filters
+- `task_list` — list tasks with optional filtering by status, assignee (or `unassigned: true`), milestone, labels, search, or limit
+- `task_search` — search tasks by title and description, or use `modifiedFiles` to filter by project-root-relative modified file path substrings
 - `task_view` — read full task context (description, plan, notes, comments, final summary, acceptance criteria, Definition of Done)
 - `definition_of_done_defaults_get` — read project-level Definition of Done defaults from config
 - `definition_of_done_defaults_upsert` — replace project-level Definition of Done defaults in config
