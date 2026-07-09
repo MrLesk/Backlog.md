@@ -61,6 +61,21 @@ const dependentTask: Task = {
 	modifiedFiles: ["src/ui/task-viewer-with-search.ts"],
 };
 
+const customPriorityTask: Task = {
+	id: "TASK-0009",
+	title: "Custom priority escalation",
+	status: "In Progress",
+	assignee: ["@codex"],
+	reporter: "@codex",
+	createdDate: "2025-09-20 11:00",
+	updatedDate: "2025-09-20 11:00",
+	labels: ["search"],
+	dependencies: [],
+	description: "Custom priority lookup target",
+	priority: "very high",
+	modifiedFiles: ["src/server/index.ts"],
+};
+
 describe("BacklogServer search endpoint", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("server-search");
@@ -70,6 +85,7 @@ describe("BacklogServer search endpoint", () => {
 			projectName: "Server Search",
 			statuses: ["To Do", "In Progress", "Done"],
 			labels: [],
+			priorities: ["Very High", "High", "Medium", "Low", "Very Low"],
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
 			remoteOperations: false,
@@ -77,6 +93,7 @@ describe("BacklogServer search endpoint", () => {
 
 		await filesystem.saveTask(baseTask);
 		await filesystem.saveTask(dependentTask);
+		await filesystem.saveTask(customPriorityTask);
 		await filesystem.saveDocument(baseDoc);
 		await filesystem.saveDecision(baseDecision);
 
@@ -141,6 +158,17 @@ describe("BacklogServer search endpoint", () => {
 			"/api/search?type=task&query=search&excludeStatus=In%20Progress",
 		);
 		expect(results).toHaveLength(0);
+	});
+
+	it("uses configured custom priorities for task and search filters", async () => {
+		const taskResults = await fetchJson<Task[]>("/api/tasks?priority=VERY%20HIGH");
+		expect(taskResults.map((task) => task.id)).toEqual([customPriorityTask.id]);
+
+		const searchResults = await fetchJson<Array<{ type: string; task?: Task }>>(
+			"/api/search?type=task&query=custom&priority=Very%20High",
+		);
+		expect(searchResults).toHaveLength(1);
+		expect(searchResults[0]?.task?.id).toBe(customPriorityTask.id);
 	});
 
 	it("filters search results by assignee and labels", async () => {

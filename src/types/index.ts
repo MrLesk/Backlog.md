@@ -64,7 +64,7 @@ export interface Task {
 	parentTaskTitle?: string;
 	subtasks?: string[];
 	subtaskSummaries?: Array<{ id: string; title: string }>;
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	/** Semantic task type (e.g. bug, feature). Allowed values come from config `types` (defaults to DEFAULT_TASK_TYPES); absent means untyped. */
 	type?: string;
 	branch?: string;
@@ -106,7 +106,7 @@ export interface TaskCreateInput {
 	title: string;
 	description?: string;
 	status?: TaskStatus;
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	type?: string;
 	ordinal?: number;
 	milestone?: string;
@@ -130,7 +130,7 @@ export interface TaskUpdateInput {
 	title?: string;
 	description?: string;
 	status?: TaskStatus;
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	type?: string;
 	milestone?: string | null;
 	labels?: string[];
@@ -175,7 +175,7 @@ export interface TaskListFilter {
 	excludeStatus?: string | string[];
 	assignee?: string;
 	unassigned?: boolean;
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	milestone?: string;
 	parentTaskId?: string;
 	labels?: string[];
@@ -236,7 +236,7 @@ export interface DocumentUpdateInput {
 
 export type SearchResultType = "task" | "document" | "decision";
 
-export type SearchPriorityFilter = "high" | "medium" | "low";
+export type SearchPriorityFilter = string;
 
 export interface SearchMatch {
 	key?: string;
@@ -301,6 +301,8 @@ export interface BacklogConfig {
 	labels: string[];
 	/** Allowed task types. Defaults to DEFAULT_TASK_TYPES when not configured. */
 	types?: string[];
+	/** Ordered task priority labels. Defaults to High, Medium, Low when not configured. */
+	priorities?: string[];
 	/** @deprecated Milestones are sourced from milestone files, not config. */
 	milestones?: string[];
 	definitionOfDone?: string[];

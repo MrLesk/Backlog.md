@@ -168,6 +168,19 @@ describe("sortByPriority", () => {
 		]);
 	});
 
+	test("sorts tasks by configured custom priority order", () => {
+		const tasks = [
+			{ id: "task-1", priority: "low" },
+			{ id: "task-2", priority: "very high" },
+			{ id: "task-3", priority: "very low" },
+			{ id: "task-4", priority: "medium" },
+			{ id: "task-5" },
+		];
+
+		const sorted = sortByPriority(tasks, ["Very High", "High", "Medium", "Low", "Very Low"]);
+		expect(sorted.map((task) => task.id)).toEqual(["task-2", "task-4", "task-1", "task-3", "task-5"]);
+	});
+
 	test("sorts tasks with same priority by task ID", () => {
 		const tasks = [
 			{ id: "task-10", priority: "high" as const },

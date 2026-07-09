@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:58'
-updated_date: '2026-07-09 21:14'
+updated_date: '2026-07-09 21:23'
 labels: []
 dependencies: []
 references:
@@ -57,7 +57,7 @@ GitHub issue #690 bundles board sorting and status filtering requests. The sorti
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Merge origin/main at 219f733 normally into the existing PR branch. 2. Resolve the shared TaskList Web test conflict by retaining #741 ID sorting, #742 deterministic label ordering, and #745 exclude-status coverage while accepting #744 column sorting from main. 3. Verify the auto-merged production code preserves CLI-first exclude-status behavior and exposes no MCP excludeStatus surface. 4. Run the focused exclude-status, task-sorting, label, TaskList, and TaskColumn suites plus TypeScript, Biome, and build; then finalize and push the merge commit.
+1. Merge origin/main at 0efd50f normally into the existing PR branch. 2. Resolve the nine overlapping CLI, server, shared search, TUI, Web, and regression-test conflicts by composing custom-priority string normalization with exclude-status list filtering. 3. Preserve current-main #741/#742/#744/#743 behavior verbatim where it does not overlap, keep MCP exactly current-main compatible with no excludeStatus surface, and audit TaskList URL canonicalization plus statistics/completion behavior. 4. Run the combined custom-priority, exclude-status, TaskList, TaskColumn, task-sorting, label, board, statistics, completion, CLI, server, and MCP focused suites plus TypeScript, Biome, and build; then finalize and push the merge commit.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -86,12 +86,16 @@ PR #745 specification-correction validation: focused coverage passed with 185 te
 Reopened for integration after #741, #742, and #744 merged to main. Context review found one expected conflict in src/test/web-task-list-labels-menu.test.tsx; resolution will combine both test helpers and retain all regression blocks without adding new implementation layers.
 
 Integrated origin/main at 219f733 after #741, #742, and #744 merged. The sole content conflict in src/test/web-task-list-labels-menu.test.tsx was resolved by retaining both the deterministic label-order helper/regression block and the exclude-status URL/API helper/regressions; hierarchical and nonnumeric ID tests also remain. Audited the merged tree: task-sorting, label-filter, TaskColumn, and their focused tests match main exactly; TaskList combines main's shared ID comparators with #745 exclude-status behavior; MCP task schemas, handlers, tests, and guidance match main with no excludeStatus surface. Validation passed: 243 focused tests across 13 files with 0 failures; bunx tsc --noEmit; bun run check .; bun run build. Per integration instructions, the full suite was not run from the live worktree.
+
+Reopened for final integration after #743 merged to main. Context review found nine expected conflicts across CLI/server/shared filters/TUI/Web and their tests. Resolution will keep priorities as configured canonical strings, preserve excludeStatus as an orthogonal status-list filter, use main's loading-aware URL canonicalization, and accept current-main MCP priority behavior without adding MCP excludeStatus.
+
+Final integration after PR #743: merged origin/main at 0efd50f2396537360337b160b1c4ca77b9a10cd4, resolving nine overlaps by composing configured-priority canonicalization with orthogonal exclude-status filtering. TaskList retains loading-aware priority URL canonicalization and excludeStatus URL/API state; CLI/server/shared TUI filters retain both behaviors. MCP task handlers, schemas, tests, and workflow guidance match current main exactly with no excludeStatus surface. Validation passed: 324 focused tests across 21 files with 0 failures; bunx tsc --noEmit; bun run check .; bun run build; git diff --check. Per integration instructions, the full suite was not run from the live worktree.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Merged current main into PR #745 normally, preserving #741 hierarchical/nonnumeric ID sorting, #742 locale-independent label ordering, #744 creation-date column sorting, and CLI-first #745 exclude-status behavior with no MCP surface. Verified with 243 focused tests, TypeScript, Biome, and build; full live-worktree suite intentionally skipped.
+Merged current main through PR #743 into PR #745, preserving #741 ID sorting, #742 deterministic labels, #744 date sorting, #743 configured custom priorities, and CLI-first exclude-status filtering without expanding MCP. Verified 324 focused tests plus TypeScript, Biome, build, and merge-surface audits.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

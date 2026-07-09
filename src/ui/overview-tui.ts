@@ -1,7 +1,29 @@
 import { box } from "neo-neo-bblessed";
 import type { TaskStatistics } from "../core/statistics.ts";
+import { formatPriorityLabel } from "../utils/priority-config.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
+
+const priorityColors: Record<string, string> = {
+	high: "red",
+	medium: "yellow",
+	low: "green",
+	none: "gray",
+};
+
+function getPriorityBreakdownRows(statistics: TaskStatistics): Array<{ label: string; count: number; color: string }> {
+	const rows = Array.from(statistics.priorityCounts)
+		.filter(([, count]) => count > 0)
+		.map(([priority, count]) => ({
+			label: formatPriorityLabel(priority),
+			count,
+			color: priorityColors[priority] ?? "white",
+		}));
+	if (statistics.noPriorityCount > 0) {
+		rows.push({ label: "No Priority", count: statistics.noPriorityCount, color: "gray" });
+	}
+	return rows;
+}
 
 /**
  * Render the project overview in an interactive TUI
@@ -89,20 +111,9 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		});
 
 		let priorityContent = "";
-		const priorityColors = {
-			high: "red",
-			medium: "yellow",
-			low: "green",
-			none: "gray",
-		};
-		for (const [priority, count] of statistics.priorityCounts) {
-			if (count > 0) {
-				const color = priorityColors[priority as keyof typeof priorityColors] || "white";
-				const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
-				const displayPriority =
-					priority === "none" ? "No Priority" : priority.charAt(0).toUpperCase() + priority.slice(1);
-				priorityContent += `  {${color}-fg}${displayPriority}:{/${color}-fg} ${count} tasks (${percentage}%)\n`;
-			}
+		for (const { label, count, color } of getPriorityBreakdownRows(statistics)) {
+			const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
+			priorityContent += `  {${color}-fg}${label}:{/${color}-fg} ${count} tasks (${percentage}%)\n`;
 		}
 		priorityBox.setContent(priorityContent);
 
@@ -231,13 +242,9 @@ function renderPlainTextOverview(statistics: TaskStatistics, projectName: string
 	}
 
 	console.log("\nPriority Breakdown:");
-	for (const [priority, count] of statistics.priorityCounts) {
-		if (count > 0) {
-			const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
-			const displayPriority =
-				priority === "none" ? "No Priority" : priority.charAt(0).toUpperCase() + priority.slice(1);
-			console.log(`  ${displayPriority}: ${count} tasks (${percentage}%)`);
-		}
+	for (const { label, count } of getPriorityBreakdownRows(statistics)) {
+		const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
+		console.log(`  ${label}: ${count} tasks (${percentage}%)`);
 	}
 
 	console.log("\nRecent Activity:");

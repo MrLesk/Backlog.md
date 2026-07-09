@@ -269,7 +269,7 @@ Options:
   -a, --assignee <assignee>        assign to user
   -s, --status <status>           set task status
   -l, --labels <labels>           add labels (comma-separated)
-  --priority <priority>           set task priority (high, medium, low)
+  --priority <priority>           set task priority (configured priorities)
   --ac <criteria>                 acceptance criteria (comma-separated)
   --dod <item>                    add Definition of Done item (can be used multiple times)
   --no-dod-defaults               disable Definition of Done defaults

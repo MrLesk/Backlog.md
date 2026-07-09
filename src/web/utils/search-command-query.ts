@@ -1,4 +1,5 @@
 import type { SearchPriorityFilter, SearchResultType } from "../../types/index.ts";
+import { normalizePriorityValue } from "../../utils/priority-config.ts";
 
 export interface ParsedSearchCommandQuery {
 	query: string;
@@ -16,7 +17,6 @@ interface Token {
 	malformed: boolean;
 }
 
-const PRIORITIES: SearchPriorityFilter[] = ["high", "medium", "low"];
 const RESULT_TYPES: SearchResultType[] = ["task", "document", "decision"];
 
 export function parseSearchCommandQuery(input: string): ParsedSearchCommandQuery {
@@ -54,8 +54,8 @@ function applyToken(token: Token, result: ParsedSearchCommandQuery): boolean {
 			result.status = appendFilterValue(result.status, value);
 			return true;
 		case "priority": {
-			const priority = value.toLowerCase();
-			if (!isSearchPriority(priority)) {
+			const priority = normalizePriorityValue(value);
+			if (!priority) {
 				return false;
 			}
 			result.priority = appendFilterValue(result.priority, priority);
@@ -149,10 +149,6 @@ function appendFilterValue<T extends string>(current: T | T[] | undefined, value
 		return [...current, value];
 	}
 	return [current, value];
-}
-
-function isSearchPriority(value: string): value is SearchPriorityFilter {
-	return PRIORITIES.includes(value as SearchPriorityFilter);
 }
 
 function isSearchResultType(value: string): value is SearchResultType {

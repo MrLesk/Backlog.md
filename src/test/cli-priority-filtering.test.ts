@@ -46,7 +46,7 @@ describe("CLI Priority Filtering", () => {
 		const result = await $`bun run cli task list --priority invalid --plain`.nothrow().quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid priority: invalid");
-		expect(result.stderr.toString()).toContain("Valid values are: high, medium, low");
+		expect(result.stderr.toString()).toContain("Valid values are: High, Medium, Low");
 	});
 
 	test("task list --sort priority sorts by priority", async () => {

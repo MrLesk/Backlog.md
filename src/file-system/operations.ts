@@ -1429,6 +1429,7 @@ ${description || `Milestone: ${title}`}`,
 				case "statuses":
 				case "labels":
 				case "types":
+				case "priorities":
 					if (value.startsWith("[") && value.endsWith("]")) {
 						const arrayContent = value.slice(1, -1);
 						config[key] = arrayContent
@@ -1504,6 +1505,7 @@ ${description || `Milestone: ${title}`}`,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
 			labels: config.labels || [],
 			types: config.types,
+			priorities: config.priorities,
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
@@ -1535,6 +1537,9 @@ ${description || `Milestone: ${title}`}`,
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			...(config.types && config.types.length > 0 ? [`types: [${config.types.map((t) => `"${t}"`).join(", ")}]`] : []),
+			...(config.priorities && config.priorities.length > 0
+				? [`priorities: [${config.priorities.map((p) => `"${p}"`).join(", ")}]`]
+				: []),
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
 				: []),

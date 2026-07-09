@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import type { TaskStatistics } from '../../core/statistics';
 import type { Task } from '../../types';
+import { formatPriorityLabel } from '../../utils/priority-config';
 import LoadingSpinner from './LoadingSpinner';
 import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 
@@ -234,6 +235,20 @@ const Statistics: React.FC<StatisticsProps> = ({
 			default: return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
 		}
 	};
+	const priorityBreakdown = [
+		...Object.entries(statistics.priorityCounts).map(([priority, count]) => ({
+			key: `priority:${priority}`,
+			priority,
+			label: formatPriorityLabel(priority),
+			count,
+		})),
+		{
+			key: 'no-priority',
+			priority: '',
+			label: 'No Priority',
+			count: statistics.noPriorityCount,
+		},
+	].filter(({ count }) => count > 0);
 
 	return (
 		<div className="max-w-7xl mx-auto p-6 space-y-8">
@@ -364,14 +379,12 @@ const Statistics: React.FC<StatisticsProps> = ({
 				<div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
 					<h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Priority Distribution</h3>
 					<div className="space-y-4">
-						{Object.entries(statistics.priorityCounts)
-							.filter(([, count]) => count > 0)
-							.map(([priority, count]) => (
-							<div key={priority} className="flex items-center justify-between">
+						{priorityBreakdown.map(({ key, priority, label, count }) => (
+							<div key={key} className="flex items-center justify-between">
 								<div className="flex items-center space-x-3">
 									<PriorityIcon priority={priority} />
 									<span className={`px-3 py-1 rounded-circle text-sm font-medium ${getPriorityColor(priority)}`}>
-										{priority === 'none' ? 'No Priority' : priority.charAt(0).toUpperCase() + priority.slice(1)}
+										{label}
 									</span>
 								</div>
 								<div className="flex items-center space-x-3">
@@ -382,7 +395,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 										</div>
 									</div>
 									<div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-circle h-2">
-										<div 
+										<div
 											className="bg-yellow-500 h-2 rounded-circle transition-all duration-300"
 											style={{ width: `${(count / statistics.totalTasks) * 100}%` }}
 										></div>

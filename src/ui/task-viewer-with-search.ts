@@ -15,6 +15,7 @@ import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
+import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatChecklistItem } from "./checklist.ts";
@@ -36,8 +37,8 @@ import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { addScrollKeys, createScreen } from "./tui.ts";
 
-function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
-	switch (priority) {
+function getPriorityDisplay(priority?: string): string {
+	switch (normalizePriorityValue(priority)) {
 		case "high":
 			return " {red-fg}●{/}";
 		case "medium":
@@ -204,6 +205,7 @@ export async function viewTaskEnhanced(
 	let allTasks: Task[];
 	let statuses: string[];
 	let labels: string[];
+	let priorityOptions = getPriorityOptions();
 	let availableLabels: string[] = [];
 	// When tasks are provided, use in-memory search; otherwise use ContentStore-backed search
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
@@ -220,6 +222,7 @@ export async function viewTaskEnhanced(
 		const config = await core.filesystem.loadConfig();
 		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
 		labels = config?.labels || [];
+		priorityOptions = getPriorityOptions(config);
 		dateFormat = config?.dateFormat;
 		taskSearchIndex = createTaskSearchIndex(allTasks);
 	} else {
@@ -230,6 +233,7 @@ export async function viewTaskEnhanced(
 			const config = await core.filesystem.loadConfig();
 			statuses = config?.statuses || ["To Do", "In Progress", "Done"];
 			labels = config?.labels || [];
+			priorityOptions = getPriorityOptions(config);
 			dateFormat = config?.dateFormat;
 
 			loadingScreen?.update("Loading tasks from branches...");
@@ -259,8 +263,7 @@ export async function viewTaskEnhanced(
 	}
 	const excludeStatusFilter = [...(options.excludeStatus ?? [])];
 
-	// Priority is already lowercase
-	let priorityFilter = options.priorityFilter || "";
+	let priorityFilter = normalizePriorityValue(options.priorityFilter) || "";
 	let labelFilter: string[] = [];
 	let milestoneFilter = options.milestoneFilter || "";
 	let labelMatch: LabelMatchMode = options.labelMatch ?? "any";
@@ -373,14 +376,13 @@ export async function viewTaskEnhanced(
 			}
 
 			if (filterId === "priority") {
-				const priorities = ["high", "medium", "low"];
 				const selected = await openSingleSelectFilterPopup({
 					screen,
 					title: "Priority Filter",
 					selectedValue: priorityFilter,
 					choices: [
 						{ label: "All", value: "" },
-						...priorities.map((priority) => ({ label: priority, value: priority })),
+						...priorityOptions.map((priority) => ({ label: priority.label, value: priority.value })),
 					],
 				});
 				if (selected !== null) {
@@ -622,7 +624,7 @@ export async function viewTaskEnhanced(
 					query: searchQuery,
 					status: statusFilter || undefined,
 					excludeStatus: excludeStatusFilter,
-					priority: priorityFilter as "high" | "medium" | "low" | undefined,
+					priority: priorityFilter || undefined,
 					labels: labelFilter,
 					labelMatch,
 					milestone: milestoneFilter || undefined,
@@ -636,7 +638,7 @@ export async function viewTaskEnhanced(
 				filters: {
 					status: statusFilter || undefined,
 					excludeStatus: excludeStatusFilter,
-					priority: priorityFilter as "high" | "medium" | "low" | undefined,
+					priority: priorityFilter || undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				},
 				types: ["task"],
@@ -1402,7 +1404,7 @@ function generateDetailContent(
 	}
 	if (task.priority) {
 		const priorityDisplay = getPriorityDisplay(task.priority);
-		const priorityText = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
+		const priorityText = formatPriorityLabel(task.priority);
 		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
 	}
 	if (task.assignee?.length) {

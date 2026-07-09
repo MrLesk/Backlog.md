@@ -25,11 +25,6 @@ const tasks: Task[] = [
 let activeRoot: Root | null = null;
 const originalFetch = globalThis.fetch;
 
-const LocationProbe = () => {
-	const location = useLocation();
-	return <div data-testid="location-search">{location.search}</div>;
-};
-
 const setupDom = () => {
 	const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost" });
 	(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -64,9 +59,19 @@ const setupDom = () => {
 	}
 };
 
+const LocationSearch = () => {
+	const location = useLocation();
+	return <output data-testid="location-search">{location.search}</output>;
+};
+
 const renderTaskList = (
 	initialEntries?: string[],
-	options: { tasks?: Task[]; availableStatuses?: string[]; availableLabels?: string[] } = {},
+	options: {
+		tasks?: Task[];
+		availableStatuses?: string[];
+		availableLabels?: string[];
+		availablePriorities?: string[];
+	} = {},
 ): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
@@ -83,12 +88,13 @@ const renderTaskList = (
 					availableStatuses={renderedStatuses}
 					availableLabels={renderedLabels}
 					availableMilestones={[]}
+					availablePriorities={options.availablePriorities}
 					milestoneEntities={[]}
 					archivedMilestones={[]}
 					onEditTask={() => {}}
 					onNewTask={() => {}}
 				/>
-				<LocationProbe />
+				<LocationSearch />
 			</MemoryRouter>,
 		);
 	});
@@ -155,6 +161,9 @@ const getZIndexClass = (element: Element): number | null => {
 
 const getRenderedTaskIds = (container: HTMLElement): string[] =>
 	Array.from(container.querySelectorAll("tbody tr td:first-child")).map((cell) => cell.textContent?.trim() ?? "");
+
+const getLocationSearch = (container: HTMLElement): string =>
+	container.querySelector("[data-testid='location-search']")?.textContent ?? "";
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
@@ -375,6 +384,56 @@ describe("TaskList labels filter menu", () => {
 		expect(menu?.textContent).toContain("In Progress");
 		expect(menu?.textContent).toContain("Done");
 		expect(menu?.textContent).not.toContain("No statuses");
+	});
+
+	it("canonicalizes mixed-case configured priority URL values", async () => {
+		const customTask = createTask({ id: "task-301", title: "Escalate incident", priority: "very high" });
+		const fetchCalls: string[] = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+			fetchCalls.push(url);
+			return {
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				json: async () => [{ type: "task", score: 0, task: customTask }],
+			} as Response;
+		}) as typeof fetch;
+
+		const container = renderTaskList(["/?priority=VeRy%20HiGh"], {
+			tasks: [],
+			availablePriorities: ["Very High", "High", "Medium", "Low"],
+		});
+		await waitFor(() =>
+			fetchCalls.length === 1 &&
+			new URLSearchParams(getLocationSearch(container)).get("priority") === "very high" &&
+			(container.textContent ?? "").includes("Escalate incident"),
+		);
+
+		expect(new URL(fetchCalls[0] ?? "", "http://localhost").searchParams.get("priority")).toBe("very high");
+		expect(getSelectByFirstOption(container, "All priorities").value).toBe("very high");
+		expect(container.textContent).toContain("Escalate incident");
+	});
+
+	it("clears unsupported priority URL values without searching", async () => {
+		const fetchCalls: string[] = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+			fetchCalls.push(url);
+			return {
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				json: async () => [],
+			} as Response;
+		}) as typeof fetch;
+
+		const container = renderTaskList(["/?priority=urgent"]);
+		await waitFor(() => new URLSearchParams(getLocationSearch(container)).get("priority") === null);
+
+		expect(fetchCalls).toEqual([]);
+		expect(getSelectByFirstOption(container, "All priorities").value).toBe("");
+		expect(getRenderedTaskIds(container)).toEqual(["task-102", "task-101"]);
 	});
 
 	it("shows cleanup when filtering by the final configured status", async () => {

@@ -18,6 +18,7 @@ interface TaskColumnProps {
   onCleanup?: () => void;
   laneId?: string;
   targetMilestone?: string | null;
+  priorityOrder?: string[];
 }
 
 type CreatedDateSortDirection = 'asc' | 'desc';
@@ -60,7 +61,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onDragEnd,
   onCleanup,
   laneId,
-  targetMilestone
+  targetMilestone,
+  priorityOrder,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -105,7 +107,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   };
 
   const handleSortByPriority = () => {
-    emitColumnReorder(sortByPriority(tasks).map(t => t.id));
+    emitColumnReorder(sortByPriority(tasks, priorityOrder).map(t => t.id));
   };
 
   const handleSortByCreatedDate = (direction: CreatedDateSortDirection) => {

@@ -1,3 +1,5 @@
+import { getPriorityRank } from "./priority-config.ts";
+
 /**
  * Parse a task ID into its numeric components for proper sorting.
  * Handles both simple IDs (task-5) and decimal IDs (task-5.2.1).
@@ -95,19 +97,16 @@ export function sortByTaskId<T extends { id: string }>(items: T[]): T[] {
 
 /**
  * Sort an array of tasks by their priority property.
- * Priority order: high > medium > low > undefined
+ * Priority order defaults to high > medium > low > undefined.
  * Tasks with the same priority are sorted by task ID.
  */
-export function sortByPriority<T extends { id: string; priority?: "high" | "medium" | "low" }>(items: T[]): T[] {
-	const priorityWeight = {
-		high: 3,
-		medium: 2,
-		low: 1,
-	};
-
+export function sortByPriority<T extends { id: string; priority?: string }>(
+	items: T[],
+	priorityOrder?: readonly string[],
+): T[] {
 	return [...items].sort((a, b) => {
-		const aWeight = a.priority ? priorityWeight[a.priority] : 0;
-		const bWeight = b.priority ? priorityWeight[b.priority] : 0;
+		const aWeight = getPriorityRank(a.priority, priorityOrder);
+		const bWeight = getPriorityRank(b.priority, priorityOrder);
 
 		// First sort by priority (higher weight = higher priority)
 		if (aWeight !== bWeight) {
@@ -150,15 +149,10 @@ export function sortByOrdinal<T extends { id: string; ordinal?: number }>(items:
  * Sort an array of tasks considering ordinal first, then priority, then ID.
  * This is the default sorting for the board view.
  */
-export function sortByOrdinalAndPriority<
-	T extends { id: string; ordinal?: number; priority?: "high" | "medium" | "low" },
->(items: T[]): T[] {
-	const priorityWeight = {
-		high: 3,
-		medium: 2,
-		low: 1,
-	};
-
+export function sortByOrdinalAndPriority<T extends { id: string; ordinal?: number; priority?: string }>(
+	items: T[],
+	priorityOrder?: readonly string[],
+): T[] {
 	return [...items].sort((a, b) => {
 		// Tasks with ordinal come before tasks without
 		if (a.ordinal !== undefined && b.ordinal === undefined) {
@@ -176,8 +170,8 @@ export function sortByOrdinalAndPriority<
 		}
 
 		// Same ordinal (or both undefined) - sort by priority
-		const aWeight = a.priority ? priorityWeight[a.priority] : 0;
-		const bWeight = b.priority ? priorityWeight[b.priority] : 0;
+		const aWeight = getPriorityRank(a.priority, priorityOrder);
+		const bWeight = getPriorityRank(b.priority, priorityOrder);
 
 		if (aWeight !== bWeight) {
 			return bWeight - aWeight;
@@ -192,19 +186,20 @@ export function sortByOrdinalAndPriority<
  * Sort tasks by a specified field with fallback to task ID sorting.
  * Supported fields: 'priority', 'id', 'ordinal'
  */
-export function sortTasks<T extends { id: string; priority?: "high" | "medium" | "low"; ordinal?: number }>(
+export function sortTasks<T extends { id: string; priority?: string; ordinal?: number }>(
 	items: T[],
 	sortField: string,
+	priorityOrder?: readonly string[],
 ): T[] {
 	switch (sortField?.toLowerCase()) {
 		case "priority":
-			return sortByPriority(items);
+			return sortByPriority(items, priorityOrder);
 		case "id":
 			return sortByTaskId(items);
 		case "ordinal":
 			return sortByOrdinal(items);
 		default:
 			// Default to ordinal + priority sorting for board view
-			return sortByOrdinalAndPriority(items);
+			return sortByOrdinalAndPriority(items, priorityOrder);
 	}
 }
