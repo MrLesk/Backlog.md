@@ -5,14 +5,16 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 05:56'
-updated_date: '2026-07-09 06:02'
+updated_date: '2026-07-09 07:24'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/734'
 modified_files:
   - src/web/components/TaskList.tsx
+  - src/utils/task-sorting.ts
   - src/test/web-task-list-labels-menu.test.tsx
+  - src/test/task-sorting.test.ts
 ordinal: 168000
 ---
 
@@ -41,6 +43,10 @@ GitHub issue #734 reports that the web UI All Tasks table sorts dotted subtask I
 
 <!-- SECTION:NOTES:BEGIN -->
 Reproduced issue #734 with a focused TaskList Web UI test: before the fix, ascending ID sort returned task-1, task-3.01, task-2, task-3.02, task-3. Replaced TaskList’s local trailing-number parser with the shared compareTaskIds helper so dotted subtask IDs sort hierarchically. Validation passed: bun test src/test/web-task-list-labels-menu.test.tsx; bun test src/test/task-sorting.test.ts; bunx tsc --noEmit; bun run check .; bun test (1446 pass, 2 skip, 0 fail).
+
+PR #741 review follow-up: preserved the locale/numeric fallback when compareTaskIds returns equality for distinct task IDs, so nonnumeric IDs like task-alpha/task-beta sort deterministically without regressing dotted subtask ordering. Added a focused nonnumeric ID regression test. Additional validation passed: bun test src/test/web-task-list-labels-menu.test.tsx src/test/task-sorting.test.ts; bun test src/test/build.test.ts; bun run check .; bunx tsc --noEmit.
+
+Simplification pass moved the deterministic fallback into the shared compareTaskIds helper so TaskList and other task ID sort paths use one implementation. Revalidated with bun test src/test/web-task-list-labels-menu.test.tsx src/test/task-sorting.test.ts src/test/build.test.ts; bunx tsc --noEmit; bun run check .
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

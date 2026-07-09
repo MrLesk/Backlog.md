@@ -61,6 +61,12 @@ describe("compareTaskIds", () => {
 		expect(compareTaskIds("task-draft2", "task-draft10")).toBeLessThan(0);
 		expect(compareTaskIds("task-draft10", "task-draft2")).toBeGreaterThan(0);
 	});
+
+	test("sorts distinct nonnumeric IDs deterministically", () => {
+		expect(compareTaskIds("task-alpha", "task-beta")).toBeLessThan(0);
+		expect(compareTaskIds("task-beta", "task-alpha")).toBeGreaterThan(0);
+		expect(compareTaskIds("task-alpha", "task-alpha")).toBe(0);
+	});
 });
 
 describe("sortByTaskId", () => {

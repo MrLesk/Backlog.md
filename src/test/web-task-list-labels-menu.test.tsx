@@ -175,6 +175,23 @@ describe("TaskList labels filter menu", () => {
 		expect(getRenderedTaskIds(container)).toEqual(["task-1", "task-2", "task-3", "task-3.01", "task-3.02"]);
 	});
 
+	it("sorts distinct nonnumeric task IDs deterministically when sorting by ID", async () => {
+		const container = renderTaskList(undefined, {
+			tasks: [
+				createTask({ id: "task-beta", title: "Beta task" }),
+				createTask({ id: "task-alpha", title: "Alpha task" }),
+			],
+		});
+
+		const idButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("ID"));
+		expect(idButton).toBeTruthy();
+
+		await clickElement(idButton as HTMLButtonElement);
+		await waitFor(() => getRenderedTaskIds(container)[0] === "task-alpha");
+
+		expect(getRenderedTaskIds(container)).toEqual(["task-alpha", "task-beta"]);
+	});
+
 	it("renders and sorts by ordinal with task ID as the tie-breaker", async () => {
 		const container = renderTaskList(undefined, {
 			tasks: [

@@ -57,8 +57,8 @@ export function compareTaskIds(a: string, b: string): number {
 		}
 	}
 
-	// All parts are equal
-	return 0;
+	// All numeric parts are equal; use the original ID as a deterministic fallback.
+	return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
 }
 
 /**
