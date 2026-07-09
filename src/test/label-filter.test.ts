@@ -3,7 +3,7 @@ import type { Task } from "../types/index.ts";
 import { collectAvailableLabels, formatLabelSummary, labelsToLower } from "../utils/label-filter.ts";
 
 describe("label filter utilities", () => {
-	test("collectAvailableLabels merges configured labels and task labels without duplicates", () => {
+	test("collectAvailableLabels merges configured labels and task labels without duplicates sorted alphabetically", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-1",
@@ -28,7 +28,7 @@ describe("label filter utilities", () => {
 
 		const labels = collectAvailableLabels(tasks, configured);
 
-		expect(labels).toEqual(["backend", "bug", "UI", "infra"]);
+		expect(labels).toEqual(["backend", "bug", "infra", "UI"]);
 	});
 
 	test("formatLabelSummary produces concise summaries", () => {

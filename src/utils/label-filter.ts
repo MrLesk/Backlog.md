@@ -4,9 +4,11 @@ function normalizeLabel(label: string): string {
 	return label.trim().toLowerCase();
 }
 
+const LABEL_SORT_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base" });
+
 /**
- * Collect available labels from configuration and tasks, de-duplicated but preserving
- * the first-seen casing so UI surfaces familiar labels.
+ * Collect available labels from configuration and tasks, de-duplicated and sorted
+ * alphabetically while preserving the first-seen casing so UI surfaces familiar labels.
  */
 export function collectAvailableLabels(tasks: Task[], configured: string[] = []): string[] {
 	const seen = new Set<string>();
@@ -31,7 +33,10 @@ export function collectAvailableLabels(tasks: Task[], configured: string[] = [])
 		}
 	}
 
-	return ordered;
+	return ordered.sort((left, right) => {
+		const result = LABEL_SORT_COLLATOR.compare(left, right);
+		return result !== 0 ? result : left.localeCompare(right);
+	});
 }
 
 /**
