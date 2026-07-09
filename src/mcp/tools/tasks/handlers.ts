@@ -47,6 +47,7 @@ export type TaskCreateArgs = {
 
 export type TaskListArgs = {
 	status?: string;
+	type?: string[];
 	assignee?: string;
 	unassigned?: boolean;
 	milestone?: string;
@@ -58,6 +59,7 @@ export type TaskListArgs = {
 export type TaskSearchArgs = {
 	query?: string;
 	status?: string;
+	type?: string[];
 	priority?: SearchPriorityFilter;
 	modifiedFiles?: string[];
 	limit?: number;
@@ -156,9 +158,9 @@ export class TaskHandlers {
 		const priorities = config?.priorities;
 		if (this.isDraftStatus(args.status)) {
 			let drafts = await this.core.filesystem.listDrafts();
-			if (args.search) {
+			if (args.search || args.type?.length) {
 				const draftSearch = createTaskSearchIndex(drafts);
-				drafts = draftSearch.search({ query: args.search, status: "Draft" });
+				drafts = draftSearch.search({ query: args.search, status: "Draft", type: args.type });
 			}
 
 			if (args.assignee) {
@@ -227,6 +229,9 @@ export class TaskHandlers {
 		const filters: TaskListFilter = {};
 		if (args.status) {
 			filters.status = args.status;
+		}
+		if (args.type?.length) {
+			filters.type = args.type;
 		}
 		if (args.assignee) {
 			filters.assignee = args.assignee;
@@ -340,8 +345,8 @@ export class TaskHandlers {
 	async searchTasks(args: TaskSearchArgs): Promise<CallToolResult> {
 		const query = args.query?.trim() ?? "";
 		const modifiedFiles = args.modifiedFiles?.map((file) => file.trim()).filter((file) => file.length > 0);
-		if (!query && (!modifiedFiles || modifiedFiles.length === 0)) {
-			throw new BacklogToolError("Search query or modifiedFiles filter is required", "VALIDATION_ERROR");
+		if (!query && (!modifiedFiles || modifiedFiles.length === 0) && !args.type?.length) {
+			throw new BacklogToolError("Search query, modifiedFiles, or type filter is required", "VALIDATION_ERROR");
 		}
 
 		if (this.isDraftStatus(args.status)) {
@@ -350,6 +355,7 @@ export class TaskHandlers {
 			let draftMatches = searchIndex.search({
 				query,
 				status: "Draft",
+				type: args.type,
 				priority: args.priority,
 				modifiedFiles,
 			});
@@ -388,6 +394,7 @@ export class TaskHandlers {
 		let taskMatches = searchIndex.search({
 			query,
 			status: args.status,
+			type: args.type,
 			priority: args.priority,
 			modifiedFiles,
 		});

@@ -12,6 +12,7 @@ import type {
 } from "../types/index.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "../utils/modified-files.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
+import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
 
 interface BaseSearchEntity {
@@ -48,6 +49,7 @@ type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEnti
 type NormalizedFilters = {
 	statuses?: string[];
 	excludedStatuses?: string[];
+	taskTypes?: string[];
 	priorities?: SearchPriorityFilter[];
 	assignees?: string[];
 	labels?: string[];
@@ -327,6 +329,9 @@ export class SearchService {
 			const excludedStatuses = new Set(filters.excludedStatuses);
 			filtered = filtered.filter((task) => !excludedStatuses.has(task.statusLower));
 		}
+		if (filters.taskTypes && filters.taskTypes.length > 0) {
+			filtered = filtered.filter((task) => matchesTaskTypeFilter(task.task.type, filters.taskTypes));
+		}
 		if (filters.priorities && filters.priorities.length > 0) {
 			const allowedPriorities = new Set(filters.priorities);
 			filtered = filtered.filter((task) => {
@@ -367,6 +372,9 @@ export class SearchService {
 			}
 		}
 		if (filters.excludedStatuses?.includes(task.statusLower)) {
+			return false;
+		}
+		if (filters.taskTypes && !matchesTaskTypeFilter(task.task.type, filters.taskTypes)) {
 			return false;
 		}
 
@@ -412,6 +420,7 @@ export class SearchService {
 
 		const statuses = this.normalizeStringArray(filters.status);
 		const excludedStatuses = this.normalizeStringArray(filters.excludeStatus);
+		const taskTypes = this.normalizeStringArray(filters.type);
 		const priorities = this.normalizePriorityArray(filters.priority);
 		const assignees = this.normalizeStringArray(filters.assignee);
 		const labels = this.normalizeLabelsArray(filters.labels);
@@ -420,6 +429,7 @@ export class SearchService {
 		return {
 			statuses,
 			excludedStatuses,
+			taskTypes,
 			priorities,
 			assignees,
 			labels,

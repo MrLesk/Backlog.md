@@ -1,73 +1,9 @@
-import { getPriorityLabels } from "../../../utils/priority-config.ts";
+import { generateTaskListSchema, generateTaskSearchSchema } from "../../utils/schema-generators.ts";
 import type { JsonSchema } from "../../validation/validators.ts";
 
-export const taskListSchema: JsonSchema = {
-	type: "object",
-	properties: {
-		status: {
-			type: "string",
-			maxLength: 100,
-		},
-		assignee: {
-			type: "string",
-			maxLength: 100,
-		},
-		unassigned: {
-			type: "boolean",
-			description: "When true, only return tasks with no assignee. Cannot be combined with assignee.",
-		},
-		milestone: {
-			type: "string",
-			maxLength: 100,
-		},
-		labels: {
-			type: "array",
-			items: { type: "string", maxLength: 50 },
-		},
-		search: {
-			type: "string",
-			maxLength: 200,
-		},
-		limit: {
-			type: "number",
-			minimum: 1,
-			maximum: 1000,
-		},
-	},
-	required: [],
-	additionalProperties: false,
-};
+export const taskListSchema: JsonSchema = generateTaskListSchema({});
 
-export const taskSearchSchema: JsonSchema = {
-	type: "object",
-	properties: {
-		query: {
-			type: "string",
-			maxLength: 200,
-		},
-		status: {
-			type: "string",
-			maxLength: 100,
-		},
-		priority: {
-			type: "string",
-			enum: getPriorityLabels(),
-			enumCaseInsensitive: true,
-		},
-		modifiedFiles: {
-			type: "array",
-			items: { type: "string", maxLength: 500 },
-			description: "Filter tasks by case-insensitive substring match against modified file paths",
-		},
-		limit: {
-			type: "number",
-			minimum: 1,
-			maximum: 100,
-		},
-	},
-	required: [],
-	additionalProperties: false,
-};
+export const taskSearchSchema: JsonSchema = generateTaskSearchSchema({});
 
 export const taskViewSchema: JsonSchema = {
 	type: "object",

@@ -123,9 +123,12 @@ async function getFlagValueCompletions(flagName: string, context: CompletionCont
 		case "priority":
 			return await getPriorities();
 		case "type":
-			return context.command === "task" && (context.subcommand === "create" || context.subcommand === "edit")
+			return context.command === "task" &&
+				(context.subcommand === "create" || context.subcommand === "edit" || context.subcommand === "list")
 				? await getTaskTypes()
 				: [];
+		case "task-type":
+			return context.command === "search" ? await getTaskTypes() : [];
 		case "labels":
 		case "label":
 			return await getLabels();

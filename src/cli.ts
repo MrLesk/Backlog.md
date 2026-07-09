@@ -86,7 +86,7 @@ import {
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
-import { getTaskTypeValues } from "./utils/task-type-config.ts";
+import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
 import { getVersion } from "./utils/version.ts";
@@ -292,6 +292,19 @@ async function normalizeCliPriority(core: Core, value: string): Promise<string |
 		return null;
 	}
 	return normalized;
+}
+
+async function normalizeCliTaskTypes(core: Core, values: string[], optionName: string): Promise<string[] | null> {
+	const config = await core.filesystem.loadConfig();
+	const { values: canonicalTypes, invalid } = resolveTaskTypeValues(values, config);
+	if (invalid.length > 0) {
+		console.error(
+			`Invalid ${optionName}: ${invalid.join(", ")}. Valid types are: ${formatValidTaskTypeValues(config)}`,
+		);
+		process.exitCode = 1;
+		return null;
+	}
+	return canonicalTypes;
 }
 
 function formatToolResultText(result: CallToolResult): string {
@@ -1774,6 +1787,11 @@ addHelpSchema(program.command("search [query]"), {
 			type: choiceType(["task", "document", "decision"], { multiple: true }),
 			description: "Result types",
 		},
+		{
+			name: "task-type",
+			type: () => taskType({ multiple: true }),
+			description: "Filter task results by one or more configured task types; repeat or comma-separate values",
+		},
 		{ name: "status", type: statusType, description: "Filter task results by status; case-insensitive" },
 		{
 			name: "exclude-status",
@@ -1789,10 +1807,19 @@ addHelpSchema(program.command("search [query]"), {
 		{ name: "limit", type: "Integer", description: "Maximum number of results" },
 	],
 	output: "Interactive search UI or plain text with --plain",
-	examples: ['backlog search "auth" --plain', 'backlog search "api" --type task --status "<active status>"'],
+	examples: [
+		'backlog search "auth" --plain',
+		'backlog search "api" --type task --status "<active status>"',
+		`backlog search "crash" --task-type ${TASK_TYPE_EXAMPLE} --plain`,
+	],
 })
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
+	.option(
+		"--task-type <type>",
+		"filter task results by configured task type (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option("--status <status>", "filter task results by status")
 	.option(
 		"--exclude-status <status>",
@@ -1818,6 +1845,7 @@ addHelpSchema(program.command("search [query]"), {
 		};
 
 		const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
+		const rawTaskTypes = parseDelimitedStringList(options.taskType) ?? [];
 		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
 		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
 		const types = rawTypes
@@ -1830,13 +1858,20 @@ addHelpSchema(program.command("search [query]"), {
 						}
 						return true;
 					})
-			: modifiedFileFilters?.length
+			: modifiedFileFilters?.length || rawTaskTypes.length > 0
 				? ["task"]
 				: allowedTypes;
+		if (rawTaskTypes.length > 0 && rawTypes && !types.includes("task")) {
+			console.error("--task-type filters task results. Include --type task or omit --type.");
+			cleanup();
+			process.exitCode = 1;
+			return;
+		}
 
 		const filters: {
 			status?: string;
 			excludeStatus?: string[];
+			type?: string[];
 			priority?: SearchPriorityFilter;
 			modifiedFiles?: string[];
 		} = {};
@@ -1851,6 +1886,14 @@ addHelpSchema(program.command("search [query]"), {
 				return;
 			}
 			filters.excludeStatus = canonicalExcludeStatuses;
+		}
+		if (rawTaskTypes.length > 0) {
+			const canonicalTaskTypes = await normalizeCliTaskTypes(core, rawTaskTypes, "task-type");
+			if (!canonicalTaskTypes) {
+				cleanup();
+				return;
+			}
+			filters.type = canonicalTaskTypes;
 		}
 		if (options.priority) {
 			const priority = await normalizeCliPriority(core, String(options.priority));
@@ -1902,8 +1945,8 @@ addHelpSchema(program.command("search [query]"), {
 			return;
 		}
 
-		const hasModifiedFileFilter = Boolean(modifiedFileFilters?.length);
-		const interactiveTasks = hasModifiedFileFilter ? searchResultTasks : allTasks;
+		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length || filters.type?.length);
+		const interactiveTasks = requiresPrefilteredTaskSet ? searchResultTasks : allTasks;
 		if (interactiveTasks.length === 0) {
 			printSearchResults(searchResults);
 			cleanup();
@@ -1926,6 +1969,7 @@ addHelpSchema(program.command("search [query]"), {
 				filterDescription: buildSearchFilterDescription({
 					status: statusFilter,
 					excludeStatus: filters.excludeStatus,
+					type: filters.type,
 					priority: priorityFilter,
 					query: query ?? "",
 					modifiedFiles: modifiedFileFilters ?? [],
@@ -1942,6 +1986,7 @@ addHelpSchema(program.command("search [query]"), {
 function buildSearchFilterDescription(filters: {
 	status?: string;
 	excludeStatus?: string[];
+	type?: string[];
 	priority?: SearchPriorityFilter;
 	query?: string;
 	modifiedFiles?: string[];
@@ -1955,6 +2000,9 @@ function buildSearchFilterDescription(filters: {
 	}
 	if (filters.excludeStatus?.length) {
 		parts.push(`Exclude status: ${filters.excludeStatus.join(", ")}`);
+	}
+	if (filters.type?.length) {
+		parts.push(`Type: ${filters.type.join(", ")}`);
 	}
 	if (filters.priority) {
 		parts.push(`Priority: ${filters.priority}`);
@@ -2110,6 +2158,11 @@ addHelpSchema(taskCmd.command("list"), {
 		{ name: "parent", type: "Task ID", description: "Show subtasks of a parent task" },
 		{ name: "priority", type: priorityType, description: "Filter by task priority" },
 		{
+			name: "type",
+			type: () => taskType({ multiple: true }),
+			description: "Filter by one or more configured task types; repeat or comma-separate values",
+		},
+		{
 			name: "labels",
 			type: "Comma-separated strings",
 			description: "Require every listed label; repeat --labels or use label1,label2",
@@ -2122,6 +2175,7 @@ addHelpSchema(taskCmd.command("list"), {
 	examples: [
 		'backlog task list --status "<todo status>" --plain',
 		"backlog task list --parent {{TASK_ID:1}}",
+		`backlog task list --type ${TASK_TYPE_EXAMPLE} --plain`,
 		'backlog task list --labels frontend,bug --search "login" --limit 10 --plain',
 	],
 })
@@ -2137,6 +2191,11 @@ addHelpSchema(taskCmd.command("list"), {
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
 	.option("--priority <priority>", "filter tasks by priority (configured priorities)")
+	.option(
+		"--type <type>",
+		"filter tasks by configured task type (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"-l, --labels <labels>",
 		"filter tasks by labels; require every comma-separated label (repeatable)",
@@ -2188,6 +2247,15 @@ addHelpSchema(taskCmd.command("list"), {
 				return;
 			}
 			baseFilters.priority = priority;
+		}
+		const rawTaskTypes = parseDelimitedStringList(options.type) ?? [];
+		if (rawTaskTypes.length > 0) {
+			const canonicalTaskTypes = await normalizeCliTaskTypes(core, rawTaskTypes, "type");
+			if (!canonicalTaskTypes) {
+				cleanup();
+				return;
+			}
+			baseFilters.type = canonicalTaskTypes;
 		}
 
 		const labelFilters = parseDelimitedStringList(options.labels) ?? [];
@@ -2334,6 +2402,10 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
 		if (baseFilters.priority) activeFilters.push(`Priority: ${baseFilters.priority}`);
+		if (baseFilters.type) {
+			const taskTypes = Array.isArray(baseFilters.type) ? baseFilters.type : [baseFilters.type];
+			activeFilters.push(`Type: ${taskTypes.join(", ")}`);
+		}
 		if (labelFilters.length > 0) activeFilters.push(`Labels: ${labelFilters.join(", ")}`);
 		if (searchQuery) activeFilters.push(`Search: ${searchQuery}`);
 		if (taskLimit !== undefined) activeFilters.push(`Limit: ${taskLimit}`);
@@ -2385,6 +2457,9 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
+		}
+		if (baseFilters.type) {
+			interactiveLoaderFilters.type = baseFilters.type;
 		}
 		await runUnifiedView({
 			core,
