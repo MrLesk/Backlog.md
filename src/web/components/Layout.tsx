@@ -32,7 +32,6 @@ export default function Layout({
 	return (
 		<div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden transition-colors duration-200">
 			<HealthIndicator />
-			<DuplicateIdWarning groups={duplicateGroups} />
 			<SideNavigation 
 				tasks={tasks}
 				docs={docs}
@@ -42,6 +41,7 @@ export default function Layout({
 			/>
 			<div className="flex-1 flex flex-col min-h-0 min-w-0">
 				<Navigation projectName={projectName} />
+				<DuplicateIdWarning groups={duplicateGroups} />
 				<main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
 					<Outlet context={{ tasks, docs, decisions, isLoading, onRefreshData }} />
 				</main>

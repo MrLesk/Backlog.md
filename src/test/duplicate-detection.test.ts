@@ -14,6 +14,13 @@ function makeTask(id: string, title: string): Task {
 	};
 }
 
+function makeTaskWithPath(id: string, title: string, filePath: string): Task {
+	return {
+		...makeTask(id, title),
+		filePath,
+	};
+}
+
 describe("detectDuplicateTaskIds", () => {
 	it("returns empty array when no tasks", () => {
 		expect(detectDuplicateTaskIds([])).toEqual([]);
@@ -82,9 +89,27 @@ describe("buildDuplicateCleanupPrompt", () => {
 		expect(prompt).toContain("Qux");
 	});
 
-	it("mentions renumbering in the prompt", () => {
+	it("mentions assigning new IDs in the prompt", () => {
 		const groups = [{ id: "TASK-1", tasks: [makeTask("TASK-1", "A"), makeTask("TASK-1", "B")] }];
 		const prompt = buildDuplicateCleanupPrompt(groups);
-		expect(prompt.toLowerCase()).toContain("renumber");
+		expect(prompt.toLowerCase()).toContain("assign new unused ids");
+	});
+
+	it("includes file paths and repair workflow guidance in the prompt", () => {
+		const groups = [
+			{
+				id: "TASK-1",
+				tasks: [
+					makeTaskWithPath("TASK-1", "A", "/repo/backlog/tasks/task-1 - A.md"),
+					makeTaskWithPath("TASK-1", "B", "/repo/backlog/tasks/task-1 - B.md"),
+				],
+			},
+		];
+		const prompt = buildDuplicateCleanupPrompt(groups);
+		expect(prompt).toContain("backlog instructions overview");
+		expect(prompt).toContain("/repo/backlog/tasks/task-1 - A.md");
+		expect(prompt).toContain("/repo/backlog/tasks/task-1 - B.md");
+		expect(prompt).toContain("dependencies");
+		expect(prompt).toContain("Do not delete");
 	});
 });
