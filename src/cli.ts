@@ -1894,6 +1894,7 @@ addHelpSchema(program.command("search [query]"), {
 					modifiedFiles: modifiedFileFilters ?? [],
 				}),
 				status: statusFilter,
+				excludeStatus: filters.excludeStatus,
 				priority: priorityFilter,
 				searchQuery: query ?? "", // Pre-populate search with the query
 			},
