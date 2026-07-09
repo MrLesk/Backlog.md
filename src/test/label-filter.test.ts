@@ -3,7 +3,7 @@ import type { Task } from "../types/index.ts";
 import { collectAvailableLabels, formatLabelSummary, labelsToLower } from "../utils/label-filter.ts";
 
 describe("label filter utilities", () => {
-	test("collectAvailableLabels merges configured labels and task labels without duplicates", () => {
+	test("collectAvailableLabels merges configured labels and task labels without duplicates sorted alphabetically", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-1",
@@ -24,11 +24,26 @@ describe("label filter utilities", () => {
 				dependencies: [],
 			},
 		];
-		const configured = ["backend", "bug"];
+		const configured = ["backend", "BUG"];
 
 		const labels = collectAvailableLabels(tasks, configured);
 
-		expect(labels).toEqual(["backend", "bug", "UI", "infra"]);
+		expect(labels).toEqual(["backend", "BUG", "infra", "UI"]);
+	});
+
+	test("collectAvailableLabels sorts accented labels with locale-independent normalized keys", () => {
+		const labels = collectAvailableLabels([], ["Zulu", "Öl", "Ärger"]);
+
+		expect(labels).toEqual(["Ärger", "Öl", "Zulu"]);
+	});
+
+	test("collectAvailableLabels orders equivalent Unicode spellings independently of input order", () => {
+		const composed = "café";
+		const decomposed = "cafe\u0301";
+		const expected = [decomposed, composed];
+
+		expect(collectAvailableLabels([], [composed, decomposed])).toEqual(expected);
+		expect(collectAvailableLabels([], [decomposed, composed])).toEqual(expected);
 	});
 
 	test("formatLabelSummary produces concise summaries", () => {
