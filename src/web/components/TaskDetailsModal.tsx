@@ -10,6 +10,7 @@ import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
+import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -22,6 +23,7 @@ interface Props {
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
   availablePriorities?: string[];
+  availableTypes?: string[];
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
@@ -57,6 +59,7 @@ type TaskDetailsFormState = {
   assignee: string[];
   labels: string[];
   priority: string;
+  taskType: string;
   dependencies: string[];
   references: string[];
   milestone: string;
@@ -98,6 +101,7 @@ const buildTaskDetailsFormState = ({
   assignee: task?.assignee || [],
   labels: task?.labels || [],
   priority: task?.priority || "",
+  taskType: task?.type || "",
   dependencies: task?.dependencies || [],
   references: task?.references || [],
   milestone: task?.milestone || "",
@@ -122,6 +126,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   availableStatuses,
   availableMilestones: _availableMilestones,
   availablePriorities,
+  availableTypes,
   milestoneEntities,
   archivedMilestoneEntities,
   isDraftMode,
@@ -161,6 +166,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const initialDefinitionOfDone = task?.definitionOfDoneItems ?? (isCreateMode ? defaultDefinitionOfDone : []);
   const [definitionOfDone, setDefinitionOfDone] = useState<AcceptanceCriterion[]>(initialDefinitionOfDone);
   const priorityOptions = useMemo(() => getPriorityOptions(availablePriorities), [availablePriorities]);
+  const typeOptions = useMemo(() => getTaskTypeValues(availableTypes), [availableTypes]);
   const resolveMilestoneToId = useCallback((value?: string | null): string => {
     const normalized = (value ?? "").trim();
     if (!normalized) return "";
@@ -300,10 +306,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [assignee, setAssignee] = useState<string[]>(task?.assignee || []);
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
+  const [taskType, setTaskType] = useState<string>(task?.type || "");
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
+  const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
@@ -412,6 +421,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         preserveDirtyRefreshValue(current, previousFormState.labels, nextFormState.labels, areJsonEqual),
       );
       setPriority((current) => preserveDirtyRefreshValue(current, previousFormState.priority, nextFormState.priority));
+      setTaskType((current) => preserveDirtyRefreshValue(current, previousFormState.taskType, nextFormState.taskType));
       setDependencies((current) =>
         preserveDirtyRefreshValue(current, previousFormState.dependencies, nextFormState.dependencies, areJsonEqual),
       );
@@ -447,6 +457,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setAssignee(nextFormState.assignee);
     setLabels(nextFormState.labels);
     setPriority(nextFormState.priority);
+    setTaskType(nextFormState.taskType);
     setDependencies(nextFormState.dependencies);
     setReferences(nextFormState.references);
     setMilestone(nextFormState.milestone);
@@ -610,6 +621,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
       };
 
+      if (isCreateMode) {
+        taskData.type = taskType;
+      }
+
       if (isCreateMode && onSubmit) {
         Object.assign(taskData, buildDefinitionOfDoneCreatePayload());
         // Create new task
@@ -684,6 +699,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (updates.assignee !== undefined) setAssignee(updates.assignee as string[]);
     if (updates.labels !== undefined) setLabels(updates.labels as string[]);
     if (updates.priority !== undefined) setPriority(String(updates.priority));
+    if (updates.type !== undefined) setTaskType(String(updates.type));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
     if (updates.references !== undefined) setReferences(updates.references as string[]);
     if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
@@ -1227,6 +1243,28 @@ export const TaskDetailsModal: React.FC<Props> = ({
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Status" />
             <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isFromOtherBranch} />
+          </div>
+
+          {/* Type */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <SectionHeader title="Type" />
+            <select
+              aria-label="Task type"
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              value={typeSelectionValue}
+              onChange={(event) => void handleInlineMetaUpdate({ type: event.target.value })}
+              disabled={isFromOtherBranch}
+            >
+              <option value="">No type</option>
+              {!canonicalTypeSelection && taskType.trim() ? (
+                <option value={taskType}>{taskType} (not configured)</option>
+              ) : null}
+              {typeOptions.map((typeOption) => (
+                <option key={typeOption} value={typeOption}>
+                  {typeOption}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Assignee */}

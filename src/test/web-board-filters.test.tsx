@@ -26,6 +26,7 @@ const tasks: Task[] = [
 		labels: ["bug"],
 		milestone: "m-1",
 		priority: "high",
+		type: "bug",
 	}),
 	createTask({
 		id: "task-102",
@@ -34,6 +35,7 @@ const tasks: Task[] = [
 		labels: ["docs"],
 		milestone: "m-2",
 		priority: "medium",
+		type: "docs",
 	}),
 	createTask({
 		id: "task-103",
@@ -43,6 +45,7 @@ const tasks: Task[] = [
 		labels: ["enhancement"],
 		milestone: "m-1",
 		priority: "low",
+		type: "enhancement",
 	}),
 	createTask({
 		id: "task-104",
@@ -95,6 +98,7 @@ const renderBoardPage = (
 		statuses?: string[];
 		availableLabels?: string[];
 		availablePriorities?: string[];
+		availableTypes?: string[];
 		dateFormat?: string;
 	} = {},
 ): HTMLElement => {
@@ -113,6 +117,7 @@ const renderBoardPage = (
 					milestones={[]}
 					availableLabels={options.availableLabels ?? ["bug", "docs", "enhancement"]}
 					availablePriorities={options.availablePriorities}
+					availableTypes={options.availableTypes}
 					milestoneEntities={[]}
 					archivedMilestones={[]}
 					isLoading={false}
@@ -188,7 +193,7 @@ const expectBoardFiltersInHeader = (container: HTMLElement) => {
 	const boardFilters = toolbar?.querySelector("[aria-label='Board filters']");
 	expect(boardFilters).toBeTruthy();
 
-	for (const ariaLabel of ["Filter board by assignee", "Filter board by priority"]) {
+	for (const ariaLabel of ["Filter board by assignee", "Filter board by type", "Filter board by priority"]) {
 		const select = container.querySelector(`select[aria-label='${ariaLabel}']`) as HTMLSelectElement | null;
 		expect(select).toBeTruthy();
 		expect(toolbar?.contains(select)).toBe(true);
@@ -289,6 +294,42 @@ describe("Web board filters", () => {
 		expect(text).toContain("Escalate production incident");
 		expect(text).toContain("Very High");
 		expect(text).not.toContain("Fix login bug");
+	});
+
+	it("renders configured task types and canonicalizes type filters from the URL", async () => {
+		const customTasks = [
+			createTask({ id: "task-201", title: "Fix checkout", type: "Bug" }),
+			createTask({ id: "task-202", title: "Interview customers", type: "Customer Request" }),
+			createTask({ id: "task-203", title: "Unclassified follow-up" }),
+		];
+		const container = renderBoardPage("http://localhost/board?type=customer%20request", {
+			tasks: customTasks,
+			availableTypes: ["Bug", "Customer Request"],
+		});
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("type") === "Customer Request");
+
+		const typeSelect = getSelectByFirstOption(container, "All types");
+		expect(Array.from(typeSelect.options).map((option) => option.textContent)).toEqual([
+			"All types",
+			"Bug",
+			"Customer Request",
+		]);
+		expect(typeSelect.value).toBe("Customer Request");
+		expect(container.textContent).toContain("Interview customers");
+		expect(container.textContent).not.toContain("Fix checkout");
+		expect(container.textContent).not.toContain("Unclassified follow-up");
+	});
+
+	it("clears unsupported task type URL values", async () => {
+		const container = renderBoardPage("http://localhost/board?type=unsupported", {
+			availableTypes: ["Bug", "Feature"],
+		});
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("type") === null);
+
+		expect(getSelectByFirstOption(container, "All types").value).toBe("");
+		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
 	});
 
 	it("canonicalizes mixed-case configured priority URL values", async () => {

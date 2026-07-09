@@ -29,6 +29,7 @@ import type { DuplicateGroup } from '../utils/duplicate-detection';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
+import { getTaskTypeValues } from '../utils/task-type-config';
 
 const buildMilestoneAliasMap = (milestones: Milestone[], archivedMilestones: Milestone[]): Map<string, string> => {
   const aliasMap = new Map<string, string>();
@@ -169,6 +170,7 @@ function App() {
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
   const [config, setConfig] = useState<BacklogConfig | null>(null);
+  const availableTypes = React.useMemo(() => getTaskTypeValues(config), [config]);
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
@@ -510,6 +512,7 @@ function App() {
                 hideEmptyColumns={config?.hideEmptyColumns ?? false}
                 dateFormat={config?.dateFormat}
                 availablePriorities={config?.priorities}
+                availableTypes={availableTypes}
               />
             }
           />
@@ -567,6 +570,7 @@ function App() {
           availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
           availableMilestones={milestones}
           availablePriorities={config?.priorities}
+          availableTypes={availableTypes}
           milestoneEntities={milestoneEntities}
           archivedMilestoneEntities={archivedMilestones}
           isDraftMode={isDraftMode}

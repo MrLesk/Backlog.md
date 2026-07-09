@@ -883,6 +883,7 @@ export class BacklogServer {
 				description: payload.description,
 				status: payload.status,
 				priority: payload.priority,
+				type: typeof payload.type === "string" ? payload.type : undefined,
 				milestone,
 				labels: payload.labels,
 				assignee: payload.assignee,
@@ -948,6 +949,10 @@ export class BacklogServer {
 
 		if ("priority" in updates && typeof updates.priority === "string") {
 			updateInput.priority = updates.priority;
+		}
+
+		if ("type" in updates && typeof updates.type === "string") {
+			updateInput.type = updates.type;
 		}
 
 		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {

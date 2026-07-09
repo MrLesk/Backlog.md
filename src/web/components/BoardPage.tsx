@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import Board from './Board';
 import { type Milestone, type Task } from '../../types';
 import { resolvePriorityValue } from '../../utils/priority-config';
+import { resolveTaskTypeValue } from '../../utils/task-type-config';
 import { type LaneMode } from '../lib/lanes';
 
 interface BoardPageProps {
@@ -19,6 +20,7 @@ interface BoardPageProps {
 	hideEmptyColumns?: boolean;
 	dateFormat?: string;
 	availablePriorities?: string[];
+	availableTypes?: string[];
 }
 
 export default function BoardPage({
@@ -35,6 +37,7 @@ export default function BoardPage({
 	hideEmptyColumns,
 	dateFormat,
 	availablePriorities,
+	availableTypes,
 }: BoardPageProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
@@ -94,7 +97,7 @@ export default function BoardPage({
 		}, { replace: true });
 	};
 
-	const handleFiltersChange = (filters: { assignee: string; labels: string[]; priority: string }) => {
+	const handleFiltersChange = (filters: { assignee: string; labels: string[]; priority: string; taskType: string }) => {
 		setSearchParams(params => {
 			if (filters.assignee) {
 				params.set('assignee', filters.assignee);
@@ -114,6 +117,11 @@ export default function BoardPage({
 			} else {
 				params.delete('priority');
 			}
+			if (filters.taskType) {
+				params.set('type', filters.taskType);
+			} else {
+				params.delete('type');
+			}
 			return params;
 		}, { replace: true });
 	};
@@ -125,9 +133,11 @@ export default function BoardPage({
 	].map((label) => label.trim()).filter((label) => label.length > 0);
 	const rawFilterPriority = searchParams.get('priority') ?? '';
 	const filterPriority = resolvePriorityValue(rawFilterPriority, availablePriorities) ?? '';
+	const rawFilterType = searchParams.get('type') ?? '';
+	const filterType = resolveTaskTypeValue(rawFilterType, availableTypes) ?? '';
 
 	useEffect(() => {
-		if (isLoading || rawFilterPriority === filterPriority) {
+		if (isLoading || (rawFilterPriority === filterPriority && rawFilterType === filterType)) {
 			return;
 		}
 		setSearchParams(params => {
@@ -136,9 +146,14 @@ export default function BoardPage({
 			} else {
 				params.delete('priority');
 			}
+			if (filterType) {
+				params.set('type', filterType);
+			} else {
+				params.delete('type');
+			}
 			return params;
 		}, { replace: true });
-	}, [filterPriority, isLoading, rawFilterPriority, setSearchParams]);
+	}, [filterPriority, filterType, isLoading, rawFilterPriority, rawFilterType, setSearchParams]);
 
 	return (
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
@@ -161,6 +176,8 @@ export default function BoardPage({
 				filterLabels={filterLabels}
 				filterPriority={filterPriority}
 				availablePriorities={availablePriorities}
+				filterType={filterType}
+				availableTypes={availableTypes}
 				onFiltersChange={handleFiltersChange}
 				hideEmptyColumns={hideEmptyColumns}
 				dateFormat={dateFormat}

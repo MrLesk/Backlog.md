@@ -1,6 +1,7 @@
 import React from 'react';
 import { type Task } from '../../types';
 import { formatPriorityLabel } from '../../utils/priority-config';
+import TaskTypeBadge from './TaskTypeBadge';
 
 interface TaskCardProps {
   task: Task;
@@ -10,9 +11,10 @@ interface TaskCardProps {
   onDragEnd?: () => void;
   status?: string;
   laneId?: string;
+  availableTypes?: string[];
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, availableTypes }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
 
@@ -126,9 +128,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        {/* Header row with priority badge and task ID */}
+        {/* Header row with task metadata */}
         <div className="flex items-center justify-between gap-2 mb-1.5">
-          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+            <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
+          </div>
           {(() => {
             const badge = getPriorityBadge(task.priority);
             return badge ? (

@@ -85,6 +85,7 @@ describe("BacklogServer search endpoint", () => {
 			projectName: "Server Search",
 			statuses: ["To Do", "In Progress", "Done"],
 			labels: [],
+			types: ["Bug", "Feature", "Customer Request"],
 			priorities: ["Very High", "High", "Medium", "Low", "Very Low"],
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
@@ -268,6 +269,46 @@ describe("BacklogServer search endpoint", () => {
 		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
 		expect(fetched.id).toBe(created.id);
 		expect(fetched.title).toBe("Immediate fetch");
+	});
+
+	it("persists configured task types through create, edit, and clear", async () => {
+		const created = await fetchJson<Task>("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Typed Web task",
+				status: "To Do",
+				type: "customer request",
+			}),
+		});
+		expect(created.type).toBe("Customer Request");
+
+		const updated = await fetchJson<Task>(`/api/tasks/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: "BUG" }),
+		});
+		expect(updated.type).toBe("Bug");
+
+		const cleared = await fetchJson<Task>(`/api/tasks/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: "" }),
+		});
+		expect(cleared.type).toBeUndefined();
+	});
+
+	it("rejects unsupported task types from the Web task API", async () => {
+		const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Invalid typed task", status: "To Do", type: "Epic" }),
+		});
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			error: "Invalid type: Epic. Valid types are: Bug, Feature, Customer Request",
+		});
 	});
 
 	it("appends comments through the task update API and indexes comment text", async () => {
