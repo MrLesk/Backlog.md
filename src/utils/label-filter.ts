@@ -4,7 +4,11 @@ function normalizeLabel(label: string): string {
 	return label.trim().toLowerCase();
 }
 
-const LABEL_SORT_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base" });
+function compareCodeUnits(left: string, right: string): number {
+	if (left < right) return -1;
+	if (left > right) return 1;
+	return 0;
+}
 
 /**
  * Collect available labels from configuration and tasks, de-duplicated and sorted
@@ -34,8 +38,10 @@ export function collectAvailableLabels(tasks: Task[], configured: string[] = [])
 	}
 
 	return ordered.sort((left, right) => {
-		const result = LABEL_SORT_COLLATOR.compare(left, right);
-		return result !== 0 ? result : left.localeCompare(right);
+		const leftKey = normalizeLabel(left).normalize("NFD");
+		const rightKey = normalizeLabel(right).normalize("NFD");
+		const result = compareCodeUnits(leftKey, rightKey);
+		return result !== 0 ? result : compareCodeUnits(left, right);
 	});
 }
 

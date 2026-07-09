@@ -24,11 +24,26 @@ describe("label filter utilities", () => {
 				dependencies: [],
 			},
 		];
-		const configured = ["backend", "bug"];
+		const configured = ["backend", "BUG"];
 
 		const labels = collectAvailableLabels(tasks, configured);
 
-		expect(labels).toEqual(["backend", "bug", "infra", "UI"]);
+		expect(labels).toEqual(["backend", "BUG", "infra", "UI"]);
+	});
+
+	test("collectAvailableLabels sorts accented labels with locale-independent normalized keys", () => {
+		const labels = collectAvailableLabels([], ["Zulu", "Öl", "Ärger"]);
+
+		expect(labels).toEqual(["Ärger", "Öl", "Zulu"]);
+	});
+
+	test("collectAvailableLabels orders equivalent Unicode spellings independently of input order", () => {
+		const composed = "café";
+		const decomposed = "cafe\u0301";
+		const expected = [decomposed, composed];
+
+		expect(collectAvailableLabels([], [composed, decomposed])).toEqual(expected);
+		expect(collectAvailableLabels([], [decomposed, composed])).toEqual(expected);
 	});
 
 	test("formatLabelSummary produces concise summaries", () => {
