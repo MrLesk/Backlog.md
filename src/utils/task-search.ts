@@ -23,6 +23,7 @@ export interface TaskSearchOptions {
 
 export interface SharedTaskFilterOptions {
 	query?: string;
+	excludeStatus?: string | string[];
 	priority?: "high" | "medium" | "low";
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
@@ -280,6 +281,7 @@ export function applySharedTaskFilters(
 		tasks,
 		{
 			query: options.query,
+			excludeStatus: options.excludeStatus,
 			priority: options.priority,
 			labels: options.labels,
 			labelMatch: options.labelMatch,

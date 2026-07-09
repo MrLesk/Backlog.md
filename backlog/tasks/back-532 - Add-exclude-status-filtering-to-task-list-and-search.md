@@ -5,11 +5,36 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:58'
-updated_date: '2026-07-09 07:17'
+updated_date: '2026-07-09 07:31'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/690'
+modified_files:
+  - src/cli.ts
+  - src/core/backlog.ts
+  - src/core/content-store.ts
+  - src/core/search-service.ts
+  - src/file-system/operations.ts
+  - src/guidelines/mcp/overview.md
+  - src/guidelines/mcp/task-creation.md
+  - src/mcp/tools/tasks/handlers.ts
+  - src/mcp/tools/tasks/schemas.ts
+  - src/server/index.ts
+  - src/test/cli-exclude-status-filtering.test.ts
+  - src/test/mcp-tasks.test.ts
+  - src/test/search-service.test.ts
+  - src/test/server-search-endpoint.test.ts
+  - src/test/unified-view-filters.test.ts
+  - src/test/web-task-list-labels-menu.test.tsx
+  - src/types/index.ts
+  - src/ui/task-viewer-with-search.ts
+  - src/ui/unified-view.ts
+  - src/utils/status.ts
+  - src/utils/task-search.ts
+  - src/web/components/LabelFilterDropdown.tsx
+  - src/web/components/TaskList.tsx
+  - src/web/lib/api.ts
 ordinal: 168000
 ---
 
@@ -44,6 +69,8 @@ GitHub issue #690 bundles board sorting and status filtering requests. The sorti
 Scoped #690 to the accepted narrow filter slice. Sorting is already covered by existing done-column behavior and the narrower #694 board column menu work; this task implements status exclusion without a broad multi-filter rewrite.
 
 Reproduced the original gap with 'bun run cli task list --exclude-status Done --plain', which failed as an unknown option before implementation. Added excludeStatus across shared task filters, CLI task list/search, server APIs, MCP task list/search, and Web All Tasks URL/search handling. Updated MCP workflow guidance for the new public filter. Validation passed: bunx tsc --noEmit; bun run check .; bun run build; bun test (1454 pass, 2 skip, 0 fail).
+
+PR #745 review follow-up: fixed interactive search so --exclude-status seeds the TUI from filtered task results instead of all tasks, and carried excludeStatus through unified task-list/kanban filter state so live search updates and view switches cannot reintroduce excluded statuses. Added unified-view regression coverage for preserving and applying excluded statuses. Validation passed: bun test src/test/unified-view-filters.test.ts src/test/cli-exclude-status-filtering.test.ts; bunx tsc --noEmit; bun run check .; bun run build.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

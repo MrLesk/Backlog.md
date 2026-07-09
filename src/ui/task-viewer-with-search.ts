@@ -169,6 +169,7 @@ export async function viewTaskEnhanced(
 		filterDescription?: string;
 		searchQuery?: string;
 		statusFilter?: string;
+		excludeStatus?: string[];
 		priorityFilter?: string;
 		milestoneFilter?: string;
 		labelFilter?: string[];
@@ -182,6 +183,7 @@ export async function viewTaskEnhanced(
 		onFilterChange?: (filters: {
 			searchQuery: string;
 			statusFilter: string;
+			excludeStatus: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -255,6 +257,7 @@ export async function viewTaskEnhanced(
 		const matchedStatus = statuses.find((s) => s.toLowerCase() === lowerFilter);
 		statusFilter = matchedStatus || "";
 	}
+	const excludeStatusFilter = [...(options.excludeStatus ?? [])];
 
 	// Priority is already lowercase
 	let priorityFilter = options.priorityFilter || "";
@@ -589,6 +592,7 @@ export async function viewTaskEnhanced(
 			options.onFilterChange({
 				searchQuery,
 				statusFilter,
+				excludeStatus: excludeStatusFilter,
 				priorityFilter,
 				labelFilter,
 				labelMatch,
@@ -600,7 +604,12 @@ export async function viewTaskEnhanced(
 	// Function to apply filters and refresh the task list
 	function applyFilters() {
 		const hasActiveFilters = Boolean(
-			searchQuery.trim() || statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+			searchQuery.trim() ||
+				statusFilter ||
+				excludeStatusFilter.length > 0 ||
+				priorityFilter ||
+				labelFilter.length > 0 ||
+				milestoneFilter,
 		);
 		let nextFilteredTasks: Task[];
 		if (!hasActiveFilters) {
@@ -611,6 +620,7 @@ export async function viewTaskEnhanced(
 				{
 					query: searchQuery,
 					status: statusFilter || undefined,
+					excludeStatus: excludeStatusFilter,
 					priority: priorityFilter as "high" | "medium" | "low" | undefined,
 					labels: labelFilter,
 					labelMatch,
@@ -624,6 +634,7 @@ export async function viewTaskEnhanced(
 				query: searchQuery,
 				filters: {
 					status: statusFilter || undefined,
+					excludeStatus: excludeStatusFilter,
 					priority: priorityFilter as "high" | "medium" | "low" | undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				},
@@ -669,6 +680,9 @@ export async function viewTaskEnhanced(
 			}
 			if (statusFilter) {
 				activeFilters.push(`Status: {cyan-fg}${statusFilter}{/}`);
+			}
+			if (excludeStatusFilter.length > 0) {
+				activeFilters.push(`Exclude status: {cyan-fg}${excludeStatusFilter.join(", ")}{/}`);
 			}
 			if (priorityFilter) {
 				activeFilters.push(`Priority: {cyan-fg}${priorityFilter}{/}`);
