@@ -66,13 +66,19 @@ const LocationSearch = () => {
 
 const renderTaskList = (
 	initialEntries?: string[],
-	options: { tasks?: Task[]; availableStatuses?: string[]; availablePriorities?: string[] } = {},
+	options: {
+		tasks?: Task[];
+		availableStatuses?: string[];
+		availableLabels?: string[];
+		availablePriorities?: string[];
+	} = {},
 ): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
 	const renderedTasks = options.tasks ?? tasks;
 	const renderedStatuses = options.availableStatuses ?? ["To Do", "In Progress", "Done"];
+	const renderedLabels = options.availableLabels ?? ["bug", "docs"];
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
@@ -80,7 +86,7 @@ const renderTaskList = (
 				<TaskList
 					tasks={renderedTasks}
 					availableStatuses={renderedStatuses}
-					availableLabels={["bug", "docs"]}
+					availableLabels={renderedLabels}
 					availableMilestones={[]}
 					availablePriorities={options.availablePriorities}
 					milestoneEntities={[]}
@@ -136,6 +142,11 @@ const getLabelsButton = (container: HTMLElement): HTMLButtonElement => {
 	return button as HTMLButtonElement;
 };
 
+const getLabelOptions = (container: HTMLElement): string[] =>
+	Array.from(container.querySelectorAll("#task-list-labels-menu label span")).map(
+		(element) => element.textContent?.trim() ?? "",
+	);
+
 const getZIndexClass = (element: Element): number | null => {
 	const match = element.className.match(/\bz-(\d+)\b/);
 	const value = match?.[1];
@@ -163,6 +174,20 @@ describe("TaskList labels filter menu", () => {
 		const container = renderTaskList(["/?query=docs"]);
 
 		expect(container.querySelector("input[placeholder='Search tasks']")).toBeNull();
+	});
+
+	it("renders label filter options alphabetically", async () => {
+		const container = renderTaskList(undefined, {
+			availableLabels: ["zeta", "Alpha"],
+			tasks: [
+				createTask({ id: "task-101", labels: ["beta"] }),
+				createTask({ id: "task-102", labels: ["delta"] }),
+			],
+		});
+
+		await clickElement(getLabelsButton(container));
+
+		expect(getLabelOptions(container)).toEqual(["Alpha", "beta", "delta", "zeta"]);
 	});
 
 	it("sorts dotted subtask IDs under their parent when sorting by ID", async () => {

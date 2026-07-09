@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:18'
-updated_date: '2026-07-09 21:08'
+updated_date: '2026-07-09 21:10'
 labels: []
 dependencies: []
 references:
@@ -32,10 +32,10 @@ GitHub issue #732 requests configurable task priority values beyond the built-in
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Fetch current origin/main and inspect #741/#744 changes plus predicted conflicts against the custom-priority branch.
-2. Merge origin/main normally with the requested merge commit message and resolve conflicts by preserving hierarchical ID sorting, creation-date sorting, and custom-priority behavior/tests.
-3. Run custom-priority focused tests plus relevant TaskList, TaskColumn, and task-sorting suites; then type-check, Biome, and build.
-4. Simplify/review the merged result, update BACK-530 notes and final summary, return it to Done, push, and verify the remote SHA.
+1. Merge origin/main through #741/#744 and preserve hierarchical task-ID sorting, creation-date sorting, and custom-priority behavior/tests.
+2. Fetch the advanced origin/main at 219f733 and merge it normally, preserving deterministic label-order behavior/tests without rebasing or force-pushing.
+3. Run custom-priority, TaskList, TaskColumn, task-sorting, label-order, and board-adjacent focused tests; then type-check, Biome, and build.
+4. Review/simplify the final merged result, update BACK-530 notes and final summary, return it to Done, push, and verify the remote SHA.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -56,12 +56,18 @@ PR #743 conflict-resolution follow-up started from 27a2390; merging current main
 PR #743 conflict resolution completed against origin/main 6226251. TaskList now uses the shared hierarchical ascending/descending ID comparators while retaining configured priority filtering, display, and ranking. TaskColumn retains configured priority ordering through the shared reorder emitter and includes #744 oldest/newest creation-date actions. Added a direct custom-priority TaskColumn regression and included availablePriorities in TaskList sort memo dependencies.
 
 Merge validation: bun test src/commands/completion.test.ts src/test/priority.test.ts src/test/statistics.test.ts src/test/task-sorting.test.ts src/test/web-board-filters.test.tsx src/test/web-task-list-labels-menu.test.tsx src/test/web-task-column-sort.test.tsx (79 pass, 0 fail); bun test src/web/lib/lanes.test.ts src/test/board.test.ts src/test/board-ui.test.ts (27 pass, 0 fail); bunx tsc --noEmit; bun run check .; bun run build.
+
+origin/main advanced to 219f733 after the first merge push; continuing with a second normal merge so the final PR head includes deterministic label ordering.
+
+Integrated the advanced origin/main at 219f733 with a second normal merge. Resolved the sole TaskList test-harness conflict by combining availableLabels and availablePriorities options, retaining deterministic locale-independent label sorting, hierarchical ID tests, and custom-priority URL tests in the same suite.
+
+Final validation: bun test src/commands/completion.test.ts src/test/priority.test.ts src/test/statistics.test.ts src/test/task-sorting.test.ts src/test/label-filter.test.ts src/test/task-search-label-filter.test.ts src/test/web-board-filters.test.tsx src/test/web-task-list-labels-menu.test.tsx src/test/web-task-column-sort.test.tsx (90 pass, 0 fail); bun test src/web/lib/lanes.test.ts src/test/board.test.ts src/test/board-ui.test.ts (27 pass, 0 fail); label-filter tests pass under en_US.UTF-8, sv_SE.UTF-8, and tr_TR.UTF-8; bunx tsc --noEmit; bun run check .; bun run build.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed configurable priority support, fixed its Bash/Web/statistics edge cases, and merged current main without rebasing. The merged branch preserves hierarchical All Tasks ID sorting, board creation-date sorting, and every custom-priority behavior, with focused regressions and all requested static/build checks passing.
+Completed configurable priority support and its Bash/Web/statistics fixes, then merged current main through 219f733 without rebasing or force-pushing. The final branch preserves hierarchical All Tasks ID sorting, board creation-date sorting, locale-independent deterministic label ordering, and all custom-priority behavior; focused tests, locale checks, TypeScript, Biome, and build pass.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
