@@ -142,6 +142,12 @@ const getLabelsButton = (container: HTMLElement): HTMLButtonElement => {
 	return button as HTMLButtonElement;
 };
 
+const getExcludeStatusButton = (container: HTMLElement): HTMLButtonElement => {
+	const button = container.querySelector("button[aria-controls='task-list-exclude-status-menu']");
+	expect(button).toBeTruthy();
+	return button as HTMLButtonElement;
+};
+
 const getLabelOptions = (container: HTMLElement): string[] =>
 	Array.from(container.querySelectorAll("#task-list-labels-menu label span")).map(
 		(element) => element.textContent?.trim() ?? "",
@@ -318,6 +324,66 @@ describe("TaskList labels filter menu", () => {
 
 		expect(labelsButton.textContent).toContain("All");
 		expect(container.querySelector("#task-list-labels-menu")).toBeNull();
+	});
+
+	it("persists excluded statuses and sends them to task search", async () => {
+		const filteredTasks = [
+			createTask({ id: "task-101", title: "Todo visible", status: "To Do" }),
+			createTask({ id: "task-102", title: "Progress visible", status: "In Progress" }),
+			createTask({ id: "task-103", title: "Done hidden", status: "Done" }),
+		];
+		const fetchCalls: string[] = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+			fetchCalls.push(url);
+			const searchParams = new URL(url, "http://localhost").searchParams;
+			expect(url).toContain("/api/search");
+			expect(searchParams.getAll("excludeStatus")).toEqual(["Done"]);
+			return {
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				json: async () => [
+					{ type: "task", score: 0, task: filteredTasks[1] },
+					{ type: "task", score: 0, task: filteredTasks[0] },
+				],
+			} as Response;
+		}) as typeof fetch;
+
+		const container = renderTaskList(undefined, {
+			tasks: filteredTasks,
+			availableStatuses: ["To Do", "In Progress", "Done"],
+		});
+		const excludeStatusButton = getExcludeStatusButton(container);
+
+		await clickElement(excludeStatusButton);
+		const doneLabel = Array.from(container.querySelectorAll("#task-list-exclude-status-menu label")).find((label) =>
+			label.textContent?.includes("Done"),
+		);
+		const doneCheckbox = doneLabel?.querySelector("input");
+		expect(doneCheckbox).toBeTruthy();
+		await clickElement(doneCheckbox as HTMLInputElement);
+		await waitFor(() => fetchCalls.length === 1 && getRenderedTaskIds(container).includes("task-102"));
+
+		expect(excludeStatusButton.textContent).toContain("Done");
+		const locationSearch = container.querySelector("[data-testid='location-search']")?.textContent ?? "";
+		expect(new URLSearchParams(locationSearch).getAll("excludeStatus")).toEqual(["Done"]);
+		expect(getRenderedTaskIds(container)).toEqual(["task-102", "task-101"]);
+		expect(container.textContent).not.toContain("Done hidden");
+	});
+
+	it("uses default statuses for the exclude menu when no statuses are provided", async () => {
+		const container = renderTaskList(undefined, { availableStatuses: [] });
+		const excludeStatusButton = getExcludeStatusButton(container);
+
+		await clickElement(excludeStatusButton);
+
+		const menu = container.querySelector("#task-list-exclude-status-menu");
+		expect(menu).toBeTruthy();
+		expect(menu?.textContent).toContain("To Do");
+		expect(menu?.textContent).toContain("In Progress");
+		expect(menu?.textContent).toContain("Done");
+		expect(menu?.textContent).not.toContain("No statuses");
 	});
 
 	it("canonicalizes mixed-case configured priority URL values", async () => {

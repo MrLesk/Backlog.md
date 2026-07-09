@@ -15,6 +15,7 @@ export type LabelMatchMode = "any" | "all";
 export interface TaskSearchOptions {
 	query?: string;
 	status?: string;
+	excludeStatus?: string | string[];
 	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
@@ -23,6 +24,7 @@ export interface TaskSearchOptions {
 
 export interface SharedTaskFilterOptions {
 	query?: string;
+	excludeStatus?: string | string[];
 	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
@@ -33,6 +35,7 @@ export interface SharedTaskFilterOptions {
 
 export interface TaskFilterOptions extends SharedTaskFilterOptions {
 	status?: string;
+	excludeStatus?: string | string[];
 }
 
 export interface TaskSearchIndex {
@@ -176,6 +179,15 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 				const statusLower = options.status.toLowerCase();
 				results = results.filter((t) => t.statusLower === statusLower);
 			}
+			if (options.excludeStatus) {
+				const excludedStatuses = Array.isArray(options.excludeStatus) ? options.excludeStatus : [options.excludeStatus];
+				const excluded = new Set(
+					excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
+				);
+				if (excluded.size > 0) {
+					results = results.filter((t) => !excluded.has(t.statusLower));
+				}
+			}
 
 			// Apply priority filter
 			if (options.priority) {
@@ -236,6 +248,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 	const hasBaseFilters = Boolean(
 		query ||
 			options.status ||
+			options.excludeStatus ||
 			options.priority ||
 			(options.labels && options.labels.length > 0) ||
 			(options.modifiedFiles && options.modifiedFiles.length > 0),
@@ -245,6 +258,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 		? (index ?? createTaskSearchIndex(tasks)).search({
 				query,
 				status: options.status,
+				excludeStatus: options.excludeStatus,
 				priority: options.priority,
 				labels: options.labels,
 				labelMatch: options.labelMatch,
@@ -268,6 +282,7 @@ export function applySharedTaskFilters(
 		tasks,
 		{
 			query: options.query,
+			excludeStatus: options.excludeStatus,
 			priority: options.priority,
 			labels: options.labels,
 			labelMatch: options.labelMatch,

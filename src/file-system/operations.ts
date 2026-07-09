@@ -452,6 +452,15 @@ export class FileSystem {
 			const statusLower = filter.status.toLowerCase();
 			tasks = tasks.filter((t) => t.status.toLowerCase() === statusLower);
 		}
+		if (filter?.excludeStatus) {
+			const excludedStatuses = Array.isArray(filter.excludeStatus) ? filter.excludeStatus : [filter.excludeStatus];
+			const excluded = new Set(
+				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
+			);
+			if (excluded.size > 0) {
+				tasks = tasks.filter((t) => !excluded.has(t.status.toLowerCase()));
+			}
+		}
 
 		if (filter?.assignee) {
 			const assignee = filter.assignee;

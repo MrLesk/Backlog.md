@@ -47,6 +47,7 @@ type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEnti
 
 type NormalizedFilters = {
 	statuses?: string[];
+	excludedStatuses?: string[];
 	priorities?: SearchPriorityFilter[];
 	assignees?: string[];
 	labels?: string[];
@@ -322,6 +323,10 @@ export class SearchService {
 			const allowedStatuses = new Set(filters.statuses);
 			filtered = filtered.filter((task) => allowedStatuses.has(task.statusLower));
 		}
+		if (filters.excludedStatuses && filters.excludedStatuses.length > 0) {
+			const excludedStatuses = new Set(filters.excludedStatuses);
+			filtered = filtered.filter((task) => !excludedStatuses.has(task.statusLower));
+		}
 		if (filters.priorities && filters.priorities.length > 0) {
 			const allowedPriorities = new Set(filters.priorities);
 			filtered = filtered.filter((task) => {
@@ -360,6 +365,9 @@ export class SearchService {
 			if (!filters.statuses.includes(task.statusLower)) {
 				return false;
 			}
+		}
+		if (filters.excludedStatuses?.includes(task.statusLower)) {
+			return false;
 		}
 
 		if (filters.priorities && filters.priorities.length > 0) {
@@ -403,6 +411,7 @@ export class SearchService {
 		}
 
 		const statuses = this.normalizeStringArray(filters.status);
+		const excludedStatuses = this.normalizeStringArray(filters.excludeStatus);
 		const priorities = this.normalizePriorityArray(filters.priority);
 		const assignees = this.normalizeStringArray(filters.assignee);
 		const labels = this.normalizeLabelsArray(filters.labels);
@@ -410,6 +419,7 @@ export class SearchService {
 
 		return {
 			statuses,
+			excludedStatuses,
 			priorities,
 			assignees,
 			labels,

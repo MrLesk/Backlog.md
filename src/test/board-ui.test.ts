@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import type { ColumnData } from "../ui/board.ts";
-import { shouldRebuildColumns } from "../ui/board.ts";
+import { hasMoveBlockingBoardFilters, shouldRebuildColumns } from "../ui/board.ts";
 
 // Helper to create a minimal valid Task for testing
 const createTestTask = (id: string, title: string, status: string): Task => ({
@@ -54,6 +54,25 @@ describe("Board TUI Logic", () => {
 			const current: ColumnData[] = [{ status: "ToDo", tasks: [task1, task2] }];
 			const next: ColumnData[] = [{ status: "ToDo", tasks: [task1, task2] }];
 			expect(shouldRebuildColumns(current, next)).toBe(false);
+		});
+	});
+
+	describe("hasMoveBlockingBoardFilters", () => {
+		const baseFilters = {
+			searchQuery: "",
+			excludeStatus: [],
+			priorityFilter: "",
+			labelFilter: [],
+			milestoneFilter: "",
+		};
+
+		it("does not block moves when only hidden excluded statuses are active", () => {
+			expect(hasMoveBlockingBoardFilters({ ...baseFilters, excludeStatus: ["Done"] })).toBe(false);
+		});
+
+		it("blocks moves when visible board filters are active", () => {
+			expect(hasMoveBlockingBoardFilters({ ...baseFilters, searchQuery: "auth" })).toBe(true);
+			expect(hasMoveBlockingBoardFilters({ ...baseFilters, labelFilter: ["bug"] })).toBe(true);
 		});
 	});
 });

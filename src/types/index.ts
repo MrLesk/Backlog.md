@@ -172,6 +172,7 @@ export interface TaskUpdateInput {
 
 export interface TaskListFilter {
 	status?: string;
+	excludeStatus?: string | string[];
 	assignee?: string;
 	unassigned?: boolean;
 	priority?: string;
@@ -245,6 +246,7 @@ export interface SearchMatch {
 
 export interface SearchFilters {
 	status?: string | string[];
+	excludeStatus?: string | string[];
 	priority?: SearchPriorityFilter | SearchPriorityFilter[];
 	assignee?: string | string[];
 	labels?: string | string[];

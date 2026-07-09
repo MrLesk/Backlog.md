@@ -34,6 +34,7 @@ export interface UnifiedViewOptions {
 		title?: string;
 		filterDescription?: string;
 		searchQuery?: string;
+		excludeStatus?: string[];
 		parentTaskId?: string;
 		limit?: number;
 	};
@@ -58,6 +59,7 @@ export interface UnifiedViewLoadResult {
 export interface UnifiedViewFilters {
 	searchQuery: string;
 	statusFilter: string;
+	excludeStatus: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -65,8 +67,12 @@ export interface UnifiedViewFilters {
 	limit?: number;
 }
 
+type UnifiedViewFilterUpdate = Omit<UnifiedViewFilters, "excludeStatus"> &
+	Partial<Pick<UnifiedViewFilters, "excludeStatus">>;
+
 export interface KanbanSharedFilters {
 	searchQuery: string;
+	excludeStatus: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -77,6 +83,7 @@ export interface KanbanSharedFilters {
 export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSharedFilters {
 	return {
 		searchQuery: filters.searchQuery,
+		excludeStatus: [...filters.excludeStatus],
 		priorityFilter: filters.priorityFilter,
 		labelFilter: [...filters.labelFilter],
 		labelMatch: filters.labelMatch,
@@ -92,6 +99,7 @@ export function filterTasksForKanban(
 ): Task[] {
 	if (
 		!filters.searchQuery.trim() &&
+		filters.excludeStatus.length === 0 &&
 		!filters.priorityFilter &&
 		filters.labelFilter.length === 0 &&
 		!filters.milestoneFilter
@@ -104,6 +112,7 @@ export function filterTasksForKanban(
 		tasks,
 		{
 			query: filters.searchQuery,
+			excludeStatus: filters.excludeStatus,
 			priority: filters.priorityFilter || undefined,
 			labels: filters.labelFilter,
 			labelMatch: filters.labelMatch ?? "any",
@@ -119,6 +128,7 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 	return {
 		searchQuery: filter?.searchQuery || "",
 		statusFilter: filter?.status || "",
+		excludeStatus: [...(filter?.excludeStatus || [])],
 		priorityFilter: filter?.priority || "",
 		labelFilter: [...(filter?.labels || [])],
 		labelMatch: filter?.labelMatch ?? "any",
@@ -127,11 +137,15 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 	};
 }
 
-export function mergeUnifiedViewFilters(current: UnifiedViewFilters, update: UnifiedViewFilters): UnifiedViewFilters {
+export function mergeUnifiedViewFilters(
+	current: UnifiedViewFilters,
+	update: UnifiedViewFilterUpdate,
+): UnifiedViewFilters {
 	return {
 		...current,
 		searchQuery: update.searchQuery,
 		statusFilter: update.statusFilter,
+		excludeStatus: [...(update.excludeStatus ?? current.excludeStatus)],
 		priorityFilter: update.priorityFilter,
 		labelFilter: [...update.labelFilter],
 		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
@@ -348,6 +362,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					filterDescription: options.filter?.filterDescription,
 					searchQuery: currentFilters.searchQuery,
 					statusFilter: currentFilters.statusFilter,
+					excludeStatus: currentFilters.excludeStatus,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
 					labelMatch: currentFilters.labelMatch,
@@ -401,15 +416,16 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					availableLabels: getBoardAvailableLabels(),
 					availableMilestones: getBoardAvailableMilestones(),
 					onFilterChange: (filters) => {
-						currentFilters = {
-							...currentFilters,
+						currentFilters = mergeUnifiedViewFilters(currentFilters, {
 							searchQuery: filters.searchQuery,
+							statusFilter: currentFilters.statusFilter,
+							excludeStatus: filters.excludeStatus,
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
 							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
 							milestoneFilter: filters.milestoneFilter,
-							limit: filters.limit ?? currentFilters.limit,
-						};
+							limit: filters.limit,
+						});
 					},
 					subscribeUpdates: (updater) => {
 						boardUpdater = updater;

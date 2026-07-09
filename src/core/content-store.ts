@@ -113,6 +113,15 @@ export class ContentStore {
 			const statusLower = filter.status.toLowerCase();
 			tasks = tasks.filter((task) => task.status.toLowerCase() === statusLower);
 		}
+		if (filter?.excludeStatus) {
+			const excludedStatuses = Array.isArray(filter.excludeStatus) ? filter.excludeStatus : [filter.excludeStatus];
+			const excluded = new Set(
+				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
+			);
+			if (excluded.size > 0) {
+				tasks = tasks.filter((task) => !excluded.has(task.status.toLowerCase()));
+			}
+		}
 		if (filter?.assignee) {
 			const assignee = filter.assignee;
 			tasks = tasks.filter((task) => task.assignee.includes(assignee));

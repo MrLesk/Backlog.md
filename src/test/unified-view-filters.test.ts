@@ -20,11 +20,13 @@ describe("unified view filter state", () => {
 			labels,
 			labelMatch: "all",
 			milestone: "Release 1",
+			excludeStatus: ["Done"],
 			limit: 2,
 		});
 
 		expect(filters.searchQuery).toBe("sync");
 		expect(filters.statusFilter).toBe("In Progress");
+		expect(filters.excludeStatus).toEqual(["Done"]);
 		expect(filters.priorityFilter).toBe("high");
 		expect(filters.labelFilter).toEqual(["backend"]);
 		expect(filters.labelMatch).toBe("all");
@@ -44,6 +46,7 @@ describe("unified view filter state", () => {
 		const updated: UnifiedViewFilters = {
 			searchQuery: "api",
 			statusFilter: "To Do",
+			excludeStatus: [],
 			priorityFilter: "",
 			labelFilter: ["infra"],
 			milestoneFilter: "Sprint 7",
@@ -67,6 +70,7 @@ describe("unified view filter state", () => {
 		const updated: UnifiedViewFilters = {
 			searchQuery: "api auth",
 			statusFilter: "",
+			excludeStatus: [],
 			priorityFilter: "high",
 			labelFilter: ["frontend", "bug"],
 			milestoneFilter: "",
@@ -74,6 +78,43 @@ describe("unified view filter state", () => {
 
 		const merged = mergeUnifiedViewFilters(initial, updated);
 		expect(merged.labelMatch).toBe("all");
+	});
+
+	it("preserves excluded statuses when merging task-list filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			searchQuery: "api",
+			excludeStatus: ["Done"],
+		});
+
+		const updated = {
+			searchQuery: "api auth",
+			statusFilter: "",
+			priorityFilter: "",
+			labelFilter: [],
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.excludeStatus).toEqual(["Done"]);
+	});
+
+	it("uses explicitly updated excluded statuses when merging filter updates", () => {
+		const initial = createUnifiedViewFilters({
+			searchQuery: "api",
+			excludeStatus: ["Done"],
+		});
+
+		const updated: UnifiedViewFilters = {
+			searchQuery: "api",
+			statusFilter: "",
+			excludeStatus: [],
+			priorityFilter: "",
+			labelFilter: [],
+			milestoneFilter: "",
+		};
+
+		const merged = mergeUnifiedViewFilters(initial, updated);
+		expect(merged.excludeStatus).toEqual([]);
 	});
 
 	it("preserves task limit when merging filter updates", () => {
@@ -86,6 +127,7 @@ describe("unified view filter state", () => {
 		const updated: UnifiedViewFilters = {
 			searchQuery: "auth",
 			statusFilter: "",
+			excludeStatus: [],
 			priorityFilter: "",
 			labelFilter: ["frontend", "bug"],
 			milestoneFilter: "",
@@ -104,6 +146,7 @@ describe("unified view filter state", () => {
 		const updated: UnifiedViewFilters = {
 			searchQuery: "",
 			statusFilter: "",
+			excludeStatus: [],
 			priorityFilter: "",
 			labelFilter: ["frontend", "bug"],
 			labelMatch: "any",
@@ -118,6 +161,7 @@ describe("unified view filter state", () => {
 		const unified = createUnifiedViewFilters({
 			searchQuery: "sync",
 			status: "Done",
+			excludeStatus: ["Done"],
 			priority: "high",
 			labels: ["ui"],
 			milestone: "Sprint 1",
@@ -125,6 +169,7 @@ describe("unified view filter state", () => {
 
 		const shared = createKanbanSharedFilters(unified);
 		expect(shared.searchQuery).toBe("sync");
+		expect(shared.excludeStatus).toEqual(["Done"]);
 		expect(shared.priorityFilter).toBe("high");
 		expect(shared.labelFilter).toEqual(["ui"]);
 		expect(shared.milestoneFilter).toBe("Sprint 1");
@@ -174,6 +219,36 @@ describe("unified view filter state", () => {
 
 		expect(shared.labelMatch).toBe("all");
 		expect(results).toEqual(["task-1"]);
+	});
+
+	it("applies excluded statuses in kanban shared filters", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Active task",
+				status: "To Do",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-01",
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Completed task",
+				status: "Done",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-02",
+				dependencies: [],
+			},
+		];
+		const shared = createKanbanSharedFilters(createUnifiedViewFilters({ excludeStatus: ["Done"] }));
+
+		const kanbanResults = filterTasksForKanban(tasks, shared).map((task) => task.id);
+		const listResults = applyTaskFilters(tasks, { excludeStatus: ["Done"] }).map((task) => task.id);
+
+		expect(kanbanResults).toEqual(["task-1"]);
+		expect(listResults).toEqual(["task-1"]);
 	});
 
 	it("applies kanban shared limit without dropping seeded label filters", () => {
@@ -243,6 +318,7 @@ describe("unified view filter state", () => {
 
 		const results = filterTasksForKanban(tasks, {
 			searchQuery: "",
+			excludeStatus: [],
 			priorityFilter: "",
 			labelFilter: [],
 			milestoneFilter: "",
@@ -296,6 +372,7 @@ describe("unified view filter state", () => {
 
 		const sharedFilters = {
 			searchQuery: "",
+			excludeStatus: [],
 			priorityFilter: "high",
 			labelFilter: ["ui"],
 			milestoneFilter: "Sprint 1",
@@ -366,6 +443,7 @@ describe("unified view filter state", () => {
 
 		const sharedFilters = {
 			searchQuery: "",
+			excludeStatus: [],
 			priorityFilter: "",
 			labelFilter: [],
 			milestoneFilter: NO_MILESTONE_FILTER_VALUE,

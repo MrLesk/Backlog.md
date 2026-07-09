@@ -141,6 +141,22 @@ describe("SearchService", () => {
 			})
 			.filter(isTaskResult);
 		expect(combinedFiltered.map((result) => result.task.id)).toStrictEqual(["TASK-3"]);
+
+		const excludedStatus = search
+			.search({
+				types: ["task"],
+				filters: { excludeStatus: "In Progress" },
+			})
+			.filter(isTaskResult);
+		expect(excludedStatus.map((result) => result.task.id)).toStrictEqual(["TASK-2"]);
+
+		const includedAndExcludedStatus = search
+			.search({
+				types: ["task"],
+				filters: { status: ["In Progress", "To Do"], excludeStatus: ["In Progress"] },
+			})
+			.filter(isTaskResult);
+		expect(includedAndExcludedStatus.map((result) => result.task.id)).toStrictEqual(["TASK-2"]);
 	});
 
 	it("filters tasks by labels (requiring all selected labels)", async () => {

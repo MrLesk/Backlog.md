@@ -34,6 +34,25 @@ export type ColumnData = {
 	tasks: Task[];
 };
 
+type BoardSharedFilters = {
+	searchQuery: string;
+	excludeStatus?: string[];
+	priorityFilter: string;
+	labelFilter: string[];
+	milestoneFilter: string;
+	limit?: number;
+};
+
+export function hasMoveBlockingBoardFilters(filters: BoardSharedFilters): boolean {
+	return Boolean(
+		filters.searchQuery.trim() ||
+			filters.priorityFilter ||
+			filters.labelFilter.length > 0 ||
+			filters.milestoneFilter ||
+			filters.limit !== undefined,
+	);
+}
+
 type MutableList = ListInterface & {
 	selected?: number;
 	setItem?: (index: number, content: string) => void;
@@ -190,6 +209,7 @@ export async function renderBoardTui(
 		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[]) => void) => void;
 		filters?: {
 			searchQuery: string;
+			excludeStatus?: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -201,6 +221,7 @@ export async function renderBoardTui(
 		priorities?: string[];
 		onFilterChange?: (filters: {
 			searchQuery: string;
+			excludeStatus?: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -256,6 +277,7 @@ export async function renderBoardTui(
 		let programmaticColumnSelection = false;
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
+			excludeStatus: [...(options?.filters?.excludeStatus ?? [])],
 			priorityFilter: options?.filters?.priorityFilter ?? "",
 			labelFilter: [...(options?.filters?.labelFilter ?? [])],
 			labelMatch: options?.filters?.labelMatch ?? "any",
@@ -306,14 +328,17 @@ export async function renderBoardTui(
 		const hasActiveSharedFilters = () =>
 			Boolean(
 				sharedFilters.searchQuery.trim() ||
+					sharedFilters.excludeStatus.length > 0 ||
 					sharedFilters.priorityFilter ||
 					sharedFilters.labelFilter.length > 0 ||
 					sharedFilters.milestoneFilter ||
 					sharedFilters.limit !== undefined,
 			);
+		const hasMoveBlockingSharedFilters = () => hasMoveBlockingBoardFilters(sharedFilters);
 		const emitFilterChange = () => {
 			options?.onFilterChange?.({
 				searchQuery: sharedFilters.searchQuery,
+				excludeStatus: [...sharedFilters.excludeStatus],
 				priorityFilter: sharedFilters.priorityFilter,
 				labelFilter: [...sharedFilters.labelFilter],
 				labelMatch: sharedFilters.labelMatch,
@@ -331,6 +356,7 @@ export async function renderBoardTui(
 					currentTasks,
 					{
 						query: sharedFilters.searchQuery,
+						excludeStatus: sharedFilters.excludeStatus,
 						priority: sharedFilters.priorityFilter || undefined,
 						labels: sharedFilters.labelFilter,
 						labelMatch: sharedFilters.labelMatch,
@@ -1307,7 +1333,7 @@ export async function renderBoardTui(
 
 		screen.key(["m", "M", "S-m"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-			if (hasActiveSharedFilters()) {
+			if (hasMoveBlockingSharedFilters()) {
 				showTransientFooter(" {yellow-fg}Clear filters before moving tasks.{/}");
 				return;
 			}

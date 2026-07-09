@@ -68,7 +68,7 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
-import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
+import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
 	normalizeDependencies,
 	parseDelimitedStringList,
@@ -252,6 +252,18 @@ function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
 	}
 	const taskLabels = new Set(labelsToLower(task.labels ?? []));
 	return requiredLabels.every((label) => taskLabels.has(label));
+}
+
+async function normalizeCliStatusList(core: Core, values: string[], optionName: string): Promise<string[] | null> {
+	const { values: canonicalStatuses, invalid, validStatuses } = await getCanonicalStatuses(values, core);
+	if (invalid.length > 0) {
+		console.error(
+			`Invalid ${optionName}: ${invalid.join(", ")}. Valid statuses are: ${formatValidStatuses(validStatuses)}`,
+		);
+		process.exitCode = 1;
+		return null;
+	}
+	return canonicalStatuses;
 }
 
 async function normalizeCliPriority(core: Core, value: string): Promise<string | null> {
@@ -1736,6 +1748,11 @@ addHelpSchema(program.command("search [query]"), {
 			description: "Result types",
 		},
 		{ name: "status", type: statusType, description: "Filter task results by status; case-insensitive" },
+		{
+			name: "exclude-status",
+			type: statusType,
+			description: "Exclude task results with one or more statuses; repeat or comma-separate values",
+		},
 		{ name: "priority", type: priorityType, description: "Filter task results by priority" },
 		{
 			name: "modified-file",
@@ -1750,6 +1767,11 @@ addHelpSchema(program.command("search [query]"), {
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
 	.option("--status <status>", "filter task results by status")
+	.option(
+		"--exclude-status <status>",
+		"exclude task results by status (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option("--priority <priority>", "filter task results by priority (configured priorities)")
 	.option(
 		"--modified-file <path>",
@@ -1785,9 +1807,23 @@ addHelpSchema(program.command("search [query]"), {
 				? ["task"]
 				: allowedTypes;
 
-		const filters: { status?: string; priority?: SearchPriorityFilter; modifiedFiles?: string[] } = {};
+		const filters: {
+			status?: string;
+			excludeStatus?: string[];
+			priority?: SearchPriorityFilter;
+			modifiedFiles?: string[];
+		} = {};
 		if (options.status) {
 			filters.status = options.status;
+		}
+		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
+		if (excludeStatuses.length > 0) {
+			const canonicalExcludeStatuses = await normalizeCliStatusList(core, excludeStatuses, "exclude-status");
+			if (!canonicalExcludeStatuses) {
+				cleanup();
+				return;
+			}
+			filters.excludeStatus = canonicalExcludeStatuses;
 		}
 		if (options.priority) {
 			const priority = await normalizeCliPriority(core, String(options.priority));
@@ -1862,11 +1898,13 @@ addHelpSchema(program.command("search [query]"), {
 				title: query ? `Search: ${query}` : "Search",
 				filterDescription: buildSearchFilterDescription({
 					status: statusFilter,
+					excludeStatus: filters.excludeStatus,
 					priority: priorityFilter,
 					query: query ?? "",
 					modifiedFiles: modifiedFileFilters ?? [],
 				}),
 				status: statusFilter,
+				excludeStatus: filters.excludeStatus,
 				priority: priorityFilter,
 				searchQuery: query ?? "", // Pre-populate search with the query
 			},
@@ -1876,6 +1914,7 @@ addHelpSchema(program.command("search [query]"), {
 
 function buildSearchFilterDescription(filters: {
 	status?: string;
+	excludeStatus?: string[];
 	priority?: SearchPriorityFilter;
 	query?: string;
 	modifiedFiles?: string[];
@@ -1886,6 +1925,9 @@ function buildSearchFilterDescription(filters: {
 	}
 	if (filters.status) {
 		parts.push(`Status: ${filters.status}`);
+	}
+	if (filters.excludeStatus?.length) {
+		parts.push(`Exclude status: ${filters.excludeStatus.join(", ")}`);
 	}
 	if (filters.priority) {
 		parts.push(`Priority: ${filters.priority}`);
@@ -2026,6 +2068,11 @@ addHelpSchema(taskCmd.command("list"), {
 	required: [],
 	optional: [
 		{ name: "status", type: statusType, description: "Filter by task status; case-insensitive" },
+		{
+			name: "exclude-status",
+			type: statusType,
+			description: "Exclude tasks with one or more statuses; repeat or comma-separate values",
+		},
 		{ name: "assignee", type: "Assignee", description: "Filter by @name" },
 		{
 			name: "unassigned",
@@ -2053,6 +2100,11 @@ addHelpSchema(taskCmd.command("list"), {
 })
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
+	.option(
+		"--exclude-status <status>",
+		"exclude tasks by status (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("--unassigned", "filter tasks without an assignee (cannot be combined with --assignee)")
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
@@ -2083,6 +2135,15 @@ addHelpSchema(taskCmd.command("list"), {
 		const baseFilters: TaskListFilter = {};
 		if (options.status) {
 			baseFilters.status = options.status;
+		}
+		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
+		if (excludeStatuses.length > 0) {
+			const canonicalExcludeStatuses = await normalizeCliStatusList(core, excludeStatuses, "exclude-status");
+			if (!canonicalExcludeStatuses) {
+				cleanup();
+				return;
+			}
+			baseFilters.excludeStatus = canonicalExcludeStatuses;
 		}
 		if (options.assignee) {
 			baseFilters.assignee = options.assignee;
@@ -2236,6 +2297,12 @@ addHelpSchema(taskCmd.command("list"), {
 		let title = "Tasks";
 		const activeFilters: string[] = [];
 		if (options.status) activeFilters.push(`Status: ${options.status}`);
+		if (baseFilters.excludeStatus) {
+			const excluded = Array.isArray(baseFilters.excludeStatus)
+				? baseFilters.excludeStatus
+				: [baseFilters.excludeStatus];
+			activeFilters.push(`Exclude status: ${excluded.join(", ")}`);
+		}
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
 		if (options.unassigned) activeFilters.push("Unassigned");
 		if (options.parent) {
@@ -2254,6 +2321,7 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		const initialUnifiedFilter: {
 			status?: string;
+			excludeStatus?: string[];
 			assignee?: string;
 			milestone?: string;
 			priority?: string;
@@ -2267,6 +2335,7 @@ addHelpSchema(taskCmd.command("list"), {
 			limit?: number;
 		} = {
 			status: options.status,
+			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
 			assignee: options.assignee,
 			milestone: options.milestone,
 			priority: baseFilters.priority,
