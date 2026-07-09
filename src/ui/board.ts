@@ -189,6 +189,7 @@ export async function renderBoardTui(
 		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[]) => void) => void;
 		filters?: {
 			searchQuery: string;
+			excludeStatus?: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -199,6 +200,7 @@ export async function renderBoardTui(
 		availableMilestones?: string[];
 		onFilterChange?: (filters: {
 			searchQuery: string;
+			excludeStatus?: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -254,6 +256,7 @@ export async function renderBoardTui(
 		let programmaticColumnSelection = false;
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
+			excludeStatus: [...(options?.filters?.excludeStatus ?? [])],
 			priorityFilter: options?.filters?.priorityFilter ?? "",
 			labelFilter: [...(options?.filters?.labelFilter ?? [])],
 			labelMatch: options?.filters?.labelMatch ?? "any",
@@ -303,6 +306,7 @@ export async function renderBoardTui(
 		const hasActiveSharedFilters = () =>
 			Boolean(
 				sharedFilters.searchQuery.trim() ||
+					sharedFilters.excludeStatus.length > 0 ||
 					sharedFilters.priorityFilter ||
 					sharedFilters.labelFilter.length > 0 ||
 					sharedFilters.milestoneFilter ||
@@ -311,6 +315,7 @@ export async function renderBoardTui(
 		const emitFilterChange = () => {
 			options?.onFilterChange?.({
 				searchQuery: sharedFilters.searchQuery,
+				excludeStatus: [...sharedFilters.excludeStatus],
 				priorityFilter: sharedFilters.priorityFilter,
 				labelFilter: [...sharedFilters.labelFilter],
 				labelMatch: sharedFilters.labelMatch,
@@ -328,6 +333,7 @@ export async function renderBoardTui(
 					currentTasks,
 					{
 						query: sharedFilters.searchQuery,
+						excludeStatus: sharedFilters.excludeStatus,
 						priority: sharedFilters.priorityFilter as "high" | "medium" | "low" | undefined,
 						labels: sharedFilters.labelFilter,
 						labelMatch: sharedFilters.labelMatch,

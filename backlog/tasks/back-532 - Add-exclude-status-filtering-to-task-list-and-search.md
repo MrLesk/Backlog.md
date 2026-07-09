@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-09 06:58'
-updated_date: '2026-07-09 07:31'
+updated_date: '2026-07-09 07:45'
 labels: []
 dependencies: []
 references:
@@ -28,6 +28,7 @@ modified_files:
   - src/test/unified-view-filters.test.ts
   - src/test/web-task-list-labels-menu.test.tsx
   - src/types/index.ts
+  - src/ui/board.ts
   - src/ui/task-viewer-with-search.ts
   - src/ui/unified-view.ts
   - src/utils/status.ts
@@ -71,6 +72,8 @@ Scoped #690 to the accepted narrow filter slice. Sorting is already covered by e
 Reproduced the original gap with 'bun run cli task list --exclude-status Done --plain', which failed as an unknown option before implementation. Added excludeStatus across shared task filters, CLI task list/search, server APIs, MCP task list/search, and Web All Tasks URL/search handling. Updated MCP workflow guidance for the new public filter. Validation passed: bunx tsc --noEmit; bun run check .; bun run build; bun test (1454 pass, 2 skip, 0 fail).
 
 PR #745 review follow-up: fixed interactive search so --exclude-status seeds the TUI from filtered task results instead of all tasks, and carried excludeStatus through unified task-list/kanban filter state so live search updates and view switches cannot reintroduce excluded statuses. Added unified-view regression coverage for preserving and applying excluded statuses. Validation passed: bun test src/test/unified-view-filters.test.ts src/test/cli-exclude-status-filtering.test.ts; bunx tsc --noEmit; bun run check .; bun run build.
+
+PR #745 second review follow-up: carried excludeStatus through board shared filters and board filter-change emissions, included exclude-only state in the task-viewer initial filter application, and stopped prefiltering task-list interactive loader results so the TUI receives the full source collection and applies excludeStatus as filter state. Validation passed: bun test src/test/unified-view-filters.test.ts src/test/cli-exclude-status-filtering.test.ts; bun test src/test/board-ui.test.ts src/test/unified-view-filters.test.ts; bunx tsc --noEmit; bun run check .; bun run build.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

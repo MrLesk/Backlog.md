@@ -275,6 +275,7 @@ export async function viewTaskEnhanced(
 	const filtersActive = Boolean(
 		searchQuery ||
 			statusFilter ||
+			excludeStatusFilter.length > 0 ||
 			priorityFilter ||
 			labelFilter.length > 0 ||
 			milestoneFilter ||

@@ -2351,9 +2351,6 @@ addHelpSchema(taskCmd.command("list"), {
 		if (options.unassigned) {
 			interactiveLoaderFilters.unassigned = true;
 		}
-		if (baseFilters.excludeStatus) {
-			interactiveLoaderFilters.excludeStatus = baseFilters.excludeStatus;
-		}
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
 		}
