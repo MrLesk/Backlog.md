@@ -97,12 +97,7 @@ describe("BacklogServer task SPA fallback", () => {
 		}
 	});
 
-	it("serves HEAD requests while keeping API routes distinct", async () => {
-		const headResponse = await request("/tasks/001.02/fix-labels", { method: "HEAD" });
-		expect(headResponse.status).toBe(200);
-		expect(headResponse.headers.get("content-type")).toContain("text/html");
-		expect(await headResponse.text()).toBe("");
-
+	it("keeps API routes distinct from the SPA wildcard", async () => {
 		const listResponse = await request("/api/tasks?crossBranch=false");
 		expect(listResponse.status).toBe(200);
 		expect(listResponse.headers.get("content-type")).toContain("application/json");

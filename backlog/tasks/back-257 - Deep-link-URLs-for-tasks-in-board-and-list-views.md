@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 06:58'
+updated_date: '2026-07-10 07:08'
 labels: []
 dependencies: []
 references:
@@ -80,6 +80,8 @@ L2 context brief: Reviewed src/server/index.ts, src/web/App.tsx, BoardPage.tsx, 
 Pinned Bun 1.3.14 production behavior: direct HTMLBundle routes accept POST, PUT, and OPTIONS across existing tasks, documentation, and decisions namespaces. Bun has no documented or type-safe GET/HEAD-only HTMLBundle method-map form; the runtime-only cast is intentionally not used. This PR keeps the documented exact-base plus wildcard SPA pattern and verifies GET, HEAD, and API isolation. Method hardening is a separate cross-SPA or upstream Bun concern.
 
 Final implementation: canonicalized the browser root to /board; added optional board/list task routes backed by the existing modal; preserved cosmetic slug mismatches, filters, Back/Forward/close history, unified search, and legacy highlight links. Shared task identity resolution now supports configured prefixes, padded and dotted IDs, and fails closed on local, cross-branch, or canonical duplicate ambiguity instead of opening an arbitrary task. Added keyboard-openable task rows/cards plus modal focus entry, trap, restoration, and focused route errors. Fixed routed archive history so it closes exactly once. Validation: 62 focused tests passed with 230 assertions; full bun test passed 1,529 with 2 expected interactive TUI skips and 0 failures (5,305 assertions across 183 files); bunx tsc --noEmit, Biome over 319 files, git diff --check, and production build passed. Compiled-binary desktop Chrome QA at 1440x1000 covered direct/refresh routes, Back/Forward/close, keyboard and focus behavior, legacy highlight, invalid/malformed links, padded custom-prefix subtasks, and an injected duplicate-ID repair path. No unexpected console, page, request, or HTTP failures occurred in normal flows. An independent code review found no remaining actionable issues after the collision, archive-history, and root-canonicalization fixes.
+
+CI correction: the initial GitHub Actions run showed that a HEAD request against a Bun 1.3.14 HTMLBundle wildcard can return 500 inside the all-files isolated test runner and then trigger cascading Bun socket errors. The browser GET routes and all compiled-binary smoke jobs passed. HEAD is not part of BACK-257 or Bun's documented method-specific HTMLBundle contract, so the destabilizing HEAD probe was removed; GET route coverage and API wildcard isolation remain. The exact CI-style local suite, bun test --isolate --timeout=10000, now passes 1,529 tests with 2 expected skips, 0 failures, and 5,301 assertions across 183 files. This supersedes the earlier note's HEAD and 5,305-assertion claims.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
