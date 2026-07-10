@@ -28,6 +28,30 @@ function extractTaskBody(value: string, prefix: string = DEFAULT_TASK_PREFIX): s
 	return match?.[1] ?? null;
 }
 
+function canonicalDecimalSegment(segment: string): string {
+	const withoutLeadingZeroes = segment.replace(/^0+/, "");
+	return withoutLeadingZeroes || "0";
+}
+
+/** Compare dotted decimal ID bodies without coercing segments to JavaScript numbers. */
+export function numericIdBodiesEqual(left: string, right: string): boolean {
+	const leftSegments = left.split(".");
+	const rightSegments = right.split(".");
+	if (leftSegments.length !== rightSegments.length) {
+		return false;
+	}
+	if (!leftSegments.every((segment) => /^\d+$/.test(segment))) {
+		return false;
+	}
+	if (!rightSegments.every((segment) => /^\d+$/.test(segment))) {
+		return false;
+	}
+
+	return leftSegments.every(
+		(segment, index) => canonicalDecimalSegment(segment) === canonicalDecimalSegment(rightSegments[index] ?? ""),
+	);
+}
+
 /**
  * Compare task IDs by prefix and numeric segments.
  * Leading zeroes are cosmetic, including within dotted subtask IDs.
@@ -41,12 +65,7 @@ export function taskIdsEqual(left: string, right: string, prefix: string = DEFAU
 	const rightBody = extractTaskBody(right, effectivePrefix);
 
 	if (leftBody && rightBody) {
-		const leftSegments = leftBody.split(".").map((segment) => Number.parseInt(segment, 10));
-		const rightSegments = rightBody.split(".").map((segment) => Number.parseInt(segment, 10));
-		return (
-			leftSegments.length === rightSegments.length &&
-			leftSegments.every((value, index) => value === rightSegments[index])
-		);
+		return numericIdBodiesEqual(leftBody, rightBody);
 	}
 
 	return normalizeTaskId(left, effectivePrefix).toLowerCase() === normalizeTaskId(right, effectivePrefix).toLowerCase();

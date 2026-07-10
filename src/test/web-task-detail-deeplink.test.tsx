@@ -121,6 +121,9 @@ const installFetchMock = () => {
 		if (url.pathname.startsWith("/api/task/")) {
 			const routeId = decodeURIComponent(url.pathname.slice("/api/task/".length));
 			await beforeTaskResponse?.(routeId);
+			if (routeId === "BACK-1") {
+				return json({ error: "Active branch task identity collision" }, 409);
+			}
 			const resolution = resolveTaskById(tasks, routeId);
 			if (resolution.status === "found") {
 				return json(resolution.task);
@@ -211,10 +214,18 @@ const click = async (element: Element) => {
 	});
 };
 
-const press = async (element: Element, key: string) => {
+const press = async (element: Element, key: string, init: KeyboardEventInit = {}) => {
 	await act(async () => {
 		(element as HTMLElement).focus();
-		element.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true }));
+		element.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, ...init }));
+		await Promise.resolve();
+	});
+};
+
+const pushRoute = async (path: string) => {
+	await act(async () => {
+		window.history.pushState({}, "", path);
+		window.dispatchEvent(new window.PopStateEvent("popstate"));
 		await Promise.resolve();
 	});
 };
@@ -308,12 +319,19 @@ describe("task detail routes", () => {
 		const collapseButton = container.querySelector("button[aria-label='Collapse sidebar']");
 		expect(collapseButton).toBeTruthy();
 		await click(collapseButton as HTMLButtonElement);
-		const expandButton = container.querySelector("button[aria-label='Expand sidebar']");
-		expect(expandButton).toBeTruthy();
-		await click(expandButton as HTMLButtonElement);
+		const collapsedSearch = container.querySelector("button[title='Search (⌘K)']");
+		expect(collapsedSearch).toBeTruthy();
+		await click(collapsedSearch as HTMLButtonElement);
 		const expandedSearch = container.querySelector("input[placeholder='Search (⌘K)...']");
 		expect(expandedSearch).toBeTruthy();
 		expect(ownerDocument.activeElement).toBe(expandedSearch);
+
+		await click(container.querySelector("button[aria-label='Collapse sidebar']") as HTMLButtonElement);
+		expect(container.querySelector("button[aria-label='Expand sidebar']")).toBeTruthy();
+		await press(ownerDocument.body, "k", { ctrlKey: true });
+		const shortcutSearch = container.querySelector("input[placeholder='Search (⌘K)...']");
+		expect(shortcutSearch).toBeTruthy();
+		expect(ownerDocument.activeElement).toBe(shortcutSearch);
 
 		const title = Array.from(container.querySelectorAll("button")).find(
 			(element) => element.textContent === tasks[0]?.title,
@@ -333,11 +351,18 @@ describe("task detail routes", () => {
 		expect(initialDialog?.ownerDocument.activeElement).toBe(initialDialog);
 		expect(window.location.search).toBe("?status=To%20Do");
 
+		await press(initialDialog as HTMLElement, "k", { ctrlKey: true });
+		expect(ownerDocument.activeElement).toBe(initialDialog);
+		await press(shortcutSearch as HTMLInputElement, "Tab");
+		expect(initialDialog?.contains(ownerDocument.activeElement)).toBe(true);
+		expect(ownerDocument.activeElement).not.toBe(shortcutSearch);
+
 		await travel("back");
 		await waitFor(
 			() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
 			"Back to close the modal",
 		);
+		expect(ownerDocument.activeElement).toBe(title as HTMLButtonElement);
 
 		await travel("forward");
 		await waitFor(
@@ -355,6 +380,66 @@ describe("task detail routes", () => {
 			() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
 			"close button to return to list",
 		);
+		expect(ownerDocument.activeElement).toBe(title as HTMLButtonElement);
+	});
+
+	for (const scenario of [
+		{
+			name: "a missing task",
+			path: "/tasks/BACK-999/missing",
+			message: 'Task "BACK-999" was not found.',
+		},
+		{
+			name: "an ambiguous task",
+			path: "/tasks/7/ambiguous",
+			message: 'Task "7" is ambiguous. Repair duplicate task IDs before opening this link.',
+		},
+		{
+			name: "an active-branch collision",
+			path: "/tasks/BACK-1/collision-shadow",
+			message: 'Task "BACK-1" is ambiguous. Repair duplicate task IDs before opening this link.',
+		},
+	]) {
+		it(`clears the previous modal when routing to ${scenario.name} and preserves Back`, async () => {
+			const container = await renderApp("/tasks/BACK-101/original");
+			await waitFor(() => Boolean(container.querySelector("[role='dialog']")), "initial routed task modal");
+			expect(container.querySelector("#modal-title")?.textContent).toContain(tasks[0]?.title ?? "");
+			expect(container.ownerDocument.activeElement).toBe(container.querySelector("[role='dialog']"));
+
+			await pushRoute(scenario.path);
+			await waitFor(
+				() => window.location.pathname === "/tasks" && Boolean(container.querySelector("[role='alert']")),
+				`${scenario.name} route fallback`,
+			);
+			const alert = container.querySelector("[role='alert']");
+			expect(container.querySelector("[role='dialog']")).toBeNull();
+			expect(alert?.textContent).toContain(scenario.message);
+			expect(container.ownerDocument.activeElement).toBe(alert);
+
+			await travel("back");
+			await waitFor(
+				() =>
+					window.location.pathname === "/tasks/BACK-101/original" &&
+					Boolean(container.querySelector("[role='dialog']")),
+				"Back to the previous routed task modal",
+			);
+			expect(container.querySelector("#modal-title")?.textContent).toContain(tasks[0]?.title ?? "");
+			expect(container.ownerDocument.activeElement).toBe(container.querySelector("[role='dialog']"));
+		});
+	}
+
+	it("renders a focused repair alert instead of a modal for a direct active-branch collision link", async () => {
+		const container = await renderApp("/tasks/BACK-1/collision-shadow");
+		await waitFor(
+			() => window.location.pathname === "/tasks" && Boolean(container.querySelector("[role='alert']")),
+			"active-branch collision repair alert",
+		);
+		const alert = container.querySelector("[role='alert']");
+		expect(alert?.textContent).toContain(
+			'Task "BACK-1" is ambiguous. Repair duplicate task IDs before opening this link.',
+		);
+		expect(container.querySelector("[role='dialog']")).toBeNull();
+		expect(container.ownerDocument.activeElement).toBe(alert);
 	});
 
 	it("keeps an explicit task prefix when equal numeric IDs would be ambiguous", async () => {

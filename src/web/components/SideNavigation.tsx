@@ -252,6 +252,10 @@ const SideNavigation = memo(function SideNavigation({
 	const [searchError, setSearchError] = useState<string | null>(null);
 	const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
 	const focusSearchOnExpandRef = useRef(false);
+	const expandAndFocusSearch = useCallback(() => {
+		focusSearchOnExpandRef.current = true;
+		setIsCollapsed(false);
+	}, []);
 	const [isDocsCollapsed, setIsDocsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('docsCollapsed');
 		if (saved !== null) {
@@ -329,8 +333,7 @@ const SideNavigation = memo(function SideNavigation({
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 				e.preventDefault();
 				if (isCollapsed) {
-					focusSearchOnExpandRef.current = true;
-					setIsCollapsed(false);
+					expandAndFocusSearch();
 				} else if (searchInputRef) {
 					searchInputRef.focus();
 				}
@@ -339,7 +342,7 @@ const SideNavigation = memo(function SideNavigation({
 
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [searchInputRef, isCollapsed]);
+	}, [expandAndFocusSearch, searchInputRef, isCollapsed]);
 
 	// Auto-focus search only after an explicit collapsed-to-expanded transition.
 	useEffect(() => {
@@ -421,10 +424,11 @@ const SideNavigation = memo(function SideNavigation({
 
 	const toggleCollapse = useCallback(() => {
 		if (isCollapsed) {
-			focusSearchOnExpandRef.current = true;
+			expandAndFocusSearch();
+			return;
 		}
-		setIsCollapsed(!isCollapsed);
-	}, [isCollapsed]);
+		setIsCollapsed(true);
+	}, [expandAndFocusSearch, isCollapsed]);
 
 	return (
 		<ErrorBoundary>
@@ -470,7 +474,7 @@ const SideNavigation = memo(function SideNavigation({
 				) : (
 						<div className="flex items-center justify-center">
 							<button
-								onClick={() => setIsCollapsed(false)}
+								onClick={expandAndFocusSearch}
 								className="flex items-center justify-center p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200"
 								title="Search (⌘K)"
 							>

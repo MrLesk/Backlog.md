@@ -9,7 +9,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
-import { normalizeTaskId, taskIdsEqual } from "./task-id.ts";
+import { isValidTaskId, normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
 
 export { normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
@@ -97,21 +97,8 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 			new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
 		);
 
-		// Look for a file matching this numeric ID with any prefix
-		// Pattern: <prefix>-<number> - <title>.md (e.g., "back-358 - Title.md")
-		const numericPart = taskId.trim();
-		for (const file of allFiles) {
-			// Extract prefix from filename and check if numeric part matches
-			const filePrefix = extractAnyPrefix(file);
-			if (filePrefix) {
-				const fileBody = extractTaskBodyFromFilename(file, filePrefix);
-				if (fileBody && numericPartsEqual(numericPart, fileBody)) {
-					return join(coreInstance.filesystem.tasksDir, file);
-				}
-			}
-		}
-
-		return null;
+		const taskFile = findMatchingNumericTaskFile(allFiles, taskId.trim());
+		return taskFile ? join(coreInstance.filesystem.tasksDir, taskFile) : null;
 	} catch {
 		return null;
 	}
@@ -121,18 +108,26 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
  * Helper to find a matching file from a list of files
  */
 function findMatchingFile(files: string[], taskId: string, prefix: string): string | undefined {
-	const normalizedId = normalizeTaskId(taskId, prefix);
-	const filenameId = idForFilename(normalizedId);
-
-	// First try exact prefix match for speed
-	let taskFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-
-	// If not found, try loose numeric match ignoring leading zeros
-	if (!taskFile) {
-		taskFile = files.find((f) => idsMatchLoosely(taskId, f, prefix));
+	if (!isValidTaskId(taskId)) {
+		const filenameId = idForFilename(normalizeTaskId(taskId, prefix));
+		const exactMatches = files.filter(
+			(file) => file.startsWith(`${filenameId} -`) || file.startsWith(`${filenameId}-`),
+		);
+		return exactMatches.length === 1 ? exactMatches[0] : undefined;
 	}
 
-	return taskFile;
+	const matches = files.filter((file) => idsMatchLoosely(taskId, file, prefix));
+	return matches.length === 1 ? matches[0] : undefined;
+}
+
+function findMatchingNumericTaskFile(files: string[], numericPart: string): string | undefined {
+	const matches = files.filter((file) => {
+		const filePrefix = extractAnyPrefix(file);
+		if (!filePrefix) return false;
+		const fileBody = extractTaskBodyFromFilename(file, filePrefix);
+		return fileBody ? numericIdBodiesEqual(numericPart, fileBody) : false;
+	});
+	return matches.length === 1 ? matches[0] : undefined;
 }
 
 /**
@@ -143,27 +138,6 @@ function extractTaskBodyFromFilename(filename: string, prefix: string): string |
 	const regex = new RegExp(`^${escapeRegex(prefix)}-(\\d+(?:\\.\\d+)*)\\s*-`, "i");
 	const match = filename.match(regex);
 	return match?.[1] ?? null;
-}
-
-/**
- * Compare two numeric parts for equality (handles leading zeros)
- * Returns false if either string contains non-numeric segments
- */
-function numericPartsEqual(a: string, b: string): boolean {
-	const aSegments = a.split(".");
-	const bSegments = b.split(".");
-
-	// Validate all segments are purely numeric (digits only)
-	const isNumeric = (s: string) => /^\d+$/.test(s);
-	if (!aSegments.every(isNumeric) || !bSegments.every(isNumeric)) {
-		return false;
-	}
-
-	if (aSegments.length !== bSegments.length) return false;
-
-	const aParts = aSegments.map((s) => Number.parseInt(s, 10));
-	const bParts = bSegments.map((s) => Number.parseInt(s, 10));
-	return aParts.every((val, i) => val === bParts[i]);
 }
 
 /** Default prefix for drafts */
@@ -203,12 +177,7 @@ function draftIdsEqual(left: string, right: string): boolean {
 	const rightBody = extractDraftBody(right);
 
 	if (leftBody && rightBody) {
-		const leftSegs = leftBody.split(".").map((seg) => Number.parseInt(seg, 10));
-		const rightSegs = rightBody.split(".").map((seg) => Number.parseInt(seg, 10));
-		if (leftSegs.length !== rightSegs.length) {
-			return false;
-		}
-		return leftSegs.every((value, index) => value === rightSegs[index]);
+		return numericIdBodiesEqual(leftBody, rightBody);
 	}
 
 	return normalizeDraftId(left).toLowerCase() === normalizeDraftId(right).toLowerCase();
@@ -283,18 +252,7 @@ export async function getTaskFilename(taskId: string, core?: Core | TaskPathCont
 			new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
 		);
 
-		const numericPart = taskId.trim();
-		for (const file of allFiles) {
-			const filePrefix = extractAnyPrefix(file);
-			if (filePrefix) {
-				const fileBody = extractTaskBodyFromFilename(file, filePrefix);
-				if (fileBody && numericPartsEqual(numericPart, fileBody)) {
-					return file;
-				}
-			}
-		}
-
-		return null;
+		return findMatchingNumericTaskFile(allFiles, taskId.trim()) ?? null;
 	} catch {
 		return null;
 	}

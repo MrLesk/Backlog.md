@@ -88,6 +88,8 @@ describe("Task path utilities", () => {
 		it("should handle numeric comparison (leading zeros)", () => {
 			expect(taskIdsEqual("task-1", "task-01")).toBe(true);
 			expect(taskIdsEqual("task-001", "task-1")).toBe(true);
+			expect(taskIdsEqual("task-0", "TASK-0000")).toBe(true);
+			expect(taskIdsEqual("task-0.00", "TASK-000.0")).toBe(true);
 		});
 
 		it("should compare subtask IDs correctly", () => {
@@ -175,6 +177,30 @@ describe("Task path utilities", () => {
 			const mixedCase = await getTaskPath("Task-456", core);
 			expect(mixedCase).toBeTruthy();
 			expect(mixedCase).toContain("task-456 - Another Task.md");
+		});
+
+		it("resolves huge adjacent and dotted IDs without precision loss", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "task-9007199254740992 - Huge target.md"), "# Huge target");
+			await writeFile(join(tasksDir, "task-9007199254740993 - Huge neighbor.md"), "# Huge neighbor");
+			await writeFile(join(tasksDir, "task-9007199254740992.0002 - Huge subtask.md"), "# Huge subtask");
+
+			const target = await getTaskPath("TASK-9007199254740992", core);
+			expect(target).toContain("task-9007199254740992 - Huge target.md");
+			const neighbor = await getTaskPath("TASK-9007199254740993", core);
+			expect(neighbor).toContain("task-9007199254740993 - Huge neighbor.md");
+			const dotted = await getTaskPath("task-09007199254740992.2", core);
+			expect(dotted).toContain("task-9007199254740992.0002 - Huge subtask.md");
+		});
+
+		it("fails closed when huge padded file identities are ambiguous", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "task-9007199254740992 - Huge target.md"), "# Huge target");
+			await writeFile(join(tasksDir, "task-09007199254740992 - Huge duplicate.md"), "# Huge duplicate");
+
+			expect(await getTaskPath("TASK-9007199254740992", core)).toBeNull();
+			expect(await getTaskFilename("09007199254740992", core)).toBeNull();
+			expect(await taskFileExists("9007199254740992", core)).toBe(false);
 		});
 
 		it("should return null for non-existent task", async () => {

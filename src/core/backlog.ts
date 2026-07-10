@@ -55,6 +55,7 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
+import { resolveTaskById } from "../utils/task-id.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
@@ -235,6 +236,7 @@ export class Core {
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
+	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
@@ -522,13 +524,41 @@ export class Core {
 	async getTask(taskId: string): Promise<Task | null> {
 		const store = await this.getContentStore();
 		const tasks = store.getTasks();
-		const match = tasks.find((task) => taskIdsEqual(taskId, task.id));
-		if (match) {
-			return match;
+		const resolution = resolveTaskById(tasks, taskId);
+		if (resolution.status === "found") {
+			return resolution.task;
+		}
+		if (resolution.status === "ambiguous" || resolution.status === "invalid") {
+			return null;
 		}
 
 		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
 		return await this.fs.loadTask(taskId);
+	}
+
+	hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): boolean {
+		let matchCount = localTasks.filter((task) => taskIdsEqual(taskId, task.id)).length;
+		if (matchCount > 1) {
+			return true;
+		}
+
+		const branchLocations = new Set<string>();
+		for (const entry of this.activeBranchTaskEntries) {
+			if (!taskIdsEqual(taskId, entry.id)) {
+				continue;
+			}
+			const location = `${entry.branch}\0${entry.path}`;
+			if (branchLocations.has(location)) {
+				continue;
+			}
+			branchLocations.add(location);
+			matchCount += 1;
+			if (matchCount > 1) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
@@ -3009,6 +3039,11 @@ export class Core {
 				),
 			]);
 		}
+
+		const currentBranch = config?.checkActiveBranches === false ? null : await this.git.getCurrentBranch();
+		this.activeBranchTaskEntries = (branchStateEntries ?? []).filter(
+			(entry) => entry.type === "task" && entry.branch !== currentBranch,
+		);
 
 		// Check for cancellation after loading
 		if (abortSignal?.aborted) {

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 07:42'
+updated_date: '2026-07-10 08:33'
 labels: []
 dependencies: []
 references:
@@ -70,6 +70,7 @@ Out of scope
 3. Serve board and task deep links through Bun 1.3.14 wildcard SPA routes, then drive the existing task modal from optional board/list routes with coherent direct-entry, close, Back, Forward, and legacy highlight behavior.
 4. Update ordinary board/list and unified-search task opens to generate stable URLs without changing non-task views.
 5. Cover server routing, identity edge cases, not-found/ambiguous behavior, StrictMode races, and history; then run focused and full automated checks plus compiled desktop browser QA.
+6. Resolve final review boundaries with precision-safe canonical ID matching across public paths, routed-modal cleanup on failed switches, focus containment against background shortcuts, and shared expand-and-focus behavior for collapsed search.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -92,10 +93,14 @@ Focused changed-surface verification passed 20/20 tests with 97 assertions acros
 Final-candidate CI run 29076728712 reproduced the routed-modal focus wait timeout on Ubuntu and Windows shard 1 under matrix load. The unrelated MCP task-type expectation also reproduces on main and remains out of scope. This pass will replace the focus test's fixed 50x5ms polling budget with deterministic, focus-specific synchronization while preserving initial-open and Forward focus assertions.
 
 Final focus-race correction: matrix-like contention showed that the modal did focus, but SideNavigation's 100ms mount timer later moved focus to Search. Sidebar search now focuses synchronously only after a genuine collapsed-to-expanded action and never on initial expanded mount. The regression scopes focus to each dialog's ownerDocument and verifies mount, explicit expand, initial modal open, and Forward. Verification passed 200/200 focused runs across four simultaneous processes, 270/270 route-file runs, 270/270 randomized-order runs, 20/20 changed-surface tests with 106 assertions, and the full CI-style suite with 1,531 passes, 2 expected skips, 0 failures, and 5,313 assertions across 183 files. TypeScript, Biome over 319 files, production build, and diff hygiene passed. No timeout was widened and no MCP code changed; the independently reproduced MCP watcher/store race remains outside BACK-257.
+
+Final code-quality review on f6d2865 found four bounded gaps: precision-safe task identity at public boundaries, stale routed modal state after failed route switches, focus containment against background shortcuts, and collapsed search click focus. This pass addresses only those findings and explicitly excludes the unrelated #753 MCP race.
+
+Final review correction verified: one canonical decimal-string comparator now handles arbitrarily large, padded, zero, and dotted task IDs without number coercion; resolver, filesystem, CLI, and HTTP boundaries fail closed on duplicates. Real-git fixtures prove exact BACK-1 and padded BACK-001 collisions on active branch collision-shadow return 409. Failed 400/404/409 route switches clear the old modal and focus the repair alert while preserving Back. Modal capture blocks background Cmd/Ctrl+K and recovers outside Tab focus; every explicit collapsed-search expansion focuses Search. Focused changed-surface tests passed 61/61 with 239 assertions and legacy compatibility passed 127/127. The final CI-style suite passed 1,542 tests with 2 expected skips, 0 failures, and 5,388 assertions across 183 files using the unchanged 10-second timeout. TypeScript, Biome over 319 files, diff hygiene, and production build passed. Compiled Chromium at 1440x900 verified the real active-branch direct link rendered a focused repair alert with no modal, then verified normal modal initial focus, Cmd/Ctrl+K containment, outside-Tab recovery, Escape close, and collapsed Search click focus. No MCP code changed; #753 remains out of scope.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added safe, shareable task-modal routes for Board and All Tasks with reliable history, direct refresh, canonical prefix-preserving URLs, ambiguity-safe IDs, and keyboard/focus UX. Removed an initial sidebar autofocus race so the modal retains focus while explicit sidebar expansion still focuses search. Verified with the full 1,531-test suite, 200-run contention stress, focused and randomized checks, static checks, production build, compiled desktop browser QA, and independent review.
+Delivered safe shareable task-modal URLs for Board and All Tasks with coherent direct entry, refresh, close, Back/Forward, legacy highlight, and prefix-preserving links. Task identity now avoids numeric precision loss and fails closed for local and active-branch canonical collisions, while route failures never leave stale modal content. Modal focus is contained and restored, and explicit collapsed Search actions focus the input. Verified by 1,542 passing tests, static checks, production build, real-git API collision fixtures, and compiled desktop Chromium QA.
 <!-- SECTION:FINAL_SUMMARY:END -->

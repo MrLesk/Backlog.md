@@ -874,12 +874,17 @@ export class BacklogServer {
 
 	private async handleGetTask(taskId: string): Promise<Response> {
 		const store = await this.getContentStoreInstance();
-		const localResolution = resolveTaskById(await this.core.filesystem.listTasks(), taskId);
+		const localTasks = await this.core.filesystem.listTasks();
+		const localResolution = resolveTaskById(localTasks, taskId);
 		if (localResolution.status === "invalid") {
 			return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		}
 		const storedResolution = resolveTaskById(store.getTasks(), taskId);
-		if (localResolution.status === "ambiguous" || storedResolution.status === "ambiguous") {
+		if (
+			localResolution.status === "ambiguous" ||
+			storedResolution.status === "ambiguous" ||
+			this.core.hasActiveBranchTaskIdCollision(taskId, localTasks)
+		) {
 			return Response.json(
 				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
 				{ status: 409 },

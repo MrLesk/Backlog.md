@@ -23,13 +23,29 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
 			return;
 		}
 
-		const activeElement = document.activeElement;
+		const dialog = dialogRef.current;
+		if (!dialog) {
+			return;
+		}
+
+		const ownerDocument = dialog.ownerDocument;
+		const activeElement = ownerDocument.activeElement;
 		const previouslyFocused = activeElement && "focus" in activeElement ? (activeElement as HTMLElement) : null;
-		const previousOverflow = document.body.style.overflow;
+		const previousOverflow = ownerDocument.body.style.overflow;
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === 'Escape' && !disableEscapeClose) {
 				e.preventDefault();
+				e.stopPropagation();
 				onCloseRef.current();
+				return;
+			}
+
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+				e.preventDefault();
+				e.stopPropagation();
+				if (!dialog.contains(ownerDocument.activeElement)) {
+					dialog.focus();
+				}
 				return;
 			}
 
@@ -37,10 +53,6 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
 				return;
 			}
 
-			const dialog = dialogRef.current;
-			if (!dialog) {
-				return;
-			}
 			const focusable = Array.from(
 				dialog.querySelectorAll<HTMLElement>(
 					'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -53,22 +65,26 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
 				dialog.focus();
 				return;
 			}
-			if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+			if (!dialog.contains(ownerDocument.activeElement)) {
+				e.preventDefault();
+				e.stopPropagation();
+				(e.shiftKey ? last : first).focus();
+			} else if (e.shiftKey && (ownerDocument.activeElement === first || ownerDocument.activeElement === dialog)) {
 				e.preventDefault();
 				last.focus();
-			} else if (!e.shiftKey && document.activeElement === last) {
+			} else if (!e.shiftKey && ownerDocument.activeElement === last) {
 				e.preventDefault();
 				first.focus();
 			}
 		};
 
-		document.addEventListener('keydown', handleKeyDown);
-		document.body.style.overflow = 'hidden';
-		dialogRef.current?.focus();
+		ownerDocument.addEventListener('keydown', handleKeyDown, true);
+		ownerDocument.body.style.overflow = 'hidden';
+		dialog.focus();
 
 		return () => {
-			document.removeEventListener('keydown', handleKeyDown);
-			document.body.style.overflow = previousOverflow;
+			ownerDocument.removeEventListener('keydown', handleKeyDown, true);
+			ownerDocument.body.style.overflow = previousOverflow;
 			if (previouslyFocused?.isConnected) {
 				previouslyFocused.focus();
 			}

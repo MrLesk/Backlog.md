@@ -411,6 +411,13 @@ function AppContent() {
     setShowModal(true);
   }, []);
 
+  const clearTaskModal = useCallback(() => {
+    isTaskRouteModalRef.current = false;
+    setShowModal(false);
+    setEditingTask(null);
+    setIsDraftMode(false);
+  }, []);
+
   const handleEditTask = useCallback((task: Task) => {
     const basePath =
       location.pathname.startsWith('/board')
@@ -442,11 +449,8 @@ function AppContent() {
   ]);
 
   const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingTask(null);
-    setIsDraftMode(false);
+    clearTaskModal();
     if (routeBasePath && routeTaskId) {
-      isTaskRouteModalRef.current = false;
       if (routeNavigationState.taskModalFrom) {
         navigate(-1);
       } else {
@@ -461,15 +465,13 @@ function AppContent() {
 
     if (!routeTaskId || !routeBasePath || isInitialized !== true) {
       if (!routeTaskId && isTaskRouteModalRef.current) {
-        isTaskRouteModalRef.current = false;
-        setShowModal(false);
-        setEditingTask(null);
-        setIsDraftMode(false);
+        clearTaskModal();
       }
       return;
     }
 
     if (!isValidTaskId(routeTaskId)) {
+      clearTaskModal();
       navigate(`${routeBasePath}${location.search}`, {
         replace: true,
         state: { taskRouteError: `"${routeTaskId}" is not a valid task ID.` } satisfies TaskRouteNavigationState,
@@ -490,7 +492,7 @@ function AppContent() {
           return;
         }
 
-        isTaskRouteModalRef.current = false;
+        clearTaskModal();
         const message =
           error instanceof ApiError && error.status === 409
             ? `Task "${routeTaskId}" is ambiguous. Repair duplicate task IDs before opening this link.`
@@ -513,7 +515,7 @@ function AppContent() {
         taskRouteRequestRef.current += 1;
       }
     };
-  }, [isInitialized, location.search, navigate, openTaskModal, routeBasePath, routeTaskId]);
+  }, [clearTaskModal, isInitialized, location.search, navigate, openTaskModal, routeBasePath, routeTaskId]);
 
   useEffect(() => {
     if (taskRouteError) {

@@ -30,9 +30,27 @@ describe("resolveTaskById", () => {
 		}
 	});
 
+	it("compares arbitrarily large decimal segments without number coercion", () => {
+		const adjacent = resolveTaskById([task("TASK-9007199254740993")], "TASK-9007199254740992");
+		expect(adjacent.status).toBe("not-found");
+
+		const padded = resolveTaskById([task("TASK-9007199254740992.0002")], "task-09007199254740992.2");
+		expect(padded.status).toBe("found");
+		if (padded.status === "found") {
+			expect(padded.task.id).toBe("TASK-9007199254740992.0002");
+		}
+
+		const zero = resolveTaskById([task("TASK-0000.00")], "0.0");
+		expect(zero.status).toBe("found");
+	});
+
 	it("fails closed when numeric or padded identities are ambiguous", () => {
 		expect(resolveTaskById([task("BACK-7"), task("JIRA-7")], "7").status).toBe("ambiguous");
 		expect(resolveTaskById([task("BACK-1.2"), task("BACK-001.02")], "BACK-1.2").status).toBe("ambiguous");
+		expect(
+			resolveTaskById([task("TASK-9007199254740992.2"), task("TASK-09007199254740992.0002")], "TASK-9007199254740992.2")
+				.status,
+		).toBe("ambiguous");
 	});
 
 	it("distinguishes invalid and missing route IDs", () => {
