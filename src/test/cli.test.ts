@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { CLI_AGENT_NUDGE, Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
@@ -1451,6 +1452,62 @@ describe("CLI Integration", () => {
 			const taskWithoutPrefix = await core.filesystem.loadTask("5");
 			// The filesystem loadTask should handle normalization
 			expect(taskWithoutPrefix?.id).toBe("TASK-5"); // IDs normalized to uppercase
+		});
+
+		it("never views an adjacent or ambiguous task beyond the safe integer range", async () => {
+			const core = new Core(TEST_DIR);
+			const saveTask = async (id: string, title: string) => {
+				await core.filesystem.saveTask({
+					id,
+					title,
+					status: "To Do",
+					assignee: [],
+					createdDate: "2026-07-10",
+					labels: [],
+					dependencies: [],
+				});
+			};
+
+			await saveTask("TASK-9007199254740993", "Huge neighbor");
+			const missing = await $`bun ${CLI_PATH} task view TASK-9007199254740992 --plain`.cwd(TEST_DIR).nothrow().quiet();
+			const missingOutput = normalizeCliOutput(missing.stdout.toString() + missing.stderr.toString());
+			expect(missingOutput).toContain("Task TASK-9007199254740992 not found.");
+			expect(missingOutput).not.toContain("Huge neighbor");
+
+			await saveTask("TASK-9007199254740992", "Huge target");
+			const found = await $`bun ${CLI_PATH} task view TASK-9007199254740992 --plain`.cwd(TEST_DIR).nothrow().quiet();
+			const foundOutput = normalizeCliOutput(found.stdout.toString() + found.stderr.toString());
+			expect(foundOutput).toContain("Huge target");
+			expect(foundOutput).not.toContain("Huge neighbor");
+
+			await saveTask("TASK-9007199254740992.0002", "Huge dotted target");
+			const dotted = await $`bun ${CLI_PATH} task view TASK-09007199254740992.2 --plain`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+			const dottedOutput = normalizeCliOutput(dotted.stdout.toString() + dotted.stderr.toString());
+			expect(dottedOutput).toContain("Huge dotted target");
+
+			await Bun.write(
+				join(core.filesystem.tasksDir, "task-09007199254740992 - Huge-padded-duplicate.md"),
+				serializeTask({
+					id: "TASK-09007199254740992",
+					title: "Huge padded duplicate",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2026-07-10",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+			const ambiguous = await $`bun ${CLI_PATH} task view TASK-9007199254740992 --plain`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+			const ambiguousOutput = normalizeCliOutput(ambiguous.stdout.toString() + ambiguous.stderr.toString());
+			expect(ambiguousOutput).toContain("Task TASK-9007199254740992 not found.");
+			expect(ambiguousOutput).not.toContain("Huge target");
+			expect(ambiguousOutput).not.toContain("Huge padded duplicate");
 		});
 
 		it("should return null for non-existent tasks", async () => {

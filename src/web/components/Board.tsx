@@ -6,6 +6,7 @@ import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter'
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
 import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority-config';
+import { resolveTaskById } from '../../utils/task-id';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
 import LabelFilterDropdown from './LabelFilterDropdown';
@@ -258,12 +259,12 @@ const Board: React.FC<BoardProps> = ({
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
     if (highlightTaskId && tasks.length > 0) {
-      const taskToHighlight = tasks.find(task => task.id === highlightTaskId);
-      if (taskToHighlight) {
-        // Use setTimeout to ensure the task is found and modal opens properly
-        setTimeout(() => {
-          onEditTask(taskToHighlight);
+      const resolution = resolveTaskById(tasks, highlightTaskId);
+      if (resolution.status === 'found') {
+        const timer = setTimeout(() => {
+          onEditTask(resolution.task);
         }, 100);
+        return () => clearTimeout(timer);
       }
     }
   }, [highlightTaskId, tasks, onEditTask]);

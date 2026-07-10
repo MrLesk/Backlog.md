@@ -7,7 +7,11 @@ import { parseDecision, parseDocument, parseMilestone, parseTask } from "../mark
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
-import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import {
+	normalizeProjectBacklogDirectory,
+	resolveBacklogDirectory,
+	resolveBacklogDirectoryFromRootConfig,
+} from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
@@ -69,6 +73,7 @@ export class FileSystem {
 	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
+	private cachedConfigSnapshot: { path: string; content: string } | null = null;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
@@ -126,7 +131,38 @@ export class FileSystem {
 
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
-		const resolution = resolveBacklogDirectory(this.projectRoot);
+		this.cachedConfigSnapshot = null;
+		this.refreshConfigResolution();
+	}
+
+	getCachedConfigContent(sourceConfigPath: string): string | null {
+		return this.cachedConfigSnapshot && resolve(this.cachedConfigSnapshot.path) === resolve(sourceConfigPath)
+			? this.cachedConfigSnapshot.content
+			: null;
+	}
+
+	publishConfig(config: BacklogConfig, sourceConfigPath: string, content: string): boolean {
+		const rootConfigPath = join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG);
+		if (resolve(sourceConfigPath) === resolve(rootConfigPath)) {
+			if (config.backlogDirectory !== undefined && normalizeProjectBacklogDirectory(config.backlogDirectory) === null) {
+				return false;
+			}
+			const resolution = resolveBacklogDirectoryFromRootConfig(this.projectRoot, config.backlogDirectory);
+			if (!resolution.backlogDir || !resolution.backlogPath || resolution.configSource !== "root") {
+				return false;
+			}
+			this.applyConfigResolution(resolution);
+		}
+		this.cachedConfig = config;
+		this.cachedConfigSnapshot = { path: sourceConfigPath, content };
+		return true;
+	}
+
+	private refreshConfigResolution(): void {
+		this.applyConfigResolution(resolveBacklogDirectory(this.projectRoot));
+	}
+
+	private applyConfigResolution(resolution: ReturnType<typeof resolveBacklogDirectory>): void {
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
@@ -1359,6 +1395,7 @@ ${description || `Milestone: ${title}`}`,
 
 			// Cache the loaded config
 			this.cachedConfig = config;
+			this.cachedConfigSnapshot = { path: configPath, content };
 			return config;
 		} catch (_error) {
 			return null;
@@ -1378,6 +1415,7 @@ ${description || `Milestone: ${title}`}`,
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
+		this.cachedConfigSnapshot = { path: configPath, content };
 	}
 
 	// Utility methods
@@ -1402,7 +1440,7 @@ ${description || `Milestone: ${title}`}`,
 		}
 	}
 
-	private parseConfig(content: string): BacklogConfig {
+	parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
 		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
 		const lines = content.split("\n");
