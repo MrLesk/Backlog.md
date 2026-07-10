@@ -18,7 +18,7 @@ interface Props {
   onClose: () => void;
   onSaved?: () => Promise<void> | void; // refresh callback
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
-  onArchive?: () => void; // For archiving tasks
+  onArchive?: () => Promise<void> | void; // For archiving tasks
   availableStatuses?: string[]; // Available statuses for new tasks
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
@@ -766,8 +766,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const handleArchive = async () => {
     if (!task || !onArchive) return;
     if (!window.confirm(`Are you sure you want to archive "${task.title}"? This will move the task to the archive folder.`)) return;
-    onArchive();
-    onClose();
+    await onArchive();
   };
 
   const checkedCount = (criteria || []).filter((c) => c.checked).length;

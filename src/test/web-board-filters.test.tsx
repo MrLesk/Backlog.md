@@ -239,8 +239,10 @@ afterEach(() => {
 });
 
 describe("Web board filters", () => {
-	it("filters board cards by assignee, label, and priority while updating URL params", async () => {
-		const container = renderBoardPage();
+	it("filters board cards by assignee, label, type, and priority while updating URL params", async () => {
+		const container = renderBoardPage(undefined, {
+			availableTypes: ["Bug", "Docs", "Enhancement"],
+		});
 
 		expectBoardFiltersInHeader(container);
 		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
@@ -258,6 +260,10 @@ describe("Web board filters", () => {
 		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["bug", "enhancement"]);
 		expect(getBoardLabelsButton(container).textContent).toContain("2 selected");
 		expectVisibleTasks(container, ["Fix login bug", "Improve board"]);
+
+		await setSelectValue(getSelectByFirstOption(container, "All types"), "Bug");
+		expect(new URLSearchParams(window.location.search).get("type")).toBe("Bug");
+		expectVisibleTasks(container, ["Fix login bug"]);
 
 		await setSelectValue(getSelectByFirstOption(container, "All priorities"), "high");
 		expect(new URLSearchParams(window.location.search).get("priority")).toBe("high");
@@ -375,12 +381,17 @@ describe("Web board filters", () => {
 		expectVisibleTasks(container, ["Fix login bug", "Triage unassigned issue"]);
 	});
 
-	it("reads filters from URL params and clears them", async () => {
-		const container = renderBoardPage("http://localhost/board?assignee=alice&label=bug&priority=high");
+	it("reads filters from URL params and clears them without removing unrelated params", async () => {
+		const container = renderBoardPage(
+			"http://localhost/board?assignee=alice&label=bug&priority=high&type=bug&view=compact",
+			{ availableTypes: ["Bug", "Feature"] },
+		);
+		await waitFor(() => new URLSearchParams(window.location.search).get("type") === "Bug");
 
 		expect(getSelectByFirstOption(container, "All assignees").value).toBe("alice");
 		expect(getBoardLabelsButton(container).textContent).toContain("bug");
 		expect(getSelectByFirstOption(container, "All priorities").value).toBe("high");
+		expect(getSelectByFirstOption(container, "All types").value).toBe("Bug");
 		expectVisibleTasks(container, ["Fix login bug"]);
 
 		const clearButton = Array.from(container.querySelectorAll("button")).find((button) =>
@@ -393,6 +404,8 @@ describe("Web board filters", () => {
 		expect(searchParams.get("assignee")).toBeNull();
 		expect(searchParams.getAll("label")).toEqual([]);
 		expect(searchParams.get("priority")).toBeNull();
+		expect(searchParams.get("type")).toBeNull();
+		expect(searchParams.get("view")).toBe("compact");
 		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
 	});
 

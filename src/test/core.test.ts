@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { Document, Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -116,6 +117,15 @@ describe("Core", () => {
 			expect(lastCommit.length).toBeGreaterThan(0);
 		});
 
+		it("does not update a longer legacy sibling for a shorter numeric ID", async () => {
+			await core.createTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" }, false);
+
+			await expect(core.updateTaskFromInput("BACK-1", { title: "Wrong target" }, false)).rejects.toThrow(
+				"Task not found: BACK-1",
+			);
+			expect((await core.filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
+		});
+
 		it("should archive task with auto-commit", async () => {
 			await core.createTask(sampleTask, true);
 
@@ -153,6 +163,30 @@ describe("Core", () => {
 
 			const mixedCase = await core.getTask("Task-007");
 			expect(mixedCase?.id).toBe("TASK-007");
+		});
+
+		it("should resolve an exact legacy task ID without guessing", async () => {
+			await Bun.write(
+				join(core.filesystem.tasksDir, "task-prefixed - Legacy task.md"),
+				serializeTask({ ...sampleTask, id: "TASK-PREFIXED", title: "Legacy task" }),
+			);
+
+			const loaded = await core.getTask("task-prefixed");
+			expect(loaded?.id).toBe("TASK-PREFIXED");
+			expect(loaded?.title).toBe("Legacy task");
+		});
+
+		it("should fail closed on duplicate exact legacy task IDs", async () => {
+			await Bun.write(
+				join(core.filesystem.tasksDir, "task-prefixed - Legacy one.md"),
+				serializeTask({ ...sampleTask, id: "TASK-PREFIXED", title: "Legacy one" }),
+			);
+			await Bun.write(
+				join(core.filesystem.tasksDir, "task-prefixed - Legacy two.md"),
+				serializeTask({ ...sampleTask, id: "task-prefixed", title: "Legacy two" }),
+			);
+
+			expect(await core.getTask("TASK-PREFIXED")).toBeNull();
 		});
 
 		it("should resolve numeric-only IDs with custom prefix (BACK-364)", async () => {

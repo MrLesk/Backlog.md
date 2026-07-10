@@ -112,9 +112,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
         }`}
         draggable={!isFromOtherBranch}
+		role="button"
+		tabIndex={0}
+		aria-label={`Open ${task.id}: ${task.title}`}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onClick={() => onEdit(task)}
+		onKeyDown={(event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				onEdit(task);
+			}
+		}}
       >
         {/* Cross-branch indicator banner */}
         {isFromOtherBranch && (

@@ -7,6 +7,7 @@ import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones'
 import { getTerminalStatus } from '../../utils/terminal-status';
 import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority-config';
 import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
+import { resolveTaskById } from '../../utils/task-id';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
 import LabelFilterDropdown from './LabelFilterDropdown';
@@ -268,12 +269,12 @@ const Board: React.FC<BoardProps> = ({
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
     if (highlightTaskId && tasks.length > 0) {
-      const taskToHighlight = tasks.find(task => task.id === highlightTaskId);
-      if (taskToHighlight) {
-        // Use setTimeout to ensure the task is found and modal opens properly
-        setTimeout(() => {
-          onEditTask(taskToHighlight);
+      const resolution = resolveTaskById(tasks, highlightTaskId);
+      if (resolution.status === 'found') {
+        const timer = setTimeout(() => {
+          onEditTask(resolution.task);
         }, 100);
+        return () => clearTimeout(timer);
       }
     }
   }, [highlightTaskId, tasks, onEditTask]);
@@ -473,17 +474,10 @@ const Board: React.FC<BoardProps> = ({
           {updateError}
         </div>
       )}
-			<div className="mb-6 space-y-3">
-				<div className="flex items-center justify-between gap-3">
-					<h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
-					<button
-						className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
-						onClick={onNewTask}
-					>
-						+ New Task
-					</button>
-				</div>
-				<div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Board view controls">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
+          <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Board view controls">
             <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-1 bg-gray-50 dark:bg-gray-800/50 transition-colors duration-200">
               <button
                 type="button"
@@ -569,8 +563,15 @@ const Board: React.FC<BoardProps> = ({
                 )}
               </div>
             )}
-				</div>
-			</div>
+          </div>
+        </div>
+        <button
+          className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
+          onClick={onNewTask}
+        >
+          + New Task
+        </button>
+      </div>
 
       {laneMode === 'milestone' ? (
         <div className="space-y-6">
