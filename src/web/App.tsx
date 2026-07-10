@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import BoardPage from './components/BoardPage';
 import DocumentationDetail from './components/DocumentationDetail';
@@ -161,7 +161,7 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
   return normalized;
 };
 
-function App() {
+function AppContent() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isDraftMode, setIsDraftMode] = useState(false);
@@ -188,6 +188,8 @@ function App() {
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Set version data attribute on body
   React.useEffect(() => {
@@ -383,6 +385,9 @@ function App() {
     setShowModal(false);
     setEditingTask(null);
     setIsDraftMode(false);
+    if (location.pathname.startsWith('/tasks/')) {
+      navigate('/tasks', { replace: true });
+    }
   };
 
   const refreshData = useCallback(async () => {
@@ -475,8 +480,7 @@ function App() {
 
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <Routes>
+      <Routes>
             <Route
             path="/"
             element={
@@ -533,6 +537,40 @@ function App() {
 	              }
 	            />
             <Route
+              path="tasks/:id"
+              element={
+	                <TaskList
+	                  onEditTask={handleEditTask}
+	                  onNewTask={handleNewTask}
+	                  tasks={tasks}
+	                  availableStatuses={statuses}
+	                  availableLabels={availableLabels}
+	                  availableMilestones={milestones}
+	                  milestoneEntities={milestoneEntities}
+	                  archivedMilestones={archivedMilestones}
+	                  onRefreshData={refreshData}
+	                  dateFormat={config?.dateFormat}
+	                />
+	              }
+	            />
+            <Route
+              path="tasks/:id/:title"
+              element={
+	                <TaskList
+	                  onEditTask={handleEditTask}
+	                  onNewTask={handleNewTask}
+	                  tasks={tasks}
+	                  availableStatuses={statuses}
+	                  availableLabels={availableLabels}
+	                  availableMilestones={milestones}
+	                  milestoneEntities={milestoneEntities}
+	                  archivedMilestones={archivedMilestones}
+	                  onRefreshData={refreshData}
+	                  dateFormat={config?.dateFormat}
+	                />
+	              }
+	            />
+            <Route
               path="milestones"
               element={
               <MilestonesPage
@@ -555,39 +593,46 @@ function App() {
             <Route path="statistics" element={<Statistics tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
             <Route path="settings" element={<Settings />} />
           </Route>
-        </Routes>
+      </Routes>
 
-        <TaskDetailsModal
-          task={editingTask || undefined}
-          isOpen={showModal}
-          onClose={handleCloseModal}
-          onSaved={refreshData}
-          onSubmit={handleSubmitTask}
-          onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-          availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
-          availableMilestones={milestones}
-          availablePriorities={config?.priorities}
-          milestoneEntities={milestoneEntities}
-          archivedMilestoneEntities={archivedMilestones}
-          isDraftMode={isDraftMode}
-          definitionOfDoneDefaults={config?.definitionOfDone ?? []}
-          dateFormat={config?.dateFormat}
+      <TaskDetailsModal
+        task={editingTask || undefined}
+        isOpen={showModal}
+        onClose={handleCloseModal}
+        onSaved={refreshData}
+        onSubmit={handleSubmitTask}
+        onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+        availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+        availableMilestones={milestones}
+        availablePriorities={config?.priorities}
+        milestoneEntities={milestoneEntities}
+        archivedMilestoneEntities={archivedMilestones}
+        isDraftMode={isDraftMode}
+        definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+        dateFormat={config?.dateFormat}
+      />
+
+      {/* Task Creation Confirmation Toast */}
+      {taskConfirmation && (
+        <SuccessToast
+          message={`${taskConfirmation.isDraft ? 'Draft' : 'Task'} "${taskConfirmation.task.title}" created successfully! (${taskConfirmation.task.id.replace('task-', '')})`}
+          onDismiss={() => setTaskConfirmation(null)}
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
         />
-
-        {/* Task Creation Confirmation Toast */}
-        {taskConfirmation && (
-          <SuccessToast
-            message={`${taskConfirmation.isDraft ? 'Draft' : 'Task'} "${taskConfirmation.task.title}" created successfully! (${taskConfirmation.task.id.replace('task-', '')})`}
-            onDismiss={() => setTaskConfirmation(null)}
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-        )}
-      </BrowserRouter>
+      )}
     </ThemeProvider>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
 
