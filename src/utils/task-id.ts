@@ -2,7 +2,8 @@ import type { Task } from "../types/index.ts";
 import { escapeRegex, extractAnyPrefix, normalizeId } from "./prefix-config.ts";
 
 const DEFAULT_TASK_PREFIX = "task";
-const TASK_ID_PATTERN = /^(?:[a-zA-Z]+-)?[0-9]+(?:\.[0-9]+)*$/;
+const NUMERIC_TASK_ID_PATTERN = /^(?:[a-zA-Z]+-)?[0-9]+(?:\.[0-9]+)*$/;
+const LEGACY_TASK_ID_PATTERN = /^[a-zA-Z]+-[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*$/;
 
 export type TaskIdResolution =
 	| { status: "found"; task: Task }
@@ -71,8 +72,13 @@ export function taskIdsEqual(left: string, right: string, prefix: string = DEFAU
 	return normalizeTaskId(left, effectivePrefix).toLowerCase() === normalizeTaskId(right, effectivePrefix).toLowerCase();
 }
 
+export function isNumericTaskId(value: string): boolean {
+	return NUMERIC_TASK_ID_PATTERN.test(value.trim());
+}
+
 export function isValidTaskId(value: string): boolean {
-	return TASK_ID_PATTERN.test(value.trim());
+	const trimmed = value.trim();
+	return isNumericTaskId(trimmed) || LEGACY_TASK_ID_PATTERN.test(trimmed);
 }
 
 /**

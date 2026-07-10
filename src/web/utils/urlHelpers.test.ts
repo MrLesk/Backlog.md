@@ -17,4 +17,8 @@ describe("task URL helpers", () => {
 		expect(createUrlPath("/tasks", "BACK-7", "Backlog task")).toBe("/tasks/BACK-7/backlog-task");
 		expect(createUrlPath("/tasks", "JIRA-007", "Jira task")).toBe("/tasks/JIRA-007/jira-task");
 	});
+
+	it("preserves an exact legacy ID in the route", () => {
+		expect(createUrlPath("/tasks", "TASK-PREFIXED", "Legacy task")).toBe("/tasks/TASK-PREFIXED/legacy-task");
+	});
 });

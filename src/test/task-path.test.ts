@@ -157,6 +157,15 @@ describe("Task path utilities", () => {
 			expect(path).toContain("task-456 - Another Task.md");
 		});
 
+		it("matches a legacy ID exactly when a longer legacy ID shares its prefix", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "task-prefixed - Exact.md"), "# Exact");
+			await writeFile(join(tasksDir, "task-prefixed-extra - Longer.md"), "# Longer");
+
+			expect(await getTaskPath("TASK-PREFIXED", core)).toContain("task-prefixed - Exact.md");
+			expect(await getTaskPath("TASK-PREFIXED-EXTRA", core)).toContain("task-prefixed-extra - Longer.md");
+		});
+
 		it("should resolve zero-padded numeric IDs to the same task", async () => {
 			// File exists as task-0001; query with 1
 			const path1 = await getTaskPath("1", core);

@@ -44,6 +44,15 @@ const tasks: Task[] = [
 		dependencies: [],
 		createdDate: "2026-07-10",
 	},
+	{
+		id: "TASK-PREFIXED",
+		title: "Legacy prefixed task",
+		status: "To Do",
+		assignee: [],
+		labels: [],
+		dependencies: [],
+		createdDate: "2026-07-10",
+	},
 ];
 
 const searchResults: SearchResult[] = tasks.map((task) => ({ type: "task", task, score: 1 }));
@@ -461,6 +470,45 @@ describe("task detail routes", () => {
 		expect(container.querySelector("[role='alert']")).toBeNull();
 	});
 
+	it("opens an exact legacy task ID from an ordinary list click", async () => {
+		const container = await renderApp("/tasks");
+		await waitFor(() => container.textContent?.includes("Legacy prefixed task") ?? false, "legacy task list row");
+
+		const title = Array.from(container.querySelectorAll("button")).find(
+			(element) => element.textContent === "Legacy prefixed task",
+		);
+		expect(title).toBeTruthy();
+		await click(title as HTMLButtonElement);
+
+		await waitFor(
+			() =>
+				window.location.pathname === "/tasks/TASK-PREFIXED/legacy-prefixed-task" &&
+				container.querySelector("#modal-title")?.textContent?.includes("Legacy prefixed task") === true,
+			"legacy task route",
+		);
+		expect(container.querySelector("[role='alert']")).toBeNull();
+	});
+
+	it("opens an exact legacy task ID from a direct route", async () => {
+		const container = await renderApp("/board/task-prefixed/cosmetic-slug");
+		await waitFor(() => Boolean(container.querySelector("[role='dialog']")), "direct legacy task modal");
+		expect(container.querySelector("#modal-title")?.textContent).toContain("Legacy prefixed task");
+		expect(container.querySelector("[role='alert']")).toBeNull();
+	});
+
+	it("returns a missing legacy task route to the list with a focused not-found error", async () => {
+		const container = await renderApp("/tasks/TASK-MISSING");
+		await waitFor(
+			() => window.location.pathname === "/tasks" && Boolean(container.querySelector("[role='alert']")),
+			"missing legacy route fallback",
+		);
+
+		const alert = container.querySelector("[role='alert']");
+		expect(alert?.textContent).toContain('Task "TASK-MISSING" was not found.');
+		expect(document.activeElement).toBe(alert);
+		expect(container.querySelector("[role='dialog']")).toBeNull();
+	});
+
 	it("archives a routed task with a single history close", async () => {
 		const container = await renderApp("/milestones");
 		const allTasksLink = Array.from(container.querySelectorAll("a")).find(
@@ -553,15 +601,15 @@ describe("task detail routes", () => {
 		);
 	});
 
-	it("returns an invalid route to the list with a focused human-readable error", async () => {
-		const container = await renderApp("/tasks/not-valid");
+	it("returns a malformed legacy route to the list with a focused human-readable error", async () => {
+		const container = await renderApp("/tasks/TASK-..%2Fsecret");
 		await waitFor(
 			() => window.location.pathname === "/tasks" && Boolean(container.querySelector("[role='alert']")),
 			"invalid route fallback",
 		);
 
 		const alert = container.querySelector("[role='alert']");
-		expect(alert?.textContent).toContain('"not-valid" is not a valid task ID.');
+		expect(alert?.textContent).toContain('"TASK-../secret" is not a valid task ID.');
 		expect(document.activeElement).toBe(alert);
 		expect(container.querySelector("[role='dialog']")).toBeNull();
 	});

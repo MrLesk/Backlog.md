@@ -743,11 +743,19 @@ Invalid content`,
 				dependencies: [],
 				description: "Task with task- prefix",
 			};
+			const longerLegacyTask: Task = {
+				...taskWithPrefix,
+				id: "task-prefixed-extra",
+				title: "Longer Legacy ID",
+			};
 
 			await filesystem.saveTask(taskWithPrefix);
+			await filesystem.saveTask(longerLegacyTask);
 			const loaded = await filesystem.loadTask("task-prefixed");
+			const longerLoaded = await filesystem.loadTask("task-prefixed-extra");
 
 			expect(loaded?.id).toBe("TASK-PREFIXED"); // IDs are normalized to uppercase
+			expect(longerLoaded?.id).toBe("TASK-PREFIXED-EXTRA");
 		});
 
 		it("should handle task without task- prefix in id", async () => {

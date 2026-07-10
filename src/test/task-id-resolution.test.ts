@@ -30,6 +30,19 @@ describe("resolveTaskById", () => {
 		}
 	});
 
+	it("resolves safe legacy IDs by exact identity only", () => {
+		const result = resolveTaskById([task("TASK-PREFIXED"), task("TASK-PREFIXED-EXTRA")], "task-prefixed");
+		expect(result.status).toBe("found");
+		if (result.status === "found") {
+			expect(result.task.id).toBe("TASK-PREFIXED");
+		}
+		expect(resolveTaskById([task("TASK-PREFIXED")], "TASK-PREFIXED-EXTRA").status).toBe("not-found");
+	});
+
+	it("fails closed on duplicate exact legacy identities", () => {
+		expect(resolveTaskById([task("TASK-PREFIXED"), task("task-prefixed")], "TASK-PREFIXED").status).toBe("ambiguous");
+	});
+
 	it("compares arbitrarily large decimal segments without number coercion", () => {
 		const adjacent = resolveTaskById([task("TASK-9007199254740993")], "TASK-9007199254740992");
 		expect(adjacent.status).toBe("not-found");
@@ -56,6 +69,10 @@ describe("resolveTaskById", () => {
 	it("distinguishes invalid and missing route IDs", () => {
 		expect(resolveTaskById([task("BACK-1")], "BACK-1/2").status).toBe("invalid");
 		expect(resolveTaskById([task("BACK-1")], "../1").status).toBe("invalid");
+		expect(resolveTaskById([task("TASK-PREFIXED")], "TASK-..").status).toBe("invalid");
+		expect(resolveTaskById([task("TASK-PREFIXED")], "TASK-PREFIXED\\..\\secret").status).toBe("invalid");
+		expect(resolveTaskById([task("TASK-PREFIXED")], "TASK-PREFIXED%2F..%2Fsecret").status).toBe("invalid");
 		expect(resolveTaskById([task("BACK-1")], "2").status).toBe("not-found");
+		expect(resolveTaskById([task("TASK-PREFIXED")], "TASK-MISSING").status).toBe("not-found");
 	});
 });

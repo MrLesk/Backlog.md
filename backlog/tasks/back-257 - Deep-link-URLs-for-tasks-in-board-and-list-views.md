@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 08:33'
+updated_date: '2026-07-10 09:05'
 labels: []
 dependencies: []
 references:
@@ -71,6 +71,7 @@ Out of scope
 4. Update ordinary board/list and unified-search task opens to generate stable URLs without changing non-task views.
 5. Cover server routing, identity edge cases, not-found/ambiguous behavior, StrictMode races, and history; then run focused and full automated checks plus compiled desktop browser QA.
 6. Resolve final review boundaries with precision-safe canonical ID matching across public paths, routed-modal cleanup on failed switches, focus containment against background shortcuts, and shared expand-and-focus behavior for collapsed search.
+7. Restore safe exact legacy-ID compatibility end to end through Core, HTTP, and browser routes while preserving numeric canonical ambiguity and traversal-safe validation.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -97,10 +98,16 @@ Final focus-race correction: matrix-like contention showed that the modal did fo
 Final code-quality review on f6d2865 found four bounded gaps: precision-safe task identity at public boundaries, stale routed modal state after failed route switches, focus containment against background shortcuts, and collapsed search click focus. This pass addresses only those findings and explicitly excludes the unrelated #753 MCP race.
 
 Final review correction verified: one canonical decimal-string comparator now handles arbitrarily large, padded, zero, and dotted task IDs without number coercion; resolver, filesystem, CLI, and HTTP boundaries fail closed on duplicates. Real-git fixtures prove exact BACK-1 and padded BACK-001 collisions on active branch collision-shadow return 409. Failed 400/404/409 route switches clear the old modal and focus the repair alert while preserving Back. Modal capture blocks background Cmd/Ctrl+K and recovers outside Tab focus; every explicit collapsed-search expansion focuses Search. Focused changed-surface tests passed 61/61 with 239 assertions and legacy compatibility passed 127/127. The final CI-style suite passed 1,542 tests with 2 expected skips, 0 failures, and 5,388 assertions across 183 files using the unchanged 10-second timeout. TypeScript, Biome over 319 files, diff hygiene, and production build passed. Compiled Chromium at 1440x900 verified the real active-branch direct link rendered a focused repair alert with no modal, then verified normal modal initial focus, Cmd/Ctrl+K containment, outside-Tab recovery, Escape close, and collapsed Search click focus. No MCP code changed; #753 remains out of scope.
+
+Exact-head review found that legacy nonnumeric task IDs remained rejected above the filesystem layer. This correction reopens BACK-257 to carry safe exact legacy-ID resolution through Core, HTTP, and browser routes without weakening numeric ambiguity or URL safety.
+
+Legacy exact-ID correction verified: safe prefixed nonnumeric IDs now resolve by exact identity through the shared resolver, Core, HTTP API, ordinary browser clicks, and direct routes. Malformed and path-like inputs remain invalid, missing safe legacy IDs return not found, duplicate exact IDs fail closed, and numeric/dotted/huge canonical ambiguity remains unchanged. Core checks the uncollapsed local filesystem view before returning a cached task, while the canonical filename separator keeps TASK-PREFIXED and TASK-PREFIXED-EXTRA independent during load and save cleanup.
+
+Final exact-tree evidence: focused compatibility matrix passed 166 tests with 493 assertions; the unchanged full bun test --isolate --timeout=10000 suite passed 1,553 tests with 2 expected interactive skips, 0 failures, and 5,425 assertions across 183 files. TypeScript, Biome over 319 files, production build, and diff hygiene passed. Delegated compiled Chrome QA at 2174x1315 verified ordinary click, lowercase direct route, independent longer-sibling route, focused missing and encoded-traversal errors with no stale modal, and no console warnings/errors or framework overlay. Separate visual observation: the unusually long TASK-PREFIXED-EXTRA ID overlaps its title in the All Tasks table; no layout change was made in this narrow identity correction.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Delivered safe shareable task-modal URLs for Board and All Tasks with coherent direct entry, refresh, close, Back/Forward, legacy highlight, and prefix-preserving links. Task identity now avoids numeric precision loss and fails closed for local and active-branch canonical collisions, while route failures never leave stale modal content. Modal focus is contained and restored, and explicit collapsed Search actions focus the input. Verified by 1,542 passing tests, static checks, production build, real-git API collision fixtures, and compiled desktop Chromium QA.
+Delivered safe shareable task-modal URLs for Board and All Tasks, including exact legacy nonnumeric IDs, without weakening numeric precision, duplicate ambiguity, or traversal safety. Verified through Core/API/browser regressions, 1,553 full-suite passes, static/build checks, and compiled desktop Chrome QA. A separate long-ID table overlap remains a documented layout observation outside this correction.
 <!-- SECTION:FINAL_SUMMARY:END -->

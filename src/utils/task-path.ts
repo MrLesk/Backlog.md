@@ -9,7 +9,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
-import { isValidTaskId, normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
+import { isNumericTaskId, normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
 
 export { normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
@@ -108,11 +108,9 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
  * Helper to find a matching file from a list of files
  */
 function findMatchingFile(files: string[], taskId: string, prefix: string): string | undefined {
-	if (!isValidTaskId(taskId)) {
+	if (!isNumericTaskId(taskId)) {
 		const filenameId = idForFilename(normalizeTaskId(taskId, prefix));
-		const exactMatches = files.filter(
-			(file) => file.startsWith(`${filenameId} -`) || file.startsWith(`${filenameId}-`),
-		);
+		const exactMatches = files.filter((file) => file.startsWith(`${filenameId} -`));
 		return exactMatches.length === 1 ? exactMatches[0] : undefined;
 	}
 

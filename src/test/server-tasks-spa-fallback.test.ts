@@ -157,6 +157,46 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(createResponse.headers.get("content-type")).toContain("application/json");
 	});
 
+	it("serves an exact legacy task ID and distinguishes missing from malformed inputs", async () => {
+		await Bun.write(
+			join(filesystem.tasksDir, "back-prefixed - Legacy task.md"),
+			serializeTask({ ...routedTask, id: "BACK-PREFIXED", title: "Legacy task" }),
+		);
+
+		const found = await request("/api/task/BACK-PREFIXED");
+		expect(found.status).toBe(200);
+		expect(((await found.json()) as Task).title).toBe("Legacy task");
+
+		const missing = await request("/api/task/BACK-MISSING");
+		expect(missing.status).toBe(404);
+		expect((await missing.json()) as { error: string }).toEqual({ error: "Task BACK-MISSING not found" });
+
+		const malformed = await request("/api/task/BACK-%2E%2E");
+		expect(malformed.status).toBe(400);
+		expect((await malformed.json()) as { error: string }).toEqual({ error: "Invalid task ID: BACK-.." });
+
+		const traversal = await request("/api/task/BACK-PREFIXED%2F..%2Fsecret");
+		expect(traversal.status).toBe(400);
+		expect((await traversal.json()) as { error: string }).toEqual({
+			error: "Invalid task ID: BACK-PREFIXED/../secret",
+		});
+	});
+
+	it("fails closed on duplicate exact legacy task IDs", async () => {
+		for (const title of ["Legacy one", "Legacy two"]) {
+			await Bun.write(
+				join(filesystem.tasksDir, `back-prefixed - ${title}.md`),
+				serializeTask({ ...routedTask, id: "BACK-PREFIXED", title }),
+			);
+		}
+
+		const response = await request("/api/task/BACK-PREFIXED");
+		expect(response.status).toBe(409);
+		expect((await response.json()) as { error: string }).toEqual({
+			error: "Task ID BACK-PREFIXED is ambiguous. Repair duplicate task IDs before opening it.",
+		});
+	});
+
 	it("never returns or mutates an adjacent huge task ID and fails closed on ambiguity", async () => {
 		const saveTaskFile = async (id: string, title: string) => {
 			await Bun.write(

@@ -522,14 +522,29 @@ export class Core {
 	}
 
 	async getTask(taskId: string): Promise<Task | null> {
+		const localResolution = resolveTaskById(await this.fs.listTasks(), taskId);
+		if (localResolution.status === "ambiguous" || localResolution.status === "invalid") {
+			return null;
+		}
+
 		const store = await this.getContentStore();
 		const tasks = store.getTasks();
 		const resolution = resolveTaskById(tasks, taskId);
+		if (resolution.status === "ambiguous" || resolution.status === "invalid") {
+			return null;
+		}
+		if (
+			localResolution.status === "found" &&
+			resolution.status === "found" &&
+			localResolution.task.id.toLowerCase() !== resolution.task.id.toLowerCase()
+		) {
+			return null;
+		}
 		if (resolution.status === "found") {
 			return resolution.task;
 		}
-		if (resolution.status === "ambiguous" || resolution.status === "invalid") {
-			return null;
+		if (localResolution.status === "found") {
+			return localResolution.task;
 		}
 
 		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
