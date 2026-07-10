@@ -30,6 +30,7 @@ import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
+import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
 
 type TaskRouteNavigationState = {
@@ -183,6 +184,7 @@ function AppContent() {
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
   const [config, setConfig] = useState<BacklogConfig | null>(null);
+  const availableTypes = React.useMemo(() => getTaskTypeValues(config), [config]);
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
@@ -202,6 +204,7 @@ function AppContent() {
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
+  const loadAllDataRequestRef = useRef(0);
   const location = useLocation();
   const navigate = useNavigate();
   const tasksRouteWithTitle = useMatch('/tasks/:id/:title');
@@ -289,6 +292,8 @@ function AppContent() {
   }, []);
 
   const loadAllData = useCallback(async () => {
+    const requestId = loadAllDataRequestRef.current + 1;
+    loadAllDataRequestRef.current = requestId;
     try {
       setIsLoading(true);
       const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, duplicates] = await Promise.all([
@@ -299,6 +304,10 @@ function AppContent() {
         apiClient.fetchArchivedMilestones(),
         apiClient.fetchDuplicateTasks(),
       ]);
+
+      if (loadAllDataRequestRef.current !== requestId) {
+        return;
+      }
 
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
@@ -317,9 +326,13 @@ function AppContent() {
         ),
       );
     } catch (error) {
-      console.error('Failed to load data:', error);
+      if (loadAllDataRequestRef.current === requestId) {
+        console.error('Failed to load data:', error);
+      }
     } finally {
-      setIsLoading(false);
+      if (loadAllDataRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [applySearchResults]);
 
@@ -333,31 +346,9 @@ function AppContent() {
   // Reload data when connection is restored
   React.useEffect(() => {
     if (isOnline && previousOnlineRef.current === false) {
-      // Connection restored, reload data
-      const loadData = async () => {
-        try {
-          const [results, milestonesData, archivedMilestonesData] = await Promise.all([
-            apiClient.search(),
-            apiClient.fetchMilestones(),
-            apiClient.fetchArchivedMilestones(),
-          ]);
-          const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
-          const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
-          const { tasks: tasksList } = applySearchResults(results, archivedKeys, milestoneAliases);
-          setMilestoneEntities(milestonesData);
-          setArchivedMilestones(archivedMilestonesData);
-          setMilestones(
-            collectMilestoneIds(tasksList, milestonesData, archivedMilestonesData).filter(
-              (milestone) => !archivedKeys.has(milestoneKey(milestone)),
-            ),
-          );
-        } catch (error) {
-          console.error('Failed to reload data:', error);
-        }
-      };
-      loadData();
+      void loadAllData();
     }
-  }, [applySearchResults, isOnline]);
+  }, [isOnline, loadAllData]);
 
   // Update document title when project name changes
   React.useEffect(() => {
@@ -626,6 +617,7 @@ function AppContent() {
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
       dateFormat={config?.dateFormat}
       availablePriorities={config?.priorities}
+      availableTypes={availableTypes}
     />
   );
 
@@ -748,6 +740,7 @@ function AppContent() {
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
         availableMilestones={milestones}
         availablePriorities={config?.priorities}
+        availableTypes={availableTypes}
         milestoneEntities={milestoneEntities}
         archivedMilestoneEntities={archivedMilestones}
         isDraftMode={isDraftMode}
