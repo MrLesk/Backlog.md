@@ -5,12 +5,17 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 12:22'
+updated_date: '2026-07-10 12:50'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/754'
   - 'https://github.com/MrLesk/Backlog.md/pull/755'
+modified_files:
+  - src/file-system/operations.ts
+  - src/utils/config-watcher.ts
+  - src/test/config-watcher.test.ts
+  - src/test/server-tasks-spa-fallback.test.ts
 ---
 
 ## Description
@@ -77,6 +82,7 @@ Out of scope
 10. Make config-write refreshes fail-safe across transient watcher null/partial reads, retain immediate active-branch off/on behavior, and add deterministic Windows-like race coverage without changing unrelated ViewSwitcher behavior.
 11. Replace per-task full-store reloads with coalesced fingerprinted collision refreshes that preserve existing branch-difference semantics, make watcher publication retry-safe, and unref the stat fallback with deterministic correctness, concurrency, and process-lifecycle coverage.
 12. Keep the last valid shared config observable while watcher candidates are incomplete or invalid; publish a validated candidate and collision-store transition coherently, with direct-watcher and real-server concurrency regressions plus exact-head verification.
+13. Reject malformed recognized config fields without replacing safe state, reconcile cache-versus-disk changes at watcher startup, and deliver each successful content snapshot exactly once while newer content wins.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -128,10 +134,14 @@ Exact-head CI portability correction: run 29089318037 passed Linux/macOS/Windows
 Final code gate reopened the task for a P1 config fail-open: the watcher currently invalidates and populates the shared cache before validating a stable candidate, allowing an invalid partial config to disable active-branch collision checks without publication. This pass will preserve the last valid observable config until a candidate is validated and will verify callback retry consistency.
 
 Final config fail-closed release gate: the watcher now parses stable candidate bytes without mutating shared state, validates explicitly present collision-sensitive booleans, active-branch days, task prefix, and root backlog pointer, then publishes config plus root resolution from the same accepted snapshot. Invalid or incomplete candidates preserve the last valid cache, task root, and active-branch 409 behavior. Callback publication retries independently past the read budget and suppresses duplicates after success. Deterministic focused evidence passed 32/32 tests with 671 assertions, including concurrent API/Core/task reads, root custom-directory TOCTOU and recovery, malformed safety fields, sparse valid folder config, and ten callback rejections before success. Independent re-review approved the exact diff fingerprint with no remaining P1/P2. The authoritative fresh full suite passed 1,580 tests with 2 expected skips, 0 failures, and 6,020 assertions across 184 files using the unchanged 10-second timeout; TypeScript, Biome over 320 files, diff hygiene, and production build passed. Delegated freshly compiled desktop Chrome QA at 1440x900 passed Board BACK-522 and All Tasks BACK-532 canonical click plus hard-refresh restoration with exactly one dialog, nonblank DOM, no framework overlay, empty warning/error console, config GET 200, and the expected BACK-257 collision 409. An earlier in-progress full run was terminated and discarded after later review findings changed the tree; only the fresh immutable-tree run is counted.
+
+Exact-head remediation reopened after d3194f1 audit: preserve custom statuses, root resolution, and active-branch collision safety for malformed recognized fields; reconcile a config changed between cache load and watcher creation; suppress same-content generations after callback success while retaining rejection retries and newer-content delivery.
+
+Authoritative d3194f1 remediation evidence on frozen diff 242d54f34e7abd955afd6f1da80e2859ddb7523764bcc9bc78ead54a2047ba17: malformed explicit statuses and no-colon root pointers retain custom statuses, custom root, checkActiveBranches=true, and duplicate-ID 409 until later valid recovery; cache-A/disk-B startup reconciles exactly once; held successful callbacks suppress same-content generations while rejected callbacks retry and newer content publishes. Focused watcher passed 9/9 with 463 assertions (and independent 27/27 three-run stress); real-server fail-closed integration passed 1/1 with 335 assertions. Two independent read-only reviewers approved the exact diff with no blockers. A first full run was discarded after an unrelated server-assets timeout that immediately passed 4/4 in isolation; the authoritative fresh suite passed 1,583 tests with 2 expected interactive skips, 0 failures, and 6,325 assertions across 184 files in 146.98s. TypeScript, Biome over 320 files, diff hygiene, and production build passed; the frozen fingerprint remained unchanged through those gates.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed the BACK-257 deep-link takeover and final release hardening. Stable invalid or partial config writes can no longer replace the last valid shared config, switch root/task resolution, or disable duplicate-ID collision protection; validated candidates publish cache and root resolution from one snapshot, and callback retries remain durable. Verified by independent approval, 32 focused tests/671 assertions, the fresh full suite at 1,580 passes with 2 expected skips and 0 failures, clean TypeScript/Biome/build/diff gates, and compiled desktop Board/All Tasks click-and-refresh QA with clean console and expected collision handling.
+Completed the BACK-257 deep-link takeover and final config-watcher release hardening. Malformed recognized fields can no longer publish parser defaults, switch a safe custom root, or disable duplicate-ID collision protection; watcher startup reconciles cached and on-disk snapshots exactly once; successful content is delivered once while callback failures still retry and newer content wins. Verified by two independent approvals, focused watcher/server regressions, a fresh 1,583-pass full suite with 0 failures, and clean TypeScript, Biome, build, and diff gates. The earlier compiled desktop Board/All Tasks deep-link QA remains applicable because this remediation changed no browser code.
 <!-- SECTION:FINAL_SUMMARY:END -->

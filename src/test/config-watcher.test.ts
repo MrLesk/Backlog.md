@@ -64,6 +64,15 @@ describe("config watcher", () => {
 			.replace("check_active_branches: true", "check_active_branches: false");
 		const unusableContents = [
 			[
+				'project_name: "Partial"',
+				"statuses: [",
+				"labels: []",
+				"date_format: YYYY-MM-DD",
+				"check_active_branches: false",
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
 				'project_name: ""',
 				'statuses: ["To Do", "Done"]',
 				'labels: ["web"]',
@@ -148,6 +157,7 @@ describe("config watcher", () => {
 				expect(cachedConfigs).toHaveLength(20);
 				for (const cachedConfig of cachedConfigs) {
 					expect(cachedConfig?.projectName).toBe(initialConfig.projectName);
+					expect(cachedConfig?.statuses).toEqual(initialConfig.statuses);
 					expect(cachedConfig?.checkActiveBranches).toBe(true);
 					expect(cachedConfig?.prefixes?.task).toBe("BACK");
 				}
@@ -203,6 +213,15 @@ describe("config watcher", () => {
 			"check_active_branches: true",
 			"",
 		].join("\n");
+		const malformedPointerContent = [
+			'project_name: "Malformed pointer"',
+			'backlog_directory "backlog"',
+			'statuses: ["To Do", "Done"]',
+			"labels: []",
+			"date_format: YYYY-MM-DD",
+			"check_active_branches: false",
+			"",
+		].join("\n");
 		const nextValidContent = candidateContent
 			.replace('project_name: "Candidate"', 'project_name: "Next valid"')
 			.replace('backlog_directory: "custom/a"', 'backlog_directory: "custom/b"');
@@ -214,14 +233,19 @@ describe("config watcher", () => {
 		const originalParseConfig = rootFilesystem.parseConfig.bind(rootFilesystem);
 		let injectedInterveningContent = false;
 		let sparseRootAttempts = 0;
+		let malformedPointerAttempts = 0;
 		let invalidPointerAttempts = 0;
 		let resolveSparseRootAttempts: () => void = () => {};
+		let resolveMalformedPointerAttempts: () => void = () => {};
 		let resolveInvalidPointerAttempts: () => void = () => {};
 		const sparseRootAttemptsExhausted = new Promise<void>((resolve) => {
 			resolveSparseRootAttempts = resolve;
 		});
 		const invalidPointerAttemptsExhausted = new Promise<void>((resolve) => {
 			resolveInvalidPointerAttempts = resolve;
+		});
+		const malformedPointerAttemptsExhausted = new Promise<void>((resolve) => {
+			resolveMalformedPointerAttempts = resolve;
 		});
 		rootFilesystem.parseConfig = (content) => {
 			const config = originalParseConfig(content);
@@ -232,6 +256,10 @@ describe("config watcher", () => {
 			if (content === sparseRootContent) {
 				sparseRootAttempts += 1;
 				if (sparseRootAttempts >= 8) resolveSparseRootAttempts();
+			}
+			if (content === malformedPointerContent) {
+				malformedPointerAttempts += 1;
+				if (malformedPointerAttempts >= 8) resolveMalformedPointerAttempts();
 			}
 			if (content === invalidPointerContent) {
 				invalidPointerAttempts += 1;
@@ -285,6 +313,15 @@ describe("config watcher", () => {
 			expect(rootFilesystem.configFilePath).toBe(rootConfigPath);
 
 			await mkdir(join(rootDir, "backlog"), { recursive: true });
+			await Bun.write(replacementPath, malformedPointerContent);
+			await rename(replacementPath, rootConfigPath);
+			await withTimeout(malformedPointerAttemptsExhausted, "malformed root pointer attempts");
+			expect(callbackCount).toBe(1);
+			expect((await rootFilesystem.loadConfig())?.projectName).toBe("Candidate");
+			expect((await rootFilesystem.loadConfig())?.checkActiveBranches).toBe(true);
+			expect(rootFilesystem.backlogDirName).toBe("custom/a");
+			expect(rootFilesystem.configFilePath).toBe(rootConfigPath);
+
 			await Bun.write(replacementPath, invalidPointerContent);
 			await rename(replacementPath, rootConfigPath);
 			await withTimeout(invalidPointerAttemptsExhausted, "invalid root pointer attempts");
@@ -354,6 +391,126 @@ describe("config watcher", () => {
 			expect(config.labels).toEqual([]);
 			expect(config.dateFormat).toBe("yyyy-mm-dd");
 		} finally {
+			configWatcher.stop();
+		}
+	});
+
+	it("reconciles a config changed after cache load but before watcher startup exactly once", async () => {
+		const canonicalContent = await Bun.file(core.filesystem.configFilePath).text();
+		const changedBeforeStartup = canonicalContent.replace(
+			'project_name: "Config watcher"',
+			'project_name: "Changed before startup"',
+		);
+		await Bun.write(core.filesystem.configFilePath, changedBeforeStartup);
+
+		let callbackCount = 0;
+		let resolvePublished: (config: BacklogConfig) => void = () => {};
+		const publishedConfig = new Promise<BacklogConfig>((resolve) => {
+			resolvePublished = resolve;
+		});
+		const configWatcher = watchConfig(core, {
+			onConfigChanged: (config) => {
+				if (!config) return;
+				callbackCount += 1;
+				resolvePublished(config);
+			},
+		});
+
+		try {
+			const config = await withTimeout(publishedConfig, "startup config reconciliation");
+			expect(config.projectName).toBe("Changed before startup");
+			expect((await core.filesystem.loadConfig())?.projectName).toBe("Changed before startup");
+			expect(callbackCount).toBe(1);
+
+			await replaceConfigFile(changedBeforeStartup);
+			await Bun.sleep(getPlatformTimeout(700));
+			expect(callbackCount).toBe(1);
+		} finally {
+			configWatcher.stop();
+		}
+	});
+
+	it("suppresses an identical event that arrives during a successful callback", async () => {
+		const canonicalContent = await Bun.file(core.filesystem.configFilePath).text();
+		const updatedContent = canonicalContent.replace(
+			'project_name: "Config watcher"',
+			'project_name: "Held publication"',
+		);
+		let callbackCount = 0;
+		let resolveCallbackStarted: () => void = () => {};
+		let releaseCallback: () => void = () => {};
+		const callbackStarted = new Promise<void>((resolve) => {
+			resolveCallbackStarted = resolve;
+		});
+		const callbackRelease = new Promise<void>((resolve) => {
+			releaseCallback = resolve;
+		});
+		const configWatcher = watchConfig(core, {
+			onConfigChanged: async (config) => {
+				expect(config?.projectName).toBe("Held publication");
+				callbackCount += 1;
+				if (callbackCount === 1) {
+					resolveCallbackStarted();
+					await callbackRelease;
+				}
+			},
+		});
+
+		try {
+			await replaceConfigFile(updatedContent);
+			await withTimeout(callbackStarted, "held config callback");
+			await replaceConfigFile(updatedContent);
+			await Bun.sleep(getPlatformTimeout(700));
+			releaseCallback();
+			await Bun.sleep(getPlatformTimeout(300));
+			expect(callbackCount).toBe(1);
+		} finally {
+			releaseCallback();
+			configWatcher.stop();
+		}
+	});
+
+	it("publishes the newest content after an older successful callback finishes", async () => {
+		const canonicalContent = await Bun.file(core.filesystem.configFilePath).text();
+		const firstContent = canonicalContent.replace('project_name: "Config watcher"', 'project_name: "First held"');
+		const newestContent = canonicalContent.replace('project_name: "Config watcher"', 'project_name: "Newest"');
+		const publishedNames: string[] = [];
+		let resolveFirstStarted: () => void = () => {};
+		let releaseFirst: () => void = () => {};
+		let resolveNewestPublished: () => void = () => {};
+		const firstStarted = new Promise<void>((resolve) => {
+			resolveFirstStarted = resolve;
+		});
+		const firstRelease = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const newestPublished = new Promise<void>((resolve) => {
+			resolveNewestPublished = resolve;
+		});
+		const configWatcher = watchConfig(core, {
+			onConfigChanged: async (config) => {
+				if (!config) return;
+				publishedNames.push(config.projectName);
+				if (config.projectName === "First held") {
+					resolveFirstStarted();
+					await firstRelease;
+				}
+				if (config.projectName === "Newest") resolveNewestPublished();
+			},
+		});
+
+		try {
+			await replaceConfigFile(firstContent);
+			await withTimeout(firstStarted, "first held publication");
+			await replaceConfigFile(newestContent);
+			await Bun.sleep(getPlatformTimeout(700));
+			releaseFirst();
+			await withTimeout(newestPublished, "newest config publication");
+			await Bun.sleep(getPlatformTimeout(300));
+			expect(publishedNames).toEqual(["First held", "Newest"]);
+			expect((await core.filesystem.loadConfig())?.projectName).toBe("Newest");
+		} finally {
+			releaseFirst();
 			configWatcher.stop();
 		}
 	});

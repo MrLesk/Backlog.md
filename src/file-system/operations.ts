@@ -73,6 +73,7 @@ export class FileSystem {
 	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
+	private cachedConfigSnapshot: { path: string; content: string } | null = null;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
@@ -130,10 +131,17 @@ export class FileSystem {
 
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
+		this.cachedConfigSnapshot = null;
 		this.refreshConfigResolution();
 	}
 
-	publishConfig(config: BacklogConfig, sourceConfigPath: string): boolean {
+	getCachedConfigContent(sourceConfigPath: string): string | null {
+		return this.cachedConfigSnapshot && resolve(this.cachedConfigSnapshot.path) === resolve(sourceConfigPath)
+			? this.cachedConfigSnapshot.content
+			: null;
+	}
+
+	publishConfig(config: BacklogConfig, sourceConfigPath: string, content: string): boolean {
 		const rootConfigPath = join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG);
 		if (resolve(sourceConfigPath) === resolve(rootConfigPath)) {
 			if (config.backlogDirectory !== undefined && normalizeProjectBacklogDirectory(config.backlogDirectory) === null) {
@@ -146,6 +154,7 @@ export class FileSystem {
 			this.applyConfigResolution(resolution);
 		}
 		this.cachedConfig = config;
+		this.cachedConfigSnapshot = { path: sourceConfigPath, content };
 		return true;
 	}
 
@@ -1386,6 +1395,7 @@ ${description || `Milestone: ${title}`}`,
 
 			// Cache the loaded config
 			this.cachedConfig = config;
+			this.cachedConfigSnapshot = { path: configPath, content };
 			return config;
 		} catch (_error) {
 			return null;
@@ -1405,6 +1415,7 @@ ${description || `Milestone: ${title}`}`,
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
+		this.cachedConfigSnapshot = { path: configPath, content };
 	}
 
 	// Utility methods

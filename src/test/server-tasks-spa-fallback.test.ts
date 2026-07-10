@@ -573,6 +573,12 @@ describe("BacklogServer task SPA fallback", () => {
 	});
 
 	it("keeps config and duplicate-task reads fail-closed while a watched config is unusable", async () => {
+		await server?.stop();
+		server = null;
+		const cachedConfig = await filesystem.loadConfig();
+		if (!cachedConfig) throw new Error("Expected cached test config");
+		const customStatuses = ["Queued", "Working", "Complete"];
+		await filesystem.saveConfig({ ...cachedConfig, statuses: customStatuses });
 		await restartWithActiveBranchCollision("BACK-1");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
@@ -585,8 +591,17 @@ describe("BacklogServer task SPA fallback", () => {
 		const disabledContent = canonicalContent.replace("check_active_branches: true", "check_active_branches: false");
 		const unusableContents = [
 			[
+				'project_name: "Partial"',
+				"statuses: [",
+				"labels: []",
+				"date_format: YYYY-MM-DD",
+				"check_active_branches: false",
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
 				'project_name: ""',
-				'statuses: ["To Do", "In Progress", "Done"]',
+				'statuses: ["Queued", "Working", "Complete"]',
 				'labels: ["web"]',
 				"date_format: YYYY-MM-DD",
 				"check_active_branches: false",
@@ -595,7 +610,7 @@ describe("BacklogServer task SPA fallback", () => {
 			].join("\n"),
 			[
 				'project_name: "Malformed boolean"',
-				'statuses: ["To Do", "In Progress", "Done"]',
+				'statuses: ["Queued", "Working", "Complete"]',
 				'labels: ["web"]',
 				"date_format: YYYY-MM-DD",
 				"check_active_branches: fals",
@@ -604,7 +619,7 @@ describe("BacklogServer task SPA fallback", () => {
 			].join("\n"),
 			[
 				'project_name: "Malformed active days"',
-				'statuses: ["To Do", "In Progress", "Done"]',
+				'statuses: ["Queued", "Working", "Complete"]',
 				'labels: ["web"]',
 				"date_format: YYYY-MM-DD",
 				"check_active_branches: true",
@@ -614,7 +629,7 @@ describe("BacklogServer task SPA fallback", () => {
 			].join("\n"),
 			[
 				'project_name: "Malformed task prefix"',
-				'statuses: ["To Do", "In Progress", "Done"]',
+				'statuses: ["Queued", "Working", "Complete"]',
 				'labels: ["web"]',
 				"date_format: YYYY-MM-DD",
 				"check_active_branches: true",
@@ -675,8 +690,10 @@ describe("BacklogServer task SPA fallback", () => {
 				for (const read of concurrentReads) {
 					expect(read.configStatus).toBe(200);
 					expect(read.apiConfig.projectName).toBe("Task SPA Fallback");
+					expect(read.apiConfig.statuses).toEqual(customStatuses);
 					expect(read.apiConfig.checkActiveBranches).toBe(true);
 					expect(read.coreConfig?.projectName).toBe("Task SPA Fallback");
+					expect(read.coreConfig?.statuses).toEqual(customStatuses);
 					expect(read.coreConfig?.checkActiveBranches).toBe(true);
 					expect(read.taskStatus).toBe(409);
 				}

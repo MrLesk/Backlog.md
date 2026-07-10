@@ -1,4 +1,4 @@
-import { type FSWatcher, readFileSync, unwatchFile, watch, watchFile } from "node:fs";
+import { type FSWatcher, unwatchFile, watch, watchFile } from "node:fs";
 import { basename, dirname } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import type { FileSystem } from "../file-system/operations.ts";
@@ -26,19 +26,49 @@ const BOOLEAN_CONFIG_KEYS = new Set([
 	"bypass_git_hooks",
 	"check_active_branches",
 ]);
+const ARRAY_CONFIG_KEYS = new Set(["statuses", "labels", "types", "priorities"]);
+const INTEGER_CONFIG_KEYS = new Set(["max_column_width", "default_port", "zero_padded_ids", "active_branch_days"]);
+const RECOGNIZED_CONFIG_KEYS = new Set([
+	"project_name",
+	"default_assignee",
+	"default_reporter",
+	"default_status",
+	...ARRAY_CONFIG_KEYS,
+	"definition_of_done",
+	"date_format",
+	...INTEGER_CONFIG_KEYS,
+	"default_editor",
+	...BOOLEAN_CONFIG_KEYS,
+	"onStatusChange",
+	"on_status_change",
+	"task_prefix",
+	"backlog_directory",
+	"backlogDirectory",
+]);
 
-function hasValidExplicitValues(content: string): boolean {
+function hasValidExplicitValues(content: string, config: BacklogConfig): boolean {
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
 		if (!line || line.startsWith("#")) continue;
 		const colonIndex = line.indexOf(":");
-		if (colonIndex === -1) continue;
+		if (colonIndex === -1) {
+			const key = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\b/)?.[1];
+			if (key && RECOGNIZED_CONFIG_KEYS.has(key)) return false;
+			continue;
+		}
 		const key = line.slice(0, colonIndex).trim();
 		const value = line.slice(colonIndex + 1).trim();
+		if (!RECOGNIZED_CONFIG_KEYS.has(key)) continue;
+		if (ARRAY_CONFIG_KEYS.has(key) && !(value.startsWith("[") && value.endsWith("]"))) return false;
+		if (key === "definition_of_done" && value.startsWith("[") && !value.endsWith("]")) return false;
+		if (key === "definition_of_done" && config.definitionOfDone === undefined) return false;
+		if ((key === "project_name" || key === "date_format") && !value.replace(/['"]/g, "").trim()) return false;
 		if (BOOLEAN_CONFIG_KEYS.has(key) && !/^(?:true|false)$/i.test(value)) return false;
-		if (key === "active_branch_days") {
-			const days = Number(value);
-			if (!/^\d+$/.test(value) || !Number.isFinite(days) || !Number.isInteger(days) || days < 0) return false;
+		if (INTEGER_CONFIG_KEYS.has(key)) {
+			const number = Number(value);
+			if (!/^\d+$/.test(value) || !Number.isSafeInteger(number)) return false;
+			if (key === "max_column_width" && number < 1) return false;
+			if (key === "default_port" && (number < 1 || number > 65_535)) return false;
 		}
 		if (key === "task_prefix" && !/^[a-zA-Z]+$/.test(value.replace(/['"]/g, ""))) return false;
 	}
@@ -51,7 +81,7 @@ function isUsableConfig(config: BacklogConfig | null, content: string): config i
 			Array.isArray(config.statuses) &&
 			Array.isArray(config.labels) &&
 			config.dateFormat.trim() &&
-			hasValidExplicitValues(content),
+			hasValidExplicitValues(content, config),
 	);
 }
 
@@ -68,10 +98,7 @@ export function watchConfigFile(filesystem: FileSystem, callbacks: ConfigWatcher
 	let stopped = false;
 	let processing = false;
 	let pending = false;
-	let lastPublishedContent: string | null = null;
-	try {
-		lastPublishedContent = readFileSync(configPath, "utf8");
-	} catch {}
+	let lastPublishedContent = filesystem.getCachedConfigContent(configPath);
 
 	const notifyAfterStableRead = async (eventGeneration: number): Promise<void> => {
 		for (let attempt = 0; attempt < CONFIG_READ_ATTEMPTS; attempt++) {
@@ -101,15 +128,13 @@ export function watchConfigFile(filesystem: FileSystem, callbacks: ConfigWatcher
 				if (stopped || eventGeneration !== generation) {
 					return;
 				}
-				if (!filesystem.publishConfig(config, configPath)) {
+				if (!filesystem.publishConfig(config, configPath, secondContent)) {
 					continue;
 				}
 				while (!stopped && eventGeneration === generation) {
 					try {
 						await callbacks.onConfigChanged?.(config);
-						if (!stopped && eventGeneration === generation) {
-							lastPublishedContent = secondContent;
-						}
+						lastPublishedContent = secondContent;
 						break;
 					} catch {
 						await delay(CONFIG_STABILITY_DELAY_MS);
@@ -176,6 +201,8 @@ export function watchConfigFile(filesystem: FileSystem, callbacks: ConfigWatcher
 			}
 		});
 	} catch {}
+
+	scheduleStableRead();
 
 	return { stop };
 }
